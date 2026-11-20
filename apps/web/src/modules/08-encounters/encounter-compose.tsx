@@ -19,13 +19,108 @@ import {
   SelectField,
   StatusPill,
   TextAreaField,
-  TextField,
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, JSX } from "react";
+import type { JSX } from "react";
 import { type BlockerFunction, useBlocker, useNavigate, useParams } from "react-router-dom";
+import { type PanelStatus, withPanelStatus } from "../../shell/panel-status";
+import { PlanOfCareStep } from "../07-care-plan/change-proposals";
+import { TRANSPORT_MESSAGE, humanize, readableValidation } from "./compose-text";
+import {
+  attentionCard,
+  attentionMark,
+  attentionText,
+  attentionTitle,
+  completionPercent,
+  discardActions,
+  discardDialog,
+  discardText,
+  discardTitle,
+  editorBody,
+  editorCard,
+  editorColumn,
+  editorDescription,
+  editorHeader,
+  editorTitle,
+  editorTitleRow,
+  emptyVocabulary,
+  emptyVocabularyText,
+  emptyVocabularyTitle,
+  entryCard,
+  entryCardSelected,
+  entryCheckbox,
+  entryContent,
+  entryGrid,
+  entryLabel,
+  entryMetaRow,
+  entryText,
+  eyebrow,
+  freeTextHeading,
+  freeTextHint,
+  freeTextSection,
+  freeTextTitle,
+  headerActions,
+  noticeBox,
+  noticeError,
+  noticeSuccess,
+  noticeTitle,
+  optionalBadge,
+  page,
+  previewActions,
+  previewBody,
+  previewCard,
+  previewColumn,
+  previewEmpty,
+  previewEmptyText,
+  previewEmptyTitle,
+  previewFooter,
+  previewFooterText,
+  previewHeader,
+  previewStatus,
+  previewText,
+  previewTitle,
+  progressFill,
+  progressTrack,
+  railCount,
+  railHeader,
+  railTitle,
+  readOnlyHint,
+  readyCard,
+  readyMark,
+  readyText,
+  readyTitle,
+  requiredBadge,
+  sectionIndex,
+  sectionIndexActive,
+  sectionIndexComplete,
+  sectionNav,
+  sectionNavButton,
+  sectionNavButtonActive,
+  sectionNavCopy,
+  sectionNavMeta,
+  sectionNavMetaRequired,
+  sectionNavTitle,
+  sectionNavTitleActive,
+  sectionRail,
+  selectionCounter,
+  slotGrid,
+  slotPanel,
+  slotPanelTitle,
+  staleEditNotice,
+  summaryBar,
+  summaryDivider,
+  summaryMain,
+  summaryStat,
+  summaryStatLabel,
+  summaryStatValue,
+  summaryStats,
+  summaryTitle,
+  summaryTitleRow,
+  verbatimBadge,
+  workspace,
+} from "./encounter-compose-styles";
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
 import {
   type DraftSections,
@@ -37,7 +132,6 @@ import {
   type TemplateSection,
   type TemplateView,
   type WriteResult,
-  captureVitals,
   currentNoteText,
   dropUnofferedEntries,
   finalizeEncounter,
@@ -48,15 +142,16 @@ import {
   loadVisitPurpose,
   saveSelections,
   sectionHasEmptySlots,
+  sectionsFilledByRecords,
   sectionsNeedingAttention,
   suggestedReasonCode,
   toDraft,
   toSelectionsBody,
 } from "./encounters-api";
+import { FallLinkField } from "./fall-link-field";
+import { type RecordedPanelKind, RecordedPanels } from "./recorded-panels";
 import { SlotInput } from "./slot-input";
-
-const humanize = (k: string): string =>
-  k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+import { VitalsPanel } from "./vitals-panel";
 
 const sectionIsFilled = (draft: DraftSections, sectionId: string): boolean => {
   const value = draft[sectionId];
@@ -68,6 +163,8 @@ type UiFeedback = {
   title: string;
   message: string;
   field?: string;
+  /** Names a notice that goes away by itself once what it is about is no longer true. */
+  tag?: "findings-unsaved";
 };
 
 function feedbackFor(result: Extract<WriteResult<unknown>, { ok: false }>): UiFeedback {
@@ -108,32 +205,47 @@ const serializedDraft = (draft: DraftSections, fallIncidentId: string | null): s
 const transportFeedback: UiFeedback = {
   tone: "error",
   title: "Connection interrupted",
-  message: "The connection was interrupted. Your changes are still here; try again.",
+  message: TRANSPORT_MESSAGE,
 };
+
+/** The note's own words for a part of it that keeps its own form (named in the notice that asks the author to save or discard it). */
+const PANEL_ORDER: readonly PanelKey[] = ["adl", "nutrition", "wounds", "vitals", "plan"];
+
+function unsavedPanelsFeedback(titles: readonly string[]): UiFeedback {
+  return {
+    tone: "warning",
+    title: "Unsaved entries in a section",
+    message: `Save or discard the unsaved entries in ${titles.join(", ")} before finalizing.`,
+    tag: "findings-unsaved",
+  };
+}
+
+/** What was taken out of a stored draft because the template cannot show it and the server would refuse it. */
+function removedFromDraftFeedback(statements: number, details: number): UiFeedback {
+  const plural = (n: number, one: string, many: string): string => (n === 1 ? one : many);
+  const parts = [
+    statements > 0
+      ? `${statements} saved ${plural(statements, "statement is", "statements are")} no longer offered in ${plural(statements, "its", "their")} section and ${plural(statements, "was", "were")} removed here.`
+      : null,
+    details > 0
+      ? `${details} saved ${plural(details, "detail does", "details do")} not belong to ${plural(details, "its", "their")} statement and ${plural(details, "was", "were")} removed here.`
+      : null,
+  ].filter((part): part is string => part !== null);
+  return {
+    tone: "warning",
+    title:
+      statements > 0 ? "Statements removed from this draft" : "Details removed from this draft",
+    message: `${parts.join(" ")} Save the draft to apply the change.`,
+  };
+}
 
 /** The template section a visit reason is recorded in. */
 const REASON_SECTION_ID = "chief_concern";
 
-const VITAL_LABELS: Record<string, string> = {
-  bpSystolic: "Systolic blood pressure",
-  bpDiastolic: "Diastolic blood pressure",
-  heartRate: "Heart rate",
-  respiratoryRate: "Respiratory rate",
-  temperature: "Temperature",
-  spo2: "SpO₂",
-  painScore: "Pain score",
-};
-
-function readableValidation(details: unknown, fallback: string): string {
-  const first = Array.isArray(details) ? details[0] : details;
-  if (first && typeof first === "object") {
-    const item = first as { field?: unknown; message?: unknown };
-    const field =
-      typeof item.field === "string" ? (VITAL_LABELS[item.field] ?? humanize(item.field)) : null;
-    if (typeof item.message === "string") return field ? `${field}: ${item.message}` : item.message;
-  }
-  return fallback;
-}
+/** The parts of the note that keep their own form and say so (see `useReportPanelStatus`). */
+type PanelKey = RecordedPanelKind | "vitals" | "plan";
+type PanelStatuses = Readonly<Partial<Record<PanelKey, PanelStatus>>>;
+const NO_SECTIONS: ReadonlySet<string> = new Set();
 
 export function EncounterCompose(): JSX.Element {
   const client = useApiClient();
@@ -165,14 +277,46 @@ export function EncounterCompose(): JSX.Element {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState("");
   const [vitalsOpen, setVitalsOpen] = useState(false);
+  // The vitals form is mounted the first time it is opened and kept (hidden when closed), so what was typed survives a close.
+  const [vitalsMounted, setVitalsMounted] = useState(false);
+  // The last re-read of the note failed: the preview may be out of date until one succeeds.
+  const [previewStale, setPreviewStale] = useState(false);
   // The reason the scheduled visit's purpose suggested, held as an UNSAVED choice until the clinician saves it.
   const [suggestion, setSuggestion] = useState<{ code: string; from: string } | null>(null);
+  // What each panel says about itself: unsaved input, a write in flight, a saved record. The note is dirty or busy when any panel is.
+  const [panelStatus, setPanelStatus] = useState<PanelStatuses>({});
+  // True from the start of a load until it ends: panels are gone in between, and what they say on the way out is not about the note
+  // that is about to be shown.
+  const loadingRef = useRef(true);
+  const reportPanel = useCallback((key: PanelKey, status: PanelStatus): void => {
+    if (loadingRef.current) return;
+    setPanelStatus((held) => withPanelStatus(held, key, status));
+  }, []);
+  // What a notice and a suggestion say belongs to one note: another note (Back or Forward between composer URLs) starts without them.
+  const [shownFor, setShownFor] = useState(encounterId);
+  if (shownFor !== encounterId) {
+    setShownFor(encounterId);
+    setFeedback(null);
+    setSuggestion(null);
+  }
+  const planRegion = useRef<HTMLDivElement>(null);
+  // The newest re-read of the note's text: an older one answering late must not overwrite what a newer read or a save put on screen.
+  const previewRead = useRef(0);
+  const reportVitals = useCallback(
+    (status: PanelStatus) => reportPanel("vitals", status),
+    [reportPanel],
+  );
+  const reportPlan = useCallback(
+    (status: PanelStatus) => reportPanel("plan", status),
+    [reportPanel],
+  );
   const loadSequence = useRef(0);
 
   const load = useCallback(async (): Promise<EncounterView | null> => {
     if (!encounterId) return null;
     const sequence = ++loadSequence.current;
 
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     setEncounter(null);
@@ -189,6 +333,10 @@ export function EncounterCompose(): JSX.Element {
     setEditStale(false);
     setEditing(false);
     setEditText("");
+    setVitalsOpen(false);
+    setVitalsMounted(false);
+    setPreviewStale(false);
+    setPanelStatus({});
     setOpenSection(null);
 
     try {
@@ -199,6 +347,7 @@ export function EncounterCompose(): JSX.Element {
       if (sequence !== loadSequence.current) return null;
       if (enc.error || !enc.data) {
         setError("Could not load this encounter.");
+        loadingRef.current = false;
         setLoading(false);
         return null;
       }
@@ -216,6 +365,7 @@ export function EncounterCompose(): JSX.Element {
 
       if (!tmpl || !sel || pat.error || !pat.data) {
         setError("Could not load this encounter.");
+        loadingRef.current = false;
         setLoading(false);
         return null;
       }
@@ -225,18 +375,19 @@ export function EncounterCompose(): JSX.Element {
       setPatient(pat.data as PatientSummary);
 
       const loadedDraft = toDraft(sel.sections);
-      const { draft: offeredDraft, dropped } = dropUnofferedEntries(tmpl, loadedDraft);
+      const {
+        draft: offeredDraft,
+        dropped,
+        droppedParams,
+      } = dropUnofferedEntries(tmpl, loadedDraft);
       setDraft(offeredDraft);
       // The saved baseline stays the STORED tree, so a removal reads as an unsaved change the author applies.
       setLastSavedDraft(serializedDraft(loadedDraft, sel.fallIncident?.incidentId ?? null));
       setLinkedFall(sel.fallIncident ?? null);
       setFallIncidentId(sel.fallIncident?.incidentId ?? null);
-      if (dropped > 0) {
-        setFeedback({
-          tone: "warning",
-          title: "Statements removed from this draft",
-          message: `${dropped} saved ${dropped === 1 ? "statement is" : "statements are"} no longer offered in ${dropped === 1 ? "its" : "their"} section and ${dropped === 1 ? "was" : "were"} removed here. Save the draft to apply the change.`,
-        });
+      // "Save the draft to apply the change" only means something on a note that can still be saved.
+      if ((dropped > 0 || droppedParams > 0) && loadedEncounter.status === "draft") {
+        setFeedback(removedFromDraftFeedback(dropped, droppedParams));
       }
       setPreview(sel.layer1Preview);
       setEditedNarrative(sel.editedNarrative ?? null);
@@ -244,11 +395,13 @@ export function EncounterCompose(): JSX.Element {
       setVersion(sel.version);
 
       setOpenSection((prev) => prev ?? tmpl.sections[0]?.sectionId ?? null);
+      loadingRef.current = false;
       setLoading(false);
       return loadedEncounter;
     } catch {
       if (sequence !== loadSequence.current) return null;
       setError("Could not load this encounter. Check your connection and try again.");
+      loadingRef.current = false;
       setLoading(false);
       return null;
     }
@@ -309,9 +462,19 @@ export function EncounterCompose(): JSX.Element {
     };
   }, [client, encounterId, encounter?.status, reasonIsFall, fallChoices]);
 
+  // The server counts a saved ADL or nutrition record as documenting the section that states it, so the panels' saved records do too.
+  const adlRecorded = panelStatus.adl?.recorded === true;
+  const nutritionRecorded = panelStatus.nutrition?.recorded === true;
+  const filledByRecord = useMemo(
+    () =>
+      template
+        ? sectionsFilledByRecords(template, { adl: adlRecorded, nutrition: nutritionRecorded })
+        : NO_SECTIONS,
+    [template, adlRecorded, nutritionRecorded],
+  );
   const unmet = useMemo(
-    () => (template ? sectionsNeedingAttention(template, draft) : []),
-    [template, draft],
+    () => (template ? sectionsNeedingAttention(template, draft, filledByRecord) : []),
+    [template, draft, filledByRecord],
   );
 
   const editable = encounter?.status === "draft" && encounter.id === encounterId;
@@ -328,8 +491,34 @@ export function EncounterCompose(): JSX.Element {
   const noteText = editInForce ? editedNarrative : preview;
   // Text typed into the edit box and not yet applied counts as unsaved, like a ticked statement does.
   const editDirty = editing && editText !== noteText;
-  const dirty = editable && (currentDraft !== lastSavedDraft || editDirty);
-  const busy = operation !== null;
+  const selectionsDirty = currentDraft !== lastSavedDraft || editDirty;
+  // A panel's form is saved by the panel's own button, so its unsaved input and its writes in flight count as the note's.
+  const panels = Object.values(panelStatus);
+  const panelsDirty = panels.some((panel) => panel.dirty);
+  const dirtyPanels = PANEL_ORDER.filter((key) => panelStatus[key]?.dirty === true);
+  /** What the author calls a part of the note: the heading of its section, or the panel's own title. */
+  function panelTitle(key: PanelKey): string {
+    if (key === "vitals") return "Visit vitals";
+    if (key === "plan") return "Plan of care";
+    return template?.sections.find((s) => s.recordedPanel === key)?.heading ?? key;
+  }
+  /** Bring a part of the note into view (its section opened, the vitals shown, the plan scrolled to) so its unsaved entries can be dealt with. */
+  function showPanel(key: PanelKey): void {
+    if (key === "vitals") {
+      setVitalsMounted(true);
+      setVitalsOpen(true);
+    } else if (key === "plan") {
+      planRegion.current?.scrollIntoView?.({ block: "start" });
+    } else {
+      const sectionId = template?.sections.find((s) => s.recordedPanel === key)?.sectionId;
+      if (sectionId !== undefined) setOpenSection(sectionId);
+    }
+  }
+  const savingPanels = Object.entries(panelStatus).filter(([, panel]) => panel.saving);
+  const dirty = editable && (selectionsDirty || panelsDirty);
+  const busy = operation !== null || savingPanels.length > 0;
+  // The plan step may keep saving its own drawer while it says so; only another write locks it.
+  const planDisabled = frozen || operation !== null || savingPanels.some(([key]) => key !== "plan");
   const shouldBlock = useCallback<BlockerFunction>(
     ({ nextLocation }) => (dirty || busy) && !isShellExit(nextLocation.pathname),
     [busy, dirty],
@@ -343,6 +532,11 @@ export function EncounterCompose(): JSX.Element {
     return () => window.removeEventListener("beforeunload", warn);
   }, [busy, dirty]);
 
+  // The notice that asked for the panels to be saved or discarded goes once they are.
+  useEffect(() => {
+    if (!panelsDirty) setFeedback((held) => (held?.tag === "findings-unsaved" ? null : held));
+  }, [panelsDirty]);
+
   const completion = useMemo(() => {
     if (!template) {
       return {
@@ -355,7 +549,7 @@ export function EncounterCompose(): JSX.Element {
 
     const completed = template.sections.filter(
       (section) =>
-        sectionIsFilled(draft, section.sectionId) &&
+        (sectionIsFilled(draft, section.sectionId) || filledByRecord.has(section.sectionId)) &&
         !sectionHasEmptySlots(template, draft, section.sectionId),
     ).length;
 
@@ -367,7 +561,7 @@ export function EncounterCompose(): JSX.Element {
       requiredRemaining: unmet.length,
       percent: total > 0 ? Math.round((completed / total) * 100) : 0,
     };
-  }, [draft, template, unmet.length]);
+  }, [draft, template, filledByRecord, unmet.length]);
 
   function toggleEntry(sectionId: string, entry: MenuEntry): void {
     // Statements sharing an exclusive group contradict each other and the server refuses two in one note,
@@ -443,33 +637,57 @@ export function EncounterCompose(): JSX.Element {
     }));
   }
 
+  /** The stored note, or null when it could not be read (a refusal or a dropped connection). */
+  const readStored = useCallback(async (): Promise<SelectionsView | null> => {
+    if (!encounterId) return null;
+    try {
+      return await loadSelections(client, encounterId);
+    } catch {
+      return null;
+    }
+  }, [client, encounterId]);
+
+  /** What the server holds for the note's text: the generated preview and the author's edit of it, if any. */
+  const applyStored = useCallback((stored: SelectionsView): void => {
+    setPreview(stored.layer1Preview);
+    setEditedNarrative(stored.editedNarrative ?? null);
+    setEditStale(stored.editedNarrativeStale === true);
+    setPreviewStale(false);
+  }, []);
+
   /**
    * Re-read the server-assembled note without touching the author's working draft. Vitals are recorded
    * apart from the selections and the note states them, so the preview is stale the moment they save. The
    * preview shows what is stored; unsaved edits still need a save, exactly as before.
    */
-  async function refreshPreview(): Promise<void> {
-    if (!encounterId) return;
-    const stored = await loadSelections(client, encounterId);
-    if (stored) applyStored(stored);
-  }
-
-  /** What the server holds for the note's text: the generated preview and the author's edit of it, if any. */
-  function applyStored(stored: SelectionsView): void {
-    setPreview(stored.layer1Preview);
-    setEditedNarrative(stored.editedNarrative ?? null);
-    setEditStale(stored.editedNarrativeStale === true);
-  }
+  const refreshPreview = useCallback(async (): Promise<void> => {
+    // The load this read belongs to (another note, or a reload, starts a newer one) and the read itself (a newer read or a save puts
+    // newer text on screen): an answer for an older one must not overwrite it.
+    const sequence = loadSequence.current;
+    const read = ++previewRead.current;
+    const stored = await readStored();
+    if (sequence !== loadSequence.current || read !== previewRead.current) return;
+    if (stored === null) {
+      setPreviewStale(true);
+      return;
+    }
+    applyStored(stored);
+  }, [applyStored, readStored]);
+  // The panels' "something they state was saved": stable, so the memoised panels are not re-rendered by a keystroke in the free text.
+  const refreshFromPanel = useCallback((): void => {
+    void refreshPreview();
+  }, [refreshPreview]);
 
   /** Edit the note text. Unsaved selections are saved first, so the text being edited is the note as it now reads. */
   async function startEdit(): Promise<void> {
     if (!encounterId) return;
-    if (dirty && !(await save())) return;
-    const stored = await loadSelections(client, encounterId);
+    if (selectionsDirty && !(await save())) return;
+    const stored = await readStored();
     if (!stored) {
       setFeedback(transportFeedback);
       return;
     }
+    previewRead.current += 1;
     applyStored(stored);
     setEditText(currentNoteText(stored));
     setEditing(true);
@@ -531,6 +749,8 @@ export function EncounterCompose(): JSX.Element {
 
       setVersion(res.value.version);
       setPreview(res.value.layer1Preview);
+      previewRead.current += 1;
+      setPreviewStale(false);
       setLastSavedDraft(currentDraft);
       // A saved edit may have gone stale under what was just saved; the server decides.
       if (editedNarrative !== null) await refreshPreview();
@@ -550,6 +770,12 @@ export function EncounterCompose(): JSX.Element {
 
   async function finalize(): Promise<void> {
     if (!encounterId) return;
+    // Finalizing reloads the note, which would drop what a panel holds unsaved: say so instead of losing it silently.
+    if (dirtyPanels.length > 0) {
+      setFeedback(unsavedPanelsFeedback(dirtyPanels.map(panelTitle)));
+      showPanel(dirtyPanels[0] as PanelKey);
+      return;
+    }
 
     setOperation("finalizing");
     setFeedback(null);
@@ -570,6 +796,8 @@ export function EncounterCompose(): JSX.Element {
 
       setVersion(saved.value.version);
       setPreview(saved.value.layer1Preview);
+      previewRead.current += 1;
+      setPreviewStale(false);
       setLastSavedDraft(currentDraft);
 
       finalizationAttempted = true;
@@ -674,7 +902,10 @@ export function EncounterCompose(): JSX.Element {
 
                 <Button
                   tone="tertiary"
-                  onClick={() => setVitalsOpen((v) => !v)}
+                  onClick={() => {
+                    setVitalsMounted(true);
+                    setVitalsOpen((v) => !v);
+                  }}
                   disabled={frozen || busy}
                 >
                   {vitalsOpen ? "Close vitals" : "Vitals"}
@@ -742,9 +973,13 @@ export function EncounterCompose(): JSX.Element {
                 ? "Saving changes…"
                 : operation === "finalizing"
                   ? "Saving and finalizing…"
-                  : dirty
-                    ? "Unsaved changes"
-                    : "All changes saved"}
+                  : savingPanels.length > 0
+                    ? "Saving a section…"
+                    : selectionsDirty
+                      ? "Unsaved changes"
+                      : panelsDirty
+                        ? "Unsaved entries in a section. Use that section's own Save button."
+                        : "All changes saved"}
             </output>
 
             {feedback ? (
@@ -764,6 +999,16 @@ export function EncounterCompose(): JSX.Element {
                     Open care plan
                   </Button>
                 ) : null}
+              </output>
+            ) : null}
+
+            {previewStale ? (
+              <output style={{ ...noticeBox, ...noticeError }}>
+                <strong style={noticeTitle}>Note preview not refreshed</strong>
+                <span>
+                  Your change was saved, but the note could not be read again, so the preview may be
+                  out of date. Use Save &amp; refresh preview to read it.
+                </span>
               </output>
             ) : null}
 
@@ -798,21 +1043,24 @@ export function EncounterCompose(): JSX.Element {
               </section>
             )}
 
-            {vitalsOpen ? (
-              <VitalsPanel
-                encounterId={encounter.id}
-                disabled={busy}
-                onSaved={() => {
-                  setVitalsOpen(false);
-                  setFeedback({
-                    tone: "success",
-                    title: "Vitals recorded",
-                    message: "Visit vitals were saved.",
-                  });
-                  void refreshPreview();
-                }}
-              />
-            ) : null}
+            <div hidden={!vitalsOpen}>
+              {vitalsMounted ? (
+                <VitalsPanel
+                  encounterId={encounter.id}
+                  disabled={frozen || busy}
+                  onStatusChange={reportVitals}
+                  onSaved={() => {
+                    setVitalsOpen(false);
+                    setFeedback({
+                      tone: "success",
+                      title: "Vitals recorded",
+                      message: "Visit vitals were saved.",
+                    });
+                    void refreshPreview();
+                  }}
+                />
+              ) : null}
+            </div>
 
             <div className="wx-encounter-compose-workspace" style={workspace}>
               <aside
@@ -832,7 +1080,10 @@ export function EncounterCompose(): JSX.Element {
                   {template.sections.map((section, index) => {
                     const needsDetails = sectionHasEmptySlots(template, draft, section.sectionId);
                     // "Documented" means finalize will take it: a statement with an empty slot is not that.
-                    const filled = sectionIsFilled(draft, section.sectionId) && !needsDetails;
+                    const filled =
+                      (sectionIsFilled(draft, section.sectionId) ||
+                        filledByRecord.has(section.sectionId)) &&
+                      !needsDetails;
                     const isActive = section.sectionId === active?.sectionId;
                     const needsAttention = needsDetails || (section.required && !filled);
                     const sectionState = filled
@@ -932,7 +1183,17 @@ export function EncounterCompose(): JSX.Element {
                     </header>
 
                     <div style={editorBody}>
-                      {active.entries.length === 0 ? (
+                      <RecordedPanels
+                        sections={template.sections}
+                        activeSectionId={active.sectionId}
+                        encounterId={encounter.id}
+                        patientId={encounter.patientId}
+                        disabled={frozen || busy}
+                        onChanged={refreshFromPanel}
+                        onStatusChange={reportPanel}
+                      />
+                      {active.entries.length === 0 && active.recordedPanel ? null : active.entries
+                          .length === 0 ? (
                         <div style={emptyVocabulary}>
                           <strong style={emptyVocabularyTitle}>
                             No preset statements for this section
@@ -957,7 +1218,7 @@ export function EncounterCompose(): JSX.Element {
                           />
                           {active.sectionId === REASON_SECTION_ID &&
                           suggestion !== null &&
-                          dirty &&
+                          selectionsDirty &&
                           draft[active.sectionId]?.entries[0]?.code === suggestion.code ? (
                             <p style={freeTextHint}>
                               Suggested from the scheduled visit ({suggestion.from}). Save to keep
@@ -1061,9 +1322,11 @@ export function EncounterCompose(): JSX.Element {
                             <p style={freeTextHint}>
                               {active.entries.length > 0
                                 ? "Optional. Enter only information not already represented by the selected statements."
-                                : active.required
-                                  ? "Required. This section has no preset statements; document it here in your own words."
-                                  : "Optional."}
+                                : filledByRecord.has(active.sectionId)
+                                  ? "Optional. The saved record above documents this section; add notes only for what it does not cover."
+                                  : active.required
+                                    ? "Required. This section has no preset statements; document it here in your own words."
+                                    : "Optional."}
                             </p>
                           </div>
                           <span style={verbatimBadge}>Recorded verbatim</span>
@@ -1204,6 +1467,15 @@ export function EncounterCompose(): JSX.Element {
                 </section>
               </aside>
             </div>
+
+            <div ref={planRegion}>
+              <PlanOfCareStep
+                encounterId={encounter.id}
+                patientId={encounter.patientId}
+                disabled={planDisabled}
+                onStatusChange={reportPlan}
+              />
+            </div>
           </main>
         }
       />
@@ -1231,893 +1503,3 @@ export function EncounterCompose(): JSX.Element {
     </PatientWorkspaceLayout>
   );
 }
-
-/**
- * The recorded fall a follow-up-after-a-fall visit follows up (WF09). Picking one links it, and the note states its date; leaving it
- * unlinked is a complete note too, so a patient with no recorded fall, or a register that cannot be read, never blocks the reason.
- */
-function FallLinkField({
-  choices,
-  linked,
-  value,
-  disabled,
-  onChange,
-}: {
-  choices: FallIncidentsView | null;
-  linked: { incidentId: string; occurredOn: string } | null;
-  value: string | null;
-  disabled: boolean;
-  onChange: (incidentId: string | null) => void;
-}): JSX.Element {
-  const incidents = choices?.incidents ?? [];
-  // A fall linked earlier that the list no longer offers (older than the window) stays selectable, so saving does not drop it.
-  const keptLink =
-    linked !== null && !incidents.some((f) => f.incidentId === linked.incidentId) ? linked : null;
-  const hint =
-    choices === null
-      ? "Loading the patient's recorded falls…"
-      : choices.unavailable
-        ? "Recorded falls could not be loaded. The reason is saved without a link; describe the fall in the notes below."
-        : incidents.length === 0 && keptLink === null
-          ? "No fall is recorded for this patient in the 90 days before this visit. Describe it in the notes below."
-          : "Choose the recorded fall this visit follows up. The note states its date.";
-
-  return (
-    <>
-      <SelectField
-        label="Which fall?"
-        value={value ?? ""}
-        disabled={disabled || choices === null}
-        onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)}
-        options={[
-          { value: "", label: "No fall linked" },
-          ...incidents.map((f) => ({
-            value: f.incidentId,
-            label: `${f.occurredOn} — ${humanize(f.severity)}`,
-          })),
-          ...(keptLink === null
-            ? []
-            : [{ value: keptLink.incidentId, label: `${keptLink.occurredOn} — linked earlier` }]),
-        ]}
-      />
-      <p style={freeTextHint}>{hint}</p>
-    </>
-  );
-}
-
-/**
- * §2.2 vitals capture.
- * The server remains responsible for validating clinical envelopes and
- * clinically-not-indicated semantics.
- */
-function VitalsPanel({
-  encounterId,
-  disabled,
-  onSaved,
-}: {
-  encounterId: string;
-  disabled: boolean;
-  onSaved: () => void;
-}): JSX.Element {
-  const client = useApiClient();
-  const [busy, setBusy] = useState(false);
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [error, setError] = useState<string | null>(null);
-
-  const FIELDS = [
-    ["bpSystolic", "BP systolic", "mmHg"],
-    ["bpDiastolic", "BP diastolic", "mmHg"],
-    ["heartRate", "Heart rate", "bpm"],
-    ["respiratoryRate", "Respiratory rate", "breaths/min"],
-    ["temperature", "Temperature", "°F"],
-    ["spo2", "SpO₂", "%"],
-    ["painScore", "Pain score", "0–10"],
-  ] as const;
-
-  async function submit(): Promise<void> {
-    setBusy(true);
-    setError(null);
-
-    const body: Record<string, number | string> = {};
-
-    for (const [key] of FIELDS) {
-      const raw = values[key];
-
-      if (raw !== undefined && raw.trim() !== "" && !Number.isNaN(Number(raw))) {
-        body[key] = Number(raw);
-      }
-    }
-    // The panel labels temperature °F; say so, or the note would state a bare number with no unit.
-    if (body.temperature !== undefined) body.temperatureUnit = "f";
-
-    const res = await captureVitals(
-      client,
-      encounterId,
-      body as Parameters<typeof captureVitals>[2],
-    );
-
-    setBusy(false);
-    if (!res.ok) {
-      setError(readableValidation(res.details, res.message));
-      return;
-    }
-    onSaved();
-  }
-
-  return (
-    <section style={vitalsPanel}>
-      <header style={vitalsHeader}>
-        <div>
-          <div style={eyebrow}>Quick capture</div>
-          <h2 style={vitalsTitle}>Visit vitals</h2>
-          <p style={vitalsDescription}>
-            Record the measurements available for this visit. Leave unavailable fields blank.
-          </p>
-        </div>
-      </header>
-
-      <div style={vitalsGrid}>
-        {FIELDS.map(([key, label, unit]) => (
-          <div key={key} style={vitalField}>
-            <TextField
-              label={label}
-              value={values[key] ?? ""}
-              disabled={busy || disabled}
-              onChange={(e) =>
-                setValues((current) => ({
-                  ...current,
-                  [key]: e.target.value,
-                }))
-              }
-            />
-            <span style={vitalUnit}>{unit}</span>
-          </div>
-        ))}
-      </div>
-
-      {error ? (
-        <p role="alert" style={vitalsError}>
-          {error}
-        </p>
-      ) : null}
-
-      <footer style={vitalsFooter}>
-        <span style={vitalsFooterHint}>Clinical validation is applied by the server.</span>
-
-        <Button onClick={() => void submit()} disabled={busy || disabled}>
-          {busy ? "Recording…" : "Record vitals"}
-        </Button>
-      </footer>
-    </section>
-  );
-}
-
-const hairline = "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)";
-
-const page: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "1rem",
-  padding: "1rem",
-  background: "color-mix(in srgb, var(--color-surface-container-low) 55%, transparent)",
-};
-
-const headerActions: CSSProperties = {
-  display: "flex",
-  gap: "0.5rem",
-  alignItems: "center",
-  flexWrap: "wrap",
-  justifyContent: "flex-end",
-};
-
-const summaryBar: CSSProperties = {
-  display: "flex",
-  alignItems: "stretch",
-  justifyContent: "space-between",
-  gap: "1.5rem",
-  padding: "1rem 1.1rem",
-  border: hairline,
-  borderRadius: "0.9rem",
-  background: "var(--color-surface)",
-  boxShadow: "0 1px 2px color-mix(in srgb, black 6%, transparent)",
-};
-
-const summaryMain: CSSProperties = {
-  flex: 1,
-  minWidth: 0,
-};
-
-const summaryTitleRow: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-end",
-  justifyContent: "space-between",
-  gap: "1rem",
-};
-
-const eyebrow: CSSProperties = {
-  marginBottom: "0.2rem",
-  fontSize: "0.8125rem",
-  lineHeight: 1.2,
-  fontWeight: 500,
-  color: "var(--color-on-surface-variant)",
-};
-
-const summaryTitle: CSSProperties = {
-  fontSize: "0.95rem",
-  fontWeight: 650,
-  color: "var(--color-on-surface)",
-};
-
-const completionPercent: CSSProperties = {
-  fontSize: "1.05rem",
-  color: "var(--color-primary)",
-};
-
-const progressTrack: CSSProperties = {
-  height: "0.4rem",
-  marginTop: "0.65rem",
-  borderRadius: 999,
-  overflow: "hidden",
-  background: "var(--color-surface-container-highest)",
-};
-
-const progressFill: CSSProperties = {
-  display: "block",
-  height: "100%",
-  borderRadius: 999,
-  background: "var(--color-primary)",
-  transition: "width 180ms ease",
-};
-
-const summaryStats: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "1rem",
-  flexShrink: 0,
-};
-
-const summaryStat: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  minWidth: "7rem",
-};
-
-const summaryStatValue: CSSProperties = {
-  fontSize: "1.1rem",
-  fontWeight: 700,
-  color: "var(--color-on-surface)",
-};
-
-const summaryStatLabel: CSSProperties = {
-  marginTop: "0.1rem",
-  fontSize: "0.72rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-const summaryDivider: CSSProperties = {
-  width: 1,
-  alignSelf: "stretch",
-  background: "var(--color-outline-variant)",
-  opacity: 0.5,
-};
-
-const noticeBox: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.65rem",
-  padding: "0.75rem 0.9rem",
-  borderRadius: "0.7rem",
-  fontSize: "0.82rem",
-  border: hairline,
-};
-
-const noticeSuccess: CSSProperties = {
-  background: "color-mix(in srgb, var(--color-success) 8%, var(--color-surface))",
-  color: "var(--color-on-surface)",
-};
-
-const noticeError: CSSProperties = {
-  background: "color-mix(in srgb, var(--color-error) 8%, var(--color-surface))",
-  color: "var(--color-on-surface)",
-};
-
-const noticeTitle: CSSProperties = {
-  flexShrink: 0,
-  fontWeight: 700,
-};
-
-const attentionCard: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  gap: "0.75rem",
-  padding: "0.9rem 1rem",
-  borderRadius: "0.8rem",
-  border: "1px solid color-mix(in srgb, var(--color-error) 25%, transparent)",
-  background: "color-mix(in srgb, var(--color-error) 6%, var(--color-surface))",
-};
-
-const attentionMark: CSSProperties = {
-  display: "grid",
-  placeItems: "center",
-  width: "1.7rem",
-  height: "1.7rem",
-  flexShrink: 0,
-  borderRadius: 999,
-  fontSize: "0.85rem",
-  fontWeight: 800,
-  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
-  // The pill foreground again: plain error on this tint is about 3.7:1 in light theme, the pill token about 4.9:1.
-  color: "var(--color-error-pill-fg)",
-};
-
-const attentionTitle: CSSProperties = {
-  display: "block",
-  fontSize: "0.83rem",
-  color: "var(--color-on-surface)",
-};
-
-const attentionText: CSSProperties = {
-  margin: "0.2rem 0 0",
-  fontSize: "0.78rem",
-  lineHeight: 1.45,
-  color: "var(--color-on-surface-variant)",
-};
-
-const readyCard: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  gap: "0.75rem",
-  padding: "0.9rem 1rem",
-  borderRadius: "0.8rem",
-  border: "1px solid color-mix(in srgb, var(--color-success) 22%, transparent)",
-  background: "color-mix(in srgb, var(--color-success) 6%, var(--color-surface))",
-};
-
-const readyMark: CSSProperties = {
-  display: "grid",
-  placeItems: "center",
-  width: "1.7rem",
-  height: "1.7rem",
-  flexShrink: 0,
-  borderRadius: 999,
-  fontSize: "0.82rem",
-  fontWeight: 800,
-  color: "var(--color-success)",
-  background: "color-mix(in srgb, var(--color-success) 12%, transparent)",
-};
-
-const readyTitle: CSSProperties = {
-  display: "block",
-  fontSize: "0.83rem",
-};
-
-const readyText: CSSProperties = {
-  margin: "0.2rem 0 0",
-  fontSize: "0.78rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-const workspace: CSSProperties = {
-  display: "grid",
-  gap: "1rem",
-  alignItems: "start",
-};
-
-const sectionRail: CSSProperties = {
-  overflow: "hidden",
-  border: hairline,
-  borderRadius: "0.9rem",
-  background: "var(--color-surface)",
-};
-
-const railHeader: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "0.75rem",
-  padding: "0.95rem 1rem",
-  borderBottom: hairline,
-};
-
-const railTitle: CSSProperties = {
-  fontSize: "0.88rem",
-};
-
-const railCount: CSSProperties = {
-  display: "inline-grid",
-  placeItems: "center",
-  minWidth: "1.65rem",
-  height: "1.65rem",
-  padding: "0 0.4rem",
-  borderRadius: 999,
-  fontSize: "0.72rem",
-  fontWeight: 700,
-  color: "var(--color-on-surface-variant)",
-  background: "var(--color-surface-container-high)",
-};
-
-const sectionNav: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.15rem",
-  padding: "0.45rem",
-};
-
-const sectionNavButton: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  width: "100%",
-  gap: "0.65rem",
-  padding: "0.65rem 0.7rem",
-  border: "1px solid transparent",
-  borderRadius: "0.65rem",
-  background: "transparent",
-  color: "inherit",
-  textAlign: "left",
-  cursor: "pointer",
-};
-
-const sectionNavButtonActive: CSSProperties = {
-  border: "1px solid color-mix(in srgb, var(--color-primary) 18%, transparent)",
-  background: "color-mix(in srgb, var(--color-primary) 7%, var(--color-surface))",
-};
-
-const sectionIndex: CSSProperties = {
-  display: "grid",
-  placeItems: "center",
-  width: "1.55rem",
-  height: "1.55rem",
-  flexShrink: 0,
-  borderRadius: 999,
-  fontSize: "0.68rem",
-  fontWeight: 700,
-  color: "var(--color-on-surface-variant)",
-  background: "var(--color-surface-container-high)",
-};
-
-const sectionIndexComplete: CSSProperties = {
-  color: "var(--color-success)",
-  background: "color-mix(in srgb, var(--color-success) 11%, var(--color-surface))",
-};
-
-const sectionIndexActive: CSSProperties = {
-  color: "var(--color-on-primary)",
-  background: "var(--color-primary)",
-};
-
-const sectionNavCopy: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  minWidth: 0,
-  gap: "0.1rem",
-};
-
-const sectionNavTitle: CSSProperties = {
-  overflow: "hidden",
-  fontSize: "0.78rem",
-  fontWeight: 600,
-  color: "var(--color-on-surface)",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-
-const sectionNavTitleActive: CSSProperties = {
-  color: "var(--color-primary)",
-};
-
-const sectionNavMeta: CSSProperties = {
-  fontSize: "0.68rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-// The pill foreground, not --color-error: on the active step's primary tint plain error is 4.12:1 in light
-// theme (needs 4.5), the pill token is 5.52:1. The two tokens are identical in dark theme.
-const sectionNavMetaRequired: CSSProperties = {
-  color: "var(--color-error-pill-fg)",
-};
-
-const readOnlyHint: CSSProperties = {
-  margin: "0 0.75rem 0.75rem",
-  padding: "0.7rem",
-  borderRadius: "0.6rem",
-  fontSize: "0.72rem",
-  lineHeight: 1.4,
-  color: "var(--color-on-surface-variant)",
-  background: "var(--color-surface-container-low)",
-};
-
-const editorColumn: CSSProperties = {
-  minWidth: 0,
-};
-
-const editorCard: CSSProperties = {
-  overflow: "hidden",
-  border: hairline,
-  borderRadius: "0.9rem",
-  background: "var(--color-surface)",
-  boxShadow: "0 1px 2px color-mix(in srgb, black 5%, transparent)",
-};
-
-const editorHeader: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: "1rem",
-  padding: "1.1rem 1.2rem",
-  borderBottom: hairline,
-};
-
-const editorTitleRow: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  flexWrap: "wrap",
-  gap: "0.5rem",
-};
-
-const editorTitle: CSSProperties = {
-  margin: 0,
-  fontSize: "1.05rem",
-  fontWeight: 700,
-  color: "var(--color-on-surface)",
-};
-
-const editorDescription: CSSProperties = {
-  maxWidth: "46rem",
-  margin: "0.35rem 0 0",
-  fontSize: "0.78rem",
-  lineHeight: 1.45,
-  color: "var(--color-on-surface-variant)",
-};
-
-const requiredBadge: CSSProperties = {
-  padding: "0.18rem 0.42rem",
-  borderRadius: 999,
-  fontSize: "0.66rem",
-  fontWeight: 700,
-  color: "var(--color-error-pill-fg)",
-  background: "color-mix(in srgb, var(--color-error) 9%, transparent)",
-};
-
-const discardDialog: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.75rem",
-  padding: "1.25rem",
-};
-
-const discardTitle: CSSProperties = {
-  margin: 0,
-  fontSize: "1.15rem",
-  color: "var(--color-on-surface)",
-};
-
-const discardText: CSSProperties = {
-  margin: 0,
-  lineHeight: 1.5,
-  color: "var(--color-on-surface-variant)",
-};
-
-const discardActions: CSSProperties = {
-  display: "flex",
-  justifyContent: "flex-end",
-  gap: "0.5rem",
-};
-
-const optionalBadge: CSSProperties = {
-  padding: "0.18rem 0.42rem",
-  borderRadius: 999,
-  fontSize: "0.66rem",
-  fontWeight: 650,
-  color: "var(--color-on-surface-variant)",
-  background: "var(--color-surface-container-high)",
-};
-
-const selectionCounter: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "flex-end",
-  flexShrink: 0,
-  fontSize: "0.7rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-const editorBody: CSSProperties = {
-  padding: "1rem 1.15rem 1.15rem",
-};
-
-const entryGrid: CSSProperties = {
-  display: "grid",
-  gap: "0.55rem",
-};
-
-const entryCard: CSSProperties = {
-  overflow: "hidden",
-  border: hairline,
-  borderRadius: "0.7rem",
-  background: "var(--color-surface)",
-  transition: "border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease",
-};
-
-const entryCardSelected: CSSProperties = {
-  border: "1px solid color-mix(in srgb, var(--color-primary) 30%, transparent)",
-  background: "color-mix(in srgb, var(--color-primary) 4%, var(--color-surface))",
-  boxShadow: "inset 3px 0 0 color-mix(in srgb, var(--color-primary) 85%, transparent)",
-};
-
-const entryLabel: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  gap: "0.75rem",
-  padding: "0.75rem 0.8rem",
-  cursor: "pointer",
-};
-
-const entryCheckbox: CSSProperties = {
-  width: "1rem",
-  height: "1rem",
-  marginTop: "0.1rem",
-  flexShrink: 0,
-  accentColor: "var(--color-primary)",
-};
-
-const entryContent: CSSProperties = {
-  display: "flex",
-  flex: 1,
-  minWidth: 0,
-  flexDirection: "column",
-  gap: "0.35rem",
-};
-
-const entryText: CSSProperties = {
-  fontSize: "0.82rem",
-  lineHeight: 1.4,
-  fontWeight: 550,
-  color: "var(--color-on-surface)",
-};
-
-const entryMetaRow: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  flexWrap: "wrap",
-  gap: "0.4rem",
-};
-
-const slotPanel: CSSProperties = {
-  padding: "0.75rem 0.8rem 0.8rem 2.55rem",
-  borderTop: hairline,
-  background: "var(--color-surface-container-low)",
-};
-
-const slotPanelTitle: CSSProperties = {
-  marginBottom: "0.55rem",
-  fontSize: "0.7rem",
-  fontWeight: 700,
-  color: "var(--color-on-surface-variant)",
-};
-
-const slotGrid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(11rem, 1fr))",
-  gap: "0.65rem",
-};
-
-const emptyVocabulary: CSSProperties = {
-  padding: "1rem",
-  borderRadius: "0.75rem",
-  border: hairline,
-  background: "var(--color-surface-container-low)",
-};
-
-const emptyVocabularyTitle: CSSProperties = {
-  fontSize: "0.82rem",
-};
-
-const emptyVocabularyText: CSSProperties = {
-  margin: "0.3rem 0 0",
-  fontSize: "0.76rem",
-  lineHeight: 1.45,
-  color: "var(--color-on-surface-variant)",
-};
-
-const freeTextSection: CSSProperties = {
-  marginTop: "1rem",
-  paddingTop: "1rem",
-  borderTop: hairline,
-};
-
-const freeTextHeading: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: "0.75rem",
-  marginBottom: "0.65rem",
-};
-
-const freeTextTitle: CSSProperties = {
-  fontSize: "0.82rem",
-};
-
-const freeTextHint: CSSProperties = {
-  margin: "0.2rem 0 0",
-  fontSize: "0.72rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-const verbatimBadge: CSSProperties = {
-  flexShrink: 0,
-  padding: "0.2rem 0.45rem",
-  borderRadius: 999,
-  fontSize: "0.64rem",
-  fontWeight: 650,
-  color: "var(--color-on-surface-variant)",
-  background: "var(--color-surface-container-high)",
-};
-
-const previewColumn: CSSProperties = {
-  minWidth: 0,
-};
-
-const previewCard: CSSProperties = {
-  position: "sticky",
-  top: "1rem",
-  overflow: "hidden",
-  border: hairline,
-  borderRadius: "0.9rem",
-  background: "var(--color-surface)",
-};
-
-const previewHeader: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: "0.75rem",
-  padding: "0.95rem 1rem",
-  borderBottom: hairline,
-};
-
-const previewTitle: CSSProperties = {
-  margin: 0,
-  fontSize: "0.95rem",
-  fontWeight: 700,
-};
-
-const previewStatus: CSSProperties = {
-  padding: "0.18rem 0.4rem",
-  borderRadius: 999,
-  fontSize: "0.64rem",
-  fontWeight: 650,
-  color: "var(--color-on-surface-variant)",
-  background: "var(--color-surface-container-high)",
-};
-
-const previewBody: CSSProperties = {
-  minHeight: "12rem",
-  maxHeight: "55vh",
-  overflowY: "auto",
-  padding: "1rem",
-};
-
-const previewText: CSSProperties = {
-  margin: 0,
-  whiteSpace: "pre-wrap",
-  fontSize: "0.82rem",
-  lineHeight: 1.65,
-  color: "var(--color-on-surface)",
-};
-
-const previewEmpty: CSSProperties = {
-  display: "flex",
-  minHeight: "10rem",
-  flexDirection: "column",
-  justifyContent: "center",
-  alignItems: "center",
-  padding: "1rem",
-  textAlign: "center",
-};
-
-const previewEmptyTitle: CSSProperties = {
-  fontSize: "0.8rem",
-};
-
-const previewEmptyText: CSSProperties = {
-  maxWidth: "16rem",
-  margin: "0.35rem 0 0",
-  fontSize: "0.72rem",
-  lineHeight: 1.45,
-  color: "var(--color-on-surface-variant)",
-};
-
-const previewFooter: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "0.6rem",
-  padding: "0.7rem 0.85rem",
-  borderTop: hairline,
-  background: "var(--color-surface-container-low)",
-};
-
-const previewActions: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  justifyContent: "flex-end",
-  gap: "0.35rem",
-};
-
-const staleEditNotice: CSSProperties = {
-  padding: "0.7rem 1rem",
-  borderBottom: hairline,
-  background: "color-mix(in srgb, var(--color-error) 8%, var(--color-surface))",
-  color: "var(--color-on-surface)",
-  fontSize: "0.72rem",
-  lineHeight: 1.45,
-};
-
-const previewFooterText: CSSProperties = {
-  fontSize: "0.67rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-const vitalsPanel: CSSProperties = {
-  overflow: "hidden",
-  border: hairline,
-  borderRadius: "0.9rem",
-  background: "var(--color-surface)",
-};
-
-const vitalsHeader: CSSProperties = {
-  padding: "0.9rem 1rem 0",
-};
-
-const vitalsTitle: CSSProperties = {
-  margin: 0,
-  fontSize: "0.95rem",
-  fontWeight: 700,
-};
-
-const vitalsDescription: CSSProperties = {
-  margin: "0.25rem 0 0",
-  fontSize: "0.75rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-const vitalsGrid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))",
-  gap: "0.75rem",
-  padding: "0.9rem 1rem",
-};
-
-const vitalField: CSSProperties = {
-  position: "relative",
-};
-
-const vitalUnit: CSSProperties = {
-  display: "block",
-  marginTop: "0.18rem",
-  fontSize: "0.65rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-const vitalsError: CSSProperties = {
-  margin: "0 1rem 0.75rem",
-  padding: "0.75rem",
-  borderRadius: "0.5rem",
-  color: "var(--color-on-error-container)",
-  background: "var(--color-error-container)",
-};
-
-const vitalsFooter: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "0.75rem",
-  padding: "0.75rem 1rem",
-  borderTop: hairline,
-  background: "var(--color-surface-container-low)",
-};
-
-const vitalsFooterHint: CSSProperties = {
-  fontSize: "0.7rem",
-  color: "var(--color-on-surface-variant)",
-};

@@ -469,28 +469,42 @@ export function toSelectionsBody(
 }
 
 /**
- * Remove every selected statement the menu does not offer in its section, and count them.
- *
- * A draft saved before a section's menu was narrowed can hold statements the composer can no longer show,
- * so the author could neither see nor untick them and every save would carry them back. Dropping them is
- * a change to the author's draft, so the caller reports the count and leaves the draft unsaved.
+ * Remove, from a stored draft, what the menu can no longer show and the server would refuse:
+ *   - every selected statement the menu does not offer in its section (the author could neither see nor untick it, and every save
+ *     would carry it back), and
+ *   - every param that is not one of its statement's own slots (the server answers 422 SLOT_UNKNOWN, and no field shows it to remove).
+ * Both are a change to the author's draft, so the caller reports the counts and leaves the draft unsaved.
  */
 export function dropUnofferedEntries(
   template: TemplateView,
   draft: DraftSections,
-): { readonly draft: DraftSections; readonly dropped: number } {
+): {
+  readonly draft: DraftSections;
+  readonly dropped: number;
+  readonly droppedParams: number;
+} {
   const offered = new Map(
-    template.sections.map((s) => [s.sectionId, new Set(s.entries.map((e) => e.code))]),
+    template.sections.map((s) => [
+      s.sectionId,
+      new Map(s.entries.map((e) => [e.code, new Set(e.slots)])),
+    ]),
   );
   let dropped = 0;
+  let droppedParams = 0;
   const next: DraftSections = {};
   for (const [sectionId, value] of Object.entries(draft)) {
     const allowed = offered.get(sectionId);
-    const entries = value.entries.filter((e) => allowed?.has(e.code) === true);
+    const entries = value.entries.flatMap((e): DraftEntry[] => {
+      const slots = allowed?.get(e.code);
+      if (slots === undefined) return [];
+      const own = Object.entries(e.params).filter(([key]) => slots.has(key));
+      droppedParams += Object.keys(e.params).length - own.length;
+      return [{ ...e, params: Object.fromEntries(own) }];
+    });
     dropped += value.entries.length - entries.length;
     next[sectionId] = { ...value, entries };
   }
-  return { draft: next, dropped };
+  return { draft: next, dropped, droppedParams };
 }
 
 /**
@@ -522,17 +536,43 @@ export function sectionHasEmptySlots(
 }
 
 /**
+ * The sections a SAVED findings record documents. The server counts a stored ADL or nutrition record as populating the section that
+ * states it (`recordedPanel`), so the composer does too: the author documented it in the panel, not in the selections. Wounds are not
+ * counted: a wound observation does not populate a section by itself.
+ */
+export function sectionsFilledByRecords(
+  template: TemplateView,
+  recorded: { readonly adl: boolean; readonly nutrition: boolean },
+): ReadonlySet<string> {
+  return new Set(
+    template.sections
+      .filter(
+        (s) =>
+          (s.recordedPanel === "adl" && recorded.adl) ||
+          (s.recordedPanel === "nutrition" && recorded.nutrition),
+      )
+      .map((s) => s.sectionId),
+  );
+}
+
+const NO_SECTIONS: ReadonlySet<string> = new Set();
+
+/**
  * The headings that still stand between the author and finalize, in template order: a required section
- * with nothing in it, or any section holding a half-filled statement. Advice only — the server decides.
+ * with nothing in it (selections, notes, or a saved findings record, see {@link sectionsFilledByRecords}), or any section holding a
+ * half-filled statement. Advice only — the server decides.
  */
 export function sectionsNeedingAttention(
   template: TemplateView,
   draft: DraftSections,
+  filledByRecord: ReadonlySet<string> = NO_SECTIONS,
 ): readonly string[] {
   return template.sections
     .filter((s) => {
       const d = draft[s.sectionId];
-      const empty = !d || (d.entries.length === 0 && d.freeText.trim().length === 0);
+      const empty =
+        (!d || (d.entries.length === 0 && d.freeText.trim().length === 0)) &&
+        !filledByRecord.has(s.sectionId);
       return (s.required && empty) || sectionHasEmptySlots(template, draft, s.sectionId);
     })
     .map((s) => s.heading);

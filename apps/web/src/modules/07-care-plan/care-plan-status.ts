@@ -49,3 +49,9 @@ export const cap = (s: string): string =>
 export const isGoalEditable = (status: string): boolean =>
   status !== "met" && status !== "not_met" && status !== "discontinued";
 export const isInterventionEditable = (status: string): boolean => status === "active";
+
+/** The version-history page of a plan. The patient rides in the link (encoded) so the page can show their banner; the page checks the plan is theirs. */
+export const versionHistoryPath = (plan: {
+  readonly id: string;
+  readonly patientId: string;
+}): string => `/care-plans/${plan.id}/versions?patientId=${encodeURIComponent(plan.patientId)}`;

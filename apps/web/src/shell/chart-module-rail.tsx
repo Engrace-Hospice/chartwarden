@@ -22,6 +22,7 @@ export type ChartSection =
   | "discipline-plans"
   | "encounters"
   | "assessments"
+  | "wounds"
   | "orders"
   | "medications"
   | "documents"
@@ -53,6 +54,7 @@ const SECTION_GROUP: Record<ChartSection, ChartGroupKey> = {
   clinical: "clinical",
   hope: "clinical",
   assessments: "clinical",
+  wounds: "clinical",
   "care-plan": "clinical",
   "discipline-plans": "clinical",
   encounters: "clinical",
@@ -115,6 +117,7 @@ const GROUP_SECTIONS: Partial<Record<ChartGroupKey, SectionLink[]>> = {
   clinical: [
     { key: "clinical", label: "Clinical summary", route: (id) => `/patients/${id}?view=clinical` },
     { key: "assessments", label: "Assessments", route: (id) => `/patients/${id}/assessments` },
+    { key: "wounds", label: "Wounds", route: (id) => `/patients/${id}/wounds` },
     { key: "hope", label: "HOPE assessments", route: (id) => `/patients/${id}/hope` },
     { key: "care-plan", label: "Plan of care", route: (id) => `/patients/${id}/care-plan` },
     {

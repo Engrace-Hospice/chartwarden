@@ -82,9 +82,16 @@ import {
   RestrictedContentNote,
   disciplineLabel,
 } from "./care-plan-overview";
-import { cap, isGoalEditable, isInterventionEditable, toneFor } from "./care-plan-status";
+import {
+  cap,
+  isGoalEditable,
+  isInterventionEditable,
+  toneFor,
+  versionHistoryPath,
+} from "./care-plan-status";
+import { PendingChangeProposals, usePendingChangeProposalCount } from "./change-proposals";
 
-type Tab = "goals" | "interventions" | "problems" | "revision" | "history";
+type Tab = "goals" | "interventions" | "problems" | "visit-changes" | "revision" | "history";
 type ModalState =
   | { kind: "problem"; problem?: Problem; defaultKind?: "terminal" }
   | { kind: "resolve_problem"; problem: Problem }
@@ -483,6 +490,12 @@ function CarePlanWorkspace(): JSX.Element {
   );
   const selectedVersion =
     plan?.versions.find((v) => v.id === selectedVersionId) ?? activeVersion ?? openVersion ?? null;
+  // Changes proposed from visit notes waiting on the case manager: re-read whenever the plan is.
+  // The tab badge re-reads when the plan was re-read, and when a proposal was dismissed (a dismissal leaves the plan as it was).
+  const [dismissals, setDismissals] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new key per plan read or dismissal is the point.
+  const pendingCountKey = useMemo(() => ({}), [plan, dismissals]);
+  const pendingVisitChanges = usePendingChangeProposalCount(plan?.id, pendingCountKey);
 
   /** Re-read the workspace. Never rejects: a read that got no answer becomes the page error, not a stuck spinner. */
   async function reload(message?: string): Promise<CarePlan | null> {
@@ -843,7 +856,7 @@ function CarePlanWorkspace(): JSX.Element {
               <button
                 type="button"
                 className="wx-btn-secondary"
-                onClick={() => navigate(`/care-plans/${plan.id}/versions`)}
+                onClick={() => navigate(versionHistoryPath(plan))}
               >
                 Version history
               </button>
@@ -916,6 +929,12 @@ function CarePlanWorkspace(): JSX.Element {
             <TabButton id="problems" active={tab === "problems"} onSelect={setTab}>
               Problems
             </TabButton>
+            <TabButton id="visit-changes" active={tab === "visit-changes"} onSelect={setTab}>
+              Visit changes
+              {pendingVisitChanges ? (
+                <span className="wx-seg-count wx-nums">{pendingVisitChanges}</span>
+              ) : null}
+            </TabButton>
             <TabButton id="revision" active={tab === "revision"} onSelect={setTab}>
               Review & Sign
               {openVersion ? <span className="wx-seg-count wx-nums">1</span> : null}
@@ -982,6 +1001,17 @@ function CarePlanWorkspace(): JSX.Element {
                 onResolveProblem={(problem) => setModal({ kind: "resolve_problem", problem })}
                 onDiscontinueIntervention={(intervention) =>
                   setModal({ kind: "discontinue_intervention", intervention })
+                }
+              />
+            ) : null}
+
+            {tab === "visit-changes" && patientId ? (
+              <PendingChangeProposals
+                planId={plan.id}
+                patientId={patientId}
+                canDecide={canAuthor}
+                onDecided={(outcome) =>
+                  outcome === "accepted" ? void reload() : setDismissals((n) => n + 1)
                 }
               />
             ) : null}
@@ -3219,7 +3249,14 @@ function DiffValue({
   );
 }
 
-const TAB_ORDER: readonly Tab[] = ["goals", "interventions", "problems", "revision", "history"];
+const TAB_ORDER: readonly Tab[] = [
+  "goals",
+  "interventions",
+  "problems",
+  "visit-changes",
+  "revision",
+  "history",
+];
 const tabId = (tab: Tab): string => `care-plan-tab-${tab}`;
 const tabPanelId = (tab: Tab): string => `care-plan-tabpanel-${tab}`;
 
