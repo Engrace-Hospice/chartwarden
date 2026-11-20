@@ -287,6 +287,9 @@ export const patientCaregiverRosterReaderDenyStub: PatientCaregiverRosterReader 
   caregiversForPatient() {
     throw new NotImplementedError("PatientCaregiverRosterReader");
   },
+  caregiversOn() {
+    throw new NotImplementedError("PatientCaregiverRosterReader");
+  },
 };
 
 export const patientAddressReaderDenyStub: PatientAddressReader = {

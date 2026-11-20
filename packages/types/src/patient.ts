@@ -681,6 +681,16 @@ export interface PatientCaregiverRosterReader {
     organizationId: string,
     patientId: string,
   ): Promise<readonly PatientCaregiverRosterEntry[]>;
+  /**
+   * ADR-0114 S2b (VN-D11): the roster as it stood ON `on` (a `YYYY-MM-DD` date), decided from each link's own involvement dates and never
+   * from today's: a link counts when `involvement_from <= on` and it has no end or `involvement_to >= on` (the end day is included).
+   * Primary first, then by creation order, like `caregiversForPatient`. Throws a `RangeError` when `on` is not a real calendar day.
+   */
+  caregiversOn(
+    organizationId: string,
+    patientId: string,
+    on: string,
+  ): Promise<readonly PatientCaregiverRosterEntry[]>;
 }
 
 export interface PatientCaregiverReader {
