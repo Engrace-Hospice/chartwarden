@@ -6,7 +6,8 @@
  * override and EVV-missing reasons carry their own length floors in their tier/state). The unit suite drives an in-memory store
  * that has no CHECKs, so it never saw it: on a real database `eraseEncounterRecord` rolled back and a destruction never
  * completed. This suite runs the whole erase (crypto-erase, delete subtree, tombstone) through the Drizzle store over every
- * kind of root the product can hold, and proves what survives: the shell, never the text. The signed, cosign_pending and cosigned roots
+ * kind of root the product can hold, and proves what survives: the shell, never the text. It also proves the destruction credential is
+ * required: handed the app pool (what wireModuleErasers does when DATABASE_DESTRUCTION_URL is unset), the eraser refuses before any write. The signed, cosign_pending and cosigned roots
  * each carry a Layer-2-involved and a Layer-2-off output. On a database that carries migrations 1521/1525 (the visit-note-drafting branch) a
  * signed note's ciphers are frozen, and only the shred sentinel the destruction role writes ("" for layer1/final and for a Layer-2-involved
  * layer2, NULL for a Layer-2-off layer2) may pass; without them these cases still prove the shred is status-agnostic.
@@ -26,7 +27,12 @@ import {
   createDrizzleEncounterEraseStore,
   eraseEncounterRecord,
 } from "../src/modules/08-encounters/erasers/encounter-eraser";
-import { LIVE_APP_ROLE_PASSWORD, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
+import {
+  LIVE_APP_ROLE_PASSWORD,
+  appRoleConnectionString,
+  dropLiveRoles,
+  resetPublicSchema,
+} from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -100,6 +106,8 @@ const countsWithSignedRoots = (signedRoots: number): Record<OwnedKey, number> =>
 /** The target holds all three signed roots; the other patient and the other tenant hold one each. */
 const TARGET_COUNTS = countsWithSignedRoots(SIGNED_STATUSES.length);
 const OTHER_COUNTS = countsWithSignedRoots(1);
+/** The target holds ten roots (`targets.size`); each is tombstoned and counted, on top of the satellites. */
+const TARGET_ROOTS = 10;
 const TARGET_TOTAL = Object.values(TARGET_COUNTS).reduce((a, b) => a + b, 0);
 
 // $1 is always the uuid[] of patient ids. HearthNote rows hang off an encounter OR one of its addenda; modifications off an output.
@@ -150,6 +158,8 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
   let admin: Client;
   let destruction: ReturnType<typeof createDbClient>;
   let store: ReturnType<typeof createDrizzleEncounterEraseStore>;
+  let appPool: ReturnType<typeof createDbClient>;
+  let appStore: ReturnType<typeof createDrizzleEncounterEraseStore>;
   let providerEntityId: string;
   let locationId: string;
   let providerEntityB: string;
@@ -243,6 +253,10 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     }
     return rows;
   }
+
+  /** Every audit_event row, as the superuser sees it: a write by the eraser leaves one per changed row. */
+  const auditEventCount = async (): Promise<number> =>
+    one((await admin.query<{ n: number }>("SELECT count(*)::int AS n FROM audit_event")).rows).n;
 
   /** Rows in an owned table across every patient and tenant, with no scoping. */
   const tableTotal = async (key: OwnedKey): Promise<number> =>
@@ -509,9 +523,15 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     url.password = LIVE_APP_ROLE_PASSWORD;
     destruction = createDbClient({ connectionString: url.toString() });
     store = createDrizzleEncounterEraseStore(destruction.db);
+    // The tenant pool the composition root hands the eraser when DATABASE_DESTRUCTION_URL is unset: the real NOBYPASSRLS chartwarden_app.
+    appPool = createDbClient({
+      connectionString: await appRoleConnectionString(admin, DB_URL as string),
+    });
+    appStore = createDrizzleEncounterEraseStore(appPool.db);
   }, 600_000);
 
   afterAll(async () => {
+    await appPool?.close();
     await destruction?.close();
     if (admin) await admin.end();
   });
@@ -524,7 +544,7 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       [targetPatient, `%${MARKER}%`],
     );
     expect(carrying.rowCount).toBe(5);
-    expect(targets.size).toBe(10);
+    expect(targets.size).toBe(TARGET_ROOTS);
     expect(ENCOUNTER_ERASED_REASON).not.toContain(MARKER);
     // the largest CHECK floor on any reason column is the administrative override's 100 characters
     expect(ENCOUNTER_ERASED_REASON.length).toBeGreaterThanOrEqual(100);
@@ -588,6 +608,24 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     expect(await snapshot(everything)).toEqual(rowsBefore);
     // whole rows in every owned table, ciphers included: nothing was shredded or deleted.
     expect(await ownedRows(everything)).toEqual(ownedBefore);
+  });
+
+  it("the app-role connection refuses before any write: the eraser does not void the roots and leave the satellites", async () => {
+    const everything = [targetPatient, ...everyoneElse()];
+    const rowsBefore = await snapshot(everything);
+    const ownedBefore = await ownedRows(everything);
+    const auditBefore = await auditEventCount();
+
+    // chartwarden_app may shred and tombstone but holds no DELETE (0031), so without the check the shred and the tombstone commit and
+    // only the delete is refused: every root voided for good, every satellite still there.
+    await expect(eraseEncounterRecord(ORG_A, targetPatient, appStore)).rejects.toMatchObject({
+      code: "DEGRADED",
+      statusCode: 503,
+    });
+
+    expect(await snapshot(everything)).toEqual(rowsBefore);
+    expect(await ownedRows(everything)).toEqual(ownedBefore); // ciphers still sealed, no row gone
+    expect(await auditEventCount()).toBe(auditBefore); // not even a write-audit row
   });
 
   it("the shred blanks the target's ciphertext (under signed notes too), keeps the Layer 2 CHECK satisfied, and leaves everyone else's sealed", async () => {
@@ -666,12 +704,14 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     it("completes and reports what it removed, table by table", () => {
       expect(countsOf(ownedBefore)).toEqual(TARGET_COUNTS);
       expect(seededCounts(result.counts)).toEqual(TARGET_COUNTS);
-      expect(result.erased).toBe(TARGET_TOTAL);
+      expect(result.counts.tombstonedRoots).toBe(TARGET_ROOTS);
+      // the satellites it deleted plus the ten roots it tombstoned
+      expect(result.erased).toBe(TARGET_TOTAL + TARGET_ROOTS);
     });
 
     it("leaves every root in place, voided, with its structural shell untouched", async () => {
       const after = await snapshot([targetPatient]);
-      expect(after).toHaveLength(10);
+      expect(after).toHaveLength(TARGET_ROOTS);
       for (const row of after) expect(row.status).toBe("voided");
       const byId = new Map(rowsBefore.map((row) => [row.id, row]));
       for (const row of after) {
@@ -737,15 +777,49 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       expect(kept.rowCount).toBe(2);
     });
 
-    it("a second run changes nothing", async () => {
+    it("a second run changes nothing, reports 0, and writes no audit row", async () => {
       const everything = [targetPatient, ...everyoneElse()];
       const settled = await snapshot(everything);
       const settledOwned = await ownedRows(everything);
+      const auditBefore = await auditEventCount();
       const again = await eraseEncounterRecord(ORG_A, targetPatient, store);
       expect(again.erased).toBe(0);
+      expect(again.counts.tombstonedRoots).toBe(0);
       expect(seededCounts(again.counts)).toEqual(NO_ROWS);
       expect(await snapshot(everything)).toEqual(settled);
       expect(await ownedRows(everything)).toEqual(settledOwned);
+      expect(await auditEventCount()).toBe(auditBefore);
     });
+
+    it("the tombstone's write-audit rows carry no actor (voided_by names the author, the audit actor is NULL)", async () => {
+      const roots = [...targets.values()];
+      const updates = await admin.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM audit_event
+          WHERE resource_kind = 'encounter' AND event_type = 'encounter.update' AND resource_id = ANY($1::uuid[])
+            AND after ->> 'voided_reason' = '<changed>' AND after ->> 'status' = 'voided' AND actor_user_id IS NULL`,
+        [roots],
+      );
+      expect(one(updates.rows).n).toBe(TARGET_ROOTS);
+    });
+  });
+
+  it("counts the root of a patient who has no satellites, so the certificate never reports 0 for a voided record", async () => {
+    const bare = randomUUID();
+    const rootId = await seedEncounter("A", bare, { status: "finalized", vocab_version_id: PIN });
+    const result = await eraseEncounterRecord(ORG_A, bare, store);
+    expect(result.counts.tombstonedRoots).toBe(1);
+    expect(seededCounts(result.counts)).toEqual(NO_ROWS);
+    expect(result.erased).toBe(1);
+    const root = one(
+      (
+        await admin.query<{ status: string }>(
+          "SELECT status::text AS status FROM encounter WHERE id = $1",
+          [rootId],
+        )
+      ).rows,
+    );
+    expect(root.status).toBe("voided");
+    // and a patient with no encounter at all still reports nothing
+    expect((await eraseEncounterRecord(ORG_A, randomUUID(), store)).erased).toBe(0);
   });
 });

@@ -16,11 +16,22 @@
 // Registers the REAL eraser over the Phase-0 deny-stub (`encounter_record` is in REQUIRED_ERASERS); the
 // composition root's wireModuleErasers() invokes it AFTER wireErasers() (deny-stubs) and before
 // validateErasers(), so a real eraser stands over its stub.
+//
+// Two preconditions the eraser relies on rather than owns:
+//  - the DESTRUCTION CREDENTIAL. `eraseEncounterRecord` asks the store `assertDestructionRole` BEFORE any write and refuses
+//    (DegradedError, 503) when the connection is not a member of `chartwarden_destruction`. wireModuleErasers() falls back to the
+//    app pool when DATABASE_DESTRUCTION_URL is unset; without this check the shred and the tombstone (both permitted to the app
+//    role) would commit and only the delete (not granted) would fail, voiding the root irreversibly while its satellites stay.
+//  - the LEGAL HOLD. M8 owns no hold table and reads none. The only caller of any registered eraser is M34's tenant shred
+//    (shred-eraser-adapter.ts), and its preflight (`assertCertApprovedAndNoHold`, shred-worker.ts, before `callbackAllEraserFns`)
+//    refuses the whole tenant while ANY `legal_hold` is active in the org (m34-destruction-workflow.ts, shred-preflight.ts), a
+//    stricter grain than per patient. The preflight and the eraser run in different transactions and nothing locks `legal_hold`, so
+//    a hold committed after the preflight and before this eraser's transactions is not seen.
 import { type DbClient, schema } from "@chartwarden/db";
 import { VOCAB_VERSION, activeNarrativeVocabRelease } from "@chartwarden/narrative-vocab";
 import { withOrgContext } from "@chartwarden/tenancy";
-import type { DataEraser } from "@chartwarden/types";
-import { type AnyColumn, type SQL, eq, inArray, or, sql } from "drizzle-orm";
+import { type DataEraser, DegradedError } from "@chartwarden/types";
+import { type AnyColumn, type SQL, and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -35,6 +46,8 @@ export const ENCOUNTER_ERASED_REASON =
 
 /** The per-table counts an encounter-record destruction removed (recorded on the destruction cert). */
 export interface EncounterEraseCounts {
+  /** `encounter` roots this run tombstoned; a root already tombstoned by an earlier run is not counted again. */
+  readonly tombstonedRoots: number;
   readonly signatures: number;
   readonly addenda: number;
   readonly carePlanLinks: number;
@@ -46,8 +59,24 @@ export interface EncounterEraseCounts {
   readonly hearthnoteLlmModifications: number;
 }
 
+/** What the satellite delete reports; `eraseEncounterRecord` adds the tombstoned roots from {@link EncounterEraseStore.tombstoneEncounters}. */
+export type EncounterSubtreeCounts = Omit<EncounterEraseCounts, "tombstonedRoots">;
+
+/** The database role every encounter destruction must run as (migration 0157 grants it the M8 deletes). */
+export const ENCOUNTER_DESTRUCTION_ROLE = "chartwarden_destruction";
+
+/** The refusal for a connection that is not the destruction role; thrown before the first write. */
+function destructionRoleRefusal(): DegradedError {
+  return new DegradedError(
+    "encounter-destruction",
+    `the database connection is not a member of ${ENCOUNTER_DESTRUCTION_ROLE} (DATABASE_DESTRUCTION_URL is unset or names another role); refusing to erase, nothing was written`,
+  );
+}
+
 /** The narrow data port the encounter eraseFn composes over (Drizzle deletes in prod, under RLS). */
 export interface EncounterEraseStore {
+  /** Refuse (throw) unless the connection is the destruction role; called BEFORE any write, so a refusal changes nothing. */
+  assertDestructionRole(organizationId: string): Promise<void>;
   /**
    * Cryptographically erase the HearthNote ciphertext for the patient's encounters by destroying the
    * decrypting tenant DEK material (§3.6) — the ciphertext stays in the rows but is irrecoverable. Runs
@@ -55,15 +84,20 @@ export interface EncounterEraseStore {
    */
   cryptoEraseHearthnote(organizationId: string, patientId: string): Promise<void>;
   /** Delete the patient's encounter satellites; return per-table counts. The `encounter` root is NOT deleted. */
-  eraseEncounterSubtree(organizationId: string, patientId: string): Promise<EncounterEraseCounts>;
-  /** Tombstone the patient's `encounter` root(s): voided, reason text scrubbed to a placeholder, PK kept for FK integrity (D8). */
-  tombstoneEncounters(organizationId: string, patientId: string): Promise<void>;
+  eraseEncounterSubtree(organizationId: string, patientId: string): Promise<EncounterSubtreeCounts>;
+  /**
+   * Tombstone the patient's `encounter` root(s): voided, reason text scrubbed to a placeholder, PK kept for FK integrity (D8).
+   * Returns how many roots it CHANGED: a root an earlier run already tombstoned is left alone and not counted.
+   */
+  tombstoneEncounters(organizationId: string, patientId: string): Promise<number>;
 }
 
 /**
  * Erase a patient's encounter-record subtree under a destruction certificate (D7/D8): crypto-erase the
  * HearthNote ciphertext, tombstone the `encounter` root(s), delete the satellite rows, and report the
- * total removed. Pure orchestration over the store — no I/O of its own. DEK-first so the PHI is
+ * total (satellite rows deleted plus roots tombstoned). The role check runs first and writes nothing. A failed run (three
+ * transactions: shred, tombstone, delete) is retried whole; every step is idempotent, and the retry reports only what IT changed.
+ * Pure orchestration over the store — no I/O of its own. DEK-first so the PHI is
  * unreadable the instant the key is gone, even if a later step fails; the root's free text is scrubbed
  * before the deletes so a tombstone that fails leaves the satellites in place for a retry, never a
  * root with its text and no satellites.
@@ -73,20 +107,27 @@ export async function eraseEncounterRecord(
   patientId: string,
   store: EncounterEraseStore,
 ): Promise<{ erased: number; counts: EncounterEraseCounts }> {
+  await store.assertDestructionRole(organizationId);
   await store.cryptoEraseHearthnote(organizationId, patientId);
-  await store.tombstoneEncounters(organizationId, patientId);
-  const counts = await store.eraseEncounterSubtree(organizationId, patientId);
+  const tombstonedRoots = await store.tombstoneEncounters(organizationId, patientId);
+  const counts = {
+    tombstonedRoots,
+    ...(await store.eraseEncounterSubtree(organizationId, patientId)),
+  };
   const erased = Object.values(counts).reduce((a, b) => a + b, 0);
   return { erased, counts };
 }
 
 /** An in-memory {@link EncounterEraseStore} for the slice/tests (seeded per-table counts to remove). */
-export function createInMemoryEncounterEraseStore(seed: Partial<EncounterEraseCounts> = {}): {
+export function createInMemoryEncounterEraseStore(
+  seed: Partial<EncounterEraseCounts> = {},
+  options: { destructionRole?: boolean } = {},
+): {
   store: EncounterEraseStore;
   tombstoned: string[];
   cryptoErased: string[];
 } {
-  const zero: EncounterEraseCounts = {
+  const zero: EncounterSubtreeCounts = {
     signatures: 0,
     addenda: 0,
     carePlanLinks: 0,
@@ -97,7 +138,8 @@ export function createInMemoryEncounterEraseStore(seed: Partial<EncounterEraseCo
     hearthnoteAssembledOutputs: 0,
     hearthnoteLlmModifications: 0,
   };
-  const counts: EncounterEraseCounts = { ...zero, ...seed };
+  const { tombstonedRoots = 0, ...subtreeSeed } = seed;
+  const counts: EncounterSubtreeCounts = { ...zero, ...subtreeSeed };
   const tombstoned: string[] = [];
   const cryptoErased: string[] = [];
   let used = false;
@@ -105,6 +147,9 @@ export function createInMemoryEncounterEraseStore(seed: Partial<EncounterEraseCo
     tombstoned,
     cryptoErased,
     store: {
+      async assertDestructionRole() {
+        if (options.destructionRole === false) throw destructionRoleRefusal();
+      },
       async cryptoEraseHearthnote(_org, patientId) {
         cryptoErased.push(patientId);
       },
@@ -115,7 +160,10 @@ export function createInMemoryEncounterEraseStore(seed: Partial<EncounterEraseCo
         return out;
       },
       async tombstoneEncounters(_org, patientId) {
+        // idempotent: a root already tombstoned is not changed, so not counted again.
+        if (tombstoned.includes(patientId)) return 0;
         tombstoned.push(patientId);
+        return tombstonedRoots;
       },
     },
   };
@@ -172,6 +220,17 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
     );
 
   return {
+    async assertDestructionRole(organizationId) {
+      // pg_has_role is true for a superuser too, which can run every statement below; the check is for the app-pool fallback.
+      const isMember = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const result = await tx.execute(
+          sql`SELECT pg_has_role(${ENCOUNTER_DESTRUCTION_ROLE}::name, 'member') AS is_member`,
+        );
+        return (result as unknown as { rows: Array<{ is_member: boolean }> }).rows[0]?.is_member;
+      });
+      if (isMember !== true) throw destructionRoleRefusal();
+    },
+
     async cryptoEraseHearthnote(organizationId, patientId) {
       await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const encounterIds = await encounterIdsFor(tx, patientId);
@@ -198,7 +257,7 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
     async eraseEncounterSubtree(organizationId, patientId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const encounterIds = await encounterIdsFor(tx, patientId);
-        const zero: EncounterEraseCounts = {
+        const zero: EncounterSubtreeCounts = {
           signatures: 0,
           addenda: 0,
           carePlanLinks: 0,
@@ -277,7 +336,7 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
     },
 
     async tombstoneEncounters(organizationId, patientId) {
-      await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         // D8 tombstone (§3.6 step 2): the root SURVIVES as a structural shell (the PK stays for FK integrity) and its text is
         // replaced with sentinels, in ONE statement so every CHECK is judged on the finished row, never on a half-scrubbed one:
         //  - status goes to the terminal 'voided', which `encounter_voided_consistency` only allows with voided_at, voided_by and
@@ -289,11 +348,17 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
         //  - every non-null reason column becomes the one placeholder (a null stays null), and the placeholder clears every
         //    tier/state length floor. voided_reason is never null on a voided root, so it is always the placeholder, which also
         //    scrubs the text of a root a human had already voided.
-        // Rerunning writes the same values over the same rows: voided_at/voided_by/vocab keep, the text is already the placeholder.
+        //  - voided_by: a root a human did not void says the clinician voided it (voided_by = authored_by_membership_id), because no
+        //    system membership exists; the placeholder reason says it was erased under a destruction certificate, and the audit actor
+        //    of the update is NULL (userId ""). Read voided_by on a tombstoned root with that in mind.
+        // Only a root that still needs the scrub is updated, and that is the count returned: a rerun finds none, writes nothing (no
+        // second write-audit row per root) and reports 0; voided_at/voided_by/vocab keep.
         const pin = activeNarrativeVocabRelease(VOCAB_VERSION).id;
         const scrubbed = (column: AnyColumn): SQL =>
           sql`CASE WHEN ${column} IS NULL THEN NULL ELSE ${ENCOUNTER_ERASED_REASON}::text END`;
-        await tx
+        const needsScrub = (column: AnyColumn): SQL =>
+          sql`(${column} IS NOT NULL AND ${column} IS DISTINCT FROM ${ENCOUNTER_ERASED_REASON}::text)`;
+        const changed = await tx
           .update(ENC)
           .set({
             status: "voided",
@@ -306,7 +371,21 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
             voidedBy: sql`COALESCE(${ENC.voidedBy}, ${ENC.authoredByMembershipId})`,
             vocabVersionId: sql`COALESCE(${ENC.vocabVersionId}, ${pin}::uuid)`,
           })
-          .where(eq(ENC.patientId, patientId));
+          .where(
+            and(
+              eq(ENC.patientId, patientId),
+              or(
+                ne(ENC.status, "voided"),
+                sql`${ENC.voidedReason} IS DISTINCT FROM ${ENCOUNTER_ERASED_REASON}::text`,
+                needsScrub(ENC.evvMissingReason),
+                needsScrub(ENC.lateEntryReason),
+                needsScrub(ENC.significantLateOverrideReason),
+                needsScrub(ENC.administrativeOverrideReason),
+              ),
+            ),
+          )
+          .returning({ id: ENC.id });
+        return changed.length;
       });
     },
   };
