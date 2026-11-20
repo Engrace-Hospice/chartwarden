@@ -547,6 +547,59 @@ describe("M24 hospice claim lines remain aligned with current M6 periods", () =>
     ).toMatchObject({ code: "MEDICAID_CLAIM_LINE_LOC_SNAPSHOT_STALE" });
   });
 
+  it("assigns a death date after a same-day LOC transition only to the terminal period", () => {
+    const deathClaim = { ...claim, serviceTo: "2026-02-10" };
+    const deathPeriods = [
+      {
+        id: LOC_PERIOD,
+        levelOfCare: "routine_home_care" as const,
+        effectiveAt: new Date("2026-02-01T00:00:00.000Z"),
+        endedAt: new Date("2026-02-10T00:00:00.000Z"),
+      },
+      {
+        id: LOC_PERIOD_2,
+        levelOfCare: "general_inpatient_care" as const,
+        effectiveAt: new Date("2026-02-10T00:00:00.000Z"),
+        endedAt: new Date("2026-02-10T12:00:00.000Z"),
+        ipuBedAssignmentId: "synthetic-m37-bed-assignment",
+      },
+    ];
+    const correctLines = [
+      line("death-transition-rhc", LOC_PERIOD, "2026-02-01", 9, "RHC", "0651"),
+      line("death-transition-gip", LOC_PERIOD_2, "2026-02-10", 1, "GIP", "0656"),
+    ];
+    expect(
+      hospiceClaimLineSnapshotIssue({
+        ...deathClaim,
+        lines: correctLines,
+        periods: deathPeriods,
+        inclusiveEndDate: "2026-02-10",
+      }),
+    ).toBeNull();
+
+    const duplicatedDeathDay = [
+      line("duplicated-death-rhc", LOC_PERIOD, "2026-02-01", 10, "RHC", "0651"),
+      correctLines[1]!,
+    ];
+    expect(
+      hospiceClaimLineSnapshotIssue({
+        ...deathClaim,
+        lines: duplicatedDeathDay,
+        periods: deathPeriods,
+        inclusiveEndDate: "2026-02-10",
+      }),
+    ).toMatchObject({ code: "MEDICAID_CLAIM_LINE_LOC_SNAPSHOT_STALE" });
+
+    expect(
+      hospiceClaimLineSnapshotIssue({
+        ...deathClaim,
+        lines: correctLines,
+        periods: deathPeriods.map((period) => ({ ...period, ipuBedAssignmentId: null })),
+        inclusiveEndDate: "2026-02-10",
+      }),
+    ).toMatchObject({ code: "MEDICAID_CLAIM_LINE_LOC_SNAPSHOT_STALE" });
+  });
+
   it("refuses a LOC correction that makes a stored line's level or revenue code stale", () => {
     expect(
       hospiceClaimLineSnapshotIssue({

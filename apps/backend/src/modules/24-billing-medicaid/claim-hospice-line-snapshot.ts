@@ -8,6 +8,8 @@ export interface CurrentLocPeriodForClaim {
     | "general_inpatient_care";
   readonly effectiveAt: Date;
   readonly endedAt: Date | null;
+  /** M37 confirmation evidence required before IRC/GIP can own an inclusive death-date service day. */
+  readonly ipuBedAssignmentId?: string | null;
 }
 
 export interface HospiceClaimLineForSnapshot {
@@ -43,6 +45,8 @@ const REVENUE_BY_LOC = { RHC: "0651", CHC: "0652", IRC: "0655", GIP: "0656" } as
 
 const isoDay = (value: Date | string): string =>
   value instanceof Date ? value.toISOString().slice(0, 10) : value.slice(0, 10);
+const instant = (value: Date | string): number =>
+  value instanceof Date ? value.getTime() : Date.parse(value);
 const dateValue = (value: string): number => Date.parse(`${value}T00:00:00.000Z`);
 const addDays = (value: string, count: number): string =>
   new Date(dateValue(value) + count * DAY_MS).toISOString().slice(0, 10);
@@ -54,6 +58,40 @@ export function m6LocClaimEndDate(
   if (endedAt === null) return null;
   const endDate = isoDay(endedAt);
   return endDate === inclusiveEndDate ? endDate : addDays(endDate, -1);
+}
+
+/**
+ * A death date may extend only the terminal M6 LOC period ending on that date. If a LOC transition also
+ * occurred that day, M6's half-open intervals assign the date to the later period. A tie is ambiguous and
+ * therefore does not qualify for the inclusive-date exception.
+ */
+export function inclusiveDeathLocPeriodId(
+  periods: readonly Pick<
+    CurrentLocPeriodForClaim,
+    "id" | "levelOfCare" | "effectiveAt" | "endedAt" | "ipuBedAssignmentId"
+  >[],
+  inclusiveEndDate: string | null | undefined,
+): string | null {
+  if (!inclusiveEndDate) return null;
+  const candidates = periods.filter(
+    (period) =>
+      period.endedAt !== null &&
+      isoDay(period.endedAt) === inclusiveEndDate &&
+      isoDay(period.effectiveAt) <= inclusiveEndDate,
+  );
+  if (candidates.length === 0) return null;
+  const latestEffectiveAt = Math.max(...candidates.map((period) => instant(period.effectiveAt)));
+  const latest = candidates.filter((period) => instant(period.effectiveAt) === latestEffectiveAt);
+  if (latest.length !== 1) return null;
+  const terminal = latest[0]!;
+  if (
+    (terminal.levelOfCare === "inpatient_respite_care" ||
+      terminal.levelOfCare === "general_inpatient_care") &&
+    !terminal.ipuBedAssignmentId
+  ) {
+    return null;
+  }
+  return terminal.id;
 }
 const inclusiveDays = (from: string, to: string): number =>
   Math.round((dateValue(to) - dateValue(from)) / DAY_MS) + 1;
@@ -82,12 +120,17 @@ export function hospiceClaimLineSnapshotIssue(input: {
   const lines = input.lines.filter((line) => !line.isRb);
   if (lines.length === 0 || input.serviceFrom > input.serviceTo) return refusal();
 
+  const inclusiveDeathPeriodId = inclusiveDeathLocPeriodId(input.periods, input.inclusiveEndDate);
   const periods = input.periods
+    .map((period) => ({
+      ...period,
+      inclusiveDeathEnd: period.id === inclusiveDeathPeriodId ? input.inclusiveEndDate : null,
+    }))
     .map((period) => ({
       id: period.id,
       levelOfCare: M6_TO_M24_LOC[period.levelOfCare],
       from: isoDay(period.effectiveAt),
-      to: m6LocClaimEndDate(period.endedAt, input.inclusiveEndDate) ?? input.serviceTo,
+      to: m6LocClaimEndDate(period.endedAt, period.inclusiveDeathEnd) ?? input.serviceTo,
     }))
     .filter((period) => period.from <= input.serviceTo && period.to >= input.serviceFrom)
     .map((period) => ({
