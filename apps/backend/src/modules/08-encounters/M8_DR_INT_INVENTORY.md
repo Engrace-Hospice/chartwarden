@@ -26,10 +26,13 @@ degradation must not block patient-care documentation or visit signing.
   enforces the block; M7's retroactive sweep re-audits `degraded` signs on `m7.service.restored`.
   **One deliberate exception, the visit-note draft below, fails CLOSED.**
 - **Exception (ADR-0114): the visit-note draft fails CLOSED, and so can withhold a signature.** With a
-  tenant's draft switch ON (absent row = off) and an encounter whose template drafts a section (today only
-  the RN routine visit; every other template behaves as with the switch off: no draft read, no check 13, no
+  tenant's draft switch ON (absent row = off) and an encounter whose template drafts a section (today the RN
+  routine visit, the RN recertification visit and the face-to-face visit by a physician or nurse practitioner;
+  every other template behaves as with the switch off: no draft read, no check 13, no
   sealed rows), finalize and sign recompute the draft for the signer from M7 `relevantElementsAsOf`, M9
-  scale series, M12 medication changes and the M39 Part 2 verdict (an addendum's finalize does the same when a
+  scale series, M12 medication changes and the M39 Part 2 verdict (the recertification and face-to-face visits
+  also read M6's benefit periods, level of care, attested face-to-face and certification, and the patient's
+  weights from M8's own `vitals`; see "Recertification and face-to-face drafts" below) (an addendum's finalize does the same when a
   confirmed amended section is its sole content: see the addendum paragraph below). If any of those reads fails, or does not
   answer within `DRAFT_SOURCE_READ_TIMEOUT_MS` (5 s), sign and finalize answer **503
   `COMPLIANCE_GATE_UNAVAILABLE`** for that tenant and never pass: a section cannot be confirmed or signed
@@ -59,6 +62,25 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
   pool can wait on the pool. The bound is `DRAFT_SOURCE_READ_TIMEOUT_MS` (5 s) per source read, and a request that cannot acquire a connection within
   the 10 s acquire timeout fails with 503 (never a pass, never a partial write: the transaction rolls back). A tenant that signs through such a
   burst retries; a burst that long is an operations signal, not a data one.
+
+### Recertification and face-to-face drafts (ADR-0114 slice S2, design §3.3): limits recorded
+
+- **More reads under the sign lock.** A recertification's draft adds four M6 reads (periods, level of care for one day, face-to-face, certification)
+  and one weights read to the draft's reads; a face-to-face adds the periods and the weights. They take their turn with the others (`serial-seams.ts`),
+  so the connection peak is unchanged, but sign, the section PUTs and finalize hold their transaction across them (the limit above), a few milliseconds
+  longer each. A GET snapshots the weights with the other store reads (every weight up to the visit time, cut to the period start in code), so it holds
+  no connection across the seam reads either. Each read is bounded by the same 5 s and fails closed.
+- **M6's readers are now-reads cut by date here.** The period is the one covering the service date (M6's own rule); a face-to-face attested, or a
+  certification signed, after the service date is not drafted; a certification that is not `signed` now, or was voided or superseded since, is not
+  drafted (the safe direction: silence, never a stale claim). The level of care is named only when exactly one level counted for that day.
+- **Weights across encounters.** The patient's weights come from this encounter and from the patient's signed encounters (an unsigned draft of another visit
+  is not yet part of the record), cut to the benefit period by the organization's local date. A weight that is not a positive decimal in `kg` or `lb` is
+  not drafted, and weights in two units are not drafted at all: nothing is converted.
+- **Who may read it.** The four draft routes also require `admission.read` (the seams apply no permission check of their own). Production role
+  templates need it for every author of a drafted note, routine visits included, because the key list is static.
+- **Not drafted, by decision.** The physician's face-to-face attestation and the certification narrative (module 6's, never quoted: VN-D32), and any
+  statement of prognosis, eligibility or life expectancy; FAST, NYHA, laboratory values and hospitalisations (VN-D33). The admission visit's own
+  sections follow in a later slice (VN-D31).
 
 ### Amendments of a signed drafted note (ADR-0114 VN-D30, PR E2): limits recorded
 
@@ -123,6 +145,7 @@ M8 has **no direct external integration of its own** (HearthNote Layer 2 reaches
 | consume | M9 (Assessments) | `ScaleSeriesProvider.series` seam — scored scale series over the visit window; a draft source (ADR-0114), fails closed | yes (scores) |
 | consume | M12 (DoseSpot) | `MedicationOrderProvider.getMedicationChangesBetween` seam — medication changes since the previous visit; `isSudTreatment` is not redacted by the seam, M8 applies the Part 2 verdict; a draft source (ADR-0114), fails closed | yes (names, dates) |
 | consume | M39 (Consent) | the per-actor Part 2 verdict (`evaluateForInternalAccess`, through M7's `sudDisclosureAllowedForActor`) — whether this viewer may read this patient's SUD content. M7's own reads read an M39 error as "not allowed"; **M8 fails CLOSED** (`onError: "throw"`, `drafting/default-ports.ts`): an M39 error is a thrown failure, never a denial and never a disclosure, so the draft is 503 `DRAFT_UNAVAILABLE`, sign and finalize 503 `COMPLIANCE_GATE_UNAVAILABLE`, a note view 503 `NOTE_VIEW_UNAVAILABLE` and an amendment's naming or sign 503 (see the exception above) | yes (ids) |
+| consume | M6 (Admission) | S2, the recertification and face-to-face drafts only: `ElectionPeriodReader.listPeriodsForAdmission` (the benefit period covering the service date), `LevelOfCareReader.getLevelOfCareDays` over that one day, `FaceToFaceReader.getAttestedF2fForPeriod` (performer role and dates, **never the attestation narrative**) and `CertificationReader.getActiveCertification` (status and signing date, never the narrative); the as-of cut by date is made in `drafting/inputs.ts`; fails closed | yes (dates, no free text) |
 | consume | M5 (Patient) | `PatientReader` — patient identity / caseload linkage | yes (ids) |
 | consume | M6 (Admission) | admission linkage (encounter belongs to an active election period) | minimal (ids) |
 | consume | M36 (Messaging) | `AlertEmitter` seam — cosignature SLA + late-entry-override alerts | minimal (ids) |
