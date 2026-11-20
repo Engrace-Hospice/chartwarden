@@ -1104,7 +1104,7 @@ The M8 `encounter_record` eraser is registered by `registerEncounterErasers()` (
 
 1. For each encounter in the patient: shred the HearthNote cipher columns themselves (`hearthnote_selection.free_text_cipher`, `hearthnote_assembled_output.layer1_cipher`/`layer2_cipher`/`final_cipher`) before anything is deleted, so the text is unreadable under any key (a Layer-2-involved output keeps an empty, non-null `layer2_cipher`, which `hearthnote_output_layer2_consistency` requires). The store holds a `DbClient`, not the M36 key custodian, so it destroys the ciphertext bytes rather than the DEK.
 2. Tombstone the structural shell, delete the satellites. Each `encounter` root survives (its PK stays for FK integrity, so `service_date` and the other structural columns are kept) with `status = 'voided'`; the satellite rows (`vitals`, `mileage`, signatures, addenda, care-plan links, cosignature requests, the HearthNote rows) are deleted, not redacted. Every free-text reason column that holds text (`evv_missing_reason`, `late_entry_reason`, `significant_late_override_reason`, `administrative_override_reason`, `voided_reason`) becomes ONE fixed, PHI-free placeholder of at least 100 characters, so the root's CHECK constraints still hold; a column that is null stays null, and a root a human had already voided has its `voided_reason` scrubbed too. A voided root needs `voided_at`, `voided_by` and a `vocab_version_id`: the first two are kept when set, otherwise now and the root's author (there is no system membership); a draft root, which has no `vocab_version_id`, is pinned to the running build's narrative-vocab release (§2.7 D11). (Audit retention for the structural shell is policy-driven; the eraser preserves the audit chain while making PHI inaccessible.)
-3. Emit a destruction-certificate event consumed by M4's `audit_export` job.
+3. Return the counts (`{ erased, counts }`) to M4, which owns the destruction-certificate event consumed by its `audit_export` job; the eraser emits nothing itself.
 4. Idempotent per patient and tenant; rerunning changes no data (the tombstone UPDATE is re-issued with the same values, so the audit trail records it again).
 
 `encounter_record` is one of the `REQUIRED_ERASERS` data classes (`apps/backend/src/bootstrap/erasers/registry.ts`, M1); the deny-stub holds it until M8 registers the real eraser, and boot fails (`validateErasers`) if it is missing.
@@ -1827,7 +1827,7 @@ Ordered by dependency. **PR boundaries** marked.
 | 20 | Encounter list + filter routes (26–28) — patient, author, date-range, status, late-entry tier | M | 19 | G |
 | 21 | Internal seam endpoints (29–31) — `BillableEncounterReader`, `SignedEncountersReader`, render-payload | M | 3, 5 | G |
 | 22 | Permission keys registered into M3 catalog (`packages/auth/permissions/encounter.ts`); ABAC predicate `cosigner_role_match` registered; boot validation | S | M3 catalog model | H |
-| 23 | Clinical-record eraser registered with M4 (D9-style destruction registry); idempotency on tenant id | S | M4 destruction registry | H |
+| 23 | `encounter_record` eraser registered over the Phase-0 deny-stub (`registerEncounterErasers`); idempotent per patient and tenant | S | M4 destruction registry | H |
 | 24 | Frontend: encounter authoring (web + mobile) — selections UI, live Layer-1 preview, care-plan picker, vitals/mileage capture, EVV bracket display | L | 8, 9, 10, M7 picker seam | I |
 | 25 | Frontend: finalize + Layer-2 review — diff renderer with inline annotations, per-passage decision UI | L | 11, 12, 13 | I |
 | 26 | Frontend: sign surface — attestation language (two variants), step-up auth flow, success state | M | 14 | I |
@@ -1948,7 +1948,7 @@ All thirteen open questions decided. Decisions are wired to single constants / i
 
 - [ ] Permission keys (`encounter.read`, `encounter.author`, `encounter.finalize`, `encounter.sign`, `encounter.cosign`, `encounter.cosign_supervisor_release`, `encounter.addendum_author`, `encounter.addendum_sign`, `encounter.late_entry_override`, `encounter.administrative_override`, `encounter.read_internal`, `hearthnote.layer2_disable`, `vitals.author`, `mileage.author`) registered in M3's catalog and assigned to default role templates per §4.5.
 - [ ] New ABAC predicate `cosigner_role_match` registered with M3; boot-validated.
-- [ ] `clinical_record` eraser registered with M4's destruction registry; boot validation passes.
+- [ ] `encounter_record` eraser registered; `validateErasers()` passes at boot.
 - [ ] `require-explicit-authz` and `require-read-audit` lints green on every M8 route.
 
 ### 12.13 Outbox & Subscribers
