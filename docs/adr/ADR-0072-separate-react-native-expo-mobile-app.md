@@ -1,10 +1,11 @@
 # ADR-0072 — Mobile is a separate React Native/Expo application consuming versioned ChartWarden APIs
 
-- **Status:** **Proposed for formal architecture ratification.** The product direction was fixed on
-  2026-10-16 for Mobile PR B, but the Frontend/Architecture Owner ratification required by ADR-0030 and
-  ADR-0035 is not recorded here.
+- **Status:** **Accepted** (2026-11-18). The owner ratified the supersession of ADR-0035 and of ADR-0030's
+  clause that mobile wraps `apps/web`, which is the Frontend/Architecture Owner ratification ADR-0030 and
+  ADR-0035 require. The product direction was fixed on 2026-10-16 for Mobile PR B. This does not sign
+  decisions 8-12 as security controls or any device-evidence item; those stay unsigned (see Ratification items).
 - **Date:** 2026-10-16 (reconciled with the shipped messaging push work, WP 5.11 server side, 2026-10-21)
-- **Supersedes on ratification:** [ADR-0035](ADR-0035-capacitor-mobile-wrap-and-ui-core-split.md), and
+- **Supersedes (ratified 2026-11-18):** [ADR-0035](ADR-0035-capacitor-mobile-wrap-and-ui-core-split.md), and
   ADR-0030's clause that mobile wraps `apps/web`. ADR-0035 remains immutable history.
 - **Reconciled with:** [Messaging hub phases 4 to 6, WP 5.11](../messaging-hub/04-phases-4-to-6.md) and [ADR-0083](ADR-0083-messaging-session-device-controls.md) (session-linked endpoints). The mobile repository's own note is `docs/pr-l-push-architecture.md` in `Engrace-Hospice/chartwarden-mobile`.
 - **Extends:** [ADR-0026](ADR-0026-m19-vendor-operator-auth-via-better-auth.md) (one Better Auth
@@ -94,13 +95,12 @@ device evidence; PR B provides backend contracts and marks the rest accurately.
 
 ## Ratification items
 
-The Frontend/Architecture Owner must ratify this supersession. Product/security owners must also choose
+The owner ratified this supersession on 2026-11-18. Product/security owners must still choose
 the production scheme and associated domains, decide the native passkey posture, and approve the
 pinning/root-jailbreak/MDM implementations before claiming those controls are live.
 
-**Still unsigned after this reconciliation** (the status stays **Proposed**; nothing here ratifies it):
+**Still unsigned** (the supersession is ratified; none of these is):
 
-- The Frontend/Architecture Owner ratification of the supersession, which is what ADR-0030 and ADR-0035 require.
 - The security owner's sign-off on decisions 8-12 as controls: no real FCM/APNs send has been made (credentials are deploy secrets), and push on a locked device, the SQLCipher store and the app lock have no device evidence.
 - Whether silent/background push, a push badge count or any deep link in the payload is ever allowed (today: no).
 - Provider credentials and bundle/team configuration for production (`FCM_SERVICE_ACCOUNT_JSON`; `APNS_KEY_P8`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`).

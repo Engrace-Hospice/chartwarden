@@ -1388,7 +1388,7 @@ For each production VM:
 
 ### 12.1 Mobile Architecture Recap
 
-The product direction is a separate React Native/Expo application in the `wardenx-mobile` repository (ADR-0072, pending formal architecture ratification). It uses the same Better Auth service, ChartWarden API authorization, RBAC/ABAC, and RLS controls. The native renderer does not import DOM components from `apps/web`.
+The product direction is a separate React Native/Expo application in the `wardenx-mobile` repository (ADR-0072, ratified 2026-11-18). It uses the same Better Auth service, ChartWarden API authorization, RBAC/ABAC, and RLS controls. The native renderer does not import DOM components from `apps/web`.
 
 The controls below are release requirements, not evidence of implementation. PR B proves the backend auth, origin, cookie, CSRF, and Socket.IO contracts only. SecureStore transport, biometric lock, screenshot handling, jailbreak/root response, encrypted offline data, attestation, certificate pinning, MDM, and native push still require implementation and device evidence in their assigned mobile lots.
 

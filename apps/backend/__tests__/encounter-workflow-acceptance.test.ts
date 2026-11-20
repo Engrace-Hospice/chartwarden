@@ -20,6 +20,7 @@ const PAST = "2020-01-01"; // a non-future service date (createDraft rejects fut
 // The in-memory backend's sign/cosignSign/signAddendum ignore the actor's step-up state (no real
 // session infra in the slice — see routes/service.ts); the shape just needs to be well-formed.
 const ACTOR = { membershipId: "actor_1", sessionId: "sess_1" };
+const AUTHOR = { roles: [], membershipId: ACTOR.membershipId };
 /** A DIFFERENT membership — the RN cosigner (GAP-029: the author can never cosign their own note). */
 const COSIGNER = { membershipId: "cosigner_1", sessionId: "sess_2" };
 
@@ -156,7 +157,7 @@ describe("M8-T12 §7 workflow acceptance", () => {
     });
     expect(add.status).toBe("draft");
     await svc.updateAddendumSelections(ORG, id, add.id, ADDENDUM_SELECTIONS);
-    await svc.finalizeAddendum(ORG, id, add.id);
+    await svc.finalizeAddendum(ORG, id, add.id, AUTHOR);
     const sa = await svc.signAddendum(ORG, id, add.id, ACTOR, { at: PAST });
     expect(sa.status).toBe("signed");
     // The parent encounter status is unchanged by the addendum (append-only, §3.6).
@@ -239,9 +240,33 @@ describe("M8-T12 §7 workflow acceptance", () => {
       reason: "Correcting signed documentation.",
       authorMembershipId: ACTOR.membershipId,
     });
-    await expect(svc.finalizeAddendum(ORG, id, add.id)).rejects.toMatchObject({
+    await expect(svc.finalizeAddendum(ORG, id, add.id, AUTHOR)).rejects.toMatchObject({
       code: "COMPLIANCE_GATE_FAILED",
     });
+  });
+
+  it("§2.3 — the selections of an addendum are saved only while it is a draft: a finalized or signed one is 409 ILLEGAL_TRANSITION", async () => {
+    const { svc, id } = await draft("rn");
+    await svc.finalize(ORG, id, PAST);
+    await svc.sign(ORG, id, ACTOR, { at: PAST });
+    const add = await svc.createAddendum(ORG, id, {
+      reason: "Correcting signed documentation.",
+      authorMembershipId: ACTOR.membershipId,
+    });
+    await svc.updateAddendumSelections(ORG, id, add.id, ADDENDUM_SELECTIONS);
+    await svc.finalizeAddendum(ORG, id, add.id, AUTHOR);
+    const refused = { code: "ILLEGAL_TRANSITION", statusCode: 409 };
+    const empty = { sections: [] };
+    await expect(svc.updateAddendumSelections(ORG, id, add.id, empty)).rejects.toMatchObject(
+      refused,
+    );
+    await svc.signAddendum(ORG, id, add.id, ACTOR, { at: PAST });
+    await expect(svc.updateAddendumSelections(ORG, id, add.id, empty)).rejects.toMatchObject(
+      refused,
+    );
+    expect((await svc.getAddendumSelections(ORG, id, add.id)).sections).toEqual(
+      ADDENDUM_SELECTIONS.sections,
+    );
   });
 
   it("§7.14 — concurrency: an edit against a stale version is rejected (optimistic concurrency)", async () => {

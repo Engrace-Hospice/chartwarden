@@ -249,7 +249,10 @@ describe.skipIf(!DB_URL)(
       });
     const finalizeAddendum = async (encounterId: string, addendumId: string) => {
       await enc.updateAddendumSelections(ORG_A, encounterId, addendumId, TREE);
-      await enc.finalizeAddendum(ORG_A, encounterId, addendumId);
+      await enc.finalizeAddendum(ORG_A, encounterId, addendumId, {
+        roles: [],
+        membershipId: reviewerMembership,
+      });
     };
 
     beforeAll(async () => {

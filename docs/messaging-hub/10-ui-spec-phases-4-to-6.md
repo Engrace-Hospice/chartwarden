@@ -608,7 +608,7 @@ calls, family notification, equipment pickup, bereavement referral, each owned a
 | AI summaries and drafting (6.5) | Clinical lead + compliance + **new ADR** | Hazard H-08 |
 | External partner share (6.6) | Legal (BAA) + clinical lead + **new ADR** | |
 | Family/caregiver messaging without an app (6.7) | Privacy officer + **new ADR** | New outbound surface |
-| Native push and biometric lock (5.11) | Reconcile with [ADR-0072](../adr/ADR-0072-separate-react-native-expo-mobile-app.md) (separate React Native/Expo app, status Proposed) | 5.11 was first written as a PWA shell; it must not contradict that ADR |
+| Native push and biometric lock (5.11) | Reconcile with [ADR-0072](../adr/ADR-0072-separate-react-native-expo-mobile-app.md) (separate React Native/Expo app, status Accepted 2026-11-18) | 5.11 was first written as a PWA shell; it must not contradict that ADR |
 | Self-destruct decision (§8) | Compliance | We recommend declining for clinical content |
 | Individual-level analytics (6.2) | HR/compliance | Forbidden by default |
 

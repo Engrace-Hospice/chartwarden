@@ -7,6 +7,7 @@
 // with the precise code + HTTP status the UI keys its message off, with no cross-module import edge. The
 // code→status mapping is the single source mirrored from §2.7; nothing transitions on a string match —
 // each code is an enumerated constant (the M6 state-machine convention).
+import type { AssemblyErrorCode } from "@chartwarden/hearthnote";
 import { ChartWardenError, type ErrorDetailType } from "@chartwarden/types";
 
 /** The full §2.7 + §2.3 machine-readable failure-code catalog → canonical HTTP status. */
@@ -61,6 +62,21 @@ export const M8_ERROR_STATUS = {
    *  can fix it, 503 means the gate did not run. Refusing is the only safe direction — a signing-blocking
    *  control that passes when it cannot evaluate is the defect this gate was fixed from (#121). */
   COMPLIANCE_GATE_UNAVAILABLE: 503,
+  /** The visit-note draft could not be computed: a seam it reads (care plan, scales, medications, Part 2 verdict)
+   *  failed or returned something unusable. Never a partial draft passed off as complete (VN-D9, design §3.2). */
+  DRAFT_UNAVAILABLE: 503,
+  /** The clinician confirmed or deselected a drafted section against content that is no longer the draft: the section's content
+   *  hash or the phrase-corpus version differs from the recomputed draft (VN-D12). Refetch the draft, review, resolve again. */
+  DRAFT_SECTION_STALE: 409,
+  /** The note was finalized with drafted text that may hold 42 CFR Part 2 content and the draft is now switched off for the organization,
+   *  so sign could not seal it section by section (VN-D13 would then have no section to withhold). Switch the draft back on, then sign. */
+  DRAFT_OFF_AFTER_FINALIZE: 409,
+  /** An addendum names a section whose original is 42 CFR Part 2 derived and its author may not read Part 2 content: their redraft would silently
+   *  shorten the note's current view (VN-D30). Refused at naming and again at sign; the error names no section. */
+  AMENDMENT_PART2_NOT_ENTITLED: 422,
+  /** A signed note's text could not be shown to this viewer because the 42 CFR Part 2 disclosure check (M39) could not be decided. An
+   *  outage is never a silent denial and never a silent disclosure: 503, retry. */
+  NOTE_VIEW_UNAVAILABLE: 503,
   // Visit delivery at sign (migration 1510): the clinician must say how the visit was delivered (Medicare
   // hospice SIA / visit lines count in-person visits only), and any documented start/end must be a real,
   // ordered, past bracket on the service date. Both are fixable by the clinician, hence 422.
@@ -85,6 +101,18 @@ export const M8_ERROR_STATUS = {
 
 /** A machine-readable M8 encounter-domain failure code (§2.7 / §2.3). */
 export type M8ErrorCode = keyof typeof M8_ERROR_STATUS;
+
+/**
+ * The §2.7 code each `HearthnoteAssemblyError` maps to: the one table the selections routes and the draft computation both apply.
+ * `TEMPLATE_KEY_MISMATCH` cannot occur through the routes (the key is server-derived from the encounter row), but it is mapped
+ * rather than left to fall through as a 500. Typed on the package's union, so a new assembly code fails the build until it is mapped.
+ */
+export const ASSEMBLY_ERROR_CODE: Readonly<Record<AssemblyErrorCode, M8ErrorCode>> = {
+  TEMPLATE_NOT_FOUND: "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
+  TEMPLATE_KEY_MISMATCH: "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
+  VOCAB_VERSION_MISMATCH: "VOCAB_VERSION_MISMATCH",
+  UNKNOWN_VOCAB_CODE: "UNKNOWN_VOCAB_CODE",
+};
 
 /**
  * A guard / validation failure in the M8 encounter domain. Carries the precise §2.7 `code` so the UI

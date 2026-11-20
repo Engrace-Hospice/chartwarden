@@ -507,6 +507,11 @@ exports.MODULES = [
       "hearthnote_llm_modification",
       "documentation_obligation_policy",
       "documentation_obligation_override",
+      "encounter_draft_confirmation",
+      "hearthnote_signed_section",
+      "encounter_amendment",
+      "addendum_cosignature_request",
+      "visit_note_draft_policy",
     ],
   },
   {

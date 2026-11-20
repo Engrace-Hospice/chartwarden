@@ -102,7 +102,7 @@ the `docs/history/gates-*.md` files ([index](./docs/history/README.md)).
 
 - **Issue tracker:** GitHub Issues on `Engrace-Hospice/chartwarden` via `gh` — `docs/agents/issue-tracker.md`.
 - **Triage labels:** five canonical roles, label string = name — `docs/agents/triage-labels.md`.
-- **Domain docs:** single-context; repo-root `CONTEXT.md` (not yet created) plus `docs/adr/` — `docs/agents/domain.md`.
+- **Domain docs:** single-context; repo-root `CONTEXT.md` (the shared language; visit documentation so far) plus `docs/adr/` — `docs/agents/domain.md`.
 
 ## Compliance harness (always on)
 

@@ -51,7 +51,7 @@ function slotValues(
 }
 
 /** Render one section's body (assembled sentences + verbatim free-text), or "" when it has no content. */
-function renderSection(section: SectionSelection, context: AssemblyContext): string {
+export function renderSection(section: SectionSelection, context: AssemblyContext): string {
   const sentences: string[] = [];
   for (const entry of section.entries) {
     const vocab = getVocabEntry(entry.code);
@@ -70,6 +70,41 @@ function renderSection(section: SectionSelection, context: AssemblyContext): str
   return free.length === 0 ? assembled : assembled.length === 0 ? free : `${assembled} ${free}`;
 }
 
+/** What separates one section block from the next in the narrative. */
+export const NOTE_BLOCK_SEPARATOR = "\n\n";
+
+/** One section of the narrative as it is written: the heading, a line break and the body. */
+export interface AssembledBlock {
+  readonly sectionId: string;
+  readonly text: string;
+}
+
+/** The narrative is its blocks in order, one `NOTE_BLOCK_SEPARATOR` apart: the one rule the sealed per-section rows (ADR-0114) rely on. */
+export const joinBlocks = (blocks: readonly AssembledBlock[]): string =>
+  blocks.map((block) => block.text).join(NOTE_BLOCK_SEPARATOR);
+
+/**
+ * The narrative's section blocks in TEMPLATE order; a section with no body is omitted. `bodyOverrides` replaces the rendered
+ * selection of the sections it names (even where the clinician selected nothing): the confirmed text of a drafted section.
+ */
+export function assembleBlocks(
+  template: HearthnoteTemplate,
+  selection: SelectionState,
+  context: AssemblyContext,
+  bodyOverrides: Readonly<Record<string, string>> = {},
+): readonly AssembledBlock[] {
+  const byId = new Map(selection.sections.map((s) => [s.sectionId, s]));
+  const blocks: AssembledBlock[] = [];
+  for (const tmplSection of template.sections) {
+    const picked = byId.get(tmplSection.id);
+    const body =
+      bodyOverrides[tmplSection.id] ?? (picked === undefined ? "" : renderSection(picked, context));
+    if (body.length === 0) continue;
+    blocks.push({ sectionId: tmplSection.id, text: `${tmplSection.heading}\n${body}` });
+  }
+  return blocks;
+}
+
 /**
  * Assemble the Layer-1 narrative for a resolved template. Sections render in TEMPLATE order (not selection
  * order); empty sections are omitted from the output (the Layer-3 gate, not assembly, enforces required
@@ -80,29 +115,20 @@ export function assembleLayer1(
   selection: SelectionState,
   context: AssemblyContext,
 ): AssemblyResult {
-  const byId = new Map(selection.sections.map((s) => [s.sectionId, s]));
-  const blocks: string[] = [];
-  const sectionsAssembled: string[] = [];
-  for (const tmplSection of template.sections) {
-    const picked = byId.get(tmplSection.id);
-    if (picked === undefined) continue;
-    const body = renderSection(picked, context);
-    if (body.length === 0) continue;
-    blocks.push(`${tmplSection.heading}\n${body}`);
-    sectionsAssembled.push(tmplSection.id);
-  }
+  const blocks = assembleBlocks(template, selection, context);
   return {
-    narrative: blocks.join("\n\n"),
-    sectionsAssembled,
+    narrative: joinBlocks(blocks),
+    sectionsAssembled: blocks.map((block) => block.sectionId),
     vocabVersion: selection.vocabVersion,
   };
 }
 
 /**
- * Resolve the template for the selection's pair and assemble. Enforces the D11 vocab-version pin and the
- * legal-pair / key-integrity guards, raising {@link HearthnoteAssemblyError} the M8 service maps to HTTP.
+ * Resolve the template a selection claims, enforcing the D11 vocab-version pin and the legal-pair /
+ * key-integrity guards, raising {@link HearthnoteAssemblyError} the M8 service maps to HTTP. Shared by
+ * `assemble` and the visit-note draft compiler so both refuse the same selections.
  */
-export function assemble(selection: SelectionState, context: AssemblyContext): AssemblyResult {
+export function resolveSelectionTemplate(selection: SelectionState): HearthnoteTemplate {
   if (selection.vocabVersion !== VOCAB_VERSION) {
     throw new HearthnoteAssemblyError(
       "VOCAB_VERSION_MISMATCH",
@@ -123,7 +149,12 @@ export function assemble(selection: SelectionState, context: AssemblyContext): A
       `no template for the illegal pair '${expectedKey}'`,
     );
   }
-  return assembleLayer1(template, selection, context);
+  return template;
+}
+
+/** Resolve the template for the selection's pair (see {@link resolveSelectionTemplate}) and assemble. */
+export function assemble(selection: SelectionState, context: AssemblyContext): AssemblyResult {
+  return assembleLayer1(resolveSelectionTemplate(selection), selection, context);
 }
 
 /**

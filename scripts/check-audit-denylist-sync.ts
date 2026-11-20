@@ -194,6 +194,40 @@ const CONDITIONAL_REDACTIONS: ReadonlyArray<{
       "audit_scrub(to_jsonb(NEW), v_denylist)",
     ],
   },
+  // ADR-0114: a Part 2 draft row's audit image withholds its source ids (the flat denylist above only sees the unconditional columns).
+  {
+    key: "M8.encounter_draft_confirmation",
+    migration: "packages/db/migrations/1517_m8_encounter_draft_confirmation.sql",
+    mustContain: [
+      "v_part2",
+      "part2_derived",
+      "audit_scrub(v_before, ARRAY['source_refs']",
+      "audit_scrub(v_after, ARRAY['source_refs']",
+      "'compliance_42cfr_part2'",
+    ],
+  },
+  {
+    key: "M8.encounter_amendment",
+    migration: "packages/db/migrations/1523_m8_note_amendments.sql",
+    mustContain: [
+      "v_part2",
+      "part2_derived",
+      "audit_scrub(v_before, ARRAY['source_refs']",
+      "audit_scrub(v_after, ARRAY['source_refs']",
+      "'compliance_42cfr_part2'",
+    ],
+  },
+  {
+    key: "M8.hearthnote_signed_section",
+    migration: "packages/db/migrations/1518_m8_hearthnote_signed_section.sql",
+    mustContain: [
+      "v_part2",
+      "part2_derived",
+      "audit_scrub(v_before, ARRAY['source_refs']",
+      "audit_scrub(v_after, ARRAY['source_refs']",
+      "'compliance_42cfr_part2'",
+    ],
+  },
 ];
 
 /** Extract each `audit_phi_write_<fn>()` function block together with its own `CREATE TRIGGER ... ON

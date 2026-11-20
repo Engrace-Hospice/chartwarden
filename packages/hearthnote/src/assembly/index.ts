@@ -10,8 +10,14 @@ export type {
 export { finishSentence, interpolate, joinSentences } from "./grammar";
 export {
   HearthnoteAssemblyError,
+  NOTE_BLOCK_SEPARATOR,
   assemble,
+  assembleBlocks,
   assembleLayer1,
+  joinBlocks,
   missingRequiredSections,
+  renderSection,
+  resolveSelectionTemplate,
+  type AssembledBlock,
   type AssemblyErrorCode,
 } from "./assemble";

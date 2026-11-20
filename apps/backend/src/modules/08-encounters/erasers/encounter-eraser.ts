@@ -3,11 +3,14 @@
 //
 // M8 owns the destruction callback for a patient's ENCOUNTER record — the visit-note satellites M8
 // creates around the M5 patient spine: encounter signatures, addenda, care-plan links, cosignature
-// requests, vitals, mileage, and the HearthNote selection / assembled-output / llm-modification rows.
+// requests, vitals, mileage, the HearthNote selection / assembled-output / llm-modification rows, and (ADR-0114) the visit-note
+// draft's per-section confirmations, the sealed per-section signed rows (amendment rows included), the sections an addendum
+// amends and the cosignature requests an amending addendum opens.
 // Under an M4 destruction certificate it (1) shreds the HearthNote cipher columns (§3.6 —
-// `hearthnote_selection.free_text_cipher`, `hearthnote_assembled_output.*_cipher`), then (2) tombstones the `encounter`
-// root (status `voided`, every reason text replaced with one placeholder; the PK survives for FK referential integrity),
-// then (3) deletes the satellite subtree for the subject patient, children before parents — the same D8 resolver pattern
+// `hearthnote_selection.free_text_cipher`, `hearthnote_assembled_output.*_cipher`, `hearthnote_signed_section.text_cipher`),
+// then (2) tombstones the `encounter` root (status `voided`, every reason text replaced with one placeholder; the PK
+// survives for FK referential integrity), then (3) deletes the satellite subtree for the subject patient, children before
+// parents — the same D8 resolver pattern
 // M5's `clinical_record`, M6's `admission_record`, and M7's `care_plan_record` erasers use. The four
 // erasers are disjoint by table ownership: M5 destroys the patient demographics subtree, M6 the
 // admission subtree, M7 the care-plan subtree, M8 the encounter subtree it owns.
@@ -59,6 +62,14 @@ export interface EncounterEraseCounts {
   readonly hearthnoteSelections: number;
   readonly hearthnoteAssembledOutputs: number;
   readonly hearthnoteLlmModifications: number;
+  /** ADR-0114: the visit-note draft's per-section confirmations. */
+  readonly draftConfirmations: number;
+  /** ADR-0114: the sealed per-section rows written at sign (an amendment's rows, VN-D30, are among them: they carry the encounter id). */
+  readonly signedSections: number;
+  /** ADR-0114 VN-D30: the sections an addendum named and the author's resolution of each. */
+  readonly amendments: number;
+  /** ADR-0114 VN-D30: the cosignature requests amending addenda opened. */
+  readonly addendumCosignatureRequests: number;
 }
 
 /** What the satellite delete reports; `eraseEncounterRecord` adds the tombstoned roots from {@link EncounterEraseStore.tombstoneEncounters}. */
@@ -140,6 +151,10 @@ export function createInMemoryEncounterEraseStore(
     hearthnoteSelections: 0,
     hearthnoteAssembledOutputs: 0,
     hearthnoteLlmModifications: 0,
+    draftConfirmations: 0,
+    signedSections: 0,
+    amendments: 0,
+    addendumCosignatureRequests: 0,
   };
   const { tombstonedRoots = 0, ...subtreeSeed } = seed;
   const counts: EncounterSubtreeCounts = { ...zero, ...subtreeSeed };
@@ -184,7 +199,9 @@ export function createInMemoryEncounterEraseStore(
  * 0031 grants `chartwarden_app` no DELETE on any encounter table, so under an app-role connection Postgres
  * REFUSES the delete pass and this store THROWS — the destruction path must be handed the
  * `chartwarden_destruction` `DbClient` (DATABASE_DESTRUCTION_URL at the composition root): migration 0157
- * grants that role SELECT/UPDATE/DELETE on the M8 tables behind an org-scoped FOR ALL policy on each.
+ * grants that role SELECT/UPDATE/DELETE on the M8 tables behind an org-scoped FOR ALL policy on each; the four ADR-0114 tables
+ * carry the same grant and policy from their own migrations (1517 draft confirmations, 1518 sealed sections — DELETE plus a
+ * `text_cipher`-only UPDATE column grant, 1523 amendments and addendum cosignature requests). `m8-encounter-eraser.live` proves it.
  */
 export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseStore {
   const ENC = schema.encounters;
@@ -197,6 +214,10 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
   const SEL = schema.hearthnoteSelections;
   const AO = schema.hearthnoteAssembledOutputs;
   const LLM = schema.hearthnoteLlmModifications;
+  const CONFIRM = schema.encounterDraftConfirmations;
+  const SIGNED = schema.hearthnoteSignedSections;
+  const AMEND = schema.encounterAmendments;
+  const ADD_COSIGN = schema.addendumCosignatureRequests;
 
   /** The patient's encounter-root ids — every satellite is keyed on `encounter_id`, not the patient. */
   const encounterIdsFor = async (tx: Tx, patientId: string): Promise<string[]> =>
@@ -242,6 +263,8 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
         // Shred FIRST (§3.6): free_text_cipher is nullable → NULL; layer1/final are NOT NULL → "". layer2_cipher is nullable, but
         // `hearthnote_output_layer2_consistency` keeps it non-null on an output with layer2_involved_at_finalize, so a null stays
         // null (Layer 2 was off) and a value becomes "" — never a blanket NULL, which that CHECK refuses and rolls the shred back.
+        // On a signed note migrations 1521/1525 freeze the three ciphers and let only this sentinel (""; NULL for layer2) through
+        // for a non-superuser member of chartwarden_destruction, which is what this store runs as.
         await tx
           .update(SEL)
           .set({ freeTextCipher: null })
@@ -254,6 +277,12 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
             finalCipher: "",
           })
           .where(assembledScope(encounterIds, addendumIds));
+        // ADR-0114: the sealed per-section text (originals and amendment rows) is a NOT NULL cipher too, so it shreds to "" like
+        // final_cipher; `text_cipher` is the one column the destruction role may UPDATE on that table (migration 1518).
+        await tx
+          .update(SIGNED)
+          .set({ textCipher: "" })
+          .where(inArray(SIGNED.encounterId, encounterIds));
       });
     },
 
@@ -270,15 +299,22 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
           hearthnoteSelections: 0,
           hearthnoteAssembledOutputs: 0,
           hearthnoteLlmModifications: 0,
+          draftConfirmations: 0,
+          signedSections: 0,
+          amendments: 0,
+          addendumCosignatureRequests: 0,
         };
         if (encounterIds.length === 0) return zero; // idempotent: a second erase finds nothing.
         const addendumIds = await addendumIdsFor(tx, encounterIds);
         const del = async <T extends { id: string }>(run: () => Promise<T[]>): Promise<number> =>
           (await run()).length;
 
-        // FK order: llm_modification → assembled_output; the two hearthnote tables and the signatures
-        // reference addenda, so all of them go before `encounter_addendum`; the remaining satellites
-        // (care-plan links / cosignature requests / vitals / mileage) are independent encounter leaves.
+        // FK order, children before parents: llm_modification → assembled_output; sealed sections reference the assembled output and,
+        // for an amendment row, the addendum and the original row they amend (all ON DELETE CASCADE, so deleting them first, in one
+        // statement, keeps the count their own); draft confirmations and amendments hang off the encounter / addendum (CASCADE); the
+        // addendum cosignature request references the addendum and encounter with RESTRICT, so it MUST go before `encounter_addendum`;
+        // the two hearthnote tables and the signatures reference addenda too, so all of them go before `encounter_addendum`; the
+        // remaining satellites (care-plan links / cosignature requests / vitals / mileage) are independent encounter leaves.
         const hearthnoteLlmModifications = await del(() =>
           tx
             .delete(LLM)
@@ -289,6 +325,32 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
               ),
             )
             .returning({ id: LLM.id }),
+        );
+        // The sealed sections reference the assembled output (cascade), so they go first and are counted by their own delete.
+        const signedSections = await del(() =>
+          tx
+            .delete(SIGNED)
+            .where(inArray(SIGNED.encounterId, encounterIds))
+            .returning({ id: SIGNED.id }),
+        );
+        const draftConfirmations = await del(() =>
+          tx
+            .delete(CONFIRM)
+            .where(inArray(CONFIRM.encounterId, encounterIds))
+            .returning({ id: CONFIRM.id }),
+        );
+        // ADR-0114 VN-D30: both reference the addendum (amendment CASCADE, cosignature request RESTRICT), so they go before `encounter_addendum`.
+        const amendments = await del(() =>
+          tx
+            .delete(AMEND)
+            .where(inArray(AMEND.encounterId, encounterIds))
+            .returning({ id: AMEND.id }),
+        );
+        const addendumCosignatureRequests = await del(() =>
+          tx
+            .delete(ADD_COSIGN)
+            .where(inArray(ADD_COSIGN.encounterId, encounterIds))
+            .returning({ id: ADD_COSIGN.id }),
         );
         const hearthnoteAssembledOutputs = await del(() =>
           tx.delete(AO).where(assembledScope(encounterIds, addendumIds)).returning({ id: AO.id }),
@@ -334,6 +396,10 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
           hearthnoteSelections,
           hearthnoteAssembledOutputs,
           hearthnoteLlmModifications,
+          draftConfirmations,
+          signedSections,
+          amendments,
+          addendumCosignatureRequests,
         };
       });
     },

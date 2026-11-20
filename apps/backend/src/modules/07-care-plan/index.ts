@@ -81,14 +81,17 @@ export function mountCarePlanRoutes(
 
 export * from "./lifecycle/index";
 export {
+  type CarePlanAsOfSeed,
   type CarePlanClockRecord,
   type CarePlanElementsRecord,
   type CarePlanReaderSeed,
   type CarePlanReaderStore,
   type CarePlanSeamDeps,
+  type CarePlanVersionAtRecord,
   type ClaimDiagnosisRecord,
   type ClaimDiagnosisResult,
   type NowClock,
+  type SeededCarePlanVersion,
   type StoredRelevantProblem,
   claimDiagnosesForOrg,
   createAddendumDiagnosesReader,
@@ -136,11 +139,16 @@ export {
 export * from "./authoring/index";
 export {
   type CarePlanAbacDeps,
+  type InternalSudAccessChecker,
+  type InternalSudCheckerOptions,
+  type InternalSudVerdict,
   M7_ABAC_PREDICATES,
   buildCarePlanAbacPredicates,
   defaultConsentActiveChecker,
+  defaultInternalSudAccessChecker,
   disciplineScopeOf,
   registerCarePlanAbacPredicates,
+  sudDisclosureAllowedForActor,
   sudDisclosureAllowedForPatient,
 } from "./abac-predicates";
 

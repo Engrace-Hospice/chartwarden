@@ -15,6 +15,7 @@ import type {
   CarePlanCodeUsageRecord,
   CarePlanElementsAudience,
   CarePlanId,
+  CarePlanVersionStatus,
   ClinicalLinkSummary,
   IsoInstant,
   PatientId,
@@ -49,6 +50,20 @@ export interface CarePlanElementsRecord {
   readonly sudReadAllowed: boolean;
 }
 
+/**
+ * The care-plan version in effect at an instant (VN-D11), handed to the reader RAW: `stateSnapshot` is the jsonb
+ * the plan was frozen into at finalize (never trusted to have the expected shape), and `sudReadAllowed` is the
+ * store's per-viewer Part 2 decision, resolved exactly as for {@link CarePlanElementsRecord}. The reader owns
+ * redaction and projection, so no store can hand back an unredacted result for a viewer without disclosure.
+ */
+export interface CarePlanVersionAtRecord {
+  readonly versionId: string;
+  readonly planId: CarePlanId;
+  readonly patientId: PatientId;
+  readonly stateSnapshot: unknown;
+  readonly sudReadAllowed: boolean;
+}
+
 /** The version-clock facts driving the overdue gate — the columns M7's cron maintains (§2.6). */
 export interface CarePlanClockRecord {
   readonly planId: CarePlanId;
@@ -78,6 +93,18 @@ export interface CarePlanReaderStore {
      * choice of the patient-level check, for a caller with no human actor. */
     viewer: CarePlanElementsAudience,
   ): Promise<CarePlanElementsRecord | null>;
+  /**
+   * VN-D11: the care-plan version of the patient's plan (of `admissionId` when given) in effect at `asOf`: status
+   * `signed` or `superseded`, `signed_at <= asOf`, and not superseded at or before `asOf`. A `superseded` version
+   * with no `superseded_at` is in effect at no instant (fail closed). Null when none is. The patient's plan may
+   * since have been discharged: a late entry for a visit before discharge still reads the plan that was in effect.
+   */
+  carePlanVersionAsOf(
+    patientId: PatientId,
+    admissionId: string | undefined,
+    asOf: IsoInstant,
+    viewer: CarePlanElementsAudience,
+  ): Promise<CarePlanVersionAtRecord | null>;
   /** The active care plan's overdue-gate clock facts for a patient (initial/review due columns). */
   activeCarePlanClock(patientId: PatientId): Promise<CarePlanClockRecord | null>;
   /**
@@ -106,8 +133,21 @@ export interface CarePlanReaderStore {
 
 // ── in-memory slice store ─────────────────────────────────────────────────────────────────────────
 
+/** One care-plan version row the in-memory slice serves the as-of read from. */
+export interface SeededCarePlanVersion extends CarePlanVersionAtRecord {
+  readonly admissionId: string;
+  readonly status: CarePlanVersionStatus;
+  readonly signedAt: IsoInstant | null;
+  readonly supersededAt: IsoInstant | null;
+}
+
+/** The as-of slice of the seed (VN-D11). */
+export interface CarePlanAsOfSeed {
+  readonly versions?: readonly SeededCarePlanVersion[];
+}
+
 /** Deterministic, I/O-free seed for the in-memory {@link CarePlanReaderStore} (slice + seam tests). */
-export interface CarePlanReaderSeed {
+export interface CarePlanReaderSeed extends CarePlanAsOfSeed {
   readonly elements?: readonly CarePlanElementsRecord[];
   readonly clocks?: readonly CarePlanClockRecord[];
   /** Problem-list code usage the slice serves M38's remediation rollup (filtered by the caller's set). */
@@ -116,11 +156,24 @@ export interface CarePlanReaderSeed {
   readonly links?: readonly (ClinicalLinkSummary & { readonly organizationId: string })[];
 }
 
+/**
+ * Whether a version is in effect at `asOfMs`: signed at or before it and not superseded until after it. A
+ * `superseded` row with no `superseded_at` is an anomaly that cannot be placed in time, so it is in effect at no
+ * instant (fail closed). The Drizzle store applies the same predicate in SQL.
+ */
+function isInEffectAt(v: SeededCarePlanVersion, asOfMs: number): boolean {
+  if (v.status !== "signed" && v.status !== "superseded") return false;
+  if (v.signedAt === null || Date.parse(v.signedAt) > asOfMs) return false;
+  if (v.supersededAt === null) return v.status === "signed";
+  return Date.parse(v.supersededAt) > asOfMs;
+}
+
 /** An in-memory {@link CarePlanReaderStore} for the slice/tests — no DB, deterministic, RLS-free. */
 export function createInMemoryCarePlanReaderStore(seed: CarePlanReaderSeed = {}): {
   store: CarePlanReaderStore;
 } {
   const elements = seed.elements ?? [];
+  const versions = seed.versions ?? [];
   const clocks = seed.clocks ?? [];
   const codeUsage = seed.codeUsage ?? [];
   const links = seed.links ?? [];
@@ -132,6 +185,26 @@ export function createInMemoryCarePlanReaderStore(seed: CarePlanReaderSeed = {})
         // "use the seeded `sudReadAllowed`" (this slice has no consent round-trip to run, so it cannot resolve a
         // per-actor verdict — the Drizzle store does, through M39).
         return record && viewer !== "patient_level" && !("actor" in viewer)
+          ? { ...record, sudReadAllowed: viewer.sudDisclosureAllowed }
+          : record;
+      },
+      async carePlanVersionAsOf(patientId, admissionId, asOf, viewer) {
+        const asOfMs = Date.parse(asOf);
+        const inEffect = versions
+          .filter(
+            (v) =>
+              v.patientId === patientId &&
+              (admissionId === undefined || v.admissionId === admissionId) &&
+              isInEffectAt(v, asOfMs),
+          )
+          // Exactly one is in effect by construction; if data ever overlaps, the newest signing wins.
+          .sort((a, b) => Date.parse(b.signedAt as string) - Date.parse(a.signedAt as string));
+        const found = inEffect[0];
+        if (found === undefined) return null;
+        // Same stance as `activeCarePlanElements`: a route-resolved viewer decides; `"patient_level"` and an
+        // `{ actor }` audience use the seeded verdict (this slice has no consent round-trip to run).
+        const { admissionId: _a, status: _s, signedAt: _g, supersededAt: _u, ...record } = found;
+        return viewer !== "patient_level" && !("actor" in viewer)
           ? { ...record, sudReadAllowed: viewer.sudDisclosureAllowed }
           : record;
       },

@@ -1,0 +1,213 @@
+// S1 rollout scope (ADR-0114, design §3.2 "Scope"): a template the corpus does not draft reads no source, drafts nothing and asks the
+// clinician nothing, so finalize, sign, the gate and the draft routes behave as they do with the tenant's switch off - however the seams
+// behave. Every legal pair except the RN routine visit (the one template S1 drafts) is exercised with EVERY source made to throw.
+// Fake seams, in-memory store, a transaction that fails on any use; no database (the live suite proves the Drizzle path).
+import type { DbClient } from "@chartwarden/db";
+import {
+  ENCOUNTER_DISCIPLINE_RULES,
+  type EncounterDiscipline,
+  type EncounterType,
+} from "@chartwarden/types";
+import { describe, expect, it, vi } from "vitest";
+import { computeDraftOverview } from "../src/modules/08-encounters/drafting/compute";
+import { createDraftService } from "../src/modules/08-encounters/drafting/draft-service";
+import { assertResolved, readNoteDraft } from "../src/modules/08-encounters/drafting/note-draft";
+import { createNoteDraftFlow } from "../src/modules/08-encounters/drafting/note-draft-flow";
+import { NOW, fakePorts, viewer } from "./_encounter-draft-fixtures";
+import { draftEncounterRow, memoryRunInOrg } from "./_encounter-draft-memory-store";
+
+type Pair = readonly [EncounterType, EncounterDiscipline];
+
+/** S1 drafts the RN routine visit and nothing else; stated here, not derived, so widening the corpus is a deliberate edit of this test. */
+const UNDRAFTED_PAIRS: readonly Pair[] = (
+  Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]
+).flatMap((type) =>
+  ENCOUNTER_DISCIPLINE_RULES[type]
+    .filter((discipline) => !(type === "routine_visit" && discipline === "rn"))
+    .map((discipline): Pair => [type, discipline]),
+);
+
+const outage = async (): Promise<never> => {
+  throw new Error("synthetic upstream outage");
+};
+const SEAM_NAMES = [
+  "carePlanAsOf",
+  "scaleSeries",
+  "medicationChangesBetween",
+  "part2DisclosureAllowed",
+] as const;
+const SOURCE_STORE_NAMES = [
+  "organizationTimeZone",
+  "previousSignedVisitAt",
+  "latestVitals",
+  "removedCarePlanElementIds",
+  "loadSelection",
+] as const;
+
+/** Every source seam throws. */
+const brokenSeams = () =>
+  fakePorts({
+    carePlanAsOf: outage,
+    scaleSeries: outage,
+    medicationChangesBetween: outage,
+    part2DisclosureAllowed: outage,
+  });
+
+/** An in-memory unit whose source reads throw, and whose switch is on. */
+function brokenUnit() {
+  const mem = memoryRunInOrg({ previous: new Date("2026-11-10T15:00:00.000Z") });
+  for (const name of SOURCE_STORE_NAMES) mem.store[name].mockImplementation(outage);
+  const enabled = vi.fn(async () => true);
+  return { ...mem, enabled, unit: { ...mem.unit, enabled } };
+}
+
+const expectNoSourceRead = (
+  seams: ReturnType<typeof brokenSeams>,
+  store: ReturnType<typeof brokenUnit>["store"],
+) => {
+  for (const name of SEAM_NAMES) expect(seams[name], name).not.toHaveBeenCalled();
+  for (const name of SOURCE_STORE_NAMES) expect(store[name], name).not.toHaveBeenCalled();
+};
+
+const keyOf = ([type, discipline]: Pair) => `${type}:${discipline}`;
+
+describe("the gate and sign read nothing for a template the corpus does not draft", () => {
+  for (const pair of UNDRAFTED_PAIRS) {
+    it(`${keyOf(pair)}: no draft, no source read, not even the switch`, async () => {
+      const { unit, store, enabled } = brokenUnit();
+      const seams = brokenSeams();
+      const encounter = draftEncounterRow({ encounterType: pair[0], discipline: pair[1] });
+      const read = await readNoteDraft(unit, seams, encounter, viewer(), NOW);
+      expect(read).toBeNull();
+      expect(() => assertResolved(read)).not.toThrow();
+      expectNoSourceRead(seams, store);
+      expect(enabled).not.toHaveBeenCalled();
+    });
+  }
+
+  it("the flow finalize and sign call returns null and touches no transaction, so Layer 1 text and no sealed rows", async () => {
+    const touched: string[] = [];
+    const tx = new Proxy({} as DbClient, {
+      get: (_target, property) => {
+        touched.push(String(property));
+        throw new Error("the transaction must not be used");
+      },
+    });
+    const seams = brokenSeams();
+    const flow = createNoteDraftFlow({
+      clock: () => NOW,
+      seams: () => seams,
+      seal: async () => {
+        throw new Error("nothing is sealed");
+      },
+    });
+    const encounter = {
+      ...draftEncounterRow({ encounterType: "chha_visit", discipline: "chha" }),
+      providerEntityId: null,
+      locationId: null,
+    };
+    const draft = await flow.read(tx, encounter, viewer());
+    expect(draft).toBeNull();
+    expect(flow.narrativeOf(draft)).toBeUndefined();
+    await expect(flow.sealSigned(tx, encounter, draft)).resolves.toBeUndefined();
+    expect(touched).toEqual([]);
+    for (const name of SEAM_NAMES) expect(seams[name], name).not.toHaveBeenCalled();
+  });
+
+  it("a pair with no template is not drafted either (its own assembly refusal answers, as with the switch off)", async () => {
+    const { unit } = brokenUnit();
+    const encounter = draftEncounterRow({
+      encounterType: "routine_visit",
+      discipline: "volunteer",
+    });
+    await expect(readNoteDraft(unit, brokenSeams(), encounter, viewer(), NOW)).resolves.toBeNull();
+  });
+});
+
+describe("the draft routes for a template the corpus does not draft", () => {
+  const caller = {
+    organizationId: "00000000-0000-4000-8000-000000000001",
+    userId: "00000000-0000-4000-8000-0000000000bb",
+    roles: ["rn"],
+    membershipId: "00000000-0000-4000-8000-0000000000aa",
+  };
+  const AUDIT = { organizationId: "o", userId: "u", correlationId: "c" } as const;
+  const ENCOUNTER_ID = "00000000-0000-4000-8000-000000000004";
+
+  function service(pair: Pair) {
+    const mem = memoryRunInOrg({
+      previous: new Date("2026-11-10T15:00:00.000Z"),
+      encounter: draftEncounterRow({ encounterType: pair[0], discipline: pair[1] }),
+    });
+    for (const name of SOURCE_STORE_NAMES) mem.store[name].mockImplementation(outage);
+    const seams = brokenSeams();
+    const svc = createDraftService({ runInOrg: mem.runInOrg, seams: () => seams, now: () => NOW });
+    return { ...mem, seams, svc };
+  }
+
+  for (const pair of UNDRAFTED_PAIRS) {
+    it(`${keyOf(pair)}: GET answers every template section as not_drafted, read-time asOf, and reads no source`, async () => {
+      const { svc, seams, store } = service(pair);
+      const view = await svc.getDraft(caller, ENCOUNTER_ID);
+      expect(view).toMatchObject({
+        encounterId: ENCOUNTER_ID,
+        templateKey: keyOf(pair),
+        asOf: NOW.toISOString(),
+      });
+      expect(view.sections.length).toBeGreaterThan(0);
+      for (const section of view.sections) {
+        expect(section, section.sectionId).toEqual({
+          sectionId: section.sectionId,
+          state: "not_drafted",
+          text: null,
+          contentHash: null,
+          corpusVersion: null,
+          part2Derived: null,
+          origins: [],
+        });
+      }
+      expectNoSourceRead(seams, store);
+    });
+  }
+
+  it("PUT a section is stale (nothing is drafted to confirm), writes nothing and reads no source", async () => {
+    const { svc, seams, store, events } = service(["chha_visit", "chha"]);
+    const error = await svc
+      .resolveSection(
+        caller,
+        ENCOUNTER_ID,
+        "plan",
+        { resolution: "confirmed", contentHash: "a".repeat(64), corpusVersion: "x" },
+        AUDIT,
+      )
+      .catch((e: unknown) => e);
+    expect(error).toMatchObject({ code: "DRAFT_SECTION_STALE", statusCode: 409 });
+    expect(store.saveConfirmation).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
+    expectNoSourceRead(seams, store);
+  });
+
+  it("PUT a section the template lacks is still a 422", async () => {
+    const { svc } = service(["chha_visit", "chha"]);
+    const error = await svc
+      .resolveSection(
+        caller,
+        ENCOUNTER_ID,
+        "vitals_review",
+        { resolution: "confirmed", contentHash: "a".repeat(64), corpusVersion: "x" },
+        AUDIT,
+      )
+      .catch((e: unknown) => e);
+    expect(error).toMatchObject({ code: "UNKNOWN_TEMPLATE_SECTION", statusCode: 422 });
+  });
+
+  it("computeDraftOverview refuses a pair with no template like the compiler does", async () => {
+    const error = await computeDraftOverview(
+      brokenSeams(),
+      draftEncounterRow({ encounterType: "routine_visit", discipline: "volunteer" }),
+      viewer(),
+      NOW,
+    ).catch((e: unknown) => e);
+    expect(error).toMatchObject({ code: "INVALID_ENCOUNTER_DISCIPLINE_PAIR" });
+  });
+});

@@ -444,6 +444,49 @@ describe("M8-T09 — finalize → sign happy path (§2.3)", () => {
     expect(sign.json().status).toBe("signed");
   });
 
+  it("the finalize and the sign are handed the SESSION's roles and membership for the visit-note draft, never anything from the body (ADR-0114)", async () => {
+    const { app, backend } = makeServer();
+    const finalizeSpy = vi.spyOn(backend.service, "finalize");
+    const signSpy = vi.spyOn(backend.service, "sign");
+    const draft = await app.inject({
+      method: "POST",
+      url: "/api/v1/encounters",
+      headers: RN,
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20",
+      },
+    });
+    const id = draft.json().id as string;
+    await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: requiredSectionSelections("routine_visit", "rn"),
+    });
+    const finalize = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/finalize`,
+      headers: RN,
+      payload: {},
+    });
+    expect(finalize.statusCode).toBe(200);
+    expect(finalizeSpy.mock.calls[0]?.[3]).toMatchObject({
+      viewer: { roles: ["rn"], membershipId: "rn_1" },
+    });
+    const sign = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/sign`,
+      headers: RN,
+      payload: { attestationConfirmed: true },
+    });
+    expect(sign.statusCode).toBe(200);
+    expect(signSpy.mock.calls[0]?.[2]).toMatchObject({ membershipId: "rn_1", roles: ["rn"] });
+  });
+
   it("403 (requireStepUp) when the caller's session step-up is stale", async () => {
     const { app, sessions } = makeServer();
     const draft = await app.inject({

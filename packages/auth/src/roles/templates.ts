@@ -19,6 +19,7 @@
 import { CARE_PLAN_DEFAULT_GRANTS } from "./care-plan-grants";
 import { SYSTEM_ROLE_DISPLAY_NAMES } from "./display-names";
 import { NOTE_CLOSURE_DEFAULT_GRANTS } from "./note-closure-grants";
+import { VISIT_NOTE_DRAFT_DEFAULT_GRANTS } from "./visit-note-draft-grants";
 
 /** The twelve role categories A–L (mirrors the `role_category` DB enum, spec §3.2). */
 export type RoleCategory =
@@ -390,6 +391,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       "messaging.break_glass.invoke",
       ...(CARE_PLAN_DEFAULT_GRANTS.director_of_nursing ?? []),
       ...(NOTE_CLOSURE_DEFAULT_GRANTS.director_of_nursing ?? []),
+      // ADR-0114 VN-D17: the DON can switch the tenant's visit-note draft on or off, as migration 1520 grants.
+      ...(VISIT_NOTE_DRAFT_DEFAULT_GRANTS.director_of_nursing ?? []),
     ],
   },
   {

@@ -14,6 +14,7 @@ import { buildServer } from "../src/bootstrap/index";
 import { wireModuleErasers, wireModuleSeams } from "../src/index";
 import { ENCOUNTER_ERASED_REASON } from "../src/modules/08-encounters/erasers/encounter-eraser";
 import {
+  type EncounterEraseCounts,
   eraseEncounterRecord,
   createInMemoryEncounterEraseStore as makeEraseStore,
   registerEncounterErasers,
@@ -34,11 +35,21 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
       hearthnoteSelections: 5,
       hearthnoteAssembledOutputs: 2,
       hearthnoteLlmModifications: 1,
+      draftConfirmations: 3,
+      signedSections: 6,
+      amendments: 2,
+      addendumCosignatureRequests: 1,
     });
     const { erased, counts } = await eraseEncounterRecord("org_a", "pat_1", store);
-    expect(erased).toBe(22); // 20 satellites + 2 tombstoned roots
+    expect(erased).toBe(34); // 32 satellites + 2 tombstoned roots
     expect(counts.vitals).toBe(4);
     expect(counts.tombstonedRoots).toBe(2);
+    // ADR-0114: the draft's confirmations and the sealed per-section rows go with the rest of the encounter subtree.
+    expect(counts.draftConfirmations).toBe(3);
+    expect(counts.signedSections).toBe(6);
+    // ADR-0114 VN-D30: an amendment's naming and resolution rows and the cosignature request an amending addendum opened go with the subtree too.
+    expect(counts.amendments).toBe(2);
+    expect(counts.addendumCosignatureRequests).toBe(1);
     expect(cryptoErased).toEqual(["pat_1"]); // cipher columns shredded before the tombstone and the deletes
     expect(tombstoned).toEqual(["pat_1"]);
   });
@@ -71,7 +82,7 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
 
   it("checks the role, then shreds, then scrubs the root's text, then deletes the satellites — a failed tombstone leaves the satellites for a retry", async () => {
     const calls: string[] = [];
-    const none = {
+    const none: Omit<EncounterEraseCounts, "tombstonedRoots"> = {
       signatures: 0,
       addenda: 0,
       carePlanLinks: 0,
@@ -81,6 +92,10 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
       hearthnoteSelections: 0,
       hearthnoteAssembledOutputs: 0,
       hearthnoteLlmModifications: 0,
+      draftConfirmations: 0,
+      signedSections: 0,
+      amendments: 0,
+      addendumCosignatureRequests: 0,
     };
     const store = {
       assertDestructionRole: async () => void calls.push("role"),
@@ -133,8 +148,12 @@ describe("M8-T12 — m8 audit action catalog (§8.1)", () => {
     }
   });
 
-  it("covers all 22 §8.1 events plus the four ADR-0113 closure events (override granted, revoked and denied, policy changed)", () => {
-    expect(M8_ACTION_CATALOG.length).toBe(26);
+  it("covers all 22 §8.1 events, the four ADR-0113 closure events (override granted, revoked and denied, policy changed) and the three ADR-0114 draft events (policy changed, section resolved, section amended)", () => {
+    expect(M8_ACTION_CATALOG.length).toBe(29);
+    const actions = M8_ACTION_CATALOG.map((e) => e.action);
+    expect(actions).toContain("m8.encounter.draft_policy_changed");
+    expect(actions).toContain("m8.encounter.draft_section_resolved");
+    expect(actions).toContain("m8.encounter.section_amended");
   });
 
   it("the reason carriers scrub narrative free text", () => {

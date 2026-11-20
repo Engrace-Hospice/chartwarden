@@ -23,3 +23,11 @@ export {
   type CosignatureSlaDeadlines,
   type CosignatureSlaStage,
 } from "./sla-clock";
+export {
+  COSIGN_OPEN_STATUSES,
+  cosignDisplayStatus,
+  cosignSubjectOf,
+  eligibleCosigner,
+  type CosignDisplayStatus,
+  type CosignSubject,
+} from "./subject";

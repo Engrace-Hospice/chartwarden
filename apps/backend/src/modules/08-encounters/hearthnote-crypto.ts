@@ -51,14 +51,34 @@ export interface HearthnoteCiphers {
   readonly narrative: HearthnoteEnvelopeCipher;
 }
 
+/**
+ * `dekForOrg`, with the reads that overlap in time sharing one. The provider answers each call with a pooled transaction on the tenant
+ * key ring, and a signed note seals its narrative twice and every one of its sections at once: unshared, that is N + 2 connections taken
+ * beside the one the sign already holds (and the encounter row lock it holds with it). Nothing is kept once the read settles, so a key
+ * rotation or a destroyed key is seen by the very next seal, and a failed read is shared only by the seals that were waiting on it.
+ */
+function shareOverlappingDekReads(
+  keys: EncounterTenantKeyProvider,
+): EncounterTenantKeyProvider["dekForOrg"] {
+  const inFlight = new Map<string, Promise<{ version: string; key: Buffer }>>();
+  return (organizationId) => {
+    const shared = inFlight.get(organizationId);
+    if (shared !== undefined) return shared;
+    const read = keys.dekForOrg(organizationId).finally(() => inFlight.delete(organizationId));
+    inFlight.set(organizationId, read);
+    return read;
+  };
+}
+
 /** AES-256-GCM envelope: `v1.<dekVersion>.<nonce>.<tag>.<ciphertext>`, all base64url after the version. */
 function createEnvelopeCipher(
   keys: EncounterTenantKeyProvider,
   aad: (organizationId: string) => Buffer,
 ): HearthnoteEnvelopeCipher {
+  const currentDek = shareOverlappingDekReads(keys);
   return {
     async seal(organizationId, plaintext) {
-      const { version, key } = await keys.dekForOrg(organizationId);
+      const { version, key } = await currentDek(organizationId);
       if (key.byteLength !== 32) throw new Error("tenant DEK must be 32 bytes");
       const nonce = randomBytes(12);
       const cipher = createCipheriv("aes-256-gcm", key, nonce);
