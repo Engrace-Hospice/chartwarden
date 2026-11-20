@@ -151,11 +151,19 @@ function makeClient(scenario: Scenario) {
       });
     return ok({});
   });
-  return { get, post, client: { GET: get, POST: post } as unknown as ApiClient };
+  const put = vi.fn(async (_path: string, init: unknown) => {
+    const body = (init as { body: { aideMembershipId: string; supervisingRnMembershipId: string } })
+      .body;
+    detail.aideMembershipId = body.aideMembershipId;
+    detail.supervisingRnMembershipId = body.supervisingRnMembershipId;
+    detail.version += 1;
+    return ok({});
+  });
+  return { get, post, put, client: { GET: get, POST: post, PUT: put } as unknown as ApiClient };
 }
 
 function renderAt(scenario: Scenario, route: "editor" | "view") {
-  const { client, get, post } = makeClient(scenario);
+  const { client, get, post, put } = makeClient(scenario);
   const editorPath = "/patients/:patientId/discipline-plans/aide-poc/:versionId/edit";
   const viewPath = "/patients/:patientId/discipline-plans/aide-poc";
   render(
@@ -180,7 +188,7 @@ function renderAt(scenario: Scenario, route: "editor" | "view") {
       </ApiClientProvider>
     </MemoryRouter>,
   );
-  return { get, post };
+  return { get, post, put };
 }
 
 afterEach(cleanup);
@@ -240,8 +248,8 @@ describe("Aide POC — names instead of ids", () => {
 
   it("falls back to the short id when the roster cannot be loaded", async () => {
     renderAt({ binding: { aide: AIDE, rn: RN }, roster: fail(500, "roster down") }, "editor");
-    expect(await screen.findByText("aaaaaaaa")).toBeTruthy();
-    expect(screen.getByText("bbbbbbbb")).toBeTruthy();
+    expect(await shownName("aaaaaaaa")).toBeTruthy();
+    expect(await shownName("bbbbbbbb")).toBeTruthy();
   });
 
   it("names them in the supervisory ledger too, from one roster read", async () => {
@@ -418,5 +426,31 @@ describe("Supervisory-visit modal — staff pickers", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Record attestation" }));
     expect((await within(dialog).findByRole("alert")).textContent).toMatch(/supervising RN/i);
     expect(post).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Aide POC editor — assigning the care team", () => {
+  it("saves the picked aide and RN with the plan version, reloads the plan behind the screen and shows their names", async () => {
+    const { get, put } = renderAt({ binding: { aide: null, rn: null } }, "editor");
+    const aide = (await screen.findByLabelText("Aide")) as HTMLSelectElement;
+    await waitFor(() => expect(aide.disabled).toBe(false));
+    fireEvent.change(aide, { target: { value: AIDE } });
+    fireEvent.change(screen.getByLabelText("Supervising RN"), { target: { value: RN_2 } });
+    fireEvent.click(screen.getByRole("button", { name: /assign care team/i }));
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    expect(put).toHaveBeenCalledWith(
+      "/api/v1/discipline-plans/{planId}/aide-assignment",
+      expect.objectContaining({
+        params: { path: { planId: PLAN }, header: { "If-Match": "4" } },
+        body: { aideMembershipId: AIDE, supervisingRnMembershipId: RN_2 },
+      }),
+    );
+    // The plan was read again, and the summary now names the bound people (no spinner swap: the screen stayed mounted).
+    expect(await shownName("Avery Aide")).toBeTruthy();
+    expect(await shownName("Casey Manager")).toBeTruthy();
+    expect(
+      get.mock.calls.filter((c) => c[0] === "/api/v1/discipline-plans").length,
+    ).toBeGreaterThan(1);
+    expect(screen.getByRole("heading", { name: /Aide Plan of Care — editor/ })).toBeTruthy();
   });
 });

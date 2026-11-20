@@ -6,8 +6,9 @@
 import { ApiClientProvider, ToastProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AideAssignmentForm } from "../aide-assignment-panel";
+import { AideAssignmentForm, effectivePick } from "../aide-assignment-panel";
 import type { AideRoster } from "../aide-roster";
 import type { PlanDetail } from "../discipline-api";
 
@@ -58,6 +59,31 @@ const fail = (status: number, title: string) => ({
   response: new Response(null, { status }),
 });
 
+/** Owns the picks the way the editor screen does (the form itself is controlled). */
+function Harness({
+  plan,
+  roster,
+  onSaved,
+}: { plan: PlanDetail; roster: AideRoster; onSaved: () => Promise<void> }) {
+  const [aidePick, setAidePick] = useState<string | null>(null);
+  const [rnPick, setRnPick] = useState<string | null>(null);
+  return (
+    <AideAssignmentForm
+      plan={plan}
+      roster={roster}
+      aideId={effectivePick(aidePick, plan.aideMembershipId)}
+      rnId={effectivePick(rnPick, plan.supervisingRnMembershipId)}
+      onAideChange={setAidePick}
+      onRnChange={setRnPick}
+      onSaved={async () => {
+        await onSaved();
+        setAidePick(null);
+        setRnPick(null);
+      }}
+    />
+  );
+}
+
 function renderForm(
   plan: PlanDetail,
   options: {
@@ -72,7 +98,7 @@ function renderForm(
   render(
     <ApiClientProvider client={client}>
       <ToastProvider>
-        <AideAssignmentForm plan={plan} roster={options.roster ?? ROSTER} onSaved={onSaved} />
+        <Harness plan={plan} roster={options.roster ?? ROSTER} onSaved={onSaved} />
       </ToastProvider>
     </ApiClientProvider>,
   );
@@ -159,8 +185,8 @@ describe("AideAssignmentForm", () => {
     fireEvent.change(aideSelect(), { target: { value: AIDE } });
     fireEvent.change(rnSelect(), { target: { value: RN } });
     fireEvent.click(saveButton());
-    expect((await screen.findByRole("alert")).textContent).toMatch(/connection/i);
-    await waitFor(() => expect(saveButton().disabled).toBe(false));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/may not have been saved/i);
+    expect(screen.getByRole("button", { name: /reload plan/i })).toBeTruthy();
   });
 
   it("cannot be used while the staff list is unavailable, and offers a retry", () => {
@@ -186,5 +212,74 @@ describe("AideAssignmentForm", () => {
     expect(aideSelect().disabled).toBe(true);
     expect(saveButton().disabled).toBe(true);
     expect(screen.getByText(/discharged/i)).toBeTruthy();
+  });
+  it("treats a 409 as a stale plan: says so and offers a reload instead of resending the old version", async () => {
+    const put = vi.fn(async () => fail(409, "stale"));
+    const { onSaved } = renderForm(planWith(null, null), { put });
+    fireEvent.change(aideSelect(), { target: { value: AIDE } });
+    fireEvent.change(rnSelect(), { target: { value: RN } });
+    fireEvent.click(saveButton());
+    expect((await screen.findByRole("alert")).textContent).toMatch(
+      /changed while you were working/i,
+    );
+    expect(saveButton().disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /reload plan/i }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /reload plan/i })).toBeNull());
+  });
+
+  it("does not call a saved assignment 'not saved' when only the screen refresh failed", async () => {
+    const onSaved = vi.fn(async () => {
+      throw new TypeError("network down");
+    });
+    renderForm(planWith(null, null), { onSaved });
+    fireEvent.change(aideSelect(), { target: { value: AIDE } });
+    fireEvent.change(rnSelect(), { target: { value: RN } });
+    fireEvent.click(saveButton());
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/was saved, but the screen could not refresh/i);
+    expect(alert.textContent).not.toMatch(/may not have been saved/i);
+  });
+
+  it("an empty-bodied failure (a proxy 502) is a failure, not a success", async () => {
+    const put = vi.fn(async () => ({
+      data: undefined,
+      error: "",
+      response: new Response(null, { status: 502 }),
+    }));
+    const { onSaved } = renderForm(planWith(null, null), { put });
+    fireEvent.change(aideSelect(), { target: { value: AIDE } });
+    fireEvent.change(rnSelect(), { target: { value: RN } });
+    fireEvent.click(saveButton());
+    expect((await screen.findByRole("alert")).textContent).toMatch(/could not be saved/i);
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("reads the server's own message from the standard error envelope and clears it on the next pick", async () => {
+    const put = vi.fn(async () => ({
+      data: undefined,
+      error: {
+        error: {
+          code: "AIDE_NOT_ELIGIBLE",
+          message: "the chosen aide is not an active aide at this plan's location",
+        },
+      },
+      response: new Response(null, { status: 422 }),
+    }));
+    renderForm(planWith(null, null), { put });
+    fireEvent.change(aideSelect(), { target: { value: AIDE } });
+    fireEvent.change(rnSelect(), { target: { value: RN } });
+    fireEvent.click(saveButton());
+    expect((await screen.findByRole("alert")).textContent).toMatch(/not an active aide/i);
+    fireEvent.change(aideSelect(), { target: { value: AIDE_2 } });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("will not save while the plan's bound member is no longer on the roster (the server would refuse it)", () => {
+    renderForm(planWith(GONE, RN));
+    fireEvent.change(rnSelect(), { target: { value: RN_2 } });
+    expect(saveButton().disabled).toBe(true);
+    fireEvent.change(aideSelect(), { target: { value: AIDE } });
+    expect(saveButton().disabled).toBe(false);
   });
 });

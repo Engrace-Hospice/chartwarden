@@ -284,12 +284,15 @@ export async function assignAideTeam(
   planId: string,
   planVersion: number,
   body: { aideMembershipId: string; supervisingRnMembershipId: string },
-): Promise<{ error: unknown }> {
+): Promise<{ error: unknown; status: number | null }> {
   const res = await client.PUT("/api/v1/discipline-plans/{planId}/aide-assignment", {
     params: { path: { planId }, header: writeHeaders(planVersion) },
     body,
   } as never);
-  return { error: res.error ?? null };
+  const status = res.response?.status ?? null;
+  // A failure with an empty body (a proxy 502/504) leaves `error` empty: the status still says it failed.
+  const failed = Boolean(res.error) || (res.response !== undefined && res.response.ok === false);
+  return { error: failed ? res.error || { status } : null, status };
 }
 
 /** Route 2 — the full plan, already SQL-filtered by the §7.8/§7.9 gates. */

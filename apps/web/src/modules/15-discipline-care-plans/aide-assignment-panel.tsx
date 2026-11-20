@@ -6,6 +6,9 @@
 // carries the plan row version as `If-Match`. A member the plan already binds but the roster no longer lists stays visible
 // (so the screen never lies about who is assigned) and cannot be chosen again. Unavailable while the roster is, and on a
 // discharged plan (read-only).
+//
+// The picks live in the SCREEN (it owns the unsaved-changes guard and survives its own reloads), so this form is controlled:
+// `aideId` / `rnId` are the effective choices (the plan's binding until the RN picks someone else).
 import { Button, useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
@@ -15,7 +18,27 @@ import { shortId } from "./discipline-status";
 import { Notice, SelectField } from "./discipline-ui";
 
 const SAVE_FAILED = "The assignment could not be saved.";
-const CONNECTION_FAILED = "The assignment was not saved. Check the connection and try again.";
+const CONNECTION_FAILED =
+  "The assignment may not have been saved. Reload the plan to check before trying again.";
+const STALE = "This plan changed while you were working. Reload it, then choose again.";
+const REFRESH_FAILED =
+  "The assignment was saved, but the screen could not refresh. Reload the plan to see it.";
+
+/** The effective choice: what the RN picked, or the plan's own binding while nothing was picked. */
+export const effectivePick = (pick: string | null, bound: string | null): string =>
+  pick ?? bound ?? "";
+
+/** Whether the RN has chosen someone other than the plan's current binding (drives the unsaved-changes guard). */
+export function aideTeamChanged(
+  plan: Pick<PlanDetail, "aideMembershipId" | "supervisingRnMembershipId">,
+  aidePick: string | null,
+  rnPick: string | null,
+): boolean {
+  return (
+    effectivePick(aidePick, plan.aideMembershipId) !== (plan.aideMembershipId ?? "") ||
+    effectivePick(rnPick, plan.supervisingRnMembershipId) !== (plan.supervisingRnMembershipId ?? "")
+  );
+}
 
 /** The picker's choices: the roster by name, plus the plan's current member when the roster does not list them. */
 function memberOptions(
@@ -28,8 +51,14 @@ function memberOptions(
   return [
     { value: "", label: placeholder },
     ...members.map((m) => ({ value: m.membershipId, label: m.displayName })),
-    ...(rosterReady && boundId !== null && !listed
-      ? [{ value: boundId, label: `${shortId(boundId)} — not on the staff list`, disabled: true }]
+    ...(boundId !== null && !listed
+      ? [
+          {
+            value: boundId,
+            label: rosterReady ? `${shortId(boundId)} — not on the staff list` : shortId(boundId),
+            disabled: true,
+          },
+        ]
       : []),
   ];
 }
@@ -37,42 +66,89 @@ function memberOptions(
 export function AideAssignmentForm({
   plan,
   roster,
+  aideId,
+  rnId,
+  onAideChange,
+  onRnChange,
   onSaved,
 }: {
   plan: PlanDetail;
   roster: AideRoster;
-  /** Called after a successful save; the screen reloads the plan (its row version moved). */
+  aideId: string;
+  rnId: string;
+  onAideChange: (id: string) => void;
+  onRnChange: (id: string) => void;
+  /** Called after a successful save, and by "Reload plan"; the screen reloads the plan (its row version moved). */
   onSaved: () => Promise<void>;
 }): JSX.Element {
   const client = useApiClient();
-  const [aideId, setAideId] = useState(plan.aideMembershipId ?? "");
-  const [rnId, setRnId] = useState(plan.supervisingRnMembershipId ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The plan moved under us (409) or the PUT's outcome is unknown: the picks are against an old version until reloaded.
+  const [needsReload, setNeedsReload] = useState(false);
 
   const discharged = plan.status === "discharged";
   const rosterReady = !roster.loading && roster.error === null;
-  const unchanged =
-    aideId === (plan.aideMembershipId ?? "") && rnId === (plan.supervisingRnMembershipId ?? "");
-  const canSave = rosterReady && !discharged && aideId !== "" && rnId !== "" && !unchanged && !busy;
+  const listed = (members: readonly AideRosterMember[], id: string) =>
+    members.some((m) => m.membershipId === id);
+  const canSave =
+    rosterReady &&
+    !discharged &&
+    !needsReload &&
+    !busy &&
+    aideTeamChanged(plan, aideId, rnId) &&
+    listed(roster.aides, aideId) &&
+    listed(roster.supervisors, rnId);
+
+  const pick = (apply: (id: string) => void) => (id: string) => {
+    setError(null);
+    apply(id);
+  };
+
+  async function reload(): Promise<void> {
+    setBusy(true);
+    try {
+      await onSaved();
+      setNeedsReload(false);
+      setError(null);
+    } catch {
+      setError(REFRESH_FAILED);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function save(): Promise<void> {
     setBusy(true);
     setError(null);
+    let saved = false;
     try {
-      const { error: failure } = await assignAideTeam(client, plan.planId, plan.version, {
+      const { error: failure, status } = await assignAideTeam(client, plan.planId, plan.version, {
         aideMembershipId: aideId,
         supervisingRnMembershipId: rnId,
       });
       if (failure) {
-        setError(errorMessage(failure, SAVE_FAILED));
+        const stale =
+          status === 409 ||
+          (failure as { error?: { code?: string } }).error?.code === "STALE_VERSION";
+        setNeedsReload(stale);
+        setError(stale ? STALE : errorMessage(failure, SAVE_FAILED));
         return;
       }
-      await onSaved();
+      saved = true;
     } catch {
+      setNeedsReload(true);
       setError(CONNECTION_FAILED);
+      return;
     } finally {
       setBusy(false);
+    }
+    if (saved) {
+      try {
+        await onSaved();
+      } catch {
+        setError(REFRESH_FAILED);
+      }
     }
   }
 
@@ -95,7 +171,7 @@ export function AideAssignmentForm({
         label="Aide"
         value={aideId}
         options={memberOptions("Select an aide", roster.aides, plan.aideMembershipId, rosterReady)}
-        onChange={setAideId}
+        onChange={pick(onAideChange)}
         disabled={!rosterReady || discharged || busy}
       />
       <SelectField
@@ -107,7 +183,7 @@ export function AideAssignmentForm({
           plan.supervisingRnMembershipId,
           rosterReady,
         )}
-        onChange={setRnId}
+        onChange={pick(onRnChange)}
         disabled={!rosterReady || discharged || busy}
       />
       {error ? (
@@ -115,10 +191,15 @@ export function AideAssignmentForm({
           {error}
         </p>
       ) : null}
-      <div>
+      <div style={{ display: "flex", gap: "0.5rem" }}>
         <Button tone="primary" type="button" onClick={() => void save()} disabled={!canSave}>
-          {busy ? "Saving…" : "Assign care team"}
+          {busy ? "Working…" : "Assign care team"}
         </Button>
+        {needsReload ? (
+          <Button tone="secondary" type="button" onClick={() => void reload()} disabled={busy}>
+            Reload plan
+          </Button>
+        ) : null}
       </div>
     </>
   );

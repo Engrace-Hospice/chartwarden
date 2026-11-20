@@ -40,7 +40,7 @@ import {
   FREQUENCY_WORD_OPTIONS,
   frequencyPresetFor,
 } from "./aide-frequency";
-import { AideAssignmentForm } from "./aide-assignment-panel";
+import { AideAssignmentForm, aideTeamChanged, effectivePick } from "./aide-assignment-panel";
 import { useAideRoster } from "./aide-roster";
 import {
   type GoalView,
@@ -116,27 +116,45 @@ export function AidePocEditor(): JSX.Element {
   const [goalText, setGoalText] = useState("");
   const [goalSource, setGoalSource] = useState("clinical");
   const [goalProblemId, setGoalProblemId] = useState("");
+  // Care-team picks (null = not chosen: the plan's own binding shows). They live here so a reload keeps them and the
+  // unsaved-changes guard covers them.
+  const [aidePick, setAidePick] = useState<string | null>(null);
+  const [rnPick, setRnPick] = useState<string | null>(null);
   const dirty =
     scopeText.trim() !== "" ||
     frequencyCode !== "" ||
     goalText.trim() !== "" ||
     goalProblemId.trim() !== "" ||
-    goalSource !== "clinical";
+    goalSource !== "clinical" ||
+    (plan !== null && aideTeamChanged(plan, aidePick, rnPick));
   const confirmDiscard = useUnsavedChangesWarning(dirty);
 
-  const load = useCallback(async () => {
-    if (!patientId) return;
-    setLoading(true);
-    setError(null);
-    const { plan: loaded, error: err } = await getPlanByKind(client, patientId, "aide_poc");
-    if (err) {
-      setError(errorMessage(err, "The Aide Plan of Care could not be loaded."));
-      setLoading(false);
-      return;
-    }
-    setPlan(loaded);
-    setLoading(false);
-  }, [client, patientId]);
+  // `silent` refreshes the plan behind the open screen (after an edit): no spinner swap, so unsaved picks and the
+  // scroll position survive, and a failed refresh is an alert on the screen rather than a blank page.
+  const load = useCallback(
+    async (silent = false) => {
+      if (!patientId) return;
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+      }
+      const failure = (err: unknown) => {
+        const message = errorMessage(err, "The Aide Plan of Care could not be loaded.");
+        if (silent) setActionError(message);
+        else setError(message);
+      };
+      try {
+        const { plan: loaded, error: err } = await getPlanByKind(client, patientId, "aide_poc");
+        if (err) failure(err);
+        else setPlan(loaded);
+      } catch (err) {
+        failure(err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [client, patientId],
+  );
 
   useEffect(() => {
     void load();
@@ -161,7 +179,7 @@ export function AidePocEditor(): JSX.Element {
     }
     setScopeText("");
     setFrequencyCode("");
-    await load();
+    await load(true);
   }
 
   async function addGoal(): Promise<void> {
@@ -187,7 +205,7 @@ export function AidePocEditor(): JSX.Element {
     }
     setGoalText("");
     setGoalProblemId("");
-    await load();
+    await load(true);
   }
 
   async function applyGoalEvent(goal: GoalView, type: string): Promise<void> {
@@ -218,7 +236,7 @@ export function AidePocEditor(): JSX.Element {
       setActionError(errorMessage(res.error, "The goal status could not be changed."));
       return;
     }
-    await load();
+    await load(true);
   }
 
   async function discontinueIntervention(iv: InterventionView): Promise<void> {
@@ -240,7 +258,7 @@ export function AidePocEditor(): JSX.Element {
       setActionError(errorMessage(res.error, "The task could not be discontinued."));
       return;
     }
-    await load();
+    await load(true);
   }
 
   // The shared chart banner and Patient Summary rail, so this screen shows the same identity header as
@@ -348,7 +366,19 @@ export function AidePocEditor(): JSX.Element {
               {roster.error ? (
                 <span className="wx-text-muted">Names could not be loaded; showing short ids.</span>
               ) : null}
-              <AideAssignmentForm plan={plan} roster={roster} onSaved={load} />
+              <AideAssignmentForm
+                plan={plan}
+                roster={roster}
+                aideId={effectivePick(aidePick, plan.aideMembershipId)}
+                rnId={effectivePick(rnPick, plan.supervisingRnMembershipId)}
+                onAideChange={setAidePick}
+                onRnChange={setRnPick}
+                onSaved={async () => {
+                  await load(true);
+                  setAidePick(null);
+                  setRnPick(null);
+                }}
+              />
             </Panel>
 
             <Panel stack headingLevel={3} title="Aide tasks">
