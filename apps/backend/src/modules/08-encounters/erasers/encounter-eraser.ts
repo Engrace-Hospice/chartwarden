@@ -128,10 +128,12 @@ export function createInMemoryEncounterEraseStore(seed: Partial<EncounterEraseCo
  * reach the M36 key custodian to destroy the tenant DEK, and destroying the ciphertext bytes is
  * strictly stronger — the PHI is unreadable under ANY key the moment the shred commits, before any
  * delete runs (shred-before-delete, the M16/M31 ordering). NOT-NULL cipher columns shred to the ""
- * sentinel (the M31 precedent); nullable ones to NULL. Counts come from `returning` lengths (rows
- * ACTUALLY removed). Migration 0031 grants `chartwarden_app` no DELETE on any encounter table, so under an
- * app-role connection Postgres REFUSES the delete pass and this store THROWS — the destruction path
- * must be handed a privileged (chartwarden_admin) `DbClient` at the composition root.
+ * sentinel (the M31 precedent); nullable ones to NULL, except `layer2_cipher` on a Layer-2-involved output, which
+ * the CHECK keeps non-null (→ ""). Counts come from `returning` lengths (rows ACTUALLY removed). Migration
+ * 0031 grants `chartwarden_app` no DELETE on any encounter table, so under an app-role connection Postgres
+ * REFUSES the delete pass and this store THROWS — the destruction path must be handed the
+ * `chartwarden_destruction` `DbClient` (DATABASE_DESTRUCTION_URL at the composition root): migration 0157
+ * grants that role SELECT/UPDATE/DELETE on the M8 tables behind an org-scoped FOR ALL policy on each.
  */
 export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseStore {
   const ENC = schema.encounters;
@@ -175,14 +177,20 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
         const encounterIds = await encounterIdsFor(tx, patientId);
         if (encounterIds.length === 0) return; // idempotent: nothing to shred.
         const addendumIds = await addendumIdsFor(tx, encounterIds);
-        // Shred FIRST (§3.6): free_text_cipher is nullable → NULL; layer1/final are NOT NULL → "".
+        // Shred FIRST (§3.6): free_text_cipher is nullable → NULL; layer1/final are NOT NULL → "". layer2_cipher is nullable, but
+        // `hearthnote_output_layer2_consistency` keeps it non-null on an output with layer2_involved_at_finalize, so a null stays
+        // null (Layer 2 was off) and a value becomes "" — never a blanket NULL, which that CHECK refuses and rolls the shred back.
         await tx
           .update(SEL)
           .set({ freeTextCipher: null })
           .where(selectionScope(encounterIds, addendumIds));
         await tx
           .update(AO)
-          .set({ layer1Cipher: "", layer2Cipher: null, finalCipher: "" })
+          .set({
+            layer1Cipher: "",
+            layer2Cipher: sql`CASE WHEN ${AO.layer2Cipher} IS NULL THEN NULL ELSE '' END`,
+            finalCipher: "",
+          })
           .where(assembledScope(encounterIds, addendumIds));
       });
     },
