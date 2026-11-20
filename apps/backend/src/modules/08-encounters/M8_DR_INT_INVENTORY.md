@@ -185,9 +185,7 @@ the same shred and delete cover them), `encounter_amendment` and `addendum_cosig
 A failure between the
 transactions must be retried (re-post the shred with the same certificate id); every step is idempotent. `erased` counts the
 satellite rows plus the roots tombstoned in that run. Disjoint from M5's `clinical_record` (patient spine), M6's
-`admission_record` (admission subtree), and M7's `care_plan_record` (care-plan subtree). (The spec §3.6 `clinical_record`
-mention is reconciled to this disjoint class so the M5 eraser is never double-registered — architecture's
-one-eraser-per-data-class rule wins.)
+`admission_record` (admission subtree), and M7's `care_plan_record` (care-plan subtree).
 
 What destruction does NOT reach (spec §3.6 "What survives"): the `audit_event` before/after images the 0031 write-audit
 triggers recorded keep clinical values their denylists do not name (vitals numbers, `hearthnote_selection.selections`,
