@@ -2,7 +2,8 @@
 // (tabindex="-1" headings, the card itself), which are not in the Tab-order list the trap compares against.
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useLayoutEffect, useRef, useState } from "react";
+import { StrictMode, useLayoutEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { describe, expect, it, vi } from "vitest";
 import { Modal } from "./modal";
@@ -260,6 +261,38 @@ describe("Modal focus on close", () => {
     await user.click(screen.getByRole("button", { name: "Open" }));
     await user.keyboard("{Escape}");
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Open" }));
+  });
+
+  // About twenty dialogs mount already open (`{shown ? <Modal open ... /> : null}`). In development StrictMode runs their effect, cleanup and effect
+  // again while the card is in the page, so the first cleanup must neither move focus out of the card nor lose the control that opened it.
+  it("returns focus to the control that opened a dialog that mounts open, under StrictMode too", async () => {
+    function MountsOpen() {
+      const [shown, setShown] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setShown(true)}>
+            Open
+          </button>
+          {shown ? (
+            <Modal open onClose={() => setShown(false)} ariaLabel="Test dialog">
+              <button type="button">Done</button>
+            </Modal>
+          ) : null}
+        </>
+      );
+    }
+    for (const Wrapper of [
+      StrictMode,
+      ({ children }: { children: ReactNode }) => <>{children}</>,
+    ]) {
+      const user = userEvent.setup();
+      const { unmount } = render(<MountsOpen />, { wrapper: Wrapper });
+      await user.click(screen.getByRole("button", { name: "Open" }));
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Done" }));
+      await user.keyboard("{Escape}");
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Open" }));
+      unmount();
+    }
   });
 
   it("leaves focus where the screen put it when it moved focus as the dialog closed", async () => {

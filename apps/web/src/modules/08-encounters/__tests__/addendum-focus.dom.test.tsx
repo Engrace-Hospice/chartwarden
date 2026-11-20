@@ -3,6 +3,8 @@
 // "Global search" box). Each case runs the real panel, the real ceremony dialog and the real Modal, with a stand-in for that box ahead of the
 // panel and a page that answers the in-place read after a delay, as the screen does. Two ways of opening the dialog: a click that moves focus
 // to the button (the usual) and one that leaves focus where it was (the box). Synthetic data only.
+// These pin the panel's own behaviour (its focus request after the read lands). They pass against the Modal as it was before the focus-return
+// fix too, because that request wins either way: the Modal's cases are in packages/ui modal.dom.test.tsx.
 import { ApiClientProvider } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

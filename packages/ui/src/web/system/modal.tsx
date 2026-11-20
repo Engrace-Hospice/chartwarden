@@ -87,8 +87,9 @@ export function Modal({
 
   useEffect(() => {
     if (!open) return;
-    previouslyFocused.current = document.activeElement;
     const card = cardRef.current;
+    // Only a control outside the card is the one that opened it: StrictMode runs this effect again with focus already inside the card.
+    if (!card?.contains(document.activeElement)) previouslyFocused.current = document.activeElement;
     const first = card?.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? card)?.focus();
     return () => {
@@ -97,7 +98,9 @@ export function Modal({
       // on) must keep it.
       const active = document.activeElement;
       if (active && active !== document.body) return;
-      (previouslyFocused.current as HTMLElement | null)?.focus?.();
+      const trigger = previouslyFocused.current as HTMLElement | null;
+      previouslyFocused.current = null;
+      trigger?.focus?.();
     };
   }, [open]);
 
