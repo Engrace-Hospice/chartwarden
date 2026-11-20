@@ -483,6 +483,10 @@ jobs:
           # the real routes with the M6 readers faked in the registry, as-of-the-visit, confirm/finalize/sign with sealed rows, the switch, admission.read,
           # and a failing M6 reader (503), as the NOBYPASSRLS app role.
           - { name: "M8 visit-note drafting recert", scripts: "test:m8:visit-note-drafting-recert:live" }
+          # ADR-0114 S2b (VN-D35 to VN-D38) — the RN admission visit's draft: the orders in effect (M12), the caregivers on record on the service date (M5's
+          # real roster reader over real rows) and the advance directive acknowledgment on file (M39, also through the real evaluator), as of the visit,
+          # confirm/finalize/sign with sealed rows, Part 2, the patient.read and consent.read keys at every recompute, and the switch, as the NOBYPASSRLS app role.
+          - { name: "M8 visit-note drafting admission", scripts: "test:m8:visit-note-drafting-admission:live" }
           # M36 WP 3.2 — OrderProvider.linkSummary, as the NOBYPASSRLS app role.
           - { name: "M11 link summary seam", scripts: "test:m11:link-summary:live" }
           # M36 WP 3.2 — MedicationOrderProvider.linkSummary (ids + status only), as the NOBYPASSRLS app role.
