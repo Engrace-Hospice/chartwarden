@@ -43,6 +43,23 @@ describe("Medicaid assembly error guidance", () => {
     expect(
       assembleErrorMessage(409, { error: { code: "MEDICAID_RB_ADMISSION_END_PENDING" } }),
     ).toContain("awaiting required approval");
+    expect(
+      assembleErrorMessage(409, { error: { code: "MEDICAID_ADMISSION_END_PENDING" } }),
+    ).toContain("Resolve the discharge workflow");
+    expect(
+      assembleErrorMessage(409, { error: { code: "MEDICAID_CLAIM_AFTER_PATIENT_DEATH" } }),
+    ).toContain("recorded date of death");
+    expect(
+      assembleErrorMessage(409, { error: { code: "MEDICAID_CLAIM_AFTER_ADMISSION_END" } }),
+    ).toContain("effective end of the hospice stay");
+  });
+
+  it("maps stale clinical claim snapshots to safe reconciliation guidance", () => {
+    expect(
+      assembleErrorMessage(409, {
+        error: { code: "MEDICAID_CLAIM_LINE_LOC_SNAPSHOT_STALE", message: "private details" },
+      }),
+    ).toContain("assemble a corrected draft");
   });
 
   it("matches the arrangement guidance to the identifier field in the assembly wizard", () => {

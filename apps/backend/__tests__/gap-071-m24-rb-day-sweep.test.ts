@@ -181,8 +181,9 @@ describe("runEligibilityStaleWatchdog alerting", () => {
 });
 
 describe("m24.rb-day-admission-discharged", () => {
-  it("leaves a death discharge to the deceased consumer (day of death stays billable)", async () => {
-    const patientIdForAdmission = vi.fn();
+  it("revalidates a death discharge without voiding the day of death", async () => {
+    const patientIdForAdmission = vi.fn(async () => "patient-1");
+    const enqueue = vi.fn(async () => ({ jobId: "job-1" }));
     const db = new Proxy(
       {},
       {
@@ -195,6 +196,7 @@ describe("m24.rb-day-admission-discharged", () => {
       db: db as never,
       locPeriods: {} as never,
       admissions: { patientIdForAdmission },
+      revalidate: { enqueue },
     });
     const discharge = consumers.find((c) => c.consumerName === "m24.rb-day-admission-discharged");
     await discharge?.handle({
@@ -203,6 +205,12 @@ describe("m24.rb-day-admission-discharged", () => {
       organizationId: "org-1",
       payload: { admissionId: "a1", reason: "death", dischargeDate: "2026-03-10" },
     } as never);
-    expect(patientIdForAdmission).not.toHaveBeenCalled();
+    expect(patientIdForAdmission).toHaveBeenCalledWith("org-1", "a1");
+    expect(enqueue).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      eventId: "e1",
+      eventName: "m6.admission.discharged",
+      patientId: "patient-1",
+    });
   });
 });

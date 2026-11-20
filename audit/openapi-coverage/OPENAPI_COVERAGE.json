@@ -1,9 +1,9 @@
 {
   "totals": {
-    "routes": 2097,
-    "enriched": 2097,
+    "routes": 2098,
+    "enriched": 2098,
     "deficit": 0,
-    "mutating": 1204,
+    "mutating": 1205,
     "mutatingNoBody": 1,
     "gets": 840,
     "getsNoResponse": 9
@@ -231,10 +231,10 @@
     },
     {
       "module": "24-billing-medicaid",
-      "routes": 39,
-      "enriched": 39,
+      "routes": 40,
+      "enriched": 40,
       "deficit": 0,
-      "mutating": 20,
+      "mutating": 21,
       "mutatingNoBody": 0,
       "gets": 17,
       "getsNoResponse": 0

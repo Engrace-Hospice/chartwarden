@@ -126,6 +126,12 @@ Medicaid claims remain blocked with explicit format/COB guidance. Other-primary,
 ambiguous, or changing coverage remains unresolved or blocked rather than prompting the user to
 alter payer ranking.
 
+Initial product priority is ordinary Oregon Medicaid hospice billing for tenant-enrolled providers,
+with EOCCO as the first payer target. Route claims through the tenant-selected Stedi or Claim.MD
+clearinghouse only after the applicable payer, enrollment, format, and technical qualification gates pass.
+The customer-reported priority does not mean EOCCO is configured or qualified. Secondary R&B/COB remains
+tracked separately under #1073; its deferral preserves existing primary-Medicaid R&B workflows.
+
 The coordination panel distinguishes recorded coverage from benefit eligibility and technical
 acknowledgment from adjudication/remittance evidence. A matching Medicare claim is shown only when
 the server resolves it within the organization, patient, provider entity, admission and overlapping

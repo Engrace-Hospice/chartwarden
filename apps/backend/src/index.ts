@@ -11855,6 +11855,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       connection: queueConnection,
       db: dbHandle.db,
       coverages: getSeam("PatientCoverageReader"),
+      admissions: m24LocPeriodReader,
       outbox: m24OutboxPublisher,
     });
     app.addHook("onClose", async () => {
@@ -11876,6 +11877,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       activeOrgs: m24CronActiveOrgs,
       rbDaySweep: buildDrizzleRbDaySweepStore({
         db: dbHandle.db,
+        coverages: getSeam("PatientCoverageReader"),
         locPeriods: {
           periodsForPatient: (organizationId, patientId, range) =>
             levelOfCarePeriodsForPatientForOrg(dbHandle.db, organizationId, patientId, range),
@@ -15764,6 +15766,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 (await admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId))
                   ?.patientId ?? null,
             },
+            revalidate: m24RevalidateEnqueue.port,
           }),
           // F-172 (#248, m24 group) — the m24 `handlers-unbound` group's last two events:
           // `mark-claim-paid` / `mark-claim-denied`, the Medicaid sibling of M23's own GAP-037

@@ -22,7 +22,9 @@ import {
 import { medicaidCapCoherence, medicaidEvvBracketCoherence } from "./evv-cap-rules";
 import { medicaidMcoAssignmentRoutes } from "./mco-rules";
 import {
+  medicaidHospiceClaimSnapshotVerified,
   medicaidRbArrangementRequiredForNfResident,
+  medicaidRbClaimSnapshotVerified,
   medicaidRbContractEffectiveForServiceDate,
   medicaidRbDayLocCoherence,
 } from "./rb-rules";
@@ -39,6 +41,8 @@ export {
   medicaidRecipientIdFormat,
   medicaidMcoAssignmentRoutes,
   medicaidRbArrangementRequiredForNfResident,
+  medicaidHospiceClaimSnapshotVerified,
+  medicaidRbClaimSnapshotVerified,
   medicaidRbDayLocCoherence,
   medicaidRbContractEffectiveForServiceDate,
   medicarePrimaryRequiredForDual,
@@ -56,7 +60,9 @@ export const DEFAULT_MEDICAID_RULES: readonly MedicaidRule[] = Object.freeze([
   medicaidRecipientIdFormat,
   medicaidMcoAssignmentRoutes,
   medicaidRbArrangementRequiredForNfResident,
+  medicaidHospiceClaimSnapshotVerified,
   medicaidRbDayLocCoherence,
+  medicaidRbClaimSnapshotVerified,
   medicaidRbContractEffectiveForServiceDate,
   medicaidPayerResponsibilityResolved,
   medicaidMedicareClaimLinkageSupported,

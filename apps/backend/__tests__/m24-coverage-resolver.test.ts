@@ -35,6 +35,7 @@ function readerFor(coverages: readonly PatientCoverage[]) {
       q: Parameters<PatientCoverageReader["coverageSnapshotForRangeInTransaction"]>[1],
     ) => ({
       coverages,
+      patientLifecycle: { status: "active" as const, deceasedDate: null },
       resolution: resolveCoverageForRange(coverages, { from: q.from, to: q.to }, q.coverageKind),
       primaryResolution: resolveCoverageForRange(coverages, { from: q.from, to: q.to }),
     }),
@@ -149,6 +150,7 @@ describe("M24 cross-kind, range-wide coverage resolution (#876/#877)", () => {
       status: "uniform",
       coverage: { id: "medicare-primary" },
     });
+    expect(result.patientLifecycle).toEqual({ status: "active", deceasedDate: null });
     expect(coverageSnapshotForRangeInTransaction).toHaveBeenCalledTimes(1);
     expect(coverageSnapshotForRangeInTransaction).toHaveBeenCalledWith(transaction, {
       organizationId: "synthetic-org-1",

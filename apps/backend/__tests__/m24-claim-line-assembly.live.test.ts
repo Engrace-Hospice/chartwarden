@@ -74,6 +74,7 @@ const testCadenceReader: AdmissionCadenceReaderPort = {
       revocationDate: null,
     },
   }),
+  periodsForAdmissionInTransaction: async () => [],
 };
 
 function buildDrizzleM24WriteServiceWithCadence(
@@ -198,6 +199,7 @@ describe.skipIf(!DB_URL)(
           return {
             medicaid: resolution(lockedMedicaid),
             primary: resolution(lockedRank === 1 ? lockedMedicaid : medicarePrimary),
+            patientLifecycle: { status: "active", deceasedDate: null },
           };
         },
       };
@@ -259,7 +261,7 @@ describe.skipIf(!DB_URL)(
             id: LOC_1,
             levelOfCare: "routine_home_care",
             effectiveAt: new Date("2026-01-01"),
-            endedAt: new Date("2026-01-31"),
+            endedAt: new Date("2026-02-01"),
           },
         ]),
         noEncounters(),
@@ -436,6 +438,53 @@ describe.skipIf(!DB_URL)(
       expect(after.rows[0].n).toBe(before.rows[0].n);
     });
 
+    it("refuses assembly after M5 records death, before writing a claim or outbox event", async () => {
+      const before = await admin.query("SELECT count(*)::int AS n FROM medicaid_claim");
+      const base = coverageWithRanks(1);
+      const deceasedCoverage = {
+        ...base,
+        async claimCoverageSnapshotInTransaction() {
+          return {
+            medicaid: resolution(coverageForRank(1)),
+            primary: resolution(coverageForRank(1)),
+            patientLifecycle: { status: "deceased", deceasedDate: "2026-03-03" },
+          };
+        },
+      };
+      const published: string[] = [];
+      const svc = buildDrizzleM24WriteServiceWithCadence(
+        testCadenceReader,
+        handle.db,
+        {
+          async publish(_tx, event) {
+            published.push(event.eventName);
+          },
+        },
+        OPEN_CIPHER,
+        deceasedCoverage,
+        ccnReader,
+        locPeriodReader([]),
+        noEncounters(),
+      );
+
+      await expect(
+        svc.assembleClaim(
+          { organizationId: ORG, userId: USER, roles: [] },
+          {
+            patientId: PATIENT,
+            admissionId: ADMISSION,
+            providerEntityId: peId,
+            serviceFrom: "2026-03-01",
+            serviceTo: "2026-03-05",
+            kind: "hospice_only",
+          },
+        ),
+      ).rejects.toMatchObject({ code: "MEDICAID_CLAIM_AFTER_PATIENT_DEATH", statusCode: 409 });
+      const after = await admin.query("SELECT count(*)::int AS n FROM medicaid_claim");
+      expect(after.rows[0].n).toBe(before.rows[0].n);
+      expect(published).toHaveLength(0);
+    });
+
     it("refuses when only the actual primary coverage identity changes in the locked snapshot", async () => {
       const before = await admin.query("SELECT count(*)::int AS n FROM medicaid_claim");
       const unchangedMedicaid = coverageForRank(1);
@@ -452,6 +501,7 @@ describe.skipIf(!DB_URL)(
           return {
             medicaid: resolution(unchangedMedicaid),
             primary: resolution(changedPrimary),
+            patientLifecycle: { status: "active", deceasedDate: null },
           };
         },
       };
@@ -743,13 +793,13 @@ describe.skipIf(!DB_URL)(
             id: LOC_1,
             levelOfCare: "routine_home_care",
             effectiveAt: new Date("2026-02-01"),
-            endedAt: new Date("2026-02-10"),
+            endedAt: new Date("2026-02-11"),
           },
           {
             id: LOC_2,
             levelOfCare: "general_inpatient_care",
             effectiveAt: new Date("2026-02-11"),
-            endedAt: new Date("2026-02-15"),
+            endedAt: new Date("2026-02-16"),
           },
         ]),
         noEncounters(),
@@ -804,7 +854,7 @@ describe.skipIf(!DB_URL)(
             id: LOC_1,
             levelOfCare: "routine_home_care",
             effectiveAt: new Date("2026-07-01"),
-            endedAt: new Date("2026-07-05"),
+            endedAt: new Date("2026-07-06"),
           },
         ]),
         noEncounters(),
@@ -853,7 +903,7 @@ describe.skipIf(!DB_URL)(
             id: LOC_2,
             levelOfCare: "general_inpatient_care",
             effectiveAt: new Date("2026-07-10"),
-            endedAt: new Date("2026-07-12"),
+            endedAt: new Date("2026-07-13"),
             facilityId,
             ipuBedAssignmentId: "ipu-bed-1",
           },
@@ -893,7 +943,7 @@ describe.skipIf(!DB_URL)(
             id: LOC_1,
             levelOfCare: "routine_home_care",
             effectiveAt: new Date("2026-03-01"),
-            endedAt: new Date("2026-03-05"),
+            endedAt: new Date("2026-03-06"),
           },
         ]),
         { encountersInWindow: async () => [{ encounterId, serviceDate: "2026-03-03" }] },
@@ -987,6 +1037,16 @@ describe.skipIf(!DB_URL)(
     });
 
     it("rb_only with primary Medicaid writes each billable rb_day and links it back", async () => {
+      await admin.query(
+        `INSERT INTO admission (id, organization_id, patient_id, provider_entity_id, status, admission_at)
+         VALUES ($1,$2,$3,$4,'active','2026-05-01')`,
+        [RB_ADMISSION, ORG, RB_PATIENT, peId],
+      );
+      await admin.query(
+        `INSERT INTO level_of_care_period (id, organization_id, admission_id, level_of_care, status, effective_at)
+         VALUES ($1,$2,$3,'routine_home_care','active','2026-05-01')`,
+        [LOC_1, ORG, RB_ADMISSION],
+      );
       const arrangement = await admin.query(
         `INSERT INTO rb_arrangement (organization_id, patient_id, provider_entity_id, nf_facility_mdm_id,
          nf_facility_name_snapshot, effective_from, contract_document_id, contract_started_at,
@@ -1012,8 +1072,10 @@ describe.skipIf(!DB_URL)(
         [ORG, peId, RB_PATIENT, arrangementId, LOC_1],
       );
       const rbDayId = rbDay.rows[0].id;
+      const m6Reader = createAdmissionLocPeriodsReader(handle.db);
 
-      const svc = buildDrizzleM24WriteService(
+      const svc = buildDrizzleM24WriteServiceWithCadence(
+        m6Reader,
         handle.db,
         NOOP_OUTBOX,
         OPEN_CIPHER,
@@ -1054,6 +1116,23 @@ describe.skipIf(!DB_URL)(
       );
       expect(rbDayAfter.rows[0].status).toBe("billed");
       expect(rbDayAfter.rows[0].medicaid_claim_line_id).toBe(lines.rows[0].id);
+
+      await admin.query(
+        "UPDATE level_of_care_period SET level_of_care='general_inpatient_care' WHERE organization_id=$1 AND id=$2",
+        [ORG, LOC_1],
+      );
+      const validationRunsBefore = await admin.query(
+        "SELECT count(*)::int AS n FROM medicaid_validation_run WHERE organization_id=$1 AND medicaid_claim_id=$2",
+        [ORG, claim.id],
+      );
+      await expect(
+        svc.validateClaim({ organizationId: ORG, userId: USER, roles: [] }, claim.id),
+      ).rejects.toMatchObject({ code: "MEDICAID_RB_DAY_LOC_SNAPSHOT_STALE", statusCode: 409 });
+      const validationRunsAfter = await admin.query(
+        "SELECT count(*)::int AS n FROM medicaid_validation_run WHERE organization_id=$1 AND medicaid_claim_id=$2",
+        [ORG, claim.id],
+      );
+      expect(validationRunsAfter.rows[0].n).toBe(validationRunsBefore.rows[0].n);
     });
 
     it("fails closed for an R&B-only claim with secondary Medicaid", async () => {
@@ -1135,7 +1214,7 @@ describe.skipIf(!DB_URL)(
             id: LOC_1,
             levelOfCare: "routine_home_care",
             effectiveAt: new Date("2026-06-01"),
-            endedAt: new Date("2026-06-05"),
+            endedAt: new Date("2026-06-06"),
           },
         ]),
         noEncounters(),
@@ -1242,7 +1321,7 @@ describe.skipIf(!DB_URL)(
               id: LOC_1,
               levelOfCare: "routine_home_care",
               effectiveAt: new Date("2026-06-01"),
-              endedAt: new Date("2026-06-10"),
+              endedAt: new Date("2026-06-11"),
             },
           ]),
           noEncounters(),
@@ -1337,7 +1416,7 @@ describe.skipIf(!DB_URL)(
                 id: LOC_1,
                 levelOfCare: "routine_home_care",
                 effectiveAt: new Date("2026-05-01"),
-                endedAt: new Date("2026-05-10"),
+                endedAt: new Date("2026-05-11"),
               },
             ]),
             noEncounters(),

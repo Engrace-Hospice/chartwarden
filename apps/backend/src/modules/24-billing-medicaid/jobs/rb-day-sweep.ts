@@ -26,6 +26,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { DegradedError } from "@chartwarden/types";
+import type { PatientCoverageReader } from "@chartwarden/types";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import type { EligibilityWatchdogStore, RbDaySweepStore } from "./m24-jobs";
 
@@ -183,6 +184,8 @@ export function deriveRbDays(input: {
 export interface RbDaySweepStoreDeps {
   readonly db: DbClient;
   readonly locPeriods: RbLocPeriodsPort;
+  /** M5's transaction-bound patient lifecycle snapshot; missing or inconsistent death facts block materialization. */
+  readonly coverages: Pick<PatientCoverageReader, "coverageSnapshotForRangeInTransaction">;
 }
 
 /** The real `RbDaySweepStore`: materialises missing rb_day rows for every ACTIVE arrangement of one org. */
@@ -210,14 +213,45 @@ export function buildDrizzleRbDaySweepStore(deps: RbDaySweepStoreDeps): RbDaySwe
         const toDay = Math.min(asOfDay, arr.effectiveTo ? utcDayStart(arr.effectiveTo) : asOfDay);
         if (fromDay > toDay) continue;
         swept += await withOrgContext(deps.db, ctx, async (tx) => {
-          // Read LOC only after locking the M6 admissions, and hold those locks through the M24 write.
-          // This is the same admission -> arrangement -> day order used by claim assembly. A LOC change
-          // can no longer commit between the sweep snapshot and its rb_day inserts.
+          // M5's stable patient-row lock precedes M6 admission locks in claim assembly. It serializes the
+          // sweep against death recording, while also giving us the authoritative death date to cap the
+          // materialized range (the day of death remains billable).
+          const patientSnapshot = await deps.coverages.coverageSnapshotForRangeInTransaction(tx, {
+            organizationId,
+            patientId: arr.patientId,
+            from: new Date(fromDay).toISOString().slice(0, 10),
+            to: new Date(toDay).toISOString().slice(0, 10),
+          });
+          const lifecycle = patientSnapshot.patientLifecycle;
+          if (
+            !lifecycle ||
+            (lifecycle.deceasedDate !== null && lifecycle.status !== "deceased") ||
+            (lifecycle.status === "deceased" && lifecycle.deceasedDate === null)
+          ) {
+            throw new DegradedError(
+              "M24_RB_PATIENT_LIFECYCLE_UNVERIFIED",
+              "the R&B day sweep requires a consistent M5 patient lifecycle snapshot",
+            );
+          }
+          const deathDay = lifecycle.deceasedDate
+            ? utcDayStart(new Date(`${lifecycle.deceasedDate}T00:00:00.000Z`))
+            : null;
+          if (deathDay !== null && Number.isNaN(deathDay)) {
+            throw new DegradedError(
+              "M24_RB_PATIENT_LIFECYCLE_UNVERIFIED",
+              "the R&B day sweep received an invalid M5 date of death",
+            );
+          }
+          const safeToDay = deathDay === null ? toDay : Math.min(toDay, deathDay);
+          if (safeToDay < fromDay) return 0;
+
+          // Read LOC only after the M5 patient and M6 admission locks, and hold those locks through the
+          // M24 write. This prevents death or LOC changes from invalidating the materialization snapshot.
           const periods = await deps.locPeriods.periodsForPatientInTransaction(
             tx,
             organizationId,
             arr.patientId,
-            { from: new Date(fromDay), to: new Date(toDay + MS_PER_DAY - 1) },
+            { from: new Date(fromDay), to: new Date(safeToDay + MS_PER_DAY - 1) },
           );
           if (periods.length === 0) return 0;
           // Serialize materialization with claim assembly and arrangement edits. The initial list/read is
@@ -239,14 +273,14 @@ export function buildDrizzleRbDaySweepStore(deps: RbDaySweepStoreDeps): RbDaySwe
                 eq(RD.organizationId, organizationId),
                 eq(RD.patientId, arr.patientId),
                 gte(RD.serviceDate, new Date(fromDay)),
-                lte(RD.serviceDate, new Date(toDay)),
+                lte(RD.serviceDate, new Date(safeToDay)),
               ),
             );
           const derived = deriveRbDays({
             arrangement: current,
             periods,
             fromDay,
-            toDay,
+            toDay: safeToDay,
             existingDays: new Set(existing.map((r) => utcDayStart(r.serviceDate))),
           });
           if (derived.length === 0) return 0;

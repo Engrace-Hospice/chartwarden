@@ -541,8 +541,9 @@ export interface PatientCoverageReader {
   }): Promise<CoverageForRange>;
   /**
    * Transaction-bound snapshot for claim writers. The M5 implementation reads and `FOR SHARE` locks
-   * the patient's coverage rows through the caller's already RLS-scoped transaction, so a coverage
-   * replacement cannot commit between payer resolution and the claim insert (#877).
+   * the patient namespace row and its coverage rows through the caller's already RLS-scoped transaction,
+   * returning lifecycle from that same patient row. Coverage replacement and patient-death updates cannot
+   * commit between resolution and the consuming claim write (#877 and M24 lifecycle safety).
    *
    * `transaction` is deliberately opaque here: `@chartwarden/types` is a leaf contract package and
    * must not acquire a dependency on the concrete Drizzle/Postgres client.
@@ -558,6 +559,11 @@ export interface PatientCoverageReader {
     },
   ): Promise<{
     readonly coverages: readonly PatientCoverage[];
+    /** M5 patient lifecycle from the same locked patient row; null means the patient row was not found. */
+    readonly patientLifecycle: {
+      readonly status: PatientLifecycleStatus;
+      readonly deceasedDate: string | null;
+    } | null;
     /** Top-ranked coverage across every kind from this same locked snapshot. */
     readonly primaryResolution: CoverageForRange;
     /** Top-ranked coverage within `coverageKind` when one was requested, otherwise same as primaryResolution. */

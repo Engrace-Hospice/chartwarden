@@ -42,6 +42,17 @@ import {
 } from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-port";
+import {
+  type CurrentLocPeriodForClaim,
+  hospiceClaimLineSnapshotIssue,
+  m6LocClaimEndDate,
+} from "../claim-hospice-line-snapshot";
+import {
+  type PatientLifecycleForClaim,
+  admissionServiceRangeIssue,
+  inclusiveLocEndDateForAdmission,
+  patientLifecycleServiceRangeIssue,
+} from "../claim-range-guards";
 import type { CredentialCipherPort } from "../credential-crypto";
 import type { M24Actor } from "./actor";
 import type { ClaimView, RbArrangementView } from "./read-service";
@@ -264,6 +275,7 @@ function throwAssemblyIssue(issue: { code: string; message: string }): never {
 type RbDayAssemblyFacts = Pick<
   typeof schema.rbDay.$inferSelect,
   | "organizationId"
+  | "id"
   | "patientId"
   | "providerEntityId"
   | "locationId"
@@ -447,6 +459,119 @@ export function rbDayAdmissionEndIssue(
   return null;
 }
 
+type RbClaimLineFacts = Pick<
+  typeof schema.medicaidClaimLine.$inferSelect,
+  | "id"
+  | "organizationId"
+  | "providerEntityId"
+  | "locationId"
+  | "locPeriodId"
+  | "medicaidClaimId"
+  | "serviceDate"
+  | "revenueCode"
+  | "qCode"
+  | "levelOfCare"
+  | "units"
+  | "rateAtAssemblyCents"
+  | "stateRateScheduleIdSnapshot"
+  | "chargesCents"
+  | "isRb"
+  | "rbDayId"
+>;
+
+/** Verify a stored R&B line still owns the exact billed day and current eligible LOC snapshot. */
+export function rbClaimLineIssue(input: {
+  readonly line: RbClaimLineFacts;
+  readonly rbDay: RbDayAssemblyFacts;
+  readonly arrangement: RbArrangementAssemblyFacts;
+  readonly organizationId: string;
+  readonly patientId: string;
+  readonly providerEntityId: string;
+  readonly claimId: string;
+  readonly arrangementId: string;
+  readonly serviceFrom: string;
+  readonly serviceTo: string;
+  readonly admission: RbAdmissionSnapshot;
+  readonly locPeriods: readonly {
+    id: string;
+    levelOfCare:
+      | "routine_home_care"
+      | "continuous_home_care"
+      | "inpatient_respite_care"
+      | "general_inpatient_care";
+    effectiveAt: Date;
+    endedAt: Date | null;
+  }[];
+}): { code: string; message: string } | null {
+  const { line, rbDay, arrangement } = input;
+  if (
+    !line.isRb ||
+    line.rbDayId !== rbDay.id ||
+    line.medicaidClaimId !== input.claimId ||
+    line.organizationId !== input.organizationId ||
+    line.providerEntityId !== input.providerEntityId ||
+    line.locationId !== rbDay.locationId ||
+    line.locationId !== arrangement.locationId ||
+    rbDay.organizationId !== input.organizationId ||
+    rbDay.patientId !== input.patientId ||
+    rbDay.providerEntityId !== input.providerEntityId ||
+    rbDay.locationId !== arrangement.locationId ||
+    rbDay.rbArrangementId !== input.arrangementId ||
+    arrangement.id !== input.arrangementId ||
+    rbDay.status !== "billed" ||
+    rbDay.medicaidClaimLineId !== line.id
+  ) {
+    return {
+      code: "MEDICAID_RB_DAY_CLAIM_OWNERSHIP_MISMATCH",
+      message:
+        "A Room & Board claim line no longer matches the billed day and its current claim owner. Reconcile the claim before validation.",
+    };
+  }
+  const serviceDate = day(rbDay.serviceDate);
+  if (serviceDate < input.serviceFrom || serviceDate > input.serviceTo) {
+    return {
+      code: "MEDICAID_RB_DAY_SERVICE_RANGE_MISMATCH",
+      message:
+        "A Room & Board day linked to this claim falls outside the claim's service period. Reconcile the claim before validation.",
+    };
+  }
+  const arrangementProblem = arrangementIssue(
+    arrangement,
+    input.organizationId,
+    input.patientId,
+    input.providerEntityId,
+    input.serviceFrom,
+    input.serviceTo,
+    serviceDate,
+  );
+  if (arrangementProblem) return arrangementProblem;
+  if (
+    day(line.serviceDate) !== serviceDate ||
+    line.levelOfCare !== "NF_RB" ||
+    line.locPeriodId !== rbDay.locPeriodIdSnapshot ||
+    line.units !== 1 ||
+    line.revenueCode !== "0658" ||
+    line.qCode !== "Q5003" ||
+    line.rateAtAssemblyCents !== rbDay.perDiemCentsSnapshot ||
+    line.chargesCents !== rbDay.perDiemCentsSnapshot ||
+    line.stateRateScheduleIdSnapshot !== null
+  ) {
+    return {
+      code: "MEDICAID_RB_DAY_CLAIM_LINE_MISMATCH",
+      message:
+        "A Room & Board line no longer matches its billed day snapshot. Reconcile the claim before validation.",
+    };
+  }
+  const deathDate =
+    input.admission.stayEndFacts.dischargeReason === "death"
+      ? (input.admission.stayEndFacts.deceasedDate ?? input.admission.stayEndFacts.dischargeDate)
+      : null;
+  return (
+    rbDayAdmissionEndIssue(rbDay, input.admission) ??
+    rbDayLocSnapshotIssue(rbDay, input.locPeriods, deathDate)
+  );
+}
+
 /**
  * Refuse to store a secret when no cipher port is bound, rather than dropping it. The pre-crypto placeholder
  * accepted the secret and wrote a sentinel — the caller believed it was saved. Failing loudly is the only
@@ -492,7 +617,11 @@ export interface CoverageResolverPort {
       from: string;
       to: string;
     },
-  ): Promise<{ medicaid: CoverageForRange; primary: CoverageForRange }>;
+  ): Promise<{
+    medicaid: CoverageForRange;
+    primary: CoverageForRange;
+    patientLifecycle: PatientLifecycleForClaim | null;
+  }>;
 }
 
 /**
@@ -549,7 +678,11 @@ export function buildM24MedicaidCoverageResolver(
         to: q.to,
         coverageKind: "medicaid",
       });
-      return { medicaid: snapshot.resolution, primary: snapshot.primaryResolution };
+      return {
+        medicaid: snapshot.resolution,
+        primary: snapshot.primaryResolution,
+        patientLifecycle: snapshot.patientLifecycle,
+      };
     },
   };
 }
@@ -786,6 +919,25 @@ export interface AdmissionCadenceReaderPort {
       | "closed";
     stayEndFacts: RbAdmissionSnapshot["stayEndFacts"];
   } | null>;
+  /** Current LOC rows on the same transaction, after cadenceSnapshotInTransaction has locked the admission. */
+  periodsForAdmissionInTransaction?(
+    transaction: unknown,
+    organizationId: string,
+    admissionId: string,
+  ): Promise<
+    ReadonlyArray<{
+      id: string;
+      levelOfCare:
+        | "routine_home_care"
+        | "continuous_home_care"
+        | "inpatient_respite_care"
+        | "general_inpatient_care";
+      effectiveAt: Date;
+      endedAt: Date | null;
+      facilityId: string | null;
+      ipuBedAssignmentId: string | null;
+    }>
+  >;
 }
 
 /** Resolve state-specific adjustment TOBs through the registered MedicaidAdapter. */
@@ -1435,7 +1587,7 @@ export function buildDrizzleM24WriteService(
             status = "unresolved";
             reasonCode = "MEDICAID_LOC_PERIOD_READER_UNBOUND";
           }
-          if (!reasonCode) {
+          if (!reasonCode && rawPeriods) {
             const candidateInput: AssembleClaimInput = {
               ...input,
               kind: "rb_only",
@@ -1621,6 +1773,13 @@ export function buildDrizzleM24WriteService(
         const lockedMedicaid = requireUniformClaimCoverage(locked.medicaid, "medicaid");
         const lockedPrimary = requireUniformClaimCoverage(locked.primary, "primary");
         assertMedicaidPayerResponsibility(input.kind, lockedMedicaid, lockedPrimary);
+        const patientLifecycleIssue = patientLifecycleServiceRangeIssue(
+          locked.patientLifecycle,
+          input.serviceTo,
+        );
+        if (patientLifecycleIssue) {
+          throw new ConflictError(patientLifecycleIssue.code, patientLifecycleIssue.message);
+        }
         // The M6 admission row is the per-admission serialization point. FOR UPDATE makes concurrent
         // assemblers derive cadence sequentially and also serializes against discharge writers.
         const admission = await admissionCadenceReader.cadenceSnapshotInTransaction(
@@ -1640,6 +1799,11 @@ export function buildDrizzleM24WriteService(
             "the admission does not belong to the selected patient and provider entity",
           );
         }
+        const admissionIssue = admissionServiceRangeIssue(admission, input.serviceTo);
+        if (admissionIssue) {
+          throw new ConflictError(admissionIssue.code, admissionIssue.message);
+        }
+        const inclusiveLocEndDate = inclusiveLocEndDateForAdmission(admission);
         if (!locPeriodReader) {
           throw new DegradedError(
             "MEDICAID_LOC_PERIOD_READER_UNBOUND",
@@ -1876,7 +2040,7 @@ export function buildDrizzleM24WriteService(
               levelOfCarePeriodId: p.id,
               levelOfCare: LOC_BY_M6_ENUM[p.levelOfCare],
               from: day(p.effectiveAt),
-              to: p.endedAt ? day(p.endedAt) : null,
+              to: m6LocClaimEndDate(p.endedAt, inclusiveLocEndDate),
               placeOfService: {
                 ownIpuBed: p.ipuBedAssignmentId !== null,
                 locPeriodFacilityKind: p.facilityId
@@ -2121,6 +2285,12 @@ export function buildDrizzleM24WriteService(
           hospiceLineCount: lineRows.filter((line) => !line.isRb).length,
           rbLineCount: lineRows.filter((line) => line.isRb).length,
         });
+        if (lineRows.some((line) => !line.isRb && line.rbDayId !== null)) {
+          throw new ConflictError(
+            "MEDICAID_CLAIM_STRUCTURE_INVALID",
+            "A non-R&B line references a Room & Board day. Reconcile the claim before validation.",
+          );
+        }
         const structureError = claimStructureError(structureFailure);
         if (structureError) {
           throw new ConflictError(
@@ -2156,6 +2326,13 @@ export function buildDrizzleM24WriteService(
           from: day(claim.serviceFrom),
           to: day(claim.serviceTo),
         });
+        const patientLifecycleIssue = patientLifecycleServiceRangeIssue(
+          payerSnapshot.patientLifecycle,
+          day(claim.serviceTo),
+        );
+        if (patientLifecycleIssue) {
+          throw new ConflictError(patientLifecycleIssue.code, patientLifecycleIssue.message);
+        }
         const resolvedMedicaid = requireUniformClaimCoverage(payerSnapshot.medicaid, "medicaid");
         const resolvedPrimary = requireUniformClaimCoverage(payerSnapshot.primary, "primary");
         if (resolvedMedicaid.id !== claim.patientPayerId) {
@@ -2165,6 +2342,140 @@ export function buildDrizzleM24WriteService(
           );
         }
         assertMedicaidPayerResponsibility(claim.kind, resolvedMedicaid, resolvedPrimary);
+        if (!admissionCadenceReader) {
+          throw new DegradedError(
+            "MEDICAID_ADMISSION_CADENCE_READER_UNBOUND",
+            "claim validation requires M6's admission status reader to recheck the stay-end facts",
+          );
+        }
+        const admission = await admissionCadenceReader.cadenceSnapshotInTransaction(
+          tx,
+          actor.organizationId,
+          claim.admissionId,
+        );
+        if (
+          !admission ||
+          admission.patientId !== claim.patientId ||
+          admission.providerEntityId !== claim.providerEntityId
+        ) {
+          throw new ConflictError(
+            "MEDICAID_ADMISSION_IDENTITY_MISMATCH",
+            "The admission identity could not be verified for this claim. Reconcile the patient and provider scope before validation.",
+          );
+        }
+        const admissionIssue = admissionServiceRangeIssue(admission, day(claim.serviceTo));
+        if (admissionIssue) {
+          throw new ConflictError(admissionIssue.code, admissionIssue.message);
+        }
+        const hospiceLines = lineRows.filter((line) => !line.isRb);
+        const rbLines = lineRows.filter((line) => line.isRb);
+        let currentLocPeriods: readonly CurrentLocPeriodForClaim[] | null = null;
+        let hospiceClaimSnapshotVerified = claim.kind === "rb_only";
+        if (claim.kind !== "rb_only") {
+          if (!admissionCadenceReader.periodsForAdmissionInTransaction) {
+            throw new DegradedError(
+              "MEDICAID_LOC_PERIOD_TRANSACTION_READER_UNBOUND",
+              "Hospice-line validation requires M6's current LOC snapshot on the claim transaction",
+            );
+          }
+          currentLocPeriods = await admissionCadenceReader.periodsForAdmissionInTransaction(
+            tx,
+            actor.organizationId,
+            claim.admissionId,
+          );
+          const snapshotIssue = hospiceClaimLineSnapshotIssue({
+            lines: hospiceLines,
+            periods: currentLocPeriods,
+            organizationId: actor.organizationId,
+            providerEntityId: claim.providerEntityId,
+            claimId: claim.id,
+            serviceFrom: day(claim.serviceFrom),
+            serviceTo: day(claim.serviceTo),
+            inclusiveEndDate: inclusiveLocEndDateForAdmission(admission),
+          });
+          if (snapshotIssue) throw new ConflictError(snapshotIssue.code, snapshotIssue.message);
+          hospiceClaimSnapshotVerified = true;
+        }
+        if (rbLines.length > 0) {
+          if (
+            !claim.rbArrangementId ||
+            claim.rbDayCountSnapshot !== rbLines.length ||
+            rbLines.some((line) => line.rbDayId === null) ||
+            new Set(rbLines.map((line) => line.rbDayId)).size !== rbLines.length
+          ) {
+            throw new ConflictError(
+              "MEDICAID_RB_DAY_COUNT_MISMATCH",
+              "The Room & Board lines do not identify a complete, unique billed-day snapshot. Reconcile the claim before validation.",
+            );
+          }
+          if (!admissionCadenceReader.periodsForAdmissionInTransaction) {
+            throw new DegradedError(
+              "MEDICAID_LOC_PERIOD_TRANSACTION_READER_UNBOUND",
+              "Room & Board validation requires M6's current LOC snapshot on the claim transaction",
+            );
+          }
+          const [arrangement] = await tx
+            .select()
+            .from(A)
+            .where(and(eq(A.organizationId, actor.organizationId), eq(A.id, claim.rbArrangementId)))
+            .limit(1)
+            .for("share");
+          if (!arrangement) {
+            throw new ConflictError(
+              "MEDICAID_RB_ARRANGEMENT_IDENTITY_MISMATCH",
+              "The Room & Board arrangement for this claim is unavailable in the current tenant scope.",
+            );
+          }
+          currentLocPeriods ??= await admissionCadenceReader.periodsForAdmissionInTransaction(
+            tx,
+            actor.organizationId,
+            claim.admissionId,
+          );
+          const rbDayIds = rbLines.map((line) => line.rbDayId as string);
+          const rbDays = await tx
+            .select()
+            .from(RD)
+            .where(
+              and(
+                eq(RD.organizationId, actor.organizationId),
+                eq(RD.patientId, claim.patientId),
+                inArray(RD.id, rbDayIds),
+              ),
+            )
+            .orderBy(RD.serviceDate, RD.id)
+            .for("share");
+          const rbDayById = new Map(rbDays.map((rbDay) => [rbDay.id, rbDay]));
+          if (rbDayById.size !== rbDayIds.length) {
+            throw new ConflictError(
+              "MEDICAID_RB_DAY_CLAIM_OWNERSHIP_MISMATCH",
+              "One or more Room & Board lines no longer resolve to a billed day in this claim's tenant and patient scope.",
+            );
+          }
+          for (const line of rbLines) {
+            const rbDay = rbDayById.get(line.rbDayId as string);
+            if (!rbDay) {
+              throw new ConflictError(
+                "MEDICAID_RB_DAY_CLAIM_OWNERSHIP_MISMATCH",
+                "A Room & Board line no longer resolves to its billed day.",
+              );
+            }
+            const issue = rbClaimLineIssue({
+              line,
+              rbDay,
+              arrangement,
+              organizationId: actor.organizationId,
+              patientId: claim.patientId,
+              providerEntityId: claim.providerEntityId,
+              claimId: claim.id,
+              arrangementId: claim.rbArrangementId,
+              serviceFrom: day(claim.serviceFrom),
+              serviceTo: day(claim.serviceTo),
+              admission,
+              locPeriods: currentLocPeriods,
+            });
+            if (issue) throw new ConflictError(issue.code, issue.message);
+          }
+        }
         const dualCoverageRecorded =
           resolvedPrimary.coverageKind === "medicare_ffs" &&
           resolvedPrimary.rank === 1 &&
@@ -2215,6 +2526,9 @@ export function buildDrizzleM24WriteService(
           nfResidentDays: [],
           rbArrangement: null,
           rbDays: [],
+          // Every persisted R&B line above was matched to its current arrangement, billed day and M6 LOC snapshot.
+          rbClaimSnapshotVerified: true,
+          hospiceClaimSnapshotVerified,
           rateLookups: [],
           payerResponsibility: { status: "permitted", reasonCode: null },
           evvBrackets: [],
