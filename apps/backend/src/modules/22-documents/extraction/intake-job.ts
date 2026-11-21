@@ -6,6 +6,7 @@ import {
   DEFAULT_CLASSIFIER_CONFIDENCE_FLOOR,
   type GroundedDiagnosis,
   type IntakeDocumentType,
+  type PacketSegment,
   SUD_RULESET_VERSION,
   type SudIndicator,
   type SudIndicatorCategory,
@@ -28,7 +29,7 @@ import {
   type IntakeSudDetectedPayload,
   M22_INTAKE_SUD_DETECTED_EVENT,
 } from "@chartwarden/types";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import {
   type RecordsRequestMatchSummary,
@@ -83,6 +84,13 @@ const DV = schema.documentVersions;
 const CP = schema.classifiedPages;
 const EJ = schema.extractionJobs;
 const EC = schema.extractionCandidates;
+const PROCESSABLE_BATCH_STATUSES = ["uploaded", "docling_complete", "classifier_complete"] as const;
+
+class BatchNoLongerProcessable extends Error {
+  constructor(readonly status: string) {
+    super(`intake batch became ${status}`);
+  }
+}
 
 /** The structural slices of M32's DocLens seams this job calls (M22 has no M32 edge). */
 type SeamRefusal = { readonly available: false; readonly detail?: string };
@@ -311,9 +319,36 @@ export async function runDocLensIntake(
   deps: DocLensIntakeDeps,
   job: DocLensIntakeJob,
 ): Promise<DocLensIntakeSummary> {
+  try {
+    return await runDocLensIntakeWhileProcessable(deps, job);
+  } catch (error) {
+    if (error instanceof BatchNoLongerProcessable) {
+      return { outcome: "skipped", reason: `batch_became_${error.status}` };
+    }
+    throw error;
+  }
+}
+
+async function runDocLensIntakeWhileProcessable(
+  deps: DocLensIntakeDeps,
+  job: DocLensIntakeJob,
+): Promise<DocLensIntakeSummary> {
   const org = job.organizationId;
   const inOrg = <T>(fn: (tx: DbClient) => Promise<T>): Promise<T> =>
     withOrgContext(deps.db, { organizationId: org, userId: "" }, (tx) => fn(tx as DbClient));
+  const inProcessableOrg = <T>(fn: (tx: DbClient) => Promise<T>): Promise<T> =>
+    inOrg(async (tx) => {
+      const [current] = await tx
+        .select({ status: BATCH.status })
+        .from(BATCH)
+        .where(eq(BATCH.id, job.batchId))
+        .for("update")
+        .limit(1);
+      if (!current || !PROCESSABLE_BATCH_STATUSES.includes(current.status as never)) {
+        throw new BatchNoLongerProcessable(current?.status ?? "missing");
+      }
+      return fn(tx);
+    });
 
   // ── 1. the batch and its filed source document ─────────────────────────────────────────────────────
   const source = await inOrg(async (tx) => {
@@ -327,7 +362,11 @@ export async function runDocLensIntake(
       .where(eq(BATCH.id, job.batchId))
       .limit(1);
     if (!b) return { kind: "missing" as const };
-    if (b.status !== "uploaded" && b.status !== "docling_complete") {
+    if (
+      b.status !== "uploaded" &&
+      b.status !== "docling_complete" &&
+      b.status !== "classifier_complete"
+    ) {
       return { kind: "done" as const, status: b.status };
     }
     const [d] = await tx
@@ -351,11 +390,13 @@ export async function runDocLensIntake(
   const setBatch = (
     status: "docling_complete" | "classifier_complete" | "extraction_complete" | "parse_failed",
   ) =>
-    inOrg((tx) =>
+    inProcessableOrg((tx) =>
       tx
         .update(BATCH)
         .set({ status })
-        .where(eq(BATCH.id, job.batchId))
+        .where(
+          and(eq(BATCH.id, job.batchId), inArray(BATCH.status, [...PROCESSABLE_BATCH_STATUSES])),
+        )
         .then(() => undefined),
     );
   if (source.kind === "unfiled") {
@@ -388,14 +429,14 @@ export async function runDocLensIntake(
     }
     throw err; // worker unavailable / storage error ⇒ BullMQ retries
   }
-  await inOrg((tx) =>
+  await inProcessableOrg((tx) =>
     tx
       .update(BATCH)
       .set({
         status: "docling_complete",
         pageGeometry: pages.map((p) => ({ page: p.page, width: p.width, height: p.height })),
       })
-      .where(eq(BATCH.id, job.batchId))
+      .where(and(eq(BATCH.id, job.batchId), inArray(BATCH.status, [...PROCESSABLE_BATCH_STATUSES])))
       .then(() => undefined),
   );
 
@@ -403,7 +444,7 @@ export async function runDocLensIntake(
   // the e-mail subject in source metadata) files an unfiled batch under the request's referral. Runs
   // BEFORE the identity check (step 6), which then compares the documents against that prospect. A batch
   // already filed elsewhere is never moved: the summary carries the warning instead.
-  const recordsRequest = await inOrg((tx) =>
+  const recordsRequest = await inProcessableOrg((tx) =>
     matchInboundRecordsRequest(tx, {
       organizationId: org,
       batchId: job.batchId,
@@ -412,91 +453,274 @@ export async function runDocLensIntake(
   );
 
   // ── 2b. SUD detection over every page (§7.4 W4 step 1) — rules always, the model when it may run ──
-  const sudIndicators: SudIndicator[] = detectSudIndicators(pages);
-  const sudRefs = [SUD_RULESET_VERSION];
   const refusalsEarly: string[] = [];
-  if (deps.sudDetector) {
-    const r = await deps.sudDetector().detect({
-      organizationId: org,
-      actorUserId: job.actorUserId,
-      documentId: source.documentId,
-      extractedText: "",
-      pages: pages.map((p) => ({ page: p.page, text: pageText(p) })),
-    });
-    if (!r.available) {
-      refusalsEarly.push(`sud_detect: ${r.detail ?? "refused"}`);
-    } else {
-      sudRefs.push(`ai_invocation:${r.invocationId}`);
-      for (const i of r.indicators) {
-        // A model indicator counts only when its quote is really on the page it names.
-        const g = groundQuote(pages, { page: i.pageNumber, quote: i.snippet, value: i.snippet });
-        if (!g.grounded) continue;
-        sudIndicators.push({
-          page: g.page,
-          category: (SUD_CATEGORIES.has(i.category)
-            ? i.category
-            : "social_history") as SudIndicatorCategory,
-          ruleId: `ai:${i.category}`,
-          term: i.snippet,
-          bbox: g.bbox,
-        });
-      }
+  const decodeStoredSud = async (ciphertext: string | null): Promise<SudIndicator[]> => {
+    if (!ciphertext) return [];
+    try {
+      const decoded = JSON.parse(await deps.cipher.decrypt(org, ciphertext));
+      if (!Array.isArray(decoded)) throw new Error("not an array");
+      return decoded.filter(
+        (indicator): indicator is SudIndicator =>
+          indicator !== null &&
+          typeof indicator === "object" &&
+          Number.isInteger((indicator as SudIndicator).page) &&
+          typeof (indicator as SudIndicator).category === "string" &&
+          typeof (indicator as SudIndicator).ruleId === "string" &&
+          typeof (indicator as SudIndicator).term === "string" &&
+          Array.isArray((indicator as SudIndicator).bbox) &&
+          (indicator as SudIndicator).bbox.length === 4,
+      );
+    } catch {
+      throw new DegradedError("doclens-intake", "stored SUD evidence could not be read");
     }
-  }
+  };
+  const authoritativeSud = await inProcessableOrg(async (tx) => {
+    const [current] = await tx
+      .select({
+        patientId: BATCH.patientId,
+        sudStatus: BATCH.sudStatus,
+        sudEvidenceCipher: BATCH.sudEvidenceCipher,
+        sudDetectorRef: BATCH.sudDetectorRef,
+      })
+      .from(BATCH)
+      .where(eq(BATCH.id, job.batchId))
+      .limit(1);
+    if (!current) throw new BatchNoLongerProcessable("missing");
+    const indicators = [
+      ...(await decodeStoredSud(current.sudEvidenceCipher)),
+      ...detectSudIndicators(pages),
+    ];
+    const refs = [
+      ...new Set(
+        [...(current.sudDetectorRef?.split("+") ?? []), SUD_RULESET_VERSION].filter(Boolean),
+      ),
+    ];
+    // Legacy workers persisted `rules:v1` even when the configured detector refused. Only an AI
+    // invocation proves that optional scan completed; rules-only is complete when no detector exists.
+    let scanComplete = deps.sudDetector
+      ? refs.some((ref) => ref.startsWith("ai_invocation:"))
+      : true;
+    if (!scanComplete && deps.sudDetector) {
+      const result = await deps.sudDetector().detect({
+        organizationId: org,
+        actorUserId: job.actorUserId,
+        documentId: source.documentId,
+        extractedText: "",
+        pages: pages.map((page) => ({ page: page.page, text: pageText(page) })),
+      });
+      if (!result.available) {
+        refusalsEarly.push(`sud_detect: ${result.detail ?? "refused"}`);
+      } else {
+        scanComplete = true;
+        refs.push(`ai_invocation:${result.invocationId}`);
+        for (const indicator of result.indicators) {
+          const grounded = groundQuote(pages, {
+            page: indicator.pageNumber,
+            quote: indicator.snippet,
+            value: indicator.snippet,
+          });
+          if (!grounded.grounded) continue;
+          indicators.push({
+            page: grounded.page,
+            category: (SUD_CATEGORIES.has(indicator.category)
+              ? indicator.category
+              : "social_history") as SudIndicatorCategory,
+            ruleId: `ai:${indicator.category}`,
+            term: indicator.snippet,
+            bbox: grounded.bbox,
+          });
+        }
+      }
+    } else if (!deps.sudDetector) {
+      scanComplete = true;
+    }
+    const merged = [
+      ...new Map(
+        indicators.map((indicator) => [
+          JSON.stringify([
+            indicator.page,
+            indicator.category,
+            indicator.ruleId,
+            indicator.term,
+            indicator.bbox,
+          ]),
+          indicator,
+        ]),
+      ).values(),
+    ];
+    const newlyDetected = current.sudStatus === "not_detected" && merged.length > 0;
+    if (newlyDetected && !deps.outbox) {
+      throw new DegradedError("doclens-intake", "SUD indicators found but no outbox is bound");
+    }
+    const evidence = merged.length ? await deps.cipher.encrypt(org, JSON.stringify(merged)) : null;
+    await tx
+      .update(BATCH)
+      .set({
+        ...(scanComplete ? { sudDetectorRef: [...new Set(refs)].join("+") } : {}),
+        ...(evidence
+          ? {
+              sudEvidenceCipher: evidence,
+              ...(newlyDetected ? { sudStatus: "detected" as const } : {}),
+            }
+          : {}),
+      })
+      .where(eq(BATCH.id, job.batchId));
+    if (newlyDetected && deps.outbox) {
+      const payload: IntakeSudDetectedPayload = {
+        intakeBatchId: job.batchId,
+        patientId: current.patientId,
+        candidateCount: 0,
+        suggestedSudKind: dominantSudCategory(merged),
+        pages: [...new Set(merged.map((indicator) => indicator.page))].sort((a, b) => a - b),
+      };
+      await deps.outbox.publish(tx, {
+        eventName: M22_INTAKE_SUD_DETECTED_EVENT,
+        payload: { ...payload, organizationId: org },
+        organizationId: org,
+        aggregateKind: "intake_upload_batch",
+        aggregateId: job.batchId,
+      });
+    }
+    return { indicators: merged, scanComplete };
+  });
+  const sudIndicators = authoritativeSud.indicators;
   const sudPages = new Set(sudIndicators.map((i) => i.page));
 
   // ── 3. classify each page ────────────────────────────────────────────────────────────────────────
   const refusals: string[] = [...refusalsEarly];
-  const classified: ClassifiedPage[] = [];
+  const loadClassificationPlan = () =>
+    inOrg((tx) =>
+      tx
+        .select({
+          id: CP.id,
+          pageFrom: CP.pageRangeStart,
+          pageTo: CP.pageRangeEnd,
+          documentType: CP.documentType,
+          confidence: CP.confidence,
+          humanConfirmed: CP.humanConfirmed,
+          classifierModelVersionRef: CP.classifierModelVersionRef,
+          title: CP.documentTitle,
+          documentDate: CP.documentDate,
+          duplicateOfPage: CP.duplicateOfPage,
+          boundary: CP.segmentBoundary,
+        })
+        .from(CP)
+        .where(eq(CP.intakeUploadBatchId, job.batchId))
+        .orderBy(CP.pageRangeStart),
+    );
+  let persistedPlan = await loadClassificationPlan();
   const classifierRef = new Map<number, string>();
-  for (const p of pages) {
-    const r = await deps.classifier().classify({
-      organizationId: org,
-      actorUserId: job.actorUserId,
-      documentId: source.documentId,
-      extractedText: pageText(p),
-      pageCount: pages.length,
-      pageNumber: p.page,
-    });
-    if (!r.available) {
-      refusals.push(`classify p${p.page}: ${r.detail ?? "refused"}`);
+  if (persistedPlan.length === 0) {
+    const classified: ClassifiedPage[] = [];
+    for (const p of pages) {
+      const r = await deps.classifier().classify({
+        organizationId: org,
+        actorUserId: job.actorUserId,
+        documentId: source.documentId,
+        extractedText: pageText(p),
+        pageCount: pages.length,
+        pageNumber: p.page,
+      });
+      if (!r.available) {
+        refusals.push(`classify p${p.page}: ${r.detail ?? "refused"}`);
+        classified.push(
+          ...classifyPages(
+            [{ pageNumber: p.page, documentType: "unknown", confidence: 0 }],
+            deps.confidenceFloor,
+          ),
+        );
+        classifierRef.set(p.page, "refused");
+        continue;
+      }
       classified.push(
         ...classifyPages(
-          [{ pageNumber: p.page, documentType: "unknown", confidence: 0 }],
-          deps.confidenceFloor,
+          [
+            {
+              pageNumber: p.page,
+              documentType: r.documentType as ClassifiedPageDocType,
+              confidence: r.confidence,
+            },
+          ],
+          deps.confidenceFloor ?? DEFAULT_CLASSIFIER_CONFIDENCE_FLOOR,
         ),
       );
-      classifierRef.set(p.page, "refused");
-      continue;
+      classifierRef.set(p.page, `ai_invocation:${r.invocationId}`);
     }
-    classified.push(
-      ...classifyPages(
-        [
-          {
-            pageNumber: p.page,
-            documentType: r.documentType as ClassifiedPageDocType,
-            confidence: r.confidence,
-          },
-        ],
-        deps.confidenceFloor ?? DEFAULT_CLASSIFIER_CONFIDENCE_FLOOR,
-      ),
-    );
-    classifierRef.set(p.page, `ai_invocation:${r.invocationId}`);
+    const proposed = splitPacket(pages, classified);
+    await inProcessableOrg(async (tx) => {
+      // A second BullMQ delivery may have classified while this one was awaiting a model. The batch
+      // lock makes one complete plan win; the other delivery resumes that plan instead of appending.
+      const [existing] = await tx
+        .select({ id: CP.id })
+        .from(CP)
+        .where(eq(CP.intakeUploadBatchId, job.batchId))
+        .limit(1);
+      if (existing) return;
+      await tx.insert(CP).values(
+        proposed.map((seg) => ({
+          organizationId: org,
+          intakeUploadBatchId: job.batchId,
+          sourceDocumentId: source.documentId,
+          pageRangeStart: Math.min(...seg.pageNumbers),
+          pageRangeEnd: Math.max(...seg.pageNumbers),
+          documentType: seg.documentType,
+          confidence: seg.confidence.toFixed(3),
+          classifierModelVersionRef: classifierRef.get(seg.pageNumbers[0] as number) ?? "refused",
+          documentTitle: seg.title,
+          documentDate: seg.documentDate,
+          duplicateOfPage: seg.duplicateOfPage,
+          segmentBoundary: seg.boundary,
+        })),
+      );
+    });
+    persistedPlan = await loadClassificationPlan();
   }
+
+  const plannedPageNumbers = persistedPlan.flatMap((row) =>
+    Array.from({ length: row.pageTo - row.pageFrom + 1 }, (_, index) => row.pageFrom + index),
+  );
+  const parsedPageNumbers = pages.map((page) => page.page);
+  if (
+    plannedPageNumbers.length !== parsedPageNumbers.length ||
+    plannedPageNumbers.some((page, index) => page !== parsedPageNumbers[index])
+  ) {
+    throw new DegradedError(
+      "doclens-intake",
+      "persisted classification plan does not cover each parsed page exactly once",
+    );
+  }
+
+  // Once any classification evidence is stored, its complete page-range plan is authoritative for all
+  // retries. The classifier is not called again, so changed labels or boundaries cannot fork evidence.
+  const plannedSegments = persistedPlan.map((row) => ({
+    id: row.id,
+    segment: {
+      pageNumbers: Array.from(
+        { length: row.pageTo - row.pageFrom + 1 },
+        (_, index) => row.pageFrom + index,
+      ),
+      documentType: row.documentType,
+      confidence: Number(row.confidence),
+      needsHumanClassification:
+        row.documentType === "unknown" ||
+        (!row.humanConfirmed &&
+          Number(row.confidence) < (deps.confidenceFloor ?? DEFAULT_CLASSIFIER_CONFIDENCE_FLOOR)),
+      title: row.title,
+      documentDate: row.documentDate,
+      duplicateOfPage: row.duplicateOfPage,
+      boundary: (row.boundary ?? "first_page") as PacketSegment["boundary"],
+    } satisfies PacketSegment,
+  }));
 
   // ── 4. extract each contiguous same-type run, ground, persist ───────────────────────────────────
   const dropped: Record<string, number> = {};
   const drop = (reason: string) => {
     dropped[reason] = (dropped[reason] ?? 0) + 1;
   };
-  let jobs = 0;
-  let candidates = 0;
-  let sudCandidates = 0;
-  let anyAwaiting = false;
   const vision = { verified: 0, disagreed: 0, unverified: 0 };
 
   // ── 3b. split the fax into the documents inside it (F-238) ──────────────────────────────────────
-  const segments = splitPacket(pages, classified);
+  const segments = plannedSegments.map((planned) => planned.segment);
   const segmentOf = (page: number) => segments.find((s) => s.pageNumbers.includes(page));
 
   // ── 3c. read the ICD-10-CM codes off the pages and check them (F-238) — deterministic, no model ──────
@@ -534,35 +758,26 @@ export async function runDocLensIntake(
     }
   }
 
-  for (const seg of segments) {
-    const segmentRow = {
-      organizationId: org,
-      intakeUploadBatchId: job.batchId,
-      sourceDocumentId: source.documentId,
-      pageRangeStart: Math.min(...seg.pageNumbers),
-      pageRangeEnd: Math.max(...seg.pageNumbers),
-      documentType: seg.documentType,
-      confidence: seg.confidence.toFixed(3),
-      classifierModelVersionRef: classifierRef.get(seg.pageNumbers[0] as number) ?? "refused",
-      documentTitle: seg.title,
-      documentDate: seg.documentDate,
-      duplicateOfPage: seg.duplicateOfPage,
-      segmentBoundary: seg.boundary,
-    };
+  for (const { id: pageId, segment: seg } of plannedSegments) {
     // A re-sent page, or a document that needs a human to classify it, gets its classified_page row (the
     // reviewer sees it) but no extraction job.
     if (seg.duplicateOfPage !== null || seg.needsHumanClassification) {
-      await inOrg((tx) => tx.insert(CP).values(segmentRow));
       continue;
     }
     const run = seg;
     const runPages = pages.filter((p) => run.pageNumbers.includes(p.page));
     const docType = run.documentType as IntakeDocumentType;
     const schemaFields = findExtractionSchema(docType)?.fields ?? [];
-    const pageId = await inOrg(async (tx) => {
-      const [row] = await tx.insert(CP).values(segmentRow).returning({ id: CP.id });
-      return (row as { id: string }).id;
-    });
+    const [persistedJob] = await inOrg((tx) =>
+      tx
+        .select({ id: EJ.id, status: EJ.status })
+        .from(EJ)
+        .where(eq(EJ.classifiedPageId, pageId))
+        .limit(1),
+    );
+    if (persistedJob?.status === "ready_for_review") {
+      continue;
+    }
 
     const result = await deps.extractor().extract({
       organizationId: org,
@@ -577,23 +792,32 @@ export async function runDocLensIntake(
         .map((f) => ({ fieldPath: f.fieldPath, description: f.description })),
       pages: runPages.map((p) => ({ page: p.page, text: pageText(p) })),
     });
-    jobs += 1;
     if (!result.available) {
-      anyAwaiting = true;
       refusals.push(
         `extract ${docType} p${run.pageNumbers.join(",")}: ${result.detail ?? "refused"}`,
       );
-      await inOrg((tx) =>
-        tx.insert(EJ).values({
+      await inProcessableOrg(async (tx) => {
+        const [currentJob] = await tx
+          .select({ id: EJ.id, status: EJ.status })
+          .from(EJ)
+          .where(eq(EJ.classifiedPageId, pageId))
+          .limit(1);
+        if (currentJob?.status === "ready_for_review") return;
+        const values = {
           organizationId: org,
           classifiedPageId: pageId,
           documentType: docType,
-          status: "awaiting_capability",
+          status: "awaiting_capability" as const,
           extractorModelVersionRef: "refused",
           failureReason: (result.detail ?? "refused").slice(0, 500),
           correlationId: job.correlationId,
-        }),
-      );
+        };
+        if (currentJob) {
+          await tx.update(EJ).set(values).where(eq(EJ.id, currentJob.id));
+        } else {
+          await tx.insert(EJ).values(values);
+        }
+      });
       continue;
     }
 
@@ -707,27 +931,37 @@ export async function runDocLensIntake(
           : null,
       ),
     );
-    await inOrg(async (tx) => {
-      const [ej] = await tx
-        .insert(EJ)
-        .values({
-          organizationId: org,
-          classifiedPageId: pageId,
-          documentType: docType,
-          status: "ready_for_review",
-          extractorModelVersionRef: extractorRef,
-          visionVerifierModelVersionRef:
-            visionRef && "invocationId" in visionRef
-              ? `ai_invocation:${visionRef.invocationId}`
-              : null,
-          aggregateConfidence: accepted.length
-            ? (accepted.reduce((s, a) => s + a.confidence, 0) / accepted.length).toFixed(3)
+    await inProcessableOrg(async (tx) => {
+      const [currentJob] = await tx
+        .select({ id: EJ.id, status: EJ.status })
+        .from(EJ)
+        .where(eq(EJ.classifiedPageId, pageId))
+        .limit(1);
+      if (currentJob?.status === "ready_for_review") return;
+      const values = {
+        organizationId: org,
+        classifiedPageId: pageId,
+        documentType: docType,
+        status: "ready_for_review" as const,
+        extractorModelVersionRef: extractorRef,
+        visionVerifierModelVersionRef:
+          visionRef && "invocationId" in visionRef
+            ? `ai_invocation:${visionRef.invocationId}`
             : null,
-          correlationId: job.correlationId,
-          completedAt: new Date(),
-        })
-        .returning({ id: EJ.id });
-      const jobId = (ej as { id: string }).id;
+        aggregateConfidence: accepted.length
+          ? (accepted.reduce((s, a) => s + a.confidence, 0) / accepted.length).toFixed(3)
+          : null,
+        failureReason: null,
+        correlationId: job.correlationId,
+        completedAt: new Date(),
+      };
+      let jobId = currentJob?.id;
+      if (jobId) {
+        await tx.update(EJ).set(values).where(eq(EJ.id, jobId));
+      } else {
+        const [ej] = await tx.insert(EJ).values(values).returning({ id: EJ.id });
+        jobId = (ej as { id: string }).id;
+      }
       for (const [i, a] of accepted.entries()) {
         await tx.insert(EC).values({
           organizationId: org,
@@ -746,75 +980,84 @@ export async function runDocLensIntake(
         });
       }
     });
-    candidates += accepted.length;
-    sudCandidates += accepted.filter((a) => sudPages.has(a.page)).length;
   }
 
   // ── 6. completion + the W4 SUD record, in ONE transaction (status, evidence, event) ──────────────
-  const finalStatus =
-    anyAwaiting && candidates === 0 ? "classifier_complete" : "extraction_complete";
-  const sudEvidence =
-    sudIndicators.length > 0
-      ? await deps.cipher.encrypt(
-          org,
-          JSON.stringify(
-            sudIndicators.map((i) => ({
-              page: i.page,
-              category: i.category,
-              ruleId: i.ruleId,
-              term: i.term,
-              bbox: i.bbox,
-            })),
-          ),
-        )
-      : null;
-  if (sudEvidence !== null && !deps.outbox) {
+  if (sudIndicators.length > 0 && !deps.outbox) {
     // A detection M5 never hears about is a Part 2 flag that silently does not exist. Retry instead.
     throw new DegradedError("doclens-intake", "SUD indicators found but no outbox is bound");
   }
-  await inOrg(async (tx) => {
-    const updated = await tx
+  const expectedJobPageIds = plannedSegments
+    .filter(({ segment }) => segment.duplicateOfPage === null && !segment.needsHumanClassification)
+    .map(({ id }) => id);
+  const persistedState = await inProcessableOrg(async (tx) => {
+    const persistedJobs = expectedJobPageIds.length
+      ? await tx
+          .select({ id: EJ.id, status: EJ.status })
+          .from(EJ)
+          .where(inArray(EJ.classifiedPageId, expectedJobPageIds))
+      : [];
+    const [batchSud] = await tx
+      .select({
+        sudEvidenceCipher: BATCH.sudEvidenceCipher,
+        sudDetectorRef: BATCH.sudDetectorRef,
+      })
+      .from(BATCH)
+      .where(eq(BATCH.id, job.batchId))
+      .limit(1);
+    if (!batchSud) throw new BatchNoLongerProcessable("missing");
+    const effectiveIndicators = await decodeStoredSud(batchSud.sudEvidenceCipher);
+    const effectiveSudPages = [
+      ...new Set(effectiveIndicators.map((indicator) => indicator.page)),
+    ].sort((a, b) => a - b);
+    const persistedJobIds = persistedJobs.map((persistedJob) => persistedJob.id);
+    if (persistedJobIds.length > 0 && effectiveSudPages.length > 0) {
+      // Monotonic: a later/refused delivery may add Part 2 protection, never remove an earlier verdict.
+      await tx
+        .update(EC)
+        .set({ sudDetected: true })
+        .where(
+          and(
+            inArray(EC.extractionJobId, persistedJobIds),
+            inArray(EC.sourcePage, effectiveSudPages),
+          ),
+        );
+    }
+    const persistedCandidates = persistedJobIds.length
+      ? await tx
+          .select({ sudDetected: EC.sudDetected })
+          .from(EC)
+          .where(inArray(EC.extractionJobId, persistedJobIds))
+      : [];
+    const allJobsReady =
+      persistedJobs.length === expectedJobPageIds.length &&
+      persistedJobs.every((persistedJob) => persistedJob.status === "ready_for_review");
+    // Do not expose review readiness until the serialized stage 2b transaction has an authoritative
+    // verdict (including legacy rules-only refs whose optional detector had actually refused).
+    const allReady = allJobsReady && authoritativeSud.scanComplete;
+    const finalStatus: "extraction_complete" | "classifier_complete" = allReady
+      ? "extraction_complete"
+      : "classifier_complete";
+    await tx
       .update(BATCH)
       .set({
-        status: finalStatus,
-        sudDetectorRef: sudRefs.join("+"),
-        ...(sudEvidence !== null
-          ? { sudStatus: "detected" as const, sudEvidenceCipher: sudEvidence }
-          : {}),
+        // Keep review closed until the identity refresh below completes. Publishing
+        // `extraction_complete` here creates a window where stale/null identity can reach writeback.
+        status: "classifier_complete",
       })
-      .where(and(eq(BATCH.id, job.batchId), eq(BATCH.sudStatus, "not_detected")))
-      .returning({ id: BATCH.id });
-    if (sudEvidence === null || updated.length === 0) {
-      if (updated.length === 0) {
-        // Already resolved/detected by an earlier run: keep that state, just finish the batch.
-        await tx.update(BATCH).set({ status: finalStatus }).where(eq(BATCH.id, job.batchId));
-      }
-      return;
-    }
-    // The batch's patient NOW: a records-request match (step 2a) may have filed it since `source` was read.
-    const [filed] = await tx
-      .select({ patientId: BATCH.patientId })
-      .from(BATCH)
       .where(eq(BATCH.id, job.batchId));
-    const payload: IntakeSudDetectedPayload = {
-      intakeBatchId: job.batchId,
-      patientId: filed?.patientId ?? null,
-      candidateCount: sudCandidates,
-      suggestedSudKind: dominantSudCategory(sudIndicators),
-      pages: [...sudPages].sort((x, y) => x - y),
+    return {
+      finalStatus,
+      jobs: persistedJobs.length,
+      candidates: persistedCandidates.length,
+      sudIndicators: effectiveIndicators.length,
+      sudPages: effectiveSudPages,
     };
-    await (deps.outbox as ExtractionOutboxPort).publish(tx, {
-      eventName: M22_INTAKE_SUD_DETECTED_EVENT,
-      payload: { ...payload, organizationId: org },
-      organizationId: org,
-      aggregateKind: "intake_upload_batch",
-      aggregateId: job.batchId,
-    });
   });
   // ── 6. F-238: is every document about the patient (or referral) this fax is filed under? ───────────
   const identity = deps.identityTargets
     ? (
-        await inOrg((tx) =>
+        await inProcessableOrg((tx) =>
           refreshBatchIdentity(
             tx,
             {
@@ -828,15 +1071,22 @@ export async function runDocLensIntake(
         )
       ).status
     : ("not_configured" as const);
+  await inProcessableOrg((tx) =>
+    tx
+      .update(BATCH)
+      .set({ status: persistedState.finalStatus })
+      .where(and(eq(BATCH.id, job.batchId), eq(BATCH.status, "classifier_complete"))),
+  );
   return {
-    outcome: anyAwaiting && candidates === 0 ? "awaiting_capability" : "extracted",
+    outcome:
+      persistedState.finalStatus === "classifier_complete" ? "awaiting_capability" : "extracted",
     pages: pages.length,
-    jobs,
-    candidates,
+    jobs: persistedState.jobs,
+    candidates: persistedState.candidates,
     dropped,
     refusals,
     vision,
-    sud: { indicators: sudIndicators.length, pages: [...sudPages].sort((x, y) => x - y) },
+    sud: { indicators: persistedState.sudIndicators, pages: persistedState.sudPages },
     identity,
     recordsRequest,
     documents: segments.length,

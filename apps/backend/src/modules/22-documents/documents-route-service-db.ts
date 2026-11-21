@@ -35,6 +35,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
   DegradedError,
+  ForbiddenError,
   type IntakeSudWithdrawnPayload,
   M22_INTAKE_SUD_WITHDRAWN_EVENT,
   NotFoundError,
@@ -263,8 +264,20 @@ export function createDbDocumentRouteService(
   async function requireOpenReview(
     tx: DbClient,
     reviewId: string,
-  ): Promise<{ id: string; batchId: string; status: string }> {
-    const r = await requireReview(tx, reviewId);
+    reviewerMembershipId?: string,
+  ): Promise<{ id: string; batchId: string; status: string; reviewerMembershipId: string }> {
+    const [r] = await tx
+      .select({
+        id: ER.id,
+        batchId: ER.intakeUploadBatchId,
+        status: ER.status,
+        reviewerMembershipId: ER.reviewerMembershipId,
+      })
+      .from(ER)
+      .where(eq(ER.id, reviewId))
+      .for("update")
+      .limit(1);
+    if (!r) throw new NotFoundError("review");
     if (r.status !== "in_progress") {
       throw new ChartWardenError(
         "REVIEW_NOT_IN_PROGRESS",
@@ -272,7 +285,43 @@ export function createDbDocumentRouteService(
         409,
       );
     }
+    if (reviewerMembershipId && r.reviewerMembershipId !== reviewerMembershipId) {
+      throw new ForbiddenError("this review is locked by another reviewer");
+    }
     return r;
+  }
+
+  async function refreshReviewDecisionCount(tx: DbClient, reviewId: string): Promise<void> {
+    const decisions = await tx
+      .select({ id: ED.id })
+      .from(ED)
+      .where(eq(ED.extractionReviewId, reviewId));
+    await tx.update(ER).set({ candidatesDecided: decisions.length }).where(eq(ER.id, reviewId));
+  }
+
+  async function transitionBatchJobs(
+    tx: DbClient,
+    batchId: string,
+    from: "ready_for_review" | "in_review",
+    to: "ready_for_review" | "in_review" | "committed" | "discarded",
+  ): Promise<void> {
+    const pages = await tx
+      .select({ id: CP.id })
+      .from(CP)
+      .where(eq(CP.intakeUploadBatchId, batchId));
+    if (pages.length === 0) return;
+    await tx
+      .update(EJ)
+      .set({ status: to })
+      .where(
+        and(
+          inArray(
+            EJ.classifiedPageId,
+            pages.map((page) => page.id),
+          ),
+          eq(EJ.status, from),
+        ),
+      );
   }
 
   /**
@@ -980,7 +1029,59 @@ export function createDbDocumentRouteService(
     },
     async openReview(organizationId, actor, batchId) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
-        await requireBatchNotIn(tx, batchId, OPEN_REVIEW_REFUSED_STATUSES, "open a review");
+        const current = await requireBatchNotIn(
+          tx,
+          batchId,
+          OPEN_REVIEW_REFUSED_STATUSES,
+          "open a review",
+        );
+        if (current === "in_review") {
+          const [existing] = await tx
+            .select({
+              id: ER.id,
+              status: ER.status,
+              openedAt: ER.openedAt,
+              reviewerMembershipId: ER.reviewerMembershipId,
+            })
+            .from(ER)
+            .where(and(eq(ER.intakeUploadBatchId, batchId), eq(ER.status, "in_progress")))
+            .limit(1);
+          if (!existing) {
+            throw new ChartWardenError(
+              "BATCH_STATE_CONFLICT",
+              "the intake batch is in review but has no active review session",
+              409,
+            );
+          }
+          if (existing.reviewerMembershipId !== actor.membershipId) {
+            throw new ChartWardenError(
+              "REVIEW_ALREADY_IN_PROGRESS",
+              "another reviewer already has this intake batch open",
+              409,
+            );
+          }
+          return {
+            id: existing.id,
+            batchId,
+            status: existing.status,
+            createdAt: iso(existing.openedAt),
+          };
+        }
+        // An uploaded or partially processed batch is not ready for field-level review.
+        // Recheck inside the transaction: a disabled button alone is not an authorization boundary.
+        if (current !== "extraction_complete") {
+          throw new ChartWardenError(
+            "EXTRACTION_NOT_READY",
+            "Review requires completed extraction; inspect processing status before retrying",
+            409,
+          );
+        }
+        const reviewableCandidates = await tx
+          .select({ id: EC.id })
+          .from(EC)
+          .innerJoin(EJ, eq(EJ.id, EC.extractionJobId))
+          .innerJoin(CP, eq(CP.id, EJ.classifiedPageId))
+          .where(eq(CP.intakeUploadBatchId, batchId));
         const [r] = await tx
           .insert(ER)
           .values({
@@ -988,17 +1089,20 @@ export function createDbDocumentRouteService(
             intakeUploadBatchId: batchId,
             reviewerMembershipId: actor.membershipId,
             status: "in_progress",
+            candidatesTotal: reviewableCandidates.length,
+            candidatesDecided: 0,
             correlationId: randomUUID(),
           })
           .returning({ id: ER.id, status: ER.status, openedAt: ER.openedAt });
         if (!r) throw new Error("extraction_review insert returned no row");
+        await transitionBatchJobs(tx, batchId, "ready_for_review", "in_review");
         await tx.update(BATCH).set({ status: "in_review" }).where(eq(BATCH.id, batchId));
         return { id: r.id, batchId, status: r.status, createdAt: iso(r.openedAt) };
       });
     },
     async recordDecision(organizationId, actor, reviewId, args) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
-        const review = await requireOpenReview(tx, reviewId);
+        const review = await requireOpenReview(tx, reviewId, actor.membershipId);
         // F-237 — the candidate must be this review's batch's (the ABAC guard already denied any other).
         const [cand] = await tx
           .select({
@@ -1059,12 +1163,13 @@ export function createDbDocumentRouteService(
           })
           .returning({ id: ED.id });
         if (!d) throw new Error("extraction_decision insert returned no row");
+        await refreshReviewDecisionCount(tx, reviewId);
         return { decisionId: d.id };
       });
     },
     async bulkApprove(organizationId, actor, reviewId, candidateIds) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
-        const review = await requireOpenReview(tx, reviewId);
+        const review = await requireOpenReview(tx, reviewId, actor.membershipId);
         // F-237 — every id must be this review's batch's candidate (defense in depth behind the ABAC guard).
         const owned = await tx
           .select({ id: EC.id })
@@ -1102,12 +1207,13 @@ export function createDbDocumentRouteService(
               set: values,
             });
         }
+        await refreshReviewDecisionCount(tx, reviewId);
         return { bulkApproveBatchId, decisionsCreated: candidateIds.length };
       });
     },
     async resolveDiscrepancy(organizationId, actor, reviewId, discrepancyId) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
-        await requireReview(tx, reviewId);
+        await requireOpenReview(tx, reviewId, actor.membershipId);
         const upd = await tx
           .update(DISC)
           .set({
@@ -1123,14 +1229,36 @@ export function createDbDocumentRouteService(
     },
     async completeReview(organizationId, actor, reviewId) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
-        await requireReview(tx, reviewId);
+        // Every mutation that can touch both rows locks batch -> review. `discardBatch` uses the same
+        // order, avoiding a review -> batch / batch -> review deadlock under concurrent disposition.
+        const seed = await requireReview(tx, reviewId);
+        const [batch] = await tx
+          .select({
+            patientId: BATCH.patientId,
+            referralId: BATCH.referralId,
+            sudStatus: BATCH.sudStatus,
+            identityStatus: BATCH.identityStatus,
+          })
+          .from(BATCH)
+          .where(eq(BATCH.id, seed.batchId))
+          .for("update")
+          .limit(1);
+        if (!batch) throw new NotFoundError("intake batch");
         // Serialize concurrent completions of one review: the second waits, then sees `complete`.
         const [r] = await tx
-          .select({ id: ER.id, batchId: ER.intakeUploadBatchId, status: ER.status })
+          .select({
+            id: ER.id,
+            batchId: ER.intakeUploadBatchId,
+            status: ER.status,
+            reviewerMembershipId: ER.reviewerMembershipId,
+          })
           .from(ER)
           .where(eq(ER.id, reviewId))
           .for("update");
         if (!r) throw new NotFoundError("review");
+        if (r.reviewerMembershipId !== actor.membershipId) {
+          throw new ForbiddenError("this review is locked by another reviewer");
+        }
         // Idempotent re-completion (a retried request with the same Idempotency-Key, or a double click):
         // the writeback was committed by the first one — never emit it twice.
         if (r.status === "complete") return { reviewId, status: "complete" as const };
@@ -1141,16 +1269,6 @@ export function createDbDocumentRouteService(
             409,
           );
         }
-        const [batch] = await tx
-          .select({
-            patientId: BATCH.patientId,
-            sudStatus: BATCH.sudStatus,
-            identityStatus: BATCH.identityStatus,
-          })
-          .from(BATCH)
-          .where(eq(BATCH.id, r.batchId))
-          .limit(1);
-        if (!batch) throw new NotFoundError("intake batch");
         // F-237 — §7.4 W4: a SUD detection must be confirmed or rejected before anything is committed.
         if (batch.sudStatus === "detected") {
           throw new ChartWardenError(
@@ -1165,6 +1283,33 @@ export function createDbDocumentRouteService(
           throw new ChartWardenError(
             "IDENTITY_UNRESOLVED",
             "a document in this fax may belong to another patient; resolve it before completing the review",
+            409,
+          );
+        }
+        if (
+          (batch.patientId !== null || batch.referralId !== null) &&
+          (batch.identityStatus === null || batch.identityStatus === "no_target")
+        ) {
+          throw new ChartWardenError(
+            "IDENTITY_NOT_CHECKED",
+            "document identity has not been checked for this patient or referral",
+            409,
+          );
+        }
+        const candidates = await tx
+          .select({ id: EC.id })
+          .from(EC)
+          .innerJoin(EJ, eq(EJ.id, EC.extractionJobId))
+          .innerJoin(CP, eq(CP.id, EJ.classifiedPageId))
+          .where(eq(CP.intakeUploadBatchId, r.batchId));
+        const decisions = await tx
+          .select({ candidateId: ED.extractionCandidateId })
+          .from(ED)
+          .where(eq(ED.extractionReviewId, reviewId));
+        if (candidates.length > decisions.length) {
+          throw new ChartWardenError(
+            "REVIEW_INCOMPLETE",
+            `${candidates.length - decisions.length} extracted field(s) still need a decision`,
             409,
           );
         }
@@ -1202,6 +1347,7 @@ export function createDbDocumentRouteService(
           ...m5Summary,
           excluded: m5Summary.excluded.filter((e) => !isDiagnosisFieldPath(e.fieldPath)),
         };
+        await transitionBatchJobs(tx, r.batchId, "in_review", "committed");
         await tx
           .update(ER)
           .set({ status: "complete", closedAt: new Date() })
@@ -1223,11 +1369,24 @@ export function createDbDocumentRouteService(
     },
     async abandonReview(organizationId, actor, reviewId) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
-        await requireReview(tx, reviewId);
+        const seed = await requireReview(tx, reviewId);
+        const [batch] = await tx
+          .select({ id: BATCH.id })
+          .from(BATCH)
+          .where(eq(BATCH.id, seed.batchId))
+          .for("update")
+          .limit(1);
+        if (!batch) throw new NotFoundError("intake batch");
+        const review = await requireOpenReview(tx, reviewId, actor.membershipId);
         await tx
           .update(ER)
           .set({ status: "abandoned", closedAt: new Date() })
           .where(eq(ER.id, reviewId));
+        await tx
+          .update(BATCH)
+          .set({ status: "extraction_complete", dispositionAt: null })
+          .where(and(eq(BATCH.id, review.batchId), eq(BATCH.status, "in_review")));
+        await transitionBatchJobs(tx, review.batchId, "in_review", "ready_for_review");
         return { reviewId, status: "abandoned" };
       });
     },
@@ -1240,6 +1399,22 @@ export function createDbDocumentRouteService(
           .where(eq(BATCH.id, batchId))
           .for("update");
         if (b?.status === "discarded") return { batchId, status: "discarded" as const };
+        if (b?.status === "writeback_complete") {
+          throw new ChartWardenError(
+            "BATCH_STATE_CONFLICT",
+            "a completed review cannot be discarded",
+            409,
+          );
+        }
+        const [activeReview] = await tx
+          .select({ id: ER.id, reviewerMembershipId: ER.reviewerMembershipId })
+          .from(ER)
+          .where(and(eq(ER.intakeUploadBatchId, batchId), eq(ER.status, "in_progress")))
+          .for("update")
+          .limit(1);
+        if (activeReview && activeReview.reviewerMembershipId !== actor.membershipId) {
+          throw new ForbiddenError("this review is locked by another reviewer");
+        }
         // F-238: an unreviewed Part 2 detection stops restricting the patient once its batch is
         // discarded. A confirmed one is a reviewer's finding and stays.
         const withdraw = b?.sudStatus === "detected" && b.patientId !== null;
@@ -1254,6 +1429,16 @@ export function createDbDocumentRouteService(
           .update(BATCH)
           .set({ status: "discarded", dispositionAt: new Date() })
           .where(eq(BATCH.id, batchId));
+        await tx
+          .update(ER)
+          .set({ status: "abandoned", closedAt: new Date() })
+          .where(
+            activeReview
+              ? eq(ER.id, activeReview.id)
+              : and(eq(ER.intakeUploadBatchId, batchId), eq(ER.status, "in_progress")),
+          );
+        await transitionBatchJobs(tx, batchId, "ready_for_review", "discarded");
+        await transitionBatchJobs(tx, batchId, "in_review", "discarded");
         if (withdraw && b?.patientId && writeback.outbox) {
           const payload: IntakeSudWithdrawnPayload = {
             intakeBatchId: batchId,

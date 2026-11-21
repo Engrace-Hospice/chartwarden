@@ -308,6 +308,433 @@ describe.skipIf(!DB_URL)("F-236 — DocLens intake job + live M32 pipeline — L
     expect(jobs.rows[0].failure_reason).toContain("ai.full");
   });
 
+  it("keeps a partially refused batch out of review and resumes only the awaiting job", async () => {
+    const batchId = await seedBatch(ORG_A, true);
+    let medReconAvailable = false;
+    const partial: DocLensExtractorPort = {
+      async extract(input) {
+        if (input.documentType === "med_recon" && !medReconAvailable) {
+          return { available: false, detail: "capability temporarily unavailable" };
+        }
+        return extractor.extract(input);
+      },
+    };
+
+    const first = await runDocLensIntake(deps({ extractor: () => partial }), job(ORG_A, batchId));
+    expect(first).toMatchObject({ outcome: "awaiting_capability", jobs: 2, candidates: 3 });
+    expect(
+      (await admin.query("SELECT status FROM intake_upload_batch WHERE id=$1", [batchId])).rows[0]
+        ?.status,
+    ).toBe("classifier_complete");
+
+    medReconAvailable = true;
+    const changedClassifier: DocLensClassifierPort = {
+      classify: async (input) => ({
+        available: true,
+        invocationId: `cls-retry-${input.pageNumber}`,
+        documentType: input.pageNumber === 1 ? "transfer_record" : "hp",
+        confidence: 0.99,
+      }),
+    };
+    const resumed = await runDocLensIntake(
+      deps({ classifier: () => changedClassifier, extractor: () => partial }),
+      job(ORG_A, batchId),
+    );
+    expect(resumed).toMatchObject({ outcome: "extracted", jobs: 2, candidates: 4 });
+    expect(
+      (
+        await admin.query(
+          `SELECT count(DISTINCT p.id)::int AS pages,
+                  count(DISTINCT j.id)::int AS jobs,
+                  count(c.id)::int AS candidates
+             FROM classified_page p
+             LEFT JOIN extraction_job j ON j.classified_page_id=p.id
+             LEFT JOIN extraction_candidate c ON c.extraction_job_id=j.id
+            WHERE p.intake_upload_batch_id=$1`,
+          [batchId],
+        )
+      ).rows[0],
+    ).toEqual({ pages: 2, jobs: 2, candidates: 4 });
+    expect(
+      (
+        await admin.query(
+          `SELECT p.document_type AS page_type, j.document_type AS job_type
+             FROM classified_page p JOIN extraction_job j ON j.classified_page_id=p.id
+            WHERE p.intake_upload_batch_id=$1 AND p.page_range_start=2`,
+          [batchId],
+        )
+      ).rows[0],
+    ).toEqual({ page_type: "med_recon", job_type: "med_recon" });
+    expect(
+      (await admin.query("SELECT status FROM intake_upload_batch WHERE id=$1", [batchId])).rows[0]
+        ?.status,
+    ).toBe("extraction_complete");
+  });
+
+  it("finalizes from persisted job readiness when another delivery wins the extractor race", async () => {
+    const batchId = await seedBatch(ORG_A, true);
+    const refusing: DocLensExtractorPort = {
+      extract: async () => ({ available: false, detail: "capability temporarily unavailable" }),
+    };
+    await runDocLensIntake(deps({ extractor: () => refusing }), job(ORG_A, batchId));
+
+    let entered!: () => void;
+    let release!: () => void;
+    const extractorStarted = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const extractorMayFinish = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const losingDelivery: DocLensExtractorPort = {
+      extract: async () => {
+        entered();
+        await extractorMayFinish;
+        return { available: false, detail: "stale refusal from losing delivery" };
+      },
+    };
+    const running = runDocLensIntake(
+      deps({ extractor: () => losingDelivery }),
+      job(ORG_A, batchId),
+    );
+    await extractorStarted;
+    await admin.query(
+      `UPDATE extraction_job SET status='ready_for_review', failure_reason=NULL, completed_at=now()
+        WHERE classified_page_id IN (SELECT id FROM classified_page WHERE intake_upload_batch_id=$1)`,
+      [batchId],
+    );
+    release();
+    await expect(running).resolves.toMatchObject({
+      outcome: "extracted",
+      jobs: 2,
+      candidates: 0,
+    });
+    expect(
+      (await admin.query("SELECT status FROM intake_upload_batch WHERE id=$1", [batchId])).rows[0]
+        ?.status,
+    ).toBe("extraction_complete");
+  });
+
+  it("does not expose extraction_complete until the patient identity refresh finishes", async () => {
+    const patientId = (
+      await admin.query(
+        `INSERT INTO patient (organization_id,mrn,legal_first_name,legal_last_name,dob,sex_assigned_at_birth,status)
+         VALUES ($1,'MRN-F236-IDENTITY','Mae','Doclens','1938-04-12','F','active') RETURNING id`,
+        [ORG_A],
+      )
+    ).rows[0].id as string;
+    const batchId = await seedBatch(ORG_A, true);
+    await admin.query("UPDATE intake_upload_batch SET patient_id=$1 WHERE id=$2", [
+      patientId,
+      batchId,
+    ]);
+    let entered!: () => void;
+    let release!: () => void;
+    const identityStarted = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const identityMayFinish = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const running = runDocLensIntake(
+      deps({
+        identityTargets: {
+          patient: async () => {
+            entered();
+            await identityMayFinish;
+            return { lastName: "Doclens", firstName: "Mae", dateOfBirth: "1938-04-12" };
+          },
+        },
+      }),
+      job(ORG_A, batchId),
+    );
+
+    await identityStarted;
+    expect(
+      (await admin.query("SELECT status FROM intake_upload_batch WHERE id=$1", [batchId])).rows[0]
+        ?.status,
+    ).toBe("classifier_complete");
+    release();
+    await expect(running).resolves.toMatchObject({ outcome: "extracted" });
+    expect(
+      (
+        await admin.query("SELECT status, identity_status FROM intake_upload_batch WHERE id=$1", [
+          batchId,
+        ])
+      ).rows[0],
+    ).toEqual({ status: "extraction_complete", identity_status: "unverified" });
+  });
+
+  it("lets a concurrent terminal discard win while Docling is in flight", async () => {
+    const batchId = await seedBatch(ORG_A, true);
+    let entered!: () => void;
+    let release!: () => void;
+    const parseStarted = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const parseMayFinish = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const running = runDocLensIntake(
+      deps({
+        docling: {
+          parse: async () => {
+            entered();
+            await parseMayFinish;
+            return { doclingVersion: "2.133.0", pages: PAGES };
+          },
+          render: async () => {
+            throw new Error("F-236 suite runs no stage 5");
+          },
+        },
+      }),
+      job(ORG_A, batchId),
+    );
+
+    await parseStarted;
+    await admin.query(
+      "UPDATE intake_upload_batch SET status='discarded', disposition_at=now() WHERE id=$1",
+      [batchId],
+    );
+    release();
+    await expect(running).resolves.toEqual({
+      outcome: "skipped",
+      reason: "batch_became_discarded",
+    });
+    expect(
+      (
+        await admin.query(
+          `SELECT b.status,
+                  (SELECT count(*)::int FROM classified_page p WHERE p.intake_upload_batch_id=b.id) AS pages,
+                  (SELECT count(*)::int FROM extraction_job j JOIN classified_page p ON p.id=j.classified_page_id
+                    WHERE p.intake_upload_batch_id=b.id) AS jobs,
+                  (SELECT count(*)::int FROM extraction_candidate c JOIN extraction_job j ON j.id=c.extraction_job_id
+                    JOIN classified_page p ON p.id=j.classified_page_id WHERE p.intake_upload_batch_id=b.id) AS candidates
+             FROM intake_upload_batch b WHERE b.id=$1`,
+          [batchId],
+        )
+      ).rows[0],
+    ).toEqual({ status: "discarded", pages: 0, jobs: 0, candidates: 0 });
+  });
+
+  it("fails closed on a stranded partial classification plan from an earlier worker", async () => {
+    const batchId = await seedBatch(ORG_A, true);
+    const sourceDocumentId = (
+      await admin.query("SELECT initial_document_id FROM intake_upload_batch WHERE id=$1", [
+        batchId,
+      ])
+    ).rows[0].initial_document_id as string;
+    await admin.query(
+      `INSERT INTO classified_page
+         (organization_id, intake_upload_batch_id, source_document_id, page_range_start, page_range_end,
+          document_type, confidence, classifier_model_version_ref, segment_boundary)
+       VALUES ($1,$2,$3,1,1,'transfer_record',0.9,'legacy-partial','first_page')`,
+      [ORG_A, batchId, sourceDocumentId],
+    );
+    const twoPagePacket = [
+      {
+        page: 1,
+        width: 612,
+        height: 792,
+        blocks: [{ text: "Patient summary", bbox: [10, 10, 100, 30] as const, label: "text" }],
+      },
+      {
+        page: 2,
+        width: 612,
+        height: 792,
+        blocks: [{ text: "Clinical details", bbox: [10, 10, 100, 30] as const, label: "text" }],
+      },
+    ];
+    await expect(
+      runDocLensIntake(
+        deps({
+          docling: {
+            parse: async () => ({ doclingVersion: "2.133.0", pages: twoPagePacket }),
+            render: async () => {
+              throw new Error("F-236 suite runs no stage 5");
+            },
+          },
+        }),
+        job(ORG_A, batchId),
+      ),
+    ).rejects.toMatchObject({ code: "DEGRADED" });
+    expect(
+      (
+        await admin.query(
+          `SELECT b.status,
+                  (SELECT count(*)::int FROM extraction_job j JOIN classified_page p ON p.id=j.classified_page_id
+                    WHERE p.intake_upload_batch_id=b.id) AS jobs
+             FROM intake_upload_batch b WHERE b.id=$1`,
+          [batchId],
+        )
+      ).rows[0],
+    ).toEqual({ status: "docling_complete", jobs: 0 });
+  });
+
+  it("reuses the persisted classification boundaries when a retry classifier would split them", async () => {
+    const batchId = await seedBatch(ORG_A, true);
+    const twoPagePacket = [
+      {
+        page: 1,
+        width: 612,
+        height: 792,
+        blocks: [{ text: "Patient summary", bbox: [10, 10, 100, 30] as const, label: "text" }],
+      },
+      {
+        page: 2,
+        width: 612,
+        height: 792,
+        blocks: [{ text: "Clinical details", bbox: [10, 10, 100, 30] as const, label: "text" }],
+      },
+    ];
+    const refusing: DocLensExtractorPort = {
+      extract: async () => ({ available: false, detail: "capability temporarily unavailable" }),
+    };
+    await expect(
+      runDocLensIntake(
+        deps({
+          docling: {
+            parse: async () => ({ doclingVersion: "2.133.0", pages: twoPagePacket }),
+            render: async () => {
+              throw new Error("F-236 suite runs no stage 5");
+            },
+          },
+          classifier: () => ({
+            classify: async () => ({
+              available: true,
+              invocationId: "same-type",
+              documentType: "transfer_record",
+              confidence: 0.9,
+            }),
+          }),
+          extractor: () => refusing,
+        }),
+        job(ORG_A, batchId),
+      ),
+    ).resolves.toMatchObject({ outcome: "awaiting_capability" });
+
+    let retryClassifierCalls = 0;
+    await expect(
+      runDocLensIntake(
+        deps({
+          docling: {
+            parse: async () => ({ doclingVersion: "2.133.0", pages: twoPagePacket }),
+            render: async () => {
+              throw new Error("F-236 suite runs no stage 5");
+            },
+          },
+          classifier: () => ({
+            classify: async (input) => {
+              retryClassifierCalls += 1;
+              return {
+                available: true,
+                invocationId: `changed-${input.pageNumber}`,
+                documentType: input.pageNumber === 1 ? "transfer_record" : "hp",
+                confidence: 0.99,
+              };
+            },
+          }),
+          extractor: () => ({
+            extract: async () => ({ available: true, invocationId: "resumed", fields: {} }),
+          }),
+        }),
+        job(ORG_A, batchId),
+      ),
+    ).resolves.toMatchObject({ outcome: "extracted", jobs: 1, candidates: 0 });
+    expect(retryClassifierCalls).toBe(0);
+    expect(
+      (
+        await admin.query(
+          `SELECT count(DISTINCT p.id)::int AS pages, min(p.page_range_start)::int AS page_from,
+                  max(p.page_range_end)::int AS page_to, count(DISTINCT j.id)::int AS jobs
+             FROM classified_page p LEFT JOIN extraction_job j ON j.classified_page_id=p.id
+            WHERE p.intake_upload_batch_id=$1`,
+          [batchId],
+        )
+      ).rows[0],
+    ).toEqual({ pages: 1, page_from: 1, page_to: 2, jobs: 1 });
+  });
+
+  it("extracts a high-confidence document whose continuation page classifies below the floor", async () => {
+    const batchId = await seedBatch(ORG_A, true);
+    const continuationPacket = [
+      {
+        page: 1,
+        width: 612,
+        height: 792,
+        blocks: [
+          {
+            text: "DISCHARGE SUMMARY",
+            bbox: [10, 10, 200, 30] as const,
+            label: "section_header",
+          },
+          { text: "(continued - page 1 of 2)", bbox: [10, 740, 180, 760] as const, label: "text" },
+        ],
+      },
+      {
+        page: 2,
+        width: 612,
+        height: 792,
+        blocks: [
+          {
+            text: "Patient discharge instructions - Page 2 of 2",
+            bbox: [10, 10, 260, 30] as const,
+            label: "text",
+          },
+          { text: "Continue home medications.", bbox: [10, 50, 220, 70] as const, label: "text" },
+        ],
+      },
+    ];
+    const extractedPages: number[][] = [];
+
+    await expect(
+      runDocLensIntake(
+        deps({
+          docling: {
+            parse: async () => ({ doclingVersion: "2.133.0", pages: continuationPacket }),
+            render: async () => {
+              throw new Error("F-236 suite runs no stage 5");
+            },
+          },
+          classifier: () => ({
+            classify: async (input) => ({
+              available: true,
+              invocationId: `continuation-${input.pageNumber}`,
+              documentType: input.pageNumber === 1 ? "discharge_summary" : "unknown",
+              confidence: input.pageNumber === 1 ? 0.95 : 0.2,
+            }),
+          }),
+          extractor: () => ({
+            extract: async (input) => {
+              extractedPages.push(input.pages.map((page) => page.page));
+              return { available: true, invocationId: "continuation-extract", fields: {} };
+            },
+          }),
+        }),
+        job(ORG_A, batchId),
+      ),
+    ).resolves.toMatchObject({ outcome: "extracted", jobs: 1, candidates: 0 });
+
+    expect(extractedPages).toEqual([[1, 2]]);
+    expect(
+      (
+        await admin.query(
+          `SELECT p.page_range_start, p.page_range_end, p.document_type, p.confidence, j.status
+             FROM classified_page p
+             JOIN extraction_job j ON j.classified_page_id=p.id
+            WHERE p.intake_upload_batch_id=$1`,
+          [batchId],
+        )
+      ).rows[0],
+    ).toEqual({
+      page_range_start: 1,
+      page_range_end: 2,
+      document_type: "discharge_summary",
+      confidence: "0.950",
+      status: "ready_for_review",
+    });
+  });
+
   it("an unfiled source document is parse_failed (no guessing a file), and RLS hides org A's batch from org B", async () => {
     const unfiled = await seedBatch(ORG_A, false);
     expect(await runDocLensIntake(deps(), job(ORG_A, unfiled))).toEqual({

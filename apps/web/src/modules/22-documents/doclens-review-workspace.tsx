@@ -178,6 +178,11 @@ export function DocLensReviewWorkspace(): JSX.Element {
   const sudStatus = ws?.sud.status ?? "not_detected";
   const identityStatus = ws?.batch.identityStatus ?? null;
   const identityBlocking = identityStatus === "possible" || identityStatus === "mismatch";
+  const identityNotChecked = Boolean(
+    (ws?.batch.patientId || ws?.batch.referralId) &&
+      (identityStatus === null || identityStatus === "no_target"),
+  );
+  const identityCompletionBlocked = identityBlocking || identityNotChecked;
 
   const pages = useMemo(
     () => new Map<number, WorkspacePage>((ws?.pages ?? []).map((p) => [p.page, p])),
@@ -364,6 +369,7 @@ export function DocLensReviewWorkspace(): JSX.Element {
   }
 
   const decidedCount = ws.candidates.filter((c) => c.decision !== null).length;
+  const reviewIncomplete = ws.candidates.length > decidedCount;
   const eligible = ws.candidates.filter((c) => bulkEligible(c, confirmed));
   const docTypes = [
     ...new Set(
@@ -376,6 +382,21 @@ export function DocLensReviewWorkspace(): JSX.Element {
   const unavailable = ws.jobs.filter(
     (j) => j.status === "awaiting_capability" || j.status === "failed",
   );
+  // The server independently enforces this transition. A completed extraction with no candidates still
+  // needs a human document review: the reviewer sees the source, resolves SUD/identity warnings, and
+  // explicitly completes or discards it, while zero field decisions means clinical writeback stays empty.
+  const reviewReady = ws.batch.status === "extraction_complete";
+  const documentOnlyReview = reviewReady && ws.candidates.length === 0;
+  const processingMessage =
+    ws.batch.status === "uploaded"
+      ? "Waiting for WardenLens to start. The verified source document is preserved while the job is queued."
+      : ws.batch.status === "docling_complete"
+        ? "The pages have been read and classification is still in progress."
+        : ws.batch.status === "classifier_complete"
+          ? "Page classification is complete and field extraction still needs attention. Check unavailable jobs or retry after the required AI capability is restored."
+          : ws.batch.status === "parse_failed"
+            ? "Document parsing failed. The original document is preserved; check processing diagnostics before retrying."
+            : null;
   const currentPage = viewerPage !== null ? (pages.get(viewerPage) ?? null) : null;
   const pageNumbers = ws.pages.length
     ? ws.pages.map((p) => p.page)
@@ -426,14 +447,17 @@ export function DocLensReviewWorkspace(): JSX.Element {
             </button>
           ) : null}
           {!inProgress && !isComplete ? (
-            <button
-              type="button"
-              className="wx-btn-primary"
-              disabled={busy}
-              onClick={() => void begin()}
-            >
-              <Glyph name="play" size={16} /> Start review
-            </button>
+            reviewReady ? (
+              <button
+                type="button"
+                className="wx-btn-primary"
+                disabled={busy}
+                onClick={() => void begin()}
+              >
+                <Glyph name="play" size={16} />{" "}
+                {documentOnlyReview ? "Start document review" : "Start review"}
+              </button>
+            ) : null
           ) : null}
           {canDecide ? (
             <>
@@ -457,11 +481,17 @@ export function DocLensReviewWorkspace(): JSX.Element {
               <button
                 type="button"
                 className="wx-btn-primary"
-                disabled={busy || sudStatus === "detected" || identityBlocking}
+                disabled={
+                  busy || sudStatus === "detected" || identityCompletionBlocked || reviewIncomplete
+                }
                 title={
-                  identityBlocking
-                    ? "Answer every flagged document (same patient / another patient's) first"
-                    : undefined
+                  reviewIncomplete
+                    ? `${ws.candidates.length - decidedCount} extracted field(s) still need a decision`
+                    : identityNotChecked
+                      ? "Wait for the patient identity check to finish"
+                      : identityBlocking
+                        ? "Answer every flagged document (same patient / another patient's) first"
+                        : undefined
                 }
                 onClick={() => setCompleteOpen(true)}
               >
@@ -471,6 +501,23 @@ export function DocLensReviewWorkspace(): JSX.Element {
           ) : null}
         </div>
       </header>
+
+      {!inProgress && !isComplete && documentOnlyReview ? (
+        <Alert
+          tone="info"
+          title="No fields were extracted"
+          body="Review the source document and its classification, resolve any identity or Part 2 warning, then complete the document review. With no field decisions, nothing can be written to the clinical chart."
+        />
+      ) : null}
+      {!inProgress && !isComplete && processingMessage ? (
+        <Alert
+          tone={ws.batch.status === "parse_failed" ? "error" : "info"}
+          title={
+            ws.batch.status === "parse_failed" ? "Processing failed" : "Processing in progress"
+          }
+          body={processingMessage}
+        />
+      ) : null}
 
       {actionError ? (
         <div ref={actionErrorRef}>
@@ -484,7 +531,16 @@ export function DocLensReviewWorkspace(): JSX.Element {
           body="You can look, but decisions are locked to the reviewer who started the review until they complete or release it."
         />
       ) : null}
-      {!inProgress && !isComplete && ws.candidates.length > 0 ? (
+      {canDecide && reviewIncomplete ? (
+        <Alert
+          tone="info"
+          title="Review incomplete"
+          body={`Decide the remaining ${ws.candidates.length - decidedCount} extracted field${
+            ws.candidates.length - decidedCount === 1 ? "" : "s"
+          } before completing this review.`}
+        />
+      ) : null}
+      {!inProgress && !isComplete && reviewReady && ws.candidates.length > 0 ? (
         <Alert
           tone="info"
           title="Review not started"
@@ -520,6 +576,13 @@ export function DocLensReviewWorkspace(): JSX.Element {
             (ws.documents ?? []).filter(identityNeedsAnswer).length === 1 ? "" : "s"
           } in this fax may belong to another patient`}
           body="Compare the name and date of birth on each flagged document (listed below) with this patient. Mark it as this patient's, or as another patient's — its fields are then never written to this chart. If the whole upload is someone else's, use Move document."
+        />
+      ) : null}
+      {identityNotChecked ? (
+        <Alert
+          tone="error"
+          title="Patient identity has not been checked"
+          body="Do not complete this review until WardenLens has checked the filed patient or referral. Retry processing or ask an administrator to restore the identity lookup."
         />
       ) : null}
       {ws.batch.recordsRequestConflict ? (
@@ -1827,7 +1890,9 @@ function CompleteDialog({
                 checked={attested}
                 onChange={(e) => setAttested(e.target.checked)}
               />
-              I reviewed each accepted field against the source document
+              {ws.candidates.length === 0
+                ? "I reviewed the source document, its classification, identity, and any Part 2 warning"
+                : "I reviewed each accepted field against the source document"}
             </label>
             {error ? (
               <p role="alert" className="wx-doclens-error">

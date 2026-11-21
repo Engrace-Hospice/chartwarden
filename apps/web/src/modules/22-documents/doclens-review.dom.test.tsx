@@ -113,6 +113,23 @@ function fixture(sud: Workspace["sud"]["status"]): Workspace {
   };
 }
 
+function withAllCandidatesDecided(base: Workspace): Workspace {
+  return {
+    ...base,
+    candidates: base.candidates.map((candidate, index) => ({
+      ...candidate,
+      decision: {
+        id: `decision-${index}`,
+        decision: "reject",
+        editedValue: null,
+        reason: "Not needed for this intake",
+        partOfBulkApprove: false,
+        decidedAt: "2026-10-01T10:00:00.000Z",
+      },
+    })),
+  };
+}
+
 let workspace: Workspace = fixture("not_detected");
 let calls: { method: string; path: string; body: unknown; idem: string | null }[] = [];
 
@@ -174,6 +191,101 @@ afterEach(() => {
 });
 
 describe("DocLens review workspace", () => {
+  it("offers a document review when extraction completed without fields", async () => {
+    const base = fixture("not_detected");
+    workspace = {
+      ...base,
+      batch: { ...base.batch, status: "extraction_complete" },
+      review: null,
+      candidates: [],
+    };
+    mount();
+
+    const start = await screen.findByRole("button", { name: "Start document review" });
+    expect(isDisabled(start)).toBe(false);
+    expect(screen.getByText(/No fields were extracted/)).toBeTruthy();
+    fireEvent.click(start);
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (c) => c.method === "POST" && c.path === `/api/v1/intake/uploads/${BATCH}/review`,
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("requires a document-level attestation before completing a zero-field review", async () => {
+    const base = fixture("not_detected");
+    workspace = {
+      ...base,
+      batch: { ...base.batch, status: "in_review" },
+      candidates: [],
+    };
+    mount();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Complete review" }));
+    const dialog = screen.getByRole("dialog");
+    const complete = within(dialog).getByRole("button", { name: "Complete review" });
+    expect(isDisabled(complete)).toBe(true);
+    fireEvent.click(
+      within(dialog).getByRole("checkbox", {
+        name: /I reviewed the source document, its classification, identity, and any Part 2 warning/,
+      }),
+    );
+    expect(isDisabled(complete)).toBe(false);
+    fireEvent.click(complete);
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (c) => c.method === "POST" && c.path === `/api/v1/intake/reviews/${REVIEW}/complete`,
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it.each([
+    ["uploaded", /Waiting for WardenLens to start/],
+    ["docling_complete", /pages have been read and classification is still in progress/],
+    [
+      "classifier_complete",
+      /classification is complete and field extraction still needs attention/,
+    ],
+    ["parse_failed", /Document parsing failed/],
+  ] as const)(
+    "explains the %s processing state and does not offer review",
+    async (status, message) => {
+      const base = fixture("not_detected");
+      workspace = {
+        ...base,
+        batch: { ...base.batch, status },
+        review: null,
+        candidates: [],
+      };
+      mount();
+
+      expect(await screen.findByText(message)).toBeTruthy();
+      expect(screen.queryByRole("button", { name: /Start .*review/ })).toBeNull();
+    },
+  );
+
+  it("does not offer or describe review while partial extraction still needs attention", async () => {
+    const base = fixture("not_detected");
+    workspace = {
+      ...base,
+      batch: { ...base.batch, status: "classifier_complete" },
+      review: null,
+    };
+    mount();
+
+    expect(
+      await screen.findByText(
+        /classification is complete and field extraction still needs attention/,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Start .*review/ })).toBeNull();
+    expect(screen.queryByText("Review not started")).toBeNull();
+  });
+
   it("returns to the same referral intake context without trusting an arbitrary target", async () => {
     const referral = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
     const target = `/referrals/${referral}/intake?step=receive`;
@@ -199,11 +311,13 @@ describe("DocLens review workspace", () => {
   });
 
   it("returns to the referral verification step after completing review", async () => {
+    const decided = withAllCandidatesDecided(fixture("not_detected"));
     workspace = {
-      ...fixture("not_detected"),
+      ...decided,
       batch: {
-        ...fixture("not_detected").batch,
+        ...decided.batch,
         referralId: "ffffffff-6666-4666-8666-ffffffffffff",
+        identityStatus: "match",
       },
     };
     mount();
@@ -308,8 +422,19 @@ describe("DocLens review workspace", () => {
     });
   });
 
-  it("(c′) once the SUD flag is resolved, Complete is available", async () => {
+  it("(c′) keeps Complete unavailable until every extracted field has a decision", async () => {
     workspace = fixture("rejected");
+    mount();
+    const complete = await screen.findByRole("button", { name: /Complete review/ });
+    expect(isDisabled(complete)).toBe(true);
+    expect(complete.getAttribute("title")).toMatch(/2 extracted field\(s\) still need a decision/);
+    expect(
+      screen.getByText("Decide the remaining 2 extracted fields before completing this review."),
+    ).toBeTruthy();
+  });
+
+  it("(c′′) enables Complete after every extracted field has a decision", async () => {
+    workspace = withAllCandidatesDecided(fixture("rejected"));
     mount();
     expect(isDisabled(await screen.findByRole("button", { name: /Complete review/ }))).toBe(false);
   });
