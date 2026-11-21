@@ -20,6 +20,8 @@ import {
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TEST_FILE = "packages/db/migrations/__tests__/m23-rls-isolation.live.test.ts";
+const VITEST_ENTRY = join(ROOT, "node_modules/vitest/vitest.mjs");
+const ENV_PROBE_FILE = "scripts/__tests__/m23-rls-isolation.test.ts";
 const POSTGRES_CONTEXT = join(ROOT, "deploy/production/postgres");
 const PG_DOCKERFILE = join(POSTGRES_CONTEXT, "Dockerfile");
 type VitestReport = {
@@ -121,6 +123,7 @@ async function main() {
     throw new Error("The isolated M23 runner only accepts its registered M23 live suite");
   }
   requireExecutable("docker");
+  requireExecutable("node");
   const dockerfile = readFileSync(PG_DOCKERFILE, "utf8");
   if (!/^FROM\s+cgr\.dev\/chainguard\/wolfi-base@sha256:/m.test(dockerfile)) {
     throw new Error(
@@ -142,6 +145,7 @@ async function main() {
   let relay: Awaited<ReturnType<typeof startLoopbackTcpRelay>> | undefined;
   let db: Client | undefined;
   const reportDir = mkdtempSync(join(tmpdir(), "chartwarden-m23-vitest-"));
+  const envProbeReportPath = join(reportDir, "environment-probe.json");
   const reportPath = join(reportDir, "vitest.json");
   let runError: unknown;
   const cleanupFailures: string[] = [];
@@ -247,19 +251,65 @@ async function main() {
       "Storage: container-local tmpfs only; network: Docker internal; no host database or volume mounted.",
     );
 
-    const child = spawnSync(
-      process.execPath,
-      ["run", "vitest", "run", TEST_FILE, "--reporter=json", `--outputFile=${reportPath}`],
+    const vitestEnvironment = buildM23VitestEnvironment(process.env, {
+      databaseUrl: databaseUrl.toString(),
+      clusterName,
+      systemIdentifier: identity.systemIdentifier,
+      privateWorkDir: reportDir,
+    });
+    const envProbe = spawnSync(
+      "node",
+      [
+        VITEST_ENTRY,
+        "run",
+        ENV_PROBE_FILE,
+        "--reporter=json",
+        `--outputFile=${envProbeReportPath}`,
+      ],
       {
         cwd: ROOT,
         encoding: "utf8",
         maxBuffer: 16 * 1024 * 1024,
-        env: buildM23VitestEnvironment(process.env, {
-          databaseUrl: databaseUrl.toString(),
-          clusterName,
-          systemIdentifier: identity.systemIdentifier,
-          privateWorkDir: reportDir,
-        }),
+        env: { ...vitestEnvironment, CHARTWARDEN_M23_RLS_ENV_PROBE: "true" },
+      },
+    );
+    if (envProbe.error) throw envProbe.error;
+    let envProbeReport: VitestReport;
+    try {
+      envProbeReport = JSON.parse(readFileSync(envProbeReportPath, "utf8")) as VitestReport;
+    } catch (error) {
+      throw new Error("Vitest worker environment preflight did not produce a readable report", {
+        cause: error,
+      });
+    }
+    const envProbePassed = envProbeReport.testResults?.some((file) =>
+      file.assertionResults?.some(
+        (test) =>
+          test.fullName?.includes("receives the isolated runner values") &&
+          test.status === "passed",
+      ),
+    );
+    if (
+      envProbe.status !== 0 ||
+      envProbePassed !== true ||
+      envProbeReport.numFailedTests !== 0 ||
+      envProbeReport.numPendingTests !== 0 ||
+      envProbeReport.numTodoTests !== 0
+    ) {
+      throw new Error("Vitest worker environment preflight failed; M23 RLS suite was not started");
+    }
+    console.log(
+      "Isolated Vitest worker environment preflight passed: private URL, marker, and cluster identity reached the worker.",
+    );
+
+    const child = spawnSync(
+      "node",
+      [VITEST_ENTRY, "run", TEST_FILE, "--reporter=json", `--outputFile=${reportPath}`],
+      {
+        cwd: ROOT,
+        encoding: "utf8",
+        maxBuffer: 16 * 1024 * 1024,
+        env: vitestEnvironment,
       },
     );
     if (child.error) throw child.error;

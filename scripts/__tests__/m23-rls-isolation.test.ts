@@ -308,6 +308,34 @@ describe("M23 isolated Vitest environment", () => {
   });
 });
 
+if (process.env.CHARTWARDEN_M23_RLS_ENV_PROBE === "true") {
+  describe("M23 Vitest worker environment probe", () => {
+    it("receives the isolated runner values before the database suite starts", () => {
+      let privateDatabaseUrl: URL | undefined;
+      try {
+        privateDatabaseUrl = new URL(process.env.CHARTWARDEN_TEST_DATABASE_URL ?? "");
+      } catch {
+        privateDatabaseUrl = undefined;
+      }
+      const clusterId = (process.env.CHARTWARDEN_TEST_CLUSTER_ID ?? "").replace(
+        /^chartwarden-m23-/,
+        "",
+      );
+      expect(process.env.CHARTWARDEN_M23_RLS_ISOLATED_RUN === "true").toBe(true);
+      expect(
+        privateDatabaseUrl?.protocol === "postgresql:" &&
+          privateDatabaseUrl.hostname === "127.0.0.1" &&
+          /^\d+$/.test(privateDatabaseUrl.port) &&
+          privateDatabaseUrl.pathname === `/m23_${clusterId}`,
+      ).toBe(true);
+      expect(
+        /^chartwarden-m23-[a-f0-9]{32}$/.test(process.env.CHARTWARDEN_TEST_CLUSTER_ID ?? ""),
+      ).toBe(true);
+      expect(/^\d+$/.test(process.env.CHARTWARDEN_TEST_CLUSTER_SYSTEM_IDENTIFIER ?? "")).toBe(true);
+    });
+  });
+}
+
 describe("loopback-only M23 database relay", () => {
   it("forwards a local synthetic stream through an IPv4 loopback listener", async () => {
     const upstream = createServer((socket) => socket.pipe(socket));
