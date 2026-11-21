@@ -244,6 +244,7 @@ export function buildDrizzleM24ReadService(
             medicaidClaimId: r.medicaidClaimId,
             lineNumber: r.lineNumber,
             serviceDate: day(r.serviceDate),
+            serviceDateTo: r.serviceDateTo ? day(r.serviceDateTo) : null,
             revenueCode: r.revenueCode,
             qCode: r.qCode,
             levelOfCare: r.levelOfCare,

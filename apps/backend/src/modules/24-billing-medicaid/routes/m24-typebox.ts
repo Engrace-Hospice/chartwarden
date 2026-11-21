@@ -674,6 +674,7 @@ export const ClaimLineDto = Type.Object({
   medicaidClaimId: uuid(),
   lineNumber: Type.Integer(),
   serviceDate: isoDate(),
+  serviceDateTo: Type.Union([isoDate(), Type.Null()]),
   revenueCode: Type.String(),
   qCode: Type.String(),
   levelOfCare: lit(CLAIM_LINE_LOC),

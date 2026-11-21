@@ -135,6 +135,8 @@ export const medicaidClaimLine = pgTable(
 
     lineNumber: integer("line_number").notNull(),
     serviceDate: timestamp("service_date", { withTimezone: true, mode: "date" }).notNull(),
+    // NULL is retained only for legacy rows whose original span cannot be reconstructed safely.
+    serviceDateTo: timestamp("service_date_to", { withTimezone: true, mode: "date" }),
 
     revenueCode: varchar("revenue_code", { length: 4 }).notNull(),
     qCode: varchar("q_code", { length: 8 }).notNull(),
@@ -180,6 +182,10 @@ export const medicaidClaimLine = pgTable(
       sql`(is_rb = true) OR (is_rb = false AND state_rate_schedule_id_snapshot IS NOT NULL)`,
     ),
     unitsPositive: check("medicaid_claim_line_units_positive", sql`units > 0`),
+    serviceRangeValid: check(
+      "medicaid_claim_line_service_range_valid",
+      sql`service_date_to IS NULL OR service_date <= service_date_to`,
+    ),
     ratePositive: check("medicaid_claim_line_rate_positive", sql`rate_at_assembly_cents > 0`),
   }),
 );

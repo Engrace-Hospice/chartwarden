@@ -1209,7 +1209,6 @@ export function buildDrizzleM24WriteService(
   const SPC = schema.medicaidStatePlanCode;
   const PA = schema.medicaidProgramAssignment;
   const EE = schema.medicaidEnrollmentEvidence;
-  const SRS = schema.medicaidStateRateSchedule;
   const L = schema.medicaidClaimLine;
   const LE = schema.medicaidClaimLineEncounter;
   const RULES_BY_KEY = new Map(DEFAULT_MEDICAID_RULES.map((r) => [r.key, r]));
@@ -2547,29 +2546,12 @@ export function buildDrizzleM24WriteService(
                 input.serviceTo,
               )
             : [];
-          const rateRows = await tx
-            .select({
-              id: SRS.id,
-              levelOfCare: SRS.levelOfCare,
-              rateCents: SRS.rateCents,
-              effectiveFrom: SRS.effectiveFrom,
-            })
-            .from(SRS)
-            .where(
-              and(
-                eq(SRS.stateCode, serviceState),
-                isNull(SRS.countyCode),
-                lte(SRS.effectiveFrom, from),
-                or(isNull(SRS.effectiveTo), gte(SRS.effectiveTo, from)),
-              ),
-            )
-            .orderBy(desc(SRS.effectiveFrom));
+          // This table does not yet carry the effective service CBSA, OHA's charge ceiling, provider
+          // quality-reporting tier, or the election-day/CHC-hour units required by Oregon's published
+          // rates. Until that policy context is implemented, no schedule row can price this claim safely.
+          // In particular, never substitute an unverified statewide CMS-derived row or an EOCCO contract
+          // price in the platform-shared reference table.
           const rateByLoc = new Map<string, { rateCents: number; scheduleId: string }>();
-          for (const r of rateRows) {
-            if (!rateByLoc.has(r.levelOfCare)) {
-              rateByLoc.set(r.levelOfCare, { rateCents: r.rateCents, scheduleId: r.id });
-            }
-          }
           const { lines: hospiceLines, missingRateSegments } = buildHospiceLines({
             serviceFrom: day(input.serviceFrom),
             serviceTo: day(input.serviceTo),
@@ -2580,10 +2562,12 @@ export function buildDrizzleM24WriteService(
           });
           if (missingRateSegments.length > 0) {
             throw new DegradedError(
-              "MEDICAID_STATE_RATE_SCHEDULE_MISSING",
-              `no active medicaid_state_rate_schedule row for ${missingRateSegments
+              "MEDICAID_RATE_POLICY_UNRESOLVED",
+              `no qualified payer-specific rate policy can price ${missingRateSegments
                 .map((s) => `${s.levelOfCare} ${s.from}..${s.to}`)
-                .join(", ")} — load the platform rate schedule before assembling this claim`,
+                .join(
+                  ", ",
+                )} — resolve geography, billing units, payer scope, and effective rate source before priced assembly`,
             );
           }
           if (hospiceLines.length === 0) {
@@ -2601,6 +2585,7 @@ export function buildDrizzleM24WriteService(
                 medicaidClaimId: claimId,
                 lineNumber: ln.lineNumber,
                 serviceDate: new Date(ln.serviceDate),
+                serviceDateTo: new Date(ln.serviceDateTo),
                 revenueCode: ln.revenueCode,
                 qCode: ln.qCode,
                 levelOfCare: ln.levelOfCare,
@@ -2632,6 +2617,7 @@ export function buildDrizzleM24WriteService(
                 medicaidClaimId: claimId,
                 lineNumber: nextLineNumber++,
                 serviceDate: rbd.serviceDate,
+                serviceDateTo: rbd.serviceDate,
                 revenueCode: "0658",
                 qCode: "Q5003",
                 levelOfCare: "NF_RB",

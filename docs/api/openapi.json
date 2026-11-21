@@ -207357,6 +207357,7 @@
                       "medicaidClaimId",
                       "lineNumber",
                       "serviceDate",
+                      "serviceDateTo",
                       "revenueCode",
                       "qCode",
                       "levelOfCare",
@@ -207382,6 +207383,17 @@
                       "serviceDate": {
                         "format": "date",
                         "type": "string"
+                      },
+                      "serviceDateTo": {
+                        "anyOf": [
+                          {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       },
                       "revenueCode": {
                         "type": "string"

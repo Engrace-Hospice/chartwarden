@@ -82099,6 +82099,7 @@ export interface operations {
                         lineNumber: number;
                         /** Format: date */
                         serviceDate: string;
+                        serviceDateTo: string | null;
                         revenueCode: string;
                         qCode: string;
                         levelOfCare: "RHC" | "CHC" | "IRC" | "GIP" | "NF_RB";
