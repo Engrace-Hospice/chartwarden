@@ -1,7 +1,7 @@
 // apps/backend/src/modules/06-admission/seams/discharge-reader.ts — the DEDICATED Drizzle reader backing
 // M6's `DischargeReader` seam (M30 HCI indicators 3/4: Early / Late Live Discharges). Mirrors
 // `death-discharge-reader.ts`'s shape exactly, but reads ALL discharge types (not just `dischargeType=
-// 'death'`) — the denominator for HCI 3/4 is every discharge in the window, live or death.
+// 'death'`) — the denominator for HCI 3/4 is every COMPLETED discharge in the window, live or death.
 //
 // CMS criterion: among LIVE discharges (`dischargeType !== 'death'`), one is "early" when it falls on or
 // before day 7 since admission (indicator 3; matches the FY2025 threshold label in
@@ -31,7 +31,7 @@ const LATE_LIVE_DISCHARGE_DAY_CUTOFF = 180;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-/** SSVI metric 5 (CMS-1851-F Table 9) — "length of stay over 180 days": strictly more than this many days. */
+/** SSVI metric 5 (CMS SSVI Overview) — "LOS of 180 days or more": this many days or more. */
 const SSVI_LONG_STAY_DAYS = 180;
 
 /** SSVI metric 8 — a live discharge "returns to the same hospice in seven days": readmitted within this many days. */
@@ -71,6 +71,9 @@ export function createDischargeReader(db: DbClient): DischargeReader {
           .where(
             and(
               eq(DE.organizationId, organizationId),
+              // Only a COMPLETED discharge is a discharge: a voided row never happened, and a for-cause row still
+              // `pending_cosign` has not taken effect (the admission stays active).
+              eq(DE.status, "completed"),
               gte(DE.effectiveAt, period.from),
               lt(DE.effectiveAt, period.to),
             ),
@@ -107,17 +110,28 @@ export function createDischargeReader(db: DbClient): DischargeReader {
           .where(
             and(
               eq(DE.organizationId, organizationId),
+              // Only a COMPLETED discharge is a discharge: a voided row never happened, and a for-cause row still
+              // `pending_cosign` has not taken effect (the admission stays active).
+              eq(DE.status, "completed"),
               gte(DE.effectiveAt, period.from),
               lt(DE.effectiveAt, period.to),
             ),
           );
 
+        // CMS: a transfer (status 50/51) is not a discharge for metrics 4 and 5, but it IS a live discharge for
+        // metric 8 (so a transfer that returns is caught).
         const live = rows.filter((r) => r.dischargeType !== "death");
-        let dischargesWithLosOver180 = 0;
-        for (const r of rows) {
+        const settled = rows.filter((r) => r.dischargeType !== "transfer");
+        const liveSettled = settled.filter((r) => r.dischargeType !== "death");
+        // ponytail: LOS here is this admission only (admission date to discharge date). CMS counts LIFETIME hospice
+        // days across hospices and one final discharge per beneficiary per year, so a readmitted or prior-agency
+        // patient is under-counted (other hospices' days need the CMS claims feed; this agency's earlier stays for
+        // the same patient are not summed either). Upgrade path: sum the patient's admissions already read below.
+        let dischargesWithLos180OrMore = 0;
+        for (const r of settled) {
           if (r.admissionAt === null) continue; // never guessed — see liveDischargeTimingCounts
-          if (daysSinceAdmission(r.admissionAt, r.effectiveAt) > SSVI_LONG_STAY_DAYS)
-            dischargesWithLosOver180 += 1;
+          if (daysSinceAdmission(r.admissionAt, r.effectiveAt) >= SSVI_LONG_STAY_DAYS)
+            dischargesWithLos180OrMore += 1;
         }
 
         // Readmissions: the same patient's OTHER admissions to this org, admitted on or after the discharge
@@ -142,9 +156,10 @@ export function createDischargeReader(db: DbClient): DischargeReader {
         }
 
         return {
-          totalDischarges: rows.length,
-          liveDischarges: live.length,
-          dischargesWithLosOver180,
+          totalDischarges: settled.length,
+          liveDischarges: liveSettled.length,
+          dischargesWithLos180OrMore,
+          liveDischargesIncludingTransfers: live.length,
           liveDischargesReadmittedWithin7Days,
         };
       });

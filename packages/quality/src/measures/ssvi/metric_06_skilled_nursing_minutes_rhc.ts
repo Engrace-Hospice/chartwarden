@@ -1,6 +1,6 @@
 // @chartwarden/quality — SSVI metric 6: Average skilled nursing minutes on RHC (CMS-1851-F Table 9). Pure. No IO.
 //
-// Point at ≤ 9.8 minutes per RHC day (25th pct). The CMS value is the MEAN skilled-nursing (RN/LPN) minutes per
+// Point at or below the 25th-percentile cut in minutes per RHC day (`thresholds.ts`). The CMS value is the MEAN skilled-nursing (RN/LPN) minutes per
 // routine-home-care day — the same quantity as HCI indicator 8, from the same sources (M6 level-of-care spans ×
 // M8 per-day skilled-nursing minutes, reduced by `skilledNursingMinutesOnRhcDays`). The rule is decided on the
 // mean in minutes; the stored `rate` / `thresholdValue` are then rescaled to a share of the day (÷ 1440) exactly

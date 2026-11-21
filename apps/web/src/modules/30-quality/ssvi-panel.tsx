@@ -12,6 +12,7 @@ import { Glyph, StatusPill } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { fraction, measureRate } from "./quality-status";
 import {
+  SSVI_CUT_DATA_FY,
   SSVI_INTERNAL_ESTIMATE_LABEL,
   SSVI_MAX_SCORE,
   SSVI_OUTLIER_SCORE,
@@ -42,7 +43,7 @@ function SsviHeader({ aside }: { aside: JSX.Element }): JSX.Element {
         <Glyph name="scale" size={22} strokeWidth={1.6} />
       </span>
       <div className="wx-rates-drawer-title">
-        <h3 id="ssvi-title">Service and Spending Variation Index</h3>
+        <h2 id="ssvi-title">Service and Spending Variation Index</h2>
         <p>{SSVI_INTERNAL_ESTIMATE_LABEL}</p>
       </div>
       <div className="wx-clinical-section-aside">{aside}</div>
@@ -100,9 +101,18 @@ export function SsviPanel({ rows }: { rows: readonly SsviMeasureRow[] }): JSX.El
           <div className={`wx-ssvi-tile${s.outlier ? " is-outlier" : ""}`}>
             <span>SSVI score</span>
             <strong>
-              {s.score !== null
-                ? `${s.score} / ${SSVI_MAX_SCORE}`
-                : `${s.lowerBound}–${s.upperBound}`}
+              {s.score !== null ? (
+                `${s.score} / ${SSVI_MAX_SCORE}`
+              ) : (
+                <>
+                  <span aria-hidden>
+                    {s.lowerBound}–{s.upperBound}
+                  </span>
+                  <span className="wx-sr-only">
+                    {s.lowerBound} to {s.upperBound}
+                  </span>
+                </>
+              )}
             </strong>
             <small>
               {s.score !== null
@@ -151,7 +161,7 @@ export function SsviPanel({ rows }: { rows: readonly SsviMeasureRow[] }): JSX.El
             <thead>
               <tr>
                 <th scope="col">Metric</th>
-                <th scope="col">CMS cut (FY2025 data)</th>
+                <th scope="col">CMS cut (FY{SSVI_CUT_DATA_FY} data)</th>
                 <th scope="col" className="wx-num-col">
                   Value
                 </th>
@@ -167,14 +177,14 @@ export function SsviPanel({ rows }: { rows: readonly SsviMeasureRow[] }): JSX.El
                 const pill = STATE_PILL[m.state];
                 return (
                   <tr key={m.code}>
-                    <td>
+                    <th scope="row">
                       <span className="wx-row-title">
                         {i + 1}. {m.name}
                       </span>
                       {v?.unavailableReason ? (
                         <span className="wx-row-sub">{v.unavailableReason}</span>
                       ) : null}
-                    </td>
+                    </th>
                     <td>{m.cut}</td>
                     <td className="wx-nums wx-num-col">
                       {v && m.maxPoints === 1 ? measureRate(m.code, v) : "—"}
@@ -186,7 +196,15 @@ export function SsviPanel({ rows }: { rows: readonly SsviMeasureRow[] }): JSX.El
                     </td>
                     <td>
                       <span className="wx-ssvi-points">
-                        {m.points === null ? "?" : m.points}/{m.maxPoints}
+                        {m.points === null ? (
+                          <>
+                            <span aria-hidden>?</span>
+                            <span className="wx-sr-only">unknown</span>
+                          </>
+                        ) : (
+                          m.points
+                        )}
+                        /{m.maxPoints}
                       </span>{" "}
                       <StatusPill label={pill.label} tone={pill.tone} />
                     </td>
@@ -196,6 +214,9 @@ export function SsviPanel({ rows }: { rows: readonly SsviMeasureRow[] }): JSX.El
             </tbody>
           </table>
         </div>
+        <p className="wx-row-sub">
+          Points are decided on the unrounded rate; the values shown are rounded to one decimal.
+        </p>
       </div>
     </section>
   );

@@ -1,8 +1,10 @@
 // FY2027 SSVI panel reduction — points per metric, the total or its honest range, and the outlier verdict.
 import { describe, expect, it } from "vitest";
-import { type SsviMeasureRow, summarizeSsvi } from "./ssvi-summary";
+import { SSVI_METRICS, type SsviMeasureRow, summarizeSsvi } from "./ssvi-summary";
 
 type V = NonNullable<SsviMeasureRow["latestValue"]>;
+const CURRENT_VERSION = new Map(SSVI_METRICS.map((m) => [m.code, m.version]));
+// An empty `computeVersion` means "the version the panel expects for this metric" (stamped by `row`).
 const val = (v: Partial<V>): V => ({
   numerator: 1,
   denominator: 10,
@@ -10,12 +12,13 @@ const val = (v: Partial<V>): V => ({
   thresholdMet: true,
   bandColor: "green",
   unavailableReason: null,
+  computeVersion: "",
   ...v,
 });
 const row = (code: string, v: V | null): SsviMeasureRow => ({
   measureId: code,
   displayName: code,
-  latestValue: v,
+  latestValue: v && { ...v, computeVersion: v.computeVersion || (CURRENT_VERSION.get(code) ?? "") },
 });
 const POINT = val({ thresholdMet: false, bandColor: "red" });
 const NONE = val({});
@@ -78,5 +81,51 @@ describe("summarizeSsvi", () => {
     expect(s.metrics[0]?.points).toBe(0);
     expect(s.metrics[1]?.state).toBe("not_computed");
     expect(s.metrics[1]?.points).toBeNull();
+  });
+  it("a row from an older calculator version is not scored under the old rule", () => {
+    const rows = binary([1, 1, 1, 1, 1, 1, 1, 1]);
+    const stale = row("ssvi_metric_03", { ...POINT, computeVersion: "0.1.0" });
+    const s = summarizeSsvi([...rows.filter((r) => r.measureId !== "ssvi_metric_03"), stale]);
+    expect(s.metrics[2]?.state).toBe("not_computed");
+    expect(s.metrics[2]?.points).toBeNull();
+    expect(s.flagged).toBe(7);
+    expect(s.lowerBound).toBe(7);
+  });
+
+  it("a stored composite is not the headline while a metric beside it is stale", () => {
+    const rows = binary([1, 1, 1, 1, 1, 1, 1, 1]).map((r) =>
+      r.measureId === "ssvi_metric_03"
+        ? row(r.measureId, { ...POINT, computeVersion: "0.1.0" })
+        : r,
+    );
+    const composite = row("ssvi_composite", val({ numerator: 14, denominator: 16 }));
+    const s = summarizeSsvi([...rows, row("ssvi_metric_09", val({ numerator: 5 })), composite]);
+    expect(s.score).toBeNull(); // not the stored 14 (summed under the old cut)
+    expect(s.lowerBound).toBe(12); // 7 current binary points + 5 spending
+    expect(s.upperBound).toBe(13);
+    expect(s.outlier).toBeNull(); // 12-13 straddles the cut: undetermined, not a stored "outlier"
+  });
+
+  it("with every metric known the stored composite is the headline", () => {
+    const rows = [
+      ...binary([1, 1, 1, 1, 1, 1, 1, 1]),
+      row("ssvi_metric_09", val({ numerator: 6 })),
+      row("ssvi_composite", val({ numerator: 14, denominator: 16 })),
+    ];
+    const s = summarizeSsvi(rows);
+    expect(s.score).toBe(14);
+    expect(s.outlier).toBe(true);
+  });
+
+  it("stale rows add nothing to the lower bound, so a verdict never rests on an old cut", () => {
+    const rows = binary([1, 1, 1, 1, 0, 0, 0, 0]).map((r) =>
+      r.measureId === "ssvi_metric_03" || r.measureId === "ssvi_metric_04"
+        ? row(r.measureId, { ...POINT, computeVersion: "0.1.0" })
+        : r,
+    );
+    const s = summarizeSsvi(rows);
+    expect(s.lowerBound).toBe(2);
+    expect(s.metrics[2]?.state).toBe("not_computed");
+    expect(s.metrics[3]?.state).toBe("not_computed");
   });
 });

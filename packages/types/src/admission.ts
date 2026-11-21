@@ -667,10 +667,13 @@ export interface DischargeReader {
   }>;
 
   /**
-   * FY2027 SSVI metrics 4, 5 and 8 (CMS-1851-F Table 9) — over the same `[period.from, period.to)` discharge
-   * population: all discharges; the LIVE ones (`dischargeType !== 'death'`); discharges of ANY type whose length
-   * of stay (admission date to discharge date) exceeds 180 days; and live discharges followed by a NEW admission
-   * of the same patient to this organization within 7 days of the discharge date. Aggregate counts only (D6).
+   * FY2027 SSVI metrics 4, 5 and 8 (CMS-1851-F Table 9, CMS SSVI Overview) — over the same `[period.from,
+   * period.to)` discharge population. CMS does not count a TRANSFER (discharge status 50/51) as a discharge for
+   * metrics 4 and 5, but does count it as a live discharge for metric 8, so the counts differ by that one type:
+   * non-transfer discharges and the live ones among them; non-transfer discharges whose length of stay
+   * (admission date to discharge date) is 180 days or more; the live population INCLUDING transfers; and those
+   * followed by a NEW admission of the same patient to this organization within 7 days of the discharge date.
+   * Aggregate counts only (D6).
    */
   ssviDischargeCounts(
     organizationId: string,
@@ -680,10 +683,14 @@ export interface DischargeReader {
 
 /** The {@link DischargeReader.ssviDischargeCounts} aggregate. */
 export interface SsviDischargeCounts {
+  /** Discharges other than transfers (metrics 4 and 5 denominator). */
   readonly totalDischarges: number;
+  /** Live (non-death) discharges other than transfers (metric 4 numerator). */
   readonly liveDischarges: number;
-  /** Discharges (live and death) with a length of stay over 180 days; unclassifiable rows (no admission date) excluded. */
-  readonly dischargesWithLosOver180: number;
+  /** Non-transfer discharges (live and death) with a length of stay of 180 days or more; unclassifiable rows (no admission date) excluded. */
+  readonly dischargesWithLos180OrMore: number;
+  /** Live discharges INCLUDING transfers (metric 8 denominator). */
+  readonly liveDischargesIncludingTransfers: number;
   readonly liveDischargesReadmittedWithin7Days: number;
 }
 
