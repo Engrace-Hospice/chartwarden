@@ -21,11 +21,11 @@ const OPS_HINT =
 
 const OREGON_METADATA: MedicaidAdapterMetadata = {
   acceptsDocumentedMissingEvv: false, // D9 — Cures Act §12006; Oregon does not accept documented_missing
-  combinesHospiceAndRb: true, // Oregon bills hospice + R&B on a single 837I
+  combinesHospiceAndRb: false, // no qualified Oregon/EOCCO claim-format rule; NF exceptions are separate
   hasNoeEquivalent: false,
-  supportedChannels: ["direct_mmis", "cco_clearinghouse"],
-  ackMode: "sync",
-  supportedTobs: ["811", "812", "813", "814", "817", "818"],
+  supportedChannels: [], // public descriptions do not qualify a production transaction route
+  ackMode: "unqualified",
+  supportedTobs: ["811", "812", "813", "814"], // OHA FFS instructions only; no CCO format qualification
 };
 
 /**

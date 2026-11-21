@@ -33,6 +33,11 @@ export const medicaidStateRateSchedule = pgTable(
     levelOfCare: m24ClaimLineLoc("level_of_care").notNull(),
     countyCode: text("county_code"), // null = statewide default rate for this state+LOC+window
 
+    // Existing rows stay unqualified until a reviewer verifies their payer scope and provenance.
+    canonicalPayerId: uuid("canonical_payer_id"), // logical M40 reference; required for verified rows
+    rateSourceKind: text("rate_source_kind").notNull().default("legacy_unqualified"),
+    verificationStatus: text("verification_status").notNull().default("unverified"),
+
     rateCents: integer("rate_cents").notNull(),
 
     effectiveFrom: timestamp("effective_from", { withTimezone: true }).notNull(),
@@ -45,11 +50,24 @@ export const medicaidStateRateSchedule = pgTable(
     uniqueByStateLocCountyFrom: uniqueIndex("medicaid_state_rate_schedule_uq").on(
       t.stateCode,
       t.levelOfCare,
+      t.canonicalPayerId,
       t.countyCode,
       t.effectiveFrom,
     ),
     byStateLoc: index("medicaid_state_rate_schedule_state_loc_idx").on(t.stateCode, t.levelOfCare),
     ratePositive: check("medicaid_state_rate_schedule_rate_positive", sql`rate_cents > 0`),
+    sourceKindValid: check(
+      "medicaid_state_rate_schedule_source_kind_valid",
+      sql`rate_source_kind IN ('legacy_unqualified', 'oha_ffs_schedule')`,
+    ),
+    verificationStatusValid: check(
+      "medicaid_state_rate_schedule_verification_status_valid",
+      sql`verification_status IN ('unverified', 'verified', 'expired', 'revoked')`,
+    ),
+    verifiedRateHasPayer: check(
+      "medicaid_state_rate_schedule_verified_payer",
+      sql`verification_status <> 'verified' OR (canonical_payer_id IS NOT NULL AND rate_source_kind = 'oha_ffs_schedule')`,
+    ),
     noRbSchedule: check("medicaid_state_rate_schedule_no_rb", sql`level_of_care <> 'NF_RB'`),
   }),
 );

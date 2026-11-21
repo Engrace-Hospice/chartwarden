@@ -45,6 +45,7 @@ export interface ClaimLineView {
   medicaidClaimId: string;
   lineNumber: number;
   serviceDate: string;
+  serviceDateTo: string | null;
   revenueCode: string;
   qCode: string;
   levelOfCare: string;

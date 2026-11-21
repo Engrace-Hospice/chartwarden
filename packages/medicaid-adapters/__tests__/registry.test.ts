@@ -64,7 +64,10 @@ describe("MedicaidAdapterRegistry", () => {
   it("Oregon deny-stubs the not-yet-wired wire I/O but keeps real metadata + TOB", async () => {
     const or = new MedicaidAdapterRegistry().requireAdapterForState("OR");
     expect(or.metadata.acceptsDocumentedMissingEvv).toBe(false);
-    expect(or.metadata.combinesHospiceAndRb).toBe(true);
+    expect(or.metadata.combinesHospiceAndRb).toBe(false);
+    expect(or.metadata.supportedChannels).toEqual([]);
+    expect(or.metadata.ackMode).toBe("unqualified");
+    expect(or.metadata.supportedTobs).toEqual(["811", "812", "813", "814"]);
     expect(or.replacementTob("811")).toBe("817");
     expect(or.voidTob("811")).toBe("818");
     await expect(
