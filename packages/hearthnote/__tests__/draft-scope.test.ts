@@ -12,6 +12,7 @@ import {
   type DraftInputs,
   HearthnoteAssemblyError,
   compileDraft,
+  draftSourceNeeds,
   draftedSectionIds,
   emptyDraft,
   resolveTemplate,
@@ -149,4 +150,33 @@ describe("emptyDraft", () => {
   it("refuses a pair that has no template, like the compiler", () => {
     expect(() => emptyDraft("routine_visit", "volunteer", AS_OF)).toThrow(HearthnoteAssemblyError);
   });
+});
+
+// S3: `draftSourceNeeds` decides which sources are READ (and which read keys are asked), so it must be exactly what the drafted sections are
+// built from. A row that omits a source the builder uses would pass every literal check and draft short of its sources; this one compiles.
+describe("the sources a template needs read are the sources its drafted sections are built from", () => {
+  const WITHOUT = {
+    carePlan: { carePlan: null },
+    vitals: { vitals: null },
+    medicationChanges: { medicationChanges: [] },
+    scales: { scaleReadings: [] },
+  } as const;
+  const SOURCES = Object.keys(WITHOUT) as (keyof typeof WITHOUT)[];
+  const DRAFTED_PAIRS = LEGAL_PAIRS.filter(([type, discipline]) =>
+    templateHasDraftedSection(type, discipline),
+  );
+  const draftOf = (pair: Pair, without: Partial<DraftInputs>) =>
+    compileDraft({ ...maximalInputs(pair), ...without }, DEPS);
+
+  for (const pair of DRAFTED_PAIRS) {
+    it(`${templateKey(pair[0], pair[1])}: taking away a source it needs changes the draft, and one it does not need changes nothing`, () => {
+      const needs = draftSourceNeeds(pair[0], pair[1]);
+      const full = draftOf(pair, {});
+      for (const source of SOURCES) {
+        const without = draftOf(pair, WITHOUT[source]);
+        if (needs[source]) expect(without, `${source} is needed`).not.toEqual(full);
+        else expect(without, `${source} is not needed`).toEqual(full);
+      }
+    });
+  }
 });
