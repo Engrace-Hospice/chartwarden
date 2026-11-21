@@ -47,10 +47,11 @@ describe("buildTemplateMenu: draft wording off (the default)", () => {
   });
 
   it("is the same menu for every other template whichever way the flag goes", () => {
-    // The recertification, face-to-face and admission visits are wired by S2 and S2b (below), so they differ with the flag on.
+    // The recertification, face-to-face and admission visits are wired by S2 and S2b, and the LPN visits gain the care-plan phrases (S3), so
+    // they differ with the flag on (below).
     for (const [type, discipline] of [
-      ["routine_visit", "lpn"],
-      ["chha_visit", "chha"],
+      ["telephonic", "lpn"],
+      ["msw_followup", "msw"],
       ["telephonic", "rn"],
     ] as const) {
       expect(buildTemplateMenu(type, discipline, { draftWording: true })).toEqual(
@@ -211,5 +212,52 @@ describe("buildTemplateMenu: draft wording on (the tenant's switch is on)", () =
         if (DRAFT_VOCAB_CODES.has(entry.code)) {
           expect(section.allowedCategories, section.sectionId).toContain(entry.category);
         }
+  });
+});
+
+// S3 (design §3.5): the LPN visits and the aide visit. The draft wording of 2026.12.2 is the S1 wording tagged for them, so a tenant with the
+// switch off sees none of it; with it on, an LPN's Interventions menu offers the care-plan phrases the RN routine visit's does (they share the
+// section's category), and nothing else of any LPN or aide section changes: the vitals and plan stay open prose, the aide's `adl` offers no phrase.
+describe("buildTemplateMenu: the LPN visits and the aide visit (S3)", () => {
+  const CARE_PLAN_PHRASES = [
+    "nv.cp.goal_listed",
+    "nv.cp.goal_progress",
+    "nv.cp.intervention_performed",
+  ];
+  const codesOf = (menu: ReturnType<typeof buildTemplateMenu>, sectionId: string): string[] =>
+    (menu.sections.find((s) => s.sectionId === sectionId)?.entries ?? []).map((e) => e.code);
+
+  it.each([
+    ["routine_visit", "lpn"],
+    ["lpn_visit", "lpn"],
+  ] as const)(
+    "%s by an LPN: off, no draft phrase; on, the care-plan phrases join the interventions",
+    (type, discipline) => {
+      const off = buildTemplateMenu(type, discipline);
+      const on = buildTemplateMenu(type, discipline, { draftWording: true });
+      for (const section of off.sections) {
+        for (const code of codesOf(off, section.sectionId)) {
+          expect(DRAFT_VOCAB_CODES.has(code), `${section.sectionId} ${code}`).toBe(false);
+        }
+      }
+      expect(
+        CARE_PLAN_PHRASES.filter((c) => codesOf(on, "interventions").includes(c)).sort(),
+      ).toEqual(CARE_PLAN_PHRASES);
+      for (const section of on.sections) {
+        if (section.sectionId === "interventions") continue;
+        expect(codesOf(on, section.sectionId), section.sectionId).toEqual(
+          codesOf(off, section.sectionId),
+        );
+        expect(section.allowedCategories, section.sectionId).toEqual(
+          off.sections.find((s) => s.sectionId === section.sectionId)?.allowedCategories,
+        );
+      }
+    },
+  );
+
+  it("the aide visit's menu is the same with the flag on: no phrase carries an ADL or a recorded intervention by hand", () => {
+    expect(buildTemplateMenu("chha_visit", "chha", { draftWording: true })).toEqual(
+      buildTemplateMenu("chha_visit", "chha"),
+    );
   });
 });

@@ -2,8 +2,8 @@
 //
 // ONE predicate, read off the corpus: a section is drafted for an (encounter type x discipline) pair when the pair's template has it, the
 // sources feed it (`draftSectionPhrases`, one map per template), and EVERY phrase it is built from is tagged for the pair in
-// `@chartwarden/narrative-vocab`. Today that is the RN routine visit, the RN recertification visit and the face-to-face visit by a
-// physician or nurse practitioner; tagging phrases for another pair (a later slice) is what makes that pair draft, with no list of
+// `@chartwarden/narrative-vocab`. Today that is the RN routine, recertification and admission visits, the face-to-face visit by a
+// physician or nurse practitioner, the LPN visits and the aide visit; tagging phrases for another pair (a later slice) is what makes that pair draft, with no list of
 // templates to keep in step.
 //
 // The backend asks this BEFORE it reads any source: a template with no drafted section reads nothing, drafts nothing and asks the
@@ -14,8 +14,8 @@ import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
 import { HearthnoteAssemblyError } from "../assembly/assemble";
 import { resolveTemplate } from "../templates/registry";
 import { templateKey } from "../templates/types";
-import { draftSectionPhrases } from "./sources";
-import type { Draft, EmptyDraftSection } from "./types";
+import { draftSectionPhrases, sourceNeedsOf } from "./sources";
+import type { Draft, DraftSourceNeeds, EmptyDraftSection } from "./types";
 
 /**
  * The ids of the sections of the pair's template that can be drafted. `entries` is the corpus the pair is read against (the entries
@@ -35,6 +35,17 @@ export function draftedSectionIds(
       .map((section) => section.id)
       .filter((id) => phrases[id]?.every((code) => tagged.has(code)) ?? false),
   );
+}
+
+/**
+ * The S1 sources (care plan, vitals, medication changes, scales) the pair's draft is built from: the union over the sections it drafts. A
+ * template that drafts nothing needs none. The backend reads, and asks the read keys of, only these (S3, VN-D42).
+ */
+export function draftSourceNeeds(
+  encounterType: EncounterType,
+  discipline: EncounterDiscipline,
+): DraftSourceNeeds {
+  return sourceNeedsOf(draftedSectionIds(encounterType, discipline));
 }
 
 /** Whether a visit's draft reads the benefit period it falls in (S2): the recertification and the face-to-face visit (`md`, `np`). */

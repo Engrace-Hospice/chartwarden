@@ -2,7 +2,8 @@
 //
 // Appended to the corpus by `vocabulary.ts`: the 25 entries of `narrative-vocab@2026.11.0` below (S1), then the 11 of
 // `narrative-vocab@2026.12.0` (S2, `recert-entries.ts`), then the 5 of `narrative-vocab@2026.12.1` (S2b, `admission-entries.ts`); the
-// 23 earlier entries are untouched. DRAFT WORDING until the review of the running release is "approved" (see
+// 23 earlier entries are untouched. `narrative-vocab@2026.12.2` (S3) adds no entry: it tags 12 of the S1 entries for the LPN visits and one
+// for the aide visit. DRAFT WORDING until the review of the running release is "approved" (see
 // `CORPUS_CLINICAL_REVIEW` in vocabulary.ts).
 import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
 import { ADMISSION_VOCABULARY } from "./admission-entries";
@@ -279,12 +280,37 @@ const ROUTINE_RECERT_AND_ADMISSION: readonly EncounterType[] = [
   "admission_visit",
 ];
 
-const encounterTypesOf = (code: string): readonly EncounterType[] | undefined =>
-  ADMISSION_SHARED_CODES.has(code)
+/**
+ * Of those, the ones an LPN visit also drafts from (S3, VN-D39): the vitals, care-plan and medication-change phrases. NOT the PPS or ESAS-r
+ * phrases: a performance status is a functional determination that belongs to the RN or physician, so an LPN note's `assessment` and
+ * `symptom_management` stay the clinician's own words. Wording untouched; `narrative-vocab@2026.12.2` only adds the `lpn` and `lpn_visit` tags.
+ */
+const LPN_SHARED_CODES: ReadonlySet<string> = new Set(
+  [...RECERT_SHARED_CODES].filter((code) => !code.startsWith("nv.scale.")),
+);
+
+/** The one S1 phrase the aide visit also drafts from (S3, VN-D40): the care-plan intervention performed, in the aide's `adl` section. */
+const AIDE_SHARED_CODES: ReadonlySet<string> = new Set(["nv.cp.intervention_performed"]);
+
+const encounterTypesOf = (code: string): readonly EncounterType[] | undefined => {
+  const base = ADMISSION_SHARED_CODES.has(code)
     ? ROUTINE_RECERT_AND_ADMISSION
     : RECERT_SHARED_CODES.has(code)
       ? ROUTINE_AND_RECERT
       : undefined;
+  if (base === undefined) return undefined;
+  return [
+    ...base,
+    ...(LPN_SHARED_CODES.has(code) ? (["lpn_visit"] as const) : []),
+    ...(AIDE_SHARED_CODES.has(code) ? (["chha_visit"] as const) : []),
+  ];
+};
+
+const disciplinesOf = (code: string): readonly EncounterDiscipline[] => [
+  ...RN_ONLY,
+  ...(LPN_SHARED_CODES.has(code) ? (["lpn"] as const) : []),
+  ...(AIDE_SHARED_CODES.has(code) ? (["chha"] as const) : []),
+];
 
 /**
  * Every draft entry, in corpus order: the 25 of 2026.11.0 (the shared ones also tagged for the recertification, and the admission
@@ -293,7 +319,9 @@ const encounterTypesOf = (code: string): readonly EncounterType[] | undefined =>
 export const DRAFT_VOCABULARY: readonly VocabEntry[] = [
   ...ROUTINE_DRAFT_VOCABULARY.map((entry): VocabEntry => {
     const encounterTypes = encounterTypesOf(entry.code);
-    return encounterTypes === undefined ? entry : { ...entry, encounterTypes };
+    return encounterTypes === undefined
+      ? entry
+      : { ...entry, encounterTypes, disciplines: disciplinesOf(entry.code) };
   }),
   ...RECERT_VOCABULARY,
   ...ADMISSION_VOCABULARY,

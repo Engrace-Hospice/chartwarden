@@ -11,6 +11,7 @@ import {
   resolveSelectionTemplate,
 } from "../assembly/assemble";
 import { joinSentences } from "../assembly/grammar";
+import { describeRecordedAdl } from "../assembly/recorded-findings";
 import { describeRecordedBodyMeasures } from "../assembly/vitals";
 import { templateKey } from "../templates/types";
 import { canonicalJson, normalizeText } from "./canonical";
@@ -43,11 +44,14 @@ const isPart2Derived = (groups: readonly SourceGroup[]): boolean =>
 function draftedSection(
   sectionId: string,
   groups: readonly SourceGroup[],
+  leadText: string,
   ownText: string,
   deps: DraftDeps,
 ): DraftedSection {
   const drafted = joinSentences(groups.flatMap((g) => g.sentences));
-  const text = normalizeText(ownText.length === 0 ? drafted : `${drafted} ${ownText}`);
+  const text = normalizeText(
+    [leadText, drafted, ownText].filter((part) => part.length > 0).join(" "),
+  );
   const sourceRefs = groups.map((g) => g.ref);
   const part2Derived = isPart2Derived(groups);
   const contentHash = deps.sha256Hex(
@@ -101,10 +105,14 @@ export function compileDraft(inputs: DraftInputs, deps: DraftDeps): Draft {
       section.vitalsSummary === true
         ? describeRecordedBodyMeasures(inputs.context.recordedVitals)
         : "";
+    // Likewise the recorded ADLs of a section that states them (the aide's `adl`): the confirmed text replaces the section, so a recorded
+    // ADL the draft left out would vanish from the note. It LEADS the section, as it does in the assembled note.
+    const recordedAdl =
+      section.adlSummary === true ? describeRecordedAdl(inputs.context.recordedAdl) : "";
     const ownText = [measures, own === undefined ? "" : renderSection(own, inputs.context)]
       .filter((part) => part.length > 0)
       .join(" ");
-    return draftedSection(section.id, sourced, ownText, deps);
+    return draftedSection(section.id, sourced, recordedAdl, ownText, deps);
   });
   return { templateKey: template.key, asOf: inputs.asOf, sections };
 }

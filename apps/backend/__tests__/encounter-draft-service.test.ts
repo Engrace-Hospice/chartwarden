@@ -276,7 +276,7 @@ describe("connections held while a source is asked (S3)", () => {
 
   it("a read of an encounter whose template the corpus does not draft asks no source and needs no store read after its transaction", async () => {
     const { svc, state } = counted({
-      encounter: draftEncounterRow({ discipline: "lpn" }),
+      encounter: draftEncounterRow({ encounterType: "msw_followup", discipline: "msw" }),
     });
     const view = await svc.getDraft(caller, ENCOUNTER);
     expect(view.sections.every((s) => s.state === "not_drafted")).toBe(true);
