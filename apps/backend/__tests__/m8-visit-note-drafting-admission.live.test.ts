@@ -673,8 +673,11 @@ describe.skipIf(!DB_URL)(
         membershipId,
       );
     }
-    /** What an admission finalize and sign need of the caller: the route resolves these from the session. */
-    const ALL_ADMISSION_KEYS: ReadonlySet<string> = new Set(ADMISSION_READS);
+    /** What an admission finalize and sign need of the caller (patient.read, consent.read and prescribing.read, by template): the route resolves these from the session. */
+    const ALL_ADMISSION_KEYS: ReadonlySet<string> = new Set([
+      ...ADMISSION_READS,
+      "prescribing.read",
+    ]);
     const finalize = (f: EncounterFixture) =>
       svc.finalize(ORG_A, f.encounterId, SERVICE_DATE as never, {
         viewer: {
