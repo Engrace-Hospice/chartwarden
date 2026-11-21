@@ -2,48 +2,105 @@
 import { fail, pass, skip } from "./types";
 import type { MedicaidRule } from "./types";
 
-/** M23 claim states from which a Medicaid-secondary COB claim may reference the Medicare-primary. */
-const MEDICARE_RESOLVED_STATES = new Set(["ack_accepted", "paid", "partial_paid", "replaced"]);
-
-/**
- * medicare_primary_required_for_dual — for a dual-eligible patient, the Medicaid (R&B) claim's
- * medicareClaimId references an M23 claim in ACK_ACCEPTED or further, with a non-null EOB COB context.
- */
-export const medicarePrimaryRequiredForDual: MedicaidRule = {
-  key: "medicare_primary_required_for_dual",
+/** Mandatory platform gate: both payers and their full-range responsibility must be resolved by M5. */
+export const medicaidPayerResponsibilityResolved: MedicaidRule = {
+  key: "medicaid_payer_responsibility_resolved",
   version: 1,
   category: "cob",
-  title: "Medicare-primary required for dual-eligible",
+  title: "Payer responsibility is resolved",
   description:
-    "For dual-eligible patients, the Medicaid claim references a Medicare-primary claim that has reached " +
-    "ACK_ACCEPTED (or further) and carries the snapshotted EOB COB context.",
+    "The selected Medicaid coverage and actual primary payer must be unambiguous for the complete service window, and the claim kind must be permitted by current payer policy.",
   severity: "error",
-  regulatoryRequired: true,
-  overrideRoleRequired: "billing_manager",
+  regulatoryRequired: false,
+  platformRequired: true,
   applicableStates: [],
   check: (ctx) => {
-    const KEY = "medicare_primary_required_for_dual";
-    if (!ctx.claim.isDualEligible) {
-      return pass(KEY, "error", "Patient is not dual-eligible; Medicare-primary not required.");
-    }
-    if (!ctx.seams.medicareClaimBound || ctx.medicareSecondary === null) {
-      return skip(KEY, "error", "seam_not_bound", "M23 ClaimReader unbound; COB rule deferred.");
-    }
-    const ms = ctx.medicareSecondary;
-    const resolved =
-      ms.medicareClaimState !== null && MEDICARE_RESOLVED_STATES.has(ms.medicareClaimState);
-    if (ctx.claim.medicareClaimId !== null && resolved && ms.eobContextPresent) {
-      return pass(KEY, "error", `Medicare-primary is '${ms.medicareClaimState}' with EOB context.`);
+    const KEY = "medicaid_payer_responsibility_resolved";
+    if (ctx.payerResponsibility.status === "permitted") {
+      return pass(
+        KEY,
+        "error",
+        "Payer responsibility is permitted for this claim kind and service window.",
+      );
     }
     return fail(
       KEY,
       "error",
-      ctx.claim.medicareClaimId === null
-        ? "Dual-eligible claim has no linked Medicare-primary claim."
-        : `Medicare-primary not yet accepted (state '${ms.medicareClaimState ?? "unknown"}').`,
+      ctx.payerResponsibility.status === "unresolved"
+        ? "Payer responsibility could not be resolved for the complete service window."
+        : `Payer responsibility does not permit this claim (${ctx.payerResponsibility.reasonCode ?? "policy_unresolved"}).`,
       {
-        summary: "Submit/accept the Medicare-primary claim (M23) before billing Medicaid R&B.",
-        fixAction: "resolve_medicare_primary",
+        summary: "Resolve coverage and payer responsibility before this claim can become ready.",
+        fixAction: "resolve_payer_responsibility",
+      },
+    );
+  },
+};
+
+/**
+ * medicare_primary_required_for_dual is an internal readiness gate while the applicable state format and
+ * COB requirements remain unresolved. It deliberately does not prescribe whether an acknowledgment,
+ * adjudication, remittance, or payment is required for any future R&B-only format. M23 evidence is exposed
+ * separately by the read-only assembly preview; it cannot satisfy this gate or authorize secondary assembly.
+ */
+export const medicarePrimaryRequiredForDual: MedicaidRule = {
+  key: "medicare_primary_required_for_dual",
+  version: 2,
+  category: "cob",
+  title: "Secondary Medicaid policy confirmed",
+  description:
+    "Secondary Medicaid assembly remains unavailable until the applicable state claim format and coordination-of-benefits requirements are confirmed. This internal gate does not define a universal Medicare payment threshold.",
+  severity: "error",
+  regulatoryRequired: false,
+  platformRequired: true,
+  applicableStates: [],
+  check: (ctx) => {
+    const KEY = "medicare_primary_required_for_dual";
+    if (!ctx.claim.hasConcurrentMedicareAndMedicaidCoverage) {
+      return pass(
+        KEY,
+        "error",
+        "The recorded payer scenario does not require the unresolved secondary Medicaid policy gate.",
+      );
+    }
+    return fail(
+      KEY,
+      "error",
+      "The applicable state-specific secondary Medicaid claim format and COB evidence requirements are unconfirmed. Medicare acknowledgment, adjudication, remittance, or payment facts do not independently authorize this claim.",
+      {
+        summary:
+          "Keep secondary Medicaid assembly blocked until the billing owner confirms the supported format and required coordination evidence.",
+        fixAction: "confirm_state_secondary_medicaid_policy",
+      },
+    );
+  },
+};
+
+/** A legacy or directly-created Medicare link is not sufficient COB evidence for M24 readiness. */
+export const medicaidMedicareClaimLinkageSupported: MedicaidRule = {
+  key: "medicaid_medicare_linkage_supported",
+  version: 1,
+  category: "cob",
+  title: "Medicare claim linkage is supported",
+  description:
+    "A Medicaid claim cannot become ready while it carries a Medicare claim reference without a qualified, correlated COB evidence contract.",
+  severity: "error",
+  regulatoryRequired: false,
+  platformRequired: true,
+  applicableStates: [],
+  check: (ctx) => {
+    const KEY = "medicaid_medicare_linkage_supported";
+    if (ctx.claim.medicareClaimId === null) {
+      return pass(KEY, "error", "No unsupported Medicare claim reference is attached.");
+    }
+    return fail(
+      KEY,
+      "error",
+      "This claim has a Medicare claim reference without a qualified COB evidence contract. It cannot become ready based on the reference alone.",
+      {
+        summary:
+          "Reconcile the unsupported Medicare claim link before this Medicaid claim can become ready.",
+        fixAction: "reconcile_medicare_claim_link",
       },
     );
   },

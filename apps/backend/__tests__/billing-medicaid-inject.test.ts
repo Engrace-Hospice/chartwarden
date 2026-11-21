@@ -251,6 +251,7 @@ function createM24Backend(): {
     customOverrideRole: null,
     overrideRoleRequired: null,
     regulatoryRequired: false,
+    platformRequired: false,
     parametersOverlay: {},
     version: 1,
   });
@@ -528,6 +529,7 @@ function createM24Backend(): {
         customOverrideRole: input.customOverrideRole ?? null,
         overrideRoleRequired: null,
         regulatoryRequired: false,
+        platformRequired: false,
         parametersOverlay: input.customPredicateDsl,
         version: 1,
       });
@@ -799,6 +801,7 @@ const ROUTE_CASES: readonly RouteCase[] = [
       serviceFrom: "2026-07-01",
       serviceTo: "2026-07-31",
       kind: "combined_hospice_rb",
+      rbArrangementId: ARR,
     },
     expectStatus: 201,
   },

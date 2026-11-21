@@ -5,6 +5,7 @@
 // or id-keyed; NO PHI / NO MBI ever crosses a seam (D13 / §3.6 / §8.7).
 import type {
   AcceptedSubmissionDto,
+  AdmissionId,
   ArAgingDto,
   CapYear,
   ClaimFhirProjectionDto,
@@ -52,11 +53,17 @@ export interface ClaimReader {
     range: { from: IsoDate; to: IsoDate },
   ): Promise<{ gipDays: number; chgipTransitionCount: number }>;
 
-  /** M24 Medicaid coordination-of-benefits — Medicare-primary EOB context. */
+  /** M24 Medicaid coordination-of-benefits — tenant and identity-scoped Medicare lifecycle/remittance evidence. */
   medicareSecondaryContext(
     orgId: OrgId,
     patientId: PatientId,
     range: { from: IsoDate; to: IsoDate },
+    scope: {
+      providerEntityId: ProviderEntityId;
+      admissionId: AdmissionId;
+      /** The range-resolved rank-one Medicare coverage row; evidence for another coverage is irrelevant. */
+      primaryCoverageId: string;
+    },
   ): Promise<MedicareSecondaryContextDto[]>;
 
   /** Single-claim accessors (used widely). */

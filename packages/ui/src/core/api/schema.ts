@@ -16524,6 +16524,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/medicaid-claims/assembly-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read-only payer, claim-kind, Room & Board, and Medicare-evidence preview; creates no claim or reservation */
+        post: operations["postApiV1MedicaidclaimsAssemblypreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/medicaid-eligibility-checks": {
         parameters: {
             query?: never;
@@ -53311,7 +53328,7 @@ export interface operations {
                             deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                             submittedAt: string | null;
                             macAcceptedOn: string | null;
-                            /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                            /** @description Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry. */
                             submissionMode: "manual" | "provider" | null;
                             providerReference: string | null;
                             /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
@@ -53330,6 +53347,13 @@ export interface operations {
                             /** Format: date-time */
                             updatedAt: string;
                         }[];
+                        providerCapability: {
+                            mode: "manual_only" | "test_provider" | "unverified" | "qualified" | "unknown";
+                            label: string;
+                            submissionItemTypes: ("noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response")[];
+                            statusCheckItemTypes: ("noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response")[];
+                            explanation: string;
+                        };
                         nextCursor: string | null;
                         hasMore: boolean;
                     };
@@ -53395,7 +53419,7 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
-                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        /** @description Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry. */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
                         /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
@@ -53459,7 +53483,7 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
-                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        /** @description Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry. */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
                         /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
@@ -53487,7 +53511,7 @@ export interface operations {
                             actorMembershipId: string | null;
                             actorKind: string;
                             detail: {
-                                [key: string]: string | number | null;
+                                [key: string]: string | number | boolean | null;
                             };
                             /** Format: date-time */
                             occurredAt: string;
@@ -53561,7 +53585,7 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
-                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        /** @description Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry. */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
                         /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
@@ -53635,7 +53659,7 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
-                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        /** @description Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry. */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
                         /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
@@ -53709,7 +53733,7 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
-                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        /** @description Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry. */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
                         /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
@@ -53783,7 +53807,7 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
-                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        /** @description Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry. */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
                         /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
@@ -53836,6 +53860,7 @@ export interface operations {
                     outcomeCode?: "accepted" | "accepted_with_edits" | "other";
                     /** @description Free text, capped. Never put an MBI here (MBI-shaped text is refused). Not copied into events or logs. */
                     notes?: string;
+                    confirmedExistingTransaction?: boolean;
                 };
             };
         };
@@ -53868,7 +53893,7 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
-                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        /** @description Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry. */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
                         /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
@@ -53920,6 +53945,7 @@ export interface operations {
                     outcomeCode?: "rtp" | "rejected" | "adr_requested" | "other";
                     /** @description Free text, capped. Never put an MBI here (MBI-shaped text is refused). Not copied into events or logs. */
                     notes?: string;
+                    confirmedExistingTransaction?: boolean;
                 };
             };
         };
@@ -53952,7 +53978,7 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
-                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        /** @description Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry. */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
                         /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
@@ -53998,6 +54024,8 @@ export interface operations {
                     dcn?: string;
                     /** @description Free text, capped. Never put an MBI here (MBI-shaped text is refused). Not copied into events or logs. */
                     notes?: string;
+                    /** @description Required when resolving an uncertain provider attempt: confirms the operator verified that the transaction exists in DDE. Does not establish the submission channel. */
+                    confirmedExistingTransaction?: boolean;
                 };
             };
         };
@@ -54030,7 +54058,7 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
-                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        /** @description Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry. */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
                         /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
@@ -54104,7 +54132,7 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
-                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        /** @description Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry. */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
                         /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
@@ -54178,7 +54206,7 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
-                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        /** @description Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry. */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
                         /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
@@ -54252,7 +54280,7 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
-                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        /** @description Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry. */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
                         /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
@@ -54320,7 +54348,7 @@ export interface operations {
                             deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                             submittedAt: string | null;
                             macAcceptedOn: string | null;
-                            /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                            /** @description Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry. */
                             submissionMode: "manual" | "provider" | null;
                             providerReference: string | null;
                             /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
@@ -81439,11 +81467,38 @@ export interface operations {
                     serviceFrom: string;
                     /** Format: date */
                     serviceTo: string;
-                    kind: "combined_hospice_rb" | "hospice_only" | "rb_only";
+                    /** @constant */
+                    kind: "hospice_only";
+                } | {
                     /** Format: uuid */
-                    rbArrangementId?: string;
+                    patientId: string;
                     /** Format: uuid */
-                    medicareClaimId?: string;
+                    admissionId: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: date */
+                    serviceFrom: string;
+                    /** Format: date */
+                    serviceTo: string;
+                    /** @constant */
+                    kind: "rb_only";
+                    /** Format: uuid */
+                    rbArrangementId: string;
+                } | {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: date */
+                    serviceFrom: string;
+                    /** Format: date */
+                    serviceTo: string;
+                    /** @constant */
+                    kind: "combined_hospice_rb";
+                    /** Format: uuid */
+                    rbArrangementId: string;
                 };
             };
         };
@@ -82200,6 +82255,91 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1MedicaidclaimsAssemblypreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: date */
+                    serviceFrom: string;
+                    /** Format: date */
+                    serviceTo: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        primaryCoverage: {
+                            status: "uniform" | "none" | "changes" | "ambiguous" | "unavailable";
+                            coverageKind: string | null;
+                            rank: number | null;
+                        };
+                        medicaidCoverage: {
+                            status: "uniform" | "none" | "changes" | "ambiguous" | "unavailable";
+                            coverageKind: string | null;
+                            rank: number | null;
+                        };
+                        payerResponsibility: "medicaid_primary" | "medicare_primary_medicaid_secondary" | "other_primary" | "unresolved";
+                        recordedEligibility: {
+                            status: "current" | "stale" | "not_recorded" | "unavailable";
+                            outcome: string | null;
+                            serviceState: string | null;
+                            asOfServiceDate: string | null;
+                            checkedAt: string | null;
+                            staleAt: string | null;
+                        };
+                        claimKinds: {
+                            kind: "combined_hospice_rb" | "hospice_only" | "rb_only";
+                            payerPolicy: "permitted" | "blocked" | "unresolved";
+                            reasonCode: string | null;
+                        }[];
+                        rbArrangements: {
+                            /** Format: uuid */
+                            id: string;
+                            facilityName: string;
+                            /** Format: date */
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            billableDayCount: number;
+                            status: "candidate" | "blocked" | "unresolved";
+                            reasonCode: string | null;
+                        }[];
+                        arrangementListStatus: "available" | "unavailable";
+                        medicareEvidence: {
+                            match: "not_applicable" | "unresolved" | "unavailable" | "none" | "ambiguous" | "single";
+                            evidenceStatus: string | null;
+                            rangeRelation: string | null;
+                            remittanceAdviceRecorded: boolean | null;
+                        };
+                        stateBillingPolicy: "not_applicable_to_primary_medicaid" | "unconfirmed" | "unresolved";
+                        /** @constant */
+                        electronicSubmissionAvailable: false;
+                        /** @constant */
+                        isAdvisorySnapshot: true;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1Medicaideligibilitychecks: {
         parameters: {
             query?: {
@@ -82304,6 +82444,7 @@ export interface operations {
                         customOverrideRole: string | null;
                         overrideRoleRequired: string | null;
                         regulatoryRequired: boolean;
+                        platformRequired: boolean;
                         parametersOverlay: unknown;
                         version: number | null;
                         platformDefault?: {
@@ -82311,6 +82452,7 @@ export interface operations {
                             category: string;
                             severity: string;
                             regulatoryRequired: boolean;
+                            platformRequired: boolean;
                             applicableStates: string[];
                         };
                     }[];

@@ -24,7 +24,7 @@
 // Every flip also emits `m5.patient.status_changed` (§4.6) with the real `fromStatus`.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { type DeceasedCascadePorts, recordDeath } from "./deceased";
 import { deathTransitionFrom } from "./patient-status-transitions";
 import { voidPatientWristbandsInTx } from "./wristband-db";
@@ -90,11 +90,14 @@ export async function recordDeathFromDischarge(
       userId: input.actorUserId ?? DEATH_CASCADE_SYSTEM_USER_ID,
     },
     async (tx) => {
+      // Share the namespace serialization point used by M5 coverage snapshots. A claim writer holding
+      // FOR SHARE either completes before this death transition or observes the deceased status/date.
       const [row] = await tx
         .select({ status: P.status })
         .from(P)
-        .where(eq(P.id, input.patientId))
-        .limit(1);
+        .where(and(eq(P.organizationId, input.organizationId), eq(P.id, input.patientId)))
+        .limit(1)
+        .for("update");
       if (!row) throw new Error(`patient '${input.patientId}' not found`);
       const transition = deathTransitionFrom(row.status);
       if (transition === "already_deceased") return { kind: "already_deceased" };
@@ -108,7 +111,7 @@ export async function recordDeathFromDischarge(
           await tx
             .update(P)
             .set({ status: "deceased", deceasedDate, updatedAt: new Date() })
-            .where(eq(P.id, patientId));
+            .where(and(eq(P.organizationId, organizationId), eq(P.id, patientId)));
           // GAP-020 -- a deceased patient's band must stop verifying in the same commit.
           await voidPatientWristbandsInTx(tx, {
             organizationId,

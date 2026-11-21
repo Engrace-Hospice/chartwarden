@@ -177,6 +177,7 @@ export function MedicaidClaimWorkbench(): JSX.Element {
       setBusy(true);
       setActionError(null);
       let failed = 0;
+      let rbReconciliationRequired = false;
       for (const claim of targets) {
         if (mode === "abandon" && !ABANDONABLE.has(claim.state)) {
           failed += 1;
@@ -194,14 +195,27 @@ export function MedicaidClaimWorkbench(): JSX.Element {
         const { error: err } = (await client.POST(path as never, init as never)) as {
           error?: unknown;
         };
-        if (err) failed += 1;
+        if (err) {
+          failed += 1;
+          const envelope =
+            typeof err === "object" && err !== null && "error" in err
+              ? (err as { error?: { code?: unknown } }).error
+              : undefined;
+          if (envelope?.code === "MEDICAID_RB_DAYS_REQUIRE_RECONCILIATION") {
+            rbReconciliationRequired = true;
+          }
+        }
       }
       setBusy(false);
       if (failed > 0)
         setActionError(
           `${failed} of ${targets.length} claim${targets.length === 1 ? "" : "s"} could not be ${
             mode === "abandon" ? "abandoned" : "validated"
-          } — check each claim's state and your permissions.`,
+          } — ${
+            rbReconciliationRequired
+              ? "a Room & Board draft still owns days that need reconciliation. Other selected claims may already have been processed; review the refreshed list."
+              : "check each claim's state and your permissions."
+          }`,
         );
       void load();
     },

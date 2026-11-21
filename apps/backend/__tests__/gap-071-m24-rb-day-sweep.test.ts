@@ -57,6 +57,52 @@ describe("deriveRbDays", () => {
     expect(out.every((r) => r.locOfDay === "RHC" && r.locPeriodIdSnapshot === "p1")).toBe(true);
   });
 
+  it("materializes an ended terminal RHC period on the recorded death date only", () => {
+    const terminal = period("terminal", "routine_home_care", "2026-05-01", "2026-05-03");
+    const ordinary = deriveRbDays({
+      arrangement,
+      periods: [terminal],
+      fromDay: d("2026-05-01"),
+      toDay: d("2026-05-03"),
+      existingDays: new Set(),
+    });
+    const atDeath = deriveRbDays({
+      arrangement,
+      periods: [terminal],
+      fromDay: d("2026-05-01"),
+      toDay: d("2026-05-03"),
+      existingDays: new Set(),
+      inclusiveEndDate: "2026-05-03",
+    });
+
+    expect(ordinary.map((r) => r.serviceDate.toISOString().slice(0, 10))).toEqual([
+      "2026-05-01",
+      "2026-05-02",
+    ]);
+    expect(
+      atDeath.map((r) => [r.serviceDate.toISOString().slice(0, 10), r.locPeriodIdSnapshot]),
+    ).toEqual([
+      ["2026-05-01", "terminal"],
+      ["2026-05-02", "terminal"],
+      ["2026-05-03", "terminal"],
+    ]);
+  });
+
+  it("uses a later same-day LOC period instead of extending the earlier period through death", () => {
+    const out = deriveRbDays({
+      arrangement,
+      periods: [
+        period("earlier", "routine_home_care", "2026-05-01", "2026-05-03"),
+        period("current", "continuous_home_care", "2026-05-03", null),
+      ],
+      fromDay: d("2026-05-03"),
+      toDay: d("2026-05-03"),
+      existingDays: new Set(),
+      inclusiveEndDate: "2026-05-03",
+    });
+    expect(out.map((r) => [r.locOfDay, r.locPeriodIdSnapshot])).toEqual([["CHC", "current"]]);
+  });
+
   it("excludes GIP and respite days (mid-month transitions), the new period winning on its start day", () => {
     const out = deriveRbDays({
       arrangement,
@@ -181,8 +227,9 @@ describe("runEligibilityStaleWatchdog alerting", () => {
 });
 
 describe("m24.rb-day-admission-discharged", () => {
-  it("leaves a death discharge to the deceased consumer (day of death stays billable)", async () => {
-    const patientIdForAdmission = vi.fn();
+  it("revalidates a death discharge without voiding the day of death", async () => {
+    const patientIdForAdmission = vi.fn(async () => "patient-1");
+    const enqueue = vi.fn(async () => ({ jobId: "job-1" }));
     const db = new Proxy(
       {},
       {
@@ -195,6 +242,7 @@ describe("m24.rb-day-admission-discharged", () => {
       db: db as never,
       locPeriods: {} as never,
       admissions: { patientIdForAdmission },
+      revalidate: { enqueue },
     });
     const discharge = consumers.find((c) => c.consumerName === "m24.rb-day-admission-discharged");
     await discharge?.handle({
@@ -203,6 +251,12 @@ describe("m24.rb-day-admission-discharged", () => {
       organizationId: "org-1",
       payload: { admissionId: "a1", reason: "death", dischargeDate: "2026-03-10" },
     } as never);
-    expect(patientIdForAdmission).not.toHaveBeenCalled();
+    expect(patientIdForAdmission).toHaveBeenCalledWith("org-1", "a1");
+    expect(enqueue).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      eventId: "e1",
+      eventName: "m6.admission.discharged",
+      patientId: "patient-1",
+    });
   });
 });

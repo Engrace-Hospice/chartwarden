@@ -18,6 +18,8 @@ export interface RouteReadAuditEmit {
    * query rather than the path (`/consents/eval-audit/by-patient?patientId=…`).
    */
   readonly patientIdQueryParam?: string;
+  /** Dot path into the REQUEST body holding the touched patient's id, for a read-only POST preview. */
+  readonly patientIdBodyPath?: string;
   /**
    * Dot path(s) into the RESPONSE payload holding the touched patient's id, for a read whose route
    * identifies the RESOURCE but not the patient (`GET /consents/:consentId`). Numeric segments index

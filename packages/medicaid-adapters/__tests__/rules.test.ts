@@ -3,6 +3,8 @@ import {
   DEFAULT_MEDICAID_RULES,
   createDefaultMedicaidRegistry,
   medicaidEvvBracketCoherence,
+  medicaidMedicareClaimLinkageSupported,
+  medicaidPayerResponsibilityResolved,
   medicarePrimaryRequiredForDual,
   runMedicaidRules,
 } from "../src/rules";
@@ -17,15 +19,17 @@ function baseCtx(): MedicaidValidationContext {
       claimId: "c1",
       providerEntityId: "pe1",
       patientId: "p1",
+      admissionId: "adm1",
       serviceState: "OR",
       kind: "combined_hospice_rb",
       tob: "811",
       serviceFrom: "2026-01-01",
       serviceTo: "2026-01-31",
       replacesClaimId: null,
-      medicareClaimId: "mc1",
+      medicareClaimId: null,
+      primaryPayerCoverageId: null,
       rbArrangementId: "rb1",
-      isDualEligible: true,
+      hasConcurrentMedicareAndMedicaidCoverage: false,
     },
     lines: [
       {
@@ -68,8 +72,10 @@ function baseCtx(): MedicaidValidationContext {
         arrangementEffectiveOnDate: true,
       },
     ],
+    rbClaimSnapshotVerified: true,
+    hospiceClaimSnapshotVerified: true,
     rateLookups: [{ serviceDate: "2026-01-01", loc: "NF_RB", rateFound: true, rateCents: 20000 }],
-    medicareSecondary: { medicareClaimState: "ack_accepted", eobContextPresent: true },
+    payerResponsibility: { status: "permitted", reasonCode: null },
     evvBrackets: [{ encounterId: "e1", bracketState: "compliant" }],
     capProjection: { patientWithinCap: true },
     modifiersSatisfied: true,
@@ -83,7 +89,6 @@ function baseCtx(): MedicaidValidationContext {
       eligibilityBound: true,
       rbBound: true,
       rateScheduleBound: true,
-      medicareClaimBound: true,
       capProjectionBound: true,
       mdmBound: true,
       adapterBound: true,
@@ -92,11 +97,125 @@ function baseCtx(): MedicaidValidationContext {
 }
 
 describe("default Medicaid rule set", () => {
-  it("ships 13 default rules, 12 regulatory-required (freshness is the lone non-regulatory warn)", () => {
-    expect(DEFAULT_MEDICAID_RULES).toHaveLength(13);
-    expect(DEFAULT_MEDICAID_RULES.filter((r) => r.regulatoryRequired)).toHaveLength(12);
-    const nonReg = DEFAULT_MEDICAID_RULES.filter((r) => !r.regulatoryRequired);
-    expect(nonReg.map((r) => r.key)).toEqual(["medicaid_eligibility_freshness_30d"]);
+  it("distinguishes regulatory rules from non-regulatory platform safety gates", () => {
+    expect(DEFAULT_MEDICAID_RULES).toHaveLength(17);
+    expect(DEFAULT_MEDICAID_RULES.filter((r) => r.regulatoryRequired)).toHaveLength(11);
+    expect(
+      DEFAULT_MEDICAID_RULES.filter((r) => r.platformRequired)
+        .map((r) => r.key)
+        .sort(),
+    ).toEqual([
+      "medicaid_hospice_claim_snapshot_verified",
+      "medicaid_medicare_linkage_supported",
+      "medicaid_payer_responsibility_resolved",
+      "medicaid_rb_claim_snapshot_verified",
+      "medicare_primary_required_for_dual",
+    ]);
+    const freshnessRule = DEFAULT_MEDICAID_RULES.find(
+      (r) => r.key === "medicaid_eligibility_freshness_30d",
+    );
+    expect(freshnessRule?.regulatoryRequired).toBe(false);
+    expect(freshnessRule?.platformRequired).toBeUndefined();
+  });
+
+  it("keeps platform safety gates blocking even if a stale override key is supplied", () => {
+    const rule = DEFAULT_MEDICAID_RULES.find(
+      (candidate) => candidate.key === "medicaid_payer_responsibility_resolved",
+    );
+    expect(rule).toBeDefined();
+    const unresolved = {
+      ...baseCtx(),
+      payerResponsibility: { status: "unresolved" as const, reasonCode: "coverage_unknown" },
+    };
+    const summary = runMedicaidRules([rule!], unresolved, {}, new Set([rule!.key]));
+    expect(summary.blockingFailures).toBe(1);
+    expect(summary.overriddenCount).toBe(0);
+  });
+
+  it("blocks background readiness for an R&B claim without a verified current snapshot", () => {
+    const rule = DEFAULT_MEDICAID_RULES.find(
+      (candidate) => candidate.key === "medicaid_rb_claim_snapshot_verified",
+    );
+    expect(rule).toBeDefined();
+    const result = runMedicaidRules(
+      [rule!],
+      { ...baseCtx(), rbClaimSnapshotVerified: false },
+      {},
+      new Set([rule!.key]),
+    );
+    expect(result.results[0]).toMatchObject({ passed: false, severity: "error" });
+    expect(result.blockingFailures).toBe(1);
+    expect(result.overriddenCount).toBe(0);
+  });
+
+  it("blocks hospice claim readiness without current M6 line evidence, even if overridden", () => {
+    const rule = DEFAULT_MEDICAID_RULES.find(
+      (candidate) => candidate.key === "medicaid_hospice_claim_snapshot_verified",
+    );
+    expect(rule).toBeDefined();
+    const context = {
+      ...baseCtx(),
+      claim: { ...baseCtx().claim, kind: "hospice_only" as const },
+      lines: [
+        {
+          ...baseCtx().lines[0]!,
+          isRb: false,
+          levelOfCare: "RHC" as const,
+          revenueCode: "0651",
+        },
+      ],
+      hospiceClaimSnapshotVerified: false,
+    };
+    const result = runMedicaidRules([rule!], context, {}, new Set([rule!.key]));
+    expect(result.results[0]).toMatchObject({ passed: false, severity: "error" });
+    expect(result.blockingFailures).toBe(1);
+    expect(result.overriddenCount).toBe(0);
+  });
+
+  it("does not require a hospice LOC snapshot for R&B-only claims", () => {
+    const rule = DEFAULT_MEDICAID_RULES.find(
+      (candidate) => candidate.key === "medicaid_hospice_claim_snapshot_verified",
+    );
+    expect(rule).toBeDefined();
+    const context = {
+      ...baseCtx(),
+      claim: { ...baseCtx().claim, kind: "rb_only" as const },
+      hospiceClaimSnapshotVerified: false,
+    };
+    expect(rule!.check(context, {}).passed).toBe(true);
+  });
+
+  it("does not require an R&B snapshot for a hospice-only claim", () => {
+    const rule = DEFAULT_MEDICAID_RULES.find(
+      (candidate) => candidate.key === "medicaid_rb_claim_snapshot_verified",
+    );
+    expect(rule).toBeDefined();
+    const context = {
+      ...baseCtx(),
+      claim: { ...baseCtx().claim, kind: "hospice_only" as const },
+      lines: baseCtx().lines.map((line) => ({ ...line, isRb: false })),
+      rbClaimSnapshotVerified: false,
+    };
+    expect(rule!.check(context, {}).passed).toBe(true);
+  });
+
+  it("does not let a legacy Medicare claim reference advance through background validation", () => {
+    const context = {
+      ...baseCtx(),
+      claim: { ...baseCtx().claim, medicareClaimId: "synthetic-unverified-medicare-claim" },
+    };
+    const summary = runMedicaidRules(
+      [medicaidMedicareClaimLinkageSupported],
+      context,
+      {},
+      new Set([medicaidMedicareClaimLinkageSupported.key]),
+    );
+    expect(summary.results[0]).toMatchObject({
+      ruleKey: "medicaid_medicare_linkage_supported",
+      passed: false,
+    });
+    expect(summary.blockingFailures).toBe(1);
+    expect(summary.overriddenCount).toBe(0);
   });
 
   it("a clean claim passes every rule with zero blocking failures", () => {
@@ -104,12 +223,12 @@ describe("default Medicaid rule set", () => {
     expect(summary.blockingFailures).toBe(0);
     expect(summary.failedCount).toBe(0);
     expect(summary.warningCount).toBe(0);
-    expect(summary.results).toHaveLength(13);
+    expect(summary.results).toHaveLength(17);
   });
 
   it("the registry freezes and rejects post-freeze registration + duplicate keys", () => {
     const reg = createDefaultMedicaidRegistry();
-    expect(reg.all()).toHaveLength(13);
+    expect(reg.all()).toHaveLength(17);
     expect(() => reg.registerRule(DEFAULT_MEDICAID_RULES[0]!)).toThrow(/Duplicate/);
     reg.freeze();
     expect(reg.isFrozen()).toBe(true);
@@ -135,13 +254,57 @@ describe("individual rule failures", () => {
     expect(summary.blockingFailures).toBeGreaterThanOrEqual(1);
   });
 
-  it("dual-eligible without an accepted Medicare-primary blocks", () => {
+  it("unresolved and blocked payer responsibility are mandatory failures, not overrides or skips", () => {
     const ctx = baseCtx();
-    const r = medicarePrimaryRequiredForDual.check(
-      { ...ctx, medicareSecondary: { medicareClaimState: "submitted", eobContextPresent: false } },
+    for (const payerResponsibility of [
+      { status: "unresolved", reasonCode: "coverage_changed" },
+      { status: "blocked", reasonCode: "third_party_liability_policy_unconfirmed" },
+    ] as const) {
+      const result = medicaidPayerResponsibilityResolved.check({ ...ctx, payerResponsibility }, {});
+      expect(result.passed).toBe(false);
+      expect(result.annotations?.skipReason).toBeUndefined();
+      expect(medicaidPayerResponsibilityResolved.overrideRoleRequired).toBeUndefined();
+    }
+  });
+
+  it("secondary Medicaid policy remains blocked regardless of Medicare state or stale overrides", () => {
+    const ctx = baseCtx();
+    const result = medicarePrimaryRequiredForDual.check(
+      {
+        ...ctx,
+        claim: { ...ctx.claim, hasConcurrentMedicareAndMedicaidCoverage: true },
+      },
       {},
     );
-    expect(r.passed).toBe(false);
+    expect(result.passed).toBe(false);
+    expect(result.message).toContain("state-specific secondary Medicaid");
+    const summary = runMedicaidRules(
+      [medicarePrimaryRequiredForDual],
+      {
+        ...ctx,
+        claim: { ...ctx.claim, hasConcurrentMedicareAndMedicaidCoverage: true },
+      },
+      {},
+      new Set([medicarePrimaryRequiredForDual.key]),
+    );
+    expect(summary.blockingFailures).toBe(1);
+    expect(summary.overriddenCount).toBe(0);
+  });
+
+  it("a Medicare denial does not override a blocked payer-responsibility decision", () => {
+    const ctx = baseCtx();
+    const dual = {
+      ...ctx,
+      claim: {
+        ...ctx.claim,
+        medicareClaimId: "mc1",
+        primaryPayerCoverageId: "medicare-coverage-1",
+        hasConcurrentMedicareAndMedicaidCoverage: true,
+      },
+      payerResponsibility: { status: "blocked" as const, reasonCode: "state_policy_unconfirmed" },
+    } satisfies MedicaidValidationContext;
+    expect(medicarePrimaryRequiredForDual.check(dual, {}).passed).toBe(false);
+    expect(medicaidPayerResponsibilityResolved.check(dual, {}).passed).toBe(false);
   });
 
   it("EVV documented_missing blocks unless the adapter accepts it (Oregon: false)", () => {

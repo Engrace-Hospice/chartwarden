@@ -2,6 +2,72 @@
 import { fail, pass, skip } from "./types";
 import type { MedicaidRule } from "./types";
 
+/** Non-overridable gate: a revalidation worker without current M24/M6 reads cannot restore R&B claims to READY. */
+export const medicaidRbClaimSnapshotVerified: MedicaidRule = {
+  key: "medicaid_rb_claim_snapshot_verified",
+  version: 1,
+  category: "rb",
+  title: "R&B claim snapshot is verified",
+  description:
+    "A claim containing Room & Board lines must be checked against its billed-day ownership, arrangement and current M6 LOC snapshot before it can become ready.",
+  severity: "error",
+  regulatoryRequired: false,
+  platformRequired: true,
+  applicableStates: [],
+  check: (ctx) => {
+    const KEY = "medicaid_rb_claim_snapshot_verified";
+    const includesRoomAndBoard =
+      ctx.claim.kind !== "hospice_only" || ctx.lines.some((line) => line.isRb);
+    if (!includesRoomAndBoard || ctx.rbClaimSnapshotVerified) {
+      return pass(KEY, "error", "The R&B claim snapshot is either not applicable or was verified.");
+    }
+    return fail(
+      KEY,
+      "error",
+      "Current Room & Board day ownership, arrangement and M6 level-of-care evidence were not verified for this validation run.",
+      {
+        summary:
+          "Run the authorized claim validation to recheck Room & Board facts before the claim can become ready.",
+        fixAction: "revalidate_rb_claim_snapshot",
+      },
+    );
+  },
+};
+
+/** A manual or worker validation must recheck stored hospice lines against current M6 LOC facts before READY. */
+export const medicaidHospiceClaimSnapshotVerified: MedicaidRule = {
+  key: "medicaid_hospice_claim_snapshot_verified",
+  version: 1,
+  category: "documentation",
+  title: "Hospice claim lines match current M6 periods",
+  description:
+    "Hospice claim lines must cover the service range and match the current M6 level-of-care periods, revenue codes and saved line arithmetic.",
+  severity: "error",
+  regulatoryRequired: false,
+  platformRequired: true,
+  applicableStates: [],
+  check: (ctx) => {
+    const KEY = "medicaid_hospice_claim_snapshot_verified";
+    if (ctx.claim.kind === "rb_only" || ctx.hospiceClaimSnapshotVerified) {
+      return pass(
+        KEY,
+        "error",
+        "Hospice lines are either not applicable or match current M6 periods.",
+      );
+    }
+    return fail(
+      KEY,
+      "error",
+      "Current M6 level-of-care periods were not verified against the stored hospice claim lines.",
+      {
+        summary:
+          "Run authorized claim validation to compare the stored hospice lines with the current M6 stay before marking the claim ready.",
+        fixAction: "revalidate_hospice_claim_snapshot",
+      },
+    );
+  },
+};
+
 /**
  * medicaid_rb_arrangement_required_for_nf_resident — if the patient is NF/SNF-resident on any service date
  * in the claim range, an rb_arrangement must be set; conversely an R&B line requires an arrangement.

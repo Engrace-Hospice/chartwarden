@@ -18,8 +18,8 @@ import { useParams } from "react-router-dom";
 // apps/web/src/modules/24-billing-medicaid — M24, the PER-CLAIM VALIDATION WORKLIST (R2, §5.1 #5 scoped to
 // one claim, + the #6 override modal). A run selector over GET /api/v1/medicaid-claims/{id}/validation-runs,
 // the selected run's per-rule results from GET /api/v1/medicaid-validation-runs/{id}, and an Override
-// affordance on each FAILED rule. Regulatory-required rules (from the tenant rule overlay, read best-effort)
-// carry a shield glyph and an error-toned GuardChip in the modal — those overrides are reported on survey.
+// affordance only where the server reports an eligible override role. Regulatory-required rules carry a
+// shield glyph; internal platform safety gates have a separate lock label and remain non-overridable.
 // The override POST is §4.7 role-eligibility + §D12 step-up + §8.6 AI-actor-reject gated SERVER-side; a
 // 401/403/422 surfaces inline (role="alert"), never a toast. Lantern: WorkQueueLayout + No-Line table.
 import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
@@ -80,6 +80,7 @@ interface ValidationRun {
 interface RuleConfig {
   ruleKey: string;
   regulatoryRequired: boolean;
+  platformRequired?: boolean;
   /** The role the server requires for an override; null = not overridable. Absent on an older API. */
   overrideRoleRequired?: OverrideRole | null;
 }
@@ -357,7 +358,9 @@ export function MedicaidValidationWorklist(): JSX.Element {
                 <tbody>
                   {sorted.map((r) => {
                     const failed = r.outcome === "fail";
-                    const regReq = ruleConfigs.get(r.ruleKey)?.regulatoryRequired === true;
+                    const ruleConfig = ruleConfigs.get(r.ruleKey);
+                    const regReq = ruleConfig?.regulatoryRequired === true;
+                    const platformReq = ruleConfig?.platformRequired === true;
                     const href = fixActionHref(r.remediationFixAction);
                     return (
                       <tr key={r.id} style={enhancedRowLine}>
@@ -368,6 +371,11 @@ export function MedicaidValidationWorklist(): JSX.Element {
                             {regReq ? (
                               <span title="Regulatory-required rule">
                                 <Glyph name="shield" size={13} label="regulatory-required" />
+                              </span>
+                            ) : null}
+                            {platformReq ? (
+                              <span title="Internal platform safety gate — not a claim about law">
+                                <Glyph name="lock" size={13} label="platform-required" />
                               </span>
                             ) : null}
                           </div>
@@ -395,7 +403,7 @@ export function MedicaidValidationWorklist(): JSX.Element {
                           )}
                         </td>
                         <td style={{ ...td, textAlign: "right" }}>
-                          {failed ? (
+                          {failed && !platformReq && ruleConfig?.overrideRoleRequired ? (
                             <Button
                               size="sm"
                               tone="secondary"
@@ -429,6 +437,7 @@ export function MedicaidValidationWorklist(): JSX.Element {
         <OverrideModal
           result={overrideTarget}
           regulatoryRequired={ruleConfigs.get(overrideTarget.ruleKey)?.regulatoryRequired}
+          platformRequired={ruleConfigs.get(overrideTarget.ruleKey)?.platformRequired}
           requiredRole={ruleConfigs.get(overrideTarget.ruleKey)?.overrideRoleRequired}
           onClose={() => setOverrideTarget(null)}
           onApplied={() => {
@@ -446,12 +455,14 @@ export function MedicaidValidationWorklist(): JSX.Element {
 function OverrideModal({
   result,
   regulatoryRequired,
+  platformRequired,
   requiredRole,
   onClose,
   onApplied,
 }: {
   result: ValidationResult;
   regulatoryRequired: boolean | undefined;
+  platformRequired: boolean | undefined;
   /** undefined = unknown (rule config unreadable): fall back to a free pick, the server still enforces. */
   requiredRole: OverrideRole | null | undefined;
   onClose: () => void;
@@ -506,7 +517,12 @@ function OverrideModal({
           (v{result.ruleVersion}) · run {shortId(result.medicaidValidationRunId)}
         </p>
 
-        {regulatoryRequired === true ? (
+        {platformRequired === true ? (
+          <GuardChip
+            tone="error"
+            reason="Platform-required safety gate — this internal readiness control is not a claim about law or a confirmed state billing format."
+          />
+        ) : regulatoryRequired === true ? (
           <GuardChip
             tone="error"
             reason="Regulatory-required rule — overriding is recorded to the M4 audit trail and reported on survey."
@@ -607,8 +623,8 @@ function RunSummary({
         />
       </SummaryGrid>
       <p style={{ ...mutedStyle, margin: 0 }}>
-        Regulatory-required rules show a shield and may require higher authority or be
-        non-overridable.
+        Regulatory-required rules show a shield. Internal platform safety gates use a separate lock
+        and are not claims about law or payer requirements.
       </p>
     </div>
   );

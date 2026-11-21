@@ -420,6 +420,41 @@ describe.skipIf(!DB_URL)(
       expect(patched.version).toBe(second.version + 1);
     });
 
+    it("LOC changes serialize on the admission row used by M24's R&B snapshot", async () => {
+      const { admissionId } = await activeAdmission(randomUUID());
+      await svc.changeLoc(ORG_A, admissionId, "routine_home_care");
+
+      await admin.query("BEGIN");
+      let transactionOpen = true;
+      try {
+        await admin.query(
+          "SELECT id FROM admission WHERE organization_id=$1 AND id=$2 FOR UPDATE",
+          [ORG_A, admissionId],
+        );
+        let settled = false;
+        const pendingChange = svc
+          .changeLoc(ORG_A, admissionId, "continuous_home_care")
+          .then((result) => {
+            settled = true;
+            return result;
+          });
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        expect(settled).toBe(false);
+
+        await admin.query("COMMIT");
+        transactionOpen = false;
+        await expect(pendingChange).resolves.toMatchObject({ state: "active" });
+        const periods = await admin.query(
+          "SELECT level_of_care, ended_at FROM level_of_care_period WHERE admission_id=$1 ORDER BY effective_at",
+          [admissionId],
+        );
+        expect(periods.rows.at(-1)?.level_of_care).toBe("continuous_home_care");
+        expect(periods.rows.filter((period) => period.ended_at === null)).toHaveLength(1);
+      } finally {
+        if (transactionOpen) await admin.query("ROLLBACK");
+      }
+    });
+
     it("LOC: GIP requires a real facility_id + ≥30-char documentation, lands in 'assigning'", async () => {
       const { admissionId } = await activeAdmission(randomUUID());
       const gipReason = "uncontrolled symptoms requiring inpatient management now";
@@ -770,6 +805,60 @@ describe.skipIf(!DB_URL)(
           MD,
         ),
       ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it("cosign waits for the admission lock before completing the existing discharge event", async () => {
+      const { admissionId } = await activeAdmission(randomUUID());
+      const filed = await svc.discharge(
+        ORG_A,
+        admissionId,
+        {
+          reason: "for_cause",
+          dischargeDate: new Date().toISOString().slice(0, 10),
+          narrative: "documented safety threat to staff",
+          forCauseReason: "repeated credible threats of violence to visiting nurses",
+        },
+        USER,
+      );
+      const blocker = new Client({ connectionString: DB_URL });
+      await blocker.connect();
+      let blockedQuery: string | null = null;
+      let cosign: ReturnType<typeof svc.cosignDischarge> | undefined;
+      try {
+        await blocker.query("BEGIN");
+        await blocker.query("SELECT id FROM admission WHERE id=$1 FOR UPDATE", [admissionId]);
+        cosign = svc.cosignDischarge(
+          ORG_A,
+          filed.id,
+          {
+            cosignerName: "Dr. Med Director",
+            cosignerNpi: "1234567893",
+            actorRoleKeys: ["medical_director"],
+          },
+          filed.version,
+          MD,
+        );
+        // Let the app-role transaction reach its lock wait, then inspect the statement blocked by this lock.
+        for (let attempt = 0; attempt < 100; attempt++) {
+          const waiting = await admin.query<{ query: string }>(
+            `SELECT query FROM pg_stat_activity
+             WHERE usename='chartwarden_app' AND state='active' AND wait_event_type='Lock'
+               AND query ILIKE '%admission%' ORDER BY query_start DESC LIMIT 1`,
+          );
+          blockedQuery = waiting.rows[0]?.query ?? null;
+          if (blockedQuery) break;
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      } finally {
+        await blocker.query("ROLLBACK").catch(() => undefined);
+        await blocker.end();
+      }
+      if (!cosign) throw new Error("the cosign transaction was not started");
+      const cosigned = await cosign;
+      expect(blockedQuery?.toLowerCase()).toContain("for update");
+      expect(blockedQuery?.toLowerCase()).toContain('from "admission"');
+      expect(cosigned.state).toBe("completed");
+      expect((await svc.getAdmission(ORG_A, admissionId))!.state).toBe("discharged");
     });
 
     it("declining a versioned for-cause filing voids the event and preserves the admission", async () => {

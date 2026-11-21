@@ -11,6 +11,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, gt, isNull, lte, ne, or } from "drizzle-orm";
+import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-port";
 
 const LOC = schema.levelOfCarePeriods;
 const ADM = schema.admissions;
@@ -30,6 +31,61 @@ export interface PatientLevelOfCarePeriod {
   readonly endedAt: Date | null;
   /** M40 facility the period is sited at (IRC/GIP), else null. */
   readonly facilityId: string | null;
+  /** M37-confirmed bed assignment required to attribute an inclusive death-date IRC/GIP period. */
+  readonly ipuBedAssignmentId: string | null;
+}
+
+/**
+ * Serialize an M24 room-and-board operation against every M6 LOC writer for this patient. The caller
+ * must keep the transaction open through the dependent M24 read/write; lock order is admission id,
+ * then M24 arrangement, then M24 day rows. M6 mutation paths lock the same admission row first.
+ */
+export async function lockPatientAdmissionsInTransaction(
+  transaction: unknown,
+  organizationId: string,
+  patientId: string,
+): Promise<void> {
+  const tx = transaction as DbClient;
+  await assertTxScopedToOrg(tx, organizationId);
+  await tx
+    .select({ id: ADM.id })
+    .from(ADM)
+    .where(and(eq(ADM.organizationId, organizationId), eq(ADM.patientId, patientId)))
+    .orderBy(asc(ADM.id))
+    .for("update");
+}
+
+/** Lock the patient admissions, then read their overlapping LOC snapshot on that same tenant transaction. */
+export async function levelOfCarePeriodsForPatientInTransaction(
+  transaction: unknown,
+  organizationId: string,
+  patientId: string,
+  range: { readonly from: Date; readonly to: Date },
+): Promise<readonly PatientLevelOfCarePeriod[]> {
+  const tx = transaction as DbClient;
+  await lockPatientAdmissionsInTransaction(tx, organizationId, patientId);
+  const rows = await tx
+    .select({
+      periodId: LOC.id,
+      levelOfCare: LOC.levelOfCare,
+      effectiveAt: LOC.effectiveAt,
+      endedAt: LOC.endedAt,
+      facilityId: LOC.facilityId,
+      ipuBedAssignmentId: LOC.ipuBedAssignmentId,
+    })
+    .from(LOC)
+    .innerJoin(ADM, eq(ADM.id, LOC.admissionId))
+    .where(
+      and(
+        eq(ADM.organizationId, organizationId),
+        eq(ADM.patientId, patientId),
+        ne(LOC.status, "assigning"),
+        lte(LOC.effectiveAt, range.to),
+        or(isNull(LOC.endedAt), gt(LOC.endedAt, range.from)),
+      ),
+    )
+    .orderBy(asc(LOC.effectiveAt));
+  return rows;
 }
 
 /** Every non-`assigning` LOC period on any of the patient's admissions overlapping `[from, to]`. */
@@ -47,6 +103,7 @@ export function levelOfCarePeriodsForPatientForOrg(
         effectiveAt: LOC.effectiveAt,
         endedAt: LOC.endedAt,
         facilityId: LOC.facilityId,
+        ipuBedAssignmentId: LOC.ipuBedAssignmentId,
       })
       .from(LOC)
       .innerJoin(ADM, eq(ADM.id, LOC.admissionId))

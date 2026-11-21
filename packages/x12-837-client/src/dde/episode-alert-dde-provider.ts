@@ -1,4 +1,7 @@
 import type { Page } from "../clearinghouse/types";
+import { readBoundedResponseText } from "../http/read-bounded-response-text";
+import { parseSafeHttpsBaseUrl, resolveSafeRelativePath } from "../http/url-safety";
+import { type LocalFakeHttpClient, isLocalFakeHttpClient } from "../testing/local-fake-http-client";
 // @chartwarden/x12-837-client — the Episode Alert DdeAccessProvider SKELETON (#759, ADR-0103). Built to the port; every
 // vendor-specific fact lives in ./episode-alert-dde-wire and is UNVERIFIED, so this adapter cannot be bound yet:
 // `createEpisodeAlertDdeProviderFromEnv` throws while the wire is unverified, which keeps `DDE_PROVIDER=episode_alert`
@@ -31,6 +34,8 @@ const MAX_BODY_BYTES = 1_000_000;
 const NOT_PROVISIONED_STATUSES: ReadonlySet<number> = new Set([401, 402, 403]);
 const REFUSED_STATUSES: ReadonlySet<number> = new Set([400, 404, 422]);
 const CONFLICT_STATUS = 409;
+// No Episode Alert API origin or wire contract has been verified. Do not make this environment-configurable.
+const APPROVED_API_ORIGIN: string | null = null;
 
 type EnvMap = Readonly<Record<string, string | undefined>>;
 
@@ -38,26 +43,36 @@ export interface EpisodeAlertDdeOptions {
   /** The platform credential. Never logged, never returned. */
   readonly apiKey: string;
   readonly baseUrl: string;
-  readonly wire?: EpisodeAlertDdeWire;
-  readonly fetch?: typeof fetch;
-  /** Lets `usage: "test"` through. The vendor's sandbox is unknown, so only contract tests may set this. */
-  readonly allowTestUsage?: boolean;
+}
+
+/** Internal test seam: it can only return scripted local responses and cannot perform network I/O. */
+export interface EpisodeAlertDdeTestOverrides {
+  readonly wire: EpisodeAlertDdeWire;
+  readonly httpClient: LocalFakeHttpClient;
 }
 
 export class EpisodeAlertDdeProvider implements DdeAccessProvider {
   readonly vendor = "episode_alert" as const;
   private readonly wire: EpisodeAlertDdeWire;
   private readonly doFetch: typeof fetch;
+  private readonly localTestClient: LocalFakeHttpClient | null;
 
-  constructor(private readonly options: EpisodeAlertDdeOptions) {
+  constructor(
+    private readonly options: EpisodeAlertDdeOptions,
+    testOverrides?: EpisodeAlertDdeTestOverrides,
+  ) {
     // The credential and the beneficiary travel to this URL: refuse an unsafe one however the provider is built.
     assertSafeBaseUrl(options.baseUrl);
-    this.wire = options.wire ?? EA_DDE_WIRE;
-    this.doFetch = options.fetch ?? fetch;
+    if (testOverrides && !isLocalFakeHttpClient(testOverrides.httpClient)) {
+      throw new Error("Episode Alert DDE tests require LocalFakeHttpClient");
+    }
+    this.wire = testOverrides?.wire ?? EA_DDE_WIRE;
+    this.localTestClient = testOverrides?.httpClient ?? null;
+    this.doFetch = this.localTestClient?.fetch ?? fetch;
   }
 
   private refuseTest<T>(ctx: DdeContext): X12WorkerResult<T> | null {
-    return ctx.usage === "test" && !this.options.allowTestUsage
+    return ctx.usage === "test" && this.localTestClient === null
       ? degraded<T>(
           DDE.NOT_PROVISIONED,
           "no vendor test mode is recorded for this provider; usage test is refused",
@@ -78,16 +93,21 @@ export class EpisodeAlertDdeProvider implements DdeAccessProvider {
   }
 
   private async send(req: WireRequest, caller?: AbortSignal): Promise<X12WorkerResult<string>> {
-    const base = new URL(`${this.options.baseUrl.replace(/\/+$/, "")}/`);
-    let url: URL;
-    try {
-      url = new URL(req.path, base);
-    } catch {
+    const base = parseSafeHttpsBaseUrl(this.options.baseUrl, EPISODE_ALERT_DDE_BASE_URL_ENV);
+    const url = resolveSafeRelativePath(base, req.path);
+    if (!url) {
       return degraded(DDE.INVALID_REQUEST, "the request path is not usable");
     }
-    // A path may never move the call (and the credential and body with it) to another origin or above the API root.
-    if (url.origin !== base.origin || !url.pathname.startsWith(base.pathname)) {
-      return degraded(DDE.INVALID_REQUEST, "the request path is not usable");
+    // No environment value can approve the guessed wire or destination. Only a code-reviewed verified wire and
+    // source-reviewed exact origin may use global fetch; local tests use a response-only fake client.
+    if (
+      this.localTestClient === null &&
+      (!this.wire.verified || APPROVED_API_ORIGIN === null || url.origin !== APPROVED_API_ORIGIN)
+    ) {
+      return degraded(
+        DDE.NOT_WIRED,
+        "the Episode Alert DDE contract and destination are not approved",
+      );
     }
     try {
       const response = await this.doFetch(url, {
@@ -105,10 +125,15 @@ export class EpisodeAlertDdeProvider implements DdeAccessProvider {
         await response.body?.cancel().catch(() => undefined);
         return statusFailure(response.status);
       }
-      const text = await readBounded(response);
-      return text === null
-        ? degraded(DDE.UNAVAILABLE, "the provider answer is too large")
-        : { ok: true, data: text };
+      const text = await readBoundedResponseText(response, MAX_BODY_BYTES);
+      return text.ok
+        ? { ok: true, data: text.text }
+        : degraded(
+            DDE.UNAVAILABLE,
+            text.reason === "too_large"
+              ? "the provider answer is too large"
+              : "the provider answer could not be read",
+          );
     } catch {
       // Network error, timeout or a refused redirect: the body and the error text are never echoed.
       return degraded(DDE.UNAVAILABLE, "the provider could not be reached");
@@ -150,30 +175,6 @@ export class EpisodeAlertDdeProvider implements DdeAccessProvider {
   }
 }
 
-/** The body as text, or null once it passes MAX_BODY_BYTES (counted in bytes, and the stream is stopped there). */
-async function readBounded(response: Response): Promise<string | null> {
-  const declared = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
-    await response.body?.cancel().catch(() => undefined);
-    return null;
-  }
-  const reader = response.body?.getReader();
-  if (!reader) return "";
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > MAX_BODY_BYTES) {
-      await reader.cancel().catch(() => undefined);
-      return null;
-    }
-    chunks.push(value);
-  }
-  return new TextDecoder().decode(Buffer.concat(chunks));
-}
-
 function wireFailure<T>(code: string): X12WorkerResult<T> {
   // An unverified wire is the unbound case: nothing was sent. An unreadable answer is a vendor change we must not guess at.
   return code === WIRE_UNVERIFIED
@@ -196,36 +197,17 @@ function statusFailure<T>(status: number): X12WorkerResult<T> {
 
 /** The credential and the beneficiary travel to this URL: HTTPS only, no embedded credentials. */
 export function assertSafeBaseUrl(raw: string): void {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new Error(`${EPISODE_ALERT_DDE_BASE_URL_ENV} is not a URL`);
-  }
-  if (
-    url.protocol !== "https:" ||
-    url.username !== "" ||
-    url.password !== "" ||
-    url.search !== "" ||
-    url.hash !== ""
-  ) {
-    throw new Error(
-      `${EPISODE_ALERT_DDE_BASE_URL_ENV} must be an https URL without credentials, query or fragment`,
-    );
-  }
+  parseSafeHttpsBaseUrl(raw, EPISODE_ALERT_DDE_BASE_URL_ENV);
 }
 
 /**
  * Builds the provider from the platform environment. THROWS while the wire is unverified, so naming `episode_alert`
  * in `DDE_PROVIDER` refuses to boot instead of silently behaving as manual.
  */
-export function createEpisodeAlertDdeProviderFromEnv(
-  env: EnvMap,
-  wire: EpisodeAlertDdeWire = EA_DDE_WIRE,
-): EpisodeAlertDdeProvider {
-  if (!wire.verified) {
+export function createEpisodeAlertDdeProviderFromEnv(env: EnvMap): EpisodeAlertDdeProvider {
+  if (!EA_DDE_WIRE.verified || APPROVED_API_ORIGIN === null) {
     throw new Error(
-      "Episode Alert DDE cannot be bound: its wire format is unverified (no vendor documentation yet; see issue #759 and ADR-0103 D7)",
+      "Episode Alert DDE cannot be bound: its wire format and approved API destination are unverified (see issue #759 and ADR-0103 D7)",
     );
   }
   const apiKey = env[EPISODE_ALERT_DDE_API_KEY_ENV]?.trim();
@@ -235,5 +217,11 @@ export function createEpisodeAlertDdeProviderFromEnv(
   if (!baseUrl)
     throw new Error(`${EPISODE_ALERT_DDE_BASE_URL_ENV} is required for Episode Alert DDE`);
   assertSafeBaseUrl(baseUrl);
-  return new EpisodeAlertDdeProvider({ apiKey, baseUrl, wire });
+  const base = parseSafeHttpsBaseUrl(baseUrl, EPISODE_ALERT_DDE_BASE_URL_ENV);
+  if (base.origin !== APPROVED_API_ORIGIN) {
+    throw new Error(
+      `${EPISODE_ALERT_DDE_BASE_URL_ENV} is not an approved Episode Alert API origin`,
+    );
+  }
+  return new EpisodeAlertDdeProvider({ apiKey, baseUrl });
 }

@@ -18,6 +18,7 @@ import type {
   RuleSkipReason,
 } from "@chartwarden/billing";
 import type {
+  AdmissionId,
   Cents,
   EvvBracketState,
   IsoDate,
@@ -60,17 +61,20 @@ export interface MedicaidClaimSnapshot {
   readonly claimId: MedicaidClaimId;
   readonly providerEntityId: ProviderEntityId;
   readonly patientId: PatientId;
+  readonly admissionId: AdmissionId;
   readonly serviceState: StateCode;
   readonly kind: MedicaidClaimKind;
   readonly tob: MedicaidTob;
   readonly serviceFrom: IsoDate;
   readonly serviceTo: IsoDate;
   readonly replacesClaimId: MedicaidClaimId | null;
-  /** Set on dual-eligible claims — the M23 Medicare-primary claim (COB). */
+  /** Optional M23 Medicare claim reference; unusable for COB until a qualified evidence contract supports it. */
   readonly medicareClaimId: string | null;
+  /** Range-resolved primary M5 coverage id at validation time; never client supplied or persisted here. */
+  readonly primaryPayerCoverageId: string | null;
   readonly rbArrangementId: RbArrangementId | null;
-  /** Whether the patient has both Medicare Part A and Medicaid on the service-date payer period. */
-  readonly isDualEligible: boolean;
+  /** Recorded concurrent Medicare FFS and Medicaid coverage; this is not verified benefit eligibility. */
+  readonly hasConcurrentMedicareAndMedicaidCoverage: boolean;
 }
 
 export interface MedicaidClaimLineSnapshot {
@@ -140,15 +144,14 @@ export interface EvvBracketSnapshot {
   readonly bracketState: EvvBracketState;
 }
 
-/** Medicare-primary COB read-back (M23 ClaimReader.medicareSecondaryContext). */
-export interface MedicareSecondarySnapshot {
-  /** The M23 claim state (e.g. 'ack_accepted', 'paid') — null when the claim is not yet resolvable. */
-  readonly medicareClaimState: string | null;
-  readonly eobContextPresent: boolean;
-}
-
 export interface MedicaidCapProjectionSnapshot {
   readonly patientWithinCap: boolean;
+}
+
+/** Server-resolved full-range payer policy result. `unresolved` is a blocking state, never permission. */
+export interface MedicaidPayerResponsibilitySnapshot {
+  readonly status: "permitted" | "blocked" | "unresolved";
+  readonly reasonCode: string | null;
 }
 
 /** The resolved adapter's declarative metadata (gates EVV + combined-claim behavior, §4.5). */
@@ -163,7 +166,6 @@ export interface MedicaidSeamFlags {
   readonly eligibilityBound: boolean;
   readonly rbBound: boolean;
   readonly rateScheduleBound: boolean;
-  readonly medicareClaimBound: boolean;
   readonly capProjectionBound: boolean;
   readonly mdmBound: boolean;
   readonly adapterBound: boolean;
@@ -188,8 +190,12 @@ export interface MedicaidValidationContext {
   readonly nfResidentDays: readonly NfResidentDaySnapshot[];
   readonly rbArrangement: RbArrangementFactSnapshot | null;
   readonly rbDays: readonly RbDayFactSnapshot[];
+  /** True only when the current service has verified all persisted R&B lines against their billed-day, arrangement and M6 LOC snapshots. */
+  readonly rbClaimSnapshotVerified: boolean;
+  /** True only when stored hospice lines match the complete current M6 LOC partition for the service range. */
+  readonly hospiceClaimSnapshotVerified: boolean;
   readonly rateLookups: readonly RateLookupSnapshot[];
-  readonly medicareSecondary: MedicareSecondarySnapshot | null;
+  readonly payerResponsibility: MedicaidPayerResponsibilitySnapshot;
   readonly evvBrackets: readonly EvvBracketSnapshot[];
   readonly capProjection: MedicaidCapProjectionSnapshot | null;
   /** Adapter-driven state-specific modifier satisfaction; null when not applicable/unbound. */
@@ -223,6 +229,8 @@ export interface MedicaidRule {
   readonly description: string;
   readonly severity: RuleSeverity;
   readonly regulatoryRequired: boolean;
+  /** Internal non-overridable safety gate; not a claim that law or a payer requires this exact rule. */
+  readonly platformRequired?: boolean;
   readonly overrideRoleRequired?: MedicaidOverrideRole;
   readonly defaultParameters?: RuleParameters;
   /** Empty array = applicable to all states. */

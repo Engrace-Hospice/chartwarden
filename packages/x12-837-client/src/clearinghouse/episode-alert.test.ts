@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { LocalFakeHttpClient, type LocalFakeHttpResponse } from "../testing/local-fake-http-client";
 import {
   type ClearinghouseHarness,
   type ConformanceCapability,
@@ -7,87 +8,145 @@ import {
   SYNTHETIC_MBI,
   runConformance,
 } from "./conformance";
-import { eligibilityOutcomeFromXml, toIsoDate } from "./episode-alert-eligibility";
+import {
+  parseEpisodeAlertEligibilityXml,
+  toIsoDate,
+  unverifiedFixtureEligibilityOutcome,
+} from "./episode-alert-eligibility";
 import {
   EPISODE_ALERT_API_KEY_ENV,
   EPISODE_ALERT_BASE_URL_ENV,
   EpisodeAlertTransport,
   createEpisodeAlertTransportFromEnv,
 } from "./episode-alert-transport";
+import type { EpisodeAlertTransportOptions } from "./episode-alert-transport";
 import { CH } from "./types";
 
-// Fixtures are synthetic and UNVERIFIED: element names come from the public sample report's labels, not a real
-// response. Replace them with a recorded trial response when one exists.
+// These synthetic fixtures exercise a guessed mapping only. They are not Episode Alert schema or vendor evidence.
 const xml = (start: string | null, end: string | null = null): string =>
   `<EligibilityResponse>${start === null ? "" : `<PartAEligibilityStartDate>${start}</PartAEligibilityStartDate>`}${
     end === null ? "" : `<PartAEligibilityEndDate>${end}</PartAEligibilityEndDate>`
   }</EligibilityResponse>`;
 
-describe("eligibilityOutcomeFromXml", () => {
+describe("Episode Alert eligibility XML fixture parser (local evidence only)", () => {
   const day = "2026-10-01";
-  it("is active when Part A started on or before the service date and has not ended", () => {
-    expect(eligibilityOutcomeFromXml(xml("20240101"), day)).toBe("active");
-    expect(eligibilityOutcomeFromXml(xml("2026-10-01", "2027-01-01"), day)).toBe("active");
-    expect(eligibilityOutcomeFromXml(xml("01/01/2024", "10/01/2026"), day)).toBe("active");
+  it("evaluates the existing synthetic Part A date fixtures", () => {
+    expect(unverifiedFixtureEligibilityOutcome(xml("20240101"), day)).toBe("active");
+    expect(unverifiedFixtureEligibilityOutcome(xml("20261002"), day)).toBe("inactive");
+    expect(unverifiedFixtureEligibilityOutcome(xml("20240101", "20260930"), day)).toBe("inactive");
   });
 
-  it("is inactive when Part A started later or ended earlier", () => {
-    expect(eligibilityOutcomeFromXml(xml("20261002"), day)).toBe("inactive");
-    expect(eligibilityOutcomeFromXml(xml("20240101", "20260930"), day)).toBe("inactive");
+  it.each([
+    "",
+    "<EligibilityResponse><PartAStartDate>20240101</EligibilityResponse>",
+    "<EligibilityResponse><PartAStartDate>20240101</PartAStartDate></NotTheSame>",
+    "<EligibilityResponse><PartAStartDate>20240101</PartAStartDate>",
+    "<EligibilityResponse><PartAStartDate>20240101</PartAStartDate></EligibilityResponse><Extra/>",
+    "<EligibilityResponse><x:PartAStartDate>20240101</x:PartAStartDate></EligibilityResponse>",
+  ])("rejects malformed XML or an invalid root (%j)", (input) => {
+    expect(parseEpisodeAlertEligibilityXml(input, day).kind).toBe("malformed");
+    expect(unverifiedFixtureEligibilityOutcome(input, day)).not.toBe("active");
   });
 
-  it("is unknown, never active, when the start date is missing or either date is unreadable", () => {
-    expect(eligibilityOutcomeFromXml(xml(null, "20270101"), day)).toBe("unknown");
-    expect(eligibilityOutcomeFromXml(xml("soon"), day)).toBe("unknown");
-    expect(eligibilityOutcomeFromXml(xml("20240101", "tbd"), day)).toBe("unknown");
-    expect(eligibilityOutcomeFromXml("<Error>nope</Error>", day)).toBe("unknown");
-    expect(eligibilityOutcomeFromXml("x".repeat(1_000_001), day)).toBe("unknown");
+  it("marks a structurally valid but unrecognized root as unsupported", () => {
+    expect(
+      parseEpisodeAlertEligibilityXml("<PartAStartDate>20240101</PartAStartDate>", day).kind,
+    ).toBe("unsupported");
+    expect(
+      parseEpisodeAlertEligibilityXml(
+        "<UnverifiedResponse><PartAStartDate>20240101</PartAStartDate></UnverifiedResponse>",
+        day,
+      ),
+    ).toEqual({ kind: "unsupported" });
+    expect(
+      unverifiedFixtureEligibilityOutcome(
+        "<UnverifiedResponse><PartAStartDate>20240101</PartAStartDate></UnverifiedResponse>",
+        day,
+      ),
+    ).toBe("unknown");
   });
 
-  it("is unknown when an end element is empty, self-closing, nested or repeated", () => {
-    const start = "<PartAEligibilityStartDate>20240101</PartAEligibilityStartDate>";
-    for (const end of [
-      "<PartAEndDate></PartAEndDate>",
-      "<PartAEndDate/>",
-      "<PartAEndDate><Date>20250101</Date></PartAEndDate>",
-      "<PartAEndDate>20250101</PartAEndDate><PartAEndDate>20270101</PartAEndDate>",
-    ]) {
-      expect(eligibilityOutcomeFromXml(`<R>${start}${end}</R>`, day)).toBe("unknown");
+  it("does not match field fragments outside a valid document element", () => {
+    expect(
+      unverifiedFixtureEligibilityOutcome("<PartAStartDate>20240101</PartAStartDate>", day),
+    ).toBe("unknown");
+    expect(
+      unverifiedFixtureEligibilityOutcome("text <PartAStartDate>20240101</PartAStartDate>", day),
+    ).toBe("unknown");
+  });
+
+  it("rejects duplicate, conflicting, nested and attributed date fields conservatively", () => {
+    const cases = [
+      "<EligibilityResponse><PartAStartDate>20240101</PartAStartDate><PartAEndDate>20250101</PartAEndDate><PartAEndDate>20270101</PartAEndDate></EligibilityResponse>",
+      "<EligibilityResponse><PartAStartDate>20240101</PartAStartDate><PartAEligibilityStartDate>20240201</PartAEligibilityStartDate></EligibilityResponse>",
+      "<EligibilityResponse><PartAStartDate><Date>20240101</Date></PartAStartDate></EligibilityResponse>",
+      '<EligibilityResponse><PartAStartDate format="date">20240101</PartAStartDate></EligibilityResponse>',
+      "<EligibilityResponse><PartAStartDate>20240101</PartAStartDate><PartAEndDate>20230101</PartAEndDate></EligibilityResponse>",
+    ];
+    for (const input of cases) {
+      expect(parseEpisodeAlertEligibilityXml(input, day).kind).toBe("malformed");
+      expect(unverifiedFixtureEligibilityOutcome(input, day)).toBe("unknown");
     }
-    expect(eligibilityOutcomeFromXml(`<R>${start}${start}</R>`, day)).toBe("unknown");
   });
 
-  it("does not match look-alike element names or hidden markup", () => {
+  it("rejects invalid dates and treats unknown fields or missing starts as unknown", () => {
+    expect(parseEpisodeAlertEligibilityXml(xml("2026-99-99"), day).kind).toBe("malformed");
+    expect(unverifiedFixtureEligibilityOutcome(xml(null), day)).toBe("unknown");
     expect(
-      eligibilityOutcomeFromXml("<R><PartAStartDateNote>20240101</PartAStartDateNote></R>", day),
-    ).toBe("unknown");
-    expect(
-      eligibilityOutcomeFromXml(
-        `<R><!--<PartAEndDate>20200101</PartAEndDate>--><PartAStartDate>20240101</PartAStartDate></R>`,
-        day,
-      ),
-    ).toBe("unknown");
-    expect(
-      eligibilityOutcomeFromXml(
-        "<R><![CDATA[<PartAStartDate>20240101</PartAStartDate>]]></R>",
+      unverifiedFixtureEligibilityOutcome(
+        "<EligibilityResponse><FutureField>active</FutureField></EligibilityResponse>",
         day,
       ),
     ).toBe("unknown");
   });
 
-  it("is unknown for an unreadable service date", () => {
-    expect(eligibilityOutcomeFromXml(xml("20240101"), "2026-99-99")).toBe("unknown");
+  it("rejects DTD/entity declarations and over-limit input without expansion", () => {
+    const entity =
+      '<!DOCTYPE x [<!ENTITY e "20240101">]><EligibilityResponse><PartAStartDate>&e;</PartAStartDate></EligibilityResponse>';
+    const external =
+      '<!DOCTYPE x SYSTEM "file:///not-read"><EligibilityResponse><PartAStartDate>20240101</PartAStartDate></EligibilityResponse>';
+    expect(parseEpisodeAlertEligibilityXml(entity, day).kind).toBe("malformed");
+    expect(parseEpisodeAlertEligibilityXml(external, day).kind).toBe("malformed");
+    expect(unverifiedFixtureEligibilityOutcome("x".repeat(1_000_001), day)).toBe("unknown");
   });
 
-  it("accepts a namespace prefix on the element", () => {
+  it("bounds XML nesting and node counts", () => {
+    const tooDeep = `<EligibilityResponse>${"<n>".repeat(65)}x${"</n>".repeat(65)}</EligibilityResponse>`;
+    const tooManyNodes = `<EligibilityResponse>${"<n/>".repeat(10_001)}</EligibilityResponse>`;
+    expect(parseEpisodeAlertEligibilityXml(tooDeep, day).kind).toBe("malformed");
+    expect(parseEpisodeAlertEligibilityXml(tooManyNodes, day).kind).toBe("malformed");
+  });
+
+  it("does not treat comment or CDATA fragments as XML elements", () => {
+    expect(
+      unverifiedFixtureEligibilityOutcome(
+        "<EligibilityResponse><!-- <PartAStartDate>20240101</PartAStartDate> --></EligibilityResponse>",
+        day,
+      ),
+    ).toBe("unknown");
+    expect(
+      unverifiedFixtureEligibilityOutcome(
+        "<EligibilityResponse><![CDATA[<PartAStartDate>20240101</PartAStartDate>]]></EligibilityResponse>",
+        day,
+      ),
+    ).toBe("unknown");
+  });
+
+  it("accepts a declared namespace prefix in local fixtures but rejects undeclared prefixes", () => {
     const prefixed =
-      "<ns:R><ns:PartAEligibilityStartDate>20240101</ns:PartAEligibilityStartDate></ns:R>";
-    expect(eligibilityOutcomeFromXml(prefixed, day)).toBe("active");
+      '<ns:EligibilityResponse xmlns:ns="urn:synthetic"><ns:PartAStartDate>20240101</ns:PartAStartDate></ns:EligibilityResponse>';
+    expect(unverifiedFixtureEligibilityOutcome(prefixed, day)).toBe("active");
+    expect(
+      unverifiedFixtureEligibilityOutcome(
+        "<ns:EligibilityResponse><ns:PartAStartDate>20240101</ns:PartAStartDate></ns:EligibilityResponse>",
+        day,
+      ),
+    ).toBe("unknown");
   });
 });
 
 describe("toIsoDate", () => {
-  it("normalises three formats and rejects impossible dates", () => {
+  it("normalizes the fixture formats and rejects impossible dates", () => {
     expect(toIsoDate("20240229")).toBe("2024-02-29");
     expect(toIsoDate("2024-02-29")).toBe("2024-02-29");
     expect(toIsoDate("02/29/2024")).toBe("2024-02-29");
@@ -99,72 +158,85 @@ describe("toIsoDate", () => {
 
 const CTX = {
   ...DEFAULT_SCOPE,
-  payerId: "payer",
+  payerId: "synthetic-payer",
   correlationId: "corr-1",
   usage: "production",
 } as const;
 const REQ = { mbi: SYNTHETIC_MBI, serviceDate: "2026-10-01" } as const;
-const KEY = "ea_key_do_not_leak";
+const KEY = "synthetic-ea-key-not-a-credential";
 
-function transportWith(handler: (url: string, init: RequestInit) => Response | Promise<Response>) {
-  const calls: { url: string; init: RequestInit }[] = [];
-  const fetchImpl = (async (url: string, init: RequestInit) => {
-    calls.push({ url, init });
-    return handler(url, init);
-  }) as unknown as typeof fetch;
-  const transport = new EpisodeAlertTransport({
-    apiKey: KEY,
-    baseUrl: "https://api.example.test/v1/",
-    fetch: fetchImpl,
-  });
-  return { transport, calls };
+function localTransport(responses: readonly LocalFakeHttpResponse[]) {
+  const local = new LocalFakeHttpClient(responses);
+  const transport = new EpisodeAlertTransport(
+    { apiKey: KEY, baseUrl: "https://api.example.test/v1/" },
+    local,
+  );
+  return { transport, local };
 }
 
 describe("EpisodeAlertTransport.checkEligibility", () => {
-  it("maps a response to an outcome and keeps the MBI out of the result", async () => {
-    const { transport, calls } = transportWith(() => new Response(xml("20240101")));
-    const r = await transport.checkEligibility(CTX, REQ);
-    expect(r).toEqual({ ok: true, data: { outcome: "active", asOfDate: "2026-10-01" } });
-    expect(JSON.stringify(r)).not.toContain("1EG4");
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.url).toBe("https://api.example.test/v1/eligibility");
-    expect(calls[0]?.init.redirect).toBe("error");
-    expect(calls[0]?.init.method).toBe("POST");
-  });
-
-  it("refuses a test-usage call because the vendor has no test mode", async () => {
-    const { transport, calls } = transportWith(() => new Response(xml("20240101")));
+  it("runs a synthetic test-usage request only through the response-only local fake", async () => {
+    const { transport, local } = localTransport([{ body: xml("20240101") }]);
     const r = await transport.checkEligibility({ ...CTX, usage: "test" }, REQ);
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.degraded.code).toBe(CH.INVALID_REQUEST);
-    expect(calls).toHaveLength(0);
-  });
-
-  it("refuses a commercial request (a member id is never sent to the Medicare vendor)", async () => {
-    const { transport, calls } = transportWith(() => new Response(xml("20240101")));
-    const r = await transport.checkEligibility(CTX, {
-      memberId: "SYNTHETIC-MEMBER-77",
-      serviceDate: "2026-10-01",
+    expect(r).toEqual({ ok: true, data: { outcome: "active", asOfDate: "2026-10-01" } });
+    expect(local.requests).toHaveLength(1);
+    expect(local.requests[0]).toMatchObject({
+      url: "https://api.example.test/v1/eligibility",
+      method: "POST",
+      redirect: "error",
     });
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.degraded.code).toBe(CH.INVALID_REQUEST);
-      expect(r.degraded.reason).not.toContain("SYNTHETIC-MEMBER-77");
-    }
-    expect(calls).toHaveLength(0);
+    expect(String(local.requests[0]?.body)).toContain(SYNTHETIC_MBI);
+    expect(JSON.stringify(r)).not.toContain(SYNTHETIC_MBI);
+    expect(JSON.stringify(r)).not.toContain(KEY);
   });
 
-  it("refuses a malformed request before any network call", async () => {
-    const { transport, calls } = transportWith(() => new Response(xml("20240101")));
+  it("refuses test usage with the default fetch client even when an obsolete bypass flag is supplied", async () => {
+    const fetchSpy = vi.fn(async () => new Response(xml("20240101")));
+    vi.stubGlobal("fetch", fetchSpy);
+    try {
+      const transport = new EpisodeAlertTransport({
+        apiKey: KEY,
+        baseUrl: "https://api.example.test",
+        allowTestUsage: true,
+      } as EpisodeAlertTransportOptions);
+      const r = await transport.checkEligibility({ ...CTX, usage: "test" }, REQ);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.degraded.code).toBe(CH.INVALID_REQUEST);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("fails closed on the unverified production wire before global fetch", async () => {
+    const fetchSpy = vi.fn(async () => new Response(xml("20240101")));
+    vi.stubGlobal("fetch", fetchSpy);
+    try {
+      const transport = new EpisodeAlertTransport({
+        apiKey: KEY,
+        baseUrl: "https://api.example.test",
+      });
+      const r = await transport.checkEligibility(CTX, REQ);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.degraded.code).toBe(CH.NOT_WIRED);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("refuses malformed requests before calling the local fake", async () => {
+    const { transport, local } = localTransport([]);
     for (const bad of [
       { mbi: "short", serviceDate: "2026-10-01" },
       { mbi: SYNTHETIC_MBI, serviceDate: "10/01/2026" },
       { mbi: SYNTHETIC_MBI, serviceDate: "2026-99-99" },
+      { memberId: "SYNTHETIC-MEMBER-77", serviceDate: "2026-10-01" },
     ]) {
       const r = await transport.checkEligibility(CTX, bad);
       expect(r.ok).toBe(false);
     }
-    expect(calls).toHaveLength(0);
+    expect(local.requests).toHaveLength(0);
   });
 
   it.each([
@@ -174,99 +246,68 @@ describe("EpisodeAlertTransport.checkEligibility", () => {
     [429, CH.UNAVAILABLE],
     [503, CH.UNAVAILABLE],
   ])("maps HTTP %i to %s without echoing the body", async (status, code) => {
-    const { transport } = transportWith(() => new Response(`secret ${SYNTHETIC_MBI}`, { status }));
+    const { transport } = localTransport([{ body: `synthetic error ${SYNTHETIC_MBI}`, status }]);
     const r = await transport.checkEligibility(CTX, REQ);
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.degraded.code).toBe(code);
-      expect(r.degraded.reason).not.toContain("1EG4");
+      expect(r.degraded.reason).not.toContain(SYNTHETIC_MBI);
     }
   });
 
-  it("answers UNAVAILABLE for a redirect (fetch rejects under redirect:error)", async () => {
-    const { transport } = transportWith(() => {
-      throw new TypeError("redirect mode is set to error");
-    });
-    const r = await transport.checkEligibility(CTX, REQ);
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.degraded.code).toBe(CH.UNAVAILABLE);
+  it("treats oversized, malformed and unsupported responses as unavailable, never inactive", async () => {
+    const cases = [
+      { body: xml("20240101"), headers: { "content-length": "2000000" } },
+      { body: "<EligibilityResponse><PartAStartDate>20240101</EligibilityResponse>" },
+      { body: "<Unverified><PartAStartDate>20240101</PartAStartDate></Unverified>" },
+    ];
+    for (const response of cases) {
+      const { transport } = localTransport([response]);
+      const r = await transport.checkEligibility(CTX, REQ);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect([CH.UNAVAILABLE, CH.NOT_WIRED]).toContain(r.degraded.code);
+    }
   });
 
-  it("answers unknown, not active, for an oversized declared body without reading it", async () => {
-    const { transport } = transportWith(
-      () => new Response(xml("20240101"), { headers: { "content-length": "5000000" } }),
-    );
-    const r = await transport.checkEligibility(CTX, REQ);
-    expect(r).toEqual({ ok: true, data: { outcome: "unknown", asOfDate: "2026-10-01" } });
+  it("refuses unsafe base URLs", () => {
+    for (const baseUrl of [
+      "http://api.example.test",
+      "https://user:pass@api.example.test",
+      "https://api.example.test/v1?token=synthetic",
+      "https://api.example.test/v1#fragment",
+      "https://api.example.test\\@evil.example.test",
+    ]) {
+      expect(() => new EpisodeAlertTransport({ apiKey: KEY, baseUrl })).toThrow();
+    }
   });
 
-  it("never puts the API key in the URL or the result, and refuses test usage by default via env", async () => {
-    const { transport, calls } = transportWith(() => new Response(xml("20240101")));
+  it("keeps the key out of the URL and result; unimplemented methods remain CH_NOT_WIRED", async () => {
+    const { transport, local } = localTransport([{ body: xml("20240101") }]);
     const r = await transport.checkEligibility(CTX, REQ);
-    expect(calls[0]?.url).not.toContain(KEY);
+    expect(local.requests[0]?.url).not.toContain(KEY);
     expect(JSON.stringify(r)).not.toContain(KEY);
-    const viaEnv = createEpisodeAlertTransportFromEnv({
-      [EPISODE_ALERT_API_KEY_ENV]: KEY,
-      [EPISODE_ALERT_BASE_URL_ENV]: "https://api.example.test",
-    });
-    const test = await viaEnv.checkEligibility({ ...CTX, usage: "test" }, REQ);
-    expect(test.ok).toBe(false);
-  });
-
-  it("answers UNAVAILABLE, never a throw, when the network fails", async () => {
-    const { transport } = transportWith(() => {
-      throw new Error(`boom ${SYNTHETIC_MBI}`);
-    });
-    const r = await transport.checkEligibility(CTX, REQ);
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.degraded.code).toBe(CH.UNAVAILABLE);
-      expect(r.degraded.reason).not.toContain("1EG4");
-    }
-  });
-
-  it("answers every other method CH_NOT_WIRED", async () => {
-    const { transport } = transportWith(() => new Response(""));
     const results = await Promise.all([
       transport.fetchAcknowledgments(CTX, null),
       transport.fetchRemittances(CTX, null),
-      transport.fetchClaimStatus(CTX, "CCN-1"),
+      transport.fetchClaimStatus(CTX, "SYNTHETIC-CCN"),
       transport.verifyAndParseEvent({ headers: {}, rawBody: "{}" }),
     ]);
-    for (const r of results) {
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.degraded.code).toBe(CH.NOT_WIRED);
+    for (const result of results) {
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.degraded.code).toBe(CH.NOT_WIRED);
     }
   });
 });
 
 describe("createEpisodeAlertTransportFromEnv", () => {
-  const good = {
-    [EPISODE_ALERT_API_KEY_ENV]: KEY,
-    [EPISODE_ALERT_BASE_URL_ENV]: "https://api.example.test",
-  };
-  it("builds from a complete environment", () => {
-    expect(createEpisodeAlertTransportFromEnv(good).vendor).toBe("episode_alert");
-  });
-  it("throws at boot for a missing key, a missing URL or a non-https URL", () => {
-    expect(() =>
-      createEpisodeAlertTransportFromEnv({ ...good, [EPISODE_ALERT_API_KEY_ENV]: "" }),
-    ).toThrow(EPISODE_ALERT_API_KEY_ENV);
-    expect(() => createEpisodeAlertTransportFromEnv({ [EPISODE_ALERT_API_KEY_ENV]: KEY })).toThrow(
-      EPISODE_ALERT_BASE_URL_ENV,
-    );
+  it("refuses the configured production factory even when credentials and URL are present", () => {
     expect(() =>
       createEpisodeAlertTransportFromEnv({
-        ...good,
-        [EPISODE_ALERT_BASE_URL_ENV]: "http://x.test",
+        [EPISODE_ALERT_API_KEY_ENV]: KEY,
+        [EPISODE_ALERT_BASE_URL_ENV]: "https://api.example.test",
+        EPISODE_ALERT_ALLOW_TEST_USAGE: "yes",
       }),
-    ).toThrow(/https/);
-    expect(() =>
-      createEpisodeAlertTransportFromEnv({
-        ...good,
-        [EPISODE_ALERT_BASE_URL_ENV]: "https://x.test/v1?token=1",
-      }),
-    ).toThrow(/query or fragment/);
+    ).toThrow(/wire and approved API destination are unverified/);
   });
 });
 
@@ -288,23 +329,21 @@ function createHarness(): ClearinghouseHarness {
     tamperedEvent: unsupported("tamperedEvent"),
   };
   return {
-    transport: new EpisodeAlertTransport({
-      apiKey: KEY,
-      baseUrl: "https://api.example.test",
-      allowTestUsage: true,
-      fetch: (async () => new Response(xml("20240101"))) as unknown as typeof fetch,
-    }),
+    transport: new EpisodeAlertTransport(
+      { apiKey: KEY, baseUrl: "https://api.example.test" },
+      new LocalFakeHttpClient([{ body: xml("20240101") }]),
+    ),
     script,
     capabilities: new Set<ConformanceCapability>(["eligibility"]),
   };
 }
 
 describe("EpisodeAlertTransport against the shared conformance suite (eligibility)", () => {
-  it("passes every case it implements and skips the rest by name", async () => {
+  it("passes the local fixture case and labels the rest unsupported", async () => {
     const outcomes = await runConformance(async () => createHarness());
-    expect(outcomes.filter((o) => o.status === "failed")).toEqual([]);
-    expect(outcomes.filter((o) => o.status === "passed").map((o) => o.id)).toEqual([
-      "C01-eligibility-outcome-only",
-    ]);
+    expect(outcomes.filter((outcome) => outcome.status === "failed")).toEqual([]);
+    expect(
+      outcomes.filter((outcome) => outcome.status === "passed").map((outcome) => outcome.id),
+    ).toEqual(["C01-eligibility-outcome-only"]);
   });
 });

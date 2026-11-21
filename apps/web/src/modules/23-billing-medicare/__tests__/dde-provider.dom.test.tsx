@@ -10,6 +10,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
 import {
+  canSubmitViaProvider,
   canSyncProvider,
   evidenceOf,
   providerBadge,
@@ -18,13 +19,36 @@ import {
   syncMessage,
 } from "../dde-provider-model";
 import { DdeQueue } from "../dde-queue";
-import type { DdeItem } from "../dde-queue-model";
+import type { DdeEvent, DdeItem, DdeProviderCapability } from "../dde-queue-model";
 import { clearAllDrafts } from "../write-workflow";
 
 beforeEach(() => clearAllDrafts());
 
 const ITEM = "c3d4e5f6-0000-4000-8000-000000000001";
 const PATIENT = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const TEST_PROVIDER: DdeProviderCapability = {
+  mode: "test_provider",
+  label: "Test provider — not connected to Medicare",
+  submissionItemTypes: [
+    "noe",
+    "notr",
+    "claim_entry",
+    "rtp_correction",
+    "adjustment",
+    "cancel",
+    "adr_response",
+  ],
+  statusCheckItemTypes: [
+    "noe",
+    "notr",
+    "claim_entry",
+    "rtp_correction",
+    "adjustment",
+    "cancel",
+    "adr_response",
+  ],
+  explanation: "Local reference provider only.",
+};
 
 const ok = (data: unknown) => ({
   data,
@@ -90,15 +114,29 @@ interface Setup {
   post?: ReturnType<typeof vi.fn>;
   status?: { provider: string; wired: boolean } | "forbidden";
   hospice?: unknown;
+  providerCapability?: DdeProviderCapability;
+  events?: DdeEvent[];
+  listFailureAfter?: number;
 }
 
 function setup(o: Setup = {}) {
   let detail = o.detail ?? item();
+  let listCalls = 0;
   const post = o.post ?? vi.fn(async () => ok({}));
   const get = vi.fn(async (path: string) => {
-    if (path === "/api/v1/billing/dde-items")
-      return ok({ items: [detail], hasMore: false, nextCursor: null });
-    if (path === "/api/v1/billing/dde-items/{id}") return ok({ ...detail, events: [] });
+    if (path === "/api/v1/billing/dde-items") {
+      listCalls += 1;
+      if (o.listFailureAfter !== undefined && listCalls >= o.listFailureAfter) {
+        throw new Error("synthetic queue reload failure");
+      }
+      return ok({
+        items: [detail],
+        providerCapability: o.providerCapability ?? TEST_PROVIDER,
+        hasMore: false,
+        nextCursor: null,
+      });
+    }
+    if (path === "/api/v1/billing/dde-items/{id}") return ok({ ...detail, events: o.events ?? [] });
     if (path === "/api/v1/admin/billing/dde-provider")
       return o.status === "forbidden" || !o.status ? fail(403, "FORBIDDEN") : ok(o.status);
     if (path === "/api/v1/billing/eligibility/hospice-periods")
@@ -122,13 +160,19 @@ function Where(): JSX.Element {
   );
 }
 
-function mount(api: ApiClient, permissions: string[] = []) {
+function mount(api: ApiClient, permissions?: string[]) {
   const session = {
     userId: "u",
     organizationId: "org",
-    membershipId: "m",
+    membershipId: "abababab-abab-4bab-8bab-abababababab",
     roles: [],
-    permissions,
+    permissions: permissions ?? [
+      "billing.dde.read",
+      "billing.dde.work",
+      "billing.dde.mark_submitted",
+      "billing.dde.submit_via_provider",
+      "billing.dde.admin",
+    ],
     isAdmin: false,
   };
   return render(
@@ -149,8 +193,8 @@ const SEND = { name: "Send via provider" };
 
 describe("provider model", () => {
   it("badges who keyed it and says Not sent before anything is recorded", () => {
-    expect(providerBadge({ submissionMode: "provider" })?.label).toBe("Via provider");
-    expect(providerBadge({ submissionMode: "manual" })?.label).toBe("Keyed by hand");
+    expect(providerBadge({ submissionMode: "provider" })?.label).toBe("Provider receipt");
+    expect(providerBadge({ submissionMode: "manual" })?.label).toBe("Manual submission");
     expect(providerBadge({ submissionMode: null })).toEqual({ label: "Not sent", tone: "neutral" });
     expect(providerBadge({})).toEqual({ label: "Not sent", tone: "neutral" });
     expect(providerBadge({ submissionMode: null, state: "accepted" }).label).toBe(
@@ -159,39 +203,142 @@ describe("provider model", () => {
   });
 
   it("only calls an answer verified when the provider gave it", () => {
-    const accepted = { state: "accepted", macAcceptedOn: "2026-10-05" } as const;
-    expect(evidenceOf({ ...accepted, submissionMode: "provider" })).toMatchObject({
-      verified: true,
-    });
-    expect(evidenceOf({ ...accepted, submissionMode: "manual" })).toMatchObject({
-      verified: false,
-    });
-    expect(evidenceOf({ ...accepted, submissionMode: null })?.label).toMatch(/Attested/);
+    const base = { attemptNumber: 2, providerReference: "ref-2" };
+    const providerOutcome = {
+      eventId: "event-2",
+      event: "accept",
+      fromState: "submitted",
+      toState: "accepted",
+      attemptNumber: 2,
+      actorKind: "user",
+      detail: { submissionMode: "provider", providerReference: "ref-2" },
+      occurredAt: "2026-10-05T00:00:00.000Z",
+    };
     expect(
-      evidenceOf({ state: "submitted", macAcceptedOn: null, submissionMode: "provider" }),
-    ).toMatchObject({ verified: false });
-    expect(evidenceOf({ state: "queued", macAcceptedOn: null, submissionMode: null })).toBeNull();
+      evidenceOf({
+        ...base,
+        state: "accepted",
+        macAcceptedOn: "2026-10-05",
+        submissionMode: "provider",
+        events: [providerOutcome],
+      }),
+    ).toMatchObject({ verified: true, label: "Outcome reported by the DDE provider" });
+    expect(
+      evidenceOf({
+        ...base,
+        state: "accepted",
+        macAcceptedOn: "2026-10-05",
+        submissionMode: "provider",
+        events: [{ ...providerOutcome, detail: { outcomeSource: "operator" } }],
+      }),
+    ).toMatchObject({ verified: false, label: "Outcome recorded by an operator" });
+    expect(
+      evidenceOf({
+        ...base,
+        state: "accepted",
+        macAcceptedOn: "2026-10-05",
+        submissionMode: null,
+      })?.label,
+    ).toBe("Outcome source unknown");
+    expect(
+      evidenceOf({ ...base, state: "submitted", macAcceptedOn: null, submissionMode: "provider" }),
+    ).toMatchObject({ verified: false, label: "Provider receipt recorded; outcome pending" });
+    expect(
+      evidenceOf({
+        ...base,
+        state: "submitted",
+        macAcceptedOn: null,
+        submissionMode: null,
+        events: [
+          {
+            eventId: "event-submit",
+            event: "submit",
+            fromState: "in_progress",
+            toState: "submitted",
+            attemptNumber: 2,
+            actorKind: "user",
+            detail: { submissionSource: "operator_verified_existing" },
+            occurredAt: "2026-10-05T00:00:00.000Z",
+          },
+        ],
+      }),
+    ).toMatchObject({
+      verified: false,
+      label: "Operator confirmed existing submission; channel unknown; outcome pending",
+    });
+    expect(
+      evidenceOf({ ...base, state: "queued", macAcceptedOn: null, submissionMode: null }),
+    ).toBeNull();
   });
 
   it("offers sync only for provider-submitted items the server allows", () => {
-    expect(canSyncProvider({ submissionMode: "provider", allowedActions: ["sync_provider"] })).toBe(
-      true,
-    );
-    expect(canSyncProvider({ submissionMode: "manual", allowedActions: ["sync_provider"] })).toBe(
-      false,
-    );
-    expect(canSyncProvider({ submissionMode: "provider", allowedActions: [] })).toBe(false);
+    expect(
+      canSyncProvider(
+        {
+          itemType: "noe",
+          submissionMode: "provider",
+          providerReference: "ref",
+          allowedActions: ["sync_provider"],
+        },
+        TEST_PROVIDER,
+        true,
+      ),
+    ).toBe(true);
+    expect(
+      canSyncProvider(
+        {
+          itemType: "noe",
+          submissionMode: "manual",
+          providerReference: null,
+          allowedActions: ["sync_provider"],
+        },
+        TEST_PROVIDER,
+        true,
+      ),
+    ).toBe(false);
+    expect(
+      canSyncProvider(
+        {
+          itemType: "noe",
+          submissionMode: "provider",
+          providerReference: "ref",
+          allowedActions: ["sync_provider"],
+        },
+        { ...TEST_PROVIDER, statusCheckItemTypes: [] },
+        true,
+      ),
+    ).toBe(false);
+    expect(canSubmitViaProvider("noe", null, true, false)).toBe(false);
+    expect(canSubmitViaProvider("noe", TEST_PROVIDER, false, false)).toBe(false);
+    const noeOnly: DdeProviderCapability = {
+      ...TEST_PROVIDER,
+      submissionItemTypes: ["noe"],
+      statusCheckItemTypes: ["noe"],
+    };
+    expect(canSubmitViaProvider("claim_entry", noeOnly, true, false)).toBe(false);
+    expect(
+      canSyncProvider(
+        {
+          itemType: "claim_entry",
+          submissionMode: "provider",
+          providerReference: "ref",
+          allowedActions: ["sync_provider"],
+        },
+        noeOnly,
+        true,
+      ),
+    ).toBe(false);
   });
 
   it.each([
     ["DDE_NOT_WIRED", /manual keying/i, false, false],
     ["DDE_NOT_PROVISIONED", /not set up/i, false, false],
-    ["DDE_UNAVAILABLE", /try again/i, true, false],
+    ["DDE_UNAVAILABLE", /may have reached DDE/i, false, true],
     ["DDE_OPERATOR_NOT_ENROLLED", /DDE ID/, false, false],
-    ["DDE_IN_DOUBT", /Do not send it again/, false, true],
-    ["DDE_PROVIDER_ERROR", /returned an error/, true, false],
-    ["DDE_PROVIDER_ANSWER_INVALID", /could not be trusted/, false, false],
-    ["DDE_IDEMPOTENCY_CONFLICT", /earlier attempt/, false, false],
+    ["DDE_IN_DOUBT", /Do not send or key it again/, false, true],
+    ["DDE_PROVIDER_ERROR", /may have reached DDE/, false, true],
+    ["DDE_PROVIDER_ANSWER_INVALID", /not proof that DDE has no transaction/, false, true],
+    ["DDE_IDEMPOTENCY_CONFLICT", /may already hold an operation/, false, true],
   ])("explains %s", (code, text, retryable, inDoubt) => {
     const r = providerRefusal({ error: { code } }, "x");
     expect(r?.message).toMatch(text);
@@ -204,6 +351,31 @@ describe("provider model", () => {
       providerRefusal({ error: { code: "DDE_INVALID_REQUEST", message: "bad TOB" } }, "x")?.message,
     ).toBe("bad TOB");
     expect(providerRefusal({ error: { code: "INTERNAL" } }, "x")).toBeNull();
+  });
+
+  it("classifies a read-only status failure separately from a submission failure", () => {
+    expect(providerRefusal({ error: { code: "DDE_UNAVAILABLE" } }, "x", "status")).toMatchObject({
+      inDoubt: false,
+      retryable: true,
+      message: expect.stringMatching(/status check did not complete/i),
+    });
+    expect(
+      providerRefusal({ error: { code: "INTERNAL_SERVER_ERROR" } }, "x", "status"),
+    ).toMatchObject({
+      inDoubt: false,
+      retryable: true,
+      message: expect.stringMatching(/original submission and outcome are unchanged/i),
+    });
+    expect(providerRefusal({ error: { code: "DDE_NOT_READY" } }, "x", "status")).toMatchObject({
+      message: expect.stringMatching(/not enabled for this operation.*unchanged/i),
+      retryable: false,
+      inDoubt: false,
+    });
+    expect(providerRefusal({ error: { code: "DDE_NOT_WIRED" } }, "x", "status")).toMatchObject({
+      message: expect.stringMatching(/manual DDE.*unchanged/i),
+      retryable: false,
+      inDoubt: false,
+    });
   });
 
   it("says in words what a pending provider answer means", () => {
@@ -265,16 +437,55 @@ describe("DDE item rail: send via provider", () => {
     expect(post).toHaveBeenCalledTimes(1);
   });
 
-  it("says the provider is not configured, announces it, and keeps manual keying usable", async () => {
-    const post = vi.fn(async () => fail(503, "DDE_NOT_WIRED"));
-    const { api } = setup({ post });
+  it("keeps manual DDE as the available workflow when the provider is not configured", async () => {
+    const post = vi.fn(async () => ok({}));
+    const { api } = setup({
+      post,
+      providerCapability: {
+        mode: "manual_only",
+        label: "Manual DDE workflow",
+        submissionItemTypes: [],
+        statusCheckItemTypes: [],
+        explanation: "No electronic DDE provider is enabled.",
+      },
+    });
     mount(api);
     const r = await rail();
-    fireEvent.click(r.getByRole("button", SEND));
-    const alert = await r.findByRole("alert");
-    expect(alert.textContent).toMatch(/No DDE provider is configured/);
-    expect(alert.textContent).toMatch(/manual keying/i);
-    expect(r.getByRole("button", { name: "Record as keyed in DDE" })).toBeTruthy();
+    expect(screen.getByRole("status", { name: "DDE operating mode" }).textContent).toMatch(
+      /Manual DDE workflow/,
+    );
+    expect(r.queryByRole("button", SEND)).toBeNull();
+    expect(r.getByRole("button", { name: "Record manual submission" })).toBeTruthy();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("drops a stale provider capability after a queue refresh fails", async () => {
+    const detail = item({ state: "queued", allowedActions: ["start", "submit_via_provider"] });
+    const { api } = setup({ detail, listFailureAfter: 2 });
+    mount(api);
+    const r = await rail();
+    expect(r.getByRole("button", SEND)).toBeTruthy();
+    fireEvent.click(r.getByRole("button", { name: "Start work" }));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toMatch(/could not be loaded/i);
+    });
+    expect(r.queryByRole("button", SEND)).toBeNull();
+  });
+
+  it("hides provider actions from an actor without the provider permission", async () => {
+    const { api } = setup();
+    mount(api, []);
+    const r = await rail();
+    expect(r.queryByRole("button", SEND)).toBeNull();
+    expect(r.queryByRole("button", { name: "Check provider status" })).toBeNull();
+  });
+
+  it("labels the in-memory reference provider as a test provider", async () => {
+    const { api } = setup();
+    mount(api);
+    expect((await screen.findByRole("status", { name: "DDE operating mode" })).textContent).toMatch(
+      /Test provider — not connected to Medicare/,
+    );
   });
 
   it("tells an operator without a DDE ID so", async () => {
@@ -297,9 +508,78 @@ describe("DDE item rail: send via provider", () => {
     mount(api);
     const r = await rail();
     fireEvent.click(r.getByRole("button", SEND));
-    expect((await r.findByRole("alert")).textContent).toMatch(/Verify it in DDE/);
+    expect((await r.findByRole("alert")).textContent).toMatch(/Verify the transaction in DDE/);
     await waitFor(() => expect(r.queryByRole("button", SEND)).toBeNull());
-    expect(r.getByRole("button", { name: "Record as keyed in DDE" })).toBeTruthy();
+    expect(r.getByRole("button", { name: "Record confirmed submission" })).toBeTruthy();
+  });
+
+  it("requires explicit DDE verification before resolving an uncertain submission", async () => {
+    const detail = item({
+      providerInDoubt: true,
+      providerInDoubtAt: "2026-10-25T10:00:00.000Z",
+      allowedActions: ["record_submission"],
+    });
+    const { api, post } = setup({ detail });
+    mount(api);
+    const r = await rail();
+    fireEvent.click(r.getByRole("button", { name: "Record confirmed submission" }));
+    const form = r.getByRole("form", { name: "Record confirmed submission" });
+    fireEvent.submit(form);
+    await waitFor(() => {
+      expect(
+        r
+          .getAllByRole("alert")
+          .some((alert) => /found this transaction in DDE/i.test(alert.textContent ?? "")),
+      ).toBe(true);
+    });
+    expect(post).not.toHaveBeenCalled();
+
+    fireEvent.click(r.getByRole("checkbox", { name: "I verified this transaction exists in DDE" }));
+    fireEvent.submit(form);
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(post.mock.calls[0]?.[1]).toMatchObject({
+      body: { confirmedExistingTransaction: true },
+    });
+  });
+
+  it("requires explicit DDE verification before recording an outcome on an uncertain attempt", async () => {
+    const detail = item({
+      state: "submitted",
+      submittedAt: "2026-10-25T09:00:00.000Z",
+      submissionMode: "manual",
+      providerInDoubt: true,
+      providerInDoubtAt: "2026-10-25T10:00:00.000Z",
+      allowedActions: ["record_outcome"],
+    });
+    const { api, post } = setup({ detail });
+    mount(api);
+    const r = await rail();
+    fireEvent.click(r.getByRole("button", { name: "Record confirmed outcome" }));
+    const form = r.getByRole("form", { name: "Record confirmed outcome" });
+    fireEvent.change(within(form).getByRole("combobox"), { target: { value: "returned" } });
+    fireEvent.change(await within(form).findByRole("textbox", { name: /RTP reason code/ }), {
+      target: { value: "37001" },
+    });
+    fireEvent.submit(form);
+    await waitFor(() => {
+      expect(
+        r
+          .getAllByRole("alert")
+          .some((alert) =>
+            /found this transaction and outcome in DDE/i.test(alert.textContent ?? ""),
+          ),
+      ).toBe(true);
+    });
+    expect(post).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      r.getByRole("checkbox", { name: "I verified this transaction and outcome in DDE" }),
+    );
+    fireEvent.submit(form);
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(post.mock.calls[0]?.[1]).toMatchObject({
+      body: { confirmedExistingTransaction: true, outcome: "returned" },
+    });
   });
 
   it("treats a lost response on Send as in doubt once the server shows its marker", async () => {
@@ -313,7 +593,7 @@ describe("DDE item rail: send via provider", () => {
     mount(api);
     const r = await rail();
     fireEvent.click(r.getByRole("button", SEND));
-    expect((await r.findByRole("alert")).textContent).toMatch(/Verify it in DDE/);
+    expect((await r.findByRole("alert")).textContent).toMatch(/Verify the transaction in DDE/);
     await waitFor(() => expect(r.queryByRole("button", SEND)).toBeNull());
   });
 
@@ -325,7 +605,13 @@ describe("DDE item rail: send via provider", () => {
     mount(api);
     const r = await rail();
     fireEvent.click(r.getByRole("button", SEND));
-    expect(await r.findByText(/Verify it in DDE/)).toBeTruthy();
+    await waitFor(() => {
+      expect(
+        r
+          .getAllByRole("alert")
+          .some((alert) => /Verify the transaction in DDE/.test(alert.textContent ?? "")),
+      ).toBe(true);
+    });
     expect(r.queryByRole("button", SEND)).toBeNull();
     expect(post).toHaveBeenCalledTimes(1);
   });
@@ -346,14 +632,12 @@ describe("DDE item rail: send via provider", () => {
     const { api, post } = setup({ detail });
     mount(api);
     const r = await rail();
-    expect(
-      await r.findByText(/Verify it in DDE, then record the submission manually/),
-    ).toBeTruthy();
+    expect(await r.findByText(/Do not resend or key it again/)).toBeTruthy();
     expect(r.queryByRole("button", SEND)).toBeNull();
     expect(r.queryByRole("button", { name: "Check provider status" })).toBeNull();
     expect(r.queryByRole("button", { name: "Reopen as a new attempt" })).toBeNull();
     expect(r.queryByRole("button", { name: "Cancel item" })).toBeNull();
-    expect(r.getByRole("button", { name: "Record as keyed in DDE" })).toBeTruthy();
+    expect(r.getByRole("button", { name: "Record confirmed submission" })).toBeTruthy();
     expect(post).not.toHaveBeenCalled();
   });
 
@@ -377,7 +661,7 @@ describe("DDE item rail: send via provider", () => {
     mount(api);
     const r = await rail();
     expect(r.queryByRole("button", SEND)).toBeNull();
-    expect(r.getByRole("button", { name: "Record as keyed in DDE" })).toBeTruthy();
+    expect(r.getByRole("button", { name: "Record manual submission" })).toBeTruthy();
   });
 });
 
@@ -414,16 +698,43 @@ describe("DDE item rail: provider status check and evidence", () => {
   });
 
   it("shows a provider-verified acceptance and the provider reference", async () => {
+    const providerOutcome: DdeEvent = {
+      eventId: "event-1",
+      event: "accept",
+      fromState: "submitted",
+      toState: "accepted",
+      attemptNumber: 1,
+      actorKind: "system",
+      actorMembershipId: null,
+      detail: {
+        outcomeSource: "provider",
+        submissionMode: "provider",
+        providerReference: "EA-12345",
+      },
+      occurredAt: "2026-10-05T00:00:00.000Z",
+    };
     const { api } = setup({
       detail: providerItem({ state: "accepted", macAcceptedOn: "2026-10-05", allowedActions: [] }),
+      events: [providerOutcome],
     });
     mount(api);
     const r = await rail();
-    expect(r.getByText("Verified by the DDE provider")).toBeTruthy();
+    expect(r.getByText("Outcome reported by the DDE provider")).toBeTruthy();
     expect(r.getByText("EA-12345")).toBeTruthy();
   });
 
   it("labels a hand-recorded acceptance as attested", async () => {
+    const manualOutcome: DdeEvent = {
+      eventId: "event-1",
+      event: "accept",
+      fromState: "submitted",
+      toState: "accepted",
+      attemptNumber: 1,
+      actorKind: "user",
+      actorMembershipId: "abababab-abab-4bab-8bab-abababababab",
+      detail: { outcomeSource: "operator", macAcceptedOn: "2026-10-05" },
+      occurredAt: "2026-10-05T00:00:00.000Z",
+    };
     const { api } = setup({
       detail: item({
         state: "accepted",
@@ -431,9 +742,90 @@ describe("DDE item rail: provider status check and evidence", () => {
         macAcceptedOn: "2026-10-05",
         allowedActions: [],
       }),
+      events: [manualOutcome],
     });
     mount(api);
-    expect((await rail()).getByText(/Attested by the operator/)).toBeTruthy();
+    expect((await rail()).getByText("Outcome recorded by an operator")).toBeTruthy();
+  });
+
+  it("separates provider submission provenance from an operator-recorded outcome", async () => {
+    const submission: DdeEvent = {
+      eventId: "event-submit",
+      event: "submit",
+      fromState: "in_progress",
+      toState: "submitted",
+      attemptNumber: 1,
+      actorKind: "user",
+      actorMembershipId: "abababab-abab-4bab-8bab-abababababab",
+      detail: { submissionMode: "provider", submissionSource: "provider" },
+      occurredAt: "2026-10-02T10:00:00.000Z",
+    };
+    const outcome: DdeEvent = {
+      eventId: "event-accept",
+      event: "accept",
+      fromState: "submitted",
+      toState: "accepted",
+      attemptNumber: 1,
+      actorKind: "user",
+      actorMembershipId: "abababab-abab-4bab-8bab-abababababab",
+      detail: { outcomeSource: "operator", macAcceptedOn: "2026-10-05" },
+      occurredAt: "2026-10-05T00:00:00.000Z",
+    };
+    const { api } = setup({
+      detail: providerItem({ state: "accepted", macAcceptedOn: "2026-10-05", allowedActions: [] }),
+      events: [submission, outcome],
+    });
+    mount(api);
+    const r = await rail();
+    expect(r.getByText("Submitted via provider")).toBeTruthy();
+    expect(r.getByText("Recorded by staff")).toBeTruthy();
+    expect(r.getByText("Outcome recorded by an operator")).toBeTruthy();
+    expect(r.queryByText("Provider-reported")).toBeNull();
+  });
+
+  it("keeps a confirmed existing transaction's unknown channel visible in history", async () => {
+    const submission: DdeEvent = {
+      eventId: "event-submit",
+      event: "submit",
+      fromState: "in_progress",
+      toState: "submitted",
+      attemptNumber: 1,
+      actorKind: "user",
+      actorMembershipId: "abababab-abab-4bab-8bab-abababababab",
+      detail: {
+        submissionSource: "operator_verified_existing",
+        resolvedProviderInDoubt: true,
+      },
+      occurredAt: "2026-10-02T10:00:00.000Z",
+    };
+    const outcome: DdeEvent = {
+      eventId: "event-return",
+      event: "return",
+      fromState: "submitted",
+      toState: "returned",
+      attemptNumber: 1,
+      actorKind: "user",
+      actorMembershipId: "abababab-abab-4bab-8bab-abababababab",
+      detail: { outcomeSource: "operator", submissionSource: "operator_verified_existing" },
+      occurredAt: "2026-10-05T00:00:00.000Z",
+    };
+    const { api } = setup({
+      detail: item({
+        state: "returned",
+        submittedAt: "2026-10-02T10:00:00.000Z",
+        submissionMode: null,
+        outcomeCode: "returned",
+        allowedActions: [],
+      }),
+      events: [submission, outcome],
+    });
+    mount(api);
+    const r = await rail();
+    expect(r.getAllByText("Mode not recorded").length).toBeGreaterThan(0);
+    expect(r.getAllByText("Operator confirmed existing transaction; channel unknown")).toHaveLength(
+      2,
+    );
+    expect(r.getByText("Outcome recorded by an operator")).toBeTruthy();
   });
 
   it("badges a not-yet-sent row as Not sent, and an older keyed row without a mode as such", async () => {
@@ -452,7 +844,7 @@ describe("DDE item rail: provider status check and evidence", () => {
     const { api } = setup({ detail: providerItem() });
     mount(api);
     const row = within(await screen.findByRole("table"));
-    expect(row.getByText("Via provider")).toBeTruthy();
+    expect(row.getByText("Provider receipt")).toBeTruthy();
   });
 });
 

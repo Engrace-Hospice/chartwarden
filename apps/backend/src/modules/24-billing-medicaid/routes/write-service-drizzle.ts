@@ -10,6 +10,7 @@
 // unlock + the per-state 270/271 adapter), testCredential + submitClaim adapter wire I/O (the state adapter),
 // loadRateSchedule (M40), registerPlatformRule (rules are the frozen code registry). Each is noted at its site.
 import { randomUUID } from "node:crypto";
+import type { ClaimReader } from "@chartwarden/billing";
 import { type DbClient, schema } from "@chartwarden/db";
 import {
   DEFAULT_MEDICAID_RULES,
@@ -18,13 +19,14 @@ import {
   type PlaceOfServiceFacilityKind,
   type PlaceOfServiceResidenceKind,
   buildHospiceLines,
+  claimStructureFailure,
   deriveMedicaidControlNumber,
   deriveMedicaidTobFromAdmission,
   electronicSubmissionRefusal,
+  evaluateMedicaidPayerResponsibility,
   isMedicaidCadenceBearingClaim,
   medicaidClaimMachine,
   medicaidClaimRouteReadiness,
-  medicaidCoverageAllowedForClaim,
   parseMedicaidControlNumber,
   rbArrangementMachine,
   runMedicaidRules,
@@ -33,12 +35,25 @@ import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
+  type CoverageForRange,
   ForbiddenError,
   NotFoundError,
   type PatientCoverageReader,
 } from "@chartwarden/types";
-import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-port";
+import {
+  type CurrentLocPeriodForClaim,
+  hospiceClaimLineSnapshotIssue,
+  inclusiveDeathLocPeriodId,
+  m6LocClaimEndDate,
+} from "../claim-hospice-line-snapshot";
+import {
+  type PatientLifecycleForClaim,
+  admissionServiceRangeIssue,
+  inclusiveLocEndDateForAdmission,
+  patientLifecycleServiceRangeIssue,
+} from "../claim-range-guards";
 import type { CredentialCipherPort } from "../credential-crypto";
 import type { M24Actor } from "./actor";
 import type { ClaimView, RbArrangementView } from "./read-service";
@@ -46,6 +61,10 @@ import { resolveServiceState } from "./service-state";
 import type {
   ApplyOverrideInput,
   AssembleClaimInput,
+  AssemblyPreviewArrangement,
+  AssemblyPreviewClaimKind,
+  AssemblyPreviewCoverage,
+  AssemblyPreviewView,
   CreateCustomRuleInput,
   CreateRbArrangementInput,
   EditRbArrangementInput,
@@ -53,6 +72,7 @@ import type {
   LoadRateScheduleInput,
   M24WriteService,
   OverrideRbDayInput,
+  PreviewClaimAssemblyInput,
   RefreshEligibilityInput,
   RegisterPlatformRuleInput,
   ReplaceClaimInput,
@@ -91,6 +111,468 @@ const iso = (d: Date | string | null): string =>
 const day = (d: Date | string | null): string => iso(d).slice(0, 10);
 const dayN = (d: Date | string | null): string | null => (d === null ? null : day(d));
 
+const ASSEMBLY_INPUT_ERRORS = {
+  rbArrangementForbidden: [
+    "MEDICAID_RB_ARRANGEMENT_NOT_APPLICABLE",
+    "A hospice-only claim cannot include a Room & Board arrangement.",
+  ],
+  rbArrangementRequired: [
+    "MEDICAID_RB_ARRANGEMENT_REQUIRED",
+    "Select an applicable Room & Board arrangement for this claim kind.",
+  ],
+  medicareLinkUnsupported: [
+    "MEDICAID_MEDICARE_LINKAGE_UNSUPPORTED",
+    "A Medicare claim identifier is not verified adjudication or payment evidence. Medicare-linked COB assembly is not available yet.",
+  ],
+} as const;
+
+function assertAssemblyRequestShape(input: AssembleClaimInput): void {
+  if (input.medicareClaimId !== undefined) {
+    throw new ConflictError(...ASSEMBLY_INPUT_ERRORS.medicareLinkUnsupported);
+  }
+  if (input.kind === "hospice_only" && input.rbArrangementId) {
+    throw new ConflictError(...ASSEMBLY_INPUT_ERRORS.rbArrangementForbidden);
+  }
+  if (input.kind !== "hospice_only" && !input.rbArrangementId) {
+    throw new ConflictError(...ASSEMBLY_INPUT_ERRORS.rbArrangementRequired);
+  }
+}
+
+function claimStructureError(
+  failure: ReturnType<typeof claimStructureFailure>,
+): { code: string; message: string } | null {
+  if (!failure) return null;
+  switch (failure) {
+    case "rb_arrangement_forbidden":
+      return {
+        code: "MEDICAID_RB_ARRANGEMENT_NOT_APPLICABLE",
+        message: "A hospice-only claim cannot include a Room & Board arrangement.",
+      };
+    case "rb_arrangement_required":
+      return {
+        code: "MEDICAID_RB_ARRANGEMENT_REQUIRED",
+        message: "Select an applicable Room & Board arrangement for this claim kind.",
+      };
+    case "hospice_lines_required":
+      return {
+        code: "MEDICAID_HOSPICE_LINES_REQUIRED",
+        message: "This claim kind requires at least one valid hospice level-of-care line.",
+      };
+    case "rb_lines_required":
+      return {
+        code: "MEDICAID_RB_LINES_REQUIRED",
+        message: "This claim kind requires at least one available, billable Room & Board day.",
+      };
+    case "hospice_lines_forbidden":
+      return {
+        code: "MEDICAID_HOSPICE_LINES_NOT_APPLICABLE",
+        message: "An R&B-only claim cannot contain hospice level-of-care lines.",
+      };
+    case "rb_lines_forbidden":
+      return {
+        code: "MEDICAID_RB_LINES_NOT_APPLICABLE",
+        message: "A hospice-only claim cannot contain Room & Board lines.",
+      };
+  }
+}
+
+type RbArrangementRow = typeof schema.rbArrangement.$inferSelect;
+
+type RbArrangementAssemblyFacts = Pick<
+  RbArrangementRow,
+  | "id"
+  | "organizationId"
+  | "patientId"
+  | "providerEntityId"
+  | "locationId"
+  | "nfFacilityMdmId"
+  | "nfFacilityNameSnapshot"
+  | "effectiveFrom"
+  | "effectiveTo"
+  | "contractDocumentId"
+  | "contractStartedAt"
+  | "contractTerminatedAt"
+  | "state"
+  | "nfPerDiemRoutineCents"
+>;
+
+function arrangementEndDate(arrangement: RbArrangementAssemblyFacts): string | null {
+  const effectiveTo = dayN(arrangement.effectiveTo);
+  switch (arrangement.state) {
+    case "ACTIVE":
+      return effectiveTo;
+    case "EXPIRED":
+      return effectiveTo;
+    case "TERMINATED":
+      return arrangement.contractTerminatedAt
+        ? ([effectiveTo, day(arrangement.contractTerminatedAt)].filter(Boolean).sort()[0] ?? null)
+        : null;
+    case "SUPERSEDED":
+      return effectiveTo;
+    case "DRAFT":
+      return null;
+  }
+}
+
+export function arrangementIssue(
+  arrangement: RbArrangementAssemblyFacts,
+  organizationId: string,
+  patientId: string,
+  providerEntityId: string,
+  serviceFrom: string,
+  serviceTo: string,
+  serviceDate?: string,
+): { code: string; message: string } | null {
+  if (
+    arrangement.organizationId !== organizationId ||
+    arrangement.patientId !== patientId ||
+    arrangement.providerEntityId !== providerEntityId
+  ) {
+    return {
+      code: "MEDICAID_RB_ARRANGEMENT_IDENTITY_MISMATCH",
+      message: "The selected R&B arrangement is not valid for this patient and provider entity.",
+    };
+  }
+  if (!arrangement.contractDocumentId || !arrangement.contractStartedAt) {
+    return {
+      code: "MEDICAID_RB_ARRANGEMENT_CONTRACT_UNVERIFIED",
+      message: "The R&B arrangement lacks the contract evidence required for billing.",
+    };
+  }
+  const endDate = arrangementEndDate(arrangement);
+  if (arrangement.state === "DRAFT" || (arrangement.state !== "ACTIVE" && endDate === null)) {
+    return {
+      code: "MEDICAID_RB_ARRANGEMENT_STATE_UNVERIFIED",
+      message: "The R&B arrangement state does not establish an effective billing period.",
+    };
+  }
+  const startDate = day(arrangement.effectiveFrom);
+  if (serviceDate) {
+    if (serviceDate < startDate || (endDate !== null && serviceDate > endDate)) {
+      return {
+        code: "MEDICAID_RB_ARRANGEMENT_DATE_MISMATCH",
+        message: "An R&B service day falls outside the arrangement's effective billing dates.",
+      };
+    }
+  } else if (startDate > serviceTo || (endDate !== null && endDate < serviceFrom)) {
+    return {
+      code: "MEDICAID_RB_ARRANGEMENT_OUTSIDE_SERVICE_RANGE",
+      message: "The R&B arrangement does not cover any date in this claim's service range.",
+    };
+  }
+  if (!arrangement.nfFacilityMdmId || !arrangement.nfFacilityNameSnapshot.trim()) {
+    return {
+      code: "MEDICAID_RB_FACILITY_IDENTITY_MISSING",
+      message: "The R&B arrangement does not contain a verified facility identity.",
+    };
+  }
+  return null;
+}
+
+function throwAssemblyIssue(issue: { code: string; message: string }): never {
+  throw new ConflictError(issue.code, issue.message);
+}
+
+type RbDayAssemblyFacts = Pick<
+  typeof schema.rbDay.$inferSelect,
+  | "organizationId"
+  | "id"
+  | "patientId"
+  | "providerEntityId"
+  | "locationId"
+  | "rbArrangementId"
+  | "serviceDate"
+  | "status"
+  | "locOfDay"
+  | "locPeriodIdSnapshot"
+  | "perDiemCentsSnapshot"
+  | "exclusionReason"
+  | "medicaidClaimLineId"
+>;
+
+export function rbDayIssue(
+  rbDay: RbDayAssemblyFacts,
+  arrangement: RbArrangementAssemblyFacts,
+  organizationId: string,
+  input: AssembleClaimInput,
+): { code: string; message: string } | null {
+  if (
+    rbDay.organizationId !== organizationId ||
+    rbDay.patientId !== input.patientId ||
+    rbDay.providerEntityId !== input.providerEntityId ||
+    rbDay.rbArrangementId !== arrangement.id ||
+    rbDay.locationId !== arrangement.locationId
+  ) {
+    return {
+      code: "MEDICAID_RB_DAY_IDENTITY_MISMATCH",
+      message:
+        "A Room & Board day does not match this claim's organization, patient, provider, or arrangement.",
+    };
+  }
+  const serviceDate = day(rbDay.serviceDate);
+  const arrangementIssueResult = arrangementIssue(
+    arrangement,
+    organizationId,
+    input.patientId,
+    input.providerEntityId,
+    input.serviceFrom,
+    input.serviceTo,
+    serviceDate,
+  );
+  if (arrangementIssueResult) return arrangementIssueResult;
+  if (rbDay.locOfDay !== "RHC" && rbDay.locOfDay !== "CHC") {
+    return {
+      code: "MEDICAID_RB_DAY_NOT_BILLABLE",
+      message: "A Room & Board day has an ineligible level-of-care snapshot and cannot be billed.",
+    };
+  }
+  if (rbDay.status !== "billable") {
+    return {
+      code: "MEDICAID_RB_DAY_NOT_BILLABLE",
+      message: "A Room & Board day is not currently classified as billable.",
+    };
+  }
+  if (
+    rbDay.perDiemCentsSnapshot <= 0 ||
+    rbDay.perDiemCentsSnapshot !== arrangement.nfPerDiemRoutineCents ||
+    rbDay.medicaidClaimLineId !== null
+  ) {
+    return {
+      code: "MEDICAID_RB_DAY_SNAPSHOT_INVALID",
+      message: "A Room & Board day has an inconsistent rate, exclusion, or ownership snapshot.",
+    };
+  }
+  return null;
+}
+
+export function rbDayLocSnapshotIssue(
+  rbDay: Pick<RbDayAssemblyFacts, "serviceDate" | "locOfDay" | "locPeriodIdSnapshot">,
+  periods: readonly {
+    id: string;
+    levelOfCare:
+      | "routine_home_care"
+      | "continuous_home_care"
+      | "inpatient_respite_care"
+      | "general_inpatient_care";
+    effectiveAt: Date;
+    endedAt: Date | null;
+  }[],
+  inclusiveEndDate?: string | null,
+): { code: string; message: string } | null {
+  const serviceDate = day(rbDay.serviceDate);
+  const period = periods.find((candidate) => candidate.id === rbDay.locPeriodIdSnapshot);
+  const latestPeriodForDay = periods
+    .filter((candidate) => day(candidate.effectiveAt) <= serviceDate)
+    .sort((a, b) => b.effectiveAt.getTime() - a.effectiveAt.getTime())[0];
+  const expectedLoc =
+    period?.levelOfCare === "routine_home_care"
+      ? "RHC"
+      : period?.levelOfCare === "continuous_home_care"
+        ? "CHC"
+        : null;
+  if (
+    !period ||
+    latestPeriodForDay?.id !== period.id ||
+    expectedLoc === null ||
+    expectedLoc !== rbDay.locOfDay ||
+    day(period.effectiveAt) > serviceDate ||
+    (period.endedAt !== null &&
+      serviceDate >= day(period.endedAt) &&
+      !(inclusiveEndDate === serviceDate && day(period.endedAt) === serviceDate))
+  ) {
+    return {
+      code: "MEDICAID_RB_DAY_LOC_SNAPSHOT_STALE",
+      message:
+        "A Room & Board day no longer matches an eligible hospice level-of-care period for this admission.",
+    };
+  }
+  return null;
+}
+
+type RbAdmissionSnapshot = {
+  readonly status:
+    | "referred"
+    | "pending"
+    | "notice_of_rights_acknowledged"
+    | "active"
+    | "on_hold"
+    | "discharged"
+    | "bereavement"
+    | "closed";
+  readonly stayEndFacts: {
+    readonly dischargeDate: string | null;
+    readonly dischargeReason: string | null;
+    readonly deceasedDate: string | null;
+    readonly pendingDischargeDates: readonly string[];
+    readonly transferOut: { readonly effectiveDate: string } | null;
+    readonly revocationDate: string | null;
+  };
+};
+
+/** Fail closed when a pre-materialized day lies on/after a non-death stay end or after death. */
+export function rbDayAdmissionEndIssue(
+  rbDay: Pick<RbDayAssemblyFacts, "serviceDate">,
+  admission: RbAdmissionSnapshot,
+): { code: string; message: string } | null {
+  const { dischargeDate, dischargeReason, deceasedDate, transferOut, revocationDate } =
+    admission.stayEndFacts;
+  const serviceDate = day(rbDay.serviceDate);
+  if (admission.stayEndFacts.pendingDischargeDates.some((date) => serviceDate >= date)) {
+    return {
+      code: "MEDICAID_RB_ADMISSION_END_PENDING",
+      message:
+        "A discharge for this admission is awaiting required approval. Reconcile the discharge before billing Room & Board days on or after its effective date.",
+    };
+  }
+  const terminalStatus =
+    admission.status === "discharged" ||
+    admission.status === "bereavement" ||
+    admission.status === "closed";
+  const endFacts = [
+    ...(dischargeDate
+      ? [
+          {
+            date: dischargeReason === "death" ? (deceasedDate ?? dischargeDate) : dischargeDate,
+            includesDate: dischargeReason === "death",
+          },
+        ]
+      : []),
+    ...(transferOut ? [{ date: transferOut.effectiveDate, includesDate: false }] : []),
+    ...(revocationDate ? [{ date: revocationDate, includesDate: false }] : []),
+  ];
+  if (!terminalStatus && endFacts.length === 0) return null;
+  if (!terminalStatus || endFacts.length !== 1) {
+    return {
+      code: "MEDICAID_RB_ADMISSION_END_UNVERIFIED",
+      message:
+        "The admission end date or reason cannot be established consistently; reconcile the stay before billing Room & Board days.",
+    };
+  }
+  const end = endFacts[0];
+  if (!end) return null;
+  if (serviceDate > end.date || (serviceDate === end.date && !end.includesDate)) {
+    return {
+      code: "MEDICAID_RB_DAY_OUTSIDE_ADMISSION",
+      message:
+        "A Room & Board day is on or after the effective end of this admission and cannot be included in this claim.",
+    };
+  }
+  return null;
+}
+
+type RbClaimLineFacts = Pick<
+  typeof schema.medicaidClaimLine.$inferSelect,
+  | "id"
+  | "organizationId"
+  | "providerEntityId"
+  | "locationId"
+  | "locPeriodId"
+  | "medicaidClaimId"
+  | "serviceDate"
+  | "revenueCode"
+  | "qCode"
+  | "levelOfCare"
+  | "units"
+  | "rateAtAssemblyCents"
+  | "stateRateScheduleIdSnapshot"
+  | "chargesCents"
+  | "isRb"
+  | "rbDayId"
+>;
+
+/** Verify a stored R&B line still owns the exact billed day and current eligible LOC snapshot. */
+export function rbClaimLineIssue(input: {
+  readonly line: RbClaimLineFacts;
+  readonly rbDay: RbDayAssemblyFacts;
+  readonly arrangement: RbArrangementAssemblyFacts;
+  readonly organizationId: string;
+  readonly patientId: string;
+  readonly providerEntityId: string;
+  readonly claimId: string;
+  readonly arrangementId: string;
+  readonly serviceFrom: string;
+  readonly serviceTo: string;
+  readonly admission: RbAdmissionSnapshot;
+  readonly locPeriods: readonly {
+    id: string;
+    levelOfCare:
+      | "routine_home_care"
+      | "continuous_home_care"
+      | "inpatient_respite_care"
+      | "general_inpatient_care";
+    effectiveAt: Date;
+    endedAt: Date | null;
+  }[];
+}): { code: string; message: string } | null {
+  const { line, rbDay, arrangement } = input;
+  if (
+    !line.isRb ||
+    line.rbDayId !== rbDay.id ||
+    line.medicaidClaimId !== input.claimId ||
+    line.organizationId !== input.organizationId ||
+    line.providerEntityId !== input.providerEntityId ||
+    line.locationId !== rbDay.locationId ||
+    line.locationId !== arrangement.locationId ||
+    rbDay.organizationId !== input.organizationId ||
+    rbDay.patientId !== input.patientId ||
+    rbDay.providerEntityId !== input.providerEntityId ||
+    rbDay.locationId !== arrangement.locationId ||
+    rbDay.rbArrangementId !== input.arrangementId ||
+    arrangement.id !== input.arrangementId ||
+    rbDay.status !== "billed" ||
+    rbDay.medicaidClaimLineId !== line.id
+  ) {
+    return {
+      code: "MEDICAID_RB_DAY_CLAIM_OWNERSHIP_MISMATCH",
+      message:
+        "A Room & Board claim line no longer matches the billed day and its current claim owner. Reconcile the claim before validation.",
+    };
+  }
+  const serviceDate = day(rbDay.serviceDate);
+  if (serviceDate < input.serviceFrom || serviceDate > input.serviceTo) {
+    return {
+      code: "MEDICAID_RB_DAY_SERVICE_RANGE_MISMATCH",
+      message:
+        "A Room & Board day linked to this claim falls outside the claim's service period. Reconcile the claim before validation.",
+    };
+  }
+  const arrangementProblem = arrangementIssue(
+    arrangement,
+    input.organizationId,
+    input.patientId,
+    input.providerEntityId,
+    input.serviceFrom,
+    input.serviceTo,
+    serviceDate,
+  );
+  if (arrangementProblem) return arrangementProblem;
+  if (
+    day(line.serviceDate) !== serviceDate ||
+    line.levelOfCare !== "NF_RB" ||
+    line.locPeriodId !== rbDay.locPeriodIdSnapshot ||
+    line.units !== 1 ||
+    line.revenueCode !== "0658" ||
+    line.qCode !== "Q5003" ||
+    line.rateAtAssemblyCents !== rbDay.perDiemCentsSnapshot ||
+    line.chargesCents !== rbDay.perDiemCentsSnapshot ||
+    line.stateRateScheduleIdSnapshot !== null
+  ) {
+    return {
+      code: "MEDICAID_RB_DAY_CLAIM_LINE_MISMATCH",
+      message:
+        "A Room & Board line no longer matches its billed day snapshot. Reconcile the claim before validation.",
+    };
+  }
+  const deathDate =
+    input.admission.stayEndFacts.dischargeReason === "death"
+      ? (input.admission.stayEndFacts.deceasedDate ?? input.admission.stayEndFacts.dischargeDate)
+      : null;
+  return (
+    rbDayAdmissionEndIssue(rbDay, input.admission) ??
+    rbDayLocSnapshotIssue(rbDay, input.locPeriods, deathDate)
+  );
+}
+
 /**
  * Refuse to store a secret when no cipher port is bound, rather than dropping it. The pre-crypto placeholder
  * accepted the secret and wrote a sentinel — the caller believed it was saved. Failing loudly is the only
@@ -112,7 +594,7 @@ const UNBOUND_CIPHER: CredentialCipherPort = {
 };
 
 /**
- * How the write path resolves a patient's Medicaid coverage. Bound at the composition root to M5's §3.4
+ * How the write path resolves a patient's Medicaid and actual primary coverage. Bound at the composition root to M5's §3.4
  * `PatientCoverageReader` seam (via getSeam); left undefined in a slice/test, where the paths that need it
  * degrade with a precise message instead of a blanket "readers unbound".
  */
@@ -121,27 +603,32 @@ export interface CoverageResolverPort {
     organizationId: string;
     patientId: string;
     onDate: string;
-    /**
-     * #845 — when given, the SAME Medicaid coverage row must be the top-ranked Medicaid coverage on every day of
-     * `onDate..throughDate` (M5's range-wide resolver), not merely in force on `onDate`; otherwise null.
-     */
-    throughDate?: string;
   }): Promise<{ id: string; payerId: string; subscriberId: string; rank: number } | null>;
-  activeMedicaidCoverageInTransaction(
+  claimCoverageForRange(input: {
+    organizationId: string;
+    patientId: string;
+    from: string;
+    to: string;
+  }): Promise<{ medicaid: CoverageForRange; primary: CoverageForRange }>;
+  claimCoverageSnapshotInTransaction(
     transaction: unknown,
     input: {
       organizationId: string;
       patientId: string;
-      onDate: string;
-      throughDate: string;
+      from: string;
+      to: string;
     },
-  ): Promise<{ id: string; payerId: string; subscriberId: string; rank: number } | null>;
+  ): Promise<{
+    medicaid: CoverageForRange;
+    primary: CoverageForRange;
+    patientLifecycle: PatientLifecycleForClaim | null;
+  }>;
 }
 
 /**
  * The production {@link CoverageResolverPort} over M5's §3.4 `PatientCoverageReader` seam, resolved at CALL time so
- * registration order does not matter. #845 — a claim window (`throughDate` given) asks the range-wide resolver: one
- * Medicaid row on top on EVERY day of the window, else nothing; a single date (eligibility) stays a point read.
+ * registration order does not matter. Claim assembly resolves Medicaid and all-kind primary coverage range-wide;
+ * its transaction path derives both from one M5 row-locked snapshot. Eligibility refresh remains a point read.
  */
 export function buildM24MedicaidCoverageResolver(
   reader: () => Pick<
@@ -151,42 +638,12 @@ export function buildM24MedicaidCoverageResolver(
 ): CoverageResolverPort {
   return {
     async activeMedicaidCoverage(q) {
-      const r = reader();
-      const found =
-        q.throughDate === undefined
-          ? await r.activeCoverageOfKind({
-              organizationId: q.organizationId,
-              patientId: q.patientId,
-              coverageKind: "medicaid",
-              onDate: q.onDate,
-            })
-          : await r
-              .coverageForRange({
-                organizationId: q.organizationId,
-                patientId: q.patientId,
-                from: q.onDate,
-                to: q.throughDate,
-                coverageKind: "medicaid",
-              })
-              .then((res) => (res.status === "uniform" ? res.coverage : null));
-      return found
-        ? {
-            id: found.id,
-            payerId: found.payerId,
-            subscriberId: found.subscriberId,
-            rank: found.rank,
-          }
-        : null;
-    },
-    async activeMedicaidCoverageInTransaction(transaction, q) {
-      const { resolution } = await reader().coverageSnapshotForRangeInTransaction(transaction, {
+      const found = await reader().activeCoverageOfKind({
         organizationId: q.organizationId,
         patientId: q.patientId,
-        from: q.onDate,
-        to: q.throughDate,
         coverageKind: "medicaid",
+        onDate: q.onDate,
       });
-      const found = resolution.status === "uniform" ? resolution.coverage : null;
       return found
         ? {
             id: found.id,
@@ -196,7 +653,221 @@ export function buildM24MedicaidCoverageResolver(
           }
         : null;
     },
+    async claimCoverageForRange(q) {
+      const r = reader();
+      const range = { from: q.from, to: q.to };
+      const [medicaid, primary] = await Promise.all([
+        r.coverageForRange({
+          organizationId: q.organizationId,
+          patientId: q.patientId,
+          ...range,
+          coverageKind: "medicaid",
+        }),
+        r.coverageForRange({
+          organizationId: q.organizationId,
+          patientId: q.patientId,
+          ...range,
+        }),
+      ]);
+      return { medicaid, primary };
+    },
+    async claimCoverageSnapshotInTransaction(transaction, q) {
+      const snapshot = await reader().coverageSnapshotForRangeInTransaction(transaction, {
+        organizationId: q.organizationId,
+        patientId: q.patientId,
+        from: q.from,
+        to: q.to,
+        coverageKind: "medicaid",
+      });
+      return {
+        medicaid: snapshot.resolution,
+        primary: snapshot.primaryResolution,
+        patientLifecycle: snapshot.patientLifecycle,
+      };
+    },
   };
+}
+
+function coverageResolutionKey(resolution: CoverageForRange): string {
+  return resolution.status === "uniform"
+    ? `uniform:${resolution.coverage.id}:${resolution.coverage.payerId}:${resolution.coverage.rank}:${resolution.coverage.coverageKind}`
+    : `${resolution.status}:${resolution.onDate}`;
+}
+
+function requireUniformClaimCoverage(
+  resolution: CoverageForRange,
+  role: "medicaid" | "primary",
+): Extract<CoverageForRange, { status: "uniform" }>["coverage"] {
+  if (resolution.status === "uniform") return resolution.coverage;
+
+  if (role === "medicaid") {
+    switch (resolution.status) {
+      case "none":
+        throw new ConflictError(
+          "MEDICAID_COVERAGE_NOT_IN_FORCE",
+          "No single Medicaid coverage is in force for the complete service window. Correct the coverage dates or split the claim at the coverage change.",
+        );
+      case "changes":
+        throw new ConflictError(
+          "MEDICAID_COVERAGE_CHANGED",
+          `Medicaid coverage changes within the service window (starting ${resolution.onDate}). Correct the coverage dates or split the claim at that boundary.`,
+        );
+      case "ambiguous":
+        throw new ConflictError(
+          "MEDICAID_COVERAGE_AMBIGUOUS",
+          `More than one Medicaid coverage has the same highest rank on ${resolution.onDate}. Resolve the coverage overlap before assembling a claim.`,
+        );
+    }
+  }
+
+  switch (resolution.status) {
+    case "none":
+      throw new ConflictError(
+        "MEDICAID_PRIMARY_COVERAGE_MISSING",
+        "The patient's primary coverage is missing for part or all of this service window. Correct the coverage record before assembling a Medicaid claim.",
+      );
+    case "changes":
+      throw new ConflictError(
+        "MEDICAID_PRIMARY_COVERAGE_CHANGED",
+        `The patient's highest-ranked coverage changes within the service window (starting ${resolution.onDate}). Correct the coverage dates or split the claim at that boundary.`,
+      );
+    case "ambiguous":
+      throw new ConflictError(
+        "MEDICAID_PRIMARY_COVERAGE_AMBIGUOUS",
+        `More than one coverage has the same highest rank on ${resolution.onDate}. Resolve the overlap before assembling a Medicaid claim.`,
+      );
+  }
+}
+
+function assertMedicaidPayerResponsibility(
+  kind: AssembleClaimInput["kind"],
+  medicaid: Extract<CoverageForRange, { status: "uniform" }>["coverage"],
+  primary: Extract<CoverageForRange, { status: "uniform" }>["coverage"],
+): void {
+  const decision = evaluateMedicaidPayerResponsibility({
+    claimKind: kind,
+    medicaidCoverageId: medicaid.id,
+    medicaidRank: medicaid.rank,
+    primaryCoverageId: primary.id,
+    primaryCoverageKind: primary.coverageKind,
+    primaryRank: primary.rank,
+  });
+  if (decision.allowed) return;
+
+  switch (decision.reason) {
+    case "rank_one_coverage_missing":
+      throw new ConflictError(
+        "MEDICAID_PRIMARY_COVERAGE_MISSING",
+        "No rank-1 coverage is established for the complete service window. Medicaid ranked second or higher cannot be treated as primary; correct the coverage records before assembly.",
+      );
+    case "tertiary_medicaid_unsupported":
+      throw new ConflictError(
+        "MEDICAID_TERTIARY_BILLING_UNSUPPORTED",
+        "Tertiary Medicaid billing is not authorized by the current payer-responsibility policy.",
+      );
+    case "coverage_identity_conflict":
+      throw new ConflictError(
+        "MEDICAID_COVERAGE_RESOLUTION_CONFLICT",
+        "The selected Medicaid coverage does not match the resolved rank-1 payer. Review the coverage records before assembly.",
+      );
+    case "medicare_hospice_is_primary":
+      throw new ConflictError(
+        "MEDICARE_PRIMARY_HOSPICE_RESPONSIBILITY",
+        "Medicare is primary for hospice-covered services. Assemble those services through M23; no secondary Medicaid hospice-only claim is assembled here.",
+      );
+    case "medicare_secondary_rb_format_unconfirmed":
+      throw new ConflictError(
+        "MEDICAID_SECONDARY_RB_FORMAT_UNVERIFIED",
+        "Medicaid may have a distinct Room & Board responsibility for a qualifying Medicare-primary patient, but the applicable secondary R&B-only claim format is unverified. This is not a Medicaid eligibility denial; assembly remains blocked pending state-format confirmation.",
+      );
+    case "medicare_secondary_combined_format_unconfirmed":
+      throw new ConflictError(
+        "MEDICAID_SECONDARY_COMBINED_FORMAT_UNVERIFIED",
+        "The secondary combined hospice and Room & Board claim format and its Medicare COB treatment are unverified. This is not a Medicaid eligibility denial; assembly remains blocked pending state-format confirmation.",
+      );
+    case "third_party_liability_policy_unconfirmed":
+      throw new ConflictError(
+        "MEDICAID_TPL_POLICY_UNVERIFIED",
+        "The applicable Medicaid third-party-liability policy for this primary payer and claim kind is not established. Resolve payer responsibility before assembly.",
+      );
+  }
+}
+
+function coveragePreview(resolution: CoverageForRange): AssemblyPreviewCoverage {
+  return resolution.status === "uniform"
+    ? {
+        status: "uniform",
+        coverageKind: resolution.coverage.coverageKind,
+        rank: resolution.coverage.rank,
+      }
+    : { status: resolution.status, coverageKind: null, rank: null };
+}
+
+function coverageRefusalCode(
+  role: "medicaid" | "primary",
+  resolution: CoverageForRange,
+): string | null {
+  if (resolution.status === "uniform") return null;
+  if (role === "medicaid") {
+    return {
+      none: "MEDICAID_COVERAGE_NOT_IN_FORCE",
+      changes: "MEDICAID_COVERAGE_CHANGED",
+      ambiguous: "MEDICAID_COVERAGE_AMBIGUOUS",
+    }[resolution.status];
+  }
+  return {
+    none: "MEDICAID_PRIMARY_COVERAGE_MISSING",
+    changes: "MEDICAID_PRIMARY_COVERAGE_CHANGED",
+    ambiguous: "MEDICAID_PRIMARY_COVERAGE_AMBIGUOUS",
+  }[resolution.status];
+}
+
+function payerPolicyReasonCode(reason: string): string {
+  switch (reason) {
+    case "rank_one_coverage_missing":
+      return "MEDICAID_PRIMARY_COVERAGE_MISSING";
+    case "tertiary_medicaid_unsupported":
+      return "MEDICAID_TERTIARY_BILLING_UNSUPPORTED";
+    case "coverage_identity_conflict":
+      return "MEDICAID_COVERAGE_RESOLUTION_CONFLICT";
+    case "medicare_hospice_is_primary":
+      return "MEDICARE_PRIMARY_HOSPICE_RESPONSIBILITY";
+    case "medicare_secondary_rb_format_unconfirmed":
+      return "MEDICAID_SECONDARY_RB_FORMAT_UNVERIFIED";
+    case "medicare_secondary_combined_format_unconfirmed":
+      return "MEDICAID_SECONDARY_COMBINED_FORMAT_UNVERIFIED";
+    case "third_party_liability_policy_unconfirmed":
+      return "MEDICAID_TPL_POLICY_UNVERIFIED";
+    default:
+      return "MEDICAID_PAYER_RESPONSIBILITY_UNRESOLVED";
+  }
+}
+
+function claimKindPreviews(
+  medicaid: CoverageForRange,
+  primary: CoverageForRange,
+): AssemblyPreviewClaimKind[] {
+  const kinds: AssembleClaimInput["kind"][] = ["hospice_only", "rb_only", "combined_hospice_rb"];
+  if (medicaid.status !== "uniform" || primary.status !== "uniform") {
+    const reasonCode =
+      coverageRefusalCode("medicaid", medicaid) ?? coverageRefusalCode("primary", primary);
+    return kinds.map((kind) => ({ kind, payerPolicy: "unresolved", reasonCode }));
+  }
+  return kinds.map((kind) => {
+    const decision = evaluateMedicaidPayerResponsibility({
+      claimKind: kind,
+      medicaidCoverageId: medicaid.coverage.id,
+      medicaidRank: medicaid.coverage.rank,
+      primaryCoverageId: primary.coverage.id,
+      primaryCoverageKind: primary.coverage.coverageKind,
+      primaryRank: primary.coverage.rank,
+    });
+    return {
+      kind,
+      payerPolicy: decision.allowed ? "permitted" : "blocked",
+      reasonCode: decision.allowed ? null : payerPolicyReasonCode(decision.reason),
+    };
+  });
 }
 
 /**
@@ -209,8 +880,27 @@ export interface ProviderEntityCcnReader {
   ccnForProviderEntity(organizationId: string, providerEntityId: string): Promise<string | null>;
 }
 
-/** M6-owned transaction-bound snapshot and row lock used to serialize original-claim TOB cadence. */
+/** M6-owned transaction-bound admission snapshot and row lock shared by claim cadence and LOC writes. */
 export interface AdmissionCadenceReaderPort {
+  previewSnapshotInTransaction?(
+    transaction: unknown,
+    organizationId: string,
+    admissionId: string,
+  ): Promise<{
+    patientId: string;
+    providerEntityId: string | null;
+    dischargedAt: Date | null;
+    status:
+      | "referred"
+      | "pending"
+      | "notice_of_rights_acknowledged"
+      | "active"
+      | "on_hold"
+      | "discharged"
+      | "bereavement"
+      | "closed";
+    stayEndFacts: RbAdmissionSnapshot["stayEndFacts"];
+  } | null>;
   cadenceSnapshotInTransaction(
     transaction: unknown,
     organizationId: string,
@@ -219,7 +909,36 @@ export interface AdmissionCadenceReaderPort {
     patientId: string;
     providerEntityId: string | null;
     dischargedAt: Date | null;
+    status:
+      | "referred"
+      | "pending"
+      | "notice_of_rights_acknowledged"
+      | "active"
+      | "on_hold"
+      | "discharged"
+      | "bereavement"
+      | "closed";
+    stayEndFacts: RbAdmissionSnapshot["stayEndFacts"];
   } | null>;
+  /** Current LOC rows on the same transaction, after cadenceSnapshotInTransaction has locked the admission. */
+  periodsForAdmissionInTransaction?(
+    transaction: unknown,
+    organizationId: string,
+    admissionId: string,
+  ): Promise<
+    ReadonlyArray<{
+      id: string;
+      levelOfCare:
+        | "routine_home_care"
+        | "continuous_home_care"
+        | "inpatient_respite_care"
+        | "general_inpatient_care";
+      effectiveAt: Date;
+      endedAt: Date | null;
+      facilityId: string | null;
+      ipuBedAssignmentId: string | null;
+    }>
+  >;
 }
 
 /** Resolve state-specific adjustment TOBs through the registered MedicaidAdapter. */
@@ -339,6 +1058,7 @@ export function buildDrizzleM24WriteService(
   isGatewayBound: (state: string) => boolean = () => true,
   admissionCadenceReader?: AdmissionCadenceReaderPort,
   adjustmentAdapters?: MedicaidAdjustmentAdapterResolverPort,
+  medicareClaimReader?: () => Pick<ClaimReader, "medicareSecondaryContext">,
 ): M24WriteService {
   const C = schema.medicaidClaim;
   const SUB = schema.medicaidSubmission;
@@ -349,6 +1069,7 @@ export function buildDrizzleM24WriteService(
   const A = schema.rbArrangement;
   const RD = schema.rbDay;
   const TP = schema.stateMedicaidTradingPartnerCredential;
+  const EC = schema.medicaidEligibilityCheck;
   const SH = schema.medicaidClaimStateHistory;
   const SPC = schema.medicaidStatePlanCode;
   const SRS = schema.medicaidStateRateSchedule;
@@ -411,6 +1132,84 @@ export function buildDrizzleM24WriteService(
       triggerSource: "user",
       actorMembershipId,
     });
+  }
+
+  async function abandonPreSubmissionClaim(
+    tx: Tx,
+    actor: M24Actor,
+    claim: typeof C.$inferSelect,
+  ): Promise<typeof C.$inferSelect> {
+    const preSubmission = new Set([
+      "DRAFT",
+      "FAILED_VALIDATION",
+      "READY",
+      "FAILED_MEDICARE_PRIMARY",
+    ]);
+    if (preSubmission.has(claim.state) || claim.state === "ACK_REJECTED") {
+      if (preSubmission.has(claim.state)) {
+        const submissions = await tx
+          .select({ id: SUB.id })
+          .from(SUB)
+          .where(
+            and(eq(SUB.organizationId, actor.organizationId), eq(SUB.medicaidClaimId, claim.id)),
+          )
+          .limit(1);
+        if (submissions.length > 0) {
+          throw new ConflictError(
+            "MEDICAID_CLAIM_SUBMISSION_EXISTS",
+            "This claim has a submission record and cannot use the pre-submission abandonment path.",
+          );
+        }
+      }
+      const lines = await tx
+        .select({ isRb: L.isRb })
+        .from(L)
+        .where(
+          and(
+            eq(L.organizationId, actor.organizationId),
+            eq(L.providerEntityId, claim.providerEntityId),
+            eq(L.medicaidClaimId, claim.id),
+          ),
+        );
+      if (lines.some((line) => line.isRb)) {
+        throw new ConflictError(
+          "MEDICAID_RB_DAYS_REQUIRE_RECONCILIATION",
+          "This claim owns Room & Board days. Reconcile the rejected submission and day eligibility before abandoning it; the claim and its audit evidence were left unchanged.",
+        );
+      }
+    }
+    const reduced = medicaidClaimMachine.reduce(claim.state, "abandon");
+    if (reduced.error) {
+      throw new ConflictError("INVALID_TRANSITION", `cannot abandon from ${claim.state}`);
+    }
+    const now = new Date();
+    const updated = await tx
+      .update(C)
+      .set({
+        state: "ABANDONED",
+        version: claim.version + 1,
+        updatedAt: now,
+        updatedByMembershipId: actor.userId,
+      })
+      .where(
+        and(
+          eq(C.id, claim.id),
+          eq(C.organizationId, actor.organizationId),
+          eq(C.version, claim.version),
+        ),
+      )
+      .returning();
+    if (!updated[0]) throw new StaleVersionError("the claim changed; reload before abandoning");
+    await recordHistory(
+      tx,
+      actor.organizationId,
+      claim.id,
+      claim.state,
+      "ABANDONED",
+      actor.userId,
+      claim.state === "ACK_REJECTED" ? "abandon_rejected_submission" : "abandon_pre_submission",
+    );
+    return updated[0];
   }
 
   function toClaimView(r: typeof C.$inferSelect): ClaimView {
@@ -558,6 +1357,361 @@ export function buildDrizzleM24WriteService(
   }
 
   return {
+    async previewClaimAssembly(actor, input): Promise<AssemblyPreviewView> {
+      if (input.serviceFrom > input.serviceTo) {
+        throw new ConflictError(
+          "MEDICAID_SERVICE_RANGE_INVALID",
+          "service start must not follow service end",
+        );
+      }
+      const previewAdmissionSnapshot = admissionCadenceReader?.previewSnapshotInTransaction;
+      if (!admissionCadenceReader || !previewAdmissionSnapshot) {
+        throw new DegradedError(
+          "MEDICAID_ADMISSION_CADENCE_READER_UNBOUND",
+          "the preview cannot verify patient/provider scope without M6's read-only admission snapshot",
+        );
+      }
+
+      let coverageSnapshot: { medicaid: CoverageForRange; primary: CoverageForRange } | null = null;
+      try {
+        coverageSnapshot = coverage
+          ? await coverage.claimCoverageForRange({
+              organizationId: actor.organizationId,
+              patientId: input.patientId,
+              from: input.serviceFrom,
+              to: input.serviceTo,
+            })
+          : null;
+      } catch {
+        // A preview reports an unavailable source without turning a reader failure into a denial or a pass.
+        coverageSnapshot = null;
+      }
+
+      const medicaidResolution = coverageSnapshot?.medicaid ?? null;
+      const primaryResolution = coverageSnapshot?.primary ?? null;
+      const medicaidView: AssemblyPreviewCoverage = medicaidResolution
+        ? coveragePreview(medicaidResolution)
+        : { status: "unavailable", coverageKind: null, rank: null };
+      const primaryView: AssemblyPreviewCoverage = primaryResolution
+        ? coveragePreview(primaryResolution)
+        : { status: "unavailable", coverageKind: null, rank: null };
+      const claimKinds: AssemblyPreviewClaimKind[] =
+        medicaidResolution && primaryResolution
+          ? claimKindPreviews(medicaidResolution, primaryResolution)
+          : ["hospice_only", "rb_only", "combined_hospice_rb"].map((kind) => ({
+              kind: kind as AssembleClaimInput["kind"],
+              payerPolicy: "unresolved",
+              reasonCode: "MEDICAID_COVERAGE_READER_UNBOUND",
+            }));
+      const payerResponsibility: AssemblyPreviewView["payerResponsibility"] =
+        medicaidResolution?.status === "uniform" && primaryResolution?.status === "uniform"
+          ? primaryResolution.coverage.rank === 1 &&
+            medicaidResolution.coverage.rank === 1 &&
+            primaryResolution.coverage.coverageKind === "medicaid" &&
+            primaryResolution.coverage.id === medicaidResolution.coverage.id
+            ? "medicaid_primary"
+            : primaryResolution.coverage.rank !== 1
+              ? "unresolved"
+              : primaryResolution.coverage.coverageKind === "medicare_ffs"
+                ? medicaidResolution.coverage.rank === 2
+                  ? "medicare_primary_medicaid_secondary"
+                  : "unresolved"
+                : medicaidResolution.coverage.rank === 2
+                  ? "other_primary"
+                  : "unresolved"
+          : "unresolved";
+
+      let arrangements: AssemblyPreviewArrangement[] = [];
+      let arrangementListStatus: AssemblyPreviewView["arrangementListStatus"] = "unavailable";
+      let recordedEligibility: AssemblyPreviewView["recordedEligibility"] = {
+        status: "unavailable",
+        outcome: null,
+        serviceState: null,
+        asOfServiceDate: null,
+        checkedAt: null,
+        staleAt: null,
+      };
+
+      if (admissionCadenceReader) {
+        const previewReads = await withOrgContext(db, actor, async (tx) => {
+          const admissionSnapshot = await previewAdmissionSnapshot.call(
+            admissionCadenceReader,
+            tx,
+            actor.organizationId,
+            input.admissionId,
+          );
+          if (!admissionSnapshot) throw new NotFoundError("admission not found");
+          if (
+            admissionSnapshot.patientId !== input.patientId ||
+            admissionSnapshot.providerEntityId !== input.providerEntityId
+          ) {
+            throw new ConflictError(
+              "MEDICAID_ADMISSION_IDENTITY_MISMATCH",
+              "the admission does not belong to the selected patient and provider entity",
+            );
+          }
+
+          const rangeFrom = new Date(`${input.serviceFrom}T00:00:00.000Z`);
+          const rangeTo = new Date(`${input.serviceTo}T00:00:00.000Z`);
+          const [credentialRows, arrangementRows, dayRows] = await Promise.all([
+            tx
+              .select({ serviceState: TP.serviceState })
+              .from(TP)
+              .where(
+                and(
+                  eq(TP.organizationId, actor.organizationId),
+                  eq(TP.providerEntityId, input.providerEntityId),
+                  lte(TP.activeFrom, rangeFrom),
+                  or(isNull(TP.activeTo), gte(TP.activeTo, rangeFrom)),
+                ),
+              ),
+            tx
+              .select()
+              .from(A)
+              .where(
+                and(
+                  eq(A.organizationId, actor.organizationId),
+                  eq(A.patientId, input.patientId),
+                  eq(A.providerEntityId, input.providerEntityId),
+                  lte(A.effectiveFrom, rangeTo),
+                  or(isNull(A.effectiveTo), gte(A.effectiveTo, rangeFrom)),
+                ),
+              )
+              .orderBy(desc(A.effectiveFrom))
+              .limit(50),
+            tx
+              .select()
+              .from(RD)
+              .where(
+                and(
+                  eq(RD.organizationId, actor.organizationId),
+                  eq(RD.providerEntityId, input.providerEntityId),
+                  eq(RD.patientId, input.patientId),
+                  gte(RD.serviceDate, rangeFrom),
+                  lte(RD.serviceDate, rangeTo),
+                ),
+              )
+              .orderBy(RD.serviceDate, RD.id),
+          ]);
+          const eligibilityRows =
+            medicaidResolution?.status === "uniform"
+              ? await tx
+                  .select({
+                    outcome: EC.outcome,
+                    serviceState: EC.serviceState,
+                    asOfServiceDate: EC.asOfServiceDate,
+                    checkedAt: EC.checkedAt,
+                    staleAt: EC.staleAt,
+                  })
+                  .from(EC)
+                  .where(
+                    and(
+                      eq(EC.organizationId, actor.organizationId),
+                      eq(EC.providerEntityId, input.providerEntityId),
+                      eq(EC.patientId, input.patientId),
+                      eq(EC.patientPayerId, medicaidResolution.coverage.id),
+                      gte(EC.asOfServiceDate, rangeFrom),
+                      lte(EC.asOfServiceDate, rangeTo),
+                    ),
+                  )
+                  .orderBy(desc(EC.asOfServiceDate), desc(EC.checkedAt))
+                  .limit(1)
+              : [];
+          const serviceStates = [...new Set(credentialRows.map((row) => row.serviceState))];
+          const serviceState = serviceStates.length === 1 ? serviceStates[0]! : null;
+          const eligibility = eligibilityRows[0];
+          const projectedEligibility: AssemblyPreviewView["recordedEligibility"] =
+            medicaidResolution?.status !== "uniform"
+              ? {
+                  status: "unavailable",
+                  outcome: null,
+                  serviceState: null,
+                  asOfServiceDate: null,
+                  checkedAt: null,
+                  staleAt: null,
+                }
+              : eligibility
+                ? {
+                    status: eligibility.staleAt.getTime() > Date.now() ? "current" : "stale",
+                    outcome: String(eligibility.outcome),
+                    serviceState: eligibility.serviceState,
+                    asOfServiceDate: day(eligibility.asOfServiceDate),
+                    checkedAt: iso(eligibility.checkedAt),
+                    staleAt: iso(eligibility.staleAt),
+                  }
+                : {
+                    status: "not_recorded",
+                    outcome: null,
+                    serviceState: null,
+                    asOfServiceDate: null,
+                    checkedAt: null,
+                    staleAt: null,
+                  };
+
+          return {
+            admissionSnapshot,
+            serviceState,
+            projectedEligibility,
+            arrangementRows,
+            dayRows,
+          };
+        });
+        recordedEligibility = previewReads.projectedEligibility;
+
+        let rawPeriods: Awaited<
+          ReturnType<LevelOfCarePeriodReaderPort["periodsForAdmission"]>
+        > | null = null;
+        if (locPeriodReader) {
+          try {
+            rawPeriods = await locPeriodReader.periodsForAdmission(
+              actor.organizationId,
+              input.admissionId,
+            );
+          } catch {
+            rawPeriods = null;
+          }
+        }
+
+        arrangements = previewReads.arrangementRows.map((arrangement) => {
+          const arrangementError = arrangementIssue(
+            arrangement,
+            actor.organizationId,
+            input.patientId,
+            input.providerEntityId,
+            input.serviceFrom,
+            input.serviceTo,
+          );
+          let reasonCode = arrangementError?.code ?? null;
+          let billableDayCount = 0;
+          let status: AssemblyPreviewArrangement["status"] = reasonCode ? "blocked" : "candidate";
+          if (!reasonCode && !rawPeriods) {
+            status = "unresolved";
+            reasonCode = "MEDICAID_LOC_PERIOD_READER_UNBOUND";
+          }
+          if (!reasonCode && rawPeriods) {
+            const candidateInput: AssembleClaimInput = {
+              ...input,
+              kind: "rb_only",
+              rbArrangementId: arrangement.id,
+            };
+            const deathDate =
+              previewReads.admissionSnapshot.stayEndFacts.dischargeReason === "death"
+                ? (previewReads.admissionSnapshot.stayEndFacts.deceasedDate ??
+                  previewReads.admissionSnapshot.stayEndFacts.dischargeDate)
+                : null;
+            for (const rbDay of previewReads.dayRows) {
+              if (rbDay.status === "billed" || rbDay.status === "pending") {
+                reasonCode =
+                  rbDay.status === "billed"
+                    ? "MEDICAID_RB_DAYS_ALREADY_ASSIGNED"
+                    : "MEDICAID_RB_DAYS_PENDING_RECONCILIATION";
+                break;
+              }
+              if (rbDay.status === "voided" || rbDay.status === "excluded") {
+                if (rbDay.medicaidClaimLineId !== null)
+                  reasonCode = "MEDICAID_RB_DAY_SNAPSHOT_INVALID";
+                if (reasonCode) break;
+                continue;
+              }
+              const issue =
+                rbDayIssue(rbDay, arrangement, actor.organizationId, candidateInput) ??
+                rbDayAdmissionEndIssue(rbDay, previewReads.admissionSnapshot) ??
+                rbDayLocSnapshotIssue(rbDay, rawPeriods, deathDate);
+              if (issue) {
+                reasonCode = issue.code;
+                break;
+              }
+              billableDayCount += 1;
+            }
+            if (!reasonCode && billableDayCount === 0) reasonCode = "MEDICAID_NO_BILLABLE_RB_DAYS";
+            if (reasonCode) status = "blocked";
+          }
+          return {
+            id: arrangement.id,
+            facilityName: arrangement.nfFacilityNameSnapshot,
+            effectiveFrom: day(arrangement.effectiveFrom),
+            effectiveTo: dayN(arrangement.effectiveTo),
+            billableDayCount,
+            status,
+            reasonCode,
+          };
+        });
+        arrangementListStatus = rawPeriods !== null ? "available" : "unavailable";
+        // Only one configured service state is returned; eligibility remains a separate recorded fact.
+        if (!recordedEligibility.serviceState) {
+          recordedEligibility = {
+            ...recordedEligibility,
+            serviceState: previewReads.serviceState,
+          };
+        }
+      }
+
+      let medicareEvidence: AssemblyPreviewView["medicareEvidence"] = {
+        match:
+          primaryResolution?.status !== "uniform"
+            ? "unresolved"
+            : primaryResolution.coverage.coverageKind !== "medicare_ffs"
+              ? "not_applicable"
+              : "unavailable",
+        evidenceStatus: null,
+        rangeRelation: null,
+        remittanceAdviceRecorded: null,
+      };
+      if (
+        medicareClaimReader &&
+        primaryResolution?.status === "uniform" &&
+        primaryResolution.coverage.coverageKind === "medicare_ffs"
+      ) {
+        try {
+          const matches = await medicareClaimReader().medicareSecondaryContext(
+            actor.organizationId,
+            input.patientId,
+            { from: input.serviceFrom, to: input.serviceTo },
+            {
+              providerEntityId: input.providerEntityId,
+              admissionId: input.admissionId,
+              primaryCoverageId: primaryResolution.coverage.id,
+            },
+          );
+          if (matches.length === 0) {
+            medicareEvidence = { ...medicareEvidence, match: "none" };
+          } else if (matches.length > 1) {
+            medicareEvidence = { ...medicareEvidence, match: "ambiguous" };
+          } else {
+            const match = matches[0]!;
+            medicareEvidence = {
+              match: "single",
+              evidenceStatus: match.evidenceStatus,
+              rangeRelation: match.rangeRelation,
+              remittanceAdviceRecorded: match.remittanceAdviceRecorded,
+            };
+          }
+        } catch {
+          medicareEvidence = { ...medicareEvidence, match: "unavailable" };
+        }
+      }
+
+      const stateBillingPolicy: AssemblyPreviewView["stateBillingPolicy"] =
+        payerResponsibility === "medicaid_primary"
+          ? "not_applicable_to_primary_medicaid"
+          : payerResponsibility === "unresolved"
+            ? "unresolved"
+            : "unconfirmed";
+      return {
+        primaryCoverage: primaryView,
+        medicaidCoverage: medicaidView,
+        payerResponsibility,
+        recordedEligibility,
+        claimKinds,
+        rbArrangements: arrangements,
+        arrangementListStatus,
+        medicareEvidence,
+        stateBillingPolicy,
+        electronicSubmissionAvailable: false,
+        isAdvisorySnapshot: true,
+      };
+    },
+
     // ── route 1 — assemble. The claim row needs three externally-owned values: `patient_payer_id` (M5),
     // `service_state` (the state-level service/credential scope; it does not classify FFS vs MCO) and
     // `state_plan_code_id` (WX-PR-011:
@@ -576,32 +1730,22 @@ export function buildDrizzleM24WriteService(
     // `medicaid_claim_line_encounter` when the signed-encounters reader is bound (optional — supplementary
     // audit evidence, not a structural input).
     async assembleClaim(actor: M24Actor, input: AssembleClaimInput): Promise<ClaimView> {
+      assertAssemblyRequestShape(input);
       if (!coverage) {
         throw new DegradedError(
           "MEDICAID_COVERAGE_READER_UNBOUND",
           "claim assembly requires M5's PatientCoverageReader seam (not bound in this environment)",
         );
       }
-      const resolved = await coverage.activeMedicaidCoverage({
+      const preflight = await coverage.claimCoverageForRange({
         organizationId: actor.organizationId,
         patientId: input.patientId,
-        onDate: input.serviceFrom,
-        throughDate: input.serviceTo,
+        from: input.serviceFrom,
+        to: input.serviceTo,
       });
-      if (!resolved) {
-        throw new ConflictError(
-          "MEDICAID_COVERAGE_NOT_IN_FORCE",
-          "this patient holds no single Medicaid coverage in force on every day of the claim's service window (split the claim where the coverage changes)",
-        );
-      }
-      if (!medicaidCoverageAllowedForClaim(input.kind, resolved.rank)) {
-        throw new ConflictError(
-          "MEDICAID_PRIMARY_PAYER_REQUIRED",
-          input.kind === "rb_only"
-            ? "secondary Medicaid for an R&B-only claim is not authorized by the current billing policy; use the combined claim path or record Medicaid as primary"
-            : "a hospice-only Medicaid claim requires Medicaid to be the patient's primary coverage for the full service window",
-        );
-      }
+      const preflightMedicaid = requireUniformClaimCoverage(preflight.medicaid, "medicaid");
+      const preflightPrimary = requireUniformClaimCoverage(preflight.primary, "primary");
+      assertMedicaidPayerResponsibility(input.kind, preflightMedicaid, preflightPrimary);
       if (!admissionCadenceReader) {
         throw new DegradedError(
           "MEDICAID_ADMISSION_CADENCE_READER_UNBOUND",
@@ -612,25 +1756,30 @@ export function buildDrizzleM24WriteService(
         // #877 — re-resolve under a row lock in the claim-write transaction. Coverage replacement
         // now waits until this claim commits, and a change already committed after the optimistic
         // preflight is refused before anything is inserted.
-        const lockedCoverage = await coverage.activeMedicaidCoverageInTransaction(tx, {
+        const locked = await coverage.claimCoverageSnapshotInTransaction(tx, {
           organizationId: actor.organizationId,
           patientId: input.patientId,
-          onDate: input.serviceFrom,
-          throughDate: input.serviceTo,
+          from: input.serviceFrom,
+          to: input.serviceTo,
         });
-        if (!lockedCoverage || lockedCoverage.id !== resolved.id) {
+        if (
+          coverageResolutionKey(locked.medicaid) !== coverageResolutionKey(preflight.medicaid) ||
+          coverageResolutionKey(locked.primary) !== coverageResolutionKey(preflight.primary)
+        ) {
           throw new ConflictError(
             "MEDICAID_COVERAGE_CHANGED",
-            "Medicaid coverage changed while this claim was being assembled. Reload coverage and assemble again.",
+            "Primary or Medicaid coverage changed while this claim was being assembled. Reload coverage and assemble again.",
           );
         }
-        if (!medicaidCoverageAllowedForClaim(input.kind, lockedCoverage.rank)) {
-          throw new ConflictError(
-            "MEDICAID_PRIMARY_PAYER_REQUIRED",
-            input.kind === "rb_only"
-              ? "secondary Medicaid for an R&B-only claim is not authorized by the current billing policy; use the combined claim path or record Medicaid as primary"
-              : "a hospice-only Medicaid claim requires Medicaid to be the patient's primary coverage for the full service window",
-          );
+        const lockedMedicaid = requireUniformClaimCoverage(locked.medicaid, "medicaid");
+        const lockedPrimary = requireUniformClaimCoverage(locked.primary, "primary");
+        assertMedicaidPayerResponsibility(input.kind, lockedMedicaid, lockedPrimary);
+        const patientLifecycleIssue = patientLifecycleServiceRangeIssue(
+          locked.patientLifecycle,
+          input.serviceTo,
+        );
+        if (patientLifecycleIssue) {
+          throw new ConflictError(patientLifecycleIssue.code, patientLifecycleIssue.message);
         }
         // The M6 admission row is the per-admission serialization point. FOR UPDATE makes concurrent
         // assemblers derive cadence sequentially and also serializes against discharge writers.
@@ -650,6 +1799,112 @@ export function buildDrizzleM24WriteService(
             "MEDICAID_ADMISSION_IDENTITY_MISMATCH",
             "the admission does not belong to the selected patient and provider entity",
           );
+        }
+        const admissionIssue = admissionServiceRangeIssue(admission, input.serviceTo);
+        if (admissionIssue) {
+          throw new ConflictError(admissionIssue.code, admissionIssue.message);
+        }
+        const inclusiveLocEndDate = inclusiveLocEndDateForAdmission(admission);
+        if (!locPeriodReader) {
+          throw new DegradedError(
+            "MEDICAID_LOC_PERIOD_READER_UNBOUND",
+            "claim assembly requires the M6 level-of-care period reader (not bound in this environment)",
+          );
+        }
+        const rawPeriods = await locPeriodReader.periodsForAdmission(
+          actor.organizationId,
+          input.admissionId,
+        );
+        let rbArrangement: RbArrangementRow | null = null;
+        const selectedRbDays: (typeof schema.rbDay.$inferSelect)[] = [];
+        if (input.kind !== "hospice_only") {
+          const arrangementRows = await tx
+            .select()
+            .from(A)
+            .where(
+              and(eq(A.organizationId, actor.organizationId), eq(A.id, input.rbArrangementId!)),
+            )
+            .limit(1)
+            .for("update");
+          rbArrangement = arrangementRows[0] ?? null;
+          if (!rbArrangement) throw new NotFoundError("R&B arrangement not found");
+          const serviceFrom = day(input.serviceFrom);
+          const serviceTo = day(input.serviceTo);
+          const issue = arrangementIssue(
+            rbArrangement,
+            actor.organizationId,
+            input.patientId,
+            input.providerEntityId,
+            serviceFrom,
+            serviceTo,
+          );
+          if (issue) throwAssemblyIssue(issue);
+
+          // Lock every patient day in the requested interval, not only the selected arrangement's
+          // currently-billable rows. A day already owned by another claim or a conflicting arrangement
+          // must not disappear from a partial assembly. Stable ordering keeps overlapping claims aligned.
+          const dayRows = await tx
+            .select()
+            .from(RD)
+            .where(
+              and(
+                eq(RD.organizationId, actor.organizationId),
+                eq(RD.patientId, input.patientId),
+                gte(RD.serviceDate, new Date(`${serviceFrom}T00:00:00.000Z`)),
+                lte(RD.serviceDate, new Date(`${serviceTo}T00:00:00.000Z`)),
+              ),
+            )
+            .orderBy(RD.serviceDate, RD.id)
+            .for("update");
+          if (dayRows.some((rbd) => rbd.status === "billed")) {
+            throw new ConflictError(
+              "MEDICAID_RB_DAYS_ALREADY_ASSIGNED",
+              "One or more Room & Board days in this service range already belong to a claim. Reconcile the existing claim before assembling an overlapping claim.",
+            );
+          }
+          if (dayRows.some((rbd) => rbd.status === "pending")) {
+            throw new ConflictError(
+              "MEDICAID_RB_DAYS_PENDING_RECONCILIATION",
+              "One or more Room & Board days in this service range are not yet classified for billing. Reconcile the day records before assembling this claim.",
+            );
+          }
+          for (const rbd of dayRows) {
+            if (rbd.status === "voided") {
+              if (rbd.medicaidClaimLineId !== null) {
+                throw new ConflictError(
+                  "MEDICAID_RB_DAY_SNAPSHOT_INVALID",
+                  "A voided Room & Board day still references a claim line and requires reconciliation.",
+                );
+              }
+              continue;
+            }
+            if (rbd.status === "excluded") {
+              if (rbd.medicaidClaimLineId !== null) {
+                throw new ConflictError(
+                  "MEDICAID_RB_DAY_SNAPSHOT_INVALID",
+                  "An excluded Room & Board day still references a claim line and requires reconciliation.",
+                );
+              }
+              continue;
+            }
+            const dayIssue = rbDayIssue(rbd, rbArrangement, actor.organizationId, input);
+            if (dayIssue) throwAssemblyIssue(dayIssue);
+            const admissionEndIssue = rbDayAdmissionEndIssue(rbd, admission);
+            if (admissionEndIssue) throwAssemblyIssue(admissionEndIssue);
+            const inclusiveDeathDate =
+              admission.stayEndFacts.dischargeReason === "death"
+                ? (admission.stayEndFacts.deceasedDate ?? admission.stayEndFacts.dischargeDate)
+                : null;
+            const locIssue = rbDayLocSnapshotIssue(rbd, rawPeriods, inclusiveDeathDate);
+            if (locIssue) throwAssemblyIssue(locIssue);
+            selectedRbDays.push(rbd);
+          }
+          if (selectedRbDays.length === 0) {
+            throw new ConflictError(
+              "MEDICAID_NO_BILLABLE_RB_DAYS",
+              "No available billable Room & Board days exist for the selected arrangement and service range.",
+            );
+          }
         }
         const creds = await tx
           .select({ serviceState: TP.serviceState, activeTo: TP.activeTo })
@@ -732,7 +1987,7 @@ export function buildDrizzleM24WriteService(
             organizationId: actor.organizationId,
             providerEntityId: input.providerEntityId,
             patientId: input.patientId,
-            patientPayerId: lockedCoverage.id,
+            patientPayerId: lockedMedicaid.id,
             admissionId: input.admissionId,
             serviceState,
             kind: input.kind,
@@ -742,7 +1997,8 @@ export function buildDrizzleM24WriteService(
             statePlanCodeId: plan.id,
             statePlanCodeSnapshot: plan.planCode,
             rbArrangementId: input.rbArrangementId ?? null,
-            medicareClaimId: input.medicareClaimId ?? null,
+            medicareClaimId: null,
+            rbDayCountSnapshot: selectedRbDays.length,
             medicaidClaimControlNumber: controlNumber,
             state: "DRAFT",
             createdByMembershipId: actor.userId,
@@ -755,16 +2011,6 @@ export function buildDrizzleM24WriteService(
         // assembly (zero lines) was the prior scope cut; this closes it for real for both line families.
         let nextLineNumber = 1;
         if (input.kind !== "rb_only") {
-          if (!locPeriodReader) {
-            throw new DegradedError(
-              "MEDICAID_LOC_PERIOD_READER_UNBOUND",
-              "claim assembly requires the M6 level-of-care period reader (not bound in this environment)",
-            );
-          }
-          const rawPeriods = await locPeriodReader.periodsForAdmission(
-            actor.organizationId,
-            input.admissionId,
-          );
           // place-of-service (WX-PR-011 follow-up #2): resolve the real facts per period BEFORE calling
           // the pure buildHospiceLines — one residence lookup + one batched facility-kind lookup, anchored
           // to each period's own start date (not the claim's), so a mid-claim LOC change resolves against
@@ -789,13 +2035,17 @@ export function buildDrizzleM24WriteService(
           const facilityKinds = facilityKindReader
             ? await facilityKindReader.kindsFor([...facilityIdsToResolve])
             : new Map<string, PlaceOfServiceFacilityKind>();
+          const inclusiveDeathPeriodId = inclusiveDeathLocPeriodId(rawPeriods, inclusiveLocEndDate);
           const locPeriods = rawPeriods.map((p) => {
             const residence = residenceByPeriod.get(p.id) ?? null;
             return {
               levelOfCarePeriodId: p.id,
               levelOfCare: LOC_BY_M6_ENUM[p.levelOfCare],
               from: day(p.effectiveAt),
-              to: p.endedAt ? day(p.endedAt) : null,
+              to: m6LocClaimEndDate(
+                p.endedAt,
+                p.id === inclusiveDeathPeriodId ? inclusiveLocEndDate : null,
+              ),
               placeOfService: {
                 ownIpuBed: p.ipuBedAssignmentId !== null,
                 locPeriodFacilityKind: p.facilityId
@@ -891,21 +2141,8 @@ export function buildDrizzleM24WriteService(
           }
           nextLineNumber += hospiceLines.length;
         }
-        if (input.kind !== "hospice_only" && input.rbArrangementId) {
-          const rbDays = await tx
-            .select()
-            .from(RD)
-            .where(
-              and(
-                eq(RD.organizationId, actor.organizationId),
-                eq(RD.rbArrangementId, input.rbArrangementId),
-                eq(RD.status, "billable"),
-                gte(RD.serviceDate, from),
-                lte(RD.serviceDate, new Date(input.serviceTo)),
-              ),
-            )
-            .orderBy(RD.serviceDate);
-          for (const rbd of rbDays) {
+        if (input.kind !== "hospice_only" && rbArrangement) {
+          for (const rbd of selectedRbDays) {
             const insertedLine = await tx
               .insert(L)
               .values({
@@ -924,18 +2161,54 @@ export function buildDrizzleM24WriteService(
                 chargesCents: rbd.perDiemCentsSnapshot,
                 isRb: true,
                 rbDayId: rbd.id,
+                locationId: rbd.locationId,
               })
               .returning({ id: L.id });
-            await tx
+            const transitioned = await tx
               .update(RD)
               .set({
                 status: "billed",
                 medicaidClaimLineId: insertedLine[0]!.id,
+                version: sql`${RD.version} + 1`,
                 updatedAt: new Date(),
               })
-              .where(eq(RD.id, rbd.id));
+              .where(
+                and(
+                  eq(RD.id, rbd.id),
+                  eq(RD.organizationId, actor.organizationId),
+                  eq(RD.version, rbd.version),
+                  eq(RD.status, "billable"),
+                  isNull(RD.medicaidClaimLineId),
+                ),
+              )
+              .returning({ id: RD.id });
+            if (transitioned.length !== 1) {
+              throw new ConflictError(
+                "MEDICAID_RB_DAY_CONSUMPTION_CONFLICT",
+                "A Room & Board day changed while this claim was being assembled. Reload the day records before retrying.",
+              );
+            }
           }
         }
+
+        const assembledLineFlags = await tx
+          .select({ isRb: L.isRb })
+          .from(L)
+          .where(
+            and(
+              eq(L.organizationId, actor.organizationId),
+              eq(L.providerEntityId, input.providerEntityId),
+              eq(L.medicaidClaimId, claimId),
+            ),
+          );
+        const structureFailure = claimStructureFailure({
+          kind: input.kind,
+          hasRbArrangement: inserted[0]!.rbArrangementId !== null,
+          hospiceLineCount: assembledLineFlags.filter((line) => !line.isRb).length,
+          rbLineCount: assembledLineFlags.filter((line) => line.isRb).length,
+        });
+        const structureError = claimStructureError(structureFailure);
+        if (structureError) throwAssemblyIssue(structureError);
 
         await recordHistory(
           tx,
@@ -989,11 +2262,16 @@ export function buildDrizzleM24WriteService(
 
     async deleteDraftClaim(actor, claimId, expectedVersion) {
       await withOrgContext(db, actor, async (tx) => {
-        const claim = await loadClaim(tx, claimId);
+        const claim = await loadClaim(tx, claimId, true);
         if (claim.state !== "DRAFT")
           throw new ConflictError("CLAIM_NOT_DRAFT", "only a DRAFT claim is deletable");
         assertVersion(claim, expectedVersion);
-        await tx.delete(C).where(eq(C.id, claimId));
+        // The application role has no DELETE grant on claims and the assembly history is append-only.
+        // Do not turn this DELETE endpoint into an undocumented soft delete; use the explicit lifecycle.
+        throw new ConflictError(
+          "MEDICAID_DRAFT_DELETE_UNSUPPORTED",
+          "Assembled claims retain their lines and append-only history. Use the audited abandon action; an R&B draft with reserved days remains blocked until those days can be safely reconciled.",
+        );
       });
     },
 
@@ -1007,9 +2285,211 @@ export function buildDrizzleM24WriteService(
           .from(schema.medicaidClaimLine)
           .where(eq(schema.medicaidClaimLine.medicaidClaimId, claimId))
           .orderBy(schema.medicaidClaimLine.lineNumber);
+        const structureFailure = claimStructureFailure({
+          kind: claim.kind,
+          hasRbArrangement: claim.rbArrangementId !== null,
+          hospiceLineCount: lineRows.filter((line) => !line.isRb).length,
+          rbLineCount: lineRows.filter((line) => line.isRb).length,
+        });
+        if (lineRows.some((line) => !line.isRb && line.rbDayId !== null)) {
+          throw new ConflictError(
+            "MEDICAID_CLAIM_STRUCTURE_INVALID",
+            "A non-R&B line references a Room & Board day. Reconcile the claim before validation.",
+          );
+        }
+        const structureError = claimStructureError(structureFailure);
+        if (structureError) {
+          throw new ConflictError(
+            "MEDICAID_CLAIM_STRUCTURE_INVALID",
+            "This claim's line families do not match its claim kind. It cannot be validated for readiness.",
+          );
+        }
+        if (
+          claim.rbDayCountSnapshot !== null &&
+          claim.rbDayCountSnapshot !== lineRows.filter((line) => line.isRb).length
+        ) {
+          throw new ConflictError(
+            "MEDICAID_RB_DAY_COUNT_MISMATCH",
+            "The claim's Room & Board day snapshot does not match its stored lines. Reconcile the claim before validation.",
+          );
+        }
+        if (claim.medicareClaimId !== null) {
+          throw new ConflictError(
+            "MEDICAID_MEDICARE_LINKAGE_UNSUPPORTED",
+            "A Medicare claim identifier alone is not adjudication or payment evidence. This unsupported COB claim cannot be validated.",
+          );
+        }
 
-        // Build the minimal, PHI-free aggregate context. Every reader seam is UNBOUND (deferred), so the
-        // seam-gated rules SKIP `seam_not_bound` (non-blocking). The run is honest about its degraded inputs.
+        if (!coverage) {
+          throw new DegradedError(
+            "MEDICAID_COVERAGE_READER_UNBOUND",
+            "claim validation requires M5's range-wide coverage reader to recheck payer responsibility",
+          );
+        }
+        const payerSnapshot = await coverage.claimCoverageSnapshotInTransaction(tx, {
+          organizationId: actor.organizationId,
+          patientId: claim.patientId,
+          from: day(claim.serviceFrom),
+          to: day(claim.serviceTo),
+        });
+        const patientLifecycleIssue = patientLifecycleServiceRangeIssue(
+          payerSnapshot.patientLifecycle,
+          day(claim.serviceTo),
+        );
+        if (patientLifecycleIssue) {
+          throw new ConflictError(patientLifecycleIssue.code, patientLifecycleIssue.message);
+        }
+        const resolvedMedicaid = requireUniformClaimCoverage(payerSnapshot.medicaid, "medicaid");
+        const resolvedPrimary = requireUniformClaimCoverage(payerSnapshot.primary, "primary");
+        if (resolvedMedicaid.id !== claim.patientPayerId) {
+          throw new ConflictError(
+            "MEDICAID_COVERAGE_CHANGED",
+            "The Medicaid coverage linked to this draft is no longer the coverage resolved for its full service period.",
+          );
+        }
+        assertMedicaidPayerResponsibility(claim.kind, resolvedMedicaid, resolvedPrimary);
+        if (!admissionCadenceReader) {
+          throw new DegradedError(
+            "MEDICAID_ADMISSION_CADENCE_READER_UNBOUND",
+            "claim validation requires M6's admission status reader to recheck the stay-end facts",
+          );
+        }
+        const admission = await admissionCadenceReader.cadenceSnapshotInTransaction(
+          tx,
+          actor.organizationId,
+          claim.admissionId,
+        );
+        if (
+          !admission ||
+          admission.patientId !== claim.patientId ||
+          admission.providerEntityId !== claim.providerEntityId
+        ) {
+          throw new ConflictError(
+            "MEDICAID_ADMISSION_IDENTITY_MISMATCH",
+            "The admission identity could not be verified for this claim. Reconcile the patient and provider scope before validation.",
+          );
+        }
+        const admissionIssue = admissionServiceRangeIssue(admission, day(claim.serviceTo));
+        if (admissionIssue) {
+          throw new ConflictError(admissionIssue.code, admissionIssue.message);
+        }
+        const hospiceLines = lineRows.filter((line) => !line.isRb);
+        const rbLines = lineRows.filter((line) => line.isRb);
+        let currentLocPeriods: readonly CurrentLocPeriodForClaim[] | null = null;
+        let hospiceClaimSnapshotVerified = claim.kind === "rb_only";
+        if (claim.kind !== "rb_only") {
+          if (!admissionCadenceReader.periodsForAdmissionInTransaction) {
+            throw new DegradedError(
+              "MEDICAID_LOC_PERIOD_TRANSACTION_READER_UNBOUND",
+              "Hospice-line validation requires M6's current LOC snapshot on the claim transaction",
+            );
+          }
+          currentLocPeriods = await admissionCadenceReader.periodsForAdmissionInTransaction(
+            tx,
+            actor.organizationId,
+            claim.admissionId,
+          );
+          const snapshotIssue = hospiceClaimLineSnapshotIssue({
+            lines: hospiceLines,
+            periods: currentLocPeriods,
+            organizationId: actor.organizationId,
+            providerEntityId: claim.providerEntityId,
+            claimId: claim.id,
+            serviceFrom: day(claim.serviceFrom),
+            serviceTo: day(claim.serviceTo),
+            inclusiveEndDate: inclusiveLocEndDateForAdmission(admission),
+          });
+          if (snapshotIssue) throw new ConflictError(snapshotIssue.code, snapshotIssue.message);
+          hospiceClaimSnapshotVerified = true;
+        }
+        if (rbLines.length > 0) {
+          if (
+            !claim.rbArrangementId ||
+            claim.rbDayCountSnapshot !== rbLines.length ||
+            rbLines.some((line) => line.rbDayId === null) ||
+            new Set(rbLines.map((line) => line.rbDayId)).size !== rbLines.length
+          ) {
+            throw new ConflictError(
+              "MEDICAID_RB_DAY_COUNT_MISMATCH",
+              "The Room & Board lines do not identify a complete, unique billed-day snapshot. Reconcile the claim before validation.",
+            );
+          }
+          if (!admissionCadenceReader.periodsForAdmissionInTransaction) {
+            throw new DegradedError(
+              "MEDICAID_LOC_PERIOD_TRANSACTION_READER_UNBOUND",
+              "Room & Board validation requires M6's current LOC snapshot on the claim transaction",
+            );
+          }
+          const [arrangement] = await tx
+            .select()
+            .from(A)
+            .where(and(eq(A.organizationId, actor.organizationId), eq(A.id, claim.rbArrangementId)))
+            .limit(1)
+            .for("share");
+          if (!arrangement) {
+            throw new ConflictError(
+              "MEDICAID_RB_ARRANGEMENT_IDENTITY_MISMATCH",
+              "The Room & Board arrangement for this claim is unavailable in the current tenant scope.",
+            );
+          }
+          currentLocPeriods ??= await admissionCadenceReader.periodsForAdmissionInTransaction(
+            tx,
+            actor.organizationId,
+            claim.admissionId,
+          );
+          const rbDayIds = rbLines.map((line) => line.rbDayId as string);
+          const rbDays = await tx
+            .select()
+            .from(RD)
+            .where(
+              and(
+                eq(RD.organizationId, actor.organizationId),
+                eq(RD.patientId, claim.patientId),
+                inArray(RD.id, rbDayIds),
+              ),
+            )
+            .orderBy(RD.serviceDate, RD.id)
+            .for("share");
+          const rbDayById = new Map(rbDays.map((rbDay) => [rbDay.id, rbDay]));
+          if (rbDayById.size !== rbDayIds.length) {
+            throw new ConflictError(
+              "MEDICAID_RB_DAY_CLAIM_OWNERSHIP_MISMATCH",
+              "One or more Room & Board lines no longer resolve to a billed day in this claim's tenant and patient scope.",
+            );
+          }
+          for (const line of rbLines) {
+            const rbDay = rbDayById.get(line.rbDayId as string);
+            if (!rbDay) {
+              throw new ConflictError(
+                "MEDICAID_RB_DAY_CLAIM_OWNERSHIP_MISMATCH",
+                "A Room & Board line no longer resolves to its billed day.",
+              );
+            }
+            const issue = rbClaimLineIssue({
+              line,
+              rbDay,
+              arrangement,
+              organizationId: actor.organizationId,
+              patientId: claim.patientId,
+              providerEntityId: claim.providerEntityId,
+              claimId: claim.id,
+              arrangementId: claim.rbArrangementId,
+              serviceFrom: day(claim.serviceFrom),
+              serviceTo: day(claim.serviceTo),
+              admission,
+              locPeriods: currentLocPeriods,
+            });
+            if (issue) throw new ConflictError(issue.code, issue.message);
+          }
+        }
+        const dualCoverageRecorded =
+          resolvedPrimary.coverageKind === "medicare_ffs" &&
+          resolvedPrimary.rank === 1 &&
+          resolvedMedicaid.coverageKind === "medicaid" &&
+          resolvedMedicaid.rank === 2;
+
+        // M5 coverage is server-resolved inside this claim transaction. A Medicare claim id is not used as
+        // a proxy for dual coverage; the secondary claim paths remain blocked by the payer-policy gate.
         const ctx: MedicaidValidationContext = {
           orgId: actor.organizationId,
           asOfDate: day(claim.serviceFrom),
@@ -1018,6 +2498,7 @@ export function buildDrizzleM24WriteService(
             claimId: claim.id,
             providerEntityId: claim.providerEntityId,
             patientId: claim.patientId,
+            admissionId: claim.admissionId,
             serviceState: claim.serviceState,
             kind: claim.kind,
             tob: claim.tob as MedicaidValidationContext["claim"]["tob"],
@@ -1025,8 +2506,9 @@ export function buildDrizzleM24WriteService(
             serviceTo: day(claim.serviceTo),
             replacesClaimId: claim.replacesClaimId ?? null,
             medicareClaimId: claim.medicareClaimId ?? null,
+            primaryPayerCoverageId: resolvedPrimary.id,
             rbArrangementId: claim.rbArrangementId ?? null,
-            isDualEligible: claim.medicareClaimId != null,
+            hasConcurrentMedicareAndMedicaidCoverage: dualCoverageRecorded,
           },
           lines: lineRows.map((l) => ({
             claimLineId: l.id,
@@ -1050,8 +2532,11 @@ export function buildDrizzleM24WriteService(
           nfResidentDays: [],
           rbArrangement: null,
           rbDays: [],
+          // Every persisted R&B line above was matched to its current arrangement, billed day and M6 LOC snapshot.
+          rbClaimSnapshotVerified: true,
+          hospiceClaimSnapshotVerified,
           rateLookups: [],
-          medicareSecondary: null,
+          payerResponsibility: { status: "permitted", reasonCode: null },
           evvBrackets: [],
           capProjection: null,
           modifiersSatisfied: null,
@@ -1065,7 +2550,6 @@ export function buildDrizzleM24WriteService(
             eligibilityBound: false,
             rbBound: false,
             rateScheduleBound: false,
-            medicareClaimBound: false,
             capProjectionBound: false,
             mdmBound: false,
             adapterBound: false,
@@ -1182,7 +2666,9 @@ export function buildDrizzleM24WriteService(
 
     async submitClaim(actor, claimId, input: SubmitClaimInput) {
       return withOrgContext(db, actor, async (tx) => {
-        const claim = await loadClaim(tx, claimId);
+        // Serialize against pre-submission abandonment. A READY claim must not be abandoned while a
+        // concurrent submit path is deciding whether it can create a durable attempt.
+        const claim = await loadClaim(tx, claimId, true);
         assertVersion(claim, input.expectedVersion);
         const reduced = medicaidClaimMachine.reduce(claim.state, "submit", {
           unresolvedBlockingFailures: 0,
@@ -1281,31 +2767,10 @@ export function buildDrizzleM24WriteService(
 
     async abandonClaim(actor, claimId, expectedVersion) {
       return withOrgContext(db, actor, async (tx) => {
-        const claim = await loadClaim(tx, claimId);
+        const claim = await loadClaim(tx, claimId, true);
         assertVersion(claim, expectedVersion);
-        const reduced = medicaidClaimMachine.reduce(claim.state, "abandon");
-        if (reduced.error)
-          throw new ConflictError("INVALID_TRANSITION", `cannot abandon from ${claim.state}`);
-        const updated = await tx
-          .update(C)
-          .set({
-            state: "ABANDONED",
-            version: claim.version + 1,
-            updatedAt: new Date(),
-            updatedByMembershipId: actor.userId,
-          })
-          .where(eq(C.id, claimId))
-          .returning();
-        await recordHistory(
-          tx,
-          actor.organizationId,
-          claimId,
-          claim.state,
-          "ABANDONED",
-          actor.userId,
-          "abandon",
-        );
-        return toClaimView(updated[0]!);
+        const updated = await abandonPreSubmissionClaim(tx, actor, claim);
+        return toClaimView(updated);
       });
     },
 
@@ -1537,6 +3002,7 @@ export function buildDrizzleM24WriteService(
         await tx.insert(schema.medicaidEligibilityCheck).values({
           id: checkId,
           organizationId: actor.organizationId,
+          providerEntityId: input.providerEntityId ?? null,
           patientId: input.patientId,
           patientPayerId: resolved.id,
           serviceState,
@@ -1606,7 +3072,12 @@ export function buildDrizzleM24WriteService(
 
     async editRbArrangement(actor, arrangementId, input: EditRbArrangementInput) {
       return withOrgContext(db, actor, async (tx) => {
-        const rows = await tx.select().from(A).where(eq(A.id, arrangementId)).limit(1);
+        const rows = await tx
+          .select()
+          .from(A)
+          .where(and(eq(A.organizationId, actor.organizationId), eq(A.id, arrangementId)))
+          .limit(1)
+          .for("update");
         const arr = rows[0];
         if (!arr) throw new NotFoundError("R&B arrangement not found");
         if (arr.state !== "DRAFT")
@@ -1632,7 +3103,12 @@ export function buildDrizzleM24WriteService(
 
     async activateRbArrangement(actor, arrangementId, expectedVersion) {
       return withOrgContext(db, actor, async (tx) => {
-        const rows = await tx.select().from(A).where(eq(A.id, arrangementId)).limit(1);
+        const rows = await tx
+          .select()
+          .from(A)
+          .where(and(eq(A.organizationId, actor.organizationId), eq(A.id, arrangementId)))
+          .limit(1)
+          .for("update");
         const arr = rows[0];
         if (!arr) throw new NotFoundError("R&B arrangement not found");
         assertVersion(arr, expectedVersion);
@@ -1671,7 +3147,12 @@ export function buildDrizzleM24WriteService(
 
     async terminateRbArrangement(actor, arrangementId, input: TerminateRbArrangementInput) {
       return withOrgContext(db, actor, async (tx) => {
-        const rows = await tx.select().from(A).where(eq(A.id, arrangementId)).limit(1);
+        const rows = await tx
+          .select()
+          .from(A)
+          .where(and(eq(A.organizationId, actor.organizationId), eq(A.id, arrangementId)))
+          .limit(1)
+          .for("update");
         const arr = rows[0];
         if (!arr) throw new NotFoundError("R&B arrangement not found");
         assertVersion(arr, input.expectedVersion);
@@ -1711,10 +3192,21 @@ export function buildDrizzleM24WriteService(
 
     async overrideRbDay(actor, rbDayId, input: OverrideRbDayInput) {
       await withOrgContext(db, actor, async (tx) => {
-        const rows = await tx.select().from(RD).where(eq(RD.id, rbDayId)).limit(1);
+        const rows = await tx
+          .select()
+          .from(RD)
+          .where(and(eq(RD.organizationId, actor.organizationId), eq(RD.id, rbDayId)))
+          .limit(1)
+          .for("update");
         const rbDay = rows[0];
         if (!rbDay) throw new NotFoundError("R&B day not found");
         assertVersion(rbDay, input.expectedVersion);
+        if (rbDay.status === "billed" || rbDay.medicaidClaimLineId !== null) {
+          throw new ConflictError(
+            "MEDICAID_RB_DAY_CLAIM_OWNED",
+            "This Room & Board day is attached to a claim. Reconcile the claim lifecycle before changing the day.",
+          );
+        }
         const updated = await tx
           .update(RD)
           .set({
@@ -1723,7 +3215,15 @@ export function buildDrizzleM24WriteService(
             version: rbDay.version + 1,
             updatedAt: new Date(),
           })
-          .where(eq(RD.id, rbDayId))
+          .where(
+            and(
+              eq(RD.organizationId, actor.organizationId),
+              eq(RD.id, rbDayId),
+              eq(RD.version, rbDay.version),
+              isNull(RD.medicaidClaimLineId),
+              inArray(RD.status, ["pending", "billable", "excluded", "voided"]),
+            ),
+          )
           .returning({ id: RD.id });
         if (!updated[0]) throw new NotFoundError("R&B day not found");
       });

@@ -1296,6 +1296,12 @@ controls:
       - file: apps/backend/src/modules/08-encounters/closure/override-service.ts
       - file: apps/backend/src/modules/08-encounters/closure/closure-route-service.ts
       - script: test:m5:code-status:live
+      # M24 assembly-preview reads carry patient-scoped read-audit metadata. Route and audit-emission tests
+      # verify the local contract; the existing M4 live suite remains the database-level audit-pipeline evidence.
+      - file: apps/backend/src/modules/24-billing-medicaid/routes/claims.routes.ts
+      - file: apps/backend/src/bootstrap/plugins/read-audit.ts
+      - file: apps/backend/__tests__/m24-route-validation.test.ts
+      - file: apps/backend/__tests__/read-audit-emission.test.ts
       # #874 — the live suite proves a successful coverage void records a critical audit event keyed to
       # the payer row with its enumerated reason.
       - script: test:m5:payer-intervals:live
@@ -1455,6 +1461,24 @@ controls:
       - file: apps/backend/__tests__/m23-npi-verification-routes.test.ts
       - file: apps/backend/__tests__/operator-free-text-phi-screen.test.ts
       - file: scripts/db/provision-runtime-roles.ts
+
+  - id: CW-TX-04
+    title: Episode Alert adapters remain fail-closed until the vendor wire and approved destination are verified; local test requests use inert fixtures, response reads are byte-bounded, and XML parsing rejects structurally unsafe input
+    hipaa: ["164.312(e)(1)", "164.312(c)(1)"]
+    soc2: ["CC6.7", "CC7.2"]
+    status: partial
+    evidence:
+      - file: packages/x12-837-client/src/clearinghouse/episode-alert-transport.ts
+      - file: packages/x12-837-client/src/clearinghouse/episode-alert-eligibility.ts
+      - file: packages/x12-837-client/src/dde/episode-alert-dde-provider.ts
+      - file: packages/x12-837-client/src/http/read-bounded-response-text.ts
+      - file: packages/x12-837-client/src/testing/local-fake-http-client.ts
+      - file: packages/x12-837-client/src/clearinghouse/episode-alert.test.ts
+      - file: packages/x12-837-client/src/dde/episode-alert-dde-hardening.test.ts
+    gap:
+      reason: Episode Alert has not supplied a verified API wire, approved destination or confirmed isolated test environment. Code-owned gates keep both environment factories unavailable, the adapter is not bound into backend runtime paths, and no vendor or MAC qualification has run; future activation requires reviewed vendor documentation and a separate qualification decision.
+      owner: engineering
+      review_by: 2027-01-31
 
   - id: CW-AC-35
     title: >-

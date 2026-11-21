@@ -632,7 +632,7 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
       );
     const before = (await admin.query("SELECT count(*)::int AS n FROM medicaid_claim")).rows[0].n;
     await expect(assemble("2026-09-01", "2026-09-30")).rejects.toMatchObject({
-      code: "MEDICAID_COVERAGE_NOT_IN_FORCE",
+      code: "MEDICAID_COVERAGE_CHANGED",
       statusCode: 409,
     });
     // Coverage that ends mid-window (a gap) is refused the same way.
@@ -655,6 +655,59 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
         },
       ),
     ).rejects.toMatchObject({ code: "MEDICAID_COVERAGE_NOT_IN_FORCE" });
+    expect((await admin.query("SELECT count(*)::int AS n FROM medicaid_claim")).rows[0].n).toBe(
+      before,
+    );
+  });
+
+  it("M24 refuses rank-2 Medicaid under Medicare primary and detects cross-kind primary changes", async () => {
+    const medicarePrimaryPatient = await seedPatient(ORG);
+    await add(medicarePrimaryPatient, 1, "medicare_ffs", "2026-10-01");
+    await add(medicarePrimaryPatient, 2, "medicaid", "2026-10-01");
+    const m24 = buildDrizzleM24WriteService(
+      handle.db,
+      undefined,
+      undefined,
+      buildM24MedicaidCoverageResolver(() => reader),
+    );
+    const assemble = (patientId: string, kind: "rb_only" | "combined_hospice_rb") =>
+      m24.assembleClaim(
+        { organizationId: ORG, userId: STAFF, roles: [] },
+        {
+          patientId,
+          admissionId: "f0000000-0845-4000-8000-0000000000a4",
+          providerEntityId: CLAIM_PE,
+          serviceFrom: "2026-10-01",
+          serviceTo: "2026-10-31",
+          kind,
+          rbArrangementId: "f0000000-0845-4000-8000-0000000000a5",
+        },
+      );
+    const before = (await admin.query("SELECT count(*)::int AS n FROM medicaid_claim")).rows[0].n;
+    await expect(assemble(medicarePrimaryPatient, "rb_only")).rejects.toMatchObject({
+      code: "MEDICAID_SECONDARY_RB_FORMAT_UNVERIFIED",
+      statusCode: 409,
+    });
+    await expect(assemble(medicarePrimaryPatient, "combined_hospice_rb")).rejects.toMatchObject({
+      code: "MEDICAID_SECONDARY_COMBINED_FORMAT_UNVERIFIED",
+      statusCode: 409,
+    });
+
+    const rankGapPatient = await seedPatient(ORG);
+    await add(rankGapPatient, 2, "medicaid", "2026-10-01");
+    await expect(assemble(rankGapPatient, "rb_only")).rejects.toMatchObject({
+      code: "MEDICAID_PRIMARY_COVERAGE_MISSING",
+      statusCode: 409,
+    });
+
+    const changingPrimaryPatient = await seedPatient(ORG);
+    await add(changingPrimaryPatient, 1, "medicare_ffs", "2026-10-01");
+    await add(changingPrimaryPatient, 1, "commercial", "2026-10-16");
+    await add(changingPrimaryPatient, 2, "medicaid", "2026-10-01");
+    await expect(assemble(changingPrimaryPatient, "rb_only")).rejects.toMatchObject({
+      code: "MEDICAID_PRIMARY_COVERAGE_CHANGED",
+      statusCode: 409,
+    });
     expect((await admin.query("SELECT count(*)::int AS n FROM medicaid_claim")).rows[0].n).toBe(
       before,
     );

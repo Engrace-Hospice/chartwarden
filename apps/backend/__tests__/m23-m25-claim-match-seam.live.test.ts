@@ -24,6 +24,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerSeam } from "../src/bootstrap/index";
 import { buildM23ClaimSubmissionReader } from "../src/modules/23-billing-medicare/cost-report-seams";
+import { buildDrizzleM23ClaimReader } from "../src/modules/23-billing-medicare/seams/claim-reader";
 import { buildM23BackedClaimMatchCandidateProvider } from "../src/modules/25-remittance/ingest/claim-match-adapter";
 import {
   PAYEE_UNCHECKED,
@@ -41,6 +42,7 @@ const PE = "00000000-0000-0000-0000-0000000000a1";
 const PAYER = "00000000-0000-0000-0000-00000000fee1";
 const REAL_CLAIM_ID = "00000000-0000-0000-0000-0000000ccc01";
 const REAL_PATIENT_ID = "00000000-0000-0000-0000-0000000ee001";
+const CLAIM_PAYER_COVERAGE_ID = "00000000-0000-0000-0000-0000000ba0e1";
 const REAL_ICN = "REAL-ICN-0001";
 const REAL_CCN = "REAL-CCN-0001";
 
@@ -125,7 +127,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M23->M25 ClaimSubmissionReader seam — LIVE
         REAL_PATIENT_ID,
         "00000000-0000-0000-0000-0000000ad001", // admission_id
         "00000000-0000-0000-0000-0000000ec0e1", // election_period_id_from/to
-        "00000000-0000-0000-0000-0000000ba0e1", // patient_payer_id
+        CLAIM_PAYER_COVERAGE_ID,
         REAL_CCN,
         REAL_ICN,
         "00000000-0000-0000-0000-0000000f0501", // sequestration_policy_id
@@ -153,6 +155,35 @@ describe.skipIf(!DB_URL)("WX-PR-012 M23->M25 ClaimSubmissionReader seam — LIVE
 
   it("registers the real M23 ClaimSubmissionReader seam", () => {
     registerSeam("ClaimSubmissionReader", buildM23ClaimSubmissionReader(handle.db));
+  });
+
+  it("correlates Medicare secondary evidence to the exact range-resolved payer coverage", async () => {
+    const reader = buildDrizzleM23ClaimReader(handle.db);
+    const scope = {
+      providerEntityId: PE,
+      admissionId: "00000000-0000-0000-0000-0000000ad001",
+      primaryCoverageId: CLAIM_PAYER_COVERAGE_ID,
+    };
+    const matches = await reader.medicareSecondaryContext(
+      ORG,
+      REAL_PATIENT_ID,
+      { from: "2026-01-01", to: "2026-01-31" },
+      scope,
+    );
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toMatchObject({
+      claimId: REAL_CLAIM_ID,
+      patientPayerId: CLAIM_PAYER_COVERAGE_ID,
+      rangeRelation: "exact",
+    });
+    expect(
+      await reader.medicareSecondaryContext(
+        ORG,
+        REAL_PATIENT_ID,
+        { from: "2026-01-01", to: "2026-01-31" },
+        { ...scope, primaryCoverageId: "00000000-0000-0000-0000-000000000000" },
+      ),
+    ).toEqual([]);
   });
 
   it("the adapter now resolves REAL match candidates + the REAL patient id over the bound seam", async () => {
@@ -195,6 +226,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M23->M25 ClaimSubmissionReader seam — LIVE
       // An 835 without TRN02 is held (no verifiable payment identity), so a posting fixture carries one.
       checkOrEftTraceNumber: "SYNTHETIC-TRACE-901",
       paymentMethod: "eft",
+      checkOrEftTraceNumber: "SYNTHETIC-EFT-TRACE-0001",
       totalPaymentAmount: 450,
       paymentEffectiveDate: "2026-02-10",
       productionDate: "2026-02-10",
