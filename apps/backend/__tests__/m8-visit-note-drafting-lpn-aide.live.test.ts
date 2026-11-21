@@ -910,8 +910,8 @@ describe.skipIf(!DB_URL)(
           text: `${EXPECTED.adl} ${EXPECTED.bathing} ${EXPECTED.reposition}`,
           part2Derived: false,
           corpusVersion: VOCAB_VERSION,
-          // the recorded ADLs are the clinician's own record, not a source: only the interventions are origins (kinds, once each)
-          origins: ["care_plan_intervention"],
+          // the recorded ADLs lead the text, so they lead the origins; then the interventions (kinds, once each)
+          origins: ["recorded_adl", "care_plan_intervention"],
         });
         for (const id of ["plan", "chief_concern"]) {
           expect(sectionOf(body, id)).toMatchObject({ state: "not_drafted", text: null });
@@ -925,6 +925,7 @@ describe.skipIf(!DB_URL)(
         const v = await seedVisit({ discipline: "chha" });
         const { body } = await getDraft(v);
         expect(sectionOf(body, "adl").text).toBe(`${EXPECTED.bathing} ${EXPECTED.reposition}`);
+        expect(sectionOf(body, "adl").origins).toEqual(["care_plan_intervention"]);
       });
 
       it("an aide with no care-plan intervention has adl not_drafted, even with a recorded ADL", async () => {
@@ -1254,6 +1255,7 @@ describe.skipIf(!DB_URL)(
         expect(adl).toContain(EXPECTED.reposition);
         expect(adl.indexOf(EXPECTED.adl)).toBeLessThan(adl.indexOf(EXPECTED.bathing));
         expect(sealed.find((r) => r.section_id === "adl")?.source_refs).toEqual([
+          { kind: "recorded_adl", id: "recorded-adl" },
           { kind: "care_plan_intervention", id: AIDE_BATHING },
           { kind: "care_plan_intervention", id: AIDE_REPOSITION },
         ]);
@@ -1458,6 +1460,123 @@ describe.skipIf(!DB_URL)(
           expect(await open(v.org, amendment.text_cipher)).toContain(NEW_TEXT[kind]);
           expect(await noteRowsOf(v)).toEqual(noteBefore);
           expect(await statusOf(v)).toBe("cosigned");
+        },
+      );
+    });
+
+    // ===============================================================================================================
+    // 11. the audit trail
+    // ===============================================================================================================
+    describe("11. the audit trail of the LPN and aide drafts", () => {
+      const auditEvents = (eventType: string, resourceId: string) =>
+        rows<{
+          event_type: string;
+          resource_kind: string;
+          actor_user_id: string | null;
+          severity: string;
+          after: Record<string, unknown> | null;
+          context: { patientId?: string; fields?: string[] } | null;
+        }>(
+          `SELECT event_type, resource_kind, actor_user_id::text, severity::text, after, context
+           FROM audit_event WHERE organization_id = $1 AND event_type = $2 AND resource_id::text = $3 ORDER BY created_at`,
+          [ORG_A, eventType, resourceId],
+        );
+
+      it.each(KINDS)(
+        "%s: the read event of a draft GET lands, encounter_draft.viewed on the encounter, attributed to the patient, field names only",
+        async (kind) => {
+          const v = await seedVisit({ discipline: kind });
+          const { res, body } = await getDraft(v);
+          expect(res.statusCode).toBe(200);
+          const events = await auditEvents("encounter_draft.viewed", v.encounterId);
+          expect(events).toHaveLength(1);
+          expect(events[0]).toMatchObject({
+            resource_kind: "encounter_draft",
+            actor_user_id: v.author.userId,
+            context: { patientId: v.patientId },
+          });
+          expect(events[0]?.context?.fields).toEqual(
+            expect.arrayContaining(["text", "contentHash", "state", "origins"]),
+          );
+          // a trail of WHO read WHAT, never a second copy of the note
+          const trail = JSON.stringify(events[0]);
+          for (const section of body.sections) {
+            if (section.text !== null) expect(trail).not.toContain(section.text);
+          }
+        },
+      );
+
+      it("a read refused for a missing source key writes no read event", async () => {
+        const member = await newMember(
+          ORG_A,
+          "audit-aide-no-care-plan",
+          [...BASE_KEYS, "prescribing.read", "assessment.read_trend"],
+          "chha",
+        );
+        const v = await seedVisit({ discipline: "chha", author: member });
+        expect((await getDraft(v)).res.statusCode).toBe(403);
+        expect(await auditEvents("encounter_draft.viewed", v.encounterId)).toEqual([]);
+      });
+
+      it("an aide's confirmed adl records m8.encounter.draft_section_resolved with ids, enums and counts, never the hash or the sentences", async () => {
+        const v = await seedVisit({ discipline: "chha" });
+        expect((await putAdl(v, AIDE_ADL_BODY)).statusCode).toBe(200);
+        const seen = sectionOf((await getDraft(v)).body, "adl");
+        expect((await putSection(v, "adl", "confirmed", seen)).statusCode).toBe(200);
+
+        const events = await auditEvents("m8.encounter.draft_section_resolved", v.encounterId);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          severity: "info",
+          actor_user_id: v.author.userId,
+          after: {
+            sectionId: "adl",
+            resolution: "confirmed",
+            edited: false,
+            part2Derived: false,
+            sourceRefs: [
+              { kind: "recorded_adl", id: "recorded-adl" },
+              { kind: "care_plan_intervention", id: AIDE_BATHING },
+              { kind: "care_plan_intervention", id: AIDE_REPOSITION },
+            ],
+            carePlanElementsLinked: 2,
+            carePlanElementsRemoved: 0,
+          },
+        });
+        const trail = JSON.stringify(events);
+        expect(trail).not.toContain(String(seen.contentHash));
+        for (const text of [EXPECTED.adl, EXPECTED.bathing, EXPECTED.reposition]) {
+          expect(trail).not.toContain(text);
+        }
+      });
+
+      it.each(KINDS)(
+        "%s: the read event of an amendment draft GET lands on the addendum, attributed to the patient",
+        async (kind) => {
+          const member = await newMember(
+            ORG_A,
+            `audit-amend-${kind}`,
+            kind === "lpn" ? LPN_KEYS : AIDE_KEYS,
+            kind,
+          );
+          const v = await seedVisit({ discipline: kind, author: member });
+          await cosigned(v, kind);
+          const created = await post(encounterUrl(v, "/addenda"), v.headers, {
+            reason: REASON,
+            amendsSectionIds: [AMENDED[kind]],
+          });
+          expect(created.statusCode, created.body).toBe(201);
+          const addendumId = created.json().id as string;
+          const read = await get(encounterUrl(v, `/addenda/${addendumId}/draft`), v.headers);
+          expect(read.statusCode, read.body).toBe(200);
+
+          const events = await auditEvents("encounter_amendment_draft.viewed", addendumId);
+          expect(events).toHaveLength(1);
+          expect(events[0]).toMatchObject({
+            resource_kind: "encounter_amendment_draft",
+            actor_user_id: member.userId,
+            context: { patientId: v.patientId },
+          });
         },
       );
     });
