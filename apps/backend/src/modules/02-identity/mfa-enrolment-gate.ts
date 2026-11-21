@@ -64,12 +64,12 @@ export interface MfaEnrolmentGate {
    */
   forUserWithoutTotp(userId: string): Promise<MfaVerdict>;
   /**
-   * May this session START an authenticator (TOTP) enrolment? A user with no verified factor may: a password is all they have and
+   * May this session add a factor (start a TOTP enrolment, register or remove a passkey, read the TOTP secret, generate backup codes)? A user with no verified factor may: a password is all they have and
    * enrolling is how the first factor comes to exist. A user who already has one (a passkey; a TOTP is refused by Better Auth itself)
    * must have PROVED a factor in THIS session first. Otherwise a phished password could mint an authenticator of the attacker's own,
    * confirm it with a code from their own app, and have that session recorded as having proved a second factor.
    */
-  forTotpEnrolment(input: { userId: string; sessionId: string }): Promise<{
+  forFactorEnrolment(input: { userId: string; sessionId: string }): Promise<{
     readonly allowed: boolean;
   }>;
 }
@@ -99,10 +99,13 @@ export function createMfaEnrolmentGate(deps: MfaEnrolmentGateDeps): MfaEnrolment
   const now = deps.now ?? Date.now;
   const satisfiedUntil = new Map<string, number>();
 
-  const factorsOf = async (userId: string) => ({
-    totp: await deps.factors.hasFactor({ userId, factor: "totp" }),
-    passkey: await deps.factors.hasFactor({ userId, factor: "webauthn" }),
-  });
+  const factorsOf = async (userId: string) => {
+    const [totp, passkey] = await Promise.all([
+      deps.factors.hasFactor({ userId, factor: "totp" }),
+      deps.factors.hasFactor({ userId, factor: "webauthn" }),
+    ]);
+    return { totp, passkey };
+  };
 
   const passkeyOf = (userId: string) =>
     Promise.resolve(deps.factors.hasFactor({ userId, factor: "webauthn" }));
@@ -139,7 +142,7 @@ export function createMfaEnrolmentGate(deps: MfaEnrolmentGateDeps): MfaEnrolment
         await deps.roleKeysForMembership({ organizationId, membershipId }),
       );
     },
-    async forTotpEnrolment({ userId, sessionId }) {
+    async forFactorEnrolment({ userId, sessionId }) {
       if (!deps.enforced) return { allowed: true };
       const factors = await factorsOf(userId);
       if (!factors.totp && !factors.passkey) return { allowed: true };
@@ -160,7 +163,7 @@ export function createMfaEnrolmentGate(deps: MfaEnrolmentGateDeps): MfaEnrolment
 }
 
 /** The Better Auth routes that add a factor to, reveal one on, or remove one from a LIVE session. */
-const FACTOR_ADDING_PATHS: ReadonlySet<string> = new Set([
+export const FACTOR_ADDING_PATHS: ReadonlySet<string> = new Set([
   "/two-factor/enable",
   "/two-factor/get-totp-uri",
   "/two-factor/generate-backup-codes",
@@ -176,7 +179,7 @@ const FACTOR_ADDING_PATHS: ReadonlySet<string> = new Set([
  *   - `two-factor/disable` is refused while the MFA matrix would no longer be met (M2 §7.4);
  *   - every route that adds, reveals or removes a factor on a live session ({@link FACTOR_ADDING_PATHS}) is refused 403
  *     MFA_VERIFICATION_REQUIRED for a user who already has a factor and has not proved one in this session (see
- *     {@link MfaEnrolmentGate.forTotpEnrolment}). A password alone must not mint a factor that then counts, through ANY of them: a
+ *     {@link MfaEnrolmentGate.forFactorEnrolment}). A password alone must not mint a factor that then counts, through ANY of them: a
  *     passkey registered on a password-only session would let the attacker sign in with it and be recorded as having proved it.
  * It fails CLOSED: a session that cannot be resolved (anonymous, or the lookup failed) reaches none of these routes.
  */
@@ -197,7 +200,7 @@ export function createMfaBridgeGuard(
       return;
     }
     if (
-      !(await gate.forTotpEnrolment({ userId: actor.userId, sessionId: actor.sessionId })).allowed
+      !(await gate.forFactorEnrolment({ userId: actor.userId, sessionId: actor.sessionId })).allowed
     )
       throw new ChartWardenError(
         "MFA_VERIFICATION_REQUIRED",

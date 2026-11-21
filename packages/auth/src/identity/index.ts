@@ -56,6 +56,7 @@ export {
   AUTH_AUDIT_EVENTS,
   buildAuthAuditEvent,
   buildPasswordResetEvent,
+  needsActor,
   type AuthAuditActor,
   type AuthAuditEvent,
   type AuthAuditEventType,

@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import {
   evaluateMfa,
   mfaRequirementFor,
+  needsActor,
   registerIdentityAuth,
   resolveMfaEnforcement,
   sessionClassRequiresMfa,
@@ -16,6 +17,7 @@ import Fastify, { type FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 import { createSessionAuthenticate } from "../src/bootstrap/index";
 import {
+  FACTOR_ADDING_PATHS,
   createMfaBridgeGuard,
   createMfaEnrolmentGate,
 } from "../src/modules/02-identity/mfa-enrolment-gate";
@@ -318,8 +320,9 @@ describe("the factor-adding guard (a password alone must not mint a counted seco
     "/api/auth/two-factor/generate-backup-codes",
     "/api/auth/passkey/generate-register-options",
     "/api/auth/passkey/verify-registration",
+    "/api/auth/passkey/delete-passkey",
   ])(
-    "covers %s too: a passkey registered or a secret read on a password-only session would count as well",
+    "covers %s too: a passkey registered, a secret read or the existing factor removed on a password-only session would count as well",
     async (url) => {
       expect((await post({ passkey: true, proved: null }, url)).statusCode).toBe(403);
       expect((await post({ passkey: true, proved: "webauthn" }, url)).statusCode).toBe(200);
@@ -375,9 +378,14 @@ describe("the factor-adding guard (a password alone must not mint a counted seco
     expect((await post({}, "/api/auth/sign-in/email", "anonymous")).statusCode).toBe(200);
   });
 
+  it("every guarded path is one the bridge resolves an actor for (dropping one from the audit set would silently disarm its guard)", () => {
+    for (const path of FACTOR_ADDING_PATHS) expect(needsActor(path), path).toBe(true);
+    expect(needsActor("/two-factor/disable")).toBe(true);
+  });
+
   it("the gate answers the same without the HTTP bridge", async () => {
     const ask = (opts: Parameters<typeof gateWith>[0]) =>
-      gateWith(opts).gate.forTotpEnrolment({ userId: "u1", sessionId: "s1" });
+      gateWith(opts).gate.forFactorEnrolment({ userId: "u1", sessionId: "s1" });
     expect(await ask({ passkey: true, proved: null })).toEqual({ allowed: false });
     expect(await ask({ passkey: true, proved: "webauthn" })).toEqual({ allowed: true });
     expect(await ask({})).toEqual({ allowed: true });

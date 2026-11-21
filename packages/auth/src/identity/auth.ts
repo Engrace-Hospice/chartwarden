@@ -351,6 +351,9 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
     // strings, which fail to insert into a uuid column (AUTH-T06 live finding). Generate UUIDs instead;
     // a UUID string is valid for the uuid PKs (user/session/account/passkey) AND for verification's
     // text id. (ADR-0033.)
+    // Do NOT set `advanced.skipTrailingSlashes`: the bridge (mount.ts) keys its guard, sign-in throttle and audit trail on the exact
+    // canonical path, and Better Auth answers 404 to a trailing-slash spelling only while that option stays unset. Enabling it would
+    // let `/api/auth/two-factor/enable/` reach a route the guard never matched.
     advanced: { database: { generateId: () => crypto.randomUUID() }, ...hostOnlyCookieOptions() },
     // ADR-0034: wrap the Drizzle adapter so the twoFactor secret + backup codes are AES-256-GCM-encrypted
     // at rest (Better Auth's plugin stores them plaintext). The key loads lazily (only on a 2FA op), so
