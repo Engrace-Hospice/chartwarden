@@ -2,7 +2,8 @@
 // (GAP-018 / GAP-019 / GAP-012). Every method runs under `withOrgContext` (RLS scopes by app.org_id), and
 // every write publishes its spec'd `m5.patient.*` event through the m5 outbox port ON THE SAME
 // TRANSACTION, so a rejected publish rolls the write back.
-import { type DbClient, schema } from "@chartwarden/db";
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
+import { localDateInTimeZone } from "@chartwarden/shared/dates";
 import { isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
@@ -398,6 +399,14 @@ export function createDbPatientLifecyclePort(
             .limit(1);
           if (open[0]) throw new PrimaryCaregiverExistsError();
         }
+        // A link with no start date begins on the organization's local day, not the UTC day: on the evening of a visit UTC is already the next
+        // day, and a caregiver added during that visit would start the day after it (and be missing from `caregiversOn` for the visit's date).
+        const involvementFrom =
+          input.involvementFrom ??
+          localDateInTimeZone(
+            now(),
+            await organizationTimezone(tx as unknown as DbClient, organizationId),
+          );
         const [cg] = await tx
           .insert(CG)
           .values({
@@ -420,7 +429,7 @@ export function createDbPatientLifecyclePort(
             lrAuthority: lrAuthority as typeof PCG.$inferInsert.lrAuthority,
             lrProofDocRef: input.lrProofDocRef ?? null,
             portalInvitationConsented: input.portalInvitationConsented ?? false,
-            involvementFrom: input.involvementFrom ?? isoDate(now()),
+            involvementFrom,
             notes: input.notes ?? null,
           })
           .returning();

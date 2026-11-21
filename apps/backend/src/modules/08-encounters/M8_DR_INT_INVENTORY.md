@@ -63,6 +63,33 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
   the 10 s acquire timeout fails with 503 (never a pass, never a partial write: the transaction rolls back). A tenant that signs through such a
   burst retries; a burst that long is an operations signal, not a data one.
 
+### RN admission visit drafts (ADR-0114 slice S2b, design §3.4): limits recorded
+
+- **Three more reads under the sign lock.** An admission draft adds M12's orders as of the visit, M5's roster for the service date and M39's
+  acknowledgment evaluation to the draft's reads. They take their turn with the others (`serial-seams.ts`) and are bounded and fail closed like
+  the rest; sign, the section PUTs and finalize hold their transaction across them, a few milliseconds longer each. M39's `evaluate` is a pure read
+  (no audit row per call). It is asked `historical: true`, so the answer is what was on file at the visit, not the record's status today: a patient's
+  death between the visit and the sign (the M39 cascade expires the row) no longer removes the section and blocks the sign. The end instant of an expired
+  row is the earlier of its `expires_at` and `updated_at`, so an expired row is never read as in force past its own expiry. A record also counts only if it had been entered by the visit instant (the later of `created_at` and `signed_at`, both set by the server): its effective date can be backdated, so an acknowledgment entered after the visit, or
+  created before it and signed after it, is not drafted as on file at it.
+- **The list is the orders in effect, not a reconciliation.** The draft states each order's drug, strength, form and route, and "as needed" where it
+  is (the order's flag, or a PRN frequency code, as M13 reads it); no frequency, no dose schedule, no home-medication history. If any order that remains has a blank field or no as-needed flag, no list is
+  drafted at all (a list with an order missing from it would read as complete). A SUD-treatment order is left out for a viewer without Part 2
+  disclosure, so two authors can draft different lists (the signer's own draft is what is sealed).
+- **Caregivers are as of the service date.** M5 had only a current-links read; `caregiversOn(day)` decides from each link's own involvement dates
+  (`involvement_from <= day`, and no end or `involvement_to >= day`, the end day included). The draft states the name and the relationship, never a
+  contact detail. A caregiver whose relationship the draft has no word for, or whose name is blank, drafts no caregiver section at all.
+- **The acknowledgment is a fact, not a directive.** M39's record says the patient was given the information, so the draft says an acknowledgment
+  was on file at the visit time; it carries no date (M39's evaluation returns none), and says nothing when there is none (never "no directive").
+- **Who may read it.** The admission visit's draft needs `patient.read` (M5) and `consent.read` (M39) on top of the three every draft needs, asked by
+  template in the same places as S2's (`drafting/admission-reads.ts`). **Before a tenant's switch is turned on, every role that authors an admission
+  note holds these keys.**
+- **The shared care-plan phrases also reach `med_reconciliation`'s menu.** They are tagged for this visit so `interventions` and `plan` draft, and
+  carry the category that section already offered its legacy phrases through (the same overlap `interventions` and `plan` have in the routine visit).
+- **Deploy side effect.** `narrative-vocab@2026.12.1` becomes the running corpus for every tenant at deploy: a draft encounter whose selections were
+  saved under an earlier release answers `409 VOCAB_VERSION_MISMATCH` at finalize until they are saved again. The corpus review is still checked only
+  when the switch is enabled (CW-AC-49's gap), and a release that adds drafted templates is held until its own review is approved.
+
 ### Recertification and face-to-face drafts (ADR-0114 slice S2, design §3.3): limits recorded
 
 - **More reads under the sign lock.** A recertification's draft adds four M6 reads (periods, level of care for one day, face-to-face, certification)
@@ -168,6 +195,9 @@ M8 has **no direct external integration of its own** (HearthNote Layer 2 reaches
 | consume | M39 (Consent) | the per-actor Part 2 verdict (`evaluateForInternalAccess`, through M7's `sudDisclosureAllowedForActor`) — whether this viewer may read this patient's SUD content. M7's own reads read an M39 error as "not allowed"; **M8 fails CLOSED** (`onError: "throw"`, `drafting/default-ports.ts`): an M39 error is a thrown failure, never a denial and never a disclosure, so the draft is 503 `DRAFT_UNAVAILABLE`, sign and finalize 503 `COMPLIANCE_GATE_UNAVAILABLE`, a note view 503 `NOTE_VIEW_UNAVAILABLE` and an amendment's naming or sign 503 (see the exception above) | yes (ids) |
 | consume | M6 (Admission) | S2, the recertification and face-to-face drafts only: `ElectionPeriodReader.listPeriodsForAdmission` (the benefit period covering the service date), `LevelOfCareReader.getLevelOfCareDays` over that one day, `FaceToFaceReader.getAttestedF2fForPeriod` (performer role and dates, **never the attestation narrative**) and `CertificationReader.getActiveCertification` (status and signing date, never the narrative); the as-of cut by date is made in `drafting/inputs.ts`; fails closed | yes (dates, no free text) |
 | consume | M5 (Patient) | `PatientReader` — patient identity / caseload linkage | yes (ids) |
+| consume | M5 (Patient) | S2b, the admission draft only: `PatientCaregiverRosterReader.caregiversOn` — the caregivers on record on the service date (name, relationship; contact details are never read) | yes |
+| consume | M12 (DoseSpot) | S2b, the admission draft only: `MedicationOrderProvider.getMedicationsAsOf` — the orders in effect at the visit time; `isSudTreatment` filtered per viewer | yes |
+| consume | M39 (Consent) | S2b, the admission draft only: `ConsentEvaluator.evaluate` for `advance_directive_acknowledgment` as of the visit time — whether an acknowledgment was on file, never its content | yes (ids) |
 | consume | M6 (Admission) | admission linkage (encounter belongs to an active election period) | minimal (ids) |
 | consume | M36 (Messaging) | `AlertEmitter` seam — cosignature SLA + late-entry-override alerts | minimal (ids) |
 | consume | M38 (Terminology) | HearthNote vocabulary / value-set pins (`@chartwarden/narrative-vocab` `VOCAB_VERSION`) | no |

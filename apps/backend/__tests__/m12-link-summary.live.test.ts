@@ -125,6 +125,15 @@ describe.skipIf(!DB_URL)("M12 linkSummary — LIVE Postgres as chartwarden_app",
     expect(await provider.linkSummary(ORG_A, id)).toBeNull();
   });
 
+  it("withholds an order whose drug is a SUD-treatment drug even when the stored flag says false (a legacy row)", async () => {
+    const id = await seedMedOrder(ORG_A, PATIENT_A, "2026-03-01T12:10:00.000Z");
+    await admin.query(
+      "UPDATE medication_order SET drug_name = 'Buprenorphine and Naloxone', is_sud_treatment = false WHERE id = $1",
+      [id],
+    );
+    expect(await provider.linkSummary(ORG_A, id)).toBeNull();
+  });
+
   it("returns null for an unknown id", async () => {
     expect(await provider.linkSummary(ORG_A, UNKNOWN_ID)).toBeNull();
   });

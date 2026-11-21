@@ -6,6 +6,20 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-20 — Visit-note drafting slice 2b (M8, ADR-0114): the RN admission visit, corpus release `narrative-vocab@2026.12.1`
+
+**No new route. One response enum grows; nothing changes for a tenant with the draft switched off.**
+
+- **`narrative-vocab@2026.12.1` is the active corpus for every tenant at deploy**, as 2026.12.0 was: a draft encounter whose selections were saved before it carries an earlier version and answers `409 VOCAB_VERSION_MISMATCH` at finalize until `PATCH /encounters/{id}/selections` saves them again (the web composer saves before it finalizes; another client must too).
+- **`GET /encounters/{encounterId}/draft` and the amendment draft** (`.../addenda/{addendumId}/draft`): `origins[]` of a drafted section can now also be `medication_order`, `caregiver` or `advance_directive_acknowledgment` (kinds only, never ids). The RN admission visit (`admission_visit`, `rn`) drafts `med_reconciliation`, `advance_directive`, `caregiver_overview` and `baseline_symptoms`, and `vitals_review`, `interventions` and `plan` as the routine visit does. A section with nothing recorded to draft from is `empty`, never a sentence about an absence.
+- **`GET /encounters/{encounterId}/template`** (the authoring menu), switch on: the admission visit's `vitals_review` and `plan` offer the routine visit's draft phrases; its four own sections keep the menus they had (the new admission phrases are listed in no menu), except that `med_reconciliation` also offers the care-plan draft phrases, which share its category.
+- **Permission.** The draft of an admission visit (`GET .../draft`, `PUT .../draft/sections/{sectionId}` and the two amendment-draft routes) needs `patient.read`, `consent.read` and `prescribing.read`, on top of the care plan, prescribing and assessment keys every draft needs. `POST .../finalize`, `POST .../sign` and the addendum `finalize` and `sign` of an admission visit ask those three, since they recompute the draft: `403` naming the missing key, only while the switch is on. A routine, recertification or face-to-face draft needs no key it did not before.
+- **`POST /patients/{patientId}/caregivers`** (M5), no `involvementFrom` sent: the link now starts on the organization's local day, not the UTC day. On the evening of a visit UTC is already the next day, so a caregiver added during that visit used to start the day after it. A client that sends `involvementFrom` is unaffected.
+- **Medication orders read through the M12 seam**: `isSudTreatment` is now also true for an order whose drug is a SUD-treatment drug (buprenorphine, naltrexone and the like) when the stored flag says false, as M12's own sign path already decided. Every reader of the seam sees it: the visit-note draft, the portal medication summary (shown as a confidential medication), FHIR MedicationRequest, the on-call medication context, the medication-list renders and the eMAR administration snapshot (a new administration of such an order records the flag true; earlier ones keep the value they recorded). `linkSummary` (M36) now returns null for such an order, as it already did for a stored flag of true. Such an order is withheld from a reader without Part 2 disclosure.
+- **The draft switch cannot be enabled** (`409 CORPUS_REVIEW_PENDING`) on a clinical review of an earlier corpus release.
+
+---
+
 ## 2026-11-20 — Visit-note drafting slice 2 (M8, ADR-0114): the recertification and face-to-face visits, corpus release `narrative-vocab@2026.12.0`
 
 **No new route. One response enum grows; nothing changes for a tenant with the draft switched off.**

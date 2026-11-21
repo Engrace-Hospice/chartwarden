@@ -18,7 +18,7 @@ import {
   templateHasDraftedSection,
   templateKey,
 } from "../src/index";
-import { AS_OF, DEPS, baseInputs, recertSources } from "./_draft-fixtures";
+import { AS_OF, DEPS, admissionSources, baseInputs, recertSources } from "./_draft-fixtures";
 
 type Pair = readonly [EncounterType, EncounterDiscipline];
 
@@ -32,6 +32,7 @@ function maximalInputs([type, discipline]: Pair): DraftInputs {
   return {
     ...base,
     ...recertSources(),
+    ...admissionSources(),
     encounterType: type,
     discipline,
     selection: {
@@ -50,12 +51,13 @@ const draftedIdsOf = (pair: Pair): readonly string[] =>
     .map((s) => s.sectionId);
 
 describe("the templates the corpus drafts", () => {
-  it("today that is the RN routine visit, the RN recertification visit and the face-to-face visit, and no other legal pair", () => {
+  it("today that is the RN routine, admission and recertification visits and the face-to-face visit, and no other legal pair", () => {
     const drafted = LEGAL_PAIRS.filter(([type, discipline]) =>
       templateHasDraftedSection(type, discipline),
     ).map(([type, discipline]) => templateKey(type, discipline));
     expect(drafted).toEqual([
       "routine_visit:rn",
+      "admission_visit:rn",
       "recert_visit:rn",
       "face_to_face:md",
       "face_to_face:np",

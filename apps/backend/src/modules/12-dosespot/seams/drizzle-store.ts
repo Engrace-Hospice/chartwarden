@@ -36,6 +36,7 @@
 //     THROWS the same typed refusal and points the consumer at M13's
 //     `MedicationAdministrationProvider.getComfortKitDeploymentTimeline`, which computes the real timeline.
 import { type DbClient, schema } from "@chartwarden/db";
+import { isSudTreatmentDrug } from "@chartwarden/dosespot";
 import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import type { MedicationOrderDto, RefillRequestDto, SigStructuredDto } from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, lt } from "drizzle-orm";
@@ -197,6 +198,15 @@ function sigStructuredOf(data: unknown, rowRoute: string): SigStructuredDto {
   };
 }
 
+/**
+ * The Part 2 flag a read hands out: the stored flag OR the drug classifier, as M12's own sign path decides (`dosespot-route-service-db`). A row
+ * written before the column was populated, or with it left false, must not dodge a consumer's Part 2 gate (the visit-note draft's orders and
+ * medication changes read `isSudTreatment` fail closed, but only on what they are given).
+ */
+export function sudTreatmentOf(row: { isSudTreatment: boolean; drugName: string }): boolean {
+  return row.isSudTreatment || isSudTreatmentDrug(row.drugName);
+}
+
 /** Project a `medication_order` row onto the §2.10 read DTO (explicit column map; never the raw row). */
 function toMedicationOrderDto(r: MoRow): MedicationOrderDto {
   return {
@@ -224,7 +234,7 @@ function toMedicationOrderDto(r: MoRow): MedicationOrderDto {
     completedAt: isoN(r.completedAt),
     isControlledSubstance: r.isControlledSubstance,
     deaSchedule: r.deaSchedule ?? null,
-    isSudTreatment: r.isSudTreatment,
+    isSudTreatment: sudTreatmentOf(r),
     derivedFromRefillId: r.derivedFromRefillId ?? null,
     derivedFromHistoryId: r.derivedFromHistoryId ?? null,
     replacesMedicationOrderId: r.replacesMedicationOrderId ?? null,
@@ -305,6 +315,7 @@ export function createDrizzleDoseSpotSeamStore(db: DbClient): DoseSpotSeamStore 
             status: MO.status,
             activatedAt: MO.activatedAt,
             createdAt: MO.createdAt,
+            drugName: MO.drugName,
           })
           .from(MO)
           .where(
@@ -318,7 +329,9 @@ export function createDrizzleDoseSpotSeamStore(db: DbClient): DoseSpotSeamStore 
             ),
           )
           .limit(1);
-        if (!row) return null;
+        // The stored flag is checked above; the drug classifier (which cannot be expressed in SQL) is the other half of `sudTreatmentOf`, so a
+        // legacy row with a SUD drug and a stored `false` is withheld here exactly as it is on every DTO read.
+        if (!row || sudTreatmentOf({ isSudTreatment: false, drugName: row.drugName })) return null;
         return {
           id: row.id,
           patientId: row.patientId,

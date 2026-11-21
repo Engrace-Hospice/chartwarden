@@ -69,3 +69,11 @@ _Avoid_: F2F visit note (for the attestation)
 **Decline evidence**:
 The recorded, structured facts a recertification visit note sets beside each other: scale readings and their change over the benefit period, weight change, level of care, and the F2F's date. A fact, never a conclusion about prognosis or eligibility.
 _Avoid_: prognosis, terminal indicators
+
+**Admission visit**:
+The RN's first visit of a hospice stay. Its note documents the orders in effect, the advance directive acknowledgment on file, the caregivers on record and the baseline symptoms. The draft states each as a recorded fact; reconciling the medications and discussing the directive are the nurse's own acts.
+_Avoid_: admission note (for the admission paperwork), reconciliation (for a drafted list of orders)
+
+**Advance directive acknowledgment**:
+The consent record that the patient was given information about advance directives (module 39). A draft says it was on file; it never says the patient has a directive, never what the directive says, and never the code status.
+_Avoid_: advance directive (for the acknowledgment), code status

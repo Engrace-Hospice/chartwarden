@@ -42,6 +42,14 @@ export function readsBenefitPeriod(encounterType: EncounterType): boolean {
   return encounterType === "recert_visit" || encounterType === "face_to_face";
 }
 
+/**
+ * Whether a visit's draft reads the admission record (S2b): the orders in effect, the caregivers on record and the advance directive
+ * acknowledgment. Today the RN admission visit alone; every other visit reads none of it.
+ */
+export function readsAdmissionRecord(encounterType: EncounterType): boolean {
+  return encounterType === "admission_visit";
+}
+
 /** Whether the pair's template has any drafted section. `false` for a pair with no template. */
 export function templateHasDraftedSection(
   encounterType: EncounterType,

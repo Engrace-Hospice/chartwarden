@@ -120,6 +120,7 @@
         "apps/backend/__tests__/m5-patient-wristband.live.test.ts",
         "apps/backend/__tests__/m5-privacy-officer.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
+        "apps/backend/__tests__/m8-visit-note-drafting-admission.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts",
         "apps/backend/__tests__/s11-adversarial-stages.live.test.ts"
       ],
@@ -214,6 +215,7 @@
         "apps/backend/__tests__/m8-findings.live.test.ts",
         "apps/backend/__tests__/m8-note-closure.live.test.ts",
         "apps/backend/__tests__/m8-visit-note-draft-routes.live.test.ts",
+        "apps/backend/__tests__/m8-visit-note-drafting-admission.live.test.ts",
         "apps/backend/__tests__/m8-visit-note-drafting-recert.live.test.ts",
         "apps/backend/__tests__/note-closure-routes.test.ts",
         "apps/backend/__tests__/s11-adversarial-stages.live.test.ts",
@@ -789,7 +791,8 @@
         "apps/backend/__tests__/m16-routes.live.test.ts",
         "apps/backend/__tests__/m22-internal-documents.test.ts",
         "apps/backend/__tests__/m31-signature-requests.live.test.ts",
-        "apps/backend/__tests__/m36-tenant-idor.live.test.ts"
+        "apps/backend/__tests__/m36-tenant-idor.live.test.ts",
+        "apps/backend/__tests__/m8-visit-note-drafting-admission.live.test.ts"
       ],
       "directRoutesReferenced": 27
     },

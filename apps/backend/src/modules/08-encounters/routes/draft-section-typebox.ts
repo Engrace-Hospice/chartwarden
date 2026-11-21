@@ -53,6 +53,10 @@ const Origin = Type.Union([
   Type.Literal("benefit_period"),
   Type.Literal("face_to_face"),
   Type.Literal("certification"),
+  // S2b (RN admission visit): the kinds of the new sources. Kinds only, never ids (VN-D7).
+  Type.Literal("medication_order"),
+  Type.Literal("caregiver"),
+  Type.Literal("advance_directive_acknowledgment"),
 ]);
 
 export const DraftSectionResponseSchema = Type.Object({

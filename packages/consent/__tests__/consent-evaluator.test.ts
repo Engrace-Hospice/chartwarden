@@ -191,3 +191,161 @@ describe("ConsentEvaluator.evaluate pinned to one record (`consentRecordId`, M16
     });
   });
 });
+
+// A row's status is its CURRENT status. `historical` asks the other question — was the record in force at `asOf` — and answers it
+// from the row's own end instant (`endedAtMs`); without it the answer is unchanged, so no disclosure gate can start allowing a
+// consent that has since ended (visit-note drafting reads what was on file at a visit, VN-D11).
+describe("ConsentEvaluator.evaluate historical (was it in force at `asOf`)", () => {
+  const ctx = { sessionContext: { sessionClass: "staff" as const }, callerModule: "m8" };
+  const ack = (over: Partial<StoredConsent>) =>
+    consent({
+      typeKey: "advance_directive_acknowledgment",
+      effectiveAtMs: 1000,
+      recordedAtMs: 1000,
+      ...over,
+    });
+  const evaluateAt = (
+    consents: StoredConsent[],
+    asOfMs: number,
+    historical?: boolean,
+    deceased: string[] = [],
+  ) =>
+    evalWith(consents, deceased).evaluate({
+      organizationId: ORG,
+      patientId: PAT,
+      consentType: "advance_directive_acknowledgment",
+      asOf: new Date(asOfMs).toISOString(),
+      ...(historical === undefined ? {} : { historical }),
+      ...ctx,
+    });
+
+  it.each([
+    ["revoked", { status: "revoked" as const, endedAtMs: 6000 }],
+    ["superseded", { status: "superseded" as const, endedAtMs: 6000 }],
+    ["expired", { status: "expired" as const, endedAtMs: 6000 }],
+  ])("a %s record that ended after `asOf` was in force then", async (_status, over) => {
+    const result = await evaluateAt([ack({ id: "a1", ...over })], 5000, true);
+    expect(result).toMatchObject({ allowed: true, consentRecordId: "a1" });
+  });
+
+  it.each([
+    ["revoked", "consent_revoked"],
+    ["expired", "consent_expired"],
+    ["superseded", "no_active_consent_on_file"],
+  ] as const)(
+    "a %s record that ended at or before `asOf` is not in force then",
+    async (status, reason) => {
+      for (const endedAtMs of [5000, 4000]) {
+        const result = await evaluateAt([ack({ status, endedAtMs })], 5000, true);
+        expect(result).toMatchObject({ allowed: false, denyReason: reason });
+      }
+    },
+  );
+
+  it("a record whose end instant is unknown is not in force then (fail closed)", async () => {
+    for (const endedAtMs of [undefined, null]) {
+      const result = await evaluateAt(
+        [ack({ status: "revoked", ...(endedAtMs === undefined ? {} : { endedAtMs }) })],
+        5000,
+        true,
+      );
+      expect(result.allowed).toBe(false);
+    }
+  });
+
+  it("never allows a draft record, one effective after `asOf`, or one whose own expiry had passed", async () => {
+    expect(
+      (await evaluateAt([ack({ status: "draft", endedAtMs: 9000 })], 5000, true)).allowed,
+    ).toBe(false);
+    expect(
+      (
+        await evaluateAt(
+          [ack({ status: "revoked", endedAtMs: 9000, effectiveAtMs: 5001 })],
+          5000,
+          true,
+        )
+      ).allowed,
+    ).toBe(false);
+    expect(
+      (
+        await evaluateAt(
+          [ack({ status: "revoked", endedAtMs: 9000, expiresAtMs: 5000 })],
+          5000,
+          true,
+        )
+      ).allowed,
+    ).toBe(false);
+  });
+
+  it("without `historical` (or with it false) an ended record still denies, so existing callers are unchanged", async () => {
+    const ended = [ack({ status: "revoked", endedAtMs: 6000 })];
+    for (const historical of [undefined, false]) {
+      expect(await evaluateAt(ended, 5000, historical)).toMatchObject({
+        allowed: false,
+        denyReason: "consent_revoked",
+      });
+    }
+  });
+
+  it("the highest-version record in force at `asOf` governs, not the one that replaced it later", async () => {
+    const result = await evaluateAt(
+      [
+        ack({ id: "old", version: 1, status: "superseded", endedAtMs: 6000 }),
+        ack({ id: "new", version: 2, status: "active", effectiveAtMs: 6000 }),
+      ],
+      5000,
+      true,
+    );
+    expect(result).toMatchObject({ allowed: true, consentRecordId: "old" });
+  });
+
+  // "On file at `asOf`" is also about when the record was ENTERED: its effective date is supplied by the caller and can be backdated, so a
+  // record entered after `asOf` with an earlier effective date was not on file then.
+  it("a record entered after `asOf` (backdated effective date) was not on file then; one entered at `asOf` was", async () => {
+    const backdated = [
+      ack({ id: "late", status: "active", effectiveAtMs: 1000, recordedAtMs: 5001 }),
+    ];
+    expect(await evaluateAt(backdated, 5000, true)).toMatchObject({
+      allowed: false,
+      denyReason: "no_active_consent_on_file",
+    });
+    const atInstant = [ack({ id: "now", status: "active", recordedAtMs: 5000 })];
+    expect(await evaluateAt(atInstant, 5000, true)).toMatchObject({
+      allowed: true,
+      consentRecordId: "now",
+    });
+  });
+
+  it("a record that was entered by `asOf` governs even when a later-entered record is also effective by then", async () => {
+    const result = await evaluateAt(
+      [
+        ack({ id: "entered", version: 1, status: "active", recordedAtMs: 1000 }),
+        ack({ id: "backdated", version: 2, status: "active", recordedAtMs: 9000 }),
+      ],
+      5000,
+      true,
+    );
+    expect(result).toMatchObject({ allowed: true, consentRecordId: "entered" });
+  });
+
+  it("a record whose entry instant is unknown was not on file then (fail closed)", async () => {
+    for (const recordedAtMs of [undefined, null]) {
+      const row = ack({
+        status: "active",
+        ...(recordedAtMs === undefined ? {} : { recordedAtMs }),
+      });
+      const { recordedAtMs: _unset, ...withoutEntry } = row;
+      const result = await evaluateAt(
+        [recordedAtMs === undefined ? withoutEntry : row],
+        5000,
+        true,
+      );
+      expect(result.allowed).toBe(false);
+    }
+  });
+
+  it("the entry instant does not matter without `historical`: a current record answers as it always did", async () => {
+    const late = [ack({ status: "active", recordedAtMs: 9000 })];
+    expect(await evaluateAt(late, 5000)).toMatchObject({ allowed: true });
+  });
+});

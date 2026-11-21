@@ -81,6 +81,24 @@ export function isWeightUnit(unit: unknown): unit is WeightUnit {
   return typeof unit === "string" && (WEIGHT_UNITS as readonly string[]).includes(unit);
 }
 
+/** The relationship words M5 records on a patient-caregiver link (`patient_caregiver.relationship`); each has a word in the draft. */
+export const CAREGIVER_RELATIONSHIPS = [
+  "spouse",
+  "child",
+  "parent",
+  "sibling",
+  "other_family",
+  "friend",
+  "guardian",
+  "paid_caregiver",
+] as const;
+export type CaregiverRelationship = (typeof CAREGIVER_RELATIONSHIPS)[number];
+export function isCaregiverRelationship(value: unknown): value is CaregiverRelationship {
+  return (
+    typeof value === "string" && (CAREGIVER_RELATIONSHIPS as readonly string[]).includes(value)
+  );
+}
+
 /** A value the word table holds; a key it does not (or an inherited one such as "constructor") is a malformed input. */
 export function tableValue<T>(table: Readonly<Record<string, T>>, key: unknown, field: string): T {
   if (typeof key !== "string" || !Object.hasOwn(table, key)) {

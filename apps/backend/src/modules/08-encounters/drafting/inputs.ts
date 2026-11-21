@@ -6,16 +6,24 @@
 // it were complete, and nothing is swallowed: the failing read's name goes in the message, the cause stays on
 // the error for the server log (the upstream message may carry PHI, so it never reaches the response).
 import type {
+  AdvanceDirectiveAcknowledgmentInput,
   BenefitPeriodDraftInput,
   CarePlanDraftInput,
+  CaregiverInput,
   DraftInputs,
   MedicationChangeInput,
   MedicationChangeKind,
+  MedicationOrderInput,
   ScaleReadingInput,
   VitalsDraftInput,
   WeightDraftInput,
 } from "@chartwarden/hearthnote";
-import { isWeightUnit, readsBenefitPeriod } from "@chartwarden/hearthnote";
+import {
+  isCaregiverRelationship,
+  isWeightUnit,
+  readsAdmissionRecord,
+  readsBenefitPeriod,
+} from "@chartwarden/hearthnote";
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
 import type {
   ElectionPeriodSummary,
@@ -430,6 +438,105 @@ async function readWeight(
   };
 }
 
+// ── the admission record (S2b: the RN admission visit, design §3.3) ─────────────────────────────────
+const isText = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+
+/**
+ * Whether an order's frequency code says as needed: `prn` or `asneeded` once case, spaces, underscores and hyphens are dropped. M13 reads the code
+ * the same way (`parseFrequencyCode`, which treats it as PRN whatever the flag says), and M12's store hands out a missing flag as `false`, so a
+ * PRN order whose flag was never set is as needed here too and is not drafted as if it were scheduled.
+ */
+function isPrnFrequency(frequencyCode: string | undefined): boolean {
+  const code = (frequencyCode ?? "").toLowerCase().replace(/[\s_-]+/g, "");
+  return code === "prn" || code === "asneeded";
+}
+
+/**
+ * The orders in effect at the visit time. A SUD treatment order is left out for a viewer without Part 2 disclosure, as the medication changes
+ * are (fail closed: only the literal `false` proves an order is not SUD treatment). Nothing is drafted at all when ANY order that remains
+ * cannot be stated (a blank drug name, strength, form or route, or an as-needed flag that is not true or false: M12's own store never hands
+ * out such a flag, the check is for any other implementation of the port): the section reads as the orders in effect, and one skipped in
+ * silence would make it look complete.
+ */
+async function readActiveMedications(
+  ports: DraftPorts,
+  encounter: DraftEncounter,
+  asOf: string,
+  part2Verdict: Part2Verdict,
+): Promise<readonly MedicationOrderInput[]> {
+  const all = await guarded("the active medication orders", () =>
+    ports.activeMedicationsAsOf(encounter.organizationId, encounter.patientId, asOf),
+  );
+  const mayWithhold = all.some((order) => order.isSudTreatment !== false);
+  const disclosed = mayWithhold && (await part2Verdict());
+  const shown = all.filter((order) => order.isSudTreatment === false || disclosed);
+  const stated = shown.every(
+    (order) =>
+      isText(order.drugName) &&
+      isText(order.strength) &&
+      isText(order.doseForm) &&
+      isText(order.route) &&
+      typeof order.sigStructured?.asNeeded === "boolean",
+  );
+  if (!stated) return [];
+  return shown.map(
+    (order): MedicationOrderInput => ({
+      id: order.id,
+      drugName: order.drugName,
+      strength: order.strength,
+      doseForm: order.doseForm,
+      route: order.route,
+      asNeeded: order.sigStructured.asNeeded || isPrnFrequency(order.sigStructured.frequencyCode),
+      sudRelated: order.isSudTreatment !== false,
+    }),
+  );
+}
+
+/**
+ * The caregivers on record on the service date: the name and the relationship, and nothing else of the roster entry (its email, phone and
+ * language are never read). Nothing is drafted when one entry has a blank name or a relationship the draft has no word for.
+ */
+async function readCaregivers(
+  ports: DraftPorts,
+  encounter: DraftEncounter,
+): Promise<readonly CaregiverInput[]> {
+  const roster = await guarded("the caregivers on record", () =>
+    ports.caregiversOn(encounter.organizationId, encounter.patientId, encounter.serviceDate),
+  );
+  const stated = roster.flatMap((entry): CaregiverInput[] =>
+    isText(entry.displayName) && isCaregiverRelationship(entry.relationship)
+      ? [
+          {
+            id: entry.patientCaregiverId,
+            displayName: entry.displayName,
+            relationship: entry.relationship,
+            isPrimary: entry.isPrimary,
+            sudRelated: false,
+          },
+        ]
+      : [],
+  );
+  // one entry that cannot be stated leaves the whole roster undrafted: a partial list would read as the caregivers on record
+  return stated.length === roster.length ? stated : [];
+}
+
+/** The advance directive acknowledgment that was on file at the visit time: its record id as a source, never its content. */
+async function readAdvanceDirective(
+  ports: DraftPorts,
+  encounter: DraftEncounter,
+  asOf: string,
+): Promise<AdvanceDirectiveAcknowledgmentInput | null> {
+  const found = await guarded("the advance directive acknowledgment", () =>
+    ports.advanceDirectiveAcknowledgment({
+      organizationId: encounter.organizationId,
+      patientId: encounter.patientId,
+      asOf,
+    }),
+  );
+  return found === null ? null : { id: found.consentRecordId, sudRelated: false };
+}
+
 // ── previous visit ─────────────────────────────────────────────────────────────────────────────────
 async function readPreviousVisitMs(
   ports: DraftPorts,
@@ -472,17 +579,31 @@ export async function readDraftInputs(
   const readsPeriod = readsBenefitPeriod(encounter.encounterType);
   const period = readsPeriod ? await readCoveringPeriod(ports, encounter) : null;
   const periodStart = period === null ? null : String(period.startDate);
-  const [carePlan, scaleReadings, vitals, medicationChanges, weight, benefitPeriod] =
-    await Promise.all([
-      readCarePlan(ports, encounter, viewer, asOf, part2Verdict),
-      readScaleReadings(ports, encounter, asOf, asOfMs, previousMs, timeZone, periodStart),
-      readVitals(ports, encounter, asOf, asOfMs),
-      readMedicationChanges(ports, encounter, previousIso, asOf, asOfMs, timeZone, part2Verdict),
-      readsPeriod
-        ? readWeight(ports, encounter, periodStart, asOf, asOfMs, timeZone)
-        : Promise.resolve(null),
-      recert && period !== null ? readBenefitPeriod(ports, encounter, period) : null,
-    ]);
+  // S2b: the RN admission visit reads the orders in effect, the caregivers on record and the acknowledgment on file; no other visit does.
+  const admission = readsAdmissionRecord(encounter.encounterType);
+  const [
+    carePlan,
+    scaleReadings,
+    vitals,
+    medicationChanges,
+    weight,
+    benefitPeriod,
+    activeMedications,
+    caregivers,
+    advanceDirective,
+  ] = await Promise.all([
+    readCarePlan(ports, encounter, viewer, asOf, part2Verdict),
+    readScaleReadings(ports, encounter, asOf, asOfMs, previousMs, timeZone, periodStart),
+    readVitals(ports, encounter, asOf, asOfMs),
+    readMedicationChanges(ports, encounter, previousIso, asOf, asOfMs, timeZone, part2Verdict),
+    readsPeriod
+      ? readWeight(ports, encounter, periodStart, asOf, asOfMs, timeZone)
+      : Promise.resolve(null),
+    recert && period !== null ? readBenefitPeriod(ports, encounter, period) : null,
+    admission ? readActiveMedications(ports, encounter, asOf, part2Verdict) : [],
+    admission ? readCaregivers(ports, encounter) : [],
+    admission ? readAdvanceDirective(ports, encounter, asOf) : null,
+  ]);
   return {
     encounterType: encounter.encounterType,
     discipline: encounter.discipline,
@@ -493,6 +614,7 @@ export async function readDraftInputs(
     medicationChanges,
     ...(readsPeriod ? { weight } : {}),
     ...(recert ? { benefitPeriod } : {}),
+    ...(admission ? { activeMedications, caregivers, advanceDirective } : {}),
   };
 }
 

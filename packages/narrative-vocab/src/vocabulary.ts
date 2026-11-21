@@ -52,10 +52,10 @@ export const FALL_FOLLOWUP_CODE = "nv.reason.fall_followup";
 
 /**
  * Semantic version of the shipped corpus; pinned onto a selection at first finalize (D11).
- * 2026.11.0 added the visit-note draft phrases (ADR-0114); 2026.11.1 added the `visit_reason` entries; 2026.12.0 adds the recertification
- * and face-to-face draft phrases (ADR-0114 S2).
+ * 2026.11.0 added the visit-note draft phrases (ADR-0114); 2026.11.1 added the `visit_reason` entries; 2026.12.0 added the recertification
+ * and face-to-face draft phrases (ADR-0114 S2); 2026.12.1 adds the RN admission visit's draft phrases (ADR-0114 S2b).
  */
-export const VOCAB_VERSION = "narrative-vocab@2026.12.0";
+export const VOCAB_VERSION = "narrative-vocab@2026.12.1";
 
 /** Whether the named clinical reviewer has approved the corpus wording. */
 export type ClinicalReviewStatus = "pending" | "approved";
@@ -65,7 +65,8 @@ export type ClinicalReviewStatus = "pending" | "approved";
  * visit-note draft entries after the original 23: scale readings, vitals, care-plan goals and
  * interventions, medication changes, and the RN routine visit's chief-concern and plan phrases) and in
  * `narrative-vocab@2026.12.0` (the 11 recertification and face-to-face entries: PPS and weight against
- * the benefit period, the face-to-face's facts, the benefit period) is DRAFT WORDING. It was written to be neutral and factual (numbers and dates, no clinical judgement), but
+ * the benefit period, the face-to-face's facts, the benefit period) and in `narrative-vocab@2026.12.1` (the 5 admission entries: the
+ * orders in effect, the caregivers on record, the advance directive acknowledgment on file) is DRAFT WORDING. It was written to be neutral and factual (numbers and dates, no clinical judgement), but
  * it has not been read by a clinician. The platform-side reviewer named by the owner on 2026-11-18 is ADA.
  *
  * `status` stays "pending" until ADA approves the wording; the approval is a deliberate edit to this

@@ -54,6 +54,62 @@ describe("defaultDraftPorts", () => {
     expect(getMedicationChangesBetween).toHaveBeenCalledWith(ORG_ID, PATIENT_ID, "from", "to");
   });
 
+  it("S2b: reads the orders in effect as of the visit instant from the registered MedicationOrderProvider", async () => {
+    const getMedicationsAsOf = vi.fn(async () => []);
+    register("MedicationOrderProvider", { getMedicationsAsOf });
+    await defaultDraftPorts().activeMedicationsAsOf(ORG_ID, PATIENT_ID, AS_OF);
+    expect(getMedicationsAsOf).toHaveBeenCalledWith(ORG_ID, PATIENT_ID, AS_OF);
+  });
+
+  it("S2b: reads the caregivers on the service date from the registered PatientCaregiverRosterReader", async () => {
+    const caregiversOn = vi.fn(async () => []);
+    register("PatientCaregiverRosterReader", { caregiversOn });
+    await defaultDraftPorts().caregiversOn(ORG_ID, PATIENT_ID, "2026-11-18");
+    expect(caregiversOn).toHaveBeenCalledWith(ORG_ID, PATIENT_ID, "2026-11-18");
+  });
+
+  describe("S2b: the advance directive acknowledgment (M39 consent evaluation)", () => {
+    const ask = () =>
+      defaultDraftPorts().advanceDirectiveAcknowledgment({
+        organizationId: ORG_ID,
+        patientId: PATIENT_ID,
+        asOf: AS_OF,
+      });
+
+    it("asks M39 for the acknowledgment type as of the visit instant, historically (was it in force then, not is it now), as module m8, and answers the record that was active", async () => {
+      const evaluate = vi.fn(async () => ({ allowed: true, consentRecordId: "consent-ad-1" }));
+      register("ConsentEvaluator", { evaluate });
+      await expect(ask()).resolves.toEqual({ consentRecordId: "consent-ad-1" });
+      expect(evaluate).toHaveBeenCalledWith({
+        organizationId: ORG_ID,
+        patientId: PATIENT_ID,
+        consentType: "advance_directive_acknowledgment",
+        asOf: AS_OF,
+        historical: true,
+        sessionContext: { sessionClass: "staff" },
+        callerModule: "m8",
+      });
+    });
+
+    it("answers none when no acknowledgment was active, whatever the reason", async () => {
+      register("ConsentEvaluator", {
+        evaluate: vi.fn(async () => ({ allowed: false, denyReason: "consent_revoked" })),
+      });
+      await expect(ask()).resolves.toBeNull();
+    });
+
+    it("answers none for an allowed verdict that names no record, and throws when M39 cannot answer (never a false none)", async () => {
+      register("ConsentEvaluator", { evaluate: vi.fn(async () => ({ allowed: true })) });
+      await expect(ask()).resolves.toBeNull();
+      register("ConsentEvaluator", {
+        evaluate: vi.fn(async () => {
+          throw new Error("synthetic outage");
+        }),
+      });
+      await expect(ask()).rejects.toThrow("synthetic outage");
+    });
+  });
+
   it("reads the visit's wounds through the registered WoundProvider, and fails closed when none is registered", async () => {
     const listObservationsForEncounter = vi.fn(async () => [
       { observationId: "o", woundId: "w", observedAt: "2026-11-18T14:00:00.000Z", site: "sacrum" },

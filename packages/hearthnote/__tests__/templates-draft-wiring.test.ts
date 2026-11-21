@@ -37,8 +37,14 @@ const LEGACY_CATEGORIES: Readonly<Record<string, readonly string[] | undefined>>
 };
 
 const ROUTINE_RN = "routine_visit:rn";
-/** The templates with draft-wording category wiring: S1's RN routine visit, and S2's recertification and face-to-face visits. */
-const WIRED = new Set([ROUTINE_RN, "recert_visit:rn", "face_to_face:md", "face_to_face:np"]);
+/** The templates with draft-wording category wiring: S1's RN routine visit, S2's recertification and face-to-face visits, S2b's admission visit. */
+const WIRED = new Set([
+  ROUTINE_RN,
+  "recert_visit:rn",
+  "admission_visit:rn",
+  "face_to_face:md",
+  "face_to_face:np",
+]);
 
 describe("RN routine visit category wiring", () => {
   const sectionById = (id: string) =>
@@ -177,6 +183,32 @@ describe("S2 wiring: the recertification and face-to-face visits (design §3.3)"
     for (const id of ["chief_concern", "assessment", "symptom_management", "interventions"]) {
       expect(sectionOf("recert_visit", "rn", id)?.allowedCategories, id).toEqual(
         LEGACY_CATEGORIES[id],
+      );
+    }
+  });
+
+  it("the admission visit's vitals_review and plan use the routine visit's categories, and its four own sections and other sections stay as they were", () => {
+    expect(sectionOf("admission_visit", "rn", "vitals_review")?.allowedCategories).toEqual([
+      "vitals_review",
+    ]);
+    expect(sectionOf("admission_visit", "rn", "plan")?.allowedCategories).toEqual([
+      "plan",
+      "care_plan_element",
+    ]);
+    // Every other section carries exactly the categories it had before the draft wiring (the switch-off template).
+    const unwired = resolveTemplate("admission_visit", "rn", { draftWording: false });
+    for (const id of [
+      "chief_concern",
+      "assessment",
+      "symptom_management",
+      "interventions",
+      "med_reconciliation",
+      "advance_directive",
+      "caregiver_overview",
+      "baseline_symptoms",
+    ]) {
+      expect(sectionOf("admission_visit", "rn", id)?.allowedCategories, id).toEqual(
+        unwired?.sections.find((s) => s.id === id)?.allowedCategories,
       );
     }
   });

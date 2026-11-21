@@ -18,12 +18,17 @@ import {
 const LEGACY_ENTRY_COUNT = 23;
 const ROUTINE_ENTRY_COUNT = 25; // narrative-vocab@2026.11.0 (S1)
 const RECERT_ENTRY_COUNT = 11; // narrative-vocab@2026.12.0 (S2)
-const DRAFT_ENTRY_COUNT = ROUTINE_ENTRY_COUNT + RECERT_ENTRY_COUNT;
+const ADMISSION_ENTRY_COUNT = 5; // narrative-vocab@2026.12.1 (S2b)
+const DRAFT_ENTRY_COUNT = ROUTINE_ENTRY_COUNT + RECERT_ENTRY_COUNT + ADMISSION_ENTRY_COUNT;
 const LEGACY_CODES = new Set(VOCABULARY.slice(0, LEGACY_ENTRY_COUNT).map((e) => e.code));
-/** Every draft-wording entry: the 25 of 2026.11.0 and the 11 of 2026.12.0. The `visit_reason` entries of 2026.11.1 sit after them. */
+/** Every draft-wording entry: the 25 of 2026.11.0, the 11 of 2026.12.0 and the 5 of 2026.12.1. The `visit_reason` entries of 2026.11.1 sit after them. */
 const NEW_ENTRIES = VOCABULARY.slice(LEGACY_ENTRY_COUNT, LEGACY_ENTRY_COUNT + DRAFT_ENTRY_COUNT);
 const ROUTINE_ENTRIES = NEW_ENTRIES.slice(0, ROUTINE_ENTRY_COUNT);
-const RECERT_ENTRIES = NEW_ENTRIES.slice(ROUTINE_ENTRY_COUNT);
+const RECERT_ENTRIES = NEW_ENTRIES.slice(
+  ROUTINE_ENTRY_COUNT,
+  ROUTINE_ENTRY_COUNT + RECERT_ENTRY_COUNT,
+);
+const ADMISSION_ENTRIES = NEW_ENTRIES.slice(ROUTINE_ENTRY_COUNT + RECERT_ENTRY_COUNT);
 /** The S1 entries the recertification visit drafts from too (S2 tags them for it; their wording is pinned below). */
 const SHARED_WITH_RECERT = new Set([
   ...["pps_first", "pps_down", "pps_up", "pps_same"].map((s) => `nv.scale.${s}`),
@@ -32,18 +37,31 @@ const SHARED_WITH_RECERT = new Set([
   ...["goal_progress", "goal_listed", "intervention_performed"].map((s) => `nv.cp.${s}`),
   ...["started", "changed", "discontinued"].map((s) => `nv.med.${s}`),
 ]);
+/** Of those, the ones the RN admission visit drafts from too (S2b tags them for it): everything but the PPS phrases. */
+const SHARED_WITH_ADMISSION = new Set(
+  [...SHARED_WITH_RECERT].filter((code) => !code.startsWith("nv.scale.pps_")),
+);
 
 describe("corpus release", () => {
   it("is a new release, registered with its own uuid and a date", () => {
-    expect(VOCAB_VERSION).toBe("narrative-vocab@2026.12.0");
+    expect(VOCAB_VERSION).toBe("narrative-vocab@2026.12.1");
     expect(NARRATIVE_VOCAB_RELEASES.map((r) => r.version)).toEqual([
       "narrative-vocab@2026.06.0",
       "narrative-vocab@2026.11.0",
       "narrative-vocab@2026.11.1",
       "narrative-vocab@2026.12.0",
+      "narrative-vocab@2026.12.1",
     ]);
     expect(activeNarrativeVocabRelease(VOCAB_VERSION).version).toBe(VOCAB_VERSION);
     expect(activeNarrativeVocabRelease(VOCAB_VERSION).releasedOn).toBe("2026-11-20");
+  });
+
+  it("keeps the 2026.12.0 release row untouched (a note signed under it pins that id)", () => {
+    expect(NARRATIVE_VOCAB_RELEASES[3]).toEqual({
+      version: "narrative-vocab@2026.12.0",
+      id: "5ea65aa0-a1c6-4e27-8853-825abfcb5240",
+      releasedOn: "2026-11-20",
+    });
   });
 
   it("keeps the 2026.11.0 release row untouched (a note signed under it pins that id)", () => {
@@ -120,28 +138,43 @@ describe("effectiveReviewStatus", () => {
 });
 
 describe("DRAFT_VOCAB_CODES", () => {
-  it("is exactly the codes added in 2026.11.0 and 2026.12.0, none of the 23 earlier ones", () => {
+  it("is exactly the codes added in 2026.11.0, 2026.12.0 and 2026.12.1, none of the 23 earlier ones", () => {
     expect([...DRAFT_VOCAB_CODES].sort()).toEqual(NEW_ENTRIES.map((e) => e.code).sort());
     for (const code of LEGACY_CODES) expect(DRAFT_VOCAB_CODES.has(code)).toBe(false);
   });
 });
 
 describe("draft entries", () => {
-  it("adds 25 entries (2026.11.0) then 11 (2026.12.0) after the 23 legacy ones, with unique codes", () => {
+  it("adds 25 entries (2026.11.0), then 11 (2026.12.0), then 5 (2026.12.1) after the 23 legacy ones, with unique codes", () => {
     expect(ROUTINE_ENTRIES).toHaveLength(ROUTINE_ENTRY_COUNT);
     expect(RECERT_ENTRIES).toHaveLength(RECERT_ENTRY_COUNT);
+    expect(ADMISSION_ENTRIES).toHaveLength(ADMISSION_ENTRY_COUNT);
     expect(new Set(VOCABULARY.map((e) => e.code)).size).toBe(VOCABULARY.length);
     for (const e of NEW_ENTRIES) expect(LEGACY_CODES.has(e.code)).toBe(false);
   });
 
-  it("the 25 of 2026.11.0 are tagged for the RN routine visit, and 20 of them also for the recertification visit", () => {
+  it("the 25 of 2026.11.0 are tagged for the RN routine visit, 20 of them also for the recertification visit and 16 also for the admission visit", () => {
     for (const e of ROUTINE_ENTRIES) {
       expect(e.disciplines, e.code).toEqual(["rn"]);
       expect(e.encounterTypes, e.code).toEqual(
-        SHARED_WITH_RECERT.has(e.code) ? ["routine_visit", "recert_visit"] : ["routine_visit"],
+        SHARED_WITH_ADMISSION.has(e.code)
+          ? ["routine_visit", "recert_visit", "admission_visit"]
+          : SHARED_WITH_RECERT.has(e.code)
+            ? ["routine_visit", "recert_visit"]
+            : ["routine_visit"],
       );
     }
     expect(ROUTINE_ENTRIES.filter((e) => SHARED_WITH_RECERT.has(e.code))).toHaveLength(20);
+    expect(ROUTINE_ENTRIES.filter((e) => SHARED_WITH_ADMISSION.has(e.code))).toHaveLength(16);
+  });
+
+  it("the 5 of 2026.12.1 are tagged for the RN admission visit alone, in one draft-only category", () => {
+    for (const e of ADMISSION_ENTRIES) {
+      expect(e.disciplines, e.code).toEqual(["rn"]);
+      expect(e.encounterTypes, e.code).toEqual(["admission_visit"]);
+      expect(e.category, e.code).toBe("admission_record");
+      expect(e.code.startsWith("nv.adm."), e.code).toBe(true);
+    }
   });
 
   it("the 11 of 2026.12.0 are tagged for the recertification visit, and 7 of them also for the face-to-face visit", () => {
@@ -165,10 +198,11 @@ describe("draft entries", () => {
     }
   });
 
-  it("surface in no other legal (encounter type x discipline) menu than the three templates that draft", () => {
+  it("surface in no other legal (encounter type x discipline) menu than the templates that draft", () => {
     const drafting = new Set([
       "routine_visit:rn",
       "recert_visit:rn",
+      "admission_visit:rn",
       "face_to_face:md",
       "face_to_face:np",
     ]);
@@ -190,6 +224,9 @@ describe("draft entries", () => {
     expect(codes("recert_visit", "rn").sort()).toEqual(
       [...SHARED_WITH_RECERT, ...RECERT_ENTRIES.map((e) => e.code)].sort(),
     );
+    expect(codes("admission_visit", "rn").sort()).toEqual(
+      [...SHARED_WITH_ADMISSION, ...ADMISSION_ENTRIES.map((e) => e.code)].sort(),
+    );
     for (const discipline of ["md", "np"] as const) {
       expect(codes("face_to_face", discipline).sort()).toEqual(
         RECERT_ENTRIES.filter((e) => e.encounterTypes.includes("face_to_face"))
@@ -202,6 +239,7 @@ describe("draft entries", () => {
   it("use only the categories the draft needs", () => {
     const categories = [...new Set(NEW_ENTRIES.map((e) => e.category))].sort();
     expect(categories).toEqual([
+      "admission_record",
       "benefit_period",
       "care_plan_element",
       "chief_concern",
@@ -322,6 +360,57 @@ describe("draft wording (neutral, factual, numbers only)", () => {
     expect(recertWording).toHaveLength(RECERT_ENTRY_COUNT);
     for (const [code, phrase] of recertWording) {
       expect(getVocabEntry(code)?.phrase, code).toBe(phrase);
+    }
+  });
+
+  // S2b (VN-D35): a fact that is on record, never "reconciled", never a directive the patient has or lacks, never an absence.
+  const admissionWording: ReadonlyArray<readonly [string, string]> = [
+    [
+      "nv.adm.med_active",
+      "Active order at the visit: ${drug_name} ${strength} ${dose_form}, ${route}",
+    ],
+    [
+      "nv.adm.med_active_prn",
+      "Active order at the visit, as needed: ${drug_name} ${strength} ${dose_form}, ${route}",
+    ],
+    [
+      "nv.adm.ad_ack_on_file",
+      "An advance directive acknowledgment was on file at the time of the visit",
+    ],
+    [
+      "nv.adm.caregiver_primary",
+      "${caregiver_name} (${caregiver_relationship}) is recorded as the primary caregiver",
+    ],
+    [
+      "nv.adm.caregiver_other",
+      "${caregiver_name} (${caregiver_relationship}) is recorded as a caregiver",
+    ],
+  ];
+
+  it("pins every 2026.12.1 phrase byte for byte", () => {
+    expect(admissionWording).toHaveLength(ADMISSION_ENTRY_COUNT);
+    for (const [code, phrase] of admissionWording) {
+      expect(getVocabEntry(code)?.phrase, code).toBe(phrase);
+    }
+  });
+
+  it("no 2026.12.1 phrase says a medication was reconciled or verified, that the patient has or lacks a directive, or that nothing is on file", () => {
+    for (const [code, phrase] of admissionWording) {
+      const text = phrase.toLowerCase();
+      for (const word of [
+        "reconcil",
+        "verified",
+        "complete",
+        "no ",
+        "none",
+        "not on file",
+        "has an advance",
+        "code status",
+        "dnr",
+        "full code",
+      ]) {
+        expect(text, code).not.toContain(word);
+      }
     }
   });
 

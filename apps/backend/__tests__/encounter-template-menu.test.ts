@@ -47,10 +47,9 @@ describe("buildTemplateMenu: draft wording off (the default)", () => {
   });
 
   it("is the same menu for every other template whichever way the flag goes", () => {
-    // The recertification and face-to-face visits are wired by S2 (below), so they differ with the flag on.
+    // The recertification, face-to-face and admission visits are wired by S2 and S2b (below), so they differ with the flag on.
     for (const [type, discipline] of [
       ["routine_visit", "lpn"],
-      ["admission_visit", "rn"],
       ["chha_visit", "chha"],
       ["telephonic", "rn"],
     ] as const) {
@@ -143,6 +142,56 @@ describe("buildTemplateMenu: the recertification and face-to-face visits (S2)", 
     // pps, esas, prognosis and recert_summary are wired to no category: nothing in them is a preset phrase of any kind.
     for (const id of ["pps", "esas", "prognosis", "recert_summary"])
       expect(menuCodes(recertOn, id), id).toEqual([]);
+  });
+});
+
+// S2b (design §3.3): the RN admission visit. The draft wording of 2026.12.1 is unreviewed, so a tenant with the switch off sees none of it;
+// with it on, the vitals and plan sections offer the routine visit's draft phrases, and the four admission sections keep the menus they had.
+describe("buildTemplateMenu: the RN admission visit (S2b)", () => {
+  const off = buildTemplateMenu("admission_visit", "rn");
+  const on = buildTemplateMenu("admission_visit", "rn", { draftWording: true });
+  const ADMISSION_OWN = [
+    "med_reconciliation",
+    "advance_directive",
+    "caregiver_overview",
+    "baseline_symptoms",
+  ];
+
+  it("switch off: none of the draft phrases in any section", () => {
+    for (const section of off.sections) {
+      for (const entry of section.entries) {
+        expect(DRAFT_VOCAB_CODES.has(entry.code), section.sectionId).toBe(false);
+      }
+    }
+  });
+
+  it("switch on: no admission phrase (nv.adm.*) is ever in a menu, so no order, caregiver or acknowledgment is typed by hand", () => {
+    for (const section of on.sections) {
+      for (const code of menuCodes(on, section.sectionId)) {
+        expect(code.startsWith("nv.adm."), `${section.sectionId}/${code}`).toBe(false);
+        expect(code.startsWith("nv.scale."), `${section.sectionId}/${code}`).toBe(false);
+      }
+    }
+  });
+
+  it("switch on: the four admission sections offer what they offered with the switch off, and no draft phrase but the care-plan phrases of their shared category", () => {
+    // The care-plan phrases are tagged for this visit so `interventions` and `plan` draft from the care plan; they carry the category
+    // `med_reconciliation` already offered its legacy phrases through, exactly as `interventions` and `plan` share it in the routine
+    // visit (S1). No other draft phrase reaches these four sections.
+    for (const id of ADMISSION_OWN) {
+      const added = menuCodes(on, id).filter((code) => !menuCodes(off, id).includes(code));
+      for (const code of added) expect(code.startsWith("nv.cp."), `${id}/${code}`).toBe(true);
+      for (const code of menuCodes(off, id))
+        expect(menuCodes(on, id), `${id}/${code}`).toContain(code);
+    }
+    for (const id of ["advance_directive", "caregiver_overview", "baseline_symptoms"]) {
+      expect(menuCodes(on, id), id).toEqual(menuCodes(off, id));
+    }
+  });
+
+  it("switch on: vitals_review and plan offer the routine visit's draft phrases", () => {
+    expect(menuCodes(on, "vitals_review").some((c) => DRAFT_VOCAB_CODES.has(c))).toBe(true);
+    expect(menuCodes(on, "plan").some((c) => DRAFT_VOCAB_CODES.has(c))).toBe(true);
   });
 });
 
