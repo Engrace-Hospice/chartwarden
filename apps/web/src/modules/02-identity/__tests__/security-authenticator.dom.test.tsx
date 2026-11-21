@@ -143,6 +143,14 @@ describe("authenticator app setup", () => {
     expect(screen.queryByRole("link", { name: "open the setup link" })).toBeNull();
   });
 
+  it("treats an answer without a list of backup codes as a failed start instead of breaking later", async () => {
+    enable.mockResolvedValue({ data: { totpURI: URI }, error: null });
+    mount();
+    await enterPassword();
+    expect((await screen.findByRole("alert")).textContent).toMatch(/nothing was turned on/);
+    expect(screen.queryByText("JBSW Y3DP EHPK 3PXP")).toBeNull();
+  });
+
   it("reports an account that already has the factor on, with nothing to set up", async () => {
     getSession.mockResolvedValue({
       data: { user: { id: "u1", email: null, twoFactorEnabled: true } },

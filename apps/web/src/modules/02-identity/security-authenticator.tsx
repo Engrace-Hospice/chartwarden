@@ -155,11 +155,19 @@ export function SecurityAuthenticator(): JSX.Element {
     setPassword("");
     const data = result?.data;
     const setup = result?.error || !data ? null : parseTotpUri(data.totpURI);
-    if (!result || result.error || !data || !setup) {
+    // The client is typed by a cast, not by the server: codes that are not a list of strings would throw while the codes are shown,
+    // after the factor is already on. Treat them as a failed start instead.
+    const backupCodes =
+      data &&
+      Array.isArray(data.backupCodes) &&
+      data.backupCodes.every((c) => typeof c === "string")
+        ? data.backupCodes
+        : null;
+    if (!result || result.error || !data || !setup || !backupCodes) {
       const reason = enrolFailure(result?.error);
       return reason === "already-on" ? setPhase({ kind: "on" }) : setFailure(reason);
     }
-    setPhase({ kind: "confirm", setup, backupCodes: data.backupCodes });
+    setPhase({ kind: "confirm", setup, backupCodes });
   }
 
   async function confirm(event: FormEvent, backupCodes: readonly string[]): Promise<void> {

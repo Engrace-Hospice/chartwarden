@@ -120,7 +120,7 @@ export async function isOrgNotSelectedResponse(response: Response): Promise<bool
  * WF09 — the §2.6 compliance gate's `COMPLIANCE_GATE_UNAVAILABLE` (finalize/sign) too: the composer keeps its unsaved form and
  * shows the blocker panel's "Unavailable" state instead of being replaced by the maintenance page.
  */
-const NOT_AN_OUTAGE_ON_503 = [
+const NOT_AN_OUTAGE_ON_503: readonly string[] = [
   "BILLING_ENTITLEMENT_UNAVAILABLE",
   NOTE_CLOSURE_UNAVAILABLE_CODE,
   COMPLIANCE_GATE_UNAVAILABLE_CODE,
