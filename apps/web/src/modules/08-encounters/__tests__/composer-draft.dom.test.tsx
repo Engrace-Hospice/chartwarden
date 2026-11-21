@@ -897,7 +897,10 @@ describe("the aide's drafted ADL section", () => {
     });
   };
   const chooseBathing = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
-    await user.selectOptions(await screen.findByRole("combobox", { name: "Bathing" }), "Limited assist");
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "Bathing" }),
+      "Limited assist",
+    );
   };
 
   it("re-reads the draft after the ADLs are saved, so the first Confirm is not made against text that has already changed", async () => {

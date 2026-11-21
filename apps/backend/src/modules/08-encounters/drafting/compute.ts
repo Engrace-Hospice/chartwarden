@@ -131,10 +131,8 @@ const CLOSED_STORE: DraftStorePorts = {
 const WEIGHTS_FROM = "1970-01-01T00:00:00.000Z";
 
 /** The store read of a source this snapshot did not take: a bug in the caller, refused loudly rather than answered as "nothing recorded". */
-const notTaken =
-  (what: string) =>
-  (): Promise<never> =>
-    Promise.reject(new Error(`a ${what} read the snapshot did not take`));
+const notTaken = (what: string) => (): Promise<never> =>
+  Promise.reject(new Error(`a ${what} read the snapshot did not take`));
 
 /**
  * Every STORE read the draft makes (the zone, the previous visit, the vitals, the removed care-plan links, the stored selections), taken up
