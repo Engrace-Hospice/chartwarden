@@ -314,6 +314,21 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
     expect(status.rows[0]?.status).toBe("uploaded");
   });
 
+  it("refuses intermediate and failed processing states without creating reviews", async () => {
+    const pending = await seedBatch();
+    for (const state of ["docling_complete", "classifier_complete", "parse_failed"] as const) {
+      await admin.query("UPDATE intake_upload_batch SET status=$1 WHERE id=$2", [state, pending]);
+      await expect(svc.openReview(ORG, actor, pending)).rejects.toMatchObject({
+        code: state === "parse_failed" ? "BATCH_STATE_CONFLICT" : "EXTRACTION_NOT_READY",
+      });
+    }
+    const rows = await admin.query(
+      "SELECT id FROM extraction_review WHERE intake_upload_batch_id=$1",
+      [pending],
+    );
+    expect(rows.rows).toHaveLength(0);
+  });
+
   it("refuses field review on an extraction-complete batch with zero candidates", async () => {
     const empty = await seedBatch();
     await admin.query("UPDATE intake_upload_batch SET status='extraction_complete' WHERE id=$1", [
