@@ -198,7 +198,12 @@ describe("ConsentEvaluator.evaluate pinned to one record (`consentRecordId`, M16
 describe("ConsentEvaluator.evaluate historical (was it in force at `asOf`)", () => {
   const ctx = { sessionContext: { sessionClass: "staff" as const }, callerModule: "m8" };
   const ack = (over: Partial<StoredConsent>) =>
-    consent({ typeKey: "advance_directive_acknowledgment", effectiveAtMs: 1000, ...over });
+    consent({
+      typeKey: "advance_directive_acknowledgment",
+      effectiveAtMs: 1000,
+      recordedAtMs: 1000,
+      ...over,
+    });
   const evaluateAt = (
     consents: StoredConsent[],
     asOfMs: number,
@@ -292,5 +297,55 @@ describe("ConsentEvaluator.evaluate historical (was it in force at `asOf`)", () 
       true,
     );
     expect(result).toMatchObject({ allowed: true, consentRecordId: "old" });
+  });
+
+  // "On file at `asOf`" is also about when the record was ENTERED: its effective date is supplied by the caller and can be backdated, so a
+  // record entered after `asOf` with an earlier effective date was not on file then.
+  it("a record entered after `asOf` (backdated effective date) was not on file then; one entered at `asOf` was", async () => {
+    const backdated = [
+      ack({ id: "late", status: "active", effectiveAtMs: 1000, recordedAtMs: 5001 }),
+    ];
+    expect(await evaluateAt(backdated, 5000, true)).toMatchObject({
+      allowed: false,
+      denyReason: "no_active_consent_on_file",
+    });
+    const atInstant = [ack({ id: "now", status: "active", recordedAtMs: 5000 })];
+    expect(await evaluateAt(atInstant, 5000, true)).toMatchObject({
+      allowed: true,
+      consentRecordId: "now",
+    });
+  });
+
+  it("a record that was entered by `asOf` governs even when a later-entered record is also effective by then", async () => {
+    const result = await evaluateAt(
+      [
+        ack({ id: "entered", version: 1, status: "active", recordedAtMs: 1000 }),
+        ack({ id: "backdated", version: 2, status: "active", recordedAtMs: 9000 }),
+      ],
+      5000,
+      true,
+    );
+    expect(result).toMatchObject({ allowed: true, consentRecordId: "entered" });
+  });
+
+  it("a record whose entry instant is unknown was not on file then (fail closed)", async () => {
+    for (const recordedAtMs of [undefined, null]) {
+      const row = ack({
+        status: "active",
+        ...(recordedAtMs === undefined ? {} : { recordedAtMs }),
+      });
+      const { recordedAtMs: _unset, ...withoutEntry } = row;
+      const result = await evaluateAt(
+        [recordedAtMs === undefined ? withoutEntry : row],
+        5000,
+        true,
+      );
+      expect(result.allowed).toBe(false);
+    }
+  });
+
+  it("the entry instant does not matter without `historical`: a current record answers as it always did", async () => {
+    const late = [ack({ status: "active", recordedAtMs: 9000 })];
+    expect(await evaluateAt(late, 5000)).toMatchObject({ allowed: true });
   });
 });

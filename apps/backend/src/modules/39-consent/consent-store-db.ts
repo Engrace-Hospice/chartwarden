@@ -173,6 +173,7 @@ export function createDbConsentStore(db: DbClient): ConsentStore {
             effectiveAtMs: r.effectiveAt.getTime(),
             expiresAtMs: ms(r.expiresAt),
             endedAtMs: endedAtMsOf(r),
+            recordedAtMs: r.createdAt.getTime(),
             survivesDeath: r.survivesDeath,
             scopeDescriptor: r.scopeDescriptor,
             recipients: byConsent.get(r.id) ?? [],

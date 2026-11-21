@@ -515,6 +515,8 @@ describe.skipIf(!DB_URL)(
       readonly updatedAt?: string;
       /** For `superseded`: when the renewal (version 2, effective then) took over. */
       readonly supersededAt?: string;
+      /** When the record was ENTERED (`created_at`); by default the effective date. A record entered after the visit with an earlier effective date is a backdated entry. */
+      readonly recordedAt?: string;
     }
     /** One advance directive acknowledgment record of `patientId`; returns its id (a `superseded` one also gets its successor). */
     async function addAcknowledgment(
@@ -526,7 +528,8 @@ describe.skipIf(!DB_URL)(
         `INSERT INTO consent_record (organization_id, patient_id, type_key, scope_descriptor, grantor_kind, effective_at, expires_at, status,
            capture_method, capture_evidence_jsonb, created_by_id, version, signed_at, signed_by_id, revoked_at, revoked_via_id, created_at, updated_at)
          VALUES ($1,$2,'advance_directive_acknowledgment','{}'::jsonb,'patient_self',$3,$4,$5::consent_status,
-           'typed_signature_in_app','{}'::jsonb,$6,1,$3,$6,$7,$8,$3,COALESCE($9::timestamptz, now())) RETURNING id`,
+           'typed_signature_in_app','{}'::jsonb,$6,1,$3,$6,$7,$8,COALESCE($10::timestamptz, $3::timestamptz),
+           COALESCE($9::timestamptz, now())) RETURNING id`,
         [
           org.orgId,
           patientId,
@@ -537,6 +540,7 @@ describe.skipIf(!DB_URL)(
           spec.revokedAt ?? null,
           spec.status === "revoked" ? randomUUID() : null,
           spec.updatedAt ?? null,
+          spec.recordedAt ?? null,
         ],
       );
       const id = one(result.rows).id;
@@ -1450,6 +1454,28 @@ describe.skipIf(!DB_URL)(
         expect(await portAnswer(patientId)).toBeNull();
         const section = await ackSection((await realAck(patientId)).f);
         expect(section).toMatchObject({ state: "not_drafted", text: null, origins: [] });
+      });
+
+      it("a record ENTERED after the visit instant is not drafted though its effective date is earlier (the effective date can be backdated); one entered during the service date is", async () => {
+        const backdated = randomUUID();
+        await addAcknowledgment(orgs.A, backdated, {
+          status: "active",
+          effectiveAt: "2026-01-10T15:00:00Z",
+          recordedAt: "2026-01-20T10:00:00Z",
+        });
+        expect(await portAnswer(backdated)).toBeNull();
+        expect(await ackSection((await realAck(backdated)).f)).toMatchObject({
+          state: "not_drafted",
+          text: null,
+        });
+
+        const sameDay = randomUUID();
+        const recordId = await addAcknowledgment(orgs.A, sameDay, {
+          status: "active",
+          effectiveAt: "2026-01-10T15:00:00Z",
+          recordedAt: "2026-01-15T20:00:00Z",
+        });
+        expect(await portAnswer(sameDay)).toEqual({ consentRecordId: recordId });
       });
 
       it("a record revoked before the visit instant is not drafted", async () => {

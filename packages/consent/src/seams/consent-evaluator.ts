@@ -113,7 +113,8 @@ export interface ConsentEvaluator {
     /**
      * Ask whether the record WAS in force at `asOf`, judged from the row's own end instant, instead of from its status now. A
      * record revoked, superseded or expired (a patient's death expires it) after `asOf` still answers `allowed` for an `asOf`
-     * before that. For READING what was on file at a past instant (visit-note drafting, VN-D11); never for authorizing a
+     * before that. A record counts only if it had been ENTERED by `asOf` too (its `created_at`; the effective date is the caller's to
+     * backdate), so a record entered later never reads as on file earlier. For READING what was on file at a past instant (visit-note drafting, VN-D11); never for authorizing a
      * disclosure or any access happening now, which is why it is opt-in and every existing caller keeps the current-status answer.
      */
     historical?: boolean;
@@ -260,6 +261,11 @@ export interface StoredConsent {
    * not know. Read only by a `historical` evaluation, which treats an ended record with no end instant as ended before any `asOf`.
    */
   readonly endedAtMs?: number | null;
+  /**
+   * When the record was entered (its `created_at`; unlike `effectiveAtMs` the caller cannot set it). Read only by a `historical` evaluation,
+   * which counts a record as on file at `asOf` only if it was entered by then; absent or null reads as not entered.
+   */
+  readonly recordedAtMs?: number | null;
   readonly survivesDeath: boolean;
   readonly scopeDescriptor: unknown;
   readonly recipients: readonly StoredRecipient[];
@@ -314,8 +320,12 @@ function pickGoverning(
   asOfMs: number,
   historical = false,
 ): { record: StoredConsent } | { denyReason: ConsentDenyReason } {
-  if (records.length === 0) return { denyReason: "no_active_consent_on_file" };
-  const effective = records.filter((r) => r.effectiveAtMs <= asOfMs);
+  // A `historical` read asks what was ON FILE at `asOfMs`: a record entered later is not in that picture, whatever effective date it carries.
+  const onFile = historical
+    ? records.filter((r) => typeof r.recordedAtMs === "number" && r.recordedAtMs <= asOfMs)
+    : records;
+  if (onFile.length === 0) return { denyReason: "no_active_consent_on_file" };
+  const effective = onFile.filter((r) => r.effectiveAtMs <= asOfMs);
   if (effective.length === 0) return { denyReason: "no_active_consent_on_file" };
   const active = effective
     .filter((r) => inForceAt(r, asOfMs, historical))
