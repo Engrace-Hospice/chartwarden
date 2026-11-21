@@ -3,11 +3,12 @@
 Fiscal year 2027 runs 2026-10-01 to 2027-09-30 (`fiscal_year_starting = 2026`; FY2026 is `2025`). A claim whose billing
 period crosses 2026-10-01 is split day by day and each side is priced with its own year's rate table and wage index.
 
-**Verification status.** This register was written offline. No CMS or Federal Register document could be opened, so
-**no value below is verified against a primary source**. Each value is pinned in a golden fixture to what the repo
-carries today; the fixture proves the carried data has not moved, not that it equals CMS. Before relying on a row,
-open the cited table and tick the "checked" column. A mismatch is a finding: fix the data, keep the citation, and
-update the golden in the same commit.
+**Verification status (2026-11-21).** The FY2027 national rate rows below were checked against the corrected CMS
+Transmittal 13976 / Change Request 14557 Table 1, which supersedes the August 2026 table after CMS corrected a
+technical error in the wage index and recalculated the national rates. The numbers in the repository match that
+corrected table. This verifies Medicare national base rates only; it does not verify Oregon Medicaid or any CCO
+contract rate. The FY2027 wage-index sample rows below were not individually checked against the corrected CMS
+files. Golden fixtures prove only that repository data has not moved, not by themselves that it equals CMS.
 
 Golden fixtures and tests: `packages/billing/__tests__/fy2027-source-register.test.ts`.
 Claim-level straddle test: `apps/backend/src/modules/23-billing-medicare/__tests__/assembly.test.ts`
@@ -15,18 +16,23 @@ Claim-level straddle test: `apps/backend/src/modules/23-billing-medicare/__tests
 
 ## 1. National per-diem base rates (carried in `packages/billing/src/rate-table/national-rates.ts`)
 
-Source (citations copied from repo docs, not resolved offline: treat as unverified): CMS-1851-CN correction, 91 FR 61791 (2026-09-30), corrected Tables at 91 FR 61792-61793
+Source: CMS-1851-CN correction, 91 FR 61791 (2026-09-30), corrected Tables at 91 FR 61792-61793
 (https://www.federalregister.gov/documents/2026/09/30/2026-20067), which supersedes Tables 1-4 of CMS-1851-F,
-91 FR 49118 (2026-08-03). Update 2.3%; HQRP reduction 4 percentage points.
+91 FR 49118 (2026-08-03). The corrected Table 1 rates were verified against [CMS Transmittal 13976](https://www.cms.gov/files/document/r13976cp.pdf).
+The update is 2.3%; HQRP reduction is 4 percentage points.
 
 | Component | Rev | HQRP compliant | HQRP non-compliant | checked against CMS |
 |---|---|---|---|---|
-| RHC days 1-60 | 0651 | $236.33 | $227.09 | no |
-| RHC days 61+ | 0651 | $186.33 | $179.04 | no |
-| CHC per day (24 h) | 0652 | $1,726.16 | $1,658.66 | no |
-| CHC hourly (also the SIA rate) | 0652 | $71.92 | $69.11 | no |
-| IRC | 0655 | $545.93 | $524.58 | no |
-| GIP | 0656 | $1,231.51 | $1,183.35 | no |
+| RHC days 1-60 | 0651 | $236.33 | $227.09 | yes — corrected CMS Table 1 |
+| RHC days 61+ | 0651 | $186.33 | $179.04 | yes — corrected CMS Table 1 |
+| CHC per day (24 h) | 0652 | $1,726.16 | $1,658.66 | yes — corrected CMS Table 1 |
+| CHC hourly (also the SIA rate) | 0652 | $71.92 | $69.11 | yes — corrected CMS Table 1 |
+| IRC | 0655 | $545.93 | $524.58 | yes — corrected CMS Table 1 |
+| GIP | 0656 | $1,231.51 | $1,183.35 | yes — corrected CMS Table 1 |
+
+Primary verification: [CMS Transmittal 13976, issued 2026-09-30](https://www.cms.gov/files/document/r13976cp.pdf),
+which replaces Transmittal 13924 and sets the updated table effective 2026-10-01 (implementation 2026-10-05).
+The corrected rates are national Medicare rates and are not EOCCO contractual amounts.
 
 Offline cross-checks that do pass: the module spec table prints the same dollars; non-compliant equals
 compliant x 0.983 / 1.023 within 1 cent for every component; CHC hourly x 24 is within 24 cents of the CHC per day.
@@ -60,8 +66,9 @@ The seeded FY2027 floors are the corrected 0.8916 / 0.8298, not the superseded v
 
 ## 3. Findings
 
-1. **Not a mismatch, but unverified:** no rate or index above could be checked against CMS offline. Action: a person with
-   CMS access ticks the "checked" column and reports any difference.
+1. **National rates verified; sample wage indexes remain unverified:** the six FY2027 national rate rows were checked
+   against corrected CMS Transmittal 13976. The eight FY2026/FY2027 CBSA sample rows above have not been individually
+   checked against CMS in this audit; verify those before relying on the samples.
 2. **Spec drift (fixed here):** module 23 spec section 1.3 said the FY2027 wage index "is NOT bundled". Migration 1058
    bundles the platform FY2026 and FY2027 index by CBSA (the tenant index per CCN is a separate table). Sentence corrected.
 3. **Open, not changed:** hospice labor shares per level of care are tenant-entered and have no verified CMS source in the
