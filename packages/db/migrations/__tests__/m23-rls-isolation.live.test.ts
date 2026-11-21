@@ -36,11 +36,11 @@ const ISOLATED_RUN = TARGET_MODULE_ENVIRONMENT.isolatedMarkerEqualsTrue;
 const SETUP_DIAGNOSTIC =
   process.env.CHARTWARDEN_M23_RLS_DIAGNOSTIC === "true" &&
   process.env.CHARTWARDEN_M23_RLS_DIAGNOSTIC_STAGE === "execution";
-function recordSetupStage(phase: string, step?: number): void {
+function recordSetupStage(phase: string, step?: number, code?: string): void {
   if (!SETUP_DIAGNOSTIC) return;
   writeFileSync(
     join(tmpdir(), "chartwarden-m23-setup-stage.json"),
-    JSON.stringify({ phase, step }),
+    JSON.stringify({ phase, step, code }),
     { mode: 0o600 },
   );
 }
@@ -540,7 +540,16 @@ describe.skipIf(!ISOLATED_RUN)(
     beforeAll(async () => {
       recordSetupStage("connecting");
       db = new Client({ connectionString: DB_URL });
-      await db.connect();
+      try {
+        await db.connect();
+      } catch (error) {
+        const code =
+          error && typeof error === "object" && "code" in error && typeof error.code === "string"
+            ? error.code
+            : "unknown";
+        recordSetupStage("connect_failed", undefined, code);
+        throw error;
+      }
       recordSetupStage("identity");
       // This must execute before resetSchema(): an accidental shared/incorrect target must not get
       // destructive DDL. The isolated runner passes these values directly into Vitest's env.

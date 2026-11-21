@@ -459,6 +459,7 @@ async function main() {
           typeof setupStage.phase === "string" &&
           [
             "connecting",
+            "connect_failed",
             "identity",
             "reset_schema",
             "migration",
@@ -481,6 +482,23 @@ async function main() {
           console.error(
             `  Last setup stage: ${progress.phase}${progress.step === undefined ? "" : `, step ${progress.step}`}.`,
           );
+          if (
+            "code" in setupStage &&
+            typeof setupStage.code === "string" &&
+            [
+              "ECONNREFUSED",
+              "ECONNRESET",
+              "ETIMEDOUT",
+              "EHOSTUNREACH",
+              "ENETUNREACH",
+              "EPIPE",
+              "28P01",
+              "3D000",
+              "unknown",
+            ].includes(setupStage.code)
+          ) {
+            console.error(`  Connection failure code: ${setupStage.code}.`);
+          }
         } else {
           console.error("  Setup stage diagnostic was invalid; raw details withheld.");
         }
