@@ -22,7 +22,7 @@ function assertCalendarDay(on: string): void {
     new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
       .toISOString()
       .slice(0, 10) === on;
-  if (!real) throw new RangeError(`caregiversOn: '${on}' is not a YYYY-MM-DD date`);
+  if (!real) throw new RangeError("caregiversOn: the day is not a real YYYY-MM-DD date");
 }
 
 export function buildPatientCaregiverRosterReader(db: DbClient): PatientCaregiverRosterReader {
