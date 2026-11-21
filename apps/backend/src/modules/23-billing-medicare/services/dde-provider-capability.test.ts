@@ -1,6 +1,6 @@
 import type { DdeAccessProvider } from "@chartwarden/x12-837-client";
 import { describe, expect, it } from "vitest";
-import { ddeProviderCapability } from "./dde-provider-capability";
+import { ddeProviderCapability, ddeProviderCapabilityView } from "./dde-provider-capability";
 
 const stub = (vendor: DdeAccessProvider["vendor"]) => ({ vendor }) as DdeAccessProvider;
 
@@ -59,5 +59,17 @@ describe("DDE operational capability snapshot", () => {
       submissionItemTypes: ["noe"],
       statusCheckItemTypes: [],
     });
+  });
+
+  it("hands out copies of the operation arrays, so a consumer cannot mutate the shared constants", () => {
+    const shared = ddeProviderCapability(stub("in_memory"), undefined);
+    const view = ddeProviderCapabilityView(shared);
+
+    expect(view).toEqual(shared);
+    expect(view.submissionItemTypes).not.toBe(shared.submissionItemTypes);
+    expect(view.statusCheckItemTypes).not.toBe(shared.statusCheckItemTypes);
+
+    view.submissionItemTypes.pop();
+    expect(ddeProviderCapability(stub("in_memory"), undefined).submissionItemTypes).toHaveLength(7);
   });
 });

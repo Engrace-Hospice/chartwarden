@@ -21,7 +21,10 @@ import { buildM23AbacPredicates } from "../src/modules/23-billing-medicare/abac-
 import type { ReadingM23AbacResolver } from "../src/modules/23-billing-medicare/abac-resolver-drizzle";
 import { registerDdeProviderStatusRoutes } from "../src/modules/23-billing-medicare/routes/dde-provider-status.routes";
 import { registerDdeQueueRoutes } from "../src/modules/23-billing-medicare/routes/dde-queue.routes";
-import { ddeProviderCapability } from "../src/modules/23-billing-medicare/services/dde-provider-capability";
+import {
+  ddeProviderCapability,
+  ddeProviderCapabilityView,
+} from "../src/modules/23-billing-medicare/services/dde-provider-capability";
 import type { DdeItemView } from "../src/modules/23-billing-medicare/services/dde-queue-service";
 import type { DdeQueueService } from "../src/modules/23-billing-medicare/services/dde-queue-service";
 
@@ -132,7 +135,7 @@ function makeServer(providerPreflightError?: ChartWardenError) {
       calls.push(`list:${JSON.stringify(filter)}`);
       return {
         items: [VIEW],
-        providerCapability: ddeProviderCapability(undefined, undefined),
+        providerCapability: ddeProviderCapabilityView(ddeProviderCapability(undefined, undefined)),
         nextCursor: null,
         hasMore: false,
       };

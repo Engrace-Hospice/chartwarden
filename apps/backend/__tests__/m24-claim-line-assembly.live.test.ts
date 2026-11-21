@@ -106,6 +106,14 @@ function buildDrizzleM24WriteService(
   return buildDrizzleM24WriteServiceWithCadence(testCadenceReader, ...args);
 }
 
+/** `previewClaimAssembly` is optional on the service interface; the Drizzle service always implements it. */
+function previewClaimAssemblyOf(svc: ReturnType<typeof buildProductionM24WriteService>) {
+  const preview = svc.previewClaimAssembly;
+  if (!preview)
+    throw new Error("the Drizzle M24 write service must implement previewClaimAssembly");
+  return preview.bind(svc);
+}
+
 describe.skipIf(!DB_URL)(
   "M24 per-line claim assembly — LIVE Postgres (WX-PR-011 follow-up)",
   () => {
@@ -199,7 +207,7 @@ describe.skipIf(!DB_URL)(
           return {
             medicaid: resolution(lockedMedicaid),
             primary: resolution(lockedRank === 1 ? lockedMedicaid : medicarePrimary),
-            patientLifecycle: { status: "active", deceasedDate: null },
+            patientLifecycle: { status: "active" as const, deceasedDate: null },
           };
         },
       };
@@ -333,7 +341,8 @@ describe.skipIf(!DB_URL)(
         return result.rows[0];
       };
       const before = await countBusinessRows();
-      const current = await svc.previewClaimAssembly(actor, {
+      const previewClaimAssembly = previewClaimAssemblyOf(svc);
+      const current = await previewClaimAssembly(actor, {
         patientId: PATIENT,
         admissionId: PREVIEW_ADMISSION,
         providerEntityId: peId,
@@ -347,7 +356,7 @@ describe.skipIf(!DB_URL)(
       });
       expect(current.medicareEvidence.match).toBe("not_applicable");
 
-      const stale = await svc.previewClaimAssembly(actor, {
+      const stale = await previewClaimAssembly(actor, {
         patientId: PATIENT,
         admissionId: PREVIEW_ADMISSION,
         providerEntityId: peId,
@@ -370,7 +379,7 @@ describe.skipIf(!DB_URL)(
       expect(refreshedEvidence.rows[0]?.provider_entity_id).toBe(peId);
 
       await expect(
-        svc.previewClaimAssembly(actor, {
+        previewClaimAssembly(actor, {
           patientId: PATIENT,
           admissionId: PREVIEW_ADMISSION,
           providerEntityId: "00000000-0000-4000-8000-000000000000",
@@ -447,7 +456,7 @@ describe.skipIf(!DB_URL)(
           return {
             medicaid: resolution(coverageForRank(1)),
             primary: resolution(coverageForRank(1)),
-            patientLifecycle: { status: "deceased", deceasedDate: "2026-03-03" },
+            patientLifecycle: { status: "deceased" as const, deceasedDate: "2026-03-03" },
           };
         },
       };
@@ -501,7 +510,7 @@ describe.skipIf(!DB_URL)(
           return {
             medicaid: resolution(unchangedMedicaid),
             primary: resolution(changedPrimary),
-            patientLifecycle: { status: "active", deceasedDate: null },
+            patientLifecycle: { status: "active" as const, deceasedDate: null },
           };
         },
       };
