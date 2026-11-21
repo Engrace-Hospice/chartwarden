@@ -300,6 +300,35 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
 
   let batchId: string;
 
+  it("refuses field review before extraction without creating a review row", async () => {
+    const pending = await seedBatch();
+    await expect(svc.openReview(ORG, actor, pending)).rejects.toMatchObject({
+      code: "EXTRACTION_NOT_READY",
+    });
+    const rows = await admin.query(
+      "SELECT id FROM extraction_review WHERE intake_upload_batch_id=$1",
+      [pending],
+    );
+    expect(rows.rows).toHaveLength(0);
+    const status = await admin.query("SELECT status FROM intake_upload_batch WHERE id=$1", [pending]);
+    expect(status.rows[0]?.status).toBe("uploaded");
+  });
+
+  it("refuses field review on an extraction-complete batch with zero candidates", async () => {
+    const empty = await seedBatch();
+    await admin.query("UPDATE intake_upload_batch SET status='extraction_complete' WHERE id=$1", [
+      empty,
+    ]);
+    await expect(svc.openReview(ORG, actor, empty)).rejects.toMatchObject({
+      code: "NO_REVIEWABLE_FIELDS",
+    });
+    const rows = await admin.query(
+      "SELECT id FROM extraction_review WHERE intake_upload_batch_id=$1",
+      [empty],
+    );
+    expect(rows.rows).toHaveLength(0);
+  });
+
   it("runs stage 5 and SUD detection: tags, encrypted evidence, an id-only event, and M5's interim flag", async () => {
     batchId = await seedBatch();
     const summary = await runDocLensIntake(
