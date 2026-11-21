@@ -518,6 +518,8 @@ describe.skipIf(!DB_URL)(
       readonly supersededAt?: string;
       /** When the record was ENTERED (`created_at`); by default the effective date. A record entered after the visit with an earlier effective date is a backdated entry. */
       readonly recordedAt?: string;
+      /** When the record was SIGNED (`signed_at`, set by the server at signature); by default the effective date. A draft created before a visit and signed after it was not on file at the visit. */
+      readonly signedAt?: string;
     }
     /** One advance directive acknowledgment record of `patientId`; returns its id (a `superseded` one also gets its successor). */
     async function addAcknowledgment(
@@ -529,7 +531,7 @@ describe.skipIf(!DB_URL)(
         `INSERT INTO consent_record (organization_id, patient_id, type_key, scope_descriptor, grantor_kind, effective_at, expires_at, status,
            capture_method, capture_evidence_jsonb, created_by_id, version, signed_at, signed_by_id, revoked_at, revoked_via_id, created_at, updated_at)
          VALUES ($1,$2,'advance_directive_acknowledgment','{}'::jsonb,'patient_self',$3,$4,$5::consent_status,
-           'typed_signature_in_app','{}'::jsonb,$6,1,$3,$6,$7,$8,COALESCE($10::timestamptz, $3::timestamptz),
+           'typed_signature_in_app','{}'::jsonb,$6,1,COALESCE($11::timestamptz, $3::timestamptz),$6,$7,$8,COALESCE($10::timestamptz, $3::timestamptz),
            COALESCE($9::timestamptz, now())) RETURNING id`,
         [
           org.orgId,
@@ -542,6 +544,7 @@ describe.skipIf(!DB_URL)(
           spec.status === "revoked" ? randomUUID() : null,
           spec.updatedAt ?? null,
           spec.recordedAt ?? null,
+          spec.signedAt ?? null,
         ],
       );
       const id = one(result.rows).id;
@@ -1502,6 +1505,30 @@ describe.skipIf(!DB_URL)(
           recordedAt: "2026-01-15T20:00:00Z",
         });
         expect(await portAnswer(sameDay)).toEqual({ consentRecordId: recordId });
+      });
+
+      it("a draft created before the visit but SIGNED after it is not drafted (the entry instant is the signature); one signed during the service date is", async () => {
+        const lateSigned = randomUUID();
+        await addAcknowledgment(orgs.A, lateSigned, {
+          status: "active",
+          effectiveAt: "2026-01-10T15:00:00Z",
+          recordedAt: "2026-01-15T09:00:00Z",
+          signedAt: "2026-01-18T10:00:00Z",
+        });
+        expect(await portAnswer(lateSigned)).toBeNull();
+        expect(await ackSection((await realAck(lateSigned)).f)).toMatchObject({
+          state: "not_drafted",
+          text: null,
+        });
+
+        const signedOnTheDay = randomUUID();
+        const recordId = await addAcknowledgment(orgs.A, signedOnTheDay, {
+          status: "active",
+          effectiveAt: "2026-01-10T15:00:00Z",
+          recordedAt: "2026-01-15T09:00:00Z",
+          signedAt: "2026-01-15T20:00:00Z",
+        });
+        expect(await portAnswer(signedOnTheDay)).toEqual({ consentRecordId: recordId });
       });
 
       it("a record revoked before the visit instant is not drafted", async () => {

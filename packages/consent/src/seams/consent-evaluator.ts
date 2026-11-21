@@ -113,7 +113,7 @@ export interface ConsentEvaluator {
     /**
      * Ask whether the record WAS in force at `asOf`, judged from the row's own end instant, instead of from its status now. A
      * record revoked, superseded or expired (a patient's death expires it) after `asOf` still answers `allowed` for an `asOf`
-     * before that. A record counts only if it had been ENTERED by `asOf` too (its `created_at`; the effective date is the caller's to
+     * before that. A record counts only if it had been ENTERED by `asOf` too (the store's entry instant: for M39's DB store the later of `created_at` and `signed_at`; the effective date is the caller's to
      * backdate), so a record entered later never reads as on file earlier. For READING what was on file at a past instant (visit-note drafting, VN-D11); never for authorizing a
      * disclosure or any access happening now, which is why it is opt-in and every existing caller keeps the current-status answer.
      */
@@ -262,7 +262,7 @@ export interface StoredConsent {
    */
   readonly endedAtMs?: number | null;
   /**
-   * When the record was entered (its `created_at`; unlike `effectiveAtMs` the caller cannot set it). Read only by a `historical` evaluation,
+   * When the record came to be on file (for M39's DB store the later of `created_at` and `signed_at`; unlike `effectiveAtMs` the caller cannot set it). Read only by a `historical` evaluation,
    * which counts a record as on file at `asOf` only if it was entered by then; absent or null reads as not entered.
    */
   readonly recordedAtMs?: number | null;

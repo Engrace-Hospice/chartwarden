@@ -116,12 +116,22 @@ function iso(d: Date | null): string | null {
  * earlier of its `expires_at` and its last update (a time-based expiry is swept at or after `expires_at`; the patient-death cascade,
  * `m5-patient-deceased-consumer`, stamps `updated_at` when it expires a row that has a later `expires_at`).
  */
-function endedAtMsOf(r: typeof CR.$inferSelect): number | null {
+export function endedAtMsOf(r: typeof CR.$inferSelect): number | null {
   if (r.status === "revoked") return ms(r.revokedAt);
   if (r.status === "superseded") return ms(r.supersededAt);
   if (r.status !== "expired") return null;
   const candidates = [ms(r.expiresAt), ms(r.updatedAt)].filter((t): t is number => t !== null);
   return candidates.length === 0 ? null : Math.min(...candidates);
+}
+
+/**
+ * When the row came to be on file, for a `historical` evaluation: the later of its creation and its signature. A consent starts as a draft and
+ * is signed in place (`signed_at` set by the server at that moment), so a draft created before a visit and signed after it was not on file at the
+ * visit. `null` (unknown, so the read fails closed) when the row was never signed; `cr_signed_consistent` makes that a draft only.
+ */
+export function recordedAtMsOf(r: typeof CR.$inferSelect): number | null {
+  const signed = ms(r.signedAt);
+  return signed === null ? null : Math.max(signed, r.createdAt.getTime());
 }
 
 /**
@@ -173,7 +183,7 @@ export function createDbConsentStore(db: DbClient): ConsentStore {
             effectiveAtMs: r.effectiveAt.getTime(),
             expiresAtMs: ms(r.expiresAt),
             endedAtMs: endedAtMsOf(r),
-            recordedAtMs: r.createdAt.getTime(),
+            recordedAtMs: recordedAtMsOf(r),
             survivesDeath: r.survivesDeath,
             scopeDescriptor: r.scopeDescriptor,
             recipients: byConsent.get(r.id) ?? [],
