@@ -1,4 +1,79 @@
+import { spawn } from "node:child_process";
 import { type Server, type Socket, createConnection, createServer, isIPv4 } from "node:net";
+
+/** Keep the event loop available to serve the private TCP relay while Vitest runs. */
+export function runM23Child(
+  command: string,
+  args: readonly string[],
+  options: { cwd: string; env: Record<string, string>; timeoutMs: number },
+): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, [...args], {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+    });
+    const maxBytes = 16 * 1024 * 1024;
+    let outputBytes = 0;
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    let overflowed = false;
+    let stopping = false;
+    let hardStop: ReturnType<typeof setTimeout> | undefined;
+    const stopProcessTree = () => {
+      if (stopping) return;
+      stopping = true;
+      clearTimeout(timer);
+      if (child.pid && process.platform !== "win32") {
+        try {
+          process.kill(-child.pid, "SIGKILL");
+        } catch {
+          child.kill("SIGKILL");
+        }
+      } else {
+        child.kill("SIGKILL");
+      }
+      // A descendant may have inherited the pipes. Never let it prevent the caller's finally.
+      hardStop = setTimeout(() => {
+        child.stdout.destroy();
+        child.stderr.destroy();
+        reject(new Error("M23 child process did not close after termination"));
+      }, 2_000);
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      stopProcessTree();
+    }, options.timeoutMs);
+    const append = (chunk: Buffer, channel: "stdout" | "stderr") => {
+      outputBytes += chunk.length;
+      if (outputBytes > maxBytes) {
+        if (!overflowed) {
+          overflowed = true;
+          stopProcessTree();
+        }
+        return;
+      }
+      if (channel === "stdout") stdout += chunk.toString("utf8");
+      else stderr += chunk.toString("utf8");
+    };
+    child.stdout.on("data", (chunk: Buffer) => append(chunk, "stdout"));
+    child.stderr.on("data", (chunk: Buffer) => append(chunk, "stderr"));
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      if (hardStop) clearTimeout(hardStop);
+      reject(error);
+    });
+    child.once("close", (status) => {
+      clearTimeout(timer);
+      if (hardStop) clearTimeout(hardStop);
+      if (timedOut) reject(new Error("M23 child process timed out"));
+      else if (overflowed) reject(new Error("M23 child output exceeded its limit"));
+      else resolve({ status, stdout, stderr });
+    });
+  });
+}
 
 type DockerMount = { Destination?: string; Type?: string };
 
@@ -108,6 +183,15 @@ export function buildM23VitestEnvironment(
 /** Emits only allowlisted diagnostic facts, never arbitrary Vitest error text. */
 export function summarizeVitestFailureMessage(message: string): string[] {
   const summary = new Set<string>();
+  if (/beforeAll[^\n]*(?:failed|error)|error in beforeAll/i.test(message)) {
+    summary.add("Vitest beforeAll setup hook failed");
+  }
+  if (/afterAll[^\n]*(?:failed|error)|error in afterAll/i.test(message)) {
+    summary.add("Vitest afterAll cleanup hook failed");
+  }
+  if (/unhandled errors?/i.test(message)) {
+    summary.add("Vitest reported an unhandled execution error");
+  }
   if (message.includes("M23 isolated runner did not provide CHARTWARDEN_TEST_DATABASE_URL")) {
     summary.add("Isolated runner database URL missing from Vitest environment");
   }

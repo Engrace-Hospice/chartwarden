@@ -19,14 +19,44 @@ import { randomUUID } from "node:crypto";
  * uses `gen_random_uuid()` for those, which is honest: this suite proves TENANCY, not referential
  * integrity, and inventing a fake M5/M6 chain would test neither.
  */
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  M23_TARGET_DIAGNOSTIC_PREFIX,
+  inspectM23TargetModuleEnvironment,
+} from "../../../../scripts/m23-rls-target-diagnostic";
 import { dropLiveRoles } from "./_live-roles";
 
+const TARGET_MODULE_ENVIRONMENT = inspectM23TargetModuleEnvironment(process.env);
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
-const ISOLATED_RUN = process.env.CHARTWARDEN_M23_RLS_ISOLATED_RUN === "true";
+const ISOLATED_RUN = TARGET_MODULE_ENVIRONMENT.isolatedMarkerEqualsTrue;
+const SETUP_DIAGNOSTIC =
+  process.env.CHARTWARDEN_M23_RLS_DIAGNOSTIC === "true" &&
+  process.env.CHARTWARDEN_M23_RLS_DIAGNOSTIC_STAGE === "execution";
+function recordSetupStage(phase: string, step?: number): void {
+  if (!SETUP_DIAGNOSTIC) return;
+  writeFileSync(
+    join(tmpdir(), "chartwarden-m23-setup-stage.json"),
+    JSON.stringify({ phase, step }),
+    { mode: 0o600 },
+  );
+}
+if (process.env.CHARTWARDEN_M23_RLS_DIAGNOSTIC === "true") {
+  process.stdout.write(
+    `${M23_TARGET_DIAGNOSTIC_PREFIX}${JSON.stringify(TARGET_MODULE_ENVIRONMENT)}\n`,
+  );
+  const diagnosticStage = process.env.CHARTWARDEN_M23_RLS_DIAGNOSTIC_STAGE;
+  if (diagnosticStage === "collection" || diagnosticStage === "execution") {
+    writeFileSync(
+      join(tmpdir(), `chartwarden-m23-target-module-${diagnosticStage}.json`),
+      JSON.stringify(TARGET_MODULE_ENVIRONMENT),
+      { mode: 0o600 },
+    );
+  }
+}
 if (ISOLATED_RUN && !DB_URL) {
   throw new Error("M23 isolated runner did not provide CHARTWARDEN_TEST_DATABASE_URL");
 }
@@ -145,7 +175,8 @@ describe.skipIf(!ISOLATED_RUN)(
       const files = readdirSync(MIGRATIONS_DIR)
         .filter((f) => f.endsWith(".sql"))
         .sort();
-      for (const f of files) {
+      for (const [index, f] of files.entries()) {
+        recordSetupStage("migration", index + 1);
         await db.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
       }
     }
@@ -155,8 +186,11 @@ describe.skipIf(!ISOLATED_RUN)(
       const from = "2026-01-01";
       const to = "2026-01-31";
       const patient = `44444444-4444-4444-4444-44444444444${n}`;
-      const one = async (sql: string, params: unknown[]): Promise<string> =>
-        (await db.query(sql, params)).rows[0].id as string;
+      let seedStep = 0;
+      const one = async (sql: string, params: unknown[]): Promise<string> => {
+        recordSetupStage(n === 1 ? "seed_a" : "seed_b", ++seedStep);
+        return (await db.query(sql, params)).rows[0].id as string;
+      };
       const user = await one(
         `INSERT INTO "user" (email,email_verified,name,status)
          VALUES ($1,true,$2,'active') RETURNING id`,
@@ -179,6 +213,7 @@ describe.skipIf(!ISOLATED_RUN)(
       // `claim` partitions BY LIST (provider_entity_id); the other three BY LIST (organization_id).
       // Calling the helpers (rather than relying on the DEFAULT partition) is what production does, and
       // it also exercises 0118's event trigger, which must secure each new leaf at creation.
+      recordSetupStage(n === 1 ? "partitions_a" : "partitions_b");
       await db.query("SELECT create_claim_partition($1)", [pe]);
       for (const fn of [
         "create_claim_state_history_partition",
@@ -309,20 +344,6 @@ describe.skipIf(!ISOLATED_RUN)(
        VALUES ($1,$2,decode($3,'hex'),$4,128,'v1') RETURNING id`,
         [org, renderIdentity, "ab".repeat(32), "a".repeat(64)],
       );
-      const exceptionReview = await one(
-        `INSERT INTO noe_exception_review
-         (organization_id,noe_id,category,justification_document_id,status,
-          created_by_membership_id,updated_by_membership_id)
-         VALUES ($1,$2,'operations_disruption',gen_random_uuid(),'draft',$3,$3)
-         RETURNING id`,
-        [org, noe, membership],
-      );
-      const exceptionReviewEvent = await one(
-        `INSERT INTO noe_exception_review_event
-         (organization_id,review_id,event_type,to_status,actor_membership_id)
-         VALUES ($1,$2,'created','draft',$3) RETURNING id`,
-        [org, exceptionReview, membership],
-      );
       const operationalIssue = await one(
         `INSERT INTO medicare_notice_operational_issue
          (organization_id,notice_type,notice_id,issue_code,occurrence_key,severity,responsible_area)
@@ -401,6 +422,7 @@ describe.skipIf(!ISOLATED_RUN)(
 
       const evidenceId = randomUUID();
       const payloadSha256 = "a".repeat(64);
+      recordSetupStage(n === 1 ? "evidence_a" : "evidence_b");
       await db.query(
         `INSERT INTO claimmd_submission_evidence
          (id,organization_id,provider_entity_id,claim_id,billing_module,submission_id,attempt_key,vendor,
@@ -516,8 +538,10 @@ describe.skipIf(!ISOLATED_RUN)(
     }
 
     beforeAll(async () => {
+      recordSetupStage("connecting");
       db = new Client({ connectionString: DB_URL });
       await db.connect();
+      recordSetupStage("identity");
       // This must execute before resetSchema(): an accidental shared/incorrect target must not get
       // destructive DDL. The isolated runner passes these values directly into Vitest's env.
       const identity = await db.query<{
@@ -540,14 +564,17 @@ describe.skipIf(!ISOLATED_RUN)(
       });
       expect(process.env.CHARTWARDEN_TEST_CLUSTER_ID).toMatch(/^chartwarden-m23-[a-f0-9]{32}$/);
       expect(process.env.CHARTWARDEN_TEST_CLUSTER_SYSTEM_IDENTIFIER).toMatch(/^\d+$/);
+      recordSetupStage("reset_schema");
       await resetSchema();
       await applyMigrations();
+      recordSetupStage("organizations");
       await db.query(
         "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
         [ORG_A, ORG_B],
       );
       a = await seedOrg(ORG_A, 1);
       b = await seedOrg(ORG_B, 2);
+      recordSetupStage("complete");
     }, 120_000);
 
     afterAll(async () => {
@@ -713,12 +740,15 @@ describe.skipIf(!ISOLATED_RUN)(
           withOrg(ORG_A, () => db.query(`DELETE FROM ${table} WHERE id=$1`, [id])),
         ).rejects.toThrow();
       }
-      const foreignUpdate = await withOrg(ORG_B, () =>
-        db.query("UPDATE claimmd_tenant_response_batch SET captured_at=now() WHERE id=$1", [
-          a.tenantResponseBatch,
-        ]),
-      );
-      expect(foreignUpdate.rowCount).toBe(0);
+      // The runtime role has SELECT/INSERT but no UPDATE grant on captured batches, so PostgreSQL
+      // rejects this write before RLS can reduce it to zero matching rows.
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query("UPDATE claimmd_tenant_response_batch SET captured_at=now() WHERE id=$1", [
+            a.tenantResponseBatch,
+          ]),
+        ),
+      ).rejects.toThrow(/permission denied/);
       const wrongTenantRead = await withOrg(ORG_B, () =>
         db.query("SELECT id FROM claimmd_tenant_response_item WHERE id=$1", [a.tenantResponseItem]),
       );

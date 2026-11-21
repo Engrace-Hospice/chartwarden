@@ -7,10 +7,19 @@ import {
   buildM23VitestEnvironment,
   isCompleteM23Qualification,
   isM23SuiteEntirelySkipped,
+  runM23Child,
   startLoopbackTcpRelay,
   summarizeVitestFailureMessage,
   validateM23DockerIsolation,
 } from "../m23-rls-isolation";
+import {
+  M23_TARGET_DIAGNOSTIC_PREFIX,
+  inspectM23TargetModuleEnvironment,
+  isM23TargetModuleEnvironmentSafe,
+  parseM23TargetModuleDiagnostic,
+  parseM23TargetModuleDiagnosticJson,
+  validateM23DynamicCollection,
+} from "../m23-rls-target-diagnostic";
 
 const networkName = "chartwarden-m23-net-test";
 const baseContainer: M23ContainerInspection = {
@@ -235,6 +244,16 @@ describe("M23 Vitest failure diagnostics", () => {
       "Failure class: Error",
     ]);
   });
+
+  it("classifies setup-hook failures without exposing their raw messages", () => {
+    const summary = summarizeVitestFailureMessage(
+      "Error in beforeAll hook: password authentication failed for user postgres; m23-rls-isolation.live.test.ts:544:9",
+    );
+    expect(summary).toContain("Vitest beforeAll setup hook failed");
+    expect(summary).toContain("M23 suite source line: 544");
+    expect(summary.join(" ")).not.toContain("password");
+    expect(summary.join(" ")).not.toContain("postgres");
+  });
 });
 
 describe("M23 qualification completeness", () => {
@@ -308,6 +327,166 @@ describe("M23 isolated Vitest environment", () => {
   });
 });
 
+describe("M23 target-module diagnostic", () => {
+  const completeEnvironment = {
+    CHARTWARDEN_M23_RLS_ISOLATED_RUN: "true",
+    CHARTWARDEN_TEST_DATABASE_URL:
+      "postgresql://synthetic:synthetic@127.0.0.1:9/m23_0123456789abcdef0123456789abcdef",
+    CHARTWARDEN_TEST_CLUSTER_ID: "chartwarden-m23-0123456789abcdef0123456789abcdef",
+    CHARTWARDEN_TEST_CLUSTER_SYSTEM_IDENTIFIER: "7710508504555474985",
+  };
+
+  it.each([
+    ["missing", undefined, "guard_skips_suite"],
+    ["false", "false", "guard_skips_suite"],
+    ["malformed", "TRUE", "guard_skips_suite"],
+  ] as const)("reports a %s isolation marker as skipped", (_label, marker, decision) => {
+    const diagnostic = inspectM23TargetModuleEnvironment({
+      ...completeEnvironment,
+      CHARTWARDEN_M23_RLS_ISOLATED_RUN: marker,
+    });
+    expect(diagnostic.isolatedMarkerState).toBe(_label);
+    expect(diagnostic.moduleGuardDecision).toBe(decision);
+    expect(diagnostic.privateDatabaseUrlPresent).toBe(true);
+  });
+
+  it("reports a true marker without a database URL as a module refusal", () => {
+    const diagnostic = inspectM23TargetModuleEnvironment({
+      ...completeEnvironment,
+      CHARTWARDEN_TEST_DATABASE_URL: undefined,
+    });
+    expect(diagnostic.isolatedMarkerEqualsTrue).toBe(true);
+    expect(diagnostic.privateDatabaseUrlPresent).toBe(false);
+    expect(diagnostic.moduleGuardDecision).toBe("refuses_missing_database_url");
+  });
+
+  it("reports that the module guard permits registration without claiming Vitest execution mode", () => {
+    const diagnostic = inspectM23TargetModuleEnvironment(completeEnvironment);
+    expect(diagnostic).toEqual({
+      targetModuleEvaluated: true,
+      isolatedMarkerState: "true",
+      isolatedMarkerPresent: true,
+      isolatedMarkerEqualsTrue: true,
+      privateDatabaseUrlPresent: true,
+      clusterIdentityMarkersPresent: true,
+      clusterIdentityMarkersWellFormed: true,
+      moduleGuardDecision: "guard_allows_suite_registration",
+    });
+    expect(JSON.stringify(diagnostic)).not.toContain("synthetic");
+    expect(JSON.stringify(diagnostic)).not.toContain("7710508504555474985");
+    expect(isM23TargetModuleEnvironmentSafe(diagnostic)).toBe(true);
+  });
+
+  it("rejects malformed or missing cluster identity markers", () => {
+    const diagnostic = inspectM23TargetModuleEnvironment({
+      ...completeEnvironment,
+      CHARTWARDEN_TEST_CLUSTER_ID: "unexpected-cluster",
+      CHARTWARDEN_TEST_CLUSTER_SYSTEM_IDENTIFIER: "not-a-number",
+    });
+    expect(diagnostic.clusterIdentityMarkersPresent).toBe(true);
+    expect(diagnostic.clusterIdentityMarkersWellFormed).toBe(false);
+    expect(isM23TargetModuleEnvironmentSafe(diagnostic)).toBe(false);
+    expect(
+      inspectM23TargetModuleEnvironment({
+        ...completeEnvironment,
+        CHARTWARDEN_TEST_CLUSTER_SYSTEM_IDENTIFIER: undefined,
+      }).clusterIdentityMarkersPresent,
+    ).toBe(false);
+  });
+
+  it("parses one safe module diagnostic and rejects missing or ambiguous diagnostics", () => {
+    const diagnostic = inspectM23TargetModuleEnvironment(completeEnvironment);
+    const line = `${M23_TARGET_DIAGNOSTIC_PREFIX}${JSON.stringify(diagnostic)}`;
+    expect(parseM23TargetModuleDiagnostic(`Vitest output\n${line}\n`)).toEqual(diagnostic);
+    expect(
+      parseM23TargetModuleDiagnosticJson(
+        JSON.stringify({ ...diagnostic, databaseUrl: "postgresql://private:secret" }),
+      ),
+    ).toEqual(diagnostic);
+    expect(() => parseM23TargetModuleDiagnostic("no target-module record")).toThrow(
+      /missing or ambiguous/,
+    );
+    expect(() => parseM23TargetModuleDiagnostic(`${line}\n${line}`)).toThrow(
+      /missing or ambiguous/,
+    );
+    expect(() =>
+      parseM23TargetModuleDiagnostic(
+        `${M23_TARGET_DIAGNOSTIC_PREFIX}{"databaseUrl":"postgresql://secret"}`,
+      ),
+    ).toThrow(/invalid shape/);
+  });
+});
+
+describe("M23 dynamic Vitest collection", () => {
+  const expectedFile = "/repo/packages/db/migrations/__tests__/m23-rls-isolation.live.test.ts";
+  const expectedNames = Array.from({ length: 19 }, (_, index) => `M23 assertion ${index + 1}`);
+  const tests = expectedNames.map((name) => ({
+    name,
+    file: expectedFile,
+    projectName: "node",
+  }));
+
+  it("accepts the expected dynamically collected test file and project", () => {
+    expect(() =>
+      validateM23DynamicCollection({
+        tests,
+        expectedFile,
+        expectedProject: "node",
+        expectedNames,
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects a wrong target file", () => {
+    const altered = tests.map((test) => ({ ...test }));
+    altered[0]!.file = "/repo/packages/other.test.ts";
+    expect(() =>
+      validateM23DynamicCollection({
+        tests: altered,
+        expectedFile,
+        expectedProject: "node",
+        expectedNames,
+      }),
+    ).toThrow(/M23 dynamic collection/);
+  });
+
+  it("rejects a wrong Vitest project", () => {
+    const altered = tests.map((test) => ({ ...test }));
+    altered[0]!.projectName = "dom";
+    expect(() =>
+      validateM23DynamicCollection({
+        tests: altered,
+        expectedFile,
+        expectedProject: "node",
+        expectedNames,
+      }),
+    ).toThrow(/M23 dynamic collection/);
+  });
+
+  it("rejects a changed assertion set even when its count is unchanged", () => {
+    const altered = [...expectedNames.slice(0, -1), "different assertion"];
+    expect(() =>
+      validateM23DynamicCollection({
+        tests,
+        expectedFile,
+        expectedProject: "node",
+        expectedNames: altered,
+      }),
+    ).toThrow(/expected registered assertions/);
+  });
+
+  it("rejects an unexpected assertion count", () => {
+    expect(() =>
+      validateM23DynamicCollection({
+        tests,
+        expectedFile,
+        expectedProject: "node",
+        expectedNames: [...expectedNames, "unexpected assertion"],
+      }),
+    ).toThrow(/expected registered assertion count/);
+  });
+});
+
 if (process.env.CHARTWARDEN_M23_RLS_ENV_PROBE === "true") {
   describe("M23 Vitest worker environment probe", () => {
     it("receives the isolated runner values before the database suite starts", () => {
@@ -337,6 +516,45 @@ if (process.env.CHARTWARDEN_M23_RLS_ENV_PROBE === "true") {
 }
 
 describe("loopback-only M23 database relay", () => {
+  it("bounds a timed-out process tree even when a descendant inherits its pipes", async () => {
+    const started = Date.now();
+    await expect(
+      runM23Child(
+        process.execPath,
+        [
+          "-e",
+          'const { spawn } = require("node:child_process"); spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "inherit" }); setInterval(() => {}, 1000);',
+        ],
+        { cwd: process.cwd(), env: { PATH: process.env.PATH ?? "" }, timeoutMs: 250 },
+      ),
+    ).rejects.toThrow("M23 child process timed out");
+    expect(Date.now() - started).toBeLessThan(3_000);
+  });
+
+  it("serves a child process while it waits on the relay", async () => {
+    const upstream = createServer((socket) => socket.pipe(socket));
+    openServers.push(upstream);
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    const address = upstream.address();
+    if (!address || typeof address === "string") throw new Error("fake listener did not bind");
+
+    const relay = await startLoopbackTcpRelay("127.0.0.1", address.port);
+    try {
+      const child = await runM23Child(
+        process.execPath,
+        [
+          "-e",
+          'const net = require("node:net"); const socket = net.connect(Number(process.argv[1]), "127.0.0.1"); socket.on("connect", () => socket.write("synthetic-child-ping")); socket.on("data", (data) => { process.stdout.write(data); socket.end(); });',
+          String(relay.port),
+        ],
+        { cwd: process.cwd(), env: { PATH: process.env.PATH ?? "" }, timeoutMs: 2_000 },
+      );
+      expect(child).toMatchObject({ status: 0, stdout: "synthetic-child-ping", stderr: "" });
+    } finally {
+      await relay.close();
+    }
+  });
+
   it("forwards a local synthetic stream through an IPv4 loopback listener", async () => {
     const upstream = createServer((socket) => socket.pipe(socket));
     openServers.push(upstream);
