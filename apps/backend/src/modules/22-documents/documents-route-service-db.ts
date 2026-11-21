@@ -981,6 +981,34 @@ export function createDbDocumentRouteService(
     async openReview(organizationId, actor, batchId) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
         await requireBatchNotIn(tx, batchId, OPEN_REVIEW_REFUSED_STATUSES, "open a review");
+        // An uploaded or partially processed batch is not ready for field-level review.
+        // Recheck inside the transaction: a disabled button alone is not an authorization boundary.
+        const [readyBatch] = await tx
+          .select({ status: BATCH.status })
+          .from(BATCH)
+          .where(eq(BATCH.id, batchId))
+          .limit(1);
+        if (!readyBatch || readyBatch.status !== "extraction_complete") {
+          throw new ChartWardenError(
+            "EXTRACTION_NOT_READY",
+            "Field review requires completed extraction; inspect processing status before retrying",
+            409,
+          );
+        }
+        const [reviewableCandidate] = await tx
+          .select({ id: EC.id })
+          .from(EC)
+          .innerJoin(EJ, eq(EJ.id, EC.extractionJobId))
+          .innerJoin(CP, eq(CP.id, EJ.classifiedPageId))
+          .where(eq(CP.intakeUploadBatchId, batchId))
+          .limit(1);
+        if (!reviewableCandidate) {
+          throw new ChartWardenError(
+            "NO_REVIEWABLE_FIELDS",
+            "No extracted fields are available; use document-level review instead",
+            409,
+          );
+        }
         const [r] = await tx
           .insert(ER)
           .values({
