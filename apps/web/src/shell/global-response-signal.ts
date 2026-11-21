@@ -85,6 +85,10 @@ const ORGANIZATION_ONBOARDING_CODE = "ORGANIZATION_ONBOARDING";
 const NOTE_CLOSURE_REQUIRED_CODE = "NOTE_CLOSURE_REQUIRED";
 /** The visit-note gate's fail-closed 503 (the closure status could not be read): it refuses ONE action, it is not an outage. */
 const NOTE_CLOSURE_UNAVAILABLE_CODE = "NOTE_CLOSURE_UNAVAILABLE";
+/** The §2.6 compliance gate's fail-closed 503 on finalize/sign (a check could not run): one refused action, not an outage. */
+const COMPLIANCE_GATE_UNAVAILABLE_CODE = "COMPLIANCE_GATE_UNAVAILABLE";
+/** The visit-note draft read's fail-closed 503 (a source it drafts from could not be read): the draft panel says so, the app is up. */
+const DRAFT_UNAVAILABLE_CODE = "DRAFT_UNAVAILABLE";
 
 /**
  * The tenant-unavailable, organization-onboarding or note-closure-required signal for a refusal body `{ error: { code } }`, or null for
@@ -113,8 +117,15 @@ export async function isOrgNotSelectedResponse(response: Response): Promise<bool
  * ADR-0110 — the claims-billing gate's fail-closed 503 (`BILLING_ENTITLEMENT_UNAVAILABLE`) refuses one action; the rest
  * of the app works. It is not an outage, so it must not navigate to /maintenance and lose the form the user is on.
  * ADR-0113 — the visit-note gate's `NOTE_CLOSURE_UNAVAILABLE` is the same kind of refusal: one action, not an outage.
+ * WF09 — the §2.6 compliance gate's `COMPLIANCE_GATE_UNAVAILABLE` (finalize/sign) too: the composer keeps its unsaved form and
+ * shows the blocker panel's "Unavailable" state instead of being replaced by the maintenance page.
  */
-const NOT_AN_OUTAGE_ON_503 = ["BILLING_ENTITLEMENT_UNAVAILABLE", NOTE_CLOSURE_UNAVAILABLE_CODE];
+const NOT_AN_OUTAGE_ON_503 = [
+  "BILLING_ENTITLEMENT_UNAVAILABLE",
+  NOTE_CLOSURE_UNAVAILABLE_CODE,
+  COMPLIANCE_GATE_UNAVAILABLE_CODE,
+  DRAFT_UNAVAILABLE_CODE,
+];
 
 /** The envelope's `error.code`, read from a clone; undefined for a non-JSON or unreadable body. */
 async function errorCodeOf(response: Response): Promise<string | undefined> {

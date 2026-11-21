@@ -258,6 +258,18 @@ describe("403 NOTE_CLOSURE_REQUIRED (ADR-0113)", () => {
     expect(getGlobalResponseSignal()).toBeNull();
   });
 
+  it("does not route COMPLIANCE_GATE_UNAVAILABLE (503) to /maintenance: a finalize refusal keeps the composer and its unsaved form", async () => {
+    handleObservedResponse(503, url, refusal(503, "COMPLIANCE_GATE_UNAVAILABLE"));
+    await settle();
+    expect(getGlobalResponseSignal()).toBeNull();
+  });
+
+  it("does not route DRAFT_UNAVAILABLE (503) to /maintenance: the draft panel reports it, the app is up", async () => {
+    handleObservedResponse(503, url, refusal(503, "DRAFT_UNAVAILABLE"));
+    await settle();
+    expect(getGlobalResponseSignal()).toBeNull();
+  });
+
   it("still routes any other 503 to service-unavailable", async () => {
     handleObservedResponse(503, url, refusal(503, "DEGRADED"));
     await settle();
