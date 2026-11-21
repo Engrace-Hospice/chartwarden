@@ -70,9 +70,10 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
   the rest; sign, the section PUTs and finalize hold their transaction across them, a few milliseconds longer each. M39's `evaluate` is a pure read
   (no audit row per call). It is asked `historical: true`, so the answer is what was on file at the visit, not the record's status today: a patient's
   death between the visit and the sign (the M39 cascade expires the row) no longer removes the section and blocks the sign. The end instant of an expired
-  row is the earlier of its `expires_at` and `updated_at`, so an expired row is never read as in force past its own expiry.
+  row is the earlier of its `expires_at` and `updated_at`, so an expired row is never read as in force past its own expiry. A record also counts only if it had been entered by the visit instant (`created_at`, which the caller
+  cannot set): its effective date can be backdated, so an acknowledgment entered after the visit is not drafted as on file at it.
 - **The list is the orders in effect, not a reconciliation.** The draft states each order's drug, strength, form and route, and "as needed" where it
-  is; no frequency, no dose schedule, no home-medication history. If any order that remains has a blank field or no as-needed flag, no list is
+  is (the order's flag, or a PRN frequency code, as M13 reads it); no frequency, no dose schedule, no home-medication history. If any order that remains has a blank field or no as-needed flag, no list is
   drafted at all (a list with an order missing from it would read as complete). A SUD-treatment order is left out for a viewer without Part 2
   disclosure, so two authors can draft different lists (the signer's own draft is what is sealed).
 - **Caregivers are as of the service date.** M5 had only a current-links read; `caregiversOn(day)` decides from each link's own involvement dates
