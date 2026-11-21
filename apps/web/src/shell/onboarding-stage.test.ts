@@ -17,6 +17,7 @@ describe("isOnboardingScreen", () => {
     "/admin/account",
     "/admin/setup",
     "/security/passkeys",
+    "/security/authenticator",
   ])("lets %s through", (path) => {
     expect(isOnboardingScreen(path)).toBe(true);
   });
@@ -30,6 +31,10 @@ describe("isOnboardingScreen", () => {
 
   it("includes the passkey screen the step-up ceremony sends a person with no enrolled factor to", () => {
     expect(ONBOARDING_SCREENS).toContain("/security/passkeys");
+  });
+
+  it("includes the authenticator screen the step-up ceremony links to, for the same reason", () => {
+    expect(ONBOARDING_SCREENS).toContain("/security/authenticator");
   });
 });
 

@@ -12,6 +12,7 @@ import { ReverifyLink, isStepUpRequired, stepUpPath } from "../step-up-link";
 
 let verifyStatus = 200;
 let initiateNotEnrolled = false;
+let initiateWebauthnNotEnrolled = false;
 let initiateWebauthn = false;
 let paths: string[] = [];
 
@@ -24,6 +25,10 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   if (path === "/api/v1/sessions/step-up/initiate" && initiateNotEnrolled)
     return json(400, {
       error: { code: "TOTP_NOT_ENROLLED", message: "totp is not enrolled", correlationId: "c" },
+    });
+  if (path === "/api/v1/sessions/step-up/initiate" && initiateWebauthnNotEnrolled)
+    return json(400, {
+      error: { code: "WEBAUTHN_NOT_ENROLLED", message: "no passkey", correlationId: "c" },
     });
   if (path === "/api/v1/sessions/step-up/initiate" && initiateWebauthn)
     return json(200, {
@@ -52,6 +57,7 @@ function mount(
   entry: string,
   enrolPasskeyPath?: string,
   onVerified?: (returnTo: string) => void,
+  enrolAuthenticatorPath?: string,
 ): void {
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
@@ -64,6 +70,7 @@ function mount(
                 brand={<strong>Brand</strong>}
                 signInPath="/sign-in"
                 {...(enrolPasskeyPath ? { enrolPasskeyPath } : {})}
+                {...(enrolAuthenticatorPath ? { enrolAuthenticatorPath } : {})}
                 {...(onVerified ? { onVerified } : {})}
               />
             }
@@ -85,6 +92,7 @@ async function verifyWithCode(): Promise<void> {
 beforeEach(() => {
   verifyStatus = 200;
   initiateNotEnrolled = false;
+  initiateWebauthnNotEnrolled = false;
   initiateWebauthn = false;
   paths = [];
 });
@@ -204,6 +212,67 @@ describe("StepUpCard", () => {
     );
     // Never sent to verify with no challenge.
     expect(paths).toEqual(["/api/v1/sessions/step-up/initiate"]);
+  });
+
+  it("with an authenticator path it offers that setup first for a missing authenticator, and the passkey as the alternative", async () => {
+    initiateNotEnrolled = true;
+    const here = `/step-up?returnTo=${encodeURIComponent("/orders/held-transmissions")}`;
+    mount(here, "/security/passkeys", undefined, "/security/authenticator");
+    await verifyWithCode();
+    expect(await screen.findByText(/No authenticator app is set up on this account/)).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Set up an authenticator app" }).getAttribute("href"),
+    ).toBe(`/security/authenticator?returnTo=${encodeURIComponent(here)}`);
+    // The alternative follows " or " mid-sentence, so it starts in lower case.
+    expect(screen.getByRole("link", { name: "set up a passkey" }).getAttribute("href")).toBe(
+      `/security/passkeys?returnTo=${encodeURIComponent(here)}`,
+    );
+    expect(screen.getByRole("alert").textContent).toMatch(
+      /Set up an authenticator app or set up a passkey, then come back here to continue\./,
+    );
+  });
+
+  it("with no passkey it offers the passkey setup first and the authenticator as the alternative", async () => {
+    initiateWebauthnNotEnrolled = true;
+    vi.stubGlobal("PublicKeyCredential", class {});
+    Object.defineProperty(navigator, "credentials", {
+      value: { get: vi.fn() },
+      configurable: true,
+    });
+    try {
+      mount(
+        "/step-up?returnTo=%2Fplans%2Fp1",
+        "/security/passkeys",
+        undefined,
+        "/security/authenticator",
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "Verify with a passkey" }));
+      expect(await screen.findByText(/There’s no passkey on this account yet/)).toBeTruthy();
+      expect(screen.getByRole("alert").textContent).toMatch(
+        /Set up a passkey or set up an authenticator app, then come back here to continue\./,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      Reflect.deleteProperty(navigator, "credentials");
+    }
+  });
+
+  it("with only an authenticator path and no passkey, the single link starts the sentence in capitals", async () => {
+    initiateWebauthnNotEnrolled = true;
+    vi.stubGlobal("PublicKeyCredential", class {});
+    Object.defineProperty(navigator, "credentials", {
+      value: { get: vi.fn() },
+      configurable: true,
+    });
+    try {
+      mount("/step-up?returnTo=%2Fplans%2Fp1", undefined, undefined, "/security/authenticator");
+      fireEvent.click(await screen.findByRole("button", { name: "Verify with a passkey" }));
+      expect(await screen.findByRole("link", { name: "Set up an authenticator app" })).toBeTruthy();
+      expect(screen.queryByRole("link", { name: /passkey/i })).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+      Reflect.deleteProperty(navigator, "credentials");
+    }
   });
 
   it("without an enrolment path (the admin console) it still explains instead of a generic failure", async () => {

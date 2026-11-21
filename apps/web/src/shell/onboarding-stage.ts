@@ -10,6 +10,7 @@
 //   /admin/setup            provider entities and locations (M2 org-admin routes)
 //   /security/passkeys      the vendor auth catch-all `/api/auth/*`: the step-up ceremony sends a person with no enrolled factor here
 //                           (StepUpCard `enrolPasskeyPath`), and without it a new compliance officer could never finish a step-up.
+//   /security/authenticator the same catch-all, for the same step-up dead end (StepUpCard `enrolAuthenticatorPath`).
 // The server is the authority; this only decides what the shell offers.
 import type { Session } from "./session-types";
 
@@ -22,6 +23,7 @@ export const ONBOARDING_SCREENS: readonly string[] = [
   "/admin/account",
   "/admin/setup",
   "/security/passkeys",
+  "/security/authenticator",
 ];
 
 export const isOnboardingScreen = (path: string): boolean =>

@@ -16,7 +16,7 @@
 // On success we return to `?returnTo` (the action that demanded step-up) — but only a same-origin,
 // app-relative path (see `safeReturnTo`): the parameter is attacker-controllable via a crafted link, and
 // navigating to it after a successful re-verification would otherwise be an open redirect.
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { FormEvent, JSX, ReactNode } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useApiClient } from "../../core/api/provider";
@@ -113,6 +113,8 @@ export interface StepUpCardProps {
    * (the initiate call answers `*_NOT_ENROLLED`), the card links there with a `returnTo` back to this step-up.
    */
   enrolPasskeyPath?: string;
+  /** Same, for an authenticator app (TOTP): where a signed-in user can turn one on. Offered next to the passkey link. */
+  enrolAuthenticatorPath?: string;
   /** Called with the `returnTo` path once freshness is recorded, just before the card navigates there. */
   onVerified?: (returnTo: string) => void;
 }
@@ -125,11 +127,14 @@ function apiErrorCode(error: unknown): string | null {
 
 const NOT_ENROLLED = new Set(["WEBAUTHN_NOT_ENROLLED", "TOTP_NOT_ENROLLED"]);
 
+const lowerFirst = (text: string): string => text.charAt(0).toLowerCase() + text.slice(1);
+
 export function StepUpCard({
   brand,
   footer,
   signInPath = "/login",
   enrolPasskeyPath,
+  enrolAuthenticatorPath,
   onVerified,
 }: StepUpCardProps): JSX.Element {
   const client = useApiClient();
@@ -146,10 +151,20 @@ export function StepUpCard({
   // Which factor the server said this account has not enrolled — a dead end the card must explain, not retry.
   const [notEnrolled, setNotEnrolled] = useState<"webauthn" | "totp" | null>(null);
   const [busy, setBusy] = useState(false);
-  const enrolHref =
-    enrolPasskeyPath === undefined
+  const enrolHrefFor = (path: string | undefined): string | null =>
+    path === undefined
       ? null
-      : `${enrolPasskeyPath}?returnTo=${encodeURIComponent(location.pathname + location.search)}`;
+      : `${path}?returnTo=${encodeURIComponent(location.pathname + location.search)}`;
+  const enrolHref = enrolHrefFor(enrolPasskeyPath);
+  const enrolAuthenticatorHref = enrolHrefFor(enrolAuthenticatorPath);
+  // The missing factor's own setup comes first; the other is the alternative. Only the first starts a sentence.
+  const authenticatorLink = enrolAuthenticatorHref
+    ? { label: "Set up an authenticator app", href: enrolAuthenticatorHref }
+    : null;
+  const passkeyLink = enrolHref ? { label: "Set up a passkey", href: enrolHref } : null;
+  const enrolLinks = (
+    notEnrolled === "webauthn" ? [passkeyLink, authenticatorLink] : [authenticatorLink, passkeyLink]
+  ).filter((link): link is { label: string; href: string } => link !== null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally re-runs only on mode change to reset the form.
   useEffect(() => {
@@ -296,9 +311,15 @@ export function StepUpCard({
             {notEnrolled === "webauthn"
               ? "There’s no passkey on this account yet."
               : "No authenticator app is set up on this account."}{" "}
-            {enrolHref ? (
+            {enrolLinks.length > 0 ? (
               <>
-                <Link to={enrolHref}>Set up a passkey</Link>, then come back here to continue.
+                {enrolLinks.map((link, index) => (
+                  <Fragment key={link.href}>
+                    {index > 0 ? " or " : null}
+                    <Link to={link.href}>{index > 0 ? lowerFirst(link.label) : link.label}</Link>
+                  </Fragment>
+                ))}
+                , then come back here to continue.
               </>
             ) : (
               "Set up a passkey in the clinical app, then come back here to continue."

@@ -61,6 +61,14 @@ Centered Card
   wrong codes lock entry for 15 minutes (the card says when). When both are done the session becomes the
   read-only engagement session (10-min idle, ends at the engagement window) and *Continue* opens it. SMS is
   never offered.
+- **Authenticator setup** (`/security/authenticator`, General nav group) — a signed-in user turns on an authenticator
+  app, the TOTP factor for sign-in and step-up. Three steps in the redesign kit: (1) re-enter the account password;
+  (2) add the account in the app by the grouped *setup key* (or the `otpauth://` link on the phone that has the app;
+  no QR code until the repo has a QR library); (3) type a 6-digit code. The factor counts only once a code is
+  accepted; the one-time backup codes appear after that, once, and are held in memory only. A wrong password,
+  wrong code or lockout gets a fixed sentence (never server wording). An account with the factor already on shows
+  *On* and nothing to set up. Turning it off or replacing it is not on this screen. The step-up page links here
+  (`?returnTo=` back to the step-up) when the account has no authenticator.
 - **Screen-lock overlay** — after 5 minutes idle; soft re-auth (password / biometric /
   passkey); session stays alive until absolute timeout.
 - **Step-up challenge** (full-page chrome-less route `/step-up` — deliberately outside the app shell, not a modal) — triggered by privileged actions; WebAuthn or TOTP only

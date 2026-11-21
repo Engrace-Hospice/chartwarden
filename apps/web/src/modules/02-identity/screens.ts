@@ -33,12 +33,11 @@
 // unreachable; and `/step-up/initiate` advertised an RP id from `WEBAUTHN_RP_ID` while the verifier
 // checked `PASSKEY_RP_ID`, two required production vars for one fact with nothing comparing them.
 //
-// STILL MISSING, and stated because it is the reason a single defect here was total: THERE IS NO TOTP
-// ENROLMENT SURFACE. `mfa-challenge.tsx` verifies a TOTP code at sign-in for an enrolled user, and
-// nothing in any front-end calls `authClient.twoFactor.enable` to create that enrolment. The Better
-// Auth plugin is configured and the step-up route accepts the factor, so this is a missing SCREEN, not
-// a missing mechanism — but until it exists, `/security/passkeys` is the platform's only path to a
-// second factor, and a browser or device without WebAuthn has none.
+// TOTP ENROLMENT: `/security/authenticator` (security-authenticator.tsx) calls `authClient.twoFactor.enable`
+// and `verifyTotp`, so a staff user now has a second factor that needs no WebAuthn-capable device. It was
+// a missing SCREEN, not a missing mechanism: `mfa-challenge.tsx` already verifies a code at sign-in and the
+// step-up route already accepts a verified TOTP row. Not built there: a QR code (no QR library in this repo
+// yet, so the setup key and an `otpauth://` link are offered), and turning the factor off or replacing it.
 import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/02-identity — M2 screen registration (Track A, ADR-0030).
 // Declares this module's screens for the M1 shell registry. Typed against the @chartwarden/types
@@ -71,6 +70,9 @@ const ResetPassword = lazy(() =>
 );
 const RequiredPasswordChange = lazy(() =>
   import("./required-password-change").then((m) => ({ default: m.RequiredPasswordChange })),
+);
+const SecurityAuthenticator = lazy(() =>
+  import("./security-authenticator").then((m) => ({ default: m.SecurityAuthenticator })),
 );
 const SecurityPasskeys = lazy(() =>
   import("./security-passkeys").then((m) => ({ default: m.SecurityPasskeys })),
@@ -180,6 +182,14 @@ export const identityScreens: ScreenRegistryModule<ComponentType> = {
       title: "Passkeys",
       navGroup: "General",
       screen: SecurityPasskeys,
+    },
+    {
+      // Authenticated settings screen — turn on an authenticator app (TOTP): the second factor for sign-in and step-up.
+      id: "identity.security-authenticator",
+      path: "/security/authenticator",
+      title: "Authenticator app",
+      navGroup: "General",
+      screen: SecurityAuthenticator,
     },
     {
       // Admin — org member roster, invitations, and member lifecycle.

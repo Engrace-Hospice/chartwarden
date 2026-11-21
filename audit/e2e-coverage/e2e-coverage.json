@@ -1,6 +1,6 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 223,
+  "totalStaticWebScreens": 224,
   "e2eReachedCount": 209,
   "axeReachedCount": 209,
   "zeroE2eCoverage": [
@@ -115,6 +115,14 @@
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
+    },
+    {
+      "id": "identity.security-authenticator",
+      "module": "02-identity",
+      "path": "/security/authenticator",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
     }
   ],
   "zeroAxeCoverage": [
@@ -226,6 +234,14 @@
       "id": "identity.reset-password",
       "module": "02-identity",
       "path": "/reset-password",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
+      "id": "identity.security-authenticator",
+      "module": "02-identity",
+      "path": "/security/authenticator",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
@@ -2174,6 +2190,14 @@
       "permission": "patient.read",
       "e2eReached": true,
       "axeReached": true
+    },
+    {
+      "id": "identity.security-authenticator",
+      "module": "02-identity",
+      "path": "/security/authenticator",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
     },
     {
       "id": "identity.security-passkeys",

@@ -15,6 +15,7 @@ export function StepUp(): JSX.Element {
       footer={<a href="/login">Sign in as someone else</a>}
       signInPath="/login"
       enrolPasskeyPath="/security/passkeys"
+      enrolAuthenticatorPath="/security/authenticator"
       onVerified={markStepUpReturn}
     />
   );

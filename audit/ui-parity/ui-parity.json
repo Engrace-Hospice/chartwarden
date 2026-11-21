@@ -168,6 +168,14 @@
       "app": "web",
       "module": "02-identity",
       "moduleId": 2,
+      "id": "identity.security-authenticator",
+      "path": "/security/authenticator",
+      "permission": "(none)"
+    },
+    {
+      "app": "web",
+      "module": "02-identity",
+      "moduleId": 2,
       "id": "identity.staff-management",
       "path": "/admin/staff",
       "permission": "member.manage"

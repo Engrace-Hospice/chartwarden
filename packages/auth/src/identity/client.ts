@@ -14,7 +14,18 @@ import { twoFactorClient, usernameClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
 export interface AuthResult {
-  readonly error: { readonly message?: string } | null;
+  /** `code` is Better Auth's stable error code (for example `INVALID_PASSWORD`); `message` is for logs, not for display. */
+  readonly error: { readonly message?: string; readonly code?: string } | null;
+}
+
+/** What starting authenticator-app enrolment returns. Secret material: hold it in memory, never log or persist it. */
+export interface TotpEnrolmentResult extends AuthResult {
+  readonly data?: {
+    /** `otpauth://totp/…?secret=…`: the account, issuer and shared secret an authenticator app scans or imports. */
+    readonly totpURI: string;
+    /** One-time recovery codes, shown once. */
+    readonly backupCodes: readonly string[];
+  } | null;
 }
 
 /** sign-in may succeed, fail, or require a second factor (twoFactorRedirect). */
@@ -36,6 +47,8 @@ export interface SessionUser {
   readonly email: string | null;
   readonly username?: string | null;
   readonly name?: string | null;
+  /** True once an authenticator app is enrolled AND confirmed with a code (an unconfirmed enrolment is not "on"). */
+  readonly twoFactorEnabled?: boolean | null;
 }
 
 /** The session record's server-bound fields the client surfaces (additionalFields, §3.6). */
@@ -75,6 +88,12 @@ export interface ChartWardenAuthClient {
   twoFactor: {
     verifyTotp(input: { code: string }): Promise<AuthResult>;
     verifyBackupCode(input: { code: string }): Promise<AuthResult>;
+    /**
+     * Start authenticator-app enrolment for the signed-in user (re-proves their password). Better Auth writes the
+     * secret UNVERIFIED: it only counts as a factor once `verifyTotp` accepts a code from it. The result carries the
+     * secret (inside `totpURI`) and the one-time backup codes, so a caller keeps it in memory only.
+     */
+    enable(input: { password: string }): Promise<TotpEnrolmentResult>;
   };
   passkey: {
     addPasskey(input?: { name?: string }): Promise<AuthResult>;

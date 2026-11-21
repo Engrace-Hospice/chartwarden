@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 223 statically-routable `web` screen(s) — 209/223 E2E-reached, 209/223 axe-reached.
+**Coverage:** 224 statically-routable `web` screen(s) — 209/224 E2E-reached, 209/224 axe-reached.
 
 ## Zero E2E coverage
 
@@ -22,6 +22,7 @@
 | `messaging.notifications` | 36-messaging | `/notifications` | (none) |
 | `messaging.partner-share` | 36-messaging | `/partner/share` | (none) |
 | `identity.reset-password` | 02-identity | `/reset-password` | (none) |
+| `identity.security-authenticator` | 02-identity | `/security/authenticator` | (none) |
 
 ## Zero axe coverage
 
@@ -41,6 +42,7 @@
 | `messaging.notifications` | 36-messaging | `/notifications` | (none) |
 | `messaging.partner-share` | 36-messaging | `/partner/share` | (none) |
 | `identity.reset-password` | 02-identity | `/reset-password` | (none) |
+| `identity.security-authenticator` | 02-identity | `/security/authenticator` | (none) |
 
 ## Dynamic web screens (#852)
 
