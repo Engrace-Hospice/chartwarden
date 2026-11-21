@@ -215,10 +215,14 @@ const REASON_SECTION_ID = "chief_concern";
 
 /** The parts of the note that keep their own form and say so (see `useReportPanelStatus`). */
 type PanelKey = RecordedPanelKind | "vitals" | "plan";
-
-/** The recorded panels whose saved record the draft is built from (see `describeRecordedAdl` in the draft compiler); the others are not. */
-const DRAFT_SOURCE_PANELS: ReadonlySet<RecordedPanelKind> = new Set<RecordedPanelKind>(["adl"]);
 type PanelStatuses = Readonly<Partial<Record<PanelKey, PanelStatus>>>;
+
+/**
+ * The recorded panels whose saved record the draft compiler states (`describeRecordedAdl`, for the aide's `adl` section); the others are not.
+ * Keyed by panel, not by template: on a note whose template drafts nothing from the ADLs the re-read is harmless (it reads no source).
+ * Keep it in step with the compiler (a drift note sits beside `describeRecordedAdl` in `compile.ts`).
+ */
+const DRAFT_SOURCE_PANELS: ReadonlySet<RecordedPanelKind> = new Set<RecordedPanelKind>(["adl"]);
 const NO_SECTIONS: ReadonlySet<string> = new Set();
 
 export function EncounterCompose(): JSX.Element {

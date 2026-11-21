@@ -946,12 +946,14 @@ describe("the aide's drafted ADL section", () => {
     await screen.findByRole("region", { name: "Drafted sections" });
     await openSection(user, /^Nutrition and Hydration/);
     const reads = callsTo("GET", "/draft").length;
+    const previews = callsTo("GET", "/selections").length;
 
     await user.selectOptions(await screen.findByRole("combobox", { name: "Appetite" }), "good");
     await user.click(screen.getByRole("button", { name: "Save nutrition" }));
 
     await waitFor(() => expect(callsTo("PUT", "/nutrition")).toHaveLength(1));
-    await waitFor(() => expect(callsTo("GET", "/nutrition").length).toBeGreaterThan(0));
+    // the callback ran (it re-reads the note preview), and it left the draft alone
+    await waitFor(() => expect(callsTo("GET", "/selections").length).toBeGreaterThan(previews));
     expect(callsTo("GET", "/draft")).toHaveLength(reads);
   });
 
