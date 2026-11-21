@@ -347,7 +347,7 @@ async function main() {
     if (!qualified) {
       if (isM23SuiteEntirelySkipped({ total, passed, failed, pending: skipped, todo })) {
         console.error(
-          "All M23 RLS tests were skipped; the isolated-run marker was not visible inside Vitest.",
+          "All M23 RLS tests were skipped despite the isolated Vitest worker preflight passing; inspect the suite skip conditions or setup hooks.",
         );
       }
       for (const file of report.testResults ?? []) {
