@@ -4,6 +4,7 @@ import {
   type M23ContainerInspection,
   type M23NetworkInspection,
   assertFreshM23DatabaseInventory,
+  buildM23VitestEnvironment,
   isCompleteM23Qualification,
   isM23SuiteEntirelySkipped,
   startLoopbackTcpRelay,
@@ -271,6 +272,39 @@ describe("M23 qualification completeness", () => {
     expect(isM23SuiteEntirelySkipped({ total: 0, passed: 0, failed: 0, pending: 0, todo: 0 })).toBe(
       false,
     );
+  });
+});
+
+describe("M23 isolated Vitest environment", () => {
+  it("forwards only runtime essentials and the verified private-cluster identity", () => {
+    const env = buildM23VitestEnvironment(
+      {
+        PATH: "/usr/bin:/bin",
+        HOME: "/home/tester",
+        TMPDIR: "/host/tmp",
+        NODE_OPTIONS: "--require hostile-preload",
+        BUN_OPTIONS: "--env-file=.env",
+        CHARTWARDEN_TEST_DATABASE_URL: "postgresql://shared-db.invalid/shared",
+        CHARTWARDEN_M23_RLS_ISOLATED_RUN: "false",
+      },
+      {
+        databaseUrl: "postgresql://127.0.0.1:39443/m23_test",
+        clusterName: "chartwarden-m23-0123456789abcdef0123456789abcdef",
+        systemIdentifier: "7710508504555474985",
+        privateWorkDir: "/private/m23-run",
+      },
+    );
+
+    expect(env).toEqual({
+      PATH: "/usr/bin:/bin",
+      HOME: "/private/m23-run",
+      TMPDIR: "/private/m23-run",
+      NODE_ENV: "test",
+      CHARTWARDEN_TEST_DATABASE_URL: "postgresql://127.0.0.1:39443/m23_test",
+      CHARTWARDEN_M23_RLS_ISOLATED_RUN: "true",
+      CHARTWARDEN_TEST_CLUSTER_ID: "chartwarden-m23-0123456789abcdef0123456789abcdef",
+      CHARTWARDEN_TEST_CLUSTER_SYSTEM_IDENTIFIER: "7710508504555474985",
+    });
   });
 });
 
