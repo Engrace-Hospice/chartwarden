@@ -876,13 +876,35 @@ describe("the aide's drafted ADL section", () => {
   };
   let storedAdl: Record<string, unknown> | null;
 
-  const mountAide = (): void => {
+  const nutritionSection = {
+    sectionId: "nutrition",
+    heading: "Nutrition and Hydration",
+    required: false,
+    allowedCategories: [],
+    entries: [],
+    recordedPanel: "nutrition",
+  };
+  const mountAide = (withNutrition = false): void => {
     storedAdl = null;
     world.draftSections = [
       drafted({ sectionId: "adl", origins: ["care_plan_intervention"], text: ADL_TEXT }),
     ];
     mountComposer({
-      [`GET ${BASE}/template`]: () => ({ body: aideTemplate }),
+      [`GET ${BASE}/template`]: () => ({
+        body: withNutrition
+          ? { ...aideTemplate, sections: [...aideTemplate.sections, nutritionSection] }
+          : aideTemplate,
+      }),
+      [`GET ${BASE}/nutrition`]: () => ({ body: null }),
+      [`PUT ${BASE}/nutrition`]: (call) => ({
+        body: {
+          ...(call.body as object),
+          encounterId: ENC,
+          patientId: PATIENT,
+          version: 1,
+          updatedAt: "2026-11-17T10:00:00.000Z",
+        },
+      }),
       [`GET ${BASE}/adl`]: () => ({ body: storedAdl }),
       [`PUT ${BASE}/adl`]: (call) => {
         storedAdl = {
@@ -915,6 +937,22 @@ describe("the aide's drafted ADL section", () => {
 
     await waitFor(() => expect(callsTo("PUT", "/adl")).toHaveLength(1));
     await waitFor(() => expect(callsTo("GET", "/draft")).toHaveLength(reads + 1));
+  });
+
+  it("does not re-read the draft after a panel the draft does not read is saved (nutrition), which would cost a full recompute and an audit row for nothing", async () => {
+    const user = userEvent.setup();
+    mountAide(true);
+    await ready();
+    await screen.findByRole("region", { name: "Drafted sections" });
+    await openSection(user, /^Nutrition and Hydration/);
+    const reads = callsTo("GET", "/draft").length;
+
+    await user.selectOptions(await screen.findByRole("combobox", { name: "Appetite" }), "good");
+    await user.click(screen.getByRole("button", { name: "Save nutrition" }));
+
+    await waitFor(() => expect(callsTo("PUT", "/nutrition")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("GET", "/nutrition").length).toBeGreaterThan(0));
+    expect(callsTo("GET", "/draft")).toHaveLength(reads);
   });
 
   it("names the ADL record, not the draft, as what to save while its form has unsaved input", async () => {

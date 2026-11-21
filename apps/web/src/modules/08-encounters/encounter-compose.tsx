@@ -215,6 +215,9 @@ const REASON_SECTION_ID = "chief_concern";
 
 /** The parts of the note that keep their own form and say so (see `useReportPanelStatus`). */
 type PanelKey = RecordedPanelKind | "vitals" | "plan";
+
+/** The recorded panels whose saved record the draft is built from (see `describeRecordedAdl` in the draft compiler); the others are not. */
+const DRAFT_SOURCE_PANELS: ReadonlySet<RecordedPanelKind> = new Set<RecordedPanelKind>(["adl"]);
 type PanelStatuses = Readonly<Partial<Record<PanelKey, PanelStatus>>>;
 const NO_SECTIONS: ReadonlySet<string> = new Set();
 
@@ -689,14 +692,17 @@ export function EncounterCompose(): JSX.Element {
     applyStored(stored);
   }, [applyStored, readStored]);
   // The panels' "something they state was saved": stable, so the memoised panels are not re-rendered by a keystroke in the free text.
-  // The saved record may be a source of the draft (the aide's recorded ADLs lead the drafted `adl` section), so the draft is re-read too:
-  // the text, its hash and its state must be the ones the author is about to confirm. A panel whose record the draft does not read
-  // (wounds, nutrition) costs one extra read, never a wrong text.
+  // A saved ADL record is a source of the draft (the aide's recorded ADLs lead the drafted `adl` section), so the draft is re-read too:
+  // the text, its hash and its state must be the ones the author is about to confirm. The nutrition and wound records are not a source of
+  // any drafted section, so saving them re-reads the preview alone (a draft read is a full recompute and a patient-attributed audit row).
   const reloadDraft = noteDraft.reload;
-  const refreshFromPanel = useCallback((): void => {
-    void refreshPreview();
-    void reloadDraft();
-  }, [refreshPreview, reloadDraft]);
+  const refreshFromPanel = useCallback(
+    (panel: RecordedPanelKind): void => {
+      void refreshPreview();
+      if (DRAFT_SOURCE_PANELS.has(panel)) void reloadDraft();
+    },
+    [refreshPreview, reloadDraft],
+  );
 
   /** Edit the note text. Unsaved selections are saved first, so the text being edited is the note as it now reads. */
   async function startEdit(): Promise<void> {
