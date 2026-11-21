@@ -854,6 +854,83 @@ describe("a control that waits is still reachable and says why", () => {
   });
 });
 
+// S3 (the aide's visit): the drafted `adl` section leads with the ADLs the aide recorded in the panel on the same screen, so the saved ADL
+// record is a source of the drafted text, its hash and its state, exactly as the visit's vitals are for the vitals section.
+describe("the aide's drafted ADL section", () => {
+  const ADL_TEXT = "Bathing: limited assist. Assist with bathing.";
+  const aideTemplate = {
+    ...template,
+    templateKey: "chha_visit:chha",
+    encounterType: "chha_visit",
+    discipline: "chha",
+    sections: [
+      {
+        sectionId: "adl",
+        heading: "Activities of Daily Living",
+        required: true,
+        allowedCategories: [],
+        entries: [],
+        recordedPanel: "adl",
+      },
+    ],
+  };
+  let storedAdl: Record<string, unknown> | null;
+
+  const mountAide = (): void => {
+    storedAdl = null;
+    world.draftSections = [
+      drafted({ sectionId: "adl", origins: ["care_plan_intervention"], text: ADL_TEXT }),
+    ];
+    mountComposer({
+      [`GET ${BASE}/template`]: () => ({ body: aideTemplate }),
+      [`GET ${BASE}/adl`]: () => ({ body: storedAdl }),
+      [`PUT ${BASE}/adl`]: (call) => {
+        storedAdl = {
+          ...(call.body as object),
+          encounterId: ENC,
+          patientId: PATIENT,
+          version: 1,
+          updatedAt: "2026-11-17T10:00:00.000Z",
+        };
+        return { body: storedAdl };
+      },
+    });
+  };
+  const chooseBathing = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
+    await user.selectOptions(await screen.findByRole("combobox", { name: "Bathing" }), "Limited assist");
+  };
+
+  it("re-reads the draft after the ADLs are saved, so the first Confirm is not made against text that has already changed", async () => {
+    const user = userEvent.setup();
+    mountAide();
+    await ready();
+    await screen.findByRole("region", { name: "Drafted sections" });
+    const reads = callsTo("GET", "/draft").length;
+
+    await chooseBathing(user);
+    await user.click(screen.getByRole("button", { name: "Save ADLs" }));
+
+    await waitFor(() => expect(callsTo("PUT", "/adl")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("GET", "/draft")).toHaveLength(reads + 1));
+  });
+
+  it("names the ADL record, not the draft, as what to save while its form has unsaved input", async () => {
+    const user = userEvent.setup();
+    mountAide();
+    await ready();
+    await screen.findByRole("region", { name: "Drafted sections" });
+
+    await chooseBathing(user);
+
+    const confirm = await screen.findByRole("button", { name: "Confirm section" });
+    expect(confirm).toHaveAttribute("aria-disabled", "true");
+    expect(
+      screen.getByText(/Save or discard the unsaved entries in Activities of Daily Living first/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Save the draft first/)).toBeNull();
+  });
+});
+
 describe("a draft that is being re-read", () => {
   it("will not confirm against text that is about to be replaced, and says so", async () => {
     const user = userEvent.setup();

@@ -520,7 +520,8 @@ export function EncounterCompose(): JSX.Element {
     encounterStatus: encounter?.status,
     activeSectionId: active?.sectionId,
     saving: busy,
-    dirty,
+    selectionsDirty: editable && selectionsDirty,
+    unsavedPanels: editable ? dirtyPanels.map(panelTitle) : [],
   });
   // The server's check 1 counts drafted text the clinician confirmed as populating a required section; so does every count here.
   const confirmedIds = useMemo(() => confirmedSectionIds(drafted), [drafted]);
@@ -688,9 +689,14 @@ export function EncounterCompose(): JSX.Element {
     applyStored(stored);
   }, [applyStored, readStored]);
   // The panels' "something they state was saved": stable, so the memoised panels are not re-rendered by a keystroke in the free text.
+  // The saved record may be a source of the draft (the aide's recorded ADLs lead the drafted `adl` section), so the draft is re-read too:
+  // the text, its hash and its state must be the ones the author is about to confirm. A panel whose record the draft does not read
+  // (wounds, nutrition) costs one extra read, never a wrong text.
+  const reloadDraft = noteDraft.reload;
   const refreshFromPanel = useCallback((): void => {
     void refreshPreview();
-  }, [refreshPreview]);
+    void reloadDraft();
+  }, [refreshPreview, reloadDraft]);
 
   /** Edit the note text. Unsaved selections are saved first, so the text being edited is the note as it now reads. */
   async function startEdit(): Promise<void> {
