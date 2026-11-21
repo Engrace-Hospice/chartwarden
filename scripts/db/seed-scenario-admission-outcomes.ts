@@ -1,5 +1,5 @@
 /**
- * ChartWarden — real M6 admission scenarios across the 6 demo patients (local dev). NOT for production.
+ * ChartWarden — real M6 admission scenarios across the 7 demo patients (local dev). NOT for production.
  *
  * REPLACES `seed-census-active.ts`'s raw-SQL `patient.status` fakery — but doesn't fully escape the
  * need for a (much narrower, honestly-labeled) SQL patch of its own; see gap (3) below. Every patient
@@ -9,8 +9,8 @@
  * downstream (care plans, encounters, billing, HQRP) has a real admission + election period to key
  * off instead of a patient row with a spoofed status and nothing else behind it.
  *
- * Six distinct outcomes, one per demo patient, chosen to cover the screens a QA pass would want to
- * see real data on:
+ * Six distinct outcomes (a seventh patient repeats Whitfield's), chosen to cover the screens a QA pass
+ * would want to see real data on:
  *   - Whitfield  → active, routine home care (the flagship patient later scenario scripts build on)
  *   - Okonkwo    → active, general inpatient care (M37 IPU / GIP billing-rate scenario)
  *   - Delgado    → transfer-in from another hospice (mid benefit period 2). This script stops at the
@@ -19,6 +19,8 @@
  *   - Nakamura   → discharged (moved_out_of_service_area)
  *   - Brandt     → revoked
  *   - Fairbanks  → death discharge (feeds M16 bereavement — a later scenario script's prerequisite)
+ *   - Yarbrough  → active, routine home care; Medicaid-primary with no Medicare, so the one patient
+ *                  `db:seed:scenario-billing` can assemble a Medicaid claim for
  *
  * Genuine platform gaps found and left DOCUMENTED rather than silently worked around (the original
  * (1), activation demanding an attending CTI signature, is gone: since #241 the hospice-MD signature
@@ -65,7 +67,15 @@ import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session"
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const ORG_SLUG = "chartwarden-demo";
-const SCENARIO_LAST_NAMES = ["Whitfield", "Okonkwo", "Delgado", "Nakamura", "Brandt", "Fairbanks"];
+const SCENARIO_LAST_NAMES = [
+  "Whitfield",
+  "Okonkwo",
+  "Delgado",
+  "Nakamura",
+  "Brandt",
+  "Fairbanks",
+  "Yarbrough",
+];
 
 async function wipePriorAdmissions(): Promise<void> {
   if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
@@ -371,7 +381,7 @@ async function admitAndActivate(
 }
 
 async function main(): Promise<void> {
-  console.log("wiping any prior admission for the 6 scenario patients...");
+  console.log("wiping any prior admission for the 7 scenario patients...");
   await wipePriorAdmissions();
 
   const session = await signIn("admin@chartwarden.local");
@@ -569,6 +579,24 @@ async function main(): Promise<void> {
     );
   } catch (err) {
     log.fail(`Fairbanks: ${String(err)}`);
+  }
+
+  // ── 7. Yarbrough — active, routine home care, Medicaid-primary (the patient M24 bills) ───────
+  try {
+    const patientId = await findPatientIdByLastName(session, "Yarbrough");
+    const { admissionId } = await admitAndActivate(session, patientId, "Dolores Yarbrough");
+    await session.client.POST("/api/v1/admissions/{id}/level-of-care", {
+      params: { path: { id: admissionId } },
+      body: {
+        newLevel: "routine_home_care",
+        effectiveStart: today(),
+        reason: "Initial routine home care level at admission.",
+      },
+    });
+    await syncPatientStatus(patientId, "active");
+    log.ok("Yarbrough: admitted + activated, routine home care (Medicaid-primary)");
+  } catch (err) {
+    log.fail(`Yarbrough: ${String(err)}`);
   }
 
   log.summary();

@@ -11,9 +11,12 @@
 // index. `scripts/__tests__/readiness-claims.test.ts` pins this paragraph to those suites.
 //
 // The MEDICAID Claim Workbench (`/medicaid/billing/claims`) is different: `seed-scenario-billing.ts`
-// assembles, validates, and submits one real Oregon-adapter claim for the flagship patient
-// (Whitfield) via `db:seed:all`, so this suite proves the real claim → validation → submission
-// lifecycle end to end — not just an empty round trip. 835/remittance POSTING (M25) is the one leg
+// assembles and validates one real Oregon-adapter claim for the Medicaid-primary demo patient
+// (Yarbrough) via `db:seed:all`, so this suite proves the real claim → validation lifecycle end to
+// end — not just an empty round trip. M24 refuses every claim kind while Medicare is primary, which
+// is why the claim is Yarbrough's and not Whitfield's. Electronic submission is refused until a
+// state/program route is certified (`MEDICAID_STATE_NO_ELECTRONIC_GATEWAY`; a bound gateway is
+// configuration, not certification), so the claim rests in READY. 835/remittance POSTING (M25) is the one leg
 // that stays unreachable for BOTH payers — NOT an authz bug (the `systemPrincipal` guard was fixed on
 // `main` at commit `46414c60`, #75/#76, well before #250; confirmed by #250's own investigation) but a
 // missing X12-835 sidecar/clearinghouse-pull transport to stage an 835 for the correctly-gated create
@@ -58,23 +61,24 @@ test.describe("Billing — Medicare (M23, reachability only — rate tables are 
 });
 
 test.describe("Billing — Medicaid (M24, a real seeded claim lifecycle)", () => {
-  test("main path: the seeded claim shows SUBMITTED, not the empty-claims state", async ({
+  test("main path: the seeded claim shows READY (validated), not the empty-claims state", async ({
     page,
   }) => {
     await signInAs(page, ADMIN_ACCOUNT());
     await page.goto("/medicaid/billing/claims");
     await expect(page.getByRole("heading", { name: "Medicaid Claims" })).toBeVisible();
-    // `seed-scenario-billing.ts` assembles, validates, and submits one real claim per seed run — the
+    // `seed-scenario-billing.ts` assembles and validates one real claim per seed run — the
     // regression this guards is the empty-state EmptyState rendering even though a row exists.
     await expect(page.getByText("No claims", { exact: true })).toHaveCount(0);
     const rows = page.locator("table tbody tr");
     await expect(rows.first()).toBeVisible();
-    // At least one row reached SUBMITTED — the state the seed's real assemble → validate → submit
-    // chain leaves it in (validation and assembly are proven upstream by the seed script's own
-    // non-zero exit on failure; this is the UI's read of that write path's end state).
-    // Scoped to the table: the state filter's <option>Submitted</option> is also a text match, comes first
+    // At least one row is READY — the state the seed's real assemble → validate chain leaves it in
+    // (the electronic submit is refused until a state/program route is certified; assembly and
+    // validation are proven upstream by the seed script's own non-zero exit on failure, and this is
+    // the UI's read of that write path's end state).
+    // Scoped to the table: the state filter's <option>Ready</option> is also a text match, comes first
     // in the DOM, and is hidden.
-    await expect(rows.getByText(/submitted/i).first()).toBeVisible();
+    await expect(rows.getByText(/^ready$/i).first()).toBeVisible();
   });
 
   test("failure path: an invalid claim filter combination surfaces inline, not a crash", async ({
