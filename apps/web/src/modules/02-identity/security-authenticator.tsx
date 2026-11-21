@@ -2,7 +2,7 @@
 // docs/design/screens/core/CHARTWARDEN_UI_AUTH.md "authenticator setup". A signed-in user turns on a second factor that works
 // for sign-in AND for step-up (the step-up route already accepts a verified TOTP row; nothing created one for staff until now):
 //   1. they re-enter their password            authClient.twoFactor.enable({ password })  -> secret + backup codes, UNVERIFIED
-//   2. they add the account in their app        by setup key (no QR: that needs a library this repo does not have yet)
+//   2. they add the account in their app        by QR code, or by setup key / link when it cannot scan (qr-code.tsx draws the QR in the browser)
 //   3. they type a code from the app            authClient.twoFactor.verifyTotp({ code }) -> the factor is now on
 // The secret and the backup codes are shown once and live only in this component's state: no URL, storage, log or request but the
 // two calls above. A secret the user never confirmed is not a factor (the server counts only `two_factor.verified`), so leaving
@@ -33,6 +33,7 @@ import {
   normaliseCode,
   parseTotpUri,
 } from "./authenticator-setup";
+import { QrCode } from "./qr-code";
 
 type Phase =
   | { readonly kind: "loading" }
@@ -286,28 +287,39 @@ export function SecurityAuthenticator(): JSX.Element {
             icon="shield"
             description="Steps 2 and 3 of 3: add the account in your app, then enter the code it shows."
           >
-            <ol
-              style={{
-                paddingLeft: "1.25rem",
-                display: "grid",
-                gap: "0.5rem",
-                listStyle: "decimal",
-              }}
+            <div
+              style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", alignItems: "flex-start" }}
             >
-              <li>
-                Open an authenticator app (for example Google Authenticator, Microsoft Authenticator
-                or 1Password) and choose to add an account with a <strong>setup key</strong>.
-              </li>
-              <li>
-                Enter this key. Spaces do not matter.
-                <div style={{ margin: "0.5rem 0" }}>
-                  <code style={KEY_STYLE}>{groupSetupKey(phase.setup.setupKey)}</code>
-                </div>
-                <CopyButton text={phase.setup.setupKey} label="Copy setup key" />
-                On the phone that has the app,{" "}
-                <a href={phase.setup.otpauthUri}>open the setup link</a> instead.
-              </li>
-            </ol>
+              <QrCode
+                text={phase.setup.otpauthUri}
+                label="QR code for adding ChartWarden to your authenticator app"
+              />
+              <ol
+                style={{
+                  flex: "1 1 18rem",
+                  margin: 0,
+                  paddingLeft: "1.25rem",
+                  display: "grid",
+                  gap: "0.75rem",
+                  listStyle: "decimal",
+                }}
+              >
+                <li>
+                  Open an authenticator app (for example Google Authenticator, Microsoft
+                  Authenticator or 1Password) and scan the QR code.
+                </li>
+                <li>
+                  Cannot scan it? Choose to add an account with a <strong>setup key</strong> and
+                  enter this key. Spaces do not matter.
+                  <div style={{ margin: "0.5rem 0" }}>
+                    <code style={KEY_STYLE}>{groupSetupKey(phase.setup.setupKey)}</code>
+                  </div>
+                  <CopyButton text={phase.setup.setupKey} label="Copy setup key" />
+                  On the phone that has the app,{" "}
+                  <a href={phase.setup.otpauthUri}>open the setup link</a> instead.
+                </li>
+              </ol>
+            </div>
             <form
               ref={formRef}
               onSubmit={(event) => void confirm(event, phase.backupCodes)}

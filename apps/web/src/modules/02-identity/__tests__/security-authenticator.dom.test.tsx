@@ -71,6 +71,9 @@ describe("authenticator app setup", () => {
     expect(await screen.findByText("JBSW Y3DP EHPK 3PXP")).toBeTruthy();
     expect(enable).toHaveBeenCalledWith({ password: PASSWORD });
     expect(screen.queryByLabelText(/your password/i)).toBeNull();
+    // The QR code is drawn on the page, named for its purpose, and does not repeat the secret in its label.
+    const qr = screen.getByRole("img", { name: /QR code for adding ChartWarden/ });
+    expect(qr.getAttribute("aria-label")).not.toContain(SECRET);
     // The link is the validated otpauth URI, not anything else the server sent.
     expect(screen.getByRole("link", { name: "open the setup link" }).getAttribute("href")).toBe(
       URI,

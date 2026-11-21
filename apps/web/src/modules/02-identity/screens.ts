@@ -36,8 +36,8 @@
 // TOTP ENROLMENT: `/security/authenticator` (security-authenticator.tsx) calls `authClient.twoFactor.enable`
 // and `verifyTotp`, so a staff user now has a second factor that needs no WebAuthn-capable device. It was
 // a missing SCREEN, not a missing mechanism: `mfa-challenge.tsx` already verifies a code at sign-in and the
-// step-up route already accepts a verified TOTP row. Not built there: a QR code (no QR library in this repo
-// yet, so the setup key and an `otpauth://` link are offered), and turning the factor off or replacing it.
+// step-up route already accepts a verified TOTP row. The setup shows a QR code (drawn in the browser, qr-code.tsx),
+// with the setup key and an `otpauth://` link as the fallback. Not built there: turning the factor off or replacing it.
 import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/02-identity — M2 screen registration (Track A, ADR-0030).
 // Declares this module's screens for the M1 shell registry. Typed against the @chartwarden/types

@@ -63,8 +63,8 @@ Centered Card
   never offered.
 - **Authenticator setup** (`/security/authenticator`, General nav group) — a signed-in user turns on an authenticator
   app, the TOTP factor for sign-in and step-up. Three steps in the redesign kit: (1) re-enter the account password;
-  (2) add the account in the app by the grouped *setup key* (or the `otpauth://` link on the phone that has the app;
-  no QR code until the repo has a QR library); (3) type a 6-digit code. The factor counts only once a code is
+  (2) add the account in the app by scanning the QR code (drawn in the browser; the secret never leaves the page), or,
+  when it cannot scan, by the grouped *setup key* or the `otpauth://` link on the phone that has the app; (3) type a 6-digit code. The factor counts only once a code is
   accepted; the one-time backup codes appear after that, once, and are held in memory only. A wrong password,
   wrong code or lockout gets a fixed sentence (never server wording). An account with the factor already on shows
   *On* and nothing to set up. Turning it off or replacing it is not on this screen. The step-up page links here
