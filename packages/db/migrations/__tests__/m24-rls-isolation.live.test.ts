@@ -4,8 +4,8 @@
  * The pure unit suites (apps/backend/.../24-billing-medicaid, packages/medicaid-adapters) exercise the domain
  * but never touch a database, so they cannot catch a wrong RLS predicate, a missing WITH CHECK, or a base-table
  * grant that leaks across tenants. This test applies the actual migrations to a real Postgres and exercises the
- * policies as the unprivileged `chartwarden_app` role (no BYPASSRLS), proving cross-tenant denial for real on ALL
- * 14 org-scoped M24 tables under the canonical `organization_id = current_setting('app.org_id')` ONE-SHAPE
+ * policies as the unprivileged `chartwarden_app` role (no BYPASSRLS), proving cross-tenant denial for real on
+ * all org-scoped M24 tables under the canonical `organization_id = current_setting('app.org_id')` ONE-SHAPE
  * policy (ADR-0010 D3 — no second PERMISSIVE provider_entity policy; PE narrowing is the M3 ABAC at the
  * handler) — including the six LIST-partitioned tables (the parent policy propagates to every partition incl.
  * DEFAULT, PG11+).
@@ -41,6 +41,8 @@ type SeedIds = {
   rbArrangement: string;
   rbDay: string;
   credential: string;
+  programAssignment: string;
+  enrollmentEvidence: string;
 };
 
 const COVERED: { table: string; key: keyof SeedIds; idCol?: string }[] = [
@@ -58,6 +60,8 @@ const COVERED: { table: string; key: keyof SeedIds; idCol?: string }[] = [
   { table: "rb_arrangement", key: "rbArrangement" },
   { table: "rb_day", key: "rbDay" },
   { table: "state_medicaid_trading_partner_credential", key: "credential" },
+  { table: "medicaid_program_assignment", key: "programAssignment" },
+  { table: "medicaid_enrollment_evidence", key: "enrollmentEvidence" },
 ];
 
 describe.skipIf(!DB_URL)(
@@ -92,7 +96,13 @@ describe.skipIf(!DB_URL)(
         if (stripVector) {
           sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "vector".*$/m, "-- (vector stripped)");
         }
-        await db.query(sql);
+        try {
+          await db.query(sql);
+        } catch (cause) {
+          throw new Error(
+            `migration ${f} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+          );
+        }
       }
     }
 
@@ -108,6 +118,24 @@ describe.skipIf(!DB_URL)(
           `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
          VALUES ($1,'00000${n}','PE','123456789${n}','enc','0930') RETURNING id`,
           [org],
+        )
+      ).rows[0].id as string;
+      const programAssignment = (
+        await db.query(
+          `INSERT INTO medicaid_program_assignment
+           (organization_id, patient_id, patient_payer_id, admission_id, provider_entity_id, service_state,
+            program_kind, canonical_payer_id, status, effective_from, source_kind, recorded_by_membership_id)
+           VALUES ($1,$2,gen_random_uuid(),gen_random_uuid(),$3,'OR','managed_care',gen_random_uuid(),
+            'pending',$4,'manual_candidate',$5) RETURNING id`,
+          [org, patient, pe, from, m],
+        )
+      ).rows[0].id as string;
+      const enrollmentEvidence = (
+        await db.query(
+          `INSERT INTO medicaid_enrollment_evidence
+           (organization_id, provider_entity_id, service_state, transaction_type, evidence_kind, status, effective_from, recorded_by_membership_id)
+           VALUES ($1,$2,'OR','837I','837i_enrollment','pending',$3,$4) RETURNING id`,
+          [org, pe, from, m],
         )
       ).rows[0].id as string;
       const claim = (
@@ -238,6 +266,8 @@ describe.skipIf(!DB_URL)(
         rbArrangement,
         rbDay,
         credential,
+        programAssignment,
+        enrollmentEvidence,
       };
     }
 
@@ -280,6 +310,18 @@ describe.skipIf(!DB_URL)(
         expect(block).not.toMatch(/pg_has_role/i);
         expect(block).not.toMatch(/IS NULL/i);
       }
+      const readiness = readFileSync(
+        join(MIGRATIONS_DIR, "1535_m24_payer_program_readiness.sql"),
+        "utf8",
+      );
+      const readinessPolicies = readiness.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? [];
+      expect(readinessPolicies).toHaveLength(2);
+      for (const block of readinessPolicies) {
+        const vars = [...block.matchAll(/current_setting\(\s*'([^']+)'/g)].map((mm) => mm[1]);
+        expect(new Set(vars)).toEqual(new Set(["app.org_id"]));
+        expect(block).not.toMatch(/pg_has_role/i);
+        expect(block).not.toMatch(/IS NULL/i);
+      }
     });
 
     it.each(COVERED)(
@@ -305,6 +347,16 @@ describe.skipIf(!DB_URL)(
             `INSERT INTO medicaid_validation_rule_config (organization_id, rule_key, regulatory_required_snapshot, updated_by_membership_id)
            VALUES ($1,'cross.tenant.rule',false,'00000000-0000-0000-0000-000000000000')`,
             [ORG_A], // B tries to write a row scoped to A
+          ),
+        ),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO medicaid_enrollment_evidence
+             (organization_id, provider_entity_id, service_state, evidence_kind, effective_from, recorded_by_membership_id)
+             VALUES ($1,$2,'OR','state_medicaid_provider_enrollment','2026-01-01','00000000-0000-0000-0000-000000000000')`,
+            [ORG_A, a.pe],
           ),
         ),
       ).rejects.toThrow();

@@ -52,6 +52,8 @@ export interface CanonicalPayerFields extends CanonicalBaseFields {
   readonly x12PayerId: string | null;
   /** The payer program (medicare, medicaid, medicare_advantage, commercial, other); consumers branch on it. */
   readonly kind: PayerKind;
+  /** Canonical state scope for state Medicaid plans; null for national or non-state payer records. */
+  readonly stateCode: string | null;
 }
 
 /** Per-kind canonical payload map. Phase 1 materializes physician/facility/payer concretely; the

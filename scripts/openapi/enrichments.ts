@@ -668,10 +668,16 @@ import {
   RbArrangementListResponse as M24RbArrangementListResponse,
   RbDayListQuery as M24RbDayListQuery,
   RbDayListResponse as M24RbDayListResponse,
+  RecordEnrollmentEvidenceBody as M24RecordEnrollmentEvidenceBody,
+  RecordPayerReadinessResponse as M24RecordPayerReadinessResponse,
+  RecordProgramAssignmentBody as M24RecordProgramAssignmentBody,
   RefreshEligibilityBody as M24RefreshEligibilityBody,
   RefreshEligibilityResponse as M24RefreshEligibilityResponse,
   RegisterPlatformRuleBody as M24RegisterPlatformRuleBody,
   ReplaceClaimBody as M24ReplaceClaimBody,
+  RevokeEnrollmentEvidenceBody as M24RevokeEnrollmentEvidenceBody,
+  RevokePayerReadinessResponse as M24RevokePayerReadinessResponse,
+  RevokeProgramAssignmentBody as M24RevokeProgramAssignmentBody,
   RuleConfigListResponse as M24RuleConfigListResponse,
   SubmissionListResponse as M24SubmissionListResponse,
   SubmitClaimBody as M24SubmitClaimBody,
@@ -687,6 +693,9 @@ import {
   ValidationRunListResponse as M24ValidationRunListResponse,
   ValidationWorklistDto as M24ValidationWorklistDto,
   ValidationWorklistQuery as M24ValidationWorklistQuery,
+  VerifyEnrollmentEvidenceBody as M24VerifyEnrollmentEvidenceBody,
+  VerifyPayerReadinessResponse as M24VerifyPayerReadinessResponse,
+  VerifyProgramAssignmentBody as M24VerifyProgramAssignmentBody,
   VoidClaimBody as M24VoidClaimBody,
 } from "../../apps/backend/src/modules/24-billing-medicaid/routes/m24-typebox";
 import {
@@ -4641,6 +4650,40 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "POST /api/v1/state-medicaid-trading-partner-credentials/:id/test": {
     summary: "Run the adapter's sandbox connectivity test and record the outcome (§4.4)",
     response: M24TestCredentialResponse,
+  },
+  "POST /api/v1/medicaid-program-assignments": {
+    summary:
+      "Record a candidate patient Medicaid program assignment; new records remain pending until independently verified",
+    body: M24RecordProgramAssignmentBody,
+    response: M24RecordPayerReadinessResponse,
+  },
+  "POST /api/v1/medicaid-program-assignments/:id/verify": {
+    summary:
+      "Independently verify a program assignment against M40 payer identity and secured external evidence",
+    body: M24VerifyProgramAssignmentBody,
+    response: M24VerifyPayerReadinessResponse,
+  },
+  "POST /api/v1/medicaid-program-assignments/:id/revoke": {
+    summary: "Revoke verified Medicaid program assignment evidence with a reason and version check",
+    body: M24RevokeProgramAssignmentBody,
+    response: M24RevokePayerReadinessResponse,
+  },
+  "POST /api/v1/medicaid-enrollment-evidence": {
+    summary:
+      "Record a provider enrollment, payer participation, transaction enrollment, or route qualification candidate as pending",
+    body: M24RecordEnrollmentEvidenceBody,
+    response: M24RecordPayerReadinessResponse,
+  },
+  "POST /api/v1/medicaid-enrollment-evidence/:id/verify": {
+    summary:
+      "Independently verify provider enrollment evidence with source and secured evidence reference",
+    body: M24VerifyEnrollmentEvidenceBody,
+    response: M24VerifyPayerReadinessResponse,
+  },
+  "POST /api/v1/medicaid-enrollment-evidence/:id/revoke": {
+    summary: "Revoke verified enrollment evidence with a reason and version check",
+    body: M24RevokeEnrollmentEvidenceBody,
+    response: M24RevokePayerReadinessResponse,
   },
   "POST /api/v1/admin/platform-medicaid-rules": {
     summary: "Register a platform-floor Medicaid validation rule — platform admin only (§11)",

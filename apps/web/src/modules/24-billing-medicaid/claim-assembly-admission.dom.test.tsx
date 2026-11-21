@@ -61,6 +61,16 @@ const BLOCKED_ARRANGEMENT_PREVIEW = {
     remittanceAdviceRecorded: null,
   },
   stateBillingPolicy: "not_applicable_to_primary_medicaid",
+  programResponsibility: {
+    status: "missing",
+    programKind: "unresolved",
+    canonicalPayerId: null,
+    canonicalPayerName: null,
+    reasonCode: "PROGRAM_ASSIGNMENT_MISSING",
+  },
+  enrollmentReadiness: [],
+  selectedClearinghouse: { status: "unavailable", vendor: null, configurationStatus: null },
+  tradingPartnerCredential: { status: "missing", reasonCode: "TRADING_PARTNER_CREDENTIAL_MISSING" },
   electronicSubmissionAvailable: false,
   isAdvisorySnapshot: true,
 };

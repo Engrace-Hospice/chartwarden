@@ -100,6 +100,60 @@ export interface AssemblyPreviewView {
     remittanceAdviceRecorded: boolean | null;
   };
   stateBillingPolicy: "not_applicable_to_primary_medicaid" | "unconfirmed" | "unresolved";
+  programResponsibility: {
+    status:
+      | "verified"
+      | "missing"
+      | "pending"
+      | "rejected"
+      | "expired"
+      | "revoked"
+      | "ambiguous"
+      | "changes"
+      | "unsupported"
+      | "unavailable";
+    programKind:
+      | "ffs_open_card"
+      | "managed_care"
+      | "other_managed_care"
+      | "unsupported"
+      | "unresolved"
+      | "ambiguous"
+      | null;
+    canonicalPayerId: string | null;
+    canonicalPayerName: string | null;
+    reasonCode: string;
+  };
+  enrollmentReadiness: ReadonlyArray<{
+    kind: string;
+    status:
+      | "not_applicable"
+      | "missing"
+      | "pending"
+      | "verified"
+      | "expired"
+      | "revoked"
+      | "ambiguous"
+      | "unavailable";
+    reasonCode: string;
+    vendorPayerId?: string | null;
+  }>;
+  selectedClearinghouse: {
+    status: "selected" | "missing" | "unavailable";
+    vendor: string | null;
+    configurationStatus: string | null;
+  };
+  tradingPartnerCredential: {
+    status:
+      | "configured"
+      | "missing"
+      | "expired"
+      | "future"
+      | "partial"
+      | "ambiguous"
+      | "unavailable";
+    reasonCode: string;
+  };
   electronicSubmissionAvailable: false;
   isAdvisorySnapshot: true;
 }
@@ -136,6 +190,7 @@ export interface CreateCustomRuleInput {
 export interface RefreshEligibilityInput {
   patientId: string;
   patientPayerId: string;
+  admissionId: string;
   asOfServiceDate: string;
   providerEntityId?: string;
 }
@@ -192,6 +247,55 @@ export interface RegisterPlatformRuleInput {
 export interface LoadRateScheduleInput {
   serviceState: string;
   effectiveYear: number;
+}
+export interface RecordProgramAssignmentInput {
+  patientId: string;
+  patientPayerId: string;
+  providerEntityId: string;
+  serviceState: string;
+  programKind:
+    | "ffs_open_card"
+    | "managed_care"
+    | "other_managed_care"
+    | "unsupported"
+    | "unresolved";
+  canonicalPayerId?: string;
+  effectiveFrom: string;
+  effectiveTo?: string;
+  sourceKind: "manual_candidate" | "payer_document" | "state_response" | "imported";
+  evidenceReference?: string;
+}
+export interface RecordEnrollmentEvidenceInput {
+  providerEntityId: string;
+  serviceState: string;
+  programKind?: "ffs_open_card" | "managed_care" | "other_managed_care";
+  canonicalPayerId?: string;
+  clearinghouse?: "stedi" | "claimmd" | "other";
+  transactionType?: "837I" | "835";
+  evidenceKind:
+    | "state_medicaid_provider_enrollment"
+    | "mco_participation"
+    | "837i_enrollment"
+    | "835_era_enrollment"
+    | "clearinghouse_payer_route"
+    | "institutional_format_qualification"
+    | "payer_transport_certification"
+    | "production_activation_approval";
+  effectiveFrom: string;
+  effectiveTo?: string;
+}
+export interface VerifyPayerReadinessRecordInput {
+  expectedVersion: number;
+  verificationSource: string;
+  evidenceReference: string;
+  providerEntityId: string;
+  patientId?: string;
+}
+export interface RevokePayerReadinessRecordInput {
+  expectedVersion: number;
+  reasonCode: "source_corrected" | "payer_withdrawal" | "coverage_changed" | "other";
+  providerEntityId: string;
+  patientId?: string;
 }
 
 export interface M24WriteService {
@@ -261,4 +365,32 @@ export interface M24WriteService {
   ): Promise<{ ok: boolean; errorMessage?: string }>;
   registerPlatformRule(actor: M24Actor, input: RegisterPlatformRuleInput): Promise<void>;
   loadRateSchedule(actor: M24Actor, input: LoadRateScheduleInput): Promise<{ queued: boolean }>;
+  recordProgramAssignment(
+    actor: M24Actor,
+    input: RecordProgramAssignmentInput,
+  ): Promise<{ id: string; status: "pending" }>;
+  recordEnrollmentEvidence(
+    actor: M24Actor,
+    input: RecordEnrollmentEvidenceInput,
+  ): Promise<{ id: string; status: "pending" }>;
+  verifyProgramAssignment(
+    actor: M24Actor,
+    id: string,
+    input: VerifyPayerReadinessRecordInput,
+  ): Promise<{ status: "verified"; version: number }>;
+  verifyEnrollmentEvidence(
+    actor: M24Actor,
+    id: string,
+    input: VerifyPayerReadinessRecordInput,
+  ): Promise<{ status: "verified"; version: number }>;
+  revokeProgramAssignment(
+    actor: M24Actor,
+    id: string,
+    input: RevokePayerReadinessRecordInput,
+  ): Promise<{ status: "revoked"; version: number }>;
+  revokeEnrollmentEvidence(
+    actor: M24Actor,
+    id: string,
+    input: RevokePayerReadinessRecordInput,
+  ): Promise<{ status: "revoked"; version: number }>;
 }

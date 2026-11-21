@@ -85,7 +85,13 @@ export class MedicaidAdapterRegistry {
 /** Stable fail-closed code for a submit attempt without a verified state/program transport. */
 export const MEDICAID_NO_ELECTRONIC_GATEWAY_CODE = "MEDICAID_STATE_NO_ELECTRONIC_GATEWAY";
 
-export type MedicaidProgramKind = "managed_care" | "unresolved";
+export type MedicaidProgramKind =
+  | "ffs_open_card"
+  | "managed_care"
+  | "other_managed_care"
+  | "unresolved"
+  | "ambiguous"
+  | "unsupported";
 export type MedicaidRouteReadinessStatus =
   | "transport_unconfigured"
   | "certification_pending"
@@ -97,7 +103,7 @@ export type MedicaidRouteReadinessStatus =
 export interface MedicaidClaimRouteReadiness {
   readonly serviceState: string;
   readonly programKind: MedicaidProgramKind;
-  readonly programAssignmentVerified: false;
+  readonly programAssignmentVerified: boolean;
   readonly requestedChannel: "cco_clearinghouse" | null;
   readonly localPreparationAvailable: true;
   /** Configuration signal only. Never means the route is approved or certified. */
@@ -118,13 +124,19 @@ export function medicaidClaimRouteReadiness(
   serviceState: string,
   mcoId: string | null,
   gatewayBound = false,
+  explicitProgramKind?: MedicaidProgramKind,
+  programAssignmentVerified = false,
 ): MedicaidClaimRouteReadiness {
-  const programKind: MedicaidProgramKind = mcoId === null ? "unresolved" : "managed_care";
-  const requestedChannel: "cco_clearinghouse" | null = mcoId === null ? null : "cco_clearinghouse";
+  // Compatibility for old call sites only. New claim reads pass the persisted explicit kind;
+  // historical NULL mcoId rows remain unresolved and are never reclassified as FFS.
+  const programKind: MedicaidProgramKind =
+    explicitProgramKind ?? (mcoId === null ? "unresolved" : "managed_care");
+  const requestedChannel: "cco_clearinghouse" | null =
+    programKind === "managed_care" ? "cco_clearinghouse" : null;
   const base = {
     serviceState,
     programKind,
-    programAssignmentVerified: false as const,
+    programAssignmentVerified,
     requestedChannel,
     localPreparationAvailable: true as const,
     transportConfigured: serviceState === "OR" && gatewayBound,
@@ -133,12 +145,33 @@ export function medicaidClaimRouteReadiness(
     outboundFormat: "unverified" as const,
     submissionAvailable: false as const,
   };
-  if (mcoId === null) {
+  if (programKind === "unresolved" || programKind === "ambiguous") {
     return {
       ...base,
       status: "unsupported_program_route",
-      reasonCode: "MEDICAID_PROGRAM_UNRESOLVED",
-      message: `WardenX cannot verify whether this ${serviceState} coverage is fee-for-service or a managed-care plan. The M40 state Medicaid MCO catalog and a coverage-to-program mapping are not available, so no destination is inferred from a missing MCO value.`,
+      reasonCode:
+        programKind === "ambiguous" ? "MEDICAID_PROGRAM_AMBIGUOUS" : "MEDICAID_PROGRAM_UNRESOLVED",
+      message:
+        programKind === "ambiguous"
+          ? `More than one Medicaid program assignment applies to this ${serviceState} service window. Resolve the conflict or split the claim before selecting a destination.`
+          : `WardenX cannot verify which Medicaid program is responsible for this ${serviceState} service window. A missing MCO value does not prove fee-for-service coverage.`,
+    };
+  }
+  if (programKind === "ffs_open_card") {
+    return {
+      ...base,
+      status: "unsupported_program_route",
+      reasonCode: "MEDICAID_FFS_ROUTE_UNVERIFIED",
+      message:
+        "The payer is explicitly identified as FFS/Open Card, but the state payer route and transaction qualification are not verified. Local claim preparation remains available; electronic submission is blocked.",
+    };
+  }
+  if (programKind === "unsupported" || programKind === "other_managed_care") {
+    return {
+      ...base,
+      status: "unsupported_program_route",
+      reasonCode: "MEDICAID_PROGRAM_UNSUPPORTED",
+      message: `The identified ${serviceState} Medicaid program does not have a qualified electronic claim route.`,
     };
   }
   if (serviceState === "OR" && programKind === "managed_care") {
@@ -168,7 +201,15 @@ export function electronicSubmissionRefusal(
   state: string,
   gatewayBound = true,
   mcoId: string | null = null,
+  programKind?: MedicaidProgramKind,
+  programAssignmentVerified = false,
 ): { readonly code: string; readonly message: string } | null {
-  const readiness = medicaidClaimRouteReadiness(state, mcoId, gatewayBound);
+  const readiness = medicaidClaimRouteReadiness(
+    state,
+    mcoId,
+    gatewayBound,
+    programKind,
+    programAssignmentVerified,
+  );
   return { code: MEDICAID_NO_ELECTRONIC_GATEWAY_CODE, message: readiness.message };
 }

@@ -5624,6 +5624,23 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       return getMdmEntityProvider().resolveFacility(orgId, id);
     },
   };
+  // M24 → M40: merge-aware canonical payer identity. A payer UUID supplied by an imported program
+  // assignment is not accepted at assembly unless M40 resolves it as an active Medicaid payer for
+  // the admission's state.
+  const m24CanonicalPayerReader = {
+    async resolvePayer(organizationId: string, id: string) {
+      const resolved = await getMdmEntityProvider().resolvePayer(organizationId, id);
+      return resolved
+        ? {
+            id: resolved.canonical.id,
+            displayName: resolved.canonical.displayName,
+            kind: resolved.canonical.kind,
+            stateCode: resolved.canonical.stateCode,
+            status: resolved.status,
+          }
+        : null;
+    },
+  };
   // M24 → M5 (place-of-service follow-up) — the LIVE `PatientAddressReader` seam (registered by M5 at
   // boot), resolved lazily per call (the `m24SignedEncounters`/`m24CoverageResolver` precedent) so
   // registration order at boot never matters.
@@ -8810,6 +8827,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // M24 (Billing — Medicaid) — mount the §4.1 route plugins over the Drizzle READ + WRITE services;
           // the §4.11 `m24.*` transactional outbox publisher binds here (events persist on the mutation's tx).
           // ADR-0110 — the claims-billing add-on gate on M24's new-work routes (route-classes.ts).
+          const m24TenantClearinghouseRouteReader = buildDrizzleTenantClearinghouseRouteService({
+            db: dbHandle.db,
+            service: tenantClearinghouseService,
+            audit: buildClearinghouseAuditPort(),
+          });
           withClaimsBillingGate(
             app,
             m24RouteClasses((org, id) => isVoidM24Claim(dbHandle.db, org, id)),
@@ -8838,6 +8860,17 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   m24LocPeriodReader,
                   m24AdapterRegistry,
                   () => getSeam("ClaimReader") as ClaimReader,
+                  m24CanonicalPayerReader,
+                  {
+                    async selectedTenantRoute(organizationId) {
+                      const view = await m24TenantClearinghouseRouteReader.get({
+                        organizationId,
+                        userId: "",
+                        roles: [],
+                      });
+                      return { source: view.source, vendor: view.vendor, status: view.status };
+                    },
+                  },
                 ),
               }),
           );

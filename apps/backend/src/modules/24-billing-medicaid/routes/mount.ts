@@ -10,6 +10,7 @@ import { registerAdminRoutes } from "./admin.routes";
 import { registerClaimsRoutes } from "./claims.routes";
 import { registerEligibilityRoutes } from "./eligibility.routes";
 import type { M24RouteServices } from "./index";
+import { registerPayerReadinessRoutes } from "./payer-readiness.routes";
 import { registerRbRoutes } from "./rb.routes";
 import { registerRuleConfigRoutes } from "./rule-config.routes";
 import { registerTradingPartnerRoutes } from "./trading-partner.routes";
@@ -32,5 +33,6 @@ export function mountM24Routes(app: FastifyInstance, services: M24RouteServices)
   registerEligibilityRoutes(app, { readService, writeService });
   registerRbRoutes(app, { readService, writeService });
   registerTradingPartnerRoutes(app, { readService, writeService });
+  registerPayerReadinessRoutes(app, { writeService });
   registerAdminRoutes(app, { writeService });
 }

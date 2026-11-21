@@ -1052,6 +1052,8 @@ export const MODULES: ModuleDef[] = [
       "state_medicaid_trading_partner_credential",
       "medicaid_state_plan_code",
       "medicaid_state_rate_schedule",
+      "medicaid_program_assignment",
+      "medicaid_enrollment_evidence",
     ],
   },
   {

@@ -108,6 +108,7 @@ function mapPayer(r: typeof PAY.$inferSelect): CanonicalFields<"payer"> {
     displayName: r.name,
     x12PayerId: r.payerId,
     kind: r.kind,
+    stateCode: r.stateCode,
   };
 }
 

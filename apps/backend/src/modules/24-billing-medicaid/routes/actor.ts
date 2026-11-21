@@ -3,6 +3,7 @@
 import { type ContextCarrier, type RouteActor, actorOf } from "@chartwarden/shared/route-kit";
 
 export interface M24Actor extends Pick<RouteActor, "organizationId" | "userId" | "roles"> {
+  readonly membershipId?: string | null;
   readonly stepUpRecent?: boolean;
   readonly providerEntityIds?: readonly string[];
 }
