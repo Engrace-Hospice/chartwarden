@@ -26,6 +26,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dropLiveRoles } from "./_live-roles";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const ISOLATED_RUN = process.env.CHARTWARDEN_M23_RLS_ISOLATED_RUN === "true";
+if (ISOLATED_RUN && !DB_URL) {
+  throw new Error("M23 isolated runner did not provide CHARTWARDEN_TEST_DATABASE_URL");
+}
 const MIGRATIONS_DIR = join(__dirname, "..");
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -114,7 +118,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "claimmd_tenant_response_item_outcome", key: "tenantResponseOutcome" },
 ];
 
-describe.skipIf(!DB_URL)(
+describe.skipIf(!ISOLATED_RUN)(
   "M23 Billing — Medicare — RLS cross-tenant denial — LIVE Postgres (§3.5)",
   () => {
     let db: Client;
