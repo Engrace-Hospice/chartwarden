@@ -332,12 +332,12 @@ describe("M24 Room & Board claim assembly integrity", () => {
     const admission = {
       status: "closed" as const,
       stayEndFacts: {
-        dischargeDate: null,
         dischargeReason: null,
         deceasedDate: null,
         pendingDischargeDates: [],
         transferOut: null,
         revocationDate: null,
+        // Both cases set `dischargeDate` (null), so the base object does not.
         ...overrides,
       },
     };

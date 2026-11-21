@@ -23,6 +23,7 @@ import {
   buildDrizzleEligibilityWatchdogStore,
   buildDrizzleRbDaySweepStore,
 } from "../src/modules/24-billing-medicaid/jobs/rb-day-sweep";
+import type { RevalidateJob } from "../src/modules/24-billing-medicaid/jobs/revalidate-jobs";
 import { buildM24RbDayConsumers } from "../src/modules/24-billing-medicaid/outbox-consumers/m24-rb-day-consumers";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
@@ -336,7 +337,7 @@ describe.skipIf(!DB_URL)("M24 rb-day-daily-sweep store — LIVE Postgres (GAP-07
 
   describe("lifecycle consumers (m6.loc.changed re-evaluation, discharge/death void)", () => {
     const ADMISSION_OF = new Map<string, string>();
-    const revalidationJobs: Array<Record<string, unknown>> = [];
+    const revalidationJobs: RevalidateJob[] = [];
     const consumers = () =>
       buildM24RbDayConsumers({
         db: handle.db,

@@ -74,18 +74,6 @@ async function openModal(api: ApiClient) {
   return screen.findByRole("dialog");
 }
 
-function renderWorklist(api: ApiClient) {
-  render(
-    <MemoryRouter initialEntries={["/claims/claim-1/validation"]}>
-      <ApiClientProvider client={api}>
-        <Routes>
-          <Route path="/claims/:claimId/validation" element={<MedicaidValidationWorklist />} />
-        </Routes>
-      </ApiClientProvider>
-    </MemoryRouter>,
-  );
-}
-
 const rules = (role: string | null) =>
   ok([{ ruleKey: RULE_KEY, regulatoryRequired: false, overrideRoleRequired: role }]);
 

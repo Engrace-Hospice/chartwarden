@@ -15,6 +15,26 @@ export interface DdeProviderCapability {
   readonly explanation: string;
 }
 
+/** The response-schema shape: TypeBox arrays are mutable, the capability's are readonly. */
+export type DdeProviderCapabilityView = Omit<
+  DdeProviderCapability,
+  "submissionItemTypes" | "statusCheckItemTypes"
+> & {
+  submissionItemTypes: DdeOperationKind[];
+  statusCheckItemTypes: DdeOperationKind[];
+};
+
+/** Copies the arrays, so a consumer can never mutate the shared module-level capability constants. */
+export function ddeProviderCapabilityView(
+  capability: DdeProviderCapability,
+): DdeProviderCapabilityView {
+  return {
+    ...capability,
+    submissionItemTypes: [...capability.submissionItemTypes],
+    statusCheckItemTypes: [...capability.statusCheckItemTypes],
+  };
+}
+
 /** Code-wired qualification only. There is intentionally no environment-variable override. */
 export interface QualifiedDdeOperations {
   readonly qualification: "vendor_qualified";

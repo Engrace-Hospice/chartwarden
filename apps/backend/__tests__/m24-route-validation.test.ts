@@ -121,13 +121,13 @@ describe("M24 §4.2 request validation — bodies", () => {
       kind: "hospice_only",
       rbArrangementId: UUID_A,
     });
-    expect(
-      parse(AssembleClaimBody, {
-        ...base,
-        kind: "rb_only",
-        rbArrangementId: UUID_A,
-      }).rbArrangementId,
-    ).toBe(UUID_A);
+    const rbOnly = parse(AssembleClaimBody, {
+      ...base,
+      kind: "rb_only",
+      rbArrangementId: UUID_A,
+    });
+    // `hospice_only` carries no arrangement, so narrow the union before reading it.
+    expect("rbArrangementId" in rbOnly ? rbOnly.rbArrangementId : undefined).toBe(UUID_A);
   });
 
   it("rejects unknown properties rather than passing them through to a service", () => {

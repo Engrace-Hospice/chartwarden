@@ -62,7 +62,11 @@ import {
 } from "./claim-state-service";
 import type { DdeBeneficiaryPort } from "./dde-beneficiary";
 import { applyDdeNoticeAcceptance } from "./dde-notice-acceptance";
-import { type QualifiedDdeOperations, ddeProviderCapability } from "./dde-provider-capability";
+import {
+  type QualifiedDdeOperations,
+  ddeProviderCapability,
+  ddeProviderCapabilityView,
+} from "./dde-provider-capability";
 import type { DdeProviderCapability } from "./dde-provider-capability";
 import {
   DDE_PROVIDER_CALL_TIMEOUT_MS,
@@ -673,7 +677,7 @@ export function buildDdeQueueService(
       const asOf = toIsoDate(now());
       return {
         items: page.items.map((r) => viewOf(r, asOf)),
-        providerCapability: capabilityFor(ports),
+        providerCapability: ddeProviderCapabilityView(capabilityFor(ports)),
         nextCursor: page.nextCursor,
         hasMore: page.hasMore,
       };

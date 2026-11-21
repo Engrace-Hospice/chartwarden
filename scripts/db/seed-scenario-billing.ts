@@ -321,7 +321,15 @@ async function main(): Promise<void> {
     "Medicare (M23): MAC submitter credential seeded; rate tables / sequestration are tenant-entered (assemble names whichever is missing)",
   );
 
-  // ── M24 — Billing Medicaid (full lifecycle: assemble → validate → submit) ──────────────────────────
+  // ── M24 — Billing Medicaid (assemble → validate → submit, when payer policy allows a claim) ────────
+  // Every demo patient carries Medicare at rank 1 (seed-clinical.ts), and M24 refuses every Medicaid claim kind
+  // while Medicare is primary (`evaluateMedicaidPayerResponsibility`), so the demo org gets no Medicaid claim from
+  // this script. The error codes M24 answers with in that case (payer policy, not a fault):
+  const MEDICARE_PRIMARY_CLAIM_REFUSALS: ReadonlySet<string> = new Set([
+    "MEDICARE_PRIMARY_HOSPICE_RESPONSIBILITY",
+    "MEDICAID_SECONDARY_RB_FORMAT_UNVERIFIED",
+    "MEDICAID_SECONDARY_COMBINED_FORMAT_UNVERIFIED",
+  ]);
   try {
     // The persisted local fixture stops at a validated claim today: submission below is expected to
     // prove the typed fail-closed answer until a state/program route is certified.
@@ -354,48 +362,57 @@ async function main(): Promise<void> {
         providerEntityId: PROVIDER_ENTITY_ID,
         serviceFrom,
         serviceTo,
-        // The demo patient keeps Medicare primary and Medicaid secondary (rank 2). Billing policy
-        // authorizes that payer order only for the combined hospice + room-and-board claim shape.
-        kind: "combined_hospice_rb",
+        // The demo patient keeps Medicare primary and Medicaid secondary (rank 2).
+        kind: "hospice_only",
       },
     });
+    // With Medicare primary, M24 refuses every Medicaid claim kind by payer policy: hospice services go through M23,
+    // and the secondary R&B-only and combined claim formats are unverified. That is the expected answer for this
+    // patient, not a seed fault, so it is reported as skipped (as M25 is below) rather than failing the section.
+    const assembleCode = (claim.error as { error?: { code?: string } } | undefined)?.error?.code;
     const claimData = claim.data as unknown as { id: string; version: number } | undefined;
-    if (claim.error || !claimData)
-      throw new Error(`medicaid claim assemble failed: ${JSON.stringify(claim.error)}`);
-
-    const validate = await admin.client.POST("/api/v1/medicaid-claims/{id}/validate", {
-      params: { path: { id: claimData.id } },
-      headers: { "Idempotency-Key": crypto.randomUUID(), "If-Match": String(claimData.version) },
-    });
-    if (validate.error)
-      throw new Error(`medicaid claim validate failed: ${JSON.stringify(validate.error)}`);
-
-    // validate returns only { validationRunId }; re-read the claim for the version submit's If-Match needs.
-    const validated = await admin.client.GET("/api/v1/medicaid-claims/{id}", {
-      params: { path: { id: claimData.id } },
-    });
-    const validatedData = validated.data as unknown as { version: number } | undefined;
-    if (validated.error || typeof validatedData?.version !== "number")
-      throw new Error(`medicaid claim re-read failed: ${JSON.stringify(validated.error)}`);
-
-    await stepUpSession(admin.userId);
-    const submit = await admin.client.POST("/api/v1/medicaid-claims/{id}/submit", {
-      params: { path: { id: claimData.id } },
-      headers: {
-        "Idempotency-Key": crypto.randomUUID(),
-        "If-Match": String(validatedData.version),
-      },
-      body: { channelHint: "direct_mmis" },
-    });
-    const submitCode = (submit.error as { error?: { code?: string } } | undefined)?.error?.code;
-    if (submitCode === "MEDICAID_STATE_NO_ELECTRONIC_GATEWAY") {
-      log.ok(
-        "Medicaid (M24): 1 combined hospice + R&B claim assembled and validated; electronic submit refused because no state/program route is certified",
+    if (assembleCode !== undefined && MEDICARE_PRIMARY_CLAIM_REFUSALS.has(assembleCode)) {
+      log.dup(
+        `Medicaid (M24): claim assembly skipped, refused by payer policy (${assembleCode}); the demo patient's Medicare is primary`,
       );
-    } else if (submit.error) {
-      throw new Error(`medicaid claim submit failed: ${JSON.stringify(submit.error)}`);
     } else {
-      log.ok("Medicaid (M24): 1 combined hospice + R&B claim assembled, validated, and submitted");
+      if (claim.error || !claimData)
+        throw new Error(`medicaid claim assemble failed: ${JSON.stringify(claim.error)}`);
+
+      const validate = await admin.client.POST("/api/v1/medicaid-claims/{id}/validate", {
+        params: { path: { id: claimData.id } },
+        headers: { "Idempotency-Key": crypto.randomUUID(), "If-Match": String(claimData.version) },
+      });
+      if (validate.error)
+        throw new Error(`medicaid claim validate failed: ${JSON.stringify(validate.error)}`);
+
+      // validate returns only { validationRunId }; re-read the claim for the version submit's If-Match needs.
+      const validated = await admin.client.GET("/api/v1/medicaid-claims/{id}", {
+        params: { path: { id: claimData.id } },
+      });
+      const validatedData = validated.data as unknown as { version: number } | undefined;
+      if (validated.error || typeof validatedData?.version !== "number")
+        throw new Error(`medicaid claim re-read failed: ${JSON.stringify(validated.error)}`);
+
+      await stepUpSession(admin.userId);
+      const submit = await admin.client.POST("/api/v1/medicaid-claims/{id}/submit", {
+        params: { path: { id: claimData.id } },
+        headers: {
+          "Idempotency-Key": crypto.randomUUID(),
+          "If-Match": String(validatedData.version),
+        },
+        body: { channelHint: "direct_mmis" },
+      });
+      const submitCode = (submit.error as { error?: { code?: string } } | undefined)?.error?.code;
+      if (submitCode === "MEDICAID_STATE_NO_ELECTRONIC_GATEWAY") {
+        log.ok(
+          "Medicaid (M24): 1 hospice claim assembled and validated; electronic submit refused because no state/program route is certified",
+        );
+      } else if (submit.error) {
+        throw new Error(`medicaid claim submit failed: ${JSON.stringify(submit.error)}`);
+      } else {
+        log.ok("Medicaid (M24): 1 hospice claim assembled, validated, and submitted");
+      }
     }
   } catch (err) {
     log.fail(`M24 Medicaid: ${String(err)}`);
