@@ -109,6 +109,13 @@ const NOW = new Date("2026-02-01T12:00:00.000Z");
 const AS_OF = "2026-01-16T04:59:59.999Z";
 const PREVIOUS_VISIT_AT = "2026-01-09T04:59:59.999Z";
 const APPROVED = { reviewer: "ADA", status: "approved", reviewedVersion: VOCAB_VERSION } as const;
+/** The read keys of the three source domains a routine visit's draft is compiled from (S3: the service asks them by template); the callers below hold them. */
+const SOURCE_DOMAIN_KEYS: ReadonlySet<string> = new Set([
+  "care_plan.read",
+  "prescribing.read",
+  "assessment.read_trend",
+]);
+
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const ORG_C = "33333333-3333-3333-3333-333333333333";
@@ -953,9 +960,10 @@ describe.skipIf(!DB_URL)(
         });
         expect(get.statusCode).toBe(403);
         expect(get.json().error.message).toContain("prescribing.read");
+        // The PUT is the encounter AUTHOR's alone, and this member is not: the route's `is_author` rule refuses first. The service's by-template key
+        // check on the section write is proven in encounter-draft-service.test.ts and by the author's refusal in the S3 live suite.
         const put = await putSection(f, "plan", "confirmed", seen, asLimited);
         expect(put.statusCode).toBe(403);
-        expect(put.json().error.message).toContain("prescribing.read");
         expect(await confirmationsOf(f.encounterId)).toEqual([]);
         expect((await auditEvents(ORG_A, "encounter_draft.viewed", f.encounterId)).length).toBe(
           viewsBefore,
@@ -1350,7 +1358,7 @@ describe.skipIf(!DB_URL)(
           userId: orgs.A.author.userId,
           roles: ["rn"],
           membershipId: orgs.A.author.membershipId,
-          permissions: new Set<string>(), // a routine visit's draft needs none of M6's read keys
+          permissions: SOURCE_DOMAIN_KEYS, // a routine visit's draft needs none of M6's read keys, but the source domains' (S3)
         };
         await expect(service.getDraft(caller, theirs.encounterId)).rejects.toMatchObject({
           code: "NOT_FOUND",
@@ -1401,7 +1409,7 @@ describe.skipIf(!DB_URL)(
               userId: orgs.A.author.userId,
               roles: ["rn"],
               membershipId: orgs.B.author.membershipId,
-              permissions: new Set<string>(),
+              permissions: SOURCE_DOMAIN_KEYS,
             },
             f.encounterId,
             "plan",
@@ -1532,7 +1540,7 @@ describe.skipIf(!DB_URL)(
         userId: org.author.userId,
         roles,
         membershipId: org.author.membershipId,
-        permissions: new Set<string>(),
+        permissions: SOURCE_DOMAIN_KEYS,
       });
       const auditOf = (org: OrgFixture) => ({
         organizationId: org.orgId,
@@ -5881,7 +5889,7 @@ describe.skipIf(!DB_URL)(
                   userId: who.userId,
                   roles: who.roles,
                   membershipId: who.membershipId,
-                  permissions: new Set<string>(),
+                  permissions: SOURCE_DOMAIN_KEYS,
                 },
                 f.encounterId,
                 addendumId,
@@ -5893,7 +5901,7 @@ describe.skipIf(!DB_URL)(
                 userId: who.userId,
                 roles: who.roles,
                 membershipId: who.membershipId,
-                permissions: new Set<string>(),
+                permissions: SOURCE_DOMAIN_KEYS,
               },
               f.encounterId,
               addendumId,
