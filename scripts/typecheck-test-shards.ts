@@ -54,6 +54,30 @@ function testRoots(configPath: string): string[] {
   return parsed.fileNames;
 }
 
+// Each shard needs more than 4 GB, so on the memory-bound CI runner the kernel occasionally SIGKILLs
+// one while another process holds memory (runs 44790984363 and 44934938150, both green on re-run).
+// Only SIGKILL is retried, once: a SIGABRT is V8 hitting its heap limit and a non-zero exit is a real
+// type error, and both would fail the same way again.
+const RETRIED_SIGNAL: NodeJS.Signals = "SIGKILL";
+const SIGKILL_RETRIES = 1;
+
+function runShard(
+  spawn: TypecheckSpawn,
+  shardPath: string,
+  childEnv: NodeJS.ProcessEnv,
+  label: string,
+  log: (message: string) => void,
+): SpawnResult {
+  for (let retriesLeft = SIGKILL_RETRIES; ; retriesLeft -= 1) {
+    const result = spawn("tsc", ["-p", shardPath, "--pretty"], { stdio: "inherit", env: childEnv });
+    if (result.error) throw result.error;
+    if (result.signal) console.error(`${label} received ${result.signal}`);
+    if (result.signal !== RETRIED_SIGNAL || retriesLeft === 0) return result;
+    // `::warning::` makes GitHub Actions show the retry in the run summary, so a recurring kill stays visible.
+    log(`::warning::${label} was SIGKILLed (likely memory pressure on the runner), retrying once`);
+  }
+}
+
 export function runTestTypecheck(
   root = process.cwd(),
   env: NodeJS.ProcessEnv = process.env,
@@ -84,12 +108,7 @@ export function runTestTypecheck(
           `${JSON.stringify({ extends: configPath, files, include: [], exclude: [] }, null, 2)}\n`,
         );
         log(`${program} shard ${index + 1}/${shards.length}: ${files.length} test files`);
-        const result = spawn("tsc", ["-p", shardPath, "--pretty"], {
-          stdio: "inherit",
-          env: childEnv,
-        });
-        if (result.error) throw result.error;
-        if (result.signal) console.error(`${program} shard ${index + 1} received ${result.signal}`);
+        const result = runShard(spawn, shardPath, childEnv, `${program} shard ${index + 1}`, log);
         if (result.status !== 0) return result.status ?? 1;
       }
     }
