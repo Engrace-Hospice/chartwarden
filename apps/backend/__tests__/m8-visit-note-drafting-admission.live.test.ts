@@ -55,6 +55,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { STEP_UP_FLOOR_KEY, buildServer, stepUpFreshFor } from "../src/bootstrap/index";
 import { registerSeam } from "../src/bootstrap/seams/registry";
 import { buildPatientCaregiverRosterReader } from "../src/modules/05-patient/caregiver-roster-reader";
+import { createDbPatientLifecyclePort } from "../src/modules/05-patient/patient-lifecycle-db";
 import { createDbRunInOrg } from "../src/modules/08-encounters/drafting/db-draft-unit";
 import { defaultDraftPorts } from "../src/modules/08-encounters/drafting/default-ports";
 import { createDraftService } from "../src/modules/08-encounters/drafting/draft-service";
@@ -1285,6 +1286,28 @@ describe.skipIf(!DB_URL)(
           "Emery Frost",
         ]);
         expect(await realRoster.caregiversOn(ORG_A, patientId, "2025-11-30")).toEqual([]);
+      });
+
+      // M5 dates a link with no start date by the organization's local day, not the UTC day: on the evening of the visit UTC is already the next
+      // day, and a caregiver added during the visit would otherwise start the day after it and be missing from the draft of that very visit.
+      it("a caregiver added with no start date on the evening of the service date, when UTC is already the next day, is on that day's roster", async () => {
+        const patientId = await seedPatientRow(orgs.A, "Evening");
+        // 2026-01-16T01:30Z is 20:30 on 2026-01-15 in the organization's zone (America/New_York)
+        const lifecycle = createDbPatientLifecyclePort(
+          handle.db,
+          { publish: async () => undefined },
+          () => new Date("2026-01-16T01:30:00.000Z"),
+        );
+        const added = await lifecycle.addCaregiver(
+          ORG_A,
+          patientId,
+          { firstName: "Eve", lastName: "Stone", relationship: "child" },
+          orgs.A.author.userId,
+        );
+        expect(added.involvementFrom).toBe("2026-01-15");
+        expect(names(await realRoster.caregiversOn(ORG_A, patientId, "2026-01-15"))).toEqual([
+          "Eve Stone",
+        ]);
       });
 
       it("the entry is the roster's own: ids, the relationship as stored, the primary flag and the contact details the draft never states", async () => {
