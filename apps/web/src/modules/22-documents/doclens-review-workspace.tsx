@@ -376,6 +376,17 @@ export function DocLensReviewWorkspace(): JSX.Element {
   const unavailable = ws.jobs.filter(
     (j) => j.status === "awaiting_capability" || j.status === "failed",
   );
+  // Field-level review is only available after extraction has produced candidates.
+  // The server independently enforces this gate to prevent direct API bypass.
+  const reviewReady = ws.batch.status === "extraction_complete" && ws.candidates.length > 0;
+  const reviewBlockedMessage =
+    ws.batch.status === "parse_failed"
+      ? "Document parsing failed. Check processing diagnostics before retrying."
+      : ws.batch.status !== "extraction_complete"
+        ? "Document extraction is not complete. Review becomes available after processing."
+        : ws.candidates.length === 0
+          ? "No extracted fields are available for field review."
+          : null;
   const currentPage = viewerPage !== null ? (pages.get(viewerPage) ?? null) : null;
   const pageNumbers = ws.pages.length
     ? ws.pages.map((p) => p.page)
@@ -429,7 +440,8 @@ export function DocLensReviewWorkspace(): JSX.Element {
             <button
               type="button"
               className="wx-btn-primary"
-              disabled={busy}
+              disabled={busy || !reviewReady}
+              title={reviewBlockedMessage ?? undefined}
               onClick={() => void begin()}
             >
               <Glyph name="play" size={16} /> Start review
