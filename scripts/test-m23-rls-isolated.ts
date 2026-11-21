@@ -13,13 +13,42 @@ import {
   buildM23VitestEnvironment,
   isCompleteM23Qualification,
   isM23SuiteEntirelySkipped,
+  runM23Child,
   startLoopbackTcpRelay,
   summarizeVitestFailureMessage,
   validateM23DockerIsolation,
 } from "./m23-rls-isolation";
+import {
+  type M23CollectedTest,
+  isM23TargetModuleEnvironmentSafe,
+  parseM23TargetModuleDiagnosticJson,
+  validateM23DynamicCollection,
+} from "./m23-rls-target-diagnostic";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TEST_FILE = "packages/db/migrations/__tests__/m23-rls-isolation.live.test.ts";
+const M23_SUITE_NAME = "M23 Billing — Medicare — RLS cross-tenant denial — LIVE Postgres (§3.5)";
+const EXPECTED_M23_ASSERTIONS = [
+  "chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously",
+  "every M23 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)",
+  "org B sees NONE of org A's rows, on every org-scoped M23 table",
+  "a WITH CHECK refuses an INSERT carrying another tenant's organization_id",
+  "new M23 routing and exception tables reject forged cross-tenant writes",
+  "a cross-tenant UPDATE matches no rows (the USING clause covers writes too)",
+  "enforces exception-review and operational-issue tenant ownership with append-only histories",
+  "tenant Claim.MD inbox is org-scoped and captured evidence and credential bindings are immutable",
+  "deduplicates active issues and keeps issue event plus notification intent transactional",
+  "fences notification publication and preserves cross-tenant outbox isolation",
+  "line evidence is append-only for its owner and invisible to another tenant",
+  "only the DRAFT-claim subtree grants DELETE to the runtime role, each behind a draft-only trigger",
+  "reserves and terminalizes a queued claim submission exactly once and rejects deletion",
+  "the CLAIM chain is org-invisible end to end — not just the claim root",
+  "a patient's Medicare eligibility response is not readable across tenants",
+  "MAC submitter credentials never cross tenants (they are a submission identity)",
+  "wage_index_factor is PLATFORM reference data — shared, and not writable by a tenant",
+  "⚠ `claim_ack_file_uq` is NOT org-scoped — a cross-tenant write oracle",
+  "every partition leaf minted for M23 is born with forced RLS (0118 event trigger)",
+].map((assertion) => `${M23_SUITE_NAME} > ${assertion}`);
 const VITEST_ENTRY = join(ROOT, "node_modules/vitest/vitest.mjs");
 const ENV_PROBE_FILE = "scripts/__tests__/m23-rls-isolation.test.ts";
 const POSTGRES_CONTEXT = join(ROOT, "deploy/production/postgres");
@@ -34,7 +63,11 @@ type VitestReport = {
     name?: string;
     message?: string;
     status?: string;
-    assertionResults?: { fullName?: string; status?: string }[];
+    assertionResults?: {
+      fullName?: string;
+      status?: string;
+      failureMessages?: string[] | null;
+    }[];
   }[];
 };
 
@@ -147,6 +180,10 @@ async function main() {
   const reportDir = mkdtempSync(join(tmpdir(), "chartwarden-m23-vitest-"));
   const envProbeReportPath = join(reportDir, "environment-probe.json");
   const reportPath = join(reportDir, "vitest.json");
+  const collectionReportPath = join(reportDir, "m23-collection.json");
+  const collectionDiagnosticPath = join(reportDir, "chartwarden-m23-target-module-collection.json");
+  const runDiagnosticPath = join(reportDir, "chartwarden-m23-target-module-execution.json");
+  const setupDiagnosticPath = join(reportDir, "chartwarden-m23-setup-stage.json");
   let runError: unknown;
   const cleanupFailures: string[] = [];
 
@@ -257,7 +294,7 @@ async function main() {
       systemIdentifier: identity.systemIdentifier,
       privateWorkDir: reportDir,
     });
-    const envProbe = spawnSync(
+    const envProbe = await runM23Child(
       "node",
       [
         VITEST_ENTRY,
@@ -268,12 +305,10 @@ async function main() {
       ],
       {
         cwd: ROOT,
-        encoding: "utf8",
-        maxBuffer: 16 * 1024 * 1024,
         env: { ...vitestEnvironment, CHARTWARDEN_M23_RLS_ENV_PROBE: "true" },
+        timeoutMs: 60_000,
       },
     );
-    if (envProbe.error) throw envProbe.error;
     let envProbeReport: VitestReport;
     try {
       envProbeReport = JSON.parse(readFileSync(envProbeReportPath, "utf8")) as VitestReport;
@@ -302,17 +337,92 @@ async function main() {
       "Isolated Vitest worker environment preflight passed: private URL, marker, and cluster identity reached the worker.",
     );
 
-    const child = spawnSync(
+    // Vitest's dynamic `list` command evaluates the target test module and registers its suites,
+    // but does not run tests or lifecycle hooks. It uses the exact same Vitest config, project,
+    // Node entry point and isolated environment as the destructive `run` below.
+    const collection = await runM23Child(
       "node",
-      [VITEST_ENTRY, "run", TEST_FILE, "--reporter=json", `--outputFile=${reportPath}`],
+      [VITEST_ENTRY, "list", TEST_FILE, `--json=${collectionReportPath}`],
       {
         cwd: ROOT,
-        encoding: "utf8",
-        maxBuffer: 16 * 1024 * 1024,
-        env: vitestEnvironment,
+        env: {
+          ...vitestEnvironment,
+          CHARTWARDEN_M23_RLS_DIAGNOSTIC: "true",
+          CHARTWARDEN_M23_RLS_DIAGNOSTIC_STAGE: "collection",
+        },
+        timeoutMs: 60_000,
       },
     );
-    if (child.error) throw child.error;
+    let collectionDiagnostic: ReturnType<typeof parseM23TargetModuleDiagnosticJson>;
+    try {
+      collectionDiagnostic = parseM23TargetModuleDiagnosticJson(
+        readFileSync(collectionDiagnosticPath, "utf8"),
+      );
+    } catch (error) {
+      throw new Error("M23 target module did not produce its safe collection diagnostic", {
+        cause: error,
+      });
+    }
+    if (!isM23TargetModuleEnvironmentSafe(collectionDiagnostic)) {
+      throw new Error(
+        `M23 target module guard preflight failed under collection (marker=${collectionDiagnostic.isolatedMarkerState}, databaseUrl=${collectionDiagnostic.privateDatabaseUrlPresent}, clusterIdentity=${collectionDiagnostic.clusterIdentityMarkersWellFormed}, decision=${collectionDiagnostic.moduleGuardDecision}); live database hooks were not started`,
+      );
+    }
+    if (collection.status !== 0) {
+      throw new Error("M23 dynamic collection failed; live database hooks were not started");
+    }
+    let collectedTests: M23CollectedTest[];
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(collectionReportPath, "utf8"));
+      if (!Array.isArray(parsed)) throw new Error("not an array");
+      collectedTests = parsed as M23CollectedTest[];
+    } catch (error) {
+      throw new Error("M23 dynamic collection did not produce a valid test list", { cause: error });
+    }
+    validateM23DynamicCollection({
+      tests: collectedTests,
+      expectedFile: resolve(ROOT, TEST_FILE),
+      expectedProject: "node",
+      expectedNames: EXPECTED_M23_ASSERTIONS,
+    });
+    console.log(
+      `M23 dynamic collection passed: target module evaluated; isolated marker present and true; module guard allows suite registration; private URL and cluster identity markers present; ${collectedTests.length} test names registered in project node. Collection does not establish Vitest's effective task mode. No hooks, test bodies, migrations, or database connections were executed during collection.`,
+    );
+
+    const child = await runM23Child(
+      "node",
+      [
+        VITEST_ENTRY,
+        "run",
+        TEST_FILE,
+        "--reporter=verbose",
+        "--reporter=json",
+        `--outputFile.json=${reportPath}`,
+      ],
+      {
+        cwd: ROOT,
+        env: {
+          ...vitestEnvironment,
+          CHARTWARDEN_M23_RLS_DIAGNOSTIC: "true",
+          CHARTWARDEN_M23_RLS_DIAGNOSTIC_STAGE: "execution",
+        },
+        timeoutMs: 240_000,
+      },
+    );
+    const runDiagnostic = parseM23TargetModuleDiagnosticJson(
+      readFileSync(runDiagnosticPath, "utf8"),
+    );
+    if (
+      !isM23TargetModuleEnvironmentSafe(runDiagnostic) ||
+      JSON.stringify(runDiagnostic) !== JSON.stringify(collectionDiagnostic)
+    ) {
+      throw new Error(
+        "M23 target-module execution environment differed from the successful dynamic collection; qualification is failed",
+      );
+    }
+    console.log(
+      "M23 execution module confirmed: isolated marker true, private database URL present, cluster identity valid; module-level skip condition is false.",
+    );
 
     let report: VitestReport;
     try {
@@ -340,6 +450,52 @@ async function main() {
       if (child.stderr) process.stderr.write(child.stderr);
     } else {
       console.error("Vitest did not qualify; raw stdout/stderr withheld.");
+      try {
+        const setupStage: unknown = JSON.parse(readFileSync(setupDiagnosticPath, "utf8"));
+        if (
+          setupStage &&
+          typeof setupStage === "object" &&
+          "phase" in setupStage &&
+          typeof setupStage.phase === "string" &&
+          [
+            "connecting",
+            "identity",
+            "reset_schema",
+            "migration",
+            "organizations",
+            "seed_a",
+            "seed_b",
+            "partitions_a",
+            "partitions_b",
+            "evidence_a",
+            "evidence_b",
+            "complete",
+          ].includes(setupStage.phase) &&
+          (!("step" in setupStage) ||
+            (typeof setupStage.step === "number" &&
+              Number.isSafeInteger(setupStage.step) &&
+              setupStage.step >= 0 &&
+              setupStage.step <= 10_000))
+        ) {
+          const progress = setupStage as { phase: string; step?: number };
+          console.error(
+            `  Last setup stage: ${progress.phase}${progress.step === undefined ? "" : `, step ${progress.step}`}.`,
+          );
+        } else {
+          console.error("  Setup stage diagnostic was invalid; raw details withheld.");
+        }
+      } catch {
+        console.error("  Setup stage diagnostic was unavailable.");
+      }
+      const safeExecutionDetails = new Set(
+        [child.stdout, child.stderr]
+          .filter((output): output is string => Boolean(output?.trim()))
+          .flatMap(summarizeVitestFailureMessage),
+      );
+      if (safeExecutionDetails.size > 0) {
+        console.error("  Execution diagnostics (allowlisted; raw details withheld):");
+        for (const detail of safeExecutionDetails) console.error(`    ${detail}`);
+      }
     }
     console.log(
       `M23 live result: total=${total}, passed=${passed}, failed=${failed}, skipped=${skipped}, todo=${todo}.`,
@@ -347,7 +503,7 @@ async function main() {
     if (!qualified) {
       if (isM23SuiteEntirelySkipped({ total, passed, failed, pending: skipped, todo })) {
         console.error(
-          "All M23 RLS tests were skipped despite the isolated Vitest worker preflight passing; inspect the suite skip conditions or setup hooks.",
+          "All M23 RLS tests were pending/skipped although the exact target module guard allowed suite registration at collection and execution; review sanitized hook/setup diagnostics below.",
         );
       }
       for (const file of report.testResults ?? []) {
@@ -356,11 +512,15 @@ async function main() {
           console.error(
             `Vitest file status: ${file.status ?? "unknown"} (${file.name ?? "unnamed"})`,
           );
-          if (file.message) {
+          const suiteDiagnostics = new Set([
+            ...(file.message ? summarizeVitestFailureMessage(file.message) : []),
+            ...nonPassed.flatMap((test) =>
+              (test.failureMessages ?? []).flatMap(summarizeVitestFailureMessage),
+            ),
+          ]);
+          if (suiteDiagnostics.size > 0) {
             console.error("  Suite failure diagnostic (allowlisted; raw details withheld):");
-            for (const line of summarizeVitestFailureMessage(file.message)) {
-              console.error(`    ${line}`);
-            }
+            for (const line of suiteDiagnostics) console.error(`    ${line}`);
           }
           for (const test of nonPassed) {
             console.error(`  ${test.status ?? "unknown"}: ${test.fullName ?? "unnamed test"}`);
