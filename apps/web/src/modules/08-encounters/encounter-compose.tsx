@@ -1,12 +1,3 @@
-// apps/web/src/modules/08-encounters — the HearthNote composer (M8 §5.2/§2.6, Track B / ADR-0030; #91).
-//
-// The server remains the source of truth for:
-// - template vocabulary,
-// - narrative assembly,
-// - finalization eligibility,
-// - optimistic concurrency.
-//
-// This page only improves the authoring experience around that contract.
 import { visitPurposeLabel } from "@chartwarden/types";
 import {
   Button,
@@ -30,11 +21,22 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
+// apps/web/src/modules/08-encounters — the HearthNote composer (M8 §5.2/§2.6, Track B / ADR-0030; #91).
+//
+// The server remains the source of truth for:
+// - template vocabulary,
+// - narrative assembly,
+// - finalization eligibility,
+// - optimistic concurrency.
+//
+// This page only improves the authoring experience around that contract.
+import { canAuthorEncounters } from "../../shell/note-href";
 import { type PanelStatus, withPanelStatus } from "../../shell/panel-status";
+import { useSession } from "../../shell/session";
 import { useForwardReturn } from "../../shell/use-return-target";
 import { PlanOfCareStep } from "../07-care-plan/change-proposals";
 import { type UiFeedback, feedbackFor, transportFeedback } from "./compose-feedback";
-import { gateRefusalWords } from "./compose-gate-refusal";
+import { draftRefusalWords } from "./compose-gate-refusal";
 import { humanize } from "./compose-text";
 import { ComposerDraftRail, ComposerDraftStrip } from "./composer-draft-chrome";
 import { STATE_LABEL, confirmedSectionIds, draftedStateOf } from "./draft-model";
@@ -176,7 +178,6 @@ import {
   REQUIRED_NO_ENTRY_LABEL,
   ReviewPanel,
   VISIT_REASON_SECTION_ID,
-  asksForLateEntryReason,
   attentionTitle as attentionHeadline,
   attentionText as attentionWords,
   buildNoteSummary,
@@ -192,6 +193,7 @@ import {
   refusedAttempt,
   sectionEntryLabel,
   useAnchorFocus,
+  useLateEntryReasonShown,
   useLatestCallback,
   useStableValue,
 } from "./review";
@@ -269,6 +271,8 @@ const NO_SECTIONS: ReadonlySet<string> = new Set();
 export function EncounterCompose(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
+  // The composer's route needs encounter.author, so this is true wherever the screen opens; the header takes it as a fact, not an assumption.
+  const canAuthor = canAuthorEncounters(useSession()?.permissions);
   // The record keeps the way back this screen was opened with.
   const withOrigin = useForwardReturn();
   const { encounterId } = useParams<{ patientId: string; encounterId: string }>();
@@ -289,6 +293,7 @@ export function EncounterCompose(): JSX.Element {
   // What the server last said to a finalize (WF09 WP3), and the author's late-entry reason: both belong to one note.
   const [attempt, setAttempt] = useState<GateAttempt>({ state: "none" });
   const [lateReason, setLateReason] = useState("");
+  const showLateReason = useLateEntryReasonShown(attempt, lateReason, encounterId);
   const [lastSavedDraft, setLastSavedDraft] = useState(() => serializedDraft({}, null));
   // The recorded fall a follow-up-after-a-fall visit follows up: the stored link, the author's current choice, and the falls on offer.
   const [linkedFall, setLinkedFall] = useState<{ incidentId: string; occurredOn: string } | null>(
@@ -793,6 +798,11 @@ export function EncounterCompose(): JSX.Element {
       case "reauthenticate":
       case "none":
         return;
+      default: {
+        // A new kind of target fails to compile here until this screen says what it does.
+        const _exhaustive: never = target;
+        return;
+      }
     }
   }
   // The memoised panels take these: the closures above are rebuilt on every render, these keep their identity.
@@ -988,11 +998,11 @@ export function EncounterCompose(): JSX.Element {
         // The save changed what the draft is built from and the gate may have named drafted sections: one re-read shows what the
         // server holds now. (A finalize that succeeds reloads the whole note below, and the draft with it.)
         void noteDraft.reload();
-        // The drafted sections the gate named are also said in words beside the draft strip.
-        const gate = gateRefusalWords(res.details, headingOfSection);
-        if (gate) refuse(gate.refusal);
         const refused = refusedAttempt(res, "finalize", headingOfSection);
         setAttempt(refused);
+        // The drafted sections the refusal named are also said in words beside the draft strip, derived from the same refusal (and
+        // cleared by one that names none, so the strip never keeps the words of an earlier answer).
+        refuse(draftRefusalWords(refused, headingOfSection));
         // The blocker panel is the one announcement of a refusal it words itself, so no banner repeats it; a code it does not know keeps
         // the banner (the server's sentence). A refusal of the save before the finalize keeps its banner too (above).
         setFeedback(panelWordsRefusal(refused) ? null : feedbackFor(res));
@@ -1080,7 +1090,9 @@ export function EncounterCompose(): JSX.Element {
   return (
     <PatientWorkspaceLayout
       banner={banner}
-      contextHeader={<VisitContextHeader screen="compose" encounter={encounter} />}
+      contextHeader={
+        <VisitContextHeader screen="compose" encounter={encounter} canAuthor={canAuthor} />
+      }
     >
       <WorkQueueLayout
         header={
@@ -1721,7 +1733,7 @@ export function EncounterCompose(): JSX.Element {
                   {GO_TO_PREVIEW}
                 </ReviewPanel>
 
-                {asksForLateEntryReason(attempt) || lateReason !== "" ? (
+                {encounter.status === "draft" && showLateReason ? (
                   <LateEntryReasonField
                     value={lateReason}
                     onChange={setLateReason}

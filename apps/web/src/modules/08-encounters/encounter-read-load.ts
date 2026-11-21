@@ -143,6 +143,9 @@ export type EncounterRead =
       readonly mileage: MileageForm | null;
     };
 
+const CONNECTION_FAILED_MESSAGE =
+  "Could not load the encounter. Check your connection and try again.";
+
 /**
  * The encounter and what hangs off it. The patient is read from the ENCOUNTER's own `patientId`, never from the screen's URL: a path
  * that names another patient must not put that patient's name over this encounter's note (the caller moves the URL to the right one).
@@ -151,6 +154,15 @@ export async function readEncounter(
   client: ApiClient,
   encounterId: string,
 ): Promise<EncounterRead> {
+  try {
+    return await readEncounterOnce(client, encounterId);
+  } catch {
+    // The request never got an answer (offline, aborted): the screen shows its load-failure state rather than an unhandled rejection.
+    return { ok: false, noteViewUnavailable: false, message: CONNECTION_FAILED_MESSAGE };
+  }
+}
+
+async function readEncounterOnce(client: ApiClient, encounterId: string): Promise<EncounterRead> {
   const { data, error: err } = await client.GET("/api/v1/encounters/{encounterId}", {
     params: {
       path: {

@@ -6,10 +6,23 @@ import { ApiClientProvider, ToastProvider } from "@chartwarden/ui";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
+import type { ComponentProps } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../../shell/session";
 import { EncounterRead } from "../../encounter-read";
+
+// The real panel, counted: each render that gets past the memo's props check is one count.
+const panelRenders = vi.hoisted(() => ({ count: 0 }));
+vi.mock("../blocker-panel", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../blocker-panel")>();
+  const { memo } = await import("react");
+  const Counted = memo(function Counted(props: ComponentProps<typeof original.BlockerPanel>) {
+    panelRenders.count += 1;
+    return <original.BlockerPanel {...props} />;
+  });
+  return { ...original, BlockerPanel: Counted };
+});
 
 const FINALIZE_PATH = "/api/v1/encounters/{encounterId}/finalize";
 const SIGN_PATH = "/api/v1/encounters/{encounterId}/sign";
@@ -43,6 +56,10 @@ const baseEncounter = {
 };
 
 let status: string;
+/** Make the encounter read fail as a dropped connection does (set by a write that "moved the note on"). */
+let encounterReadFails: boolean;
+
+const AUTHOR_PERMISSIONS = ["encounter.author", "encounter.finalize", "encounter.sign"];
 
 type PostImpl = (path: string, init?: unknown) => Promise<unknown>;
 
@@ -65,9 +82,16 @@ function Where() {
   return <output aria-label="location">{`${pathname}${search}`}</output>;
 }
 
-function mount(postImpl: PostImpl, entry = "/patients/patient-1/encounters/enc-1") {
+function mount(
+  postImpl: PostImpl,
+  entry = "/patients/patient-1/encounters/enc-1",
+  permissions: string[] = AUTHOR_PERMISSIONS,
+) {
   const get = vi.fn(async (path: string) => {
-    if (path === "/api/v1/encounters/{encounterId}") return { data: { ...baseEncounter, status } };
+    if (path === "/api/v1/encounters/{encounterId}") {
+      if (encounterReadFails) throw new TypeError("offline");
+      return { data: { ...baseEncounter, status } };
+    }
     if (path === "/api/v1/encounters/{encounterId}/cosignature") return { data: { status: null } };
     if (path === "/api/v1/patients/{id}")
       return {
@@ -99,7 +123,7 @@ function mount(postImpl: PostImpl, entry = "/patients/patient-1/encounters/enc-1
             session={{
               userId: "user-1",
               organizationId: "org-1",
-              permissions: ["encounter.author", "encounter.finalize", "encounter.sign"],
+              permissions,
             }}
           >
             <Routes>
@@ -134,6 +158,8 @@ const callsTo = (post: ReturnType<typeof mount>["post"], path: string) =>
 
 beforeEach(() => {
   status = "draft";
+  encounterReadFails = false;
+  panelRenders.count = 0;
 });
 
 afterEach(() => {
@@ -366,6 +392,28 @@ describe("a refused sign", () => {
     await waitFor(() => expect(firstBlocker()).toHaveFocus());
   });
 
+  it("leaves focus on the Sign button when a second Sign dialog is cancelled over the same refusal", async () => {
+    const user = userEvent.setup();
+    await signRefused(user, "COMPLIANCE_GATE_FAILED", [
+      { field: "bp", code: "MISSING_VITAL", message: "m" },
+    ]);
+    const first = await screen.findByRole("dialog", { name: "Sign encounter" });
+    await waitFor(() => within(first).getByRole("alert"));
+    await user.click(within(first).getByRole("button", { name: /cancel/i }));
+    await waitFor(() => expect(firstBlocker()).toHaveFocus());
+
+    // Sign again, then think better of it: the refusal on screen is the one focus already went to.
+    const signButton = screen.getByRole("button", { name: "Sign encounter" });
+    await user.click(signButton);
+    const second = await screen.findByRole("dialog", { name: "Sign encounter" });
+    await user.click(within(second).getByRole("button", { name: /cancel/i }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Sign encounter" })).toBeNull(),
+    );
+    expect(signButton).toHaveFocus();
+    expect(firstBlocker()).not.toHaveFocus();
+  });
+
   it("says an LPN or aide note with no RN to cosign is advice with no button", async () => {
     const user = userEvent.setup();
     await signRefused(user, "NO_ELIGIBLE_COSIGNER");
@@ -523,5 +571,114 @@ describe("a note that moved on in another tab (C2)", () => {
     await waitFor(() => expect(reads()).toBe(2));
     expect(panel().textContent).not.toMatch(/was not finalized|Nothing was frozen/);
     expect(await screen.findByRole("button", { name: "Sign encounter" })).toBeInTheDocument();
+  });
+});
+
+describe("an account that may read the note but not author encounters", () => {
+  const READ_ONLY = ["encounter.read", "encounter.finalize"];
+  const FAILURES = [{ field: "assessment", code: "MISSING_SECTION", message: "m" }];
+
+  it("is told Document is unavailable, and why, instead of being sent to a route it is refused", async () => {
+    mount(accepted("finalized"), undefined, READ_ONLY);
+    await findPanel();
+    const strip = screen.getByRole("navigation", { name: "Note workflow" });
+    expect(within(strip).queryByRole("link", { name: "Document" })).toBeNull();
+    const documentStep = within(strip).getByRole("button", { name: "Document" });
+    expect(documentStep).toHaveAttribute("aria-disabled", "true");
+    expect(documentStep).toHaveAccessibleDescription(/You can read this note but not edit it/);
+  });
+
+  it("shows Compose note unavailable, with the reason, and goes nowhere when it is pressed", async () => {
+    const user = userEvent.setup();
+    mount(accepted("finalized"), undefined, READ_ONLY);
+    await findPanel();
+    const compose = screen.getByRole("button", { name: "Compose note" });
+    expect(compose).toHaveAttribute("aria-disabled", "true");
+    expect(compose).toHaveAccessibleDescription(/You can read this note but not edit it/);
+    // One sentence on the page, not two: the Document step shows it and the button is described by it.
+    expect(screen.getAllByText(/You can read this note but not edit it/)).toHaveLength(1);
+    await user.click(compose);
+    expect(screen.getByLabelText("location").textContent).toBe(
+      "/patients/patient-1/encounters/enc-1",
+    );
+  });
+
+  it("stays on the record, with the reason in the page alert, when a blocker's remedy would open the composer", async () => {
+    const user = userEvent.setup();
+    mount(refused(422, "COMPLIANCE_GATE_FAILED", FAILURES), undefined, READ_ONLY);
+    await findPanel();
+    await user.click(screen.getByRole("button", { name: "Finalize note" }));
+    await user.click(await within(panel()).findByRole("button", { name: "Go to Assessment" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /You can read this note but not edit it/,
+    );
+    expect(screen.getByLabelText("location").textContent).toBe(
+      "/patients/patient-1/encounters/enc-1",
+    );
+  });
+
+  it("still goes to the screens that are not the composer", async () => {
+    const user = userEvent.setup();
+    mount(
+      refused(422, "COMPLIANCE_GATE_FAILED", [
+        { field: "pps", code: "MISSING_SCALE", message: "m" },
+      ]),
+      undefined,
+      READ_ONLY,
+    );
+    await findPanel();
+    await user.click(screen.getByRole("button", { name: "Finalize note" }));
+    await user.click(await within(panel()).findByRole("button", { name: "Open assessments" }));
+    expect((await screen.findByLabelText("location")).textContent).toBe(
+      "/patients/patient-1/assessments",
+    );
+  });
+});
+
+describe("a read after the note moved on that cannot reach the server", () => {
+  const LOAD_FAILED = "Could not load the encounter. Check your connection and try again.";
+
+  it("shows the load-failure state after a refused finalize, with no unhandled rejection", async () => {
+    const user = userEvent.setup();
+    mount(async (path, init) => {
+      encounterReadFails = true;
+      return refused(409, "ILLEGAL_TRANSITION", [], "encounter is finalized")(path, init);
+    });
+    await findPanel();
+    await user.click(screen.getByRole("button", { name: "Finalize note" }));
+    expect(await screen.findByText(LOAD_FAILED)).toBeInTheDocument();
+  });
+
+  it("shows the load-failure state after a refused sign, with no unhandled rejection", async () => {
+    const user = userEvent.setup();
+    status = "finalized";
+    mount(async (path, init) => {
+      encounterReadFails = true;
+      return refused(409, "IMMUTABLE_AFTER_SIGN", [], "encounter is signed")(path, init);
+    });
+    await user.click(await screen.findByRole("button", { name: "Sign encounter" }));
+    await user.click(await screen.findByRole("checkbox", { name: /complete and accurate/i }));
+    await user.click(screen.getByRole("button", { name: /sign & commit/i }));
+    expect(await screen.findByText(LOAD_FAILED)).toBeInTheDocument();
+  });
+});
+
+describe("the checks panel on the record", () => {
+  it("is not rendered again by a keystroke elsewhere on the screen", async () => {
+    const user = userEvent.setup();
+    mount(
+      refused(422, "COMPLIANCE_GATE_FAILED", [
+        { field: "assessment", code: "MISSING_SECTION", message: "m" },
+      ]),
+    );
+    await findPanel();
+    await user.click(screen.getByRole("button", { name: "Finalize note" }));
+    await within(panel()).findByText("Blocked: 1 item to fix");
+    const rendered = panelRenders.count;
+
+    await user.type(screen.getByLabelText(/Heart rate/), "72");
+
+    expect(screen.getByLabelText(/Heart rate/)).toHaveValue("72");
+    expect(panelRenders.count).toBe(rendered);
   });
 });

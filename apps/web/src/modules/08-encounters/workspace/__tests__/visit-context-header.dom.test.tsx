@@ -55,12 +55,18 @@ function Where(): JSX.Element {
   return <output aria-label="location">{`${pathname}${search}${hash}`}</output>;
 }
 
-function renderHeader(
-  props: Partial<{ screen: "compose" | "record"; encounter: VisitContextEncounter }> = {},
-  path = "/x",
-  client = fakeClient({ staff: [{ membershipId: "mem-9", displayName: "Nora Nurse" }] }),
+interface HeaderProps {
+  screen: "compose" | "record";
+  encounter: VisitContextEncounter;
+  canAuthor: boolean;
+}
+
+function headerTree(
+  props: Partial<HeaderProps>,
+  path: string,
+  client: ReturnType<typeof fakeClient>,
 ) {
-  const view = render(
+  return (
     <MemoryRouter initialEntries={[path]}>
       <ApiClientProvider client={client as never}>
         <Where />
@@ -72,6 +78,7 @@ function renderHeader(
                 <VisitContextHeader
                   screen={props.screen ?? "record"}
                   encounter={props.encounter ?? encounter}
+                  canAuthor={props.canAuthor ?? true}
                 />
                 <section id={REVIEW_ANCHOR_ID} tabIndex={-1} aria-label="Review target" />
                 <section id={COMPLETE_ANCHOR_ID} tabIndex={-1} aria-label="Complete target" />
@@ -80,9 +87,18 @@ function renderHeader(
           />
         </Routes>
       </ApiClientProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
-  return { ...view, client };
+}
+
+function renderHeader(
+  props: Partial<HeaderProps> = {},
+  path = "/x",
+  client = fakeClient({ staff: [{ membershipId: "mem-9", displayName: "Nora Nurse" }] }),
+) {
+  const view = render(headerTree(props, path, client));
+  const withProps = (next: Partial<HeaderProps>) => view.rerender(headerTree(next, path, client));
+  return { ...view, client, withProps };
 }
 
 const from = (path: string) => `/x?from=${encodeURIComponent(path)}`;
@@ -220,6 +236,18 @@ describe("the Document / Review / Complete strip", () => {
     );
   });
 
+  it("shows Document unavailable, with the reason, to an account that may read the draft but not author encounters", () => {
+    renderHeader({ screen: "record", canAuthor: false });
+    const strip = screen.getByRole("navigation", { name: "Note workflow" });
+    expect(within(strip).queryByRole("link", { name: "Document" })).toBeNull();
+    const documentStep = within(strip).getByRole("button", { name: "Document" });
+    expect(documentStep.getAttribute("aria-disabled")).toBe("true");
+    const reason = globalThis.document.getElementById(
+      documentStep.getAttribute("aria-describedby") as string,
+    );
+    expect(reason?.textContent).toMatch(/You can read this note but not edit it/);
+  });
+
   it("shows Document disabled, with the reason and the exact status, once the note is not a draft", () => {
     renderHeader({ screen: "record", encounter: { ...encounter, status: "finalized" } });
     const document = screen.getByRole("button", { name: "Document" });
@@ -321,6 +349,64 @@ describe("the Document / Review / Complete strip", () => {
       "step",
     );
   });
+
+  it.each([
+    ["record", "draft", "Review"],
+    ["record", "finalized", "Complete"],
+    ["record", "signed", "Complete"],
+    ["compose", "draft", "Document"],
+    ["compose", "finalized", "Review"],
+  ] as const)(
+    "marks the %s step of a %s note as current before anything is clicked",
+    (screenName, status, current) => {
+      renderHeader({ screen: screenName, encounter: { ...encounter, status } });
+      const strip = screen.getByRole("navigation", { name: "Note workflow" });
+      const marked = within(strip)
+        .getAllByRole("link")
+        .filter((link) => link.getAttribute("aria-current") === "step")
+        .map((link) => link.textContent);
+      expect(marked).toEqual([current]);
+    },
+  );
+
+  it("moves the current step on with the note's status instead of keeping the one that was jumped to", () => {
+    const { withProps } = renderHeader({ screen: "compose" });
+    const strip = screen.getByRole("navigation", { name: "Note workflow" });
+    const target = screen.getByLabelText("Complete target");
+    target.scrollIntoView = vi.fn();
+    fireEvent.click(within(strip).getByRole("link", { name: "Complete" }));
+    expect(within(strip).getByRole("link", { name: "Complete" }).getAttribute("aria-current")).toBe(
+      "step",
+    );
+
+    withProps({ screen: "compose", encounter: { ...encounter, status: "finalized" } });
+    expect(within(strip).getByRole("link", { name: "Review" }).getAttribute("aria-current")).toBe(
+      "step",
+    );
+    expect(within(strip).getByRole("link", { name: "Complete" }).getAttribute("aria-current")).toBe(
+      null,
+    );
+  });
+
+  it.each([
+    ["ctrl", { ctrlKey: true }],
+    ["cmd", { metaKey: true }],
+    ["shift", { shiftKey: true }],
+    ["alt", { altKey: true }],
+    ["middle", { button: 1 }],
+  ])(
+    "leaves a %s-click on a step to the browser, so a deep link opens in a new tab",
+    (_name, modifier) => {
+      renderHeader({ screen: "compose" });
+      const target = screen.getByLabelText("Review target");
+      target.scrollIntoView = vi.fn();
+      const review = screen.getByRole("link", { name: "Review" });
+      // fireEvent returns true when nobody cancelled the click: the browser's own navigation runs.
+      expect(fireEvent.click(review, modifier)).toBe(true);
+      expect(target.scrollIntoView).not.toHaveBeenCalled();
+      expect(review.getAttribute("aria-current")).toBeNull();
+    },
+  );
 
   it("has no accessibility violations", async () => {
     const { container } = renderHeader(

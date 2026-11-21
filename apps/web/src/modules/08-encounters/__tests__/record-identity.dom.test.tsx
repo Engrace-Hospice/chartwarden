@@ -130,7 +130,11 @@ function renderRecord(client: unknown, initialPath: string, earlier: readonly st
       <ApiClientProvider client={client as never}>
         <ToastProvider>
           <SessionProvider
-            session={{ userId: "user-1", organizationId: "org-1", permissions: ["encounter.read"] }}
+            session={{
+              userId: "user-1",
+              organizationId: "org-1",
+              permissions: ["encounter.read", "encounter.author"],
+            }}
           >
             <Where />
             <Link to="/patients/patient-b/encounters/enc-b">go to B</Link>

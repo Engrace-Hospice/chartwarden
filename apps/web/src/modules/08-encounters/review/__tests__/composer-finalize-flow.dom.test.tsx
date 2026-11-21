@@ -264,8 +264,61 @@ describe("a finalize that lost its answer and could not be reconciled (R9)", () 
     await user.click(await screen.findByRole("button", { name: "Try again" }));
     const panel = await screen.findByRole("region", { name: "Finalize and sign checks" });
     expect(within(panel).queryByText("Finalizing: waiting for the server")).toBeNull();
-    expect(panel).toHaveAttribute("aria-busy", "false");
+    expect(panel).not.toHaveAttribute("aria-busy");
     expect(within(panel).getByText("Unavailable")).toBeInTheDocument();
+  });
+});
+
+describe("the late-entry reason field across finalize attempts", () => {
+  it("stays the same field, with what it had learned, while a retried finalize is in flight and after it is refused again", async () => {
+    const user = userEvent.setup();
+    let answers = 0;
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mountComposer({
+      [FINALIZE]: async () => {
+        answers += 1;
+        if (answers > 1) await held;
+        return refusal(422, "LATE_ENTRY_REASON_REQUIRED");
+      },
+    });
+    await ready();
+    await user.click(await finalizeButton());
+    const field = await screen.findByLabelText("Late-entry reason");
+    // Leave the field short: it now says so.
+    await user.click(field);
+    await user.tab();
+    expect(await screen.findByText("Enter at least 40 characters.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Finalize note" }));
+    await screen.findByText("Saving and finalizing…");
+    expect(screen.getByLabelText("Late-entry reason")).toBe(field);
+
+    release();
+    await within(checksPanel()).findByText("Blocked: 1 item to fix");
+    expect(screen.getByLabelText("Late-entry reason")).toBe(field);
+    expect(screen.getByText("Enter at least 40 characters.")).toBeInTheDocument();
+  });
+
+  it("is gone once the note is finalized, though the reason that finalized it is still typed in", async () => {
+    const user = userEvent.setup();
+    let answers = 0;
+    mountComposer({
+      [FINALIZE]: () => {
+        answers += 1;
+        if (answers === 1) return refusal(422, "LATE_ENTRY_REASON_REQUIRED");
+        world.status = "finalized";
+        return { body: { status: "finalized", version: 5 } };
+      },
+    });
+    await ready();
+    await user.click(await finalizeButton());
+    await user.type(await screen.findByLabelText("Late-entry reason"), FORTY);
+    await user.click(screen.getByRole("button", { name: "Finalize note" }));
+    await screen.findByText("Finalized, not signed");
+    expect(screen.queryByLabelText("Late-entry reason")).toBeNull();
   });
 });
 

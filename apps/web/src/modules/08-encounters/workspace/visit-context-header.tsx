@@ -27,9 +27,13 @@ export interface VisitContextEncounter {
   readonly isF2f?: boolean;
 }
 
-export interface VisitContextHeaderProps {
+interface VisitContextHeaderProps {
   readonly screen: "compose" | "record";
   readonly encounter: VisitContextEncounter;
+  /** Whether the session may author encounters (`canAuthorEncounters`): the record's Document step leads to a route that needs it. */
+  readonly canAuthor: boolean;
+  /** The id to give the Document step's reason, so a control elsewhere on the screen can be described by it instead of repeating it. */
+  readonly documentReasonId?: string;
 }
 
 /** Where Back goes when the screen was not opened from a known list: the composer to its record, the record to the patient's encounters. */
@@ -85,6 +89,8 @@ function VisitLine({
 export const VisitContextHeader = memo(function VisitContextHeader({
   screen,
   encounter,
+  canAuthor,
+  documentReasonId,
 }: VisitContextHeaderProps): JSX.Element {
   const returnTarget = useReturnTarget();
   const forward = useForwardReturn();
@@ -133,8 +139,10 @@ export const VisitContextHeader = memo(function VisitContextHeader({
       <VisitWorkflowStrip
         screen={screen}
         status={encounter.status}
+        canAuthor={canAuthor}
         composeHref={forward(`${recordPath}/compose`)}
         recordCompleteHref={forward(`${recordPath}#${COMPLETE_ANCHOR_ID}`)}
+        {...(documentReasonId === undefined ? {} : { documentReasonId })}
       />
     </section>
   );

@@ -49,15 +49,45 @@ describe("staffDirectory", () => {
     expect(GET).toHaveBeenCalledTimes(2);
   });
 
-  it.each([
+  it("skips a row that is null instead of dropping the whole directory", async () => {
+    const { client } = clientReturning({
+      data: [null, { membershipId: "mem-1", displayName: "Nora Nurse" }],
+    });
+    const directory = await staffDirectory(client, "org:user");
+    expect(directory.get("mem-1")).toBe("Nora Nurse");
+  });
+
+  describe.each([
     ["a network failure", new TypeError("offline")],
     ["a refusal", { error: { code: "FORBIDDEN" } }],
     ["an answer that is not a list", { data: { staff: [] } }],
-  ])("shows no names and tries again on the next mount after %s", async (_name, failure) => {
-    const { client, GET } = clientReturning(failure, list);
-    expect((await staffDirectory(client, "org:user")).size).toBe(0);
-    const second = await staffDirectory(client, "org:user");
-    expect(second.get("mem-1")).toBe("Nora Nurse");
-    expect(GET).toHaveBeenCalledTimes(2);
+  ])("after %s", (_name, failure) => {
+    it("shows no names, and does not ask again on the next mounts within the short hold", async () => {
+      vi.useFakeTimers();
+      const { client, GET } = clientReturning(failure, list);
+      expect((await staffDirectory(client, "org:user")).size).toBe(0);
+      vi.advanceTimersByTime(29_000);
+      expect((await staffDirectory(client, "org:user")).size).toBe(0);
+      expect((await staffDirectory(client, "org:user")).size).toBe(0);
+      expect(GET).toHaveBeenCalledTimes(1);
+    });
+
+    it("asks again once the hold is over, and shows the names it then gets", async () => {
+      vi.useFakeTimers();
+      const { client, GET } = clientReturning(failure, list);
+      await staffDirectory(client, "org:user");
+      vi.advanceTimersByTime(30_001);
+      const second = await staffDirectory(client, "org:user");
+      expect(second.get("mem-1")).toBe("Nora Nurse");
+      expect(GET).toHaveBeenCalledTimes(2);
+    });
+
+    it("holds the failure per user, so another user's mount still asks", async () => {
+      const { client, GET } = clientReturning(failure, list);
+      await staffDirectory(client, "org:user-1");
+      const other = await staffDirectory(client, "org:user-2");
+      expect(other.get("mem-1")).toBe("Nora Nurse");
+      expect(GET).toHaveBeenCalledTimes(2);
+    });
   });
 });

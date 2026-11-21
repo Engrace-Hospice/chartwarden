@@ -25,7 +25,7 @@ export const GROUP_NOTE: Readonly<Partial<Record<CheckGroup, string>>> = {
 
 export const RETRY_LABEL = "Try again";
 
-export interface AttemptWords {
+interface AttemptWords {
   readonly headline: string;
   readonly body: string;
 }

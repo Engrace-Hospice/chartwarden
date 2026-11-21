@@ -47,6 +47,24 @@
   font-weight: 600;
 }
 
+/* The patient's name opens the chart: the banner's own buttons are gone, so the link itself must read as one. */
+.wx-visit-patient-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+.wx-visit-patient-link:hover {
+  text-decoration-thickness: 2px;
+}
+
+.wx-visit-patient-link:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: 0.125rem;
+}
+
 .wx-visit-chip {
   font-family: var(--font-mono);
   font-size: 0.78rem;

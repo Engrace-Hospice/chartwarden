@@ -502,12 +502,20 @@ describe("accessibility", () => {
     expect(status).toHaveTextContent("Blocked: 2 items to fix");
   });
 
-  it("marks the panel busy while the server is checking", () => {
+  it("announces the check in its live region and does not mark the panel busy, so the announcement is not held back", () => {
     renderPanel({ state: "running" });
-    expect(panel()).toHaveAttribute("aria-busy", "true");
+    expect(panel()).not.toHaveAttribute("aria-busy");
     expect(within(panel()).getByRole("status")).toHaveTextContent(
       "Finalizing: waiting for the server",
     );
+  });
+
+  it("leaves the blocked state for a retried finalize without a React style warning", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { rerender } = renderPanel(gateFailed(TWO_FAILURES));
+    rerender(<BlockerPanel attempt={{ state: "running" }} onRemedy={() => undefined} />);
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
   });
 
   it("takes the anchor the visit workspace gives it, and can be focused when that step is jumped to", () => {
@@ -620,6 +628,57 @@ describe("a screen that keeps focus elsewhere", () => {
     expect(document.body).toHaveFocus();
     act(() => {
       rerender(<BlockerPanel attempt={attempt} onRemedy={() => undefined} takeFocus={true} />);
+    });
+    const first = within(panel())
+      .getAllByRole("listitem")
+      .find((row) => row.dataset.blocker !== undefined);
+    expect(first).toHaveFocus();
+  });
+
+  it("does not take focus again for the same refusal when takeFocus goes off and on (a dialog opened over it and cancelled)", () => {
+    const attempt = gateFailed(TWO_FAILURES);
+    const { rerender } = render(<BlockerPanel attempt={attempt} onRemedy={() => undefined} />);
+    const first = within(panel())
+      .getAllByRole("listitem")
+      .find((row) => row.dataset.blocker !== undefined);
+    expect(first).toHaveFocus();
+
+    // A dialog opens over the same refusal, and closes by returning focus to the button that opened it.
+    const opener = document.createElement("button");
+    document.body.append(opener);
+    act(() => {
+      rerender(<BlockerPanel attempt={attempt} onRemedy={() => undefined} takeFocus={false} />);
+    });
+    opener.focus();
+    act(() => {
+      rerender(<BlockerPanel attempt={attempt} onRemedy={() => undefined} takeFocus={true} />);
+    });
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
+
+  it("takes focus for a NEW refusal that arrives while takeFocus was off, once it is on", () => {
+    const { rerender } = render(
+      <BlockerPanel attempt={gateFailed(TWO_FAILURES)} onRemedy={() => undefined} />,
+    );
+    act(() => {
+      rerender(
+        <BlockerPanel
+          attempt={gateFailed(TWO_FAILURES)}
+          onRemedy={() => undefined}
+          takeFocus={false}
+        />,
+      );
+    });
+    (document.activeElement as HTMLElement | null)?.blur();
+    act(() => {
+      rerender(
+        <BlockerPanel
+          attempt={gateFailed(TWO_FAILURES)}
+          onRemedy={() => undefined}
+          takeFocus={true}
+        />,
+      );
     });
     const first = within(panel())
       .getAllByRole("listitem")

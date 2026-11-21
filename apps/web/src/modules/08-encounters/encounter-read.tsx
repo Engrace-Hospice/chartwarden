@@ -16,6 +16,8 @@ import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
 import { useNoteClosure } from "../../shell/note-closure";
+import { canAuthorEncounters } from "../../shell/note-href";
+import { useSession } from "../../shell/session";
 import { useForwardReturn } from "../../shell/use-return-target";
 import { type ScaleDefinition, loadScaleCatalog } from "../09-assessments/assessments-api";
 import { RecordAssessmentModal } from "../09-assessments/record-assessment-modal";
@@ -49,7 +51,6 @@ import {
   type GateAttempt,
   LateEntryReasonField,
   type NoteTarget,
-  asksForLateEntryReason,
   composeHrefFor,
   connectionLostAttempt,
   externalPathFor,
@@ -62,6 +63,8 @@ import {
   refusedAttempt,
   responseRefusal,
   useAnchorFocus,
+  useLateEntryReasonShown,
+  useLatestCallback,
 } from "./review";
 import { SIGN_DRAFT_NOTICE_ID, SignDraftNotice, humanizeSection } from "./sign-draft-notice";
 import { SignedNoteView } from "./signed-note-view";
@@ -82,11 +85,16 @@ import { COMPLETE_ANCHOR_ID, REVIEW_ANCHOR_ID, jumpToAnchor } from "./workspace/
 import { useHashAnchor } from "./workspace/use-hash-anchor";
 import { VisitContextHeader } from "./workspace/visit-context-header";
 import { VisitPatientBanner } from "./workspace/visit-patient-banner";
+import { READ_ONLY_REASON } from "./workspace/workflow-strip";
 import { writeRefusalMessage } from "./write-refusal";
 import { authFailureRedirect } from "./write-workflow";
 
 // The sign ceremony; the cosigner's three (acknowledge, sign, supervisor release) are `useCosignCeremony`, shared with an amendment's request.
 type CeremonyMode = "sign" | null;
+
+/** The id the record's Compose note button points at for the reason it cannot be used. */
+// The Document step in the workflow strip shows the reason; the Compose button below is described by it (one sentence, not two).
+const COMPOSE_UNAVAILABLE_ID = "visit-compose-unavailable";
 
 /** The id of the checks panel in the rail: focus goes there once a finalize has gone through (the Finalize button is gone by then). */
 const FINALIZE_CHECKS_ID = "visit-finalize-checks";
@@ -173,6 +181,8 @@ function EncounterReadScreen(): JSX.Element {
   // Where the composer opens from here keeps the way back this screen was opened with.
   const withOrigin = useForwardReturn();
   const { refresh: refreshClosureStatus } = useNoteClosure();
+  // The composer's route needs `encounter.author`: without it the record offers no way there (a choice of what to show; the server stays the gate).
+  const canAuthor = canAuthorEncounters(useSession()?.permissions);
 
   const [encounter, setEncounter] = useState<Encounter | null>(null);
   // ADR-0114: the pre-drafted sections the signer must have resolved. Read once the encounter is known, and again when its status moves.
@@ -201,6 +211,7 @@ function EncounterReadScreen(): JSX.Element {
   // What the server last said to a finalize or a sign (WF09 WP3), and the author's late-entry reason for the next finalize.
   const [attempt, setAttempt] = useState<GateAttempt>({ state: "none" });
   const [lateReason, setLateReason] = useState("");
+  const showLateReason = useLateEntryReasonShown(attempt, lateReason);
   const focusChecks = useAnchorFocus(
     FINALIZE_CHECKS_ID,
     !loading && error === null && encounter !== null,
@@ -794,6 +805,87 @@ function EncounterReadScreen(): JSX.Element {
     );
   }
 
+  /** Open the sign ceremony for the note this screen holds. */
+  function startSign(): void {
+    if (encounter === null) return;
+    setDelivery(
+      initialDelivery(
+        asVisitModality(encounter.visitModality),
+        encounter.visitModalityConfirmed === true,
+      ),
+    );
+    setCeremony("sign");
+  }
+
+  /** Take the author to where a blocker is fixed: the composer for anything in the note, the screen that records the rest. */
+  function openTarget(target: NoteTarget): void {
+    if (encounter === null) return;
+    const outside = externalPathFor(target, encounter.patientId);
+    if (outside !== null) {
+      navigate(outside);
+      return;
+    }
+    switch (target.kind) {
+      case "section":
+      case "draft_section":
+      case "vitals":
+      case "plan_step":
+      case "save_selections":
+      case "note_text":
+        openComposer(encounter, target);
+        return;
+      case "late_entry_reason":
+        focusLateEntryReason();
+        return;
+      case "reauthenticate":
+        navigate(
+          authFailureRedirect(
+            403,
+            "STEP_UP_REQUIRED",
+            `${window.location.pathname}${window.location.search}`,
+          ) ?? "/step-up",
+        );
+        return;
+      case "open_note":
+        jumpToAnchor(REVIEW_ANCHOR_ID);
+        return;
+      case "scales":
+      case "care_plan_review":
+      case "my_notes":
+      case "none":
+        return;
+      default: {
+        // A new kind of target fails to compile here until this screen says what it does.
+        const _exhaustive: never = target;
+        return;
+      }
+    }
+  }
+
+  /** The composer opens at the part of the note the target names (`?focus=`); `save_selections` opens it plain (the record cannot save them). */
+  function openComposer(note: Encounter, target: NoteTarget): void {
+    if (!canAuthor) {
+      setActionError(READ_ONLY_REASON);
+      return;
+    }
+    navigate(
+      withOrigin(
+        composeHrefFor(`/patients/${note.patientId}/encounters/${note.id}/compose`, target),
+      ),
+    );
+  }
+
+  // The memoised blocker panel takes these: the functions above are rebuilt on every render, these keep their identity.
+  const onRemedy = useLatestCallback(openTarget);
+  const onRetry = useLatestCallback(() => {
+    if (busy) return;
+    if (attempt.state === "refused" && attempt.refusal.moment === "sign") {
+      startSign();
+      return;
+    }
+    void finalizeEncounter();
+  });
+
   const bailBanner = (
     <VisitPatientBanner patient={patient} patientId={encounter?.patientId ?? null} />
   );
@@ -827,55 +919,6 @@ function EncounterReadScreen(): JSX.Element {
   const canSign = e.status === "finalized";
   const panelAttempt = panelAttemptFor(e.status, attempt);
 
-  function startSign(): void {
-    setDelivery(
-      initialDelivery(asVisitModality(e.visitModality), e.visitModalityConfirmed === true),
-    );
-    setCeremony("sign");
-  }
-
-  /** Take the author to where a blocker is fixed: the composer for anything in the note, the screen that records the rest. */
-  function openTarget(target: NoteTarget): void {
-    // The composer opens at the part of the note the target names (`?focus=`); `save_selections` opens it plain (the record cannot save them).
-    const composePath = withOrigin(
-      composeHrefFor(`/patients/${e.patientId}/encounters/${e.id}/compose`, target),
-    );
-    const outside = externalPathFor(target, e.patientId);
-    if (outside !== null) {
-      navigate(outside);
-      return;
-    }
-    switch (target.kind) {
-      case "section":
-      case "draft_section":
-      case "vitals":
-      case "plan_step":
-      case "save_selections":
-      case "note_text":
-        navigate(composePath);
-        return;
-      case "late_entry_reason":
-        focusLateEntryReason();
-        return;
-      case "reauthenticate":
-        navigate(
-          authFailureRedirect(
-            403,
-            "STEP_UP_REQUIRED",
-            `${window.location.pathname}${window.location.search}`,
-          ) ?? "/step-up",
-        );
-        return;
-      case "open_note":
-        jumpToAnchor(REVIEW_ANCHOR_ID);
-        return;
-      case "scales":
-      case "care_plan_review":
-      case "my_notes":
-      case "none":
-        return;
-    }
-  }
   // ADR-0114: signing is blocked until every drafted section is resolved; the server is the judge, this only tells the signer first.
   const draftSections =
     draftLoad.status === "ready" && draftIsActive(draftLoad.draft) ? draftLoad.draft : null;
@@ -960,7 +1003,14 @@ function EncounterReadScreen(): JSX.Element {
   return (
     <PatientWorkspaceLayout
       banner={banner}
-      contextHeader={<VisitContextHeader screen="record" encounter={e} />}
+      contextHeader={
+        <VisitContextHeader
+          screen="record"
+          encounter={e}
+          canAuthor={canAuthor}
+          documentReasonId={COMPOSE_UNAVAILABLE_ID}
+        />
+      }
     >
       <div style={workspace}>
         <div style={workspaceBody}>
@@ -1080,11 +1130,19 @@ function EncounterReadScreen(): JSX.Element {
                   {e.status === "draft" ? (
                     <button
                       type="button"
-                      onClick={() =>
-                        navigate(withOrigin(`/patients/${e.patientId}/encounters/${e.id}/compose`))
-                      }
+                      // aria-disabled, not disabled: the button stays reachable by keyboard so its reason below is found; it never
+                      // leads to the composer for an account that route refuses.
+                      aria-disabled={!canAuthor || undefined}
+                      aria-describedby={canAuthor ? undefined : COMPOSE_UNAVAILABLE_ID}
+                      onClick={() => {
+                        if (!canAuthor) return;
+                        navigate(withOrigin(`/patients/${e.patientId}/encounters/${e.id}/compose`));
+                      }}
                       disabled={busy}
-                      style={primaryBtn}
+                      style={{
+                        ...primaryBtn,
+                        ...(canAuthor ? null : { opacity: 0.55, cursor: "not-allowed" }),
+                      }}
                     >
                       {documentationStarted ? "Edit note" : "Compose note"}
                     </button>
@@ -1588,7 +1646,11 @@ function EncounterReadScreen(): JSX.Element {
                 {signBlockedByDraft ? (
                   <SignDraftNotice
                     sections={sectionsToReview}
-                    composePath={withOrigin(`/patients/${e.patientId}/encounters/${e.id}/compose`)}
+                    composePath={
+                      canAuthor
+                        ? withOrigin(`/patients/${e.patientId}/encounters/${e.id}/compose`)
+                        : null
+                    }
                   />
                 ) : null}
 
@@ -1699,8 +1761,7 @@ function EncounterReadScreen(): JSX.Element {
 
               {e.status === "draft" || e.status === "finalized" ? (
                 <>
-                  {e.status === "draft" &&
-                  (asksForLateEntryReason(attempt) || lateReason !== "") ? (
+                  {e.status === "draft" && showLateReason ? (
                     <LateEntryReasonField
                       value={lateReason}
                       onChange={setLateReason}
@@ -1711,17 +1772,10 @@ function EncounterReadScreen(): JSX.Element {
                   <BlockerPanel
                     id={FINALIZE_CHECKS_ID}
                     attempt={panelAttempt}
-                    onRemedy={openTarget}
+                    onRemedy={onRemedy}
                     remedyLabel={recordRemedyLabel}
                     takeFocus={ceremony === null}
-                    onRetry={() => {
-                      if (busy) return;
-                      if (attempt.state === "refused" && attempt.refusal.moment === "sign") {
-                        startSign();
-                        return;
-                      }
-                      void finalizeEncounter();
-                    }}
+                    onRetry={onRetry}
                   />
                 </>
               ) : null}

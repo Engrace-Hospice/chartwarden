@@ -625,6 +625,31 @@ describe("finalizing with drafted sections", () => {
     await waitFor(() => expect(callsTo("GET", "/draft").length).toBeGreaterThan(reads));
   });
 
+  it("says the drafted sections of the latest refusal only: a later refusal that names none clears the words of the earlier one", async () => {
+    const user = userEvent.setup();
+    let answers = 0;
+    mountComposer({
+      [`POST ${BASE}/finalize`]: () => {
+        answers += 1;
+        return answers === 1
+          ? errorBody(422, "COMPLIANCE_GATE_FAILED", [
+              { field: "plan", code: "DRAFT_SECTION_UNRESOLVED", message: "x" },
+            ])
+          : errorBody(422, "COMPLIANCE_GATE_FAILED", [
+              { field: "bp", code: "MISSING_VITAL", message: "y" },
+            ]);
+      },
+    });
+    await ready();
+    await user.click(screen.getByRole("button", { name: "Finalize note" }));
+    await screen.findByText(/Plan and Next Visit \(not confirmed or deselected yet\)/);
+
+    await user.click(screen.getByRole("button", { name: "Finalize note" }));
+    const panel = await screen.findByRole("region", { name: "Finalize and sign checks" });
+    await within(panel).findByText("Blood pressure is not recorded");
+    expect(screen.queryByText(/not confirmed or deselected yet/)).toBeNull();
+  });
+
   it("lists every failure the gate named in the blocker panel, drafted or not, so nothing it listed is hidden", async () => {
     const user = userEvent.setup();
     mountComposer({

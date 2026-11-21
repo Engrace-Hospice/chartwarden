@@ -7,7 +7,7 @@ import { Link } from "react-router-dom";
 import { PATIENT_STATUS_TONE, patientStatusLabel } from "../../../shell/patient-context";
 import "./visit-context.css";
 
-export interface BannerPatient {
+interface BannerPatient {
   readonly firstName: string;
   readonly lastName: string;
   readonly mrn: string;
@@ -34,7 +34,7 @@ export function VisitPatientBanner({ patient, patientId }: VisitPatientBannerPro
     <PatientBanner
       name={
         patientId ? (
-          <Link to={`/patients/${patientId}`} style={{ color: "inherit", textDecoration: "none" }}>
+          <Link to={`/patients/${patientId}`} className="wx-visit-patient-link">
             {fullName}
           </Link>
         ) : (

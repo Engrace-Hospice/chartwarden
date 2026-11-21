@@ -6,6 +6,7 @@ import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import type { DraftSectionView } from "./draft-api";
 import { STATE_LABEL } from "./draft-model";
+import { READ_ONLY_REASON } from "./workspace/workflow-strip";
 
 /** The id the Sign button's `aria-describedby` points at. */
 export const SIGN_DRAFT_NOTICE_ID = "sign-draft-notice";
@@ -28,8 +29,8 @@ export function humanizeSection(sectionId: string): string {
 
 export interface SignDraftNoticeProps {
   readonly sections: readonly DraftSectionView[];
-  /** The composer's route for this note, where a drafted section is confirmed or deselected. */
-  readonly composePath: string;
+  /** The composer's route for this note, where a drafted section is confirmed or deselected; null for an account that may not author encounters. */
+  readonly composePath: string | null;
 }
 
 export function SignDraftNotice({ sections, composePath }: SignDraftNoticeProps): JSX.Element {
@@ -48,7 +49,11 @@ export function SignDraftNotice({ sections, composePath }: SignDraftNoticeProps)
           </li>
         ))}
       </ul>
-      <Link to={composePath}>Review them in the note editor</Link>
+      {composePath === null ? (
+        <p className="wx-row-sub">{READ_ONLY_REASON}</p>
+      ) : (
+        <Link to={composePath}>Review them in the note editor</Link>
+      )}
     </section>
   );
 }

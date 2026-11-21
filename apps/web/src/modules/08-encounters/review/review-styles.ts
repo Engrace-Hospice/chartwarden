@@ -37,8 +37,10 @@ export const statusLine: CSSProperties = {
   background: "var(--color-surface-container-low)",
 };
 
+// The whole `border` shorthand, as `statusLine` sets it: a longhand (`borderColor`) beside the shorthand makes React warn when the panel
+// leaves the blocked state (a retried finalize) and the longhand is removed.
 export const statusBlocked: CSSProperties = {
-  borderColor: "color-mix(in srgb, var(--color-error) 35%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-error) 35%, transparent)",
   background: "color-mix(in srgb, var(--color-error) 7%, var(--color-surface))",
 };
 

@@ -33,7 +33,7 @@ export interface SectionSummary {
   readonly edit: NoteTarget;
 }
 
-export type FindingId = "vitals" | "adl" | "nutrition" | "wounds" | "fall" | "care_plan";
+type FindingId = "vitals" | "adl" | "nutrition" | "wounds" | "fall" | "care_plan";
 
 export interface FindingSummary {
   readonly id: FindingId;

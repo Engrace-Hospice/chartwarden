@@ -43,5 +43,6 @@ export type { ReviewPanelProps } from "./review-panel";
 export { buildNoteSummary } from "./review-summary";
 export type { NoteSummary, SummaryInput } from "./review-summary";
 export { useAnchorFocus } from "./use-anchor-focus";
+export { useLateEntryReasonShown } from "./use-late-entry-reason-shown";
 export { useLatestCallback } from "./use-latest-callback";
 export { useStableValue } from "./use-stable-value";

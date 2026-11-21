@@ -25,7 +25,7 @@ export function focusLateEntryReason(): boolean {
   return true;
 }
 
-export interface LateEntryReasonFieldProps {
+interface LateEntryReasonFieldProps {
   readonly value: string;
   readonly onChange: (value: string) => void;
   readonly disabled?: boolean;

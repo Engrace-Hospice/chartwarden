@@ -132,9 +132,12 @@ export const BlockerPanel = memo(function BlockerPanel({
     refusal?.outcome === "unavailable" && refusal.reason === "service" && onRetry !== undefined;
   // Each answer parses to a new refusal object, so a second refusal moves focus again and a re-render of the same one does not. A refusal
   // that lists nothing (the server could not decide, or named nothing) puts focus on the panel itself, so the failure is not left below
-  // the fold with the author still looking at "All changes saved".
+  // the fold with the author still looking at "All changes saved". Focus is taken ONCE per refusal: `takeFocus` flipping back on (a
+  // dialog that opened over the same refusal and was cancelled) must not pull focus from where the dialog returned it.
+  const focusedRefusal = useRef<Refusal | null>(null);
   useEffect(() => {
-    if (refusal === null || !takeFocus) return;
+    if (refusal === null || !takeFocus || focusedRefusal.current === refusal) return;
+    focusedRefusal.current = refusal;
     (firstBlocker.current ?? section.current)?.focus();
   }, [refusal, takeFocus]);
 
@@ -147,7 +150,8 @@ export const BlockerPanel = memo(function BlockerPanel({
       // Focus on the panel reads what it last said too: a panel that was rebuilt after a finalize (the composer reads the page again)
       // has no change left to announce, so the status is read with the name.
       aria-describedby={statusId}
-      aria-busy={attempt.state === "running"}
+      // No aria-busy: the polite live region below carries "Checking" and the result, and a busy ancestor of a live region can make a
+      // screen reader hold back the announcement that region is there to make.
       style={panelStyle}
     >
       <h2 id={headingId} style={panelHeading}>

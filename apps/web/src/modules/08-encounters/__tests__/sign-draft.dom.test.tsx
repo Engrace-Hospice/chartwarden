@@ -76,7 +76,10 @@ beforeEach(() => {
   encounterFailure = null;
 });
 
-function mount(postImpl: PostImpl = signed) {
+function mount(
+  postImpl: PostImpl = signed,
+  permissions: string[] = ["encounter.author", "encounter.finalize", "encounter.sign"],
+) {
   const get = vi.fn(async (path: string) => {
     if (path === "/api/v1/encounters/{encounterId}") {
       if (noteViewFailures > 0) {
@@ -135,7 +138,7 @@ function mount(postImpl: PostImpl = signed) {
             session={{
               userId: "user-1",
               organizationId: "org-1",
-              permissions: ["encounter.author", "encounter.finalize", "encounter.sign"],
+              permissions,
             }}
           >
             <Routes>
@@ -169,6 +172,17 @@ async function signThroughTheCeremony(user: ReturnType<typeof userEvent.setup>) 
   await user.click(await screen.findByRole("checkbox", { name: /complete and accurate/i }));
   await user.click(screen.getByRole("button", { name: /sign & commit/i }));
 }
+
+describe("an unresolved drafted section, for an account that may not author encounters", () => {
+  it("is named with the reason it cannot be resolved here, and no link to the composer it would be refused", async () => {
+    mount(signed, ["encounter.read", "encounter.sign"]);
+    const notice = await screen.findByRole("region", { name: "Drafted sections" });
+    expect(within(notice).getByText(/Vitals review/)).toBeInTheDocument();
+    expect(within(notice).getByText(/You can read this note but not edit it/)).toBeInTheDocument();
+    expect(within(notice).queryByRole("link")).toBeNull();
+    expect(document.querySelector('a[href*="/compose"]')).toBeNull();
+  });
+});
 
 describe("an unresolved drafted section", () => {
   it("is named beside a Sign button that waits, with the way to resolve it", async () => {
