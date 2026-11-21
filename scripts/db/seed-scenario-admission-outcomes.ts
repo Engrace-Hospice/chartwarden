@@ -50,7 +50,7 @@
  *
  * Idempotent: wipes any prior admission (+ every child row: election periods, CTIs, election
  * statements, NOR, discharge/revocation/transfer events, level-of-care periods, compliance windows,
- * F2F encounters, referrals) for these 6 patients via raw SQL before driving each one fresh through
+ * F2F encounters, referrals) for these 7 patients via raw SQL before driving each one fresh through
  * the real API — same `session_replication_role = replica` superuser-cleanup pattern `seed.ts`
  * already uses, just scoped to these patients instead of the whole org. A shallower "skip if
  * anything exists" check isn't enough here: this script's own first run (before the outbox-payload

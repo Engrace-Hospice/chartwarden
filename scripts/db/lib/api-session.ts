@@ -157,7 +157,7 @@ export async function signIn(email: string): Promise<WxSession> {
   return { client, userId, organizationId: org.organizationId, email };
 }
 
-/** Look up a seeded demo patient's id by exact last name (the 6 db:seed:patients demo patients). */
+/** Look up a seeded demo patient's id by exact last name (the 7 db:seed:patients demo patients). */
 export async function findPatientIdByLastName(
   session: WxSession,
   lastName: string,

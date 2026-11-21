@@ -1,6 +1,6 @@
 /**
  * ChartWarden — revenue-cycle scenario data: M23 (Billing-Medicare) / M24 (Billing-Medicaid) / M25
- * (Remittance/Denials) / M26 (Cap Management) / M27 (Cost Report) for the flagship patient + org
+ * (Remittance/Denials) / M26 (Cap Management) / M27 (Cost Report) for the demo patients + org
  * (local dev). NOT for production.
  *
  * Genuine platform gaps hit and worked around/documented (all confirmed by reading the actual route/
@@ -354,7 +354,7 @@ async function main(): Promise<void> {
     "Medicare (M23): MAC submitter credential seeded; rate tables / sequestration are tenant-entered (assemble names whichever is missing)",
   );
 
-  // ── M24 — Billing Medicaid (full lifecycle: assemble → validate → submit) ──────────────────────────
+  // ── M24 — Billing Medicaid (assemble → validate; submit is refused until a state/program route is certified) ──
   // M24 refuses every Medicaid claim kind while Medicare is primary (`evaluateMedicaidPayerResponsibility`), and
   // every demo patient but Yarbrough carries Medicare at rank 1 (db:seed:clinical). So the claim below is
   // Yarbrough's, with Medicaid at rank 1; Whitfield only gets Medicaid as her secondary coverage, for the chart.

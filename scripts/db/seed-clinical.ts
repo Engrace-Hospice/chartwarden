@@ -340,7 +340,7 @@ async function main(): Promise<void> {
 
   await db.end();
   console.log(
-    `✓ clinical seed: enriched ${n} patients (demographics, MBI, care team, payers; ` +
+    `✓ clinical seed: enriched ${n} patients (demographics, MBI where the patient has one, care team, payers; ` +
       `${DETAIL.filter((d) => d.flags.length).length} with a privacy flag, recorded after admission). Caseload RN = ${rnEmail}.`,
   );
 }
