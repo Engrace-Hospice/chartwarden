@@ -2,8 +2,12 @@
 // SESSION viewer, a signed note refuses a resolution, and a write records its explicit audit event. Fakes only; the live suite
 // proves the Drizzle unit.
 import { encounterType } from "@chartwarden/db/schema";
-import { readsAdmissionRecord, readsBenefitPeriod } from "@chartwarden/hearthnote";
-import type { EncounterType } from "@chartwarden/types";
+import {
+  readsAdmissionRecord,
+  readsBenefitPeriod,
+  templateHasDraftedSection,
+} from "@chartwarden/hearthnote";
+import { ENCOUNTER_DISCIPLINE_RULES, type EncounterType } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import {
   admissionReadsFor,
@@ -499,11 +503,12 @@ describe("the admission's read keys a recertification or face-to-face draft need
     expect((await svc.getDraft(holding([]), ID)).templateKey).toBe("routine_visit:rn");
   });
 
-  // S2b: the admission visit states the caregivers (M5: patient.read) and the advance directive acknowledgment (M39: consent.read).
-  const ADMISSION_KEYS = ["patient.read", "consent.read"];
+  // S2b: the admission visit states the caregivers (M5: patient.read), the advance directive acknowledgment (M39: consent.read) and the orders
+  // in effect (M12: prescribing.read, which the draft routes also guard on, but which finalize, sign and an addendum's recompute ask by template).
+  const ADMISSION_KEYS = ["patient.read", "consent.read", "prescribing.read"];
   const admission = draftEncounterRow({ encounterType: "admission_visit", discipline: "rn" });
 
-  it("names patient.read and consent.read for the admission visit, and nothing of M6's", () => {
+  it("names patient.read, consent.read and prescribing.read for the admission visit, and nothing of M6's", () => {
     expect(admissionReadsFor("admission_visit")).toEqual(ADMISSION_KEYS);
   });
 
@@ -543,6 +548,17 @@ describe("the admission's read keys a recertification or face-to-face draft need
       403,
     );
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  // The service asks the template's keys for the encounter TYPE, not the (type, discipline) pair: that is sound only while every legal discipline of
+  // such a type has a drafted template, so a legal pair that drafts nothing would be refused keys for facts it never reads.
+  it("every legal discipline of a type that asks admission keys has a drafted template (the keys are asked by type)", () => {
+    for (const type of ["recert_visit", "face_to_face", "admission_visit"] as const) {
+      expect(admissionReadsFor(type), type).not.toEqual([]);
+      for (const discipline of ENCOUNTER_DISCIPLINE_RULES[type]) {
+        expect(templateHasDraftedSection(type, discipline), `${type}:${discipline}`).toBe(true);
+      }
+    }
   });
 
   it("answers 404 while the switch is off even to a caller who lacks the keys: the refusal is no oracle for the switch", async () => {

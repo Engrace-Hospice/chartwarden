@@ -2305,6 +2305,54 @@ describe.skipIf(!DB_URL)(
         },
       );
 
+      // `prescribing.read` guards the draft routes with the other source-domain keys, but finalize and sign recompute the draft by template only:
+      // the orders in effect are the one source the admission template is first to state in a section of its own, so it asks that key too.
+      it("an admission author who loses prescribing.read is refused 403 naming it at finalize and at sign, nothing is written, no source is read, and both succeed once it is granted again", async () => {
+        const author = await newAuthor(orgs.A, "walk-prescribing", ADMISSION_READS);
+        const { f, scenario } = await confirmedVisit(author);
+        const callsBefore = JSON.stringify(scenario.calls);
+        const setPrescribing = (held: boolean) => {
+          permissions.put(orgs.A.orgId, author.userId, [
+            {
+              roleKey: "seed",
+              enabled: true,
+              expiresAt: null,
+              permissionKeys: [
+                ...BASE_KEYS.filter((key) => held || key !== "prescribing.read"),
+                ...WRITE_KEYS,
+                ...ADMISSION_READS,
+              ],
+            },
+          ]);
+          rbac.invalidateActor(orgs.A.orgId, author.userId);
+        };
+
+        setPrescribing(false);
+        const refusedFinalize = await finalizeOver(f, author);
+        expect(refusedFinalize.statusCode).toBe(403);
+        expect(refusedFinalize.json().error.message).toContain(requiresKey("prescribing.read"));
+        expect(await statusOf(f)).toBe("draft");
+        expect(await pinsOf(f)).toEqual([]);
+        expect(JSON.stringify(scenario.calls)).toBe(callsBefore);
+
+        setPrescribing(true);
+        expect((await finalizeOver(f, author)).statusCode).toBe(200);
+        const callsAtSign = JSON.stringify(scenario.calls);
+
+        setPrescribing(false);
+        const refusedSign = await signOver(f, author);
+        expect(refusedSign.statusCode).toBe(403);
+        expect(refusedSign.json().error.message).toContain(requiresKey("prescribing.read"));
+        expect(await statusOf(f)).toBe("finalized");
+        expect(await signedRowsOf(f)).toEqual([]);
+        expect(JSON.stringify(scenario.calls)).toBe(callsAtSign);
+
+        setPrescribing(true);
+        const signed = await signOver(f, author);
+        expect(signed.statusCode, signed.body).toBe(200);
+        expect(await statusOf(f)).toBe("signed");
+      });
+
       it("with the switch off an author with none of the admission keys finalizes and signs an admission visit as before: the key rule does not apply and no source is read", async () => {
         const author = await newAuthor(orgs.B, "b-no-keys", []);
         const { f, scenario } = await seedAdmission({ org: orgs.B, author });
