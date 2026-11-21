@@ -13,6 +13,8 @@ const REPO_ROOT = join(__dirname, "..", "..", "..");
 const PERMITTED_CALLERS = ["apps/backend/src/modules/08-encounters/drafting/default-ports.ts"];
 /** Where the flag is defined and honoured (the evaluator and its contract), not a caller. */
 const DEFINITION = "packages/consent/src/seams/consent-evaluator.ts";
+/** The generated typed client holds the evaluator-free API schema, whose words are not callers. */
+const GENERATED_CLIENT = "packages/ui/src/core/api/schema.ts";
 const SKIPPED_DIRS = new Set(["node_modules", "dist", "__tests__", ".turbo", "coverage"]);
 
 function sourceFilesUnder(dir: string): string[] {
@@ -26,26 +28,32 @@ function sourceFilesUnder(dir: string): string[] {
   return out;
 }
 
-/** The file's code with block and line comments removed (a doc comment that names the flag is not a caller). */
+/**
+ * The file's code with block and line comments removed (a doc comment that names the flag is not a caller). One pass that reads a string or a
+ * template literal first and keeps it whole, so a `/*` inside a string (a glob) never opens a comment that would swallow the code after it.
+ */
 function withoutComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const stringOrComment =
+    /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
+  return source.replace(stringOrComment, (_match, kept: string | undefined) => kept ?? "");
 }
 
 /** Every code form in which the flag is set, forwarded or declared (comments are already stripped). */
-const HISTORICAL_USE = /["']?\bhistorical["']?\s*(?::|\?\s*:|,|\})|\.historical\b/;
+const HISTORICAL_USE =
+  /["']?\bhistorical["']?\s*(?::|\?\s*:|,|\})|\.historical\b|\bhistorical\s*=(?!=)|\[\s*["']historical["']\s*\]/;
 
 function mentionsHistoricalFlag(code: string): boolean {
   return HISTORICAL_USE.test(code);
 }
 
 function filesPassingHistorical(): string[] {
-  // Server code only: the web app, the generated client and docs never evaluate a consent (the UI package holds the generated schema).
+  // Server code and shared packages; the web apps never evaluate a consent.
   const roots = [join(REPO_ROOT, "apps", "backend", "src"), join(REPO_ROOT, "packages")];
   const found: string[] = [];
   for (const root of roots) {
     for (const file of sourceFilesUnder(root)) {
       const rel = relative(REPO_ROOT, file);
-      if (rel === DEFINITION || rel.startsWith(`${join("packages", "ui")}/`)) continue;
+      if (rel === DEFINITION || rel === GENERATED_CLIENT) continue;
       if (mentionsHistoricalFlag(withoutComments(readFileSync(file, "utf8")))) found.push(rel);
     }
   }
@@ -66,8 +74,26 @@ describe("the consent evaluator's `historical` flag", () => {
     ["a forwarded request field", "evaluate({ historical: body.historical })"],
     ["a forwarded field alone", "const h = args.historical;"],
     ["an optional declaration", "readonly historical?: boolean;"],
+    ["a destructuring default", "const { historical = false } = args;"],
+    ["bracket access", 'const h = args["historical"];'],
+    ["bracket assignment", "opts['historical'] = true;"],
   ])("the matcher sees %s", (_label, code) => {
     expect(mentionsHistoricalFlag(code)).toBe(true);
+  });
+
+  it("the stripper drops comments but never hides code after a string that holds a comment opener", () => {
+    expect(mentionsHistoricalFlag(withoutComments("// historical: true"))).toBe(false);
+    expect(mentionsHistoricalFlag(withoutComments("/* historical: true */"))).toBe(false);
+    expect(mentionsHistoricalFlag(withoutComments("go(); // historical: true"))).toBe(false);
+    // a glob in a string opens no comment: the call after it is still seen
+    expect(
+      mentionsHistoricalFlag(
+        withoutComments('const g = "packages/*"; evaluate({ historical: true }); const e = "*/";'),
+      ),
+    ).toBe(true);
+    expect(
+      mentionsHistoricalFlag(withoutComments('const u = "http://x"; evaluate({ historical })')),
+    ).toBe(true);
   });
 
   it("the matcher ignores prose and unrelated words", () => {
