@@ -84,6 +84,12 @@ controls:
       - script: arch:request-header-auth
       - script: test:auth:live
       - script: test:m10:s04-override:live
+      # WardenLens review ownership is enforced server-side across decisions, SUD/identity resolution,
+      # relink, completion, release and discard. The batch is locked before its active review, and a
+      # different membership receives 403 without changing clinical or Part 2 state.
+      - script: test:f237:doclens-review:live
+      - file: apps/backend/src/modules/22-documents/documents-route-service-db.ts
+      - file: apps/backend/src/modules/22-documents/extraction/review-workspace.ts
       # #874 — the correction/void service runs as chartwarden_app; the live suite denies cross-tenant
       # payer-row ids and preserves claim-linked rows.
       - script: test:m5:payer-intervals:live
@@ -2294,6 +2300,11 @@ controls:
       - script: arch:ai-messaging-readonly
       - script: test:m30:phi-scope:live
       - script: test:m32:kill-switch-role-key:live
+      # WardenLens stays non-reviewable while any extraction capability is unavailable and until the
+      # filed patient/referral identity check finishes. Retry reuses the persisted classification,
+      # extraction job and evidence rather than silently completing or changing schemas.
+      - script: test:f236:doclens-intake:live
+      - file: apps/backend/src/modules/22-documents/extraction/intake-job.ts
 
   - id: CW-DD-01
     title: Death notifications — external disclosure gated on a BAA (service check, delivery-boundary check, link redemption, and every funeral-home session read), explicit selection, caseload check (refusal audit is best-effort), atomic single-send claim with fenced stranded-send reconciliation, audit events for invite attempts and best-effort revocations, a keyed recipient digest and database-enforced disclosure-record integrity (not a BAA gate); internal notices fixed-text and explicitly acknowledged

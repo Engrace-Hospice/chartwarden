@@ -24,6 +24,7 @@ import {
   ChartWardenError,
   DOCLENS_M5_WRITEBACK_FIELDS,
   DegradedError,
+  ForbiddenError,
   type IntakeSudResolvedPayload,
   M22_INTAKE_SUD_CONFIRMED_EVENT,
   M22_INTAKE_SUD_REJECTED_EVENT,
@@ -72,6 +73,23 @@ const RR = schema.intakeRecordsRequests;
 const LOW_CONFIDENCE = 0.75;
 const iso = (v: Date | string | null): string | null =>
   v === null ? null : v instanceof Date ? v.toISOString() : String(v);
+
+/** Call only after locking the batch: every batch+review mutation uses batch -> review lock order. */
+async function assertActiveReviewOwner(
+  tx: DbClient,
+  batchId: string,
+  membershipId: string,
+): Promise<void> {
+  const [active] = await tx
+    .select({ reviewerMembershipId: ER.reviewerMembershipId })
+    .from(ER)
+    .where(and(eq(ER.intakeUploadBatchId, batchId), eq(ER.status, "in_progress")))
+    .for("update")
+    .limit(1);
+  if (active && active.reviewerMembershipId !== membershipId) {
+    throw new ForbiddenError("this review is locked by another reviewer");
+  }
+}
 
 export type { SudStatus };
 export type VisionStatus = "not_required" | "verified" | "disagreed" | "unverified";
@@ -741,6 +759,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           .where(eq(BATCH.id, batchId))
           .for("update");
         if (!b) throw new NotFoundError("intake batch");
+        await assertActiveReviewOwner(tx, batchId, actor.membershipId);
         // Idempotent: the same resolution again is a no-op (a double click, a retried request).
         if (b.sudStatus === outcome) return { batchId, sudStatus: b.sudStatus };
         if (b.sudStatus !== "detected") {
@@ -799,6 +818,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           .where(eq(BATCH.id, batchId))
           .for("update");
         if (!b) throw new NotFoundError("intake batch");
+        await assertActiveReviewOwner(tx, batchId, actor.membershipId);
         if (b.status === "writeback_complete" || b.status === "discarded") {
           throw new ChartWardenError(
             "BATCH_CLOSED",
@@ -889,6 +909,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           .where(eq(BATCH.id, batchId))
           .for("update");
         if (!b) throw new NotFoundError("intake batch");
+        await assertActiveReviewOwner(tx, batchId, actor.membershipId);
         // ADR-0109 D10 (PR 3) — first, before any other check: a batch never moves an internal-only or a grief-library document onto a chart.
         const [src] = await tx
           .select({ aggregateType: DOC.aggregateType })

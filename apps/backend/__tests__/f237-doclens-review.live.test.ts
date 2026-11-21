@@ -16,7 +16,7 @@
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:f237:doclens-review:live
  */
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
@@ -117,13 +117,13 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
     }
   }
 
-  async function seedBatch(): Promise<string> {
+  async function seedBatch(patientId: string | null = patient): Promise<string> {
     const doc = (
       await admin.query(
         `INSERT INTO document (organization_id, patient_id, retention_class, source_kind, aggregate_type,
            title, created_by_membership_id)
          VALUES ($1,$2,'intake_artifact','fax_ingest','other','Referral fax',$3) RETURNING id`,
-        [ORG, patient, membership],
+        [ORG, patientId, membership],
       )
     ).rows[0].id as string;
     const v = (
@@ -139,7 +139,7 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
       await admin.query(
         `INSERT INTO intake_upload_batch (organization_id, patient_id, initial_document_id, source_channel,
            uploaded_by_membership_id, correlation_id) VALUES ($1,$2,$3,'fax',$4,gen_random_uuid()) RETURNING id`,
-        [ORG, patient, doc, membership],
+        [ORG, patientId, doc, membership],
       )
     ).rows[0].id as string;
   }
@@ -310,7 +310,9 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
       [pending],
     );
     expect(rows.rows).toHaveLength(0);
-    const status = await admin.query("SELECT status FROM intake_upload_batch WHERE id=$1", [pending]);
+    const status = await admin.query("SELECT status FROM intake_upload_batch WHERE id=$1", [
+      pending,
+    ]);
     expect(status.rows[0]?.status).toBe("uploaded");
   });
 
@@ -329,19 +331,427 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
     expect(rows.rows).toHaveLength(0);
   });
 
-  it("refuses field review on an extraction-complete batch with zero candidates", async () => {
+  it("opens and completes a document-level review when extraction produced zero candidates", async () => {
+    const empty = await seedBatch();
+    await admin.query(
+      "UPDATE intake_upload_batch SET status='extraction_complete', identity_status='match' WHERE id=$1",
+      [empty],
+    );
+    const review = await svc.openReview(ORG, actor, empty);
+    const rows = await admin.query(
+      "SELECT id, candidates_total, candidates_decided FROM extraction_review WHERE intake_upload_batch_id=$1",
+      [empty],
+    );
+    expect(rows.rows).toEqual([{ id: review.id, candidates_total: 0, candidates_decided: 0 }]);
+    await expect(svc.completeReview(ORG, actor, review.id)).resolves.toMatchObject({
+      reviewId: review.id,
+      status: "complete",
+      writeback: { committedFieldPaths: [] },
+    });
+    const batch = await admin.query(
+      "SELECT status, disposition_at IS NOT NULL AS disposed FROM intake_upload_batch WHERE id=$1",
+      [empty],
+    );
+    expect(batch.rows).toEqual([{ status: "writeback_complete", disposed: true }]);
+    expect(
+      (
+        await admin.query(
+          `SELECT count(*)::int AS n
+             FROM extraction_provenance p
+             JOIN extraction_decision d ON d.id=p.extraction_decision_id
+            WHERE d.extraction_review_id=$1`,
+          [review.id],
+        )
+      ).rows[0]?.n,
+    ).toBe(0);
+  });
+
+  it("serializes duplicate starts, returns the same review to its owner, and rejects lock takeover", async () => {
     const empty = await seedBatch();
     await admin.query("UPDATE intake_upload_batch SET status='extraction_complete' WHERE id=$1", [
       empty,
     ]);
-    await expect(svc.openReview(ORG, actor, empty)).rejects.toMatchObject({
-      code: "NO_REVIEWABLE_FIELDS",
+    const [first, replay] = await Promise.all([
+      svc.openReview(ORG, actor, empty),
+      svc.openReview(ORG, actor, empty),
+    ]);
+    expect(replay.id).toBe(first.id);
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM extraction_review WHERE intake_upload_batch_id=$1 AND status='in_progress'",
+          [empty],
+        )
+      ).rows[0]?.n,
+    ).toBe(1);
+
+    const other = {
+      userId: "44444444-4444-4444-8444-444444444444",
+      membershipId: randomUUID(),
+    };
+    await expect(svc.openReview(ORG, other, empty)).rejects.toMatchObject({
+      code: "REVIEW_ALREADY_IN_PROGRESS",
+      statusCode: 409,
     });
-    const rows = await admin.query(
-      "SELECT id FROM extraction_review WHERE intake_upload_batch_id=$1",
+    await expect(svc.abandonReview(ORG, other, first.id)).rejects.toMatchObject({
+      statusCode: 403,
+    });
+    await expect(svc.discardBatch(ORG, other, empty)).rejects.toMatchObject({ statusCode: 403 });
+    expect(
+      (
+        await admin.query(
+          `SELECT b.status AS batch_status, r.status AS review_status
+             FROM intake_upload_batch b JOIN extraction_review r ON r.intake_upload_batch_id=b.id
+            WHERE b.id=$1 AND r.id=$2`,
+          [empty, first.id],
+        )
+      ).rows[0],
+    ).toEqual({ batch_status: "in_review", review_status: "in_progress" });
+
+    await expect(svc.abandonReview(ORG, actor, first.id)).resolves.toEqual({
+      reviewId: first.id,
+      status: "abandoned",
+    });
+    expect(
+      (await admin.query("SELECT status FROM intake_upload_batch WHERE id=$1", [empty])).rows[0]
+        ?.status,
+    ).toBe("extraction_complete");
+    const reopened = await svc.openReview(ORG, actor, empty);
+    expect(reopened.id).not.toBe(first.id);
+  });
+
+  it("fails closed when a patient-bound document review has no resolved identity target", async () => {
+    const empty = await seedBatch();
+    await admin.query("UPDATE intake_upload_batch SET status='extraction_complete' WHERE id=$1", [
+      empty,
+    ]);
+    const review = await svc.openReview(ORG, actor, empty);
+    for (const identityStatus of [null, "no_target"] as const) {
+      await admin.query("UPDATE intake_upload_batch SET identity_status=$1 WHERE id=$2", [
+        identityStatus,
+        empty,
+      ]);
+      await expect(svc.completeReview(ORG, actor, review.id)).rejects.toMatchObject({
+        code: "IDENTITY_NOT_CHECKED",
+        statusCode: 409,
+      });
+    }
+    expect(
+      (
+        await admin.query(
+          `SELECT b.status AS batch_status, r.status AS review_status,
+                  (SELECT count(*)::int
+                     FROM extraction_provenance p
+                     JOIN extraction_decision d ON d.id=p.extraction_decision_id
+                    WHERE d.extraction_review_id=r.id) AS provenance
+             FROM intake_upload_batch b JOIN extraction_review r ON r.intake_upload_batch_id=b.id
+            WHERE b.id=$1 AND r.id=$2`,
+          [empty, review.id],
+        )
+      ).rows[0],
+    ).toEqual({ batch_status: "in_review", review_status: "in_progress", provenance: 0 });
+  });
+
+  it("serializes completion against discard without deadlocking or changing a completed batch", async () => {
+    const empty = await seedBatch();
+    await admin.query(
+      "UPDATE intake_upload_batch SET status='extraction_complete', identity_status='match' WHERE id=$1",
       [empty],
     );
-    expect(rows.rows).toHaveLength(0);
+    const review = await svc.openReview(ORG, actor, empty);
+    const settled = await Promise.allSettled([
+      svc.completeReview(ORG, actor, review.id),
+      svc.discardBatch(ORG, actor, empty),
+    ]);
+    expect(settled.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = settled.find((result) => result.status === "rejected");
+    expect(rejected).toBeDefined();
+    if (rejected?.status === "rejected") {
+      expect(rejected.reason).toMatchObject({ statusCode: 409 });
+    }
+    const state = (
+      await admin.query(
+        `SELECT b.status AS batch_status, r.status AS review_status
+           FROM intake_upload_batch b JOIN extraction_review r ON r.intake_upload_batch_id=b.id
+          WHERE b.id=$1`,
+        [empty],
+      )
+    ).rows[0];
+    expect([
+      { batch_status: "writeback_complete", review_status: "complete" },
+      { batch_status: "discarded", review_status: "abandoned" },
+    ]).toContainEqual(state);
+  });
+
+  it("keeps persisted Part 2 page evidence authoritative when a retry detector refuses", async () => {
+    const retryBatch = await seedBatch(null);
+    let hpAvailable = false;
+    const partialExtractor: DocLensExtractorPort = {
+      extract: async (input) =>
+        input.documentType === "hp" && !hpAvailable
+          ? { available: false, detail: "capability temporarily unavailable" }
+          : extractor.extract(input),
+    };
+    const baseDeps = {
+      db: handle.db,
+      docling: {
+        parse: async () => ({ doclingVersion: "2.133.0", pages: PAGES as never }),
+        render: async () => {
+          throw new Error("retry test does not run stage 5");
+        },
+      },
+      presignSource: async () => "https://minio.invalid/x?sig",
+      cipher,
+      classifier: () => classifier,
+      outbox: m22Outbox,
+      identityTargets: {
+        patient: async () => ({
+          lastName: "Doclens",
+          firstName: "Mae",
+          dateOfBirth: "1938-04-12",
+        }),
+      },
+    };
+    await expect(
+      runDocLensIntake(
+        {
+          ...baseDeps,
+          extractor: () => partialExtractor,
+          sudDetector: () => sudModel,
+        },
+        {
+          organizationId: ORG,
+          batchId: retryBatch,
+          actorUserId: USER,
+          correlationId: "f237-sud-first",
+        },
+      ),
+    ).resolves.toMatchObject({ outcome: "awaiting_capability", sud: { pages: [2] } });
+
+    hpAvailable = true;
+    await expect(
+      runDocLensIntake(
+        {
+          ...baseDeps,
+          extractor: () => partialExtractor,
+          sudDetector: () => ({
+            detect: async () => ({ available: false, detail: "detector temporarily unavailable" }),
+          }),
+        },
+        {
+          organizationId: ORG,
+          batchId: retryBatch,
+          actorUserId: USER,
+          correlationId: "f237-sud-retry",
+        },
+      ),
+    ).resolves.toMatchObject({ outcome: "extracted", sud: { pages: [2] } });
+    expect(
+      (
+        await admin.query(
+          `SELECT b.status, b.sud_status,
+                  count(c.id) FILTER (WHERE c.source_page=2)::int AS page_two_candidates,
+                  count(c.id) FILTER (WHERE c.source_page=2 AND c.sud_detected)::int AS protected_candidates,
+                  (SELECT count(*)::int FROM outbox_event o
+                    WHERE o.event_type='m22.intake.sud_detected' AND o.aggregate_id=b.id) AS events
+             FROM intake_upload_batch b
+             JOIN classified_page p ON p.intake_upload_batch_id=b.id
+             JOIN extraction_job j ON j.classified_page_id=p.id
+             LEFT JOIN extraction_candidate c ON c.extraction_job_id=j.id
+            WHERE b.id=$1 GROUP BY b.id`,
+          [retryBatch],
+        )
+      ).rows[0],
+    ).toEqual({
+      status: "extraction_complete",
+      sud_status: "detected",
+      page_two_candidates: 3,
+      protected_candidates: 3,
+      events: 1,
+    });
+  });
+
+  it("retries a legacy rules-only detector ref and remains fail-closed on refusal", async () => {
+    const legacyBatch = await seedBatch(null);
+    await admin.query(
+      "UPDATE intake_upload_batch SET status='classifier_complete', sud_detector_ref='rules:v1' WHERE id=$1",
+      [legacyBatch],
+    );
+    let detectorCalls = 0;
+    let detectorAvailable = false;
+    const deps = {
+      db: handle.db,
+      docling: {
+        parse: async () => ({ doclingVersion: "2.133.0", pages: PAGES as never }),
+        render: async () => {
+          throw new Error("legacy retry test does not run stage 5");
+        },
+      },
+      presignSource: async () => "https://minio.invalid/x?sig",
+      cipher,
+      classifier: () => classifier,
+      extractor: () => extractor,
+      sudDetector: () => ({
+        detect: async () => {
+          detectorCalls += 1;
+          return detectorAvailable
+            ? sudModel.detect({} as never)
+            : { available: false as const, detail: "legacy detector refusal" };
+        },
+      }),
+      outbox: m22Outbox,
+      identityTargets: {
+        patient: async () => ({
+          lastName: "Doclens",
+          firstName: "Mae",
+          dateOfBirth: "1938-04-12",
+        }),
+      },
+    };
+    await expect(
+      runDocLensIntake(deps, {
+        organizationId: ORG,
+        batchId: legacyBatch,
+        actorUserId: USER,
+        correlationId: "f237-sud-legacy-refusal",
+      }),
+    ).resolves.toMatchObject({ outcome: "awaiting_capability" });
+    expect(detectorCalls).toBe(1);
+    expect(
+      (
+        await admin.query("SELECT status, sud_detector_ref FROM intake_upload_batch WHERE id=$1", [
+          legacyBatch,
+        ])
+      ).rows[0],
+    ).toEqual({ status: "classifier_complete", sud_detector_ref: "rules:v1" });
+
+    detectorAvailable = true;
+    await expect(
+      runDocLensIntake(deps, {
+        organizationId: ORG,
+        batchId: legacyBatch,
+        actorUserId: USER,
+        correlationId: "f237-sud-legacy-retry",
+      }),
+    ).resolves.toMatchObject({ outcome: "extracted", sud: { pages: [2] } });
+    expect(detectorCalls).toBe(2);
+    expect(
+      (
+        await admin.query("SELECT sud_detector_ref FROM intake_upload_batch WHERE id=$1", [
+          legacyBatch,
+        ])
+      ).rows[0]?.sud_detector_ref,
+    ).toBe("rules:v1+ai_invocation:sud-1");
+  });
+
+  it("serializes competing SUD scans so a non-detecting delivery cannot finalize first", async () => {
+    const concurrentBatch = await seedBatch(null);
+    let releaseDetector!: () => void;
+    const detectorReleased = new Promise<void>((resolve) => {
+      releaseDetector = resolve;
+    });
+    let signalDetectorEntered!: () => void;
+    const detectorEntered = new Promise<void>((resolve) => {
+      signalDetectorEntered = resolve;
+    });
+    let detectingCalls = 0;
+    let nonDetectingCalls = 0;
+    const baseDeps = {
+      db: handle.db,
+      docling: {
+        parse: async () => ({ doclingVersion: "2.133.0", pages: PAGES as never }),
+        render: async () => {
+          throw new Error("concurrency test does not run stage 5");
+        },
+      },
+      presignSource: async () => "https://minio.invalid/x?sig",
+      cipher,
+      classifier: () => classifier,
+      extractor: () => extractor,
+      outbox: m22Outbox,
+      identityTargets: {
+        patient: async () => ({
+          lastName: "Doclens",
+          firstName: "Mae",
+          dateOfBirth: "1938-04-12",
+        }),
+      },
+    };
+    const detecting = runDocLensIntake(
+      {
+        ...baseDeps,
+        sudDetector: () => ({
+          detect: async () => {
+            detectingCalls += 1;
+            signalDetectorEntered();
+            await detectorReleased;
+            return {
+              available: true as const,
+              invocationId: "sud-concurrent-detecting",
+              indicators: [{ pageNumber: 2, snippet: "Methadone 10 mg", category: "medication" }],
+            };
+          },
+        }),
+      },
+      {
+        organizationId: ORG,
+        batchId: concurrentBatch,
+        actorUserId: USER,
+        correlationId: "f237-sud-concurrent-detecting",
+      },
+    );
+    await detectorEntered;
+    const competing = runDocLensIntake(
+      {
+        ...baseDeps,
+        sudDetector: () => ({
+          detect: async () => {
+            nonDetectingCalls += 1;
+            return {
+              available: true as const,
+              invocationId: "sud-concurrent-empty",
+              indicators: [],
+            };
+          },
+        }),
+      },
+      {
+        organizationId: ORG,
+        batchId: concurrentBatch,
+        actorUserId: USER,
+        correlationId: "f237-sud-concurrent-empty",
+      },
+    );
+    releaseDetector();
+    const outcomes = await Promise.all([detecting, competing]);
+
+    expect(detectingCalls).toBe(1);
+    expect(nonDetectingCalls).toBe(0);
+    expect(outcomes.some((outcome) => outcome.outcome === "extracted")).toBe(true);
+    expect(
+      (
+        await admin.query(
+          `SELECT b.status, b.sud_status, b.sud_detector_ref,
+                  count(c.id) FILTER (WHERE c.source_page=2)::int AS page_two_candidates,
+                  count(c.id) FILTER (WHERE c.source_page=2 AND c.sud_detected)::int AS protected_candidates,
+                  (SELECT count(*)::int FROM outbox_event o
+                    WHERE o.event_type='m22.intake.sud_detected' AND o.aggregate_id=b.id) AS events
+             FROM intake_upload_batch b
+             JOIN classified_page p ON p.intake_upload_batch_id=b.id
+             JOIN extraction_job j ON j.classified_page_id=p.id
+             LEFT JOIN extraction_candidate c ON c.extraction_job_id=j.id
+            WHERE b.id=$1 GROUP BY b.id`,
+          [concurrentBatch],
+        )
+      ).rows[0],
+    ).toEqual({
+      status: "extraction_complete",
+      sud_status: "detected",
+      sud_detector_ref: "rules:v1+ai_invocation:sud-concurrent-detecting",
+      page_two_candidates: 3,
+      protected_candidates: 3,
+      events: 1,
+    });
   });
 
   it("runs stage 5 and SUD detection: tags, encrypted evidence, an id-only event, and M5's interim flag", async () => {
@@ -368,6 +778,13 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
         visionVerifier: () => vision,
         sudDetector: () => sudModel,
         outbox: m22Outbox,
+        identityTargets: {
+          patient: async () => ({
+            lastName: "Doclens",
+            firstName: "Mae",
+            dateOfBirth: "1938-04-12",
+          }),
+        },
       },
       { organizationId: ORG, batchId, actorUserId: USER, correlationId: "f237" },
     );
@@ -436,7 +853,7 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
     expect(events.rows[0].payload).toMatchObject({
       intakeBatchId: batchId,
       patientId: patient,
-      candidateCount: 3,
+      candidateCount: 0,
       suggestedSudKind: "medication",
       pages: [2],
     });
@@ -575,7 +992,7 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
       patientId: patient,
       sudStatus: "detected",
     });
-    expect(pending.items.map((i) => i.id)).toEqual([batchId]);
+    expect(pending.items.map((i) => i.id)).toContain(batchId);
     const otherPatient = await workspace.listQueue(ORG, {
       view: "open",
       patientId: "00000000-0000-4000-8000-0000000000ff",
@@ -590,8 +1007,70 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
     const ws = await workspace.getWorkspace(ORG, batchId, membership);
     const id = (path: string) => ws.candidates.find((x) => x.fieldPath === path)?.id as string;
     const review = await svc.openReview(ORG, actor, batchId);
+    expect(
+      (
+        await admin.query(
+          `SELECT array_agg(j.status::text ORDER BY j.id) AS statuses
+             FROM extraction_job j
+             JOIN classified_page p ON p.id=j.classified_page_id
+            WHERE p.intake_upload_batch_id=$1`,
+          [batchId],
+        )
+      ).rows[0]?.statuses,
+    ).toEqual(["in_review", "in_review"]);
     const decide = (path: string, decision: string, extra: Record<string, string> = {}) =>
       svc.recordDecision(ORG, actor, review.id, { candidateId: id(path), decision, ...extra });
+
+    const otherReviewer = { userId: randomUUID(), membershipId: randomUUID() };
+    await expect(
+      workspace.resolveSud(ORG, otherReviewer, batchId, "rejected", "Not substance-use content"),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    await expect(
+      workspace.resolveIdentity(
+        ORG,
+        otherReviewer,
+        batchId,
+        1,
+        "same_patient",
+        "Matched the patient identifiers",
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    const relinkWorkspace = createReviewWorkspaceService({
+      db: handle.db,
+      cipher,
+      outbox: m22Outbox,
+      identity: {
+        ports: {
+          patient: async () => ({
+            lastName: "Doclens",
+            firstName: "Mae",
+            dateOfBirth: "1938-04-12",
+          }),
+        },
+        canAccessReferral: async () => true,
+      },
+    });
+    await expect(
+      relinkWorkspace.relink(
+        ORG,
+        otherReviewer,
+        batchId,
+        { patientId: patient, referralId: null, reason: "Correct patient filing" },
+        "f237-lock-owner",
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(
+      (
+        await admin.query(
+          `SELECT b.sud_status, p.identity_resolution,
+                  (SELECT count(*)::int FROM intake_batch_relink r WHERE r.intake_upload_batch_id=b.id) AS relinks
+             FROM intake_upload_batch b
+             JOIN classified_page p ON p.intake_upload_batch_id=b.id
+            WHERE b.id=$1 ORDER BY p.page_range_start LIMIT 1`,
+          [batchId],
+        )
+      ).rows[0],
+    ).toEqual({ sud_status: "detected", identity_resolution: null, relinks: 0 });
 
     await expect(decide("medications[0].name", "approve")).rejects.toMatchObject({
       code: "VISION_DISAGREEMENT_REASON_REQUIRED",
@@ -605,6 +1084,14 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
       [review.id],
     );
     expect(decisions.rows[0].n).toBe(3);
+    expect(
+      (
+        await admin.query(
+          "SELECT candidates_total, candidates_decided FROM extraction_review WHERE id=$1",
+          [review.id],
+        )
+      ).rows[0],
+    ).toEqual({ candidates_total: 5, candidates_decided: 3 });
 
     await expect(svc.completeReview(ORG, actor, review.id)).rejects.toMatchObject({
       code: "SUD_DETECTION_UNRESOLVED",
@@ -632,6 +1119,24 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
     expect(rejected.rows).toHaveLength(1);
     expect(JSON.stringify(rejected.rows[0].payload)).not.toContain("pain");
 
+    await expect(svc.completeReview(ORG, actor, review.id)).rejects.toMatchObject({
+      code: "REVIEW_INCOMPLETE",
+      statusCode: 409,
+    });
+    for (const candidate of ws.candidates.filter(
+      (c) => !["medications[0].name", "patient.phoneHome", "patient.email"].includes(c.fieldPath),
+    )) {
+      await decide(candidate.fieldPath, "reject", { reason: "Not needed for this intake" });
+    }
+    expect(
+      (
+        await admin.query(
+          "SELECT candidates_total, candidates_decided FROM extraction_review WHERE id=$1",
+          [review.id],
+        )
+      ).rows[0],
+    ).toEqual({ candidates_total: 5, candidates_decided: 5 });
+
     await dispatcher.tick();
     expect(await snapshot()).toEqual({ flags: ["hiv"], sud_flag_origin: null });
     expect(
@@ -654,10 +1159,24 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
         reason: "not_a_writeback_target",
       }),
     ]);
+    expect(
+      (
+        await admin.query(
+          `SELECT array_agg(j.status::text ORDER BY j.id) AS statuses
+             FROM extraction_job j
+             JOIN classified_page p ON p.id=j.classified_page_id
+            WHERE p.intake_upload_batch_id=$1`,
+          [batchId],
+        )
+      ).rows[0]?.statuses,
+    ).toEqual(["committed", "committed"]);
   });
 
   it("resolves the licence check's risk tier from the candidate row, only within the review's batch", async () => {
     const other = await seedBatch();
+    await admin.query("UPDATE intake_upload_batch SET status='extraction_complete' WHERE id=$1", [
+      other,
+    ]);
     const otherReview = await svc.openReview(ORG, actor, other);
     const ws = await workspace.getWorkspace(ORG, batchId, membership);
     const med = ws.candidates.find((x) => x.fieldPath === "medications[0].name")?.id as string;
