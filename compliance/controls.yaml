@@ -1402,7 +1402,7 @@ controls:
     title: Person/entity authentication — MFA, step-up for sensitive actions (signing a HOPE assessment included), credential throttling
     hipaa: ["164.312(d)", "164.308(a)(5)(ii)(D)"]
     soc2: ["CC6.1", "CC6.2"]
-    status: implemented
+    status: partial
     evidence:
       - script: test:m2:auth-hardening:live
       - script: test:m2:step-up-override:live
@@ -1411,6 +1411,22 @@ controls:
       - script: test:m10:sfv-sign-binding:live
       - script: test:rate-limit-store:live
       - file: packages/auth/src/identity/credential-throttle.ts
+      # Staff TOTP self-enrolment (/security/authenticator): the secret counts only once a code is accepted (two_factor.verified);
+      # starting it is audited m2.auth.2fa_enrolled stage=started (a wrong password as a failure), with no secret, backup code or
+      # password in the event.
+      - file: apps/backend/__tests__/auth-audit-trail.test.ts
+      - file: apps/web/src/modules/02-identity/__tests__/security-authenticator.dom.test.tsx
+      - file: apps/web/src/modules/02-identity/__tests__/authenticator-setup.test.ts
+      # A password alone must not mint a counted second factor: enable, get-totp-uri, generate-backup-codes and passkey
+      # register/delete are refused 403 MFA_VERIFICATION_REQUIRED for a user who has a factor and has not proved one in this session
+      # (and 401 when the session cannot be resolved); the bridge decides by the path Better Auth will serve, so a dot-segment
+      # spelling cannot skip the guard, the sign-in failure budget or the audit trail.
+      - file: apps/backend/src/modules/02-identity/mfa-enrolment-gate.ts
+      - file: apps/backend/__tests__/mfa-enrolment-matrix.test.ts
+    gap:
+      reason: A password alone can still create the FIRST factor of a user who has none (enrolment is otherwise impossible), and the session-bound verify-totp / verify-backup-code calls are not guarded because they are also the sign-in second-factor calls (telling them apart needs the two_factor cookie). Completing TOTP enrolment (the first accepted code) has no audit event of its own; it is recorded as login_succeeded. No backup-code regeneration and no org_admin-issued reset exist yet (Module 02 spec says both are required).
+      owner: identity
+      review_by: 2027-01-31
 
   - id: CW-TX-01
     title: Transmission security — TLS/HSTS at the edge, certificate pinning to external interfaces
