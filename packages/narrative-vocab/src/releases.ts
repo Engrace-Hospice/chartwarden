@@ -78,7 +78,7 @@ export const NARRATIVE_VOCAB_RELEASES: readonly NarrativeVocabRelease[] = [
   {
     version: "narrative-vocab@2026.12.1",
     id: "c032c8df-7afa-421b-99a2-86e8ad4b1154",
-    releasedOn: "2026-11-21",
+    releasedOn: "2026-11-20",
   },
 ];
 

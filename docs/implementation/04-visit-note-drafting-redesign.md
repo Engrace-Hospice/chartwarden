@@ -260,7 +260,7 @@ Designed 2026-11-20 against `main` at `6a527be45`; built in the PRs of the S2 pl
 
 ### 3.4 S2b design: the RN admission visit (VN-D35 to VN-D38)
 
-Designed 2026-11-21 against `main` at `096e01f5e`. Within the decisions above; the S1/S2 pipeline (per-author draft recomputed as of the visit time, confirmation bound to the content hash and corpus version, gate check 13, sealed rows, per-viewer Part 2, amendments, the switch, the per-template read keys) is reused unchanged.
+Designed 2026-11-20 against `main` at `096e01f5e`. Within the decisions above; the S1/S2 pipeline (per-author draft recomputed as of the visit time, confirmation bound to the content hash and corpus version, gate check 13, sealed rows, per-viewer Part 2, amendments, the switch, the per-template read keys) is reused unchanged.
 
 - **Which templates draft.** Still read off the corpus tags (`draft/scope.ts`). `admission_visit:rn` drafts `med_reconciliation`, `advance_directive`, `caregiver_overview` and `baseline_symptoms`, and its base `vitals_review`, `interventions` and `plan` from S1's sources. `assessment` and `symptom_management` draft nothing there: the PPS phrases are not tagged for it, and ESAS-r feeds `baseline_symptoms`, so no reading is stated twice.
 - **A source map per template**, as S2's: `admissionVisitMap` in `draft/sources.ts`, with its phrase map. A sentence per source, ordered by a fixed key so a database that returns rows in another order cannot change the draft or its hash.

@@ -6,7 +6,7 @@ its full description there. Newest first.
 
 ---
 
-## 2026-11-21 — Visit-note drafting slice 2b (M8, ADR-0114): the RN admission visit, corpus release `narrative-vocab@2026.12.1`
+## 2026-11-20 — Visit-note drafting slice 2b (M8, ADR-0114): the RN admission visit, corpus release `narrative-vocab@2026.12.1`
 
 **No new route. One response enum grows; nothing changes for a tenant with the draft switched off.**
 

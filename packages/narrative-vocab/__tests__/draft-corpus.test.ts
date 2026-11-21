@@ -53,7 +53,7 @@ describe("corpus release", () => {
       "narrative-vocab@2026.12.1",
     ]);
     expect(activeNarrativeVocabRelease(VOCAB_VERSION).version).toBe(VOCAB_VERSION);
-    expect(activeNarrativeVocabRelease(VOCAB_VERSION).releasedOn).toBe("2026-11-21");
+    expect(activeNarrativeVocabRelease(VOCAB_VERSION).releasedOn).toBe("2026-11-20");
   });
 
   it("keeps the 2026.12.0 release row untouched (a note signed under it pins that id)", () => {
