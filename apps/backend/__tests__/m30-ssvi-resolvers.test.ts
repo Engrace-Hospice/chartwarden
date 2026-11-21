@@ -26,6 +26,9 @@ import {
 } from "../src/modules/30-quality/jobs/ssvi-resolvers";
 
 const REG = buildMeasureRegistry();
+/** The calculator version the catalog says a measure's CURRENT rows carry. */
+const currentVersion = (code: string): string =>
+  (REG.get(code) as MeasureRegistration).calculatorVersion;
 const REQUEST = (code: string) => ({
   registration: REG.get(code) as MeasureRegistration,
   organizationId: "org-1",
@@ -56,7 +59,9 @@ function seams(overrides: Record<string, unknown> = {}) {
       ssviDischargeCounts: async () => ({
         totalDischarges: 20,
         liveDischarges: 10,
-        dischargesWithLosOver180: 7,
+        dischargesWithLos180OrMore: 7,
+        // Metric 8's live population also counts transfers (CMS): 2 transfers on top of the 10 live discharges.
+        liveDischargesIncludingTransfers: 12,
         liveDischargesReadmittedWithin7Days: 2,
       }),
     },
@@ -139,11 +144,14 @@ describe("SSVI resolvers → calculators", () => {
 
   it("metrics 4/5/8 shape the ONE M6 discharge aggregate", async () => {
     const m4 = await resolveSsviMeasureInput(REQUEST("ssvi_metric_04"), seams());
-    expect(ssviPointsOf(computeSsviMetric04(m4 as never))).toBe(1); // 50% ≥ 47.5%
+    expect(ssviPointsOf(computeSsviMetric04(m4 as never))).toBe(1); // 50% ≥ 47.0%
     const m5 = await resolveSsviMeasureInput(REQUEST("ssvi_metric_05"), seams());
-    expect(ssviPointsOf(computeSsviMetric05(m5 as never))).toBe(1); // 35% ≥ 33.2%
+    expect(ssviPointsOf(computeSsviMetric05(m5 as never))).toBe(1); // 35% ≥ 33.3%
+    // Metric 8 divides by the live population INCLUDING transfers (12), so 2/12 = 16.7% < 18.2% earns no point;
+    // dividing by the 10 non-transfer live discharges (20%) would wrongly earn one.
     const m8 = await resolveSsviMeasureInput(REQUEST("ssvi_metric_08"), seams());
-    expect(ssviPointsOf(computeSsviMetric08(m8 as never))).toBe(1); // 20% ≥ 15%
+    expect(m8).toMatchObject({ liveDischarges: 12, liveDischargesReadmittedWithin7Days: 2 });
+    expect(ssviPointsOf(computeSsviMetric08(m8 as never))).toBe(0);
   });
 
   it("metric 7: the Saturday 2026-01-10 visit is 1 of 10 RHC days (10% > 4.8%) → no point", async () => {
@@ -172,6 +180,7 @@ describe("SSVI resolvers → calculators", () => {
       (await resolveSsviMeasureInput(REQUEST("ssvi_metric_09"), seams())) as never,
     );
     const metricRow = (code: string) => {
+      const calculatorVersion = currentVersion(code);
       if (code === "ssvi_metric_09")
         return {
           numerator: 0,
@@ -179,6 +188,7 @@ describe("SSVI resolvers → calculators", () => {
           ratio: null,
           thresholdMet: null,
           computationSnapshot: m9Unavailable.computationSnapshot,
+          calculatorVersion,
         };
       return {
         numerator: 1,
@@ -186,6 +196,7 @@ describe("SSVI resolvers → calculators", () => {
         ratio: "0.5000",
         thresholdMet: false,
         computationSnapshot: { ssviPoints: 1 },
+        calculatorVersion,
       };
     };
     const input = await resolveSsviMeasureInput(
@@ -196,6 +207,26 @@ describe("SSVI resolvers → calculators", () => {
     expect(isDataUnavailable(total)).toBe(true);
     expect(total.computationSnapshot.partialScoreLowerBound).toBe(8);
     expect(total.computationSnapshot.maxPossibleScore).toBe(16);
+  });
+
+  it("the composite treats a metric row stamped with an OLDER calculator version as not yet computed, never as stale points", async () => {
+    const row = (code: string) => ({
+      numerator: 1,
+      denominator: 2,
+      ratio: "0.5000",
+      thresholdMet: false,
+      computationSnapshot: { ssviPoints: 1 },
+      // metric 3's current row predates its definition fix (0.1.0 → 0.2.0); the others are current
+      calculatorVersion: code === "ssvi_metric_03" ? "0.1.0" : currentVersion(code),
+    });
+    const input = (await resolveSsviMeasureInput(
+      REQUEST("ssvi_composite"),
+      seams({ values: { findCurrent: async (code: string) => row(code) } }),
+    )) as { metrics: Record<string, unknown> };
+    expect(input.metrics.metric_03).toBeNull();
+    expect(input.metrics.metric_04).not.toBeNull();
+    const total = computeSsviScore(input as never);
+    expect(total.computationSnapshot.notYetComputedMetrics).toEqual(["metric_03"]);
   });
 });
 
@@ -238,7 +269,7 @@ function fakeDb(discharges: DischargeRow[], admissions: AdmissionRow[]): DbClien
 }
 
 describe("DischargeReader.ssviDischargeCounts (SSVI metrics 4/5/8)", () => {
-  it("counts live discharges, LOS > 180 across ALL types, and same-hospice readmissions within 7 days", async () => {
+  it("counts live discharges and LOS ≥ 180 over NON-transfer discharges, and readmissions within 7 days over live INCLUDING transfers (CMS)", async () => {
     const db = fakeDb(
       [
         // death after 200 days — long stay counts, not live
@@ -249,7 +280,7 @@ describe("DischargeReader.ssviDischargeCounts (SSVI metrics 4/5/8)", () => {
           admissionAt: new Date("2025-07-16T12:00:00Z"),
           patientId: "p1",
         },
-        // live (revocation) after exactly 180 days — NOT over 180; readmitted 7 days later → counts
+        // live (revocation) after exactly 180 days — CMS counts 180 days OR MORE; readmitted 7 days later → counts
         {
           admissionId: "a2",
           dischargeType: "revocation",
@@ -257,7 +288,8 @@ describe("DischargeReader.ssviDischargeCounts (SSVI metrics 4/5/8)", () => {
           admissionAt: new Date("2025-08-05T00:00:00Z"),
           patientId: "p2",
         },
-        // live transfer, readmitted 8 days later → does NOT count
+        // transfer (CMS status 50/51): NOT a discharge for metrics 4/5, but a live discharge for metric 8;
+        // readmitted 8 days later → does NOT count as a return
         {
           admissionId: "a3",
           dischargeType: "transfer",
@@ -278,9 +310,41 @@ describe("DischargeReader.ssviDischargeCounts (SSVI metrics 4/5/8)", () => {
       to: "2026-04-01",
     });
     expect(out).toEqual({
-      totalDischarges: 3,
-      liveDischarges: 2,
-      dischargesWithLosOver180: 1,
+      totalDischarges: 2,
+      liveDischarges: 1,
+      dischargesWithLos180OrMore: 2,
+      liveDischargesIncludingTransfers: 2,
+      liveDischargesReadmittedWithin7Days: 1,
+    });
+  });
+
+  it("a LONG-STAY transfer is no metric-5 discharge, and a transfer that returns within 7 days counts for metric 8", async () => {
+    const db = fakeDb(
+      [
+        // transfer after 201 days: excluded from metrics 4/5 entirely (CMS status 50/51)
+        {
+          admissionId: "t1",
+          dischargeType: "transfer",
+          effectiveAt: "2026-02-01",
+          admissionAt: new Date("2025-07-15T00:00:00Z"),
+          patientId: "pt1",
+        },
+      ],
+      [
+        { id: "t1", patientId: "pt1", admissionAt: new Date("2025-07-15T00:00:00Z") },
+        // the same patient is back 3 days after the transfer: a return CMS counts for metric 8
+        { id: "t1b", patientId: "pt1", admissionAt: new Date("2026-02-04T10:00:00Z") },
+      ],
+    );
+    const out = await createDischargeReader(db).ssviDischargeCounts("org-1", {
+      from: "2026-01-01",
+      to: "2026-04-01",
+    });
+    expect(out).toEqual({
+      totalDischarges: 0,
+      liveDischarges: 0,
+      dischargesWithLos180OrMore: 0,
+      liveDischargesIncludingTransfers: 1,
       liveDischargesReadmittedWithin7Days: 1,
     });
   });

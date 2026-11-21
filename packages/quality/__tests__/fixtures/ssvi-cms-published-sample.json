@@ -1,0 +1,3356 @@
+{
+  "2025": {
+    "dataFiscalYear": 2025,
+    "source": "CMS SSVI file (CMS-1851-F): '508-Version-FY2025-Scoring-Components-FY2025-Data.csv' and '508-Version-FY2025-Data.csv'",
+    "cutHeaders": {
+      "metric_02": "Hospice has 40% or more of RHC days provided in a nursing home or skilled nursing facility",
+      "metric_03": "Hospice's rate of providing visits during the last two RHC days of life that is less than or equal to the 25th Percentile (87.5%)",
+      "metric_05": "Hospice's percentage of discharges with a LOS of 180 days or more is greater than or equal to the 75th Percentile (33.3%)",
+      "metric_04": "Hospice's percentage of discharges that are live is greater than or equal to the 75th Percentile (47.0%)",
+      "metric_06": "Hospice's average skilled nursing minutes on RHC days is less than or equal to the 25th Percentile (9.9 minutes per day)",
+      "metric_07": "Hospice's percentage of weekend RHC days with a skilled visit (nursing, MSS, therapy) is less than or equal to the 25th Percentile (4.8%)",
+      "metric_08": "Hospice's percent of live discharges where beneficiaries return to the same hospice in seven days is greater than or equal to the 75th Percentile (18.2%)",
+      "spending": [
+        "Total non-hospice spending greater than $0.00 and less than or equal to $6,532.96",
+        "Total non-hospice spending greater than $6,532.96 and less than or equal to $21,341.05",
+        "Total non-hospice spending greater than $21,341.05 and less than or equal to $44,437.57",
+        "Total non-hospice spending greater than $44,437.57 and less than or equal to $79,420.80",
+        "Total non-hospice spending greater than $79,420.80 and less than or equal to $138,572.14",
+        "Total non-hospice spending greater than  $138,572.14 and less than or equal to $253,592.84",
+        "Total non-hospice spending greater than $253,592.84 and less than or equal to $538,406.00",
+        "Total non-hospice spending greater than $538,406.00"
+      ]
+    },
+    "metrics": {
+      "metric_02": [
+        {
+          "value": 0.023,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.056,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.089,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.122,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.155,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.188,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.221,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.254,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.287,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.32,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.353,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.387,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.388,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.389,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.39,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.391,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.392,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.393,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.394,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.395,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.396,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.397,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.398,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.399,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.401,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.402,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.403,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.405,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.406,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.407,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.408,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.409,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.412,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.413,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.414,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.415,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.416,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.446,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.475,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.506,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.542,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.583,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.619,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.663,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.707,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.767,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.845,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.918,
+          "pointAwarded": true
+        }
+      ],
+      "metric_03": [
+        {
+          "value": 0.429,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.565,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.634,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.676,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.701,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.729,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.756,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.781,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.802,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.823,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.843,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.863,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.864,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.865,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.866,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.867,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.868,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.869,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.87,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.871,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.872,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.873,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.874,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.875,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.876,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.877,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.878,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.879,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.88,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.881,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.882,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.883,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.884,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.885,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.886,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.887,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.888,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.898,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.908,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.918,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.928,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.938,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.948,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.958,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.968,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.978,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.988,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.998,
+          "pointAwarded": false
+        }
+      ],
+      "metric_04": [
+        {
+          "value": 0.058,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.093,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.128,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.163,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.198,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.233,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.268,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.303,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.339,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.376,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.412,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.455,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.456,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.457,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.458,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.459,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.46,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.462,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.463,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.464,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.465,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.467,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.468,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.469,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.471,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.474,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.475,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.476,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.477,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.478,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.479,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.48,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.481,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.482,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.483,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.484,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.485,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.526,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.563,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.608,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.651,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.692,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.741,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.796,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.851,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.894,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.935,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.97,
+          "pointAwarded": true
+        }
+      ],
+      "metric_05": [
+        {
+          "value": 0.044,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.07,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.095,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.12,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.145,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.17,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.195,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.22,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.245,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.27,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.295,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.32,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.321,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.322,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.323,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.324,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.325,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.326,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.327,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.328,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.329,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.33,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.331,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.332,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.333,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.334,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.335,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.336,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.337,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.338,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.339,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.34,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.341,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.342,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.343,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.344,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.345,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.375,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.403,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.433,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.466,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.504,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.542,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.59,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.649,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.731,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.812,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.906,
+          "pointAwarded": true
+        }
+      ],
+      "metric_06": [
+        {
+          "value": 0.4,
+          "pointAwarded": true
+        },
+        {
+          "value": 1.4,
+          "pointAwarded": true
+        },
+        {
+          "value": 2.2,
+          "pointAwarded": true
+        },
+        {
+          "value": 3.1,
+          "pointAwarded": true
+        },
+        {
+          "value": 3.8,
+          "pointAwarded": true
+        },
+        {
+          "value": 4.5,
+          "pointAwarded": true
+        },
+        {
+          "value": 5.2,
+          "pointAwarded": true
+        },
+        {
+          "value": 5.9,
+          "pointAwarded": true
+        },
+        {
+          "value": 6.6,
+          "pointAwarded": true
+        },
+        {
+          "value": 7.3,
+          "pointAwarded": true
+        },
+        {
+          "value": 8.0,
+          "pointAwarded": true
+        },
+        {
+          "value": 8.7,
+          "pointAwarded": true
+        },
+        {
+          "value": 8.8,
+          "pointAwarded": true
+        },
+        {
+          "value": 8.9,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.0,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.1,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.2,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.3,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.4,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.5,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.6,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.7,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.8,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.9,
+          "pointAwarded": true
+        },
+        {
+          "value": 10.0,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.1,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.2,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.3,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.4,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.5,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.6,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.7,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.8,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.9,
+          "pointAwarded": false
+        },
+        {
+          "value": 11.0,
+          "pointAwarded": false
+        },
+        {
+          "value": 11.1,
+          "pointAwarded": false
+        },
+        {
+          "value": 11.2,
+          "pointAwarded": false
+        },
+        {
+          "value": 13.2,
+          "pointAwarded": false
+        },
+        {
+          "value": 15.2,
+          "pointAwarded": false
+        },
+        {
+          "value": 17.2,
+          "pointAwarded": false
+        },
+        {
+          "value": 19.2,
+          "pointAwarded": false
+        },
+        {
+          "value": 21.2,
+          "pointAwarded": false
+        },
+        {
+          "value": 23.2,
+          "pointAwarded": false
+        },
+        {
+          "value": 25.4,
+          "pointAwarded": false
+        },
+        {
+          "value": 27.7,
+          "pointAwarded": false
+        },
+        {
+          "value": 30.5,
+          "pointAwarded": false
+        },
+        {
+          "value": 38.2,
+          "pointAwarded": false
+        },
+        {
+          "value": 66.2,
+          "pointAwarded": false
+        }
+      ],
+      "metric_07": [
+        {
+          "value": 0.003,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.006,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.009,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.012,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.015,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.018,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.021,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.024,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.027,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.03,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.033,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.036,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.037,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.038,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.039,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.04,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.041,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.042,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.043,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.044,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.045,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.046,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.047,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.048,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.049,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.05,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.051,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.052,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.053,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.054,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.055,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.056,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.057,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.058,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.059,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.06,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.061,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.083,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.105,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.127,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.149,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.172,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.194,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.216,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.242,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.27,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.3,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.389,
+          "pointAwarded": false
+        }
+      ],
+      "metric_08": [
+        {
+          "value": 0.046,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.063,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.075,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.088,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.098,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.108,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.118,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.128,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.138,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.148,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.158,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.169,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.17,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.171,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.172,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.173,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.174,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.175,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.176,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.177,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.178,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.179,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.18,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.181,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.182,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.183,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.184,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.185,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.186,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.187,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.188,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.189,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.19,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.191,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.192,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.193,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.194,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.212,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.23,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.248,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.268,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.288,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.307,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.33,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.364,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.392,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.439,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.541,
+          "pointAwarded": true
+        }
+      ]
+    },
+    "spending": [
+      {
+        "totalCents": 0,
+        "points": 0
+      },
+      {
+        "totalCents": 18973,
+        "points": 1
+      },
+      {
+        "totalCents": 61418,
+        "points": 1
+      },
+      {
+        "totalCents": 118346,
+        "points": 1
+      },
+      {
+        "totalCents": 201129,
+        "points": 1
+      },
+      {
+        "totalCents": 292441,
+        "points": 1
+      },
+      {
+        "totalCents": 417680,
+        "points": 1
+      },
+      {
+        "totalCents": 574759,
+        "points": 1
+      },
+      {
+        "totalCents": 653296,
+        "points": 1
+      },
+      {
+        "totalCents": 654490,
+        "points": 2
+      },
+      {
+        "totalCents": 722996,
+        "points": 2
+      },
+      {
+        "totalCents": 850363,
+        "points": 2
+      },
+      {
+        "totalCents": 1027937,
+        "points": 2
+      },
+      {
+        "totalCents": 1257473,
+        "points": 2
+      },
+      {
+        "totalCents": 1451249,
+        "points": 2
+      },
+      {
+        "totalCents": 1675748,
+        "points": 2
+      },
+      {
+        "totalCents": 1907064,
+        "points": 2
+      },
+      {
+        "totalCents": 2134105,
+        "points": 2
+      },
+      {
+        "totalCents": 2136220,
+        "points": 3
+      },
+      {
+        "totalCents": 2136544,
+        "points": 3
+      },
+      {
+        "totalCents": 2381800,
+        "points": 3
+      },
+      {
+        "totalCents": 2664119,
+        "points": 3
+      },
+      {
+        "totalCents": 2900579,
+        "points": 3
+      },
+      {
+        "totalCents": 3230284,
+        "points": 3
+      },
+      {
+        "totalCents": 3585407,
+        "points": 3
+      },
+      {
+        "totalCents": 3956900,
+        "points": 3
+      },
+      {
+        "totalCents": 4309675,
+        "points": 3
+      },
+      {
+        "totalCents": 4443757,
+        "points": 3
+      },
+      {
+        "totalCents": 4444220,
+        "points": 4
+      },
+      {
+        "totalCents": 4690177,
+        "points": 4
+      },
+      {
+        "totalCents": 5116779,
+        "points": 4
+      },
+      {
+        "totalCents": 5603111,
+        "points": 4
+      },
+      {
+        "totalCents": 6060513,
+        "points": 4
+      },
+      {
+        "totalCents": 6539982,
+        "points": 4
+      },
+      {
+        "totalCents": 7103309,
+        "points": 4
+      },
+      {
+        "totalCents": 7587413,
+        "points": 4
+      },
+      {
+        "totalCents": 7942080,
+        "points": 4
+      },
+      {
+        "totalCents": 7945084,
+        "points": 5
+      },
+      {
+        "totalCents": 8126863,
+        "points": 5
+      },
+      {
+        "totalCents": 8678670,
+        "points": 5
+      },
+      {
+        "totalCents": 9352261,
+        "points": 5
+      },
+      {
+        "totalCents": 10218524,
+        "points": 5
+      },
+      {
+        "totalCents": 11000044,
+        "points": 5
+      },
+      {
+        "totalCents": 11969132,
+        "points": 5
+      },
+      {
+        "totalCents": 12788455,
+        "points": 5
+      },
+      {
+        "totalCents": 13807958,
+        "points": 5
+      },
+      {
+        "totalCents": 13857214,
+        "points": 5
+      },
+      {
+        "totalCents": 13870936,
+        "points": 6
+      },
+      {
+        "totalCents": 14858803,
+        "points": 6
+      },
+      {
+        "totalCents": 16250548,
+        "points": 6
+      },
+      {
+        "totalCents": 17441703,
+        "points": 6
+      },
+      {
+        "totalCents": 18835677,
+        "points": 6
+      },
+      {
+        "totalCents": 20782897,
+        "points": 6
+      },
+      {
+        "totalCents": 22617950,
+        "points": 6
+      },
+      {
+        "totalCents": 24369684,
+        "points": 6
+      },
+      {
+        "totalCents": 25359284,
+        "points": 6
+      },
+      {
+        "totalCents": 25372302,
+        "points": 7
+      },
+      {
+        "totalCents": 26676797,
+        "points": 7
+      },
+      {
+        "totalCents": 29039659,
+        "points": 7
+      },
+      {
+        "totalCents": 31617028,
+        "points": 7
+      },
+      {
+        "totalCents": 35373950,
+        "points": 7
+      },
+      {
+        "totalCents": 39112034,
+        "points": 7
+      },
+      {
+        "totalCents": 44059531,
+        "points": 7
+      },
+      {
+        "totalCents": 49063191,
+        "points": 7
+      },
+      {
+        "totalCents": 53840600,
+        "points": 7
+      },
+      {
+        "totalCents": 53935494,
+        "points": 8
+      },
+      {
+        "totalCents": 55324125,
+        "points": 8
+      },
+      {
+        "totalCents": 63606931,
+        "points": 8
+      },
+      {
+        "totalCents": 73903038,
+        "points": 8
+      },
+      {
+        "totalCents": 91511069,
+        "points": 8
+      },
+      {
+        "totalCents": 117390900,
+        "points": 8
+      },
+      {
+        "totalCents": 161462838,
+        "points": 8
+      },
+      {
+        "totalCents": 267524900,
+        "points": 8
+      },
+      {
+        "totalCents": 919273600,
+        "points": 8
+      }
+    ]
+  },
+  "2024": {
+    "dataFiscalYear": 2024,
+    "source": "CMS SSVI file (CMS-1851-F): '508-Version-FY2024-Scoring-Components.csv' and '508-Version-FY2024-Data.csv'",
+    "cutHeaders": {
+      "metric_02": "Hospice has 40% or more of RHC days provided in a nursing home or skilled nursing facility",
+      "metric_03": "Hospice's rate of providing visits during the last two RHC days of life that is less than or equal to the 25th Percentile (85.7%)",
+      "metric_05": "Hospice's percentage of discharges with a LOS of 180 days or more is greater than or equal to the 75th Percentile (33.1%)",
+      "metric_04": "Hospice's percentage of discharges that are live is greater than or equal to the 75th Percentile (47.7%)",
+      "metric_06": "Hospice's average skilled nursing minutes on RHC days is less than or equal to the 25th Percentile (9.8 minutes per day)",
+      "metric_07": "Hospice's percentage of weekend RHC days with a skilled visit (nursing, MSS, therapy) is less than or equal to the 25th Percentile (4.8%)",
+      "metric_08": "Hospice's percent of live discharges where beneficiaries return to the same hospice in seven days is greater than or equal to the 75th Percentile (15.0%)",
+      "spending": [
+        "Total non-hospice spending greater than $0.00 and less than or equal to $5,964.19",
+        "Total non-hospice spending greater than $5,964.19 and less than or equal to $19,061.63",
+        "Total non-hospice spending greater than $19,061.63 and less than or equal to $41,318.35",
+        "Total non-hospice spending greater than $41,318.35 and less than or equal to $72,896.46",
+        "Total non-hospice spending greater than $72,896.46 and less than or equal to $124,893.05",
+        "Total non-hospice spending greater than $124,893.05 and less than or equal to $227,185.05",
+        "Total non-hospice spending greater than $227,185.05 and less than or equal to $520,100.16",
+        "Total non-hospice spending greater than $520,100.16"
+      ]
+    },
+    "metrics": {
+      "metric_02": [
+        {
+          "value": 0.023,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.056,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.089,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.122,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.155,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.188,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.221,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.254,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.287,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.32,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.353,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.387,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.388,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.389,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.39,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.391,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.392,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.393,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.394,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.395,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.396,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.397,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.398,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.399,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.4,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.401,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.402,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.403,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.404,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.405,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.406,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.407,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.408,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.409,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.41,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.411,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.412,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.441,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.471,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.503,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.538,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.582,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.621,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.658,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.704,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.758,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.822,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.905,
+          "pointAwarded": true
+        }
+      ],
+      "metric_03": [
+        {
+          "value": 0.407,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.528,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.585,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.632,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.672,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.701,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.73,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.757,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.78,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.802,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.824,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.845,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.846,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.847,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.848,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.849,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.85,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.851,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.852,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.853,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.854,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.855,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.856,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.857,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.858,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.859,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.86,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.861,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.862,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.863,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.864,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.865,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.866,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.867,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.868,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.869,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.87,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.881,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.892,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.903,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.914,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.925,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.936,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.947,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.958,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.969,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.98,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.991,
+          "pointAwarded": false
+        }
+      ],
+      "metric_04": [
+        {
+          "value": 0.049,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.085,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.121,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.157,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.193,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.229,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.265,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.301,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.338,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.374,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.412,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.458,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.459,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.46,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.462,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.464,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.465,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.466,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.468,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.469,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.471,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.472,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.474,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.475,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.478,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.479,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.48,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.481,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.482,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.483,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.485,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.486,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.487,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.488,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.489,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.491,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.492,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.532,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.57,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.611,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.652,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.708,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.765,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.815,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.86,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.903,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.943,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.975,
+          "pointAwarded": true
+        }
+      ],
+      "metric_05": [
+        {
+          "value": 0.054,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.078,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.102,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.126,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.15,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.174,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.198,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.222,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.246,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.27,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.294,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.318,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.319,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.32,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.321,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.322,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.323,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.324,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.325,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.326,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.327,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.328,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.329,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.33,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.331,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.333,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.334,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.335,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.336,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.337,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.338,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.339,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.34,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.341,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.342,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.343,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.344,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.367,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.396,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.423,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.451,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.484,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.529,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.576,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.633,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.703,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.786,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.921,
+          "pointAwarded": true
+        }
+      ],
+      "metric_06": [
+        {
+          "value": 0.6,
+          "pointAwarded": true
+        },
+        {
+          "value": 2.1,
+          "pointAwarded": true
+        },
+        {
+          "value": 2.9,
+          "pointAwarded": true
+        },
+        {
+          "value": 3.7,
+          "pointAwarded": true
+        },
+        {
+          "value": 4.4,
+          "pointAwarded": true
+        },
+        {
+          "value": 5.1,
+          "pointAwarded": true
+        },
+        {
+          "value": 5.8,
+          "pointAwarded": true
+        },
+        {
+          "value": 6.5,
+          "pointAwarded": true
+        },
+        {
+          "value": 7.2,
+          "pointAwarded": true
+        },
+        {
+          "value": 7.9,
+          "pointAwarded": true
+        },
+        {
+          "value": 8.6,
+          "pointAwarded": true
+        },
+        {
+          "value": 8.7,
+          "pointAwarded": true
+        },
+        {
+          "value": 8.8,
+          "pointAwarded": true
+        },
+        {
+          "value": 8.9,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.0,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.1,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.2,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.3,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.4,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.5,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.6,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.7,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.8,
+          "pointAwarded": true
+        },
+        {
+          "value": 9.9,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.0,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.1,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.2,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.3,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.4,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.5,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.6,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.7,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.8,
+          "pointAwarded": false
+        },
+        {
+          "value": 10.9,
+          "pointAwarded": false
+        },
+        {
+          "value": 11.0,
+          "pointAwarded": false
+        },
+        {
+          "value": 11.1,
+          "pointAwarded": false
+        },
+        {
+          "value": 13.1,
+          "pointAwarded": false
+        },
+        {
+          "value": 15.1,
+          "pointAwarded": false
+        },
+        {
+          "value": 17.1,
+          "pointAwarded": false
+        },
+        {
+          "value": 19.1,
+          "pointAwarded": false
+        },
+        {
+          "value": 21.1,
+          "pointAwarded": false
+        },
+        {
+          "value": 23.1,
+          "pointAwarded": false
+        },
+        {
+          "value": 25.1,
+          "pointAwarded": false
+        },
+        {
+          "value": 27.5,
+          "pointAwarded": false
+        },
+        {
+          "value": 31.2,
+          "pointAwarded": false
+        },
+        {
+          "value": 39.6,
+          "pointAwarded": false
+        },
+        {
+          "value": 67.2,
+          "pointAwarded": false
+        }
+      ],
+      "metric_07": [
+        {
+          "value": 0.002,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.006,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.009,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.012,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.015,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.018,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.021,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.024,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.027,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.03,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.033,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.036,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.037,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.038,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.039,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.04,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.041,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.042,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.043,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.044,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.045,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.046,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.047,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.048,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.049,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.05,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.051,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.052,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.053,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.054,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.055,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.056,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.057,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.058,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.059,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.06,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.061,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.084,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.107,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.13,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.153,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.176,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.2,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.223,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.248,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.283,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.325,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.43,
+          "pointAwarded": false
+        }
+      ],
+      "metric_08": [
+        {
+          "value": 0.017,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.029,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.041,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.053,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.065,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.077,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.089,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.101,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.113,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.125,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.137,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.138,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.139,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.14,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.141,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.142,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.143,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.144,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.145,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.146,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.147,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.148,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.149,
+          "pointAwarded": false
+        },
+        {
+          "value": 0.15,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.151,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.152,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.153,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.154,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.155,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.156,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.157,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.158,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.159,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.16,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.161,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.162,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.188,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.214,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.24,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.266,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.292,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.319,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.346,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.382,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.421,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.467,
+          "pointAwarded": true
+        },
+        {
+          "value": 0.584,
+          "pointAwarded": true
+        }
+      ]
+    },
+    "spending": [
+      {
+        "totalCents": 0,
+        "points": 0
+      },
+      {
+        "totalCents": 18757,
+        "points": 1
+      },
+      {
+        "totalCents": 62658,
+        "points": 1
+      },
+      {
+        "totalCents": 117852,
+        "points": 1
+      },
+      {
+        "totalCents": 193308,
+        "points": 1
+      },
+      {
+        "totalCents": 277574,
+        "points": 1
+      },
+      {
+        "totalCents": 371428,
+        "points": 1
+      },
+      {
+        "totalCents": 501518,
+        "points": 1
+      },
+      {
+        "totalCents": 596419,
+        "points": 1
+      },
+      {
+        "totalCents": 601305,
+        "points": 2
+      },
+      {
+        "totalCents": 626108,
+        "points": 2
+      },
+      {
+        "totalCents": 745762,
+        "points": 2
+      },
+      {
+        "totalCents": 904110,
+        "points": 2
+      },
+      {
+        "totalCents": 1098435,
+        "points": 2
+      },
+      {
+        "totalCents": 1305996,
+        "points": 2
+      },
+      {
+        "totalCents": 1481406,
+        "points": 2
+      },
+      {
+        "totalCents": 1666746,
+        "points": 2
+      },
+      {
+        "totalCents": 1879205,
+        "points": 2
+      },
+      {
+        "totalCents": 1906163,
+        "points": 2
+      },
+      {
+        "totalCents": 1909136,
+        "points": 3
+      },
+      {
+        "totalCents": 2123303,
+        "points": 3
+      },
+      {
+        "totalCents": 2390215,
+        "points": 3
+      },
+      {
+        "totalCents": 2656470,
+        "points": 3
+      },
+      {
+        "totalCents": 2934744,
+        "points": 3
+      },
+      {
+        "totalCents": 3234452,
+        "points": 3
+      },
+      {
+        "totalCents": 3564264,
+        "points": 3
+      },
+      {
+        "totalCents": 3971473,
+        "points": 3
+      },
+      {
+        "totalCents": 4131835,
+        "points": 3
+      },
+      {
+        "totalCents": 4134970,
+        "points": 4
+      },
+      {
+        "totalCents": 4317449,
+        "points": 4
+      },
+      {
+        "totalCents": 4690982,
+        "points": 4
+      },
+      {
+        "totalCents": 5088195,
+        "points": 4
+      },
+      {
+        "totalCents": 5473838,
+        "points": 4
+      },
+      {
+        "totalCents": 5947307,
+        "points": 4
+      },
+      {
+        "totalCents": 6402606,
+        "points": 4
+      },
+      {
+        "totalCents": 6894760,
+        "points": 4
+      },
+      {
+        "totalCents": 7289646,
+        "points": 4
+      },
+      {
+        "totalCents": 7291411,
+        "points": 5
+      },
+      {
+        "totalCents": 7421191,
+        "points": 5
+      },
+      {
+        "totalCents": 8012825,
+        "points": 5
+      },
+      {
+        "totalCents": 8574439,
+        "points": 5
+      },
+      {
+        "totalCents": 9255230,
+        "points": 5
+      },
+      {
+        "totalCents": 9905783,
+        "points": 5
+      },
+      {
+        "totalCents": 10653760,
+        "points": 5
+      },
+      {
+        "totalCents": 11439577,
+        "points": 5
+      },
+      {
+        "totalCents": 12401868,
+        "points": 5
+      },
+      {
+        "totalCents": 12489305,
+        "points": 5
+      },
+      {
+        "totalCents": 12494661,
+        "points": 6
+      },
+      {
+        "totalCents": 13410819,
+        "points": 6
+      },
+      {
+        "totalCents": 14403894,
+        "points": 6
+      },
+      {
+        "totalCents": 15647705,
+        "points": 6
+      },
+      {
+        "totalCents": 16928630,
+        "points": 6
+      },
+      {
+        "totalCents": 18224530,
+        "points": 6
+      },
+      {
+        "totalCents": 19725242,
+        "points": 6
+      },
+      {
+        "totalCents": 21750939,
+        "points": 6
+      },
+      {
+        "totalCents": 22718505,
+        "points": 6
+      },
+      {
+        "totalCents": 22719100,
+        "points": 7
+      },
+      {
+        "totalCents": 23849545,
+        "points": 7
+      },
+      {
+        "totalCents": 25849783,
+        "points": 7
+      },
+      {
+        "totalCents": 28488469,
+        "points": 7
+      },
+      {
+        "totalCents": 31683209,
+        "points": 7
+      },
+      {
+        "totalCents": 35622925,
+        "points": 7
+      },
+      {
+        "totalCents": 40100581,
+        "points": 7
+      },
+      {
+        "totalCents": 45736294,
+        "points": 7
+      },
+      {
+        "totalCents": 52010016,
+        "points": 7
+      },
+      {
+        "totalCents": 52014469,
+        "points": 8
+      },
+      {
+        "totalCents": 53275838,
+        "points": 8
+      },
+      {
+        "totalCents": 63081019,
+        "points": 8
+      },
+      {
+        "totalCents": 75295169,
+        "points": 8
+      },
+      {
+        "totalCents": 90798419,
+        "points": 8
+      },
+      {
+        "totalCents": 117397512,
+        "points": 8
+      },
+      {
+        "totalCents": 157838638,
+        "points": 8
+      },
+      {
+        "totalCents": 266502975,
+        "points": 8
+      },
+      {
+        "totalCents": 950552300,
+        "points": 8
+      }
+    ]
+  }
+}

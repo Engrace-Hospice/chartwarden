@@ -17,6 +17,7 @@
 // Every value is an INTERNAL ESTIMATE; CMS computes and publishes the official SSVI. Thresholds: the latest
 // published SSVI cut table at or before the reporting period's fiscal year (`ssviThresholdsFor`).
 import {
+  MEASURE_CATALOG,
   type MeasureRegistration,
   type QualityBillingConsumer,
   SSVI_METRIC_MEASURE_CODES,
@@ -65,9 +66,15 @@ export interface SsviResolveSeams {
       ratio: string | null;
       thresholdMet: boolean | null;
       computationSnapshot: Record<string, unknown> | null;
+      calculatorVersion: string;
     } | null>;
   };
 }
+
+/** The calculator version the catalog says each measure's CURRENT rows carry (the composite's staleness check). */
+const CURRENT_CALCULATOR_VERSION: ReadonlyMap<string, string> = new Map(
+  MEASURE_CATALOG.map((entry) => [entry.code, entry.calculatorVersion]),
+);
 
 const MS_PER_DAY = 86_400_000;
 
@@ -175,12 +182,13 @@ export async function resolveSsviMeasureInput(
         return {
           ...base,
           totalDischarges: c.totalDischarges,
-          dischargesWithLosOver180: c.dischargesWithLosOver180,
+          dischargesWithLos180OrMore: c.dischargesWithLos180OrMore,
           rule: rule("metric_05"),
         };
+      // Metric 8's live population counts transfers (CMS), unlike metric 4's.
       return {
         ...base,
-        liveDischarges: c.liveDischarges,
+        liveDischarges: c.liveDischargesIncludingTransfers,
         liveDischargesReadmittedWithin7Days: c.liveDischargesReadmittedWithin7Days,
         rule: rule("metric_08"),
       };
@@ -227,8 +235,11 @@ async function resolveSsviCompositeInput(
   const metrics = {} as Record<SsviMetricKey, unknown>;
   for (const [key, measureCode] of SSVI_METRIC_MEASURE_CODES) {
     const row = await values.findCurrent(measureCode, request.providerEntityId, start, end);
+    // A row stamped with a DIFFERENT calculator version than the catalog's was scored under another definition
+    // (normally an older cut): it is "not yet computed" until the recompute rewrites it, never stale points in
+    // the total.
     metrics[key] =
-      row === null
+      row === null || row.calculatorVersion !== CURRENT_CALCULATOR_VERSION.get(measureCode)
         ? null
         : {
             numerator: row.numerator,

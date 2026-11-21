@@ -33,6 +33,31 @@ actions already conform to the `m30.` namespace (`m30.measure.*`, `m30.cahps.*`,
 
 ## Changelog
 
+- **Implementation note (SSVI cuts corrected to CMS's published file, 2026-11-20)** — `SSVI_THRESHOLDS_FY2025_DATA`
+  carried a mix of cut values: metrics 3 (85.7%), 6 (9.8) and 8 (15%) were CMS's FY2024-data cuts, and metrics 4
+  (47.5%), 5 (33.2%) and the spending octiles (from $6,352.84) matched neither CMS data year. Re-scoring CMS's own
+  per-hospice FY2025 values with them disagreed with CMS's published flags for 151 hospices on metric 3 and 170 on
+  metric 8. The table now holds the cuts read from the headers of the
+  SSVI file CMS posts with CMS-1851-F (FY2025: 87.5% / 47.0% / 33.3% / 9.9 / 4.8% / 18.2%, spending $6,532.96 …
+  $538,406.00) and a new `SSVI_THRESHOLDS_FY2024_DATA` (85.7% / 47.7% / 33.1% / 9.8 / 4.8% / 15.0%).
+  `ssvi-cms-golden.test.ts` reproduces CMS's published point flags and spending scores from a public sample
+  (no CCN, no PHI) and pins the web panel's mirrored cut text to the table. See
+  `docs/research/FY2027_HOSPICE_COP_RESEARCH.md` §7 for the source and the definition notes (metric 7 denominator,
+  skilled-visit disciplines, metric 5/4/8 discharge handling). Inputs aligned to the same CMS definitions:
+  metric 5 counts a length of stay of 180 days or more (was over 180; field `dischargesWithLos180OrMore`);
+  metrics 4 and 5 exclude TRANSFER discharges (CMS status 50/51) from numerator and denominator while metric 8
+  includes them in its live population (`DischargeReader.ssviDischargeCounts` gains
+  `liveDischargesIncludingTransfers`); `skilledVisitDaysForOrg` counts PT/OT/SLP visits as skilled for metrics 3
+  and 7. Known ceiling: metric 5's length of stay is this admission only, whereas CMS counts lifetime hospice
+  days across hospices and one final discharge per beneficiary per year — days at other hospices
+  are not available (they need the CMS claims feed) and this agency's earlier stays for the same patient are not
+  summed, so a readmitted or prior-agency patient is under-counted. `calculatorVersion`
+  is bumped to 0.2.0 on `ssvi_metric_03` to `08`; because the snapshot hash does not cover the version, the
+  recompute worker now also rewrites a current row stamped with a DIFFERENT version (so an unchanged value is
+  restamped), and `ssvi_composite` treats a metric row stamped with another version as not yet computed rather
+  than summing points scored under the old cut. The quality hub's SSVI panel does the same for a row
+  stamped with another version, and both `DischargeReader` reads (`ssviDischargeCounts`, `liveDischargeTimingCounts`)
+  count only `completed` discharges (a `voided` or `pending_cosign` row is not a discharge).
 - **Implementation note (SSVI family, FY2027, 2026-10-06)** — new `ssvi` measure family (CMS-1851-F §III.B.2,
   Table 9): nine metrics (`ssvi_metric_01`…`09`) + `ssvi_composite`, catalog `activatesFy: 2027`, calculators in
   `packages/quality/src/measures/ssvi/` (the HCI family layout: per-metric files, `thresholds.ts`,
@@ -44,7 +69,8 @@ actions already conform to the `m30.` namespace (`m30.measure.*`, `m30.cahps.*`,
   the suppressed row records `partialScoreLowerBound` / `maxPossibleScore`. Inputs: M6 `LevelOfCarePeriodReader`
   (1, 3, 6, 7), new `DischargeReader.ssviDischargeCounts` (4, 5, 8), M23 `ClaimLineReader` rollup's new
   `rhcNursingFacilityDays` (Q5003/Q5004 on 0651; metric 2), new M8 `SignedEncountersReader.skilledVisitDaysForOrg`
-  (RN/LPN/MSW; the encounter model has no therapy discipline — metrics 3 and 7 may under-count). Worker routing in
+  (RN/LPN/MSW at first, with PT/OT/SLP added 2026-11-20 — the encounter model always had the therapy disciplines;
+  the reader's filter was the gap). Worker routing in
   `apps/backend/src/modules/30-quality/jobs/ssvi-resolvers.ts`. The SSVI is CMS-calculated and published with no
   hospice submission, preview or reconsideration, is not an HQRP or Care Compare measure, and does NOT replace
   the HCI — everything shown is labelled an INTERNAL ESTIMATE. Quality hub: an SSVI panel (score or range,
@@ -400,7 +426,7 @@ Every state transition publishes one outbox event in the same transaction as the
 
 ### 2.6 Idempotency
 
-- **Measure recomputation** is idempotent on `(measure_code, provider_entity_id, period_start, period_end, snapshot_content_hash)`. If the content hash matches the prior current row's hash, the worker no-ops; otherwise a new row is inserted and the prior row is superseded.
+- **Measure recomputation** is idempotent on `(measure_code, provider_entity_id, period_start, period_end, snapshot_content_hash, calculator_version)`. If the content hash AND the calculator version match the prior current row's, the worker no-ops (a row stamped with a different calculator version is rewritten even when its content is unchanged); otherwise a new row is inserted and the prior row is superseded.
 - **CAHPS decedent sampling** is idempotent on `(provider_entity_id, sampling_cycle_month, deceased_admission_id)`. Re-running the sampler for the same month is safe; already-exported decedents are not re-exported.
 - **CAHPS result ingestion** is idempotent on `(provider_entity_id, vendor_adapter_id, reporting_period, vendor_response_payload_hash)`. The same vendor response delivered twice is a no-op.
 - **Mortality review auto-creation** is idempotent on `(admission_id)` — re-receiving `m6.discharge.death` for the same admission is a no-op (the existing review row's `created_via_event_idempotency_key` matches the incoming event_id).
@@ -2141,7 +2167,7 @@ M30 owns four BullMQ queues under the `m30.*` namespace, plus three scheduled (c
 
 | Queue | Producer | Worker concurrency | Job payload | Idempotency key | Backoff / attempts | DLQ |
 |-------|----------|--------------------|-------------|------------------|--------------------|-----|
-| `m30.measure_recompute` | R-04 + cron + outbox subscribers | 4 per node, max 12 cluster-wide | `{ orgId, scope, reason, priority, enqueuedBy }` | `(orgId, scope.measureId, period.end, computeVersion)` | exponential 30s–10min, max 6 attempts | `m30.measure_recompute.dlq` — on 6th failure, Ops alert `m30.alerts.measure_recompute_failed` fires (severity=critical); manual re-enqueue via R-04 |
+| `m30.measure_recompute` | R-04 + cron + outbox subscribers | 4 per node, max 12 cluster-wide | `{ orgId, scope, reason, priority, enqueuedBy }` | `(orgId, measureCode, providerEntityId, period.start, dateBucket)` | exponential 30s–10min, max 6 attempts | `m30.measure_recompute.dlq` — on 6th failure, Ops alert `m30.alerts.measure_recompute_failed` fires (severity=critical); manual re-enqueue via R-04 |
 | `m30.cahps_export` | R-14 | 2 per node | `{ orgId, samplePeriod, vendorBindingId }` | `(orgId, samplePeriod.start, samplePeriod.end, vendorBindingId)` | exponential 1min–30min, max 4 attempts | `m30.cahps_export.dlq` — on 4th failure, `cahps_decedent_sample.status` set to `export_failed`; M36 alert `m30.cahps_export_failed` fires; QAPI Coordinator manually retriggers via R-14 |
 | `m30.outbreak_detection` | infection surveillance INSERT trigger | 1 per node (serialized per org) | `{ orgId, surveillanceEventId }` | `(orgId, surveillanceEventId)` | exponential 10s–5min, max 5 attempts | `m30.outbreak_detection.dlq` — on 5th failure, compensating `m30.infection.event_recorded` outbox event is re-emitted with `detection_deferred=true` tag; detection reprocessed on next cron cycle |
 | `m30.risk_register_refresh` | R-96 + cron | 1 per node (serialized per org) | `{ orgId, force: boolean }` | `(orgId, dateBucket)` | exponential 30s–10min, max 3 attempts | `m30.risk_register_refresh.dlq` — on 3rd failure, the view is served stale; the R-95 response carries `{ data_as_of: <last_successful_refresh_at>, stale: true }` header; M36 Ops alert fires |

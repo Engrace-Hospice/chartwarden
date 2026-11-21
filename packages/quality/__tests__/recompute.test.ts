@@ -234,6 +234,68 @@ describe("handleMeasureRecompute — END-TO-END over buildMeasureRegistry()", ()
     expect(rows[0]!.supersededBy).toBeNull(); // the original stays current
   });
 
+  it("a calculator-version bump forces a fresh row even when the snapshot is unchanged (no stale stamp is kept)", async () => {
+    const input = {
+      organizationId: "org-1",
+      providerEntityId: "pe-1",
+      periodStart: "2025-04-01",
+      periodEnd: "2026-04-01",
+      scheduledVisits: 10,
+      onTimeVisits: 9,
+      threshold: gteTarget,
+    };
+    const { ports, rows } = makeRecomputeHarness(() => input);
+    await handleMeasureRecompute(makeJob({ jobId: "job-A" }), ports);
+    // The persisted row predates a calculator-version bump: same content, older version stamp.
+    (rows[0] as unknown as { calculatorVersion: string }).calculatorVersion = "0.0.9";
+
+    const rerun = await handleMeasureRecompute(makeJob({ jobId: "job-B" }), ports);
+
+    expect(rerun).toMatchObject({ outcome: "recomputed" });
+    expect(rows).toHaveLength(2);
+    const current = rows.find((r) => r.supersededBy === null);
+    expect(current?.calculatorVersion).toBe("0.1.0");
+  });
+
+  it("restamping a measure that is already red emits the value again but does not re-raise the breach", async () => {
+    const { ports, rows, emits } = makeRecomputeHarness(() => ({
+      organizationId: "org-1",
+      providerEntityId: "pe-1",
+      periodStart: "2025-04-01",
+      periodEnd: "2026-04-01",
+      scheduledVisits: 10,
+      onTimeVisits: 5, // 50% against a 90% target: red
+      threshold: gteTarget,
+    }));
+    await handleMeasureRecompute(makeJob({ jobId: "job-A" }), ports);
+    expect(emits.breach).toHaveLength(1);
+    (rows[0] as unknown as { calculatorVersion: string }).calculatorVersion = "0.0.9";
+
+    await handleMeasureRecompute(makeJob({ jobId: "job-B" }), ports);
+
+    expect(emits.value).toHaveLength(2);
+    expect(emits.breach).toHaveLength(1); // the band did not change: no second alert
+  });
+
+  it("a stored version NEWER than the running registration is rewritten too (the running calculator is the authority)", async () => {
+    const { ports, rows } = makeRecomputeHarness(() => ({
+      organizationId: "org-1",
+      providerEntityId: "pe-1",
+      periodStart: "2025-04-01",
+      periodEnd: "2026-04-01",
+      scheduledVisits: 10,
+      onTimeVisits: 9,
+      threshold: gteTarget,
+    }));
+    await handleMeasureRecompute(makeJob({ jobId: "job-A" }), ports);
+    (rows[0] as unknown as { calculatorVersion: string }).calculatorVersion = "9.9.9";
+
+    const rerun = await handleMeasureRecompute(makeJob({ jobId: "job-B" }), ports);
+
+    expect(rerun).toMatchObject({ outcome: "recomputed" });
+    expect(rows.find((r) => r.supersededBy === null)?.calculatorVersion).toBe("0.1.0");
+  });
+
   it("appends + supersedes when the recomputed input changes the snapshot", async () => {
     let onTime = 9;
     const { ports, rows } = makeRecomputeHarness(() => ({

@@ -266,5 +266,52 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       expect(breach[0]!.payload.threshold).toBe(1); // the 418.310 regulatory floor, carried through
       expect(breach[0]!.payload.rate).toBe(0);
     });
+
+    it("a current row stamped with an older calculator version is rewritten through the audited supersede path, once", async () => {
+      // A row written before a calculator-version bump: same value, older stamp. The snapshot hash does not
+      // cover the version, so the worker must rewrite it (supersede + insert) or the stamp stays stale forever.
+      const registered = buildMeasureRegistry().get(MEASURE)!.calculatorVersion;
+      const where = [ORG, MEASURE];
+      await admin.query(
+        `UPDATE quality_measure_value SET calculator_version = '0.0.1'
+           WHERE organization_id=$1 AND measure_code=$2 AND superseded_at IS NULL`,
+        where,
+      );
+      const auditCount = async (): Promise<number> =>
+        (
+          await admin.query(
+            `SELECT count(*)::int AS n FROM audit_event
+               WHERE organization_id=$1 AND resource_kind='quality_measure_value'`,
+            [ORG],
+          )
+        ).rows[0].n;
+      const auditBefore = await auditCount();
+      const emittedBefore = outbox.emissions.filter(
+        (e) => e.eventName === "m30.measure.value_emitted",
+      ).length;
+
+      const result = await runRecompute("restamp");
+      expect(result.outcome).toBe("recomputed");
+
+      const current = await admin.query(
+        `SELECT calculator_version FROM quality_measure_value
+           WHERE organization_id=$1 AND measure_code=$2 AND superseded_at IS NULL`,
+        where,
+      );
+      expect(current.rows.map((r) => r.calculator_version)).toEqual([registered]);
+      // One UPDATE (supersede the old row) and one INSERT (the restamped row), both audited by the trigger.
+      expect((await auditCount()) - auditBefore).toBe(2);
+      expect(
+        outbox.emissions.filter((e) => e.eventName === "m30.measure.value_emitted").length -
+          emittedBefore,
+      ).toBe(1);
+      // The band did not change, so the restamp does not re-raise the breach alert.
+      expect(
+        outbox.emissions.filter((e) => e.eventName === "m30.measure.threshold_breached"),
+      ).toHaveLength(1);
+
+      // At the current version a re-run is a no-op again.
+      expect((await runRecompute("restamp-again")).outcome).toBe("unchanged");
+    });
   },
 );

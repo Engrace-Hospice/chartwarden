@@ -17,55 +17,91 @@ export interface SsviMeasureRow {
     readonly thresholdMet: boolean | null;
     readonly bandColor: "green" | "yellow" | "red" | "insufficient_n";
     readonly unavailableReason: string | null;
+    /** The calculator version that wrote this row (the hub's `computeVersion`). */
+    readonly computeVersion: string;
   } | null;
 }
 
-/** CMS Table 9 metric order, short names, the FY2025-data cut CMS published with the FY2027 rule, and max points. */
+/** The claims year of the cut table the panel prints (`ssvi-cms-golden.test.ts` pins it to the latest published). */
+export const SSVI_CUT_DATA_FY = 2025;
+
+/**
+ * CMS Table 9 metric order, names, the cut CMS scored with (mirrors the latest table in `@chartwarden/quality`,
+ * which this app cannot import — `ssvi-cms-golden.test.ts` pins the two together), max points, and `version`: the
+ * calculator version the cut and the metric's definition belong to (the catalog's `calculatorVersion`, pinned the
+ * same way). A stored row from an older version was scored under the old cut and inputs, so it is shown as not yet
+ * computed instead of as a point decided under the wrong rule.
+ */
 export const SSVI_METRICS: readonly {
   readonly code: string;
   readonly name: string;
   readonly cut: string;
   readonly maxPoints: number;
+  readonly version: string;
 }[] = [
   {
     code: "ssvi_metric_01",
     name: "No CHC and no GIP provided",
     cut: "None provided",
     maxPoints: 1,
+    version: "0.1.0",
   },
-  { code: "ssvi_metric_02", name: "RHC days in a NF/SNF", cut: "≥ 40%", maxPoints: 1 },
+  {
+    code: "ssvi_metric_02",
+    name: "RHC days in a NF/SNF",
+    cut: "≥ 40%",
+    maxPoints: 1,
+    version: "0.1.0",
+  },
   {
     code: "ssvi_metric_03",
-    name: "Last two RHC days with a skilled visit",
-    cut: "≤ 85.7%",
+    name: "Last two RHC days of life with a skilled visit",
+    cut: "≤ 87.5%",
     maxPoints: 1,
+    version: "0.2.0",
   },
-  { code: "ssvi_metric_04", name: "Live-discharge share", cut: "≥ 47.5%", maxPoints: 1 },
+  {
+    code: "ssvi_metric_04",
+    name: "Live-discharge share",
+    cut: "≥ 47.0%",
+    maxPoints: 1,
+    version: "0.2.0",
+  },
   {
     code: "ssvi_metric_05",
-    name: "Discharges with LOS over 180 days",
-    cut: "≥ 33.2%",
+    name: "Discharges with LOS of 180 days or more",
+    cut: "≥ 33.3%",
     maxPoints: 1,
+    version: "0.2.0",
   },
   {
     code: "ssvi_metric_06",
     name: "Skilled-nursing minutes per RHC day",
-    cut: "≤ 9.8 min",
+    cut: "≤ 9.9 min",
     maxPoints: 1,
+    version: "0.2.0",
   },
   {
     code: "ssvi_metric_07",
     name: "Weekend RHC days with a skilled visit",
     cut: "≤ 4.8%",
     maxPoints: 1,
+    version: "0.2.0",
   },
   {
     code: "ssvi_metric_08",
-    name: "Live discharges back within 7 days",
-    cut: "≥ 15%",
+    name: "Live discharges back to the same hospice within 7 days",
+    cut: "≥ 18.2%",
     maxPoints: 1,
+    version: "0.2.0",
   },
-  { code: "ssvi_metric_09", name: "Total non-hospice spending", cut: "Octile, 0–8", maxPoints: 8 },
+  {
+    code: "ssvi_metric_09",
+    name: "Total non-hospice spending",
+    cut: "Octile, 0–8",
+    maxPoints: 8,
+    version: "0.1.0",
+  },
 ];
 
 export const SSVI_MAX_SCORE = 16;
@@ -105,12 +141,13 @@ export interface SsviSummary {
 function metricState(
   row: SsviMeasureRow | null,
   maxPoints: number,
+  version: string,
 ): {
   points: number | null;
   state: SsviMetricState;
 } {
   const v = row?.latestValue ?? null;
-  if (!v) return { points: null, state: "not_computed" };
+  if (!v || v.computeVersion !== version) return { points: null, state: "not_computed" };
   if (v.unavailableReason) return { points: null, state: "not_computable" };
   if (maxPoints > 1) return { points: v.numerator, state: v.numerator > 0 ? "point" : "no_point" };
   if (v.bandColor === "insufficient_n" || v.denominator <= 0) return { points: 0, state: "low_n" };
@@ -124,7 +161,7 @@ export function summarizeSsvi(rows: readonly SsviMeasureRow[]): SsviSummary {
   const byCode = new Map(rows.map((r) => [r.measureId, r]));
   const metrics = SSVI_METRICS.map((m) => {
     const row = byCode.get(m.code) ?? null;
-    return { ...m, row, ...metricState(row, m.maxPoints) };
+    return { ...m, row, ...metricState(row, m.maxPoints, m.version) };
   });
   let lowerBound = 0;
   let unknownMax = 0;
@@ -134,12 +171,14 @@ export function summarizeSsvi(rows: readonly SsviMeasureRow[]): SsviSummary {
   }
   const composite = byCode.get("ssvi_composite")?.latestValue ?? null;
   const allKnown = unknownMax === 0;
-  const score =
-    composite && !composite.unavailableReason && composite.denominator > 0
+  // The stored composite is only trusted once every metric beside it is known under the current version: it was
+  // summed from the metric rows as they stood, so beside a stale metric it would carry points scored under the
+  // old cut into the headline.
+  const score = allKnown
+    ? composite && !composite.unavailableReason && composite.denominator > 0
       ? composite.numerator
-      : allKnown
-        ? lowerBound
-        : null;
+      : lowerBound
+    : null;
   const outlier =
     score !== null
       ? score >= SSVI_OUTLIER_SCORE

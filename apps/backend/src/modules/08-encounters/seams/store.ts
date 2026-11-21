@@ -83,7 +83,7 @@ export interface EncounterReaderStore {
     organizationId: string,
     window: { from: string; to: string },
   ): Promise<ReadonlyArray<SkilledNursingDayTotal>>;
-  /** ORG-LEVEL (admission, service date) pairs with a signed `rn`/`lpn`/`msw` visit — SSVI metrics 3 and 7. */
+  /** ORG-LEVEL (admission, service date) pairs with a signed `rn`/`lpn`/`msw`/`pt`/`ot`/`slp` visit — SSVI metrics 3 and 7. */
   skilledVisitDaysForOrg(
     organizationId: string,
     window: { from: string; to: string },

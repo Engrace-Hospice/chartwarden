@@ -1,10 +1,9 @@
 // @chartwarden/quality — SSVI metric 7: Weekend RHC days with a skilled visit as a percentage of total RHC days (CMS-1851-F Table 9). Pure. No IO.
 //
-// Point at ≤ 4.8% (25th pct). Rate = Saturday/Sunday RHC days with ≥ 1 signed skilled visit ÷ ALL RHC days (CMS's
-// denominator is total RHC days, not weekend days). "Skilled" = nursing (RN/LPN) or medical social worker; CMS also
-// counts therapy visits, which the encounter model has no discipline for — a therapy-only weekend day is not seen,
-// so this estimate can only UNDER-count the numerator (err toward the point). Sources: M6 level-of-care spans, M8
-// per-day skilled visits.
+// Point at or below the 25th-percentile cut (`thresholds.ts`). Rate = Saturday/Sunday RHC days with ≥ 1 signed
+// skilled visit ÷ ALL RHC days (CMS's denominator is total RHC days, not weekend days: the published values
+// settle it even though CMS's overview words it as weekend days). "Skilled" = nursing (RN/LPN), medical social
+// services or therapy (PT/OT/SLP), as CMS counts it. Sources: M6 level-of-care spans, M8 per-day skilled visits.
 import type { ComputeMeasureInput, QualityMeasureValueResult } from "../result";
 import { ssviBinaryMetricResult } from "./point_result";
 import type { SsviPointRule } from "./thresholds";

@@ -6,8 +6,9 @@ import { fiscalYearFor } from "@chartwarden/discipline-plans";
 // hands-on clinical disciplines M8 signs visits for: RN, LPN, hospice aide (chha), MSW and chaplain. Not
 // counted: `volunteer` (that is the numerator), `md`/`np` (physician/NP time is not part of the staff
 // hands-on hours basis the spec describes and is billed under separate professional-fee rules) and
-// `bereavement_contact` encounters (post-death family support, not patient care). M8 has no therapy
-// discipline today; one added later joins CARE_DISCIPLINES.
+// `bereavement_contact` encounters (post-death family support, not patient care). M8 signs PT/OT/SLP
+// visits too (migration 1055); they are not in the DECIDED definition, so counting them is a product decision
+// that would add them to CARE_DISCIPLINES.
 //
 // Pure: the digests are read through M8's SignedEncountersReader seam by `../consumers/patient-care-hours`.
 import type { EncounterDiscipline, SignedEncounterDigest } from "@chartwarden/types";
