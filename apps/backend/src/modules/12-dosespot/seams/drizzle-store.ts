@@ -315,6 +315,7 @@ export function createDrizzleDoseSpotSeamStore(db: DbClient): DoseSpotSeamStore 
             status: MO.status,
             activatedAt: MO.activatedAt,
             createdAt: MO.createdAt,
+            drugName: MO.drugName,
           })
           .from(MO)
           .where(
@@ -328,7 +329,9 @@ export function createDrizzleDoseSpotSeamStore(db: DbClient): DoseSpotSeamStore 
             ),
           )
           .limit(1);
-        if (!row) return null;
+        // The stored flag is checked above; the drug classifier (which cannot be expressed in SQL) is the other half of `sudTreatmentOf`, so a
+        // legacy row with a SUD drug and a stored `false` is withheld here exactly as it is on every DTO read.
+        if (!row || sudTreatmentOf({ isSudTreatment: false, drugName: row.drugName })) return null;
         return {
           id: row.id,
           patientId: row.patientId,
