@@ -71,10 +71,25 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
 - **Keys by template.** The three source-domain keys are asked by the service (`source-reads.ts`, `draft-service.ts`), no longer by static route
   preHandlers: the same four routes, after the switch and the tenant are known. A tenant with no default aide or LPN role must grant the keys before it
   enables the draft. Finalize, sign and an addendum's recompute still ask only the admission facts' keys (S1: the signer's draft is the same full draft).
-- **Cosign of a drafted note.** A cosigner without Part 2 disclosure cosigns the redacted view (VN-D13, VN-D43): the register (CW-AC-50, CW-AC-51)
-  records that they attest a note whose Part 2 sections they cannot read. An amendment by such a viewer is refused as before (VN-D30).
-- **"Performed" is the clinician's.** The aide's `adl` states an intervention performed for each one linked to the visit and not removed; the control is
-  the removal affordance and the per-section confirmation, as for the RN routine visit.
+- **Cosign of a drafted note.** A cosigner without Part 2 disclosure cosigns the redacted view (VN-D13, VN-D43): the register (CW-AC-50, CW-AC-51,
+  CW-AC-52) records that they attest a note whose Part 2 sections they cannot read, with the same attestation text, no record on the signature or in
+  the `m8.encounter.cosigned` event that the view was redacted, and the same for an addendum's cosignature through the API. An amendment by such a
+  viewer is refused as before (VN-D30).
+- **"Performed" is the clinician's, and the list is the plan's.** The aide's `adl` states an intervention performed for EVERY active care-plan
+  intervention tagged for the aide on an active problem of the plan in effect at the visit (M7's relevant elements), except those the author removed
+  from the visit. Nothing is linked before the confirmation (the confirmation links them), so the aide cannot leave an item out beforehand: they read
+  the whole text, then confirm it, or deselect the section, or unlink an item they did not perform and confirm again. The control is that
+  per-section, hash-bound confirmation, as for the RN routine visit's interventions; a per-item exclusion before the confirmation is not built.
+- **Provenance.** The recorded ADLs lead the drafted `adl` text and are its first origin (`recorded_adl`, one ADL record per visit, so the source ref's id is
+  the kind: `recorded-adl`); the section's origins read "the activities of daily living recorded at this visit; care plan interventions".
+- **Status codes say a little.** A caller without a source key gets 404 while the switch is off and 403 while it is on, so the switch state shows to
+  them (documented, CW-AC-49). Finalize and sign recompute the draft without the source keys (S1): a signer without `care_plan.read` or
+  `prescribing.read` who is refused 422 or 409 for `adl`, `interventions` or `plan` learns that linked interventions or medication changes exist.
+- **The wounds read is not by template.** `computeDraft` reads M9's recorded wounds for every drafted template (the aide and LPN included), through
+  no key; no drafted section states one, so none reaches a draft. "Only the sources its template drafts from" means the four S1 sources.
+- **Rollout.** The switch is tenant-wide, with no per-template flag: a tenant already switched on at deploy would get the LPN and aide drafts, their
+  keys requirement and the unreviewed 2026.12.2 tags at once. Enabling is refused (409 `CORPUS_REVIEW_PENDING`) while the review is pending, so none
+  should be on; the operator confirms that before the deploy.
 
 ### RN admission visit drafts (ADR-0114 slice S2b, design §3.4): limits recorded
 
