@@ -63,6 +63,35 @@ interface AssemblyPreview {
     remittanceAdviceRecorded: boolean | null;
   };
   stateBillingPolicy: "not_applicable_to_primary_medicaid" | "unconfirmed" | "unresolved";
+  programResponsibility: {
+    status:
+      | "verified"
+      | "missing"
+      | "pending"
+      | "rejected"
+      | "expired"
+      | "revoked"
+      | "ambiguous"
+      | "changes"
+      | "unsupported"
+      | "unavailable";
+    programKind: string | null;
+    canonicalPayerId: string | null;
+    canonicalPayerName: string | null;
+    reasonCode: string;
+  };
+  enrollmentReadiness: {
+    kind: string;
+    status: string;
+    reasonCode: string;
+    vendorPayerId?: string | null;
+  }[];
+  selectedClearinghouse: {
+    status: string;
+    vendor: string | null;
+    configurationStatus: string | null;
+  };
+  tradingPartnerCredential: { status: string; reasonCode: string };
   electronicSubmissionAvailable: false;
   isAdvisorySnapshot: true;
 }
@@ -589,6 +618,36 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                   label="Payer responsibility"
                   value={responsibilityLabel(preview.payerResponsibility)}
                 />
+                <Field
+                  label="Medicaid program and payer"
+                  value={
+                    preview.programResponsibility.status === "verified"
+                      ? `${humanize(preview.programResponsibility.programKind ?? "program")} · ${preview.programResponsibility.canonicalPayerName ?? shortId(preview.programResponsibility.canonicalPayerId ?? "")}; verified assignment covers this service range`
+                      : `${humanize(preview.programResponsibility.status)} · ${humanize(preview.programResponsibility.reasonCode)}`
+                  }
+                />
+                <Field
+                  label="Selected clearinghouse"
+                  value={
+                    preview.selectedClearinghouse.status === "selected"
+                      ? `${preview.selectedClearinghouse.vendor ?? "Vendor unavailable"} · ${humanize(preview.selectedClearinghouse.configurationStatus ?? "configuration status unavailable")}`
+                      : humanize(
+                          preview.selectedClearinghouse.configurationStatus ??
+                            preview.selectedClearinghouse.status,
+                        )
+                  }
+                />
+                <Field
+                  label="Trading-partner credential configuration"
+                  value={`${humanize(preview.tradingPartnerCredential.status)} · ${humanize(preview.tradingPartnerCredential.reasonCode)}; configuration is not payer enrollment`}
+                />
+                {preview.enrollmentReadiness.map((item) => (
+                  <Field
+                    key={item.kind}
+                    label={humanize(item.kind)}
+                    value={`${humanize(item.status)} · ${humanize(item.reasonCode)}${item.vendorPayerId ? ` · vendor payer ID ${item.vendorPayerId}` : ""}`}
+                  />
+                ))}
                 <Field
                   label="Recorded eligibility check"
                   value={

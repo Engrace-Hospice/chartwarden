@@ -204631,6 +204631,9 @@
                           "serviceFrom",
                           "serviceTo",
                           "mcoId",
+                          "medicaidProgramKind",
+                          "canonicalPayerId",
+                          "programResolutionSnapshot",
                           "medicareClaimId",
                           "rbArrangementId",
                           "medicaidClaimControlNumber",
@@ -204724,6 +204727,60 @@
                                 "format": "uuid",
                                 "type": "string"
                               },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "medicaidProgramKind": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "ffs_open_card",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "managed_care",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "other_managed_care",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unsupported",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unresolved",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "ambiguous",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "canonicalPayerId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "programResolutionSnapshot": {
+                            "anyOf": [
+                              {},
                               {
                                 "type": "null"
                               }
@@ -204912,17 +204969,32 @@
                               "programKind": {
                                 "anyOf": [
                                   {
+                                    "const": "ffs_open_card",
+                                    "type": "string"
+                                  },
+                                  {
                                     "const": "managed_care",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "other_managed_care",
                                     "type": "string"
                                   },
                                   {
                                     "const": "unresolved",
                                     "type": "string"
+                                  },
+                                  {
+                                    "const": "ambiguous",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unsupported",
+                                    "type": "string"
                                   }
                                 ]
                               },
                               "programAssignmentVerified": {
-                                "const": false,
                                 "type": "boolean"
                               },
                               "requestedChannel": {
@@ -205046,6 +205118,9 @@
                     "serviceFrom",
                     "serviceTo",
                     "mcoId",
+                    "medicaidProgramKind",
+                    "canonicalPayerId",
+                    "programResolutionSnapshot",
                     "medicareClaimId",
                     "rbArrangementId",
                     "medicaidClaimControlNumber",
@@ -205139,6 +205214,60 @@
                           "format": "uuid",
                           "type": "string"
                         },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "medicaidProgramKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canonicalPayerId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "programResolutionSnapshot": {
+                      "anyOf": [
+                        {},
                         {
                           "type": "null"
                         }
@@ -205327,17 +205456,32 @@
                         "programKind": {
                           "anyOf": [
                             {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
                               "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
                               "type": "string"
                             },
                             {
                               "const": "unresolved",
                               "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
                             }
                           ]
                         },
                         "programAssignmentVerified": {
-                          "const": false,
                           "type": "boolean"
                         },
                         "requestedChannel": {
@@ -205622,6 +205766,9 @@
                     "serviceFrom",
                     "serviceTo",
                     "mcoId",
+                    "medicaidProgramKind",
+                    "canonicalPayerId",
+                    "programResolutionSnapshot",
                     "medicareClaimId",
                     "rbArrangementId",
                     "medicaidClaimControlNumber",
@@ -205715,6 +205862,60 @@
                           "format": "uuid",
                           "type": "string"
                         },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "medicaidProgramKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canonicalPayerId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "programResolutionSnapshot": {
+                      "anyOf": [
+                        {},
                         {
                           "type": "null"
                         }
@@ -205903,17 +206104,32 @@
                         "programKind": {
                           "anyOf": [
                             {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
                               "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
                               "type": "string"
                             },
                             {
                               "const": "unresolved",
                               "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
                             }
                           ]
                         },
                         "programAssignmentVerified": {
-                          "const": false,
                           "type": "boolean"
                         },
                         "requestedChannel": {
@@ -206033,6 +206249,9 @@
                     "serviceFrom",
                     "serviceTo",
                     "mcoId",
+                    "medicaidProgramKind",
+                    "canonicalPayerId",
+                    "programResolutionSnapshot",
                     "medicareClaimId",
                     "rbArrangementId",
                     "medicaidClaimControlNumber",
@@ -206126,6 +206345,60 @@
                           "format": "uuid",
                           "type": "string"
                         },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "medicaidProgramKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canonicalPayerId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "programResolutionSnapshot": {
+                      "anyOf": [
+                        {},
                         {
                           "type": "null"
                         }
@@ -206314,17 +206587,32 @@
                         "programKind": {
                           "anyOf": [
                             {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
                               "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
                               "type": "string"
                             },
                             {
                               "const": "unresolved",
                               "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
                             }
                           ]
                         },
                         "programAssignmentVerified": {
-                          "const": false,
                           "type": "boolean"
                         },
                         "requestedChannel": {
@@ -206458,6 +206746,9 @@
                     "serviceFrom",
                     "serviceTo",
                     "mcoId",
+                    "medicaidProgramKind",
+                    "canonicalPayerId",
+                    "programResolutionSnapshot",
                     "medicareClaimId",
                     "rbArrangementId",
                     "medicaidClaimControlNumber",
@@ -206551,6 +206842,60 @@
                           "format": "uuid",
                           "type": "string"
                         },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "medicaidProgramKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canonicalPayerId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "programResolutionSnapshot": {
+                      "anyOf": [
+                        {},
                         {
                           "type": "null"
                         }
@@ -206739,17 +207084,32 @@
                         "programKind": {
                           "anyOf": [
                             {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
                               "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
                               "type": "string"
                             },
                             {
                               "const": "unresolved",
                               "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
                             }
                           ]
                         },
                         "programAssignmentVerified": {
-                          "const": false,
                           "type": "boolean"
                         },
                         "requestedChannel": {
@@ -207139,6 +207499,9 @@
                     "serviceFrom",
                     "serviceTo",
                     "mcoId",
+                    "medicaidProgramKind",
+                    "canonicalPayerId",
+                    "programResolutionSnapshot",
                     "medicareClaimId",
                     "rbArrangementId",
                     "medicaidClaimControlNumber",
@@ -207232,6 +207595,60 @@
                           "format": "uuid",
                           "type": "string"
                         },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "medicaidProgramKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canonicalPayerId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "programResolutionSnapshot": {
+                      "anyOf": [
+                        {},
                         {
                           "type": "null"
                         }
@@ -207420,17 +207837,32 @@
                         "programKind": {
                           "anyOf": [
                             {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
                               "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
                               "type": "string"
                             },
                             {
                               "const": "unresolved",
                               "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
                             }
                           ]
                         },
                         "programAssignmentVerified": {
-                          "const": false,
                           "type": "boolean"
                         },
                         "requestedChannel": {
@@ -207747,6 +208179,9 @@
                     "serviceFrom",
                     "serviceTo",
                     "mcoId",
+                    "medicaidProgramKind",
+                    "canonicalPayerId",
+                    "programResolutionSnapshot",
                     "medicareClaimId",
                     "rbArrangementId",
                     "medicaidClaimControlNumber",
@@ -207840,6 +208275,60 @@
                           "format": "uuid",
                           "type": "string"
                         },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "medicaidProgramKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canonicalPayerId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "programResolutionSnapshot": {
+                      "anyOf": [
+                        {},
                         {
                           "type": "null"
                         }
@@ -208028,17 +208517,32 @@
                         "programKind": {
                           "anyOf": [
                             {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
                               "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
                               "type": "string"
                             },
                             {
                               "const": "unresolved",
                               "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
                             }
                           ]
                         },
                         "programAssignmentVerified": {
-                          "const": false,
                           "type": "boolean"
                         },
                         "requestedChannel": {
@@ -208491,6 +208995,9 @@
                     "serviceFrom",
                     "serviceTo",
                     "mcoId",
+                    "medicaidProgramKind",
+                    "canonicalPayerId",
+                    "programResolutionSnapshot",
                     "medicareClaimId",
                     "rbArrangementId",
                     "medicaidClaimControlNumber",
@@ -208584,6 +209091,60 @@
                           "format": "uuid",
                           "type": "string"
                         },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "medicaidProgramKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canonicalPayerId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "programResolutionSnapshot": {
+                      "anyOf": [
+                        {},
                         {
                           "type": "null"
                         }
@@ -208772,17 +209333,32 @@
                         "programKind": {
                           "anyOf": [
                             {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
                               "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
                               "type": "string"
                             },
                             {
                               "const": "unresolved",
                               "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
                             }
                           ]
                         },
                         "programAssignmentVerified": {
-                          "const": false,
                           "type": "boolean"
                         },
                         "requestedChannel": {
@@ -208914,6 +209490,10 @@
                     "arrangementListStatus",
                     "medicareEvidence",
                     "stateBillingPolicy",
+                    "programResponsibility",
+                    "enrollmentReadiness",
+                    "selectedClearinghouse",
+                    "tradingPartnerCredential",
                     "electronicSubmissionAvailable",
                     "isAdvisorySnapshot"
                   ],
@@ -209353,6 +209933,277 @@
                         }
                       ]
                     },
+                    "programResponsibility": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "programKind",
+                        "canonicalPayerId",
+                        "canonicalPayerName",
+                        "reasonCode"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "missing",
+                              "type": "string"
+                            },
+                            {
+                              "const": "pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "rejected",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "revoked",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "changes",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "programKind": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "ffs_open_card",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "managed_care",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "other_managed_care",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unsupported",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unresolved",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ambiguous",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "canonicalPayerId": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "canonicalPayerName": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reasonCode": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "enrollmentReadiness": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "status",
+                          "reasonCode",
+                          "vendorPayerId"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "not_applicable",
+                                "type": "string"
+                              },
+                              {
+                                "const": "missing",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "verified",
+                                "type": "string"
+                              },
+                              {
+                                "const": "expired",
+                                "type": "string"
+                              },
+                              {
+                                "const": "revoked",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ambiguous",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unavailable",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "reasonCode": {
+                            "type": "string"
+                          },
+                          "vendorPayerId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "selectedClearinghouse": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "vendor",
+                        "configurationStatus"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "selected",
+                              "type": "string"
+                            },
+                            {
+                              "const": "missing",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "vendor": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "configurationStatus": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "tradingPartnerCredential": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reasonCode"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "configured",
+                              "type": "string"
+                            },
+                            {
+                              "const": "missing",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "future",
+                              "type": "string"
+                            },
+                            {
+                              "const": "partial",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "reasonCode": {
+                          "type": "string"
+                        }
+                      }
+                    },
                     "electronicSubmissionAvailable": {
                       "const": false,
                       "type": "boolean"
@@ -209640,6 +210491,735 @@
                     "type": "string"
                   },
                   "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-enrollment-evidence": {
+      "post": {
+        "operationId": "postApiV1Medicaidenrollmentevidence",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Record a provider enrollment, payer participation, transaction enrollment, or route qualification candidate as pending",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "status"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "const": "pending",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "serviceState",
+                  "evidenceKind",
+                  "effectiveFrom"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "serviceState": {
+                    "minLength": 2,
+                    "maxLength": 2,
+                    "pattern": "^[A-Z]{2}$",
+                    "type": "string"
+                  },
+                  "programKind": {
+                    "anyOf": [
+                      {
+                        "const": "ffs_open_card",
+                        "type": "string"
+                      },
+                      {
+                        "const": "managed_care",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other_managed_care",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "canonicalPayerId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "clearinghouse": {
+                    "anyOf": [
+                      {
+                        "const": "stedi",
+                        "type": "string"
+                      },
+                      {
+                        "const": "claimmd",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "vendorPayerId": {
+                    "minLength": 1,
+                    "maxLength": 80,
+                    "type": "string"
+                  },
+                  "transactionType": {
+                    "anyOf": [
+                      {
+                        "const": "837I",
+                        "type": "string"
+                      },
+                      {
+                        "const": "835",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "evidenceKind": {
+                    "anyOf": [
+                      {
+                        "const": "state_medicaid_provider_enrollment",
+                        "type": "string"
+                      },
+                      {
+                        "const": "mco_participation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "837i_enrollment",
+                        "type": "string"
+                      },
+                      {
+                        "const": "835_era_enrollment",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clearinghouse_payer_route",
+                        "type": "string"
+                      },
+                      {
+                        "const": "institutional_format_qualification",
+                        "type": "string"
+                      },
+                      {
+                        "const": "payer_transport_certification",
+                        "type": "string"
+                      },
+                      {
+                        "const": "production_activation_approval",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-enrollment-evidence/{id}/revoke": {
+      "post": {
+        "operationId": "postApiV1MedicaidenrollmentevidenceByIdRevoke",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Revoke verified enrollment evidence with a reason and version check",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "version"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "revoked",
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "reasonCode",
+                  "providerEntityId"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "reasonCode": {
+                    "anyOf": [
+                      {
+                        "const": "source_corrected",
+                        "type": "string"
+                      },
+                      {
+                        "const": "payer_withdrawal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "coverage_changed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-enrollment-evidence/{id}/verify": {
+      "post": {
+        "operationId": "postApiV1MedicaidenrollmentevidenceByIdVerify",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Independently verify provider enrollment evidence with source and secured evidence reference",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "version"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "verified",
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "verificationSource",
+                  "evidenceReference",
+                  "providerEntityId"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "verificationSource": {
+                    "anyOf": [
+                      {
+                        "const": "state_portal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "payer_written_confirmation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clearinghouse_written_confirmation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "executed_contract",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clearinghouse_sandbox",
+                        "type": "string"
+                      },
+                      {
+                        "const": "internal_approval",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "evidenceReference": {
+                    "minLength": 6,
+                    "maxLength": 200,
+                    "pattern": "^(doc|registry|approval|ticket):[A-Za-z0-9._/-]{1,190}$",
+                    "type": "string"
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-program-assignments": {
+      "post": {
+        "operationId": "postApiV1Medicaidprogramassignments",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Record a candidate patient Medicaid program assignment; new records remain pending until independently verified",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "status"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "const": "pending",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "patientId",
+                  "patientPayerId",
+                  "admissionId",
+                  "providerEntityId",
+                  "serviceState",
+                  "programKind",
+                  "effectiveFrom",
+                  "sourceKind"
+                ],
+                "properties": {
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "patientPayerId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "admissionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "serviceState": {
+                    "minLength": 2,
+                    "maxLength": 2,
+                    "pattern": "^[A-Z]{2}$",
+                    "type": "string"
+                  },
+                  "programKind": {
+                    "anyOf": [
+                      {
+                        "const": "ffs_open_card",
+                        "type": "string"
+                      },
+                      {
+                        "const": "managed_care",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other_managed_care",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unsupported",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unresolved",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "canonicalPayerId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "sourceKind": {
+                    "anyOf": [
+                      {
+                        "const": "manual_candidate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "payer_document",
+                        "type": "string"
+                      },
+                      {
+                        "const": "state_response",
+                        "type": "string"
+                      },
+                      {
+                        "const": "imported",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "evidenceReference": {
+                    "minLength": 6,
+                    "maxLength": 200,
+                    "pattern": "^(doc|registry|approval|ticket):[A-Za-z0-9._/-]{1,190}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-program-assignments/{id}/revoke": {
+      "post": {
+        "operationId": "postApiV1MedicaidprogramassignmentsByIdRevoke",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Revoke verified Medicaid program assignment evidence with a reason and version check",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "version"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "revoked",
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "reasonCode",
+                  "providerEntityId",
+                  "patientId"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "reasonCode": {
+                    "anyOf": [
+                      {
+                        "const": "source_corrected",
+                        "type": "string"
+                      },
+                      {
+                        "const": "payer_withdrawal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "coverage_changed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-program-assignments/{id}/verify": {
+      "post": {
+        "operationId": "postApiV1MedicaidprogramassignmentsByIdVerify",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Independently verify a program assignment against M40 payer identity and secured external evidence",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "version"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "verified",
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "verificationSource",
+                  "evidenceReference",
+                  "providerEntityId",
+                  "patientId"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "verificationSource": {
+                    "anyOf": [
+                      {
+                        "const": "state_portal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "payer_written_confirmation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "executed_contract",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "evidenceReference": {
+                    "minLength": 6,
+                    "maxLength": 200,
+                    "pattern": "^(doc|registry|approval|ticket):[A-Za-z0-9._/-]{1,190}$",
+                    "type": "string"
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "patientId": {
                     "format": "uuid",
                     "type": "string"
                   }

@@ -93,6 +93,9 @@ export function buildDrizzleM24ReadService(
     serviceFrom: day(r.serviceFrom),
     serviceTo: day(r.serviceTo),
     mcoId: r.mcoId ?? null,
+    medicaidProgramKind: r.medicaidProgramKind ?? null,
+    canonicalPayerId: r.canonicalPayerId ?? null,
+    programResolutionSnapshot: r.programResolutionSnapshot ?? null,
     medicareClaimId: r.medicareClaimId ?? null,
     rbArrangementId: r.rbArrangementId ?? null,
     medicaidClaimControlNumber: r.medicaidClaimControlNumber,
@@ -101,12 +104,19 @@ export function buildDrizzleM24ReadService(
     validationRunIdLatest: r.validationRunIdLatest ?? null,
     eligibilityOutcomeSnapshot: r.eligibilityOutcomeSnapshot ?? null,
     electronicSubmissionRefusal:
-      electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState), r.mcoId ?? null)
-        ?.message ?? null,
+      electronicSubmissionRefusal(
+        r.serviceState,
+        isGatewayBound(r.serviceState),
+        r.mcoId ?? null,
+        r.medicaidProgramKind ?? "unresolved",
+        (r.programResolutionSnapshot as { status?: unknown } | null)?.status === "verified",
+      )?.message ?? null,
     routeReadiness: medicaidClaimRouteReadiness(
       r.serviceState,
       r.mcoId ?? null,
       isGatewayBound(r.serviceState),
+      r.medicaidProgramKind ?? "unresolved",
+      (r.programResolutionSnapshot as { status?: unknown } | null)?.status === "verified",
     ),
     createdAt: iso(r.createdAt),
     updatedAt: iso(r.updatedAt),

@@ -76,6 +76,43 @@ export const m24EligibilityOutcome = pgEnum("m24_eligibility_outcome", [
   "error",
 ]);
 
+// Oregon payer identity is an explicit, effective-dated fact. Null on historical claims is
+// intentionally not backfilled: it remains distinguishable from verified FFS/Open Card.
+export const m24MedicaidProgramKind = pgEnum("m24_medicaid_program_kind", [
+  "ffs_open_card",
+  "managed_care",
+  "other_managed_care",
+  "unsupported",
+  "unresolved",
+  "ambiguous",
+]);
+export const m24ProgramAssignmentStatus = pgEnum("m24_program_assignment_status", [
+  "candidate",
+  "pending",
+  "verified",
+  "rejected",
+  "revoked",
+  "superseded",
+]);
+export const m24EnrollmentEvidenceKind = pgEnum("m24_enrollment_evidence_kind", [
+  "state_medicaid_provider_enrollment",
+  "mco_participation",
+  "837i_enrollment",
+  "835_era_enrollment",
+  "clearinghouse_payer_route",
+  "institutional_format_qualification",
+  "payer_transport_certification",
+  "production_activation_approval",
+]);
+export const m24EnrollmentEvidenceStatus = pgEnum("m24_enrollment_evidence_status", [
+  "pending",
+  "verified",
+  "rejected",
+  "expired",
+  "revoked",
+  "superseded",
+]);
+
 export const m24RbArrangementState = pgEnum("m24_rb_arrangement_state", [
   "DRAFT",
   "ACTIVE",

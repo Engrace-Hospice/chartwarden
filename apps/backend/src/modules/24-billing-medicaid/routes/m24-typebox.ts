@@ -120,8 +120,15 @@ const StateCode = Type.String({ minLength: 2, maxLength: 2, pattern: "^[A-Z]{2}$
 
 const RouteReadinessDto = Type.Object({
   serviceState: StateCode,
-  programKind: lit(["managed_care", "unresolved"] as const),
-  programAssignmentVerified: Type.Literal(false),
+  programKind: lit([
+    "ffs_open_card",
+    "managed_care",
+    "other_managed_care",
+    "unresolved",
+    "ambiguous",
+    "unsupported",
+  ] as const),
+  programAssignmentVerified: Type.Boolean(),
   requestedChannel: Type.Union([lit(["cco_clearinghouse"] as const), Type.Null()]),
   localPreparationAvailable: Type.Literal(true),
   transportConfigured: Type.Boolean(),
@@ -239,6 +246,68 @@ export const AssemblyPreviewResponse = Type.Object({
     "unconfirmed",
     "unresolved",
   ] as const),
+  programResponsibility: Type.Object({
+    status: lit([
+      "verified",
+      "missing",
+      "pending",
+      "rejected",
+      "expired",
+      "revoked",
+      "ambiguous",
+      "changes",
+      "unsupported",
+      "unavailable",
+    ] as const),
+    programKind: Type.Union([
+      lit([
+        "ffs_open_card",
+        "managed_care",
+        "other_managed_care",
+        "unsupported",
+        "unresolved",
+        "ambiguous",
+      ] as const),
+      Type.Null(),
+    ]),
+    canonicalPayerId: Type.Union([uuid(), Type.Null()]),
+    canonicalPayerName: nullableStr(),
+    reasonCode: Type.String(),
+  }),
+  enrollmentReadiness: Type.Array(
+    Type.Object({
+      kind: Type.String(),
+      status: lit([
+        "not_applicable",
+        "missing",
+        "pending",
+        "verified",
+        "expired",
+        "revoked",
+        "ambiguous",
+        "unavailable",
+      ] as const),
+      reasonCode: Type.String(),
+      vendorPayerId: nullableStr(),
+    }),
+  ),
+  selectedClearinghouse: Type.Object({
+    status: lit(["selected", "missing", "unavailable"] as const),
+    vendor: nullableStr(),
+    configurationStatus: nullableStr(),
+  }),
+  tradingPartnerCredential: Type.Object({
+    status: lit([
+      "configured",
+      "missing",
+      "expired",
+      "future",
+      "partial",
+      "ambiguous",
+      "unavailable",
+    ] as const),
+    reasonCode: Type.String(),
+  }),
   electronicSubmissionAvailable: Type.Literal(false),
   isAdvisorySnapshot: Type.Literal(true),
 });
@@ -368,6 +437,119 @@ export const UpsertCredentialBody = Type.Object(
   { additionalProperties: false },
 );
 
+const EvidenceReference = Type.String({
+  minLength: 6,
+  maxLength: 200,
+  pattern: "^(doc|registry|approval|ticket):[A-Za-z0-9._/-]{1,190}$",
+});
+export const RecordProgramAssignmentBody = Type.Object(
+  {
+    patientId: uuid(),
+    patientPayerId: uuid(),
+    admissionId: uuid(),
+    providerEntityId: uuid(),
+    serviceState: StateCode,
+    programKind: lit([
+      "ffs_open_card",
+      "managed_care",
+      "other_managed_care",
+      "unsupported",
+      "unresolved",
+    ] as const),
+    canonicalPayerId: Type.Optional(uuid()),
+    effectiveFrom: isoDate(),
+    effectiveTo: Type.Optional(isoDate()),
+    sourceKind: lit(["manual_candidate", "payer_document", "state_response", "imported"] as const),
+    evidenceReference: Type.Optional(EvidenceReference),
+  },
+  { additionalProperties: false },
+);
+export const RecordEnrollmentEvidenceBody = Type.Object(
+  {
+    providerEntityId: uuid(),
+    serviceState: StateCode,
+    programKind: Type.Optional(
+      lit(["ffs_open_card", "managed_care", "other_managed_care"] as const),
+    ),
+    canonicalPayerId: Type.Optional(uuid()),
+    clearinghouse: Type.Optional(lit(["stedi", "claimmd", "other"] as const)),
+    vendorPayerId: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
+    transactionType: Type.Optional(lit(["837I", "835"] as const)),
+    evidenceKind: lit([
+      "state_medicaid_provider_enrollment",
+      "mco_participation",
+      "837i_enrollment",
+      "835_era_enrollment",
+      "clearinghouse_payer_route",
+      "institutional_format_qualification",
+      "payer_transport_certification",
+      "production_activation_approval",
+    ] as const),
+    effectiveFrom: isoDate(),
+    effectiveTo: Type.Optional(isoDate()),
+  },
+  { additionalProperties: false },
+);
+export const VerifyProgramAssignmentBody = Type.Object(
+  {
+    expectedVersion: Type.Integer({ minimum: 1 }),
+    verificationSource: lit([
+      "state_portal",
+      "payer_written_confirmation",
+      "executed_contract",
+    ] as const),
+    evidenceReference: EvidenceReference,
+    providerEntityId: uuid(),
+    patientId: uuid(),
+  },
+  { additionalProperties: false },
+);
+export const VerifyEnrollmentEvidenceBody = Type.Object(
+  {
+    expectedVersion: Type.Integer({ minimum: 1 }),
+    verificationSource: lit([
+      "state_portal",
+      "payer_written_confirmation",
+      "clearinghouse_written_confirmation",
+      "executed_contract",
+      "clearinghouse_sandbox",
+      "internal_approval",
+    ] as const),
+    evidenceReference: EvidenceReference,
+    providerEntityId: uuid(),
+  },
+  { additionalProperties: false },
+);
+export const RevokeProgramAssignmentBody = Type.Object(
+  {
+    expectedVersion: Type.Integer({ minimum: 1 }),
+    reasonCode: lit(["source_corrected", "payer_withdrawal", "coverage_changed", "other"] as const),
+    providerEntityId: uuid(),
+    patientId: uuid(),
+  },
+  { additionalProperties: false },
+);
+export const RevokeEnrollmentEvidenceBody = Type.Object(
+  {
+    expectedVersion: Type.Integer({ minimum: 1 }),
+    reasonCode: lit(["source_corrected", "payer_withdrawal", "coverage_changed", "other"] as const),
+    providerEntityId: uuid(),
+  },
+  { additionalProperties: false },
+);
+export const RecordPayerReadinessResponse = Type.Object({
+  id: uuid(),
+  status: Type.Literal("pending"),
+});
+export const VerifyPayerReadinessResponse = Type.Object({
+  status: Type.Literal("verified"),
+  version: Type.Integer(),
+});
+export const RevokePayerReadinessResponse = Type.Object({
+  status: Type.Literal("revoked"),
+  version: Type.Integer(),
+});
+
 /** POST /api/v1/admin/platform-medicaid-rules — platform-floor rule registration (platform admin only). */
 export const RegisterPlatformRuleBody = Type.Object(
   {
@@ -455,6 +637,19 @@ export const ClaimDto = Type.Object({
   serviceFrom: isoDate(),
   serviceTo: isoDate(),
   mcoId: Type.Union([uuid(), Type.Null()]),
+  medicaidProgramKind: Type.Union([
+    lit([
+      "ffs_open_card",
+      "managed_care",
+      "other_managed_care",
+      "unsupported",
+      "unresolved",
+      "ambiguous",
+    ] as const),
+    Type.Null(),
+  ]),
+  canonicalPayerId: Type.Union([uuid(), Type.Null()]),
+  programResolutionSnapshot: Type.Union([Type.Unknown(), Type.Null()]),
   medicareClaimId: Type.Union([uuid(), Type.Null()]),
   rbArrangementId: Type.Union([uuid(), Type.Null()]),
   medicaidClaimControlNumber: Type.String(),

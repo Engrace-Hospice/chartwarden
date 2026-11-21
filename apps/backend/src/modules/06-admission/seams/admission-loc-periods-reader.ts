@@ -37,6 +37,8 @@ export interface AdmissionLocPeriodsReader {
   ): Promise<{
     patientId: string;
     providerEntityId: string | null;
+    locationId: string | null;
+    serviceAddressState: string | null;
     dischargedAt: Date | null;
     status: (typeof ADM.$inferSelect)["status"];
     stayEndFacts: {
@@ -60,6 +62,8 @@ export interface AdmissionLocPeriodsReader {
   ): Promise<{
     patientId: string;
     providerEntityId: string | null;
+    locationId: string | null;
+    serviceAddressState: string | null;
     dischargedAt: Date | null;
     status: (typeof ADM.$inferSelect)["status"];
     stayEndFacts: {
@@ -93,6 +97,8 @@ export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPerio
         .select({
           patientId: ADM.patientId,
           providerEntityId: ADM.providerEntityId,
+          locationId: ADM.locationId,
+          serviceAddressState: ADM.serviceAddressState,
           dischargedAt: ADM.dischargedAt,
           status: ADM.status,
         })
@@ -128,6 +134,8 @@ export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPerio
         .select({
           patientId: ADM.patientId,
           providerEntityId: ADM.providerEntityId,
+          locationId: ADM.locationId,
+          serviceAddressState: ADM.serviceAddressState,
           dischargedAt: ADM.dischargedAt,
           status: ADM.status,
         })

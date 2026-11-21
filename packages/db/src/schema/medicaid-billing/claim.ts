@@ -26,7 +26,7 @@ import {
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { m24ClaimKind, m24ClaimLineLoc, m24ClaimState } from "./enums";
+import { m24ClaimKind, m24ClaimLineLoc, m24ClaimState, m24MedicaidProgramKind } from "./enums";
 
 // ---- medicaid_claim — claim root; PARTITION BY LIST(provider_entity_id) ----
 export const medicaidClaim = pgTable(
@@ -54,8 +54,14 @@ export const medicaidClaim = pgTable(
     statePlanCodeId: uuid("state_plan_code_id").notNull(), // logical FK → M40
     statePlanCodeSnapshot: varchar("state_plan_code_snapshot", { length: 32 }).notNull(),
 
-    mcoId: uuid("mco_id"), // null = FFS / Open Card
+    mcoId: uuid("mco_id"), // M40 logical MCO identity; NULL is not evidence of FFS.
     mcoSnapshot: jsonb("mco_snapshot"),
+    // Nullable for historical compatibility. NULL on an existing claim means legacy unresolved;
+    // new assembly writes an explicit kind and immutable dated resolution snapshot.
+    medicaidProgramKind: m24MedicaidProgramKind("medicaid_program_kind"),
+    canonicalPayerId: uuid("canonical_payer_id"), // logical M40 payer identity
+    programAssignmentId: uuid("program_assignment_id"), // logical M24 evidence identity
+    programResolutionSnapshot: jsonb("program_resolution_snapshot"),
 
     medicareClaimId: uuid("medicare_claim_id"), // logical FK → M23 (dual-eligible COB)
     medicareSecondaryContextSnapshot: jsonb("medicare_secondary_context_snapshot"),

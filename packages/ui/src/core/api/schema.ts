@@ -16593,6 +16593,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/medicaid-enrollment-evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a provider enrollment, payer participation, transaction enrollment, or route qualification candidate as pending */
+        post: operations["postApiV1Medicaidenrollmentevidence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-enrollment-evidence/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke verified enrollment evidence with a reason and version check */
+        post: operations["postApiV1MedicaidenrollmentevidenceByIdRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-enrollment-evidence/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Independently verify provider enrollment evidence with source and secured evidence reference */
+        post: operations["postApiV1MedicaidenrollmentevidenceByIdVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-program-assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a candidate patient Medicaid program assignment; new records remain pending until independently verified */
+        post: operations["postApiV1Medicaidprogramassignments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-program-assignments/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke verified Medicaid program assignment evidence with a reason and version check */
+        post: operations["postApiV1MedicaidprogramassignmentsByIdRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-program-assignments/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Independently verify a program assignment against M40 payer identity and secured external evidence */
+        post: operations["postApiV1MedicaidprogramassignmentsByIdVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/medicaid-rule-config": {
         parameters: {
             query?: never;
@@ -81514,6 +81616,9 @@ export interface operations {
                             /** Format: date */
                             serviceTo: string;
                             mcoId: string | null;
+                            medicaidProgramKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                            canonicalPayerId: string | null;
+                            programResolutionSnapshot: unknown | null;
                             medicareClaimId: string | null;
                             rbArrangementId: string | null;
                             medicaidClaimControlNumber: string;
@@ -81524,9 +81629,8 @@ export interface operations {
                             electronicSubmissionRefusal: string | null;
                             routeReadiness: {
                                 serviceState: string;
-                                programKind: "managed_care" | "unresolved";
-                                /** @constant */
-                                programAssignmentVerified: false;
+                                programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unresolved" | "ambiguous" | "unsupported";
+                                programAssignmentVerified: boolean;
                                 requestedChannel: "cco_clearinghouse" | null;
                                 /** @constant */
                                 localPreparationAvailable: true;
@@ -81635,6 +81739,9 @@ export interface operations {
                         /** Format: date */
                         serviceTo: string;
                         mcoId: string | null;
+                        medicaidProgramKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                        canonicalPayerId: string | null;
+                        programResolutionSnapshot: unknown | null;
                         medicareClaimId: string | null;
                         rbArrangementId: string | null;
                         medicaidClaimControlNumber: string;
@@ -81645,9 +81752,8 @@ export interface operations {
                         electronicSubmissionRefusal: string | null;
                         routeReadiness: {
                             serviceState: string;
-                            programKind: "managed_care" | "unresolved";
-                            /** @constant */
-                            programAssignmentVerified: false;
+                            programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unresolved" | "ambiguous" | "unsupported";
+                            programAssignmentVerified: boolean;
                             requestedChannel: "cco_clearinghouse" | null;
                             /** @constant */
                             localPreparationAvailable: true;
@@ -81709,6 +81815,9 @@ export interface operations {
                         /** Format: date */
                         serviceTo: string;
                         mcoId: string | null;
+                        medicaidProgramKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                        canonicalPayerId: string | null;
+                        programResolutionSnapshot: unknown | null;
                         medicareClaimId: string | null;
                         rbArrangementId: string | null;
                         medicaidClaimControlNumber: string;
@@ -81719,9 +81828,8 @@ export interface operations {
                         electronicSubmissionRefusal: string | null;
                         routeReadiness: {
                             serviceState: string;
-                            programKind: "managed_care" | "unresolved";
-                            /** @constant */
-                            programAssignmentVerified: false;
+                            programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unresolved" | "ambiguous" | "unsupported";
+                            programAssignmentVerified: boolean;
                             requestedChannel: "cco_clearinghouse" | null;
                             /** @constant */
                             localPreparationAvailable: true;
@@ -81809,6 +81917,9 @@ export interface operations {
                         /** Format: date */
                         serviceTo: string;
                         mcoId: string | null;
+                        medicaidProgramKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                        canonicalPayerId: string | null;
+                        programResolutionSnapshot: unknown | null;
                         medicareClaimId: string | null;
                         rbArrangementId: string | null;
                         medicaidClaimControlNumber: string;
@@ -81819,9 +81930,8 @@ export interface operations {
                         electronicSubmissionRefusal: string | null;
                         routeReadiness: {
                             serviceState: string;
-                            programKind: "managed_care" | "unresolved";
-                            /** @constant */
-                            programAssignmentVerified: false;
+                            programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unresolved" | "ambiguous" | "unsupported";
+                            programAssignmentVerified: boolean;
                             requestedChannel: "cco_clearinghouse" | null;
                             /** @constant */
                             localPreparationAvailable: true;
@@ -81883,6 +81993,9 @@ export interface operations {
                         /** Format: date */
                         serviceTo: string;
                         mcoId: string | null;
+                        medicaidProgramKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                        canonicalPayerId: string | null;
+                        programResolutionSnapshot: unknown | null;
                         medicareClaimId: string | null;
                         rbArrangementId: string | null;
                         medicaidClaimControlNumber: string;
@@ -81893,9 +82006,8 @@ export interface operations {
                         electronicSubmissionRefusal: string | null;
                         routeReadiness: {
                             serviceState: string;
-                            programKind: "managed_care" | "unresolved";
-                            /** @constant */
-                            programAssignmentVerified: false;
+                            programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unresolved" | "ambiguous" | "unsupported";
+                            programAssignmentVerified: boolean;
                             requestedChannel: "cco_clearinghouse" | null;
                             /** @constant */
                             localPreparationAvailable: true;
@@ -82045,6 +82157,9 @@ export interface operations {
                         /** Format: date */
                         serviceTo: string;
                         mcoId: string | null;
+                        medicaidProgramKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                        canonicalPayerId: string | null;
+                        programResolutionSnapshot: unknown | null;
                         medicareClaimId: string | null;
                         rbArrangementId: string | null;
                         medicaidClaimControlNumber: string;
@@ -82055,9 +82170,8 @@ export interface operations {
                         electronicSubmissionRefusal: string | null;
                         routeReadiness: {
                             serviceState: string;
-                            programKind: "managed_care" | "unresolved";
-                            /** @constant */
-                            programAssignmentVerified: false;
+                            programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unresolved" | "ambiguous" | "unsupported";
+                            programAssignmentVerified: boolean;
                             requestedChannel: "cco_clearinghouse" | null;
                             /** @constant */
                             localPreparationAvailable: true;
@@ -82166,6 +82280,9 @@ export interface operations {
                         /** Format: date */
                         serviceTo: string;
                         mcoId: string | null;
+                        medicaidProgramKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                        canonicalPayerId: string | null;
+                        programResolutionSnapshot: unknown | null;
                         medicareClaimId: string | null;
                         rbArrangementId: string | null;
                         medicaidClaimControlNumber: string;
@@ -82176,9 +82293,8 @@ export interface operations {
                         electronicSubmissionRefusal: string | null;
                         routeReadiness: {
                             serviceState: string;
-                            programKind: "managed_care" | "unresolved";
-                            /** @constant */
-                            programAssignmentVerified: false;
+                            programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unresolved" | "ambiguous" | "unsupported";
+                            programAssignmentVerified: boolean;
                             requestedChannel: "cco_clearinghouse" | null;
                             /** @constant */
                             localPreparationAvailable: true;
@@ -82324,6 +82440,9 @@ export interface operations {
                         /** Format: date */
                         serviceTo: string;
                         mcoId: string | null;
+                        medicaidProgramKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                        canonicalPayerId: string | null;
+                        programResolutionSnapshot: unknown | null;
                         medicareClaimId: string | null;
                         rbArrangementId: string | null;
                         medicaidClaimControlNumber: string;
@@ -82334,9 +82453,8 @@ export interface operations {
                         electronicSubmissionRefusal: string | null;
                         routeReadiness: {
                             serviceState: string;
-                            programKind: "managed_care" | "unresolved";
-                            /** @constant */
-                            programAssignmentVerified: false;
+                            programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unresolved" | "ambiguous" | "unsupported";
+                            programAssignmentVerified: boolean;
                             requestedChannel: "cco_clearinghouse" | null;
                             /** @constant */
                             localPreparationAvailable: true;
@@ -82438,6 +82556,28 @@ export interface operations {
                             remittanceAdviceRecorded: boolean | null;
                         };
                         stateBillingPolicy: "not_applicable_to_primary_medicaid" | "unconfirmed" | "unresolved";
+                        programResponsibility: {
+                            status: "verified" | "missing" | "pending" | "rejected" | "expired" | "revoked" | "ambiguous" | "changes" | "unsupported" | "unavailable";
+                            programKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                            canonicalPayerId: string | null;
+                            canonicalPayerName: string | null;
+                            reasonCode: string;
+                        };
+                        enrollmentReadiness: {
+                            kind: string;
+                            status: "not_applicable" | "missing" | "pending" | "verified" | "expired" | "revoked" | "ambiguous" | "unavailable";
+                            reasonCode: string;
+                            vendorPayerId: string | null;
+                        }[];
+                        selectedClearinghouse: {
+                            status: "selected" | "missing" | "unavailable";
+                            vendor: string | null;
+                            configurationStatus: string | null;
+                        };
+                        tradingPartnerCredential: {
+                            status: "configured" | "missing" | "expired" | "future" | "partial" | "ambiguous" | "unavailable";
+                            reasonCode: string;
+                        };
                         /** @constant */
                         electronicSubmissionAvailable: false;
                         /** @constant */
@@ -82523,6 +82663,256 @@ export interface operations {
                         /** Format: uuid */
                         checkId: string;
                         outcome: "active" | "inactive" | "unknown" | "mco_assignment" | "error";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Medicaidenrollmentevidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    serviceState: string;
+                    programKind?: "ffs_open_card" | "managed_care" | "other_managed_care";
+                    /** Format: uuid */
+                    canonicalPayerId?: string;
+                    clearinghouse?: "stedi" | "claimmd" | "other";
+                    vendorPayerId?: string;
+                    transactionType?: "837I" | "835";
+                    evidenceKind: "state_medicaid_provider_enrollment" | "mco_participation" | "837i_enrollment" | "835_era_enrollment" | "clearinghouse_payer_route" | "institutional_format_qualification" | "payer_transport_certification" | "production_activation_approval";
+                    /** Format: date */
+                    effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** @constant */
+                        status: "pending";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicaidenrollmentevidenceByIdRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    reasonCode: "source_corrected" | "payer_withdrawal" | "coverage_changed" | "other";
+                    /** Format: uuid */
+                    providerEntityId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "revoked";
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicaidenrollmentevidenceByIdVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    verificationSource: "state_portal" | "payer_written_confirmation" | "clearinghouse_written_confirmation" | "executed_contract" | "clearinghouse_sandbox" | "internal_approval";
+                    evidenceReference: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "verified";
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Medicaidprogramassignments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    patientPayerId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    serviceState: string;
+                    programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved";
+                    /** Format: uuid */
+                    canonicalPayerId?: string;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
+                    sourceKind: "manual_candidate" | "payer_document" | "state_response" | "imported";
+                    evidenceReference?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** @constant */
+                        status: "pending";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicaidprogramassignmentsByIdRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    reasonCode: "source_corrected" | "payer_withdrawal" | "coverage_changed" | "other";
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: uuid */
+                    patientId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "revoked";
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicaidprogramassignmentsByIdVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    verificationSource: "state_portal" | "payer_written_confirmation" | "executed_contract";
+                    evidenceReference: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: uuid */
+                    patientId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "verified";
+                        version: number;
                     };
                 };
             };

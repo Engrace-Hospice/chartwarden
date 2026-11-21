@@ -22,6 +22,9 @@ export interface ClaimView {
   serviceFrom: string;
   serviceTo: string;
   mcoId: string | null;
+  medicaidProgramKind: string | null;
+  canonicalPayerId: string | null;
+  programResolutionSnapshot: unknown;
   medicareClaimId: string | null;
   rbArrangementId: string | null;
   medicaidClaimControlNumber: string;

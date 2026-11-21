@@ -150,7 +150,9 @@ describe("electronicSubmissionRefusal follow-ups (S11)", () => {
   it("does not infer an Oregon FFS destination from a missing MCO mapping", () => {
     const r = electronicSubmissionRefusal("OR", false, null);
     expect(r?.code).toBe(MEDICAID_NO_ELECTRONIC_GATEWAY_CODE);
-    expect(r?.message).toMatch(/cannot verify whether this OR coverage is fee-for-service/);
+    expect(r?.message).toMatch(
+      /cannot verify which Medicaid program is responsible for this OR service window/,
+    );
   });
 
   it("does not infer FFS from a missing MCO mapping and never treats a gateway as certification", () => {
@@ -168,6 +170,13 @@ describe("electronicSubmissionRefusal follow-ups (S11)", () => {
       programAssignmentVerified: false,
       submissionAvailable: false,
       status: "unsupported_program_route",
+    });
+    expect(medicaidClaimRouteReadiness("OR", "mco-id", true, "ffs_open_card", true)).toMatchObject({
+      programKind: "ffs_open_card",
+      programAssignmentVerified: true,
+      requestedChannel: null,
+      submissionAvailable: false,
+      reasonCode: "MEDICAID_FFS_ROUTE_UNVERIFIED",
     });
     expect(medicaidClaimRouteReadiness("WA", "mco-id", true).status).toBe(
       "unsupported_state_program",
