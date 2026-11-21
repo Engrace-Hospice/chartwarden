@@ -16,6 +16,11 @@ const SECTION_NAME: ReadonlyMap<string, string> = new Map([
   ["esas", "Symptom Assessment (ESAS)"],
   ["recert_summary", "Recertification Summary"],
   ["f2f_attestation", "Face-to-Face Attestation"],
+  // S2b (RN admission visit): the template's own headings
+  ["med_reconciliation", "Medication Reconciliation"],
+  ["advance_directive", "Advance Directive Acknowledgment"],
+  ["caregiver_overview", "Caregiver Overview"],
+  ["baseline_symptoms", "Baseline Symptoms"],
 ]);
 
 /** The read page has no template, so a section reads as its id in words ("vitals_review" -> "Vitals review"). */

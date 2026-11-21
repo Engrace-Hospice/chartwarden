@@ -51,8 +51,8 @@ export const ORIGIN_LABEL: Readonly<Record<DraftOrigin, string>> = {
   certification: "the signed certification of terminal illness",
   // S2b (RN admission visit):
   medication_order: "the medication orders in effect at the visit",
-  caregiver: "the caregivers on record",
-  advance_directive_acknowledgment: "the advance directive acknowledgment on file",
+  caregiver: "the caregivers on record on the visit date",
+  advance_directive_acknowledgment: "the advance directive acknowledgment on file at the visit",
 };
 
 export function originsText(origins: readonly DraftOrigin[]): string {
