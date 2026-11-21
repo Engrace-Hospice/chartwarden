@@ -321,8 +321,10 @@ async function main(): Promise<void> {
     "Medicare (M23): MAC submitter credential seeded; rate tables / sequestration are tenant-entered (assemble names whichever is missing)",
   );
 
-  // ── M24 — Billing Medicaid (full lifecycle: assemble → validate → submit) ──────────────────────────
-  // The error codes M24 answers with when Medicare is the primary payer (payer policy, not a fault).
+  // ── M24 — Billing Medicaid (assemble → validate → submit, when payer policy allows a claim) ────────
+  // Every demo patient carries Medicare at rank 1 (seed-clinical.ts), and M24 refuses every Medicaid claim kind
+  // while Medicare is primary (`evaluateMedicaidPayerResponsibility`), so the demo org gets no Medicaid claim from
+  // this script. The error codes M24 answers with in that case (payer policy, not a fault):
   const MEDICARE_PRIMARY_CLAIM_REFUSALS: ReadonlySet<string> = new Set([
     "MEDICARE_PRIMARY_HOSPICE_RESPONSIBILITY",
     "MEDICAID_SECONDARY_RB_FORMAT_UNVERIFIED",
