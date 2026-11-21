@@ -1,3 +1,5 @@
+import { request as httpRequest } from "node:http";
+import type { AddressInfo } from "node:net";
 import { M2_ACTION_CATALOG } from "@chartwarden/audit";
 // apps/backend/__tests__/auth-audit-trail.test.ts — GAP-002 / GAP-004: the M2 §8.1 authentication trail.
 //
@@ -104,6 +106,48 @@ describe("authentication audit trail (M2 §8.1)", () => {
     await app.close();
   });
 
+  // `inject` resolves dot segments before Fastify sees them, so this goes over a real socket with the target sent as written.
+  it.each([
+    "/api/auth/./sign-in/email",
+    "/api/auth/x/../sign-in/email",
+    "/api/auth/%2e/sign-in/email",
+    "/api/auth/sign-in\\email",
+    "/api/auth/sign-in/email#frag",
+  ])(
+    "the sign-in failure budget cannot be sidestepped by a spelling Better Auth resolves to the same route: %s",
+    async (target) => {
+      const { app } = build({ status: 401, withThrottle: true });
+      await app.listen({ port: 0, host: "127.0.0.1" });
+      try {
+        const { port } = app.server.address() as AddressInfo;
+        const attempt = () =>
+          new Promise<number>((resolve, reject) => {
+            const req = httpRequest(
+              {
+                host: "127.0.0.1",
+                port,
+                path: target,
+                method: "POST",
+                headers: { "content-type": "application/json" },
+              },
+              (res) => {
+                res.resume();
+                resolve(res.statusCode ?? 0);
+              },
+            );
+            req.on("error", reject);
+            req.end(JSON.stringify({ email: "budget@b.test", password: "nope" }));
+          });
+        const statuses: number[] = [];
+        for (let i = 0; i < 6; i += 1) statuses.push(await attempt());
+        expect(statuses.slice(0, 5)).toEqual([401, 401, 401, 401, 401]);
+        expect(statuses[5]).toBe(429);
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
   it.each([
     ["/api/auth/sign-out", "m2.auth.logout"],
     ["/api/auth/two-factor/enable", "m2.auth.2fa_enrolled"],
@@ -137,6 +181,27 @@ describe("authentication audit trail (M2 §8.1)", () => {
     for (const secret of ["JBSWY3DPEHPK3PXP", "aaaa-1111", "not-a-real-password"])
       expect(JSON.stringify(events[0])).not.toContain(secret);
     await app.close();
+  });
+
+  it("a wrong password on two-factor/enable is audited as a failed start; other refusals are not", async () => {
+    const wrong = build({
+      status: 400,
+      body: { code: "INVALID_PASSWORD", message: "Invalid password" },
+    });
+    await post(wrong.app, "/api/auth/two-factor/enable", { password: "not-a-real-password" });
+    expect(wrong.events[0]).toMatchObject({
+      eventType: "m2.auth.2fa_enrolled",
+      outcome: "failure",
+      severity: "warn",
+      userId: "u-1",
+      context: { method: "totp", stage: "started", reason: "invalid_password" },
+    });
+    expect(JSON.stringify(wrong.events[0])).not.toContain("not-a-real-password");
+    const other = build({ status: 400, body: { code: "VALIDATION_ERROR" } });
+    await post(other.app, "/api/auth/two-factor/enable", {});
+    expect(other.events).toHaveLength(0);
+    await wrong.app.close();
+    await other.app.close();
   });
 
   it("a backup-code sign-in writes backup_code_used and a wrong TOTP writes login_failed", async () => {

@@ -271,6 +271,7 @@ import {
 } from "./modules/02-identity/audit/auth-event-audit";
 import {
   createDbActiveMembershipLister,
+  createMfaBridgeGuard,
   createMfaEnrolmentGate,
 } from "./modules/02-identity/mfa-enrolment-gate";
 import {
@@ -10121,21 +10122,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               app.log.error({ err }, "recording the proved second factor failed"),
           }
         : {}),
-      // GAP-005 — M2 §7.4: `two-factor/disable` is refused while the MFA matrix would no longer be met.
-      ...(mfaGate
-        ? {
-            guard: async ({ relativePath, actor }) => {
-              if (relativePath !== "/two-factor/disable" || !actor) return;
-              const verdict = await mfaGate.forUserWithoutTotp(actor.userId);
-              if (!verdict.satisfied)
-                throw new ChartWardenError(
-                  "MFA_REQUIRED_FOR_ROLE",
-                  "your role requires a second factor; it cannot be disabled",
-                  403,
-                );
-            },
-          }
-        : {}),
+      // GAP-005 — M2 §7.4: `two-factor/disable` is refused while the MFA matrix would no longer be met; `two-factor/enable` needs a
+      // factor already proved in this session when the user has one (a password alone must not mint a counted second factor).
+      ...(mfaGate ? { guard: createMfaBridgeGuard(mfaGate) } : {}),
       credentialThrottle: createCredentialThrottle(
         rateLimitRedisClient
           ? createRedisFailedLoginStore(rateLimitRedisClient)

@@ -1,3 +1,5 @@
+import { request as httpRequest } from "node:http";
+import type { AddressInfo } from "node:net";
 import {
   evaluateMfa,
   mfaRequirementFor,
@@ -13,7 +15,10 @@ import {
 import Fastify, { type FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 import { createSessionAuthenticate } from "../src/bootstrap/index";
-import { createMfaEnrolmentGate } from "../src/modules/02-identity/mfa-enrolment-gate";
+import {
+  createMfaBridgeGuard,
+  createMfaEnrolmentGate,
+} from "../src/modules/02-identity/mfa-enrolment-gate";
 // apps/backend/__tests__/mfa-enrolment-matrix.test.ts — GAP-003 / GAP-005: the server-side MFA matrix (M2 §2.3).
 //
 // Unit-level proof of the three enforcement points over stub ports (the live lane, m2-auth-hardening.live,
@@ -246,13 +251,7 @@ describe("the two-factor/disable guard (GAP-005)", () => {
         handler: async () => new Response("{}", { status: 200 }),
         api: { getSession: async () => ({ user: { id: "u1" }, session: { id: "s1" } }) },
       },
-      {
-        guard: async ({ relativePath, actor }) => {
-          if (relativePath !== "/two-factor/disable" || !actor) return;
-          if (!(await gate.forUserWithoutTotp(actor.userId)).satisfied)
-            throw Object.assign(new Error("MFA_REQUIRED_FOR_ROLE"), { statusCode: 403 });
-        },
-      },
+      { guard: createMfaBridgeGuard(gate) },
     );
     return app;
   };
@@ -273,6 +272,115 @@ describe("the two-factor/disable guard (GAP-005)", () => {
   it("never touches other endpoints", async () => {
     const res = await build(true).inject({ method: "POST", url: "/api/auth/sign-out" });
     expect(res.statusCode).toBe(200);
+  });
+});
+
+describe("the factor-adding guard (a password alone must not mint a counted second factor)", () => {
+  const post = (
+    opts: Parameters<typeof gateWith>[0],
+    url = "/api/auth/two-factor/enable",
+    session: "signed-in" | "anonymous" = "signed-in",
+  ) => {
+    const app = Fastify();
+    const { gate } = gateWith(opts);
+    registerIdentityAuth(
+      app,
+      {
+        handler: async () => new Response("{}", { status: 200 }),
+        api: {
+          getSession: async () =>
+            session === "signed-in" ? { user: { id: "u1" }, session: { id: "s1" } } : null,
+        },
+      },
+      { guard: createMfaBridgeGuard(gate) },
+    );
+    return app.inject({ method: "POST", url });
+  };
+
+  it("refuses 403 MFA_VERIFICATION_REQUIRED when the user has a passkey and this session proved nothing", async () => {
+    const res = await post({ passkey: true, proved: null });
+    expect(res.statusCode).toBe(403);
+    // A bare Fastify (no app error handler) puts the code at the top; the live suite asserts the standard envelope.
+    expect(res.json().code).toBe("MFA_VERIFICATION_REQUIRED");
+  });
+
+  it("allows it once this session proved a factor, and for a user with no factor at all (the first factor)", async () => {
+    expect((await post({ passkey: true, proved: "webauthn" })).statusCode).toBe(200);
+    expect((await post({})).statusCode).toBe(200);
+  });
+
+  it("is not enforced while MFA enforcement is off (the dev/test default)", async () => {
+    expect((await post({ enforced: false, passkey: true, proved: null })).statusCode).toBe(200);
+  });
+
+  it.each([
+    "/api/auth/two-factor/get-totp-uri",
+    "/api/auth/two-factor/generate-backup-codes",
+    "/api/auth/passkey/generate-register-options",
+    "/api/auth/passkey/verify-registration",
+  ])(
+    "covers %s too: a passkey registered or a secret read on a password-only session would count as well",
+    async (url) => {
+      expect((await post({ passkey: true, proved: null }, url)).statusCode).toBe(403);
+      expect((await post({ passkey: true, proved: "webauthn" }, url)).statusCode).toBe(200);
+      expect((await post({}, url)).statusCode).toBe(200);
+    },
+  );
+
+  // `inject` resolves dot segments before Fastify sees them, so these go over a real socket with the target sent as written.
+  it.each([
+    "/api/auth/./two-factor/enable",
+    "/api/auth/x/../two-factor/enable",
+    "/api/auth/%2e/two-factor/enable",
+    "/api/auth/two-factor\\enable",
+  ])(
+    "cannot be sidestepped by a path Better Auth would resolve to the same route: %s",
+    async (target) => {
+      const app = Fastify();
+      const { gate } = gateWith({ passkey: true, proved: null });
+      registerIdentityAuth(
+        app,
+        {
+          handler: async () => new Response("{}", { status: 200 }),
+          api: { getSession: async () => ({ user: { id: "u1" }, session: { id: "s1" } }) },
+        },
+        { guard: createMfaBridgeGuard(gate) },
+      );
+      await app.listen({ port: 0, host: "127.0.0.1" });
+      try {
+        const { port } = app.server.address() as AddressInfo;
+        const status = await new Promise<number>((resolve, reject) => {
+          const req = httpRequest(
+            { host: "127.0.0.1", port, path: target, method: "POST" },
+            (res) => {
+              res.resume();
+              resolve(res.statusCode ?? 0);
+            },
+          );
+          req.on("error", reject);
+          req.end();
+        });
+        expect(status).toBe(403);
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
+  it("fails closed: a session that cannot be resolved reaches none of the guarded routes", async () => {
+    const res = await post({}, "/api/auth/two-factor/enable", "anonymous");
+    expect(res.statusCode).toBe(401);
+    expect((await post({}, "/api/auth/two-factor/disable", "anonymous")).statusCode).toBe(401);
+    // Everything else stays anonymous-reachable (sign-in and friends).
+    expect((await post({}, "/api/auth/sign-in/email", "anonymous")).statusCode).toBe(200);
+  });
+
+  it("the gate answers the same without the HTTP bridge", async () => {
+    const ask = (opts: Parameters<typeof gateWith>[0]) =>
+      gateWith(opts).gate.forTotpEnrolment({ userId: "u1", sessionId: "s1" });
+    expect(await ask({ passkey: true, proved: null })).toEqual({ allowed: false });
+    expect(await ask({ passkey: true, proved: "webauthn" })).toEqual({ allowed: true });
+    expect(await ask({})).toEqual({ allowed: true });
   });
 });
 

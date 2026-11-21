@@ -16,7 +16,6 @@ import {
   resolveMfaEnforcement,
 } from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
-import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -24,6 +23,7 @@ import { buildServer, createSessionAuthenticate } from "../src/bootstrap/index";
 import { createAuthAuditSink } from "../src/modules/02-identity/audit/auth-event-audit";
 import {
   createDbActiveMembershipLister,
+  createMfaBridgeGuard,
   createMfaEnrolmentGate,
 } from "../src/modules/02-identity/mfa-enrolment-gate";
 import {
@@ -49,7 +49,9 @@ import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
  *   - a password-only clinician's org-bound session is refused 403 MFA_ENROLMENT_REQUIRED on a clinical route while
  *     /api/auth/* stays reachable; a verified TOTP row lifts the hold; an org_admin with a TOTP but no passkey is
  *     still held until a passkey exists;
- *   - `two-factor/disable` is refused 403 for a clinician whose only factor is the TOTP.
+ *   - `two-factor/disable` is refused 403 for a clinician whose only factor is the TOTP;
+ *   - `two-factor/enable` is refused 403 MFA_VERIFICATION_REQUIRED on a password-only session of a user who has a passkey, allowed
+ *     once the session proved a factor, and allowed for a user with no factor yet; a wrong password on it is audited.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m2:auth-hardening:live
  */
@@ -139,6 +141,7 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
 
   beforeAll(async () => {
     process.env.BETTER_AUTH_SECRET ??= "test-secret-at-least-32-characters-long-xx";
+    process.env.TWO_FACTOR_ENCRYPTION_KEY ??= "Y2ktMmZhLXRlc3Qta2V5LTAxMjM0NTY3ODlhYmNkZWY=";
     admin = new Client({ connectionString: DB_URL });
     await admin.connect();
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -207,11 +210,7 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
       onAuditError: (err) => {
         throw err; // a lost audit write must fail this suite loudly
       },
-      guard: async ({ relativePath, actor }) => {
-        if (relativePath !== "/two-factor/disable" || !actor) return;
-        if (!(await gate.forUserWithoutTotp(actor.userId)).satisfied)
-          throw new ChartWardenError("MFA_REQUIRED_FOR_ROLE", "second factor required", 403);
-      },
+      guard: createMfaBridgeGuard(gate),
     });
     app.get(
       "/__probe/clinical",
@@ -388,5 +387,68 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
     expect(res.json().error.code).toBe("MFA_REQUIRED_FOR_ROLE");
     const stillThere = await admin.query("SELECT 1 FROM two_factor WHERE user_id=$1", [u.userId]);
     expect(stillThere.rowCount).toBe(1);
+  });
+
+  it("two-factor/enable: a passkey user's password-only session cannot mint a counted authenticator; a passkey-proved one can", async () => {
+    const u = await seedStaff("enr", "rn_enr");
+    await admin.query(
+      "INSERT INTO passkey (user_id, credential_id, public_key) VALUES ($1,$2,'pk')",
+      [u.userId, randomUUID()],
+    );
+    const { cookie, sessionId } = await boundSession(u.email, u.password, u.userId);
+    const enable = () =>
+      app.inject({
+        method: "POST",
+        url: "/api/auth/two-factor/enable",
+        headers: { origin: ORIGIN, cookie },
+        payload: { password: u.password },
+      });
+    const refused = await enable();
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json().error.code).toBe("MFA_VERIFICATION_REQUIRED");
+    const none = await admin.query("SELECT 1 FROM two_factor WHERE user_id=$1", [u.userId]);
+    expect(none.rowCount).toBe(0);
+
+    await admin.query(
+      "UPDATE session SET last_step_up_at=now(), last_step_up_factor='webauthn' WHERE id=$1",
+      [sessionId],
+    );
+    const allowed = await enable();
+    expect(allowed.statusCode).toBe(200);
+    // Started, not completed: the secret is stored UNVERIFIED and the audit row says "started".
+    const row = await admin.query("SELECT verified FROM two_factor WHERE user_id=$1", [u.userId]);
+    expect(row.rows[0]?.verified).toBe(false);
+    const started = (await auditRows("m2.auth.2fa_enrolled")).filter(
+      (r) => r.context.stage === "started" && r.outcome === "success",
+    );
+    expect(started.length).toBeGreaterThanOrEqual(1);
+    const everything = JSON.stringify(
+      (await admin.query("SELECT context FROM audit_event WHERE event_type LIKE 'm2.auth.%'")).rows,
+    );
+    expect(everything).not.toContain("otpauth");
+    expect(everything).not.toContain(u.password);
+  });
+
+  it("two-factor/enable: a user with no factor yet can start enrolment on a password-only session, and a wrong password is audited", async () => {
+    const u = await seedStaff("first", "rn_first");
+    const { cookie } = await boundSession(u.email, u.password, u.userId);
+    const wrong = await app.inject({
+      method: "POST",
+      url: "/api/auth/two-factor/enable",
+      headers: { origin: ORIGIN, cookie },
+      payload: { password: "definitely-the-wrong-password" },
+    });
+    expect(wrong.statusCode).toBe(400);
+    const failed = (await auditRows("m2.auth.2fa_enrolled")).filter(
+      (r) => r.outcome === "failure" && r.context.reason === "invalid_password",
+    );
+    expect(failed.length).toBeGreaterThanOrEqual(1);
+    const ok = await app.inject({
+      method: "POST",
+      url: "/api/auth/two-factor/enable",
+      headers: { origin: ORIGIN, cookie },
+      payload: { password: u.password },
+    });
+    expect(ok.statusCode).toBe(200);
   });
 });

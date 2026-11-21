@@ -67,6 +67,10 @@ const ACTOR_PATHS = new Set<string>([
   "/sign-out",
   "/two-factor/enable",
   "/two-factor/disable",
+  // The other routes that add or reveal a factor on a live session: the bridge `guard` needs the actor for them too.
+  "/two-factor/get-totp-uri",
+  "/two-factor/generate-backup-codes",
+  "/passkey/generate-register-options",
   "/passkey/verify-registration",
   "/passkey/delete-passkey",
   ...SESSION_REVOKE,
@@ -199,6 +203,16 @@ export function buildAuthAuditEvent(facts: AuthRequestFacts): AuthAuditEvent | n
       });
     return null;
   }
+  // A wrong password on enable is a credential verdict (the code names it); any other refusal is not, and stays unaudited here.
+  if (
+    path === "/two-factor/enable" &&
+    status === 400 &&
+    asRecord(facts.responseBody).code === "INVALID_PASSWORD"
+  )
+    return event("m2.auth.2fa_enrolled", "failure", "warn", {
+      ...actorFields,
+      context: { method: "totp", stage: "started", reason: "invalid_password" },
+    });
   if (!isOk(status)) return null;
   switch (path) {
     case "/sign-out":

@@ -163,10 +163,18 @@ export function registerIdentityAuth(
     }
   };
   app.all(`${basePath}/*`, async (request, reply) => {
+    // The Request Better Auth will route on, built once, and the path IT will serve. Everything below that decides by path (the sign-in
+    // throttle, the pre-handler guard, the actor lookup, the audit trail) reads that canonical path, not the raw request target:
+    // `new Request()` resolves `/./`, `/x/../`, `%2e`, `\` segments and drops a `#fragment`, so a raw-target match
+    // (`/api/auth/./two-factor/enable`, `/api/auth/./sign-in/email`) would skip all of them while Better Auth still served the route.
+    // Better Auth answers 404 to the spellings that stay different after this (a trailing slash, `//`, `%65`, other case) as long as
+    // `advanced.skipTrailingSlashes` stays unset.
+    const webRequest = toWebRequest(request);
+    const canonicalPath = new URL(webRequest.url).pathname;
     // §5.3.1 — refuse a spent budget BEFORE the credential is checked, so a locked-out account
     // costs an attacker an Argon2id verification of nothing. Only the credential-checking paths are
     // guarded: sign-out, callbacks and session reads are not credential guesses.
-    const guarded = throttle !== undefined && isGuardedSignInPath(request.url, basePath);
+    const guarded = throttle !== undefined && isGuardedSignInPath(canonicalPath, basePath);
     const username = guarded ? usernameFromBody(request.body) : null;
     if (guarded) {
       try {
@@ -188,7 +196,7 @@ export function registerIdentityAuth(
     }
     const relativePath =
       opts.auditSink || opts.guard || opts.onSecondFactorVerified
-        ? relativeAuthPath(request.url, basePath)
+        ? relativeAuthPath(canonicalPath, basePath)
         : null;
     // Sign-out / revoke destroy the session the event is about: resolve the actor first.
     const actor =
@@ -196,7 +204,7 @@ export function registerIdentityAuth(
     if (relativePath !== null && opts.guard && needsActor(relativePath)) {
       await opts.guard({ relativePath, actor });
     }
-    const res = await auth.handler(toWebRequest(request));
+    const res = await auth.handler(webRequest);
     if (guarded) {
       await throttle.record({
         username,

@@ -312,7 +312,7 @@ stateDiagram-v2
 | 5 failed logins / username / 10 min | Temporary account lockout; emit `auth.account_locked` |
 | Membership suspended/revoked | Terminate that user's sessions for that org; emit `membership.suspended`/`membership.revoked` |
 | User deactivated | Revoke all memberships, terminate all sessions, disable credentials; emit `user.deactivated` |
-| 2FA enrolled/disabled | Emit `auth.2fa_enrolled`/`auth.2fa_disabled`; on disable for a role that requires MFA → block until re-enrolled |
+| 2FA enrolled/disabled | Emit `auth.2fa_enrolled`/`auth.2fa_disabled`; on disable for a role that requires MFA → block until re-enrolled. `auth.2fa_enrolled` is emitted when enrolment STARTS (`context.stage = "started"`; a wrong password on that call emits it with `outcome = failure`); completing enrolment (the first accepted code) has no event of its own yet. Adding a factor on a live session (starting TOTP enrolment, registering a passkey, reading the TOTP secret, generating backup codes) is refused 403 `MFA_VERIFICATION_REQUIRED` for a user who already has a factor and has not proved one in this session; a user with no factor yet may add the first one on a password-only session |
 | Passkey registered/removed | Emit `passkey.registered`/`passkey.removed` |
 | Password reset completed | Terminate all of that user's sessions (force re-login); emit `auth.password_reset` |
 | Org/PE/Location created/updated | Emit `org.*`/`provider_entity.*`/`location.*`; trigger RLS-relevant cache refresh |
@@ -1442,7 +1442,7 @@ All via the Module 1 audit helper; retention class `security` (per architecture 
 | `auth.account_locked` | system | user | `{ userId, until }` |
 | `auth.logout` | user | session | `{ sessionId }` |
 | `auth.password_reset` | user | user | `{ userId }` |
-| `auth.2fa_enrolled` / `auth.2fa_disabled` | user | user | `{ userId, method }` |
+| `auth.2fa_enrolled` / `auth.2fa_disabled` | user | user | `{ userId, method }`; `2fa_enrolled` also `stage` (`started`) and, on a failed start, `reason` |
 | `auth.backup_code_used` | user | user | `{ userId, remaining }` |
 | `passkey.registered` / `passkey.removed` | user | passkey | `{ userId, passkeyId, name }` |
 | `session.revoked` | user/admin | session | `{ sessionId, byUserId, reason }` |

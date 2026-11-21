@@ -12,7 +12,7 @@
 // (`sessionProvedFactor`), else a passkey-only user would pass on a password-only session.
 // Disabled (`enforced: false`) it answers "satisfied" without reading anything: the dev/test default (see
 // `resolveMfaEnforcement`).
-import { type MfaVerdict, evaluateMfa } from "@chartwarden/auth";
+import { type AuthAuditActor, type MfaVerdict, evaluateMfa } from "@chartwarden/auth";
 import type { DbClient } from "@chartwarden/db";
 import { withUserContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
@@ -63,6 +63,15 @@ export interface MfaEnrolmentGate {
    * removed? `satisfied: false` means the removal must be refused (the `two-factor/disable` guard).
    */
   forUserWithoutTotp(userId: string): Promise<MfaVerdict>;
+  /**
+   * May this session START an authenticator (TOTP) enrolment? A user with no verified factor may: a password is all they have and
+   * enrolling is how the first factor comes to exist. A user who already has one (a passkey; a TOTP is refused by Better Auth itself)
+   * must have PROVED a factor in THIS session first. Otherwise a phished password could mint an authenticator of the attacker's own,
+   * confirm it with a code from their own app, and have that session recorded as having proved a second factor.
+   */
+  forTotpEnrolment(input: { userId: string; sessionId: string }): Promise<{
+    readonly allowed: boolean;
+  }>;
 }
 
 /** 403 raised when the matrix is unmet. The requirement is in the message so the UI can route to the right enrolment. */
@@ -130,6 +139,12 @@ export function createMfaEnrolmentGate(deps: MfaEnrolmentGateDeps): MfaEnrolment
         await deps.roleKeysForMembership({ organizationId, membershipId }),
       );
     },
+    async forTotpEnrolment({ userId, sessionId }) {
+      if (!deps.enforced) return { allowed: true };
+      const factors = await factorsOf(userId);
+      if (!factors.totp && !factors.passkey) return { allowed: true };
+      return { allowed: (await deps.sessionProvedFactor(sessionId)) !== null };
+    },
     async forUserWithoutTotp(userId) {
       if (!deps.enforced) return SATISFIED;
       const memberships = await deps.activeMembershipsOf(userId);
@@ -141,6 +156,54 @@ export function createMfaEnrolmentGate(deps: MfaEnrolmentGateDeps): MfaEnrolment
       // Not cached: removal is rare and must see the factor state as of now.
       return evaluateMfa(roleKeys, { totp: false, passkey: await passkeyOf(userId) });
     },
+  };
+}
+
+/** The Better Auth routes that add a factor to, reveal one on, or remove one from a LIVE session. */
+const FACTOR_ADDING_PATHS: ReadonlySet<string> = new Set([
+  "/two-factor/enable",
+  "/two-factor/get-totp-uri",
+  "/two-factor/generate-backup-codes",
+  "/passkey/generate-register-options",
+  "/passkey/verify-registration",
+  // Removing the factor a user has is the first step of the same bypass: with none left, the "first factor" rule would let a
+  // password-only session enrol its own.
+  "/passkey/delete-passkey",
+]);
+
+/**
+ * The pre-handler policy for the auth bridge (`registerIdentityAuth`'s `guard`), one definition for the server and the live suite:
+ *   - `two-factor/disable` is refused while the MFA matrix would no longer be met (M2 §7.4);
+ *   - every route that adds, reveals or removes a factor on a live session ({@link FACTOR_ADDING_PATHS}) is refused 403
+ *     MFA_VERIFICATION_REQUIRED for a user who already has a factor and has not proved one in this session (see
+ *     {@link MfaEnrolmentGate.forTotpEnrolment}). A password alone must not mint a factor that then counts, through ANY of them: a
+ *     passkey registered on a password-only session would let the attacker sign in with it and be recorded as having proved it.
+ * It fails CLOSED: a session that cannot be resolved (anonymous, or the lookup failed) reaches none of these routes.
+ */
+export function createMfaBridgeGuard(
+  gate: MfaEnrolmentGate,
+): (input: { relativePath: string; actor: AuthAuditActor | null }) => Promise<void> {
+  return async ({ relativePath, actor }) => {
+    const disabling = relativePath === "/two-factor/disable";
+    if (!disabling && !FACTOR_ADDING_PATHS.has(relativePath)) return;
+    if (!actor) throw new ChartWardenError("UNAUTHORIZED", "sign in to continue", 401);
+    if (disabling) {
+      if (!(await gate.forUserWithoutTotp(actor.userId)).satisfied)
+        throw new ChartWardenError(
+          "MFA_REQUIRED_FOR_ROLE",
+          "your role requires a second factor; it cannot be disabled",
+          403,
+        );
+      return;
+    }
+    if (
+      !(await gate.forTotpEnrolment({ userId: actor.userId, sessionId: actor.sessionId })).allowed
+    )
+      throw new ChartWardenError(
+        "MFA_VERIFICATION_REQUIRED",
+        "confirm it is you with the factor you already have (sign in again with your passkey) before adding another",
+        403,
+      );
   };
 }
 
