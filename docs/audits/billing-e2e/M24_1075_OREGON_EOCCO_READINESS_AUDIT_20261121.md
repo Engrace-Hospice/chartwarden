@@ -194,7 +194,7 @@ No wider questionnaire is needed before L1. Do not ask the customer for PHI; syn
 - Sources: OHA Provider Enrollment, Fee Schedule and Institutional Billing Instructions; current Oregon SOS Division 142 pages; 2026 EOCCO Provider Manual and referral/auth page; CMS-1450 training, Medicare Claims Processing Manual Ch.11 and corrected FY2027 Transmittal 13976; Stedi YUFJT payer record; Claim.MD public technical docs. The EOCCO PDF’s version is 2026 (metadata modified 2026-08-12); no contractual rate exhibit was public in reviewed material.
 - Validation allowed for this audit: source/code static inspection and diff/doc checks. No live PostgreSQL, Docker, application build, full tests, vendor API, claim submission, deployment or production secret access. Those checks are not represented as run.
 - No business functionality or migration changed. No implementation code altered.
-- PR status: Draft PR to `develop`, `Refs #1075`; not merged; issue remains open. The PR URL and head commit will be added after opening the authorized draft.
+- PR status: [Draft PR #1088](https://github.com/Engrace-Hospice/chartwarden/pull/1088) targets `develop` and references #1075. The report/source-register/index increment was published in commit `8c35816aa`; the PR remains unmerged and issue #1075 remains open.
 
 ## J. Non-negotiable safety confirmation
 
