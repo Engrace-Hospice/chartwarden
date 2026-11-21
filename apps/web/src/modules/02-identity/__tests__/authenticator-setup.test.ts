@@ -68,6 +68,12 @@ describe("enrolFailure", () => {
     expect(enrolFailure({ code: "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE" })).toBe("too-many-attempts");
   });
 
+  it("names the refusal that asks an account with a passkey to sign in with it first (the standard envelope)", () => {
+    expect(enrolFailure({ error: { code: "MFA_VERIFICATION_REQUIRED" } })).toBe("needs-sign-in");
+    // The same code at the top level is Better Auth's namespace, not ChartWarden's policy: not trusted as this refusal.
+    expect(enrolFailure({ code: "MFA_VERIFICATION_REQUIRED" })).toBe("failed");
+  });
+
   it("calls everything else a plain failure and never reads the message", () => {
     expect(enrolFailure({ code: "SOMETHING_NEW", message: "secret detail" })).toBe("failed");
     expect(enrolFailure({ message: "INVALID_PASSWORD" })).toBe("failed");

@@ -116,6 +116,22 @@ describe("authenticator app setup", () => {
     expect(screen.getByLabelText(/your password/i)).toBeTruthy();
   });
 
+  it("tells an account that has a passkey to sign in with it first, and stays on the password step", async () => {
+    enable.mockResolvedValue({
+      data: null,
+      error: {
+        status: 403,
+        error: { code: "MFA_VERIFICATION_REQUIRED", message: "server detail" },
+      },
+    });
+    mount();
+    await enterPassword();
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/Sign in again with your passkey first/);
+    expect(screen.queryByText("server detail")).toBeNull();
+    expect(screen.getByLabelText(/your password/i)).toBeTruthy();
+  });
+
   it("refuses a setup URI that is not an authenticator URI instead of linking to it", async () => {
     enable.mockResolvedValue({
       data: { totpURI: "javascript:alert(1)", backupCodes: BACKUP },

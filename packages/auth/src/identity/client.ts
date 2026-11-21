@@ -14,8 +14,15 @@ import { twoFactorClient, usernameClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
 export interface AuthResult {
-  /** `code` is Better Auth's stable error code (for example `INVALID_PASSWORD`); `message` is for logs, not for display. */
-  readonly error: { readonly message?: string; readonly code?: string } | null;
+  /**
+   * `code` is Better Auth's stable error code (for example `INVALID_PASSWORD`); `message` is for logs, not for display. A refusal from
+   * ChartWarden's own policy (the auth bridge guard) arrives in the standard envelope instead, its code at `error.error.code`.
+   */
+  readonly error: {
+    readonly message?: string;
+    readonly code?: string;
+    readonly error?: { readonly code?: string };
+  } | null;
 }
 
 /** What starting authenticator-app enrolment returns. Secret material: hold it in memory, never log or persist it. */

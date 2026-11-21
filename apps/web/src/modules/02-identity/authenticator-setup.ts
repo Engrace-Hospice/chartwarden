@@ -51,6 +51,7 @@ export type EnrolFailure =
   | "wrong-code"
   | "too-many-attempts"
   | "already-on"
+  | "needs-sign-in"
   | "failed";
 
 /**
@@ -58,8 +59,17 @@ export type EnrolFailure =
  * on the screen. Every code the screen does not know is a plain failure.
  */
 export function enrolFailure(
-  error: { readonly code?: string; readonly message?: string } | null | undefined,
+  error:
+    | {
+        readonly code?: string;
+        readonly message?: string;
+        readonly error?: { readonly code?: string };
+      }
+    | null
+    | undefined,
 ): EnrolFailure {
+  // ChartWarden's own refusal (the auth bridge guard) uses the standard envelope; Better Auth's errors carry the code at the top.
+  if (error?.error?.code === "MFA_VERIFICATION_REQUIRED") return "needs-sign-in";
   const code = error?.code;
   if (code === "INVALID_PASSWORD") return "wrong-password";
   if (code === "INVALID_CODE") return "wrong-code";
@@ -74,6 +84,8 @@ export const ENROL_FAILURE_COPY: Readonly<Record<EnrolFailure, string>> = {
     "That code is not right. Check the 6-digit code in your authenticator app and try again.",
   "too-many-attempts": "Too many attempts. Wait a few minutes, then start again.",
   "already-on": "The authenticator app is already on for this account.",
+  "needs-sign-in":
+    "Sign in again with your passkey first. An account that already has a passkey needs it to add an authenticator app.",
   failed: "Something went wrong and nothing was turned on. Try again.",
 };
 
