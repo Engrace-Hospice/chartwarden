@@ -39,9 +39,9 @@ export type SegmentBoundary = "first_page" | "new_header" | "type_change" | "dup
 export interface PacketSegment {
   readonly pageNumbers: readonly number[];
   readonly documentType: ClassifiedPage["documentType"];
-  /** Lowest classifier confidence across the segment's pages. */
+  /** Confidence of the first-page verdict that supplies this segment's document type. */
   readonly confidence: number;
-  /** True when any page needs human classification (unknown / below the floor): no extraction job. */
+  /** True when the authoritative first-page verdict needs human classification: no extraction job. */
   readonly needsHumanClassification: boolean;
   /** The document's title as printed (its first section header), or null. */
   readonly title: string | null;
@@ -243,14 +243,13 @@ export function splitPacket(
 
   return segments.map((s) => {
     const nums = s.pages.map((p) => p.page);
-    const verdicts = nums.map((n) => verdict.get(n));
     const first = s.pages[0] as SplitterPage;
     // A document's type is its first page's verdict; continuation pages often classify weakly.
-    const firstVerdict = verdicts[0];
+    const firstVerdict = verdict.get(first.page);
     return {
       pageNumbers: nums,
       documentType: firstVerdict?.documentType ?? "unknown",
-      confidence: Math.min(...verdicts.map((v) => v?.confidence ?? 0)),
+      confidence: firstVerdict?.confidence ?? 0,
       needsHumanClassification:
         !firstVerdict ||
         firstVerdict.needsHumanClassification ||

@@ -135,7 +135,8 @@ describe("splitter rules", () => {
     expect(segs[0]).toMatchObject({
       pageNumbers: [1, 2],
       documentType: "discharge_summary",
-      confidence: 0.6,
+      confidence: 0.9,
+      needsHumanClassification: false,
     });
   });
 

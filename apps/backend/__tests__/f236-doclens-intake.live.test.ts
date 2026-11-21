@@ -655,6 +655,86 @@ describe.skipIf(!DB_URL)("F-236 — DocLens intake job + live M32 pipeline — L
     ).toEqual({ pages: 1, page_from: 1, page_to: 2, jobs: 1 });
   });
 
+  it("extracts a high-confidence document whose continuation page classifies below the floor", async () => {
+    const batchId = await seedBatch(ORG_A, true);
+    const continuationPacket = [
+      {
+        page: 1,
+        width: 612,
+        height: 792,
+        blocks: [
+          {
+            text: "DISCHARGE SUMMARY",
+            bbox: [10, 10, 200, 30] as const,
+            label: "section_header",
+          },
+          { text: "(continued - page 1 of 2)", bbox: [10, 740, 180, 760] as const, label: "text" },
+        ],
+      },
+      {
+        page: 2,
+        width: 612,
+        height: 792,
+        blocks: [
+          {
+            text: "Patient discharge instructions - Page 2 of 2",
+            bbox: [10, 10, 260, 30] as const,
+            label: "text",
+          },
+          { text: "Continue home medications.", bbox: [10, 50, 220, 70] as const, label: "text" },
+        ],
+      },
+    ];
+    const extractedPages: number[][] = [];
+
+    await expect(
+      runDocLensIntake(
+        deps({
+          docling: {
+            parse: async () => ({ doclingVersion: "2.133.0", pages: continuationPacket }),
+            render: async () => {
+              throw new Error("F-236 suite runs no stage 5");
+            },
+          },
+          classifier: () => ({
+            classify: async (input) => ({
+              available: true,
+              invocationId: `continuation-${input.pageNumber}`,
+              documentType: input.pageNumber === 1 ? "discharge_summary" : "unknown",
+              confidence: input.pageNumber === 1 ? 0.95 : 0.2,
+            }),
+          }),
+          extractor: () => ({
+            extract: async (input) => {
+              extractedPages.push(input.pages.map((page) => page.page));
+              return { available: true, invocationId: "continuation-extract", fields: {} };
+            },
+          }),
+        }),
+        job(ORG_A, batchId),
+      ),
+    ).resolves.toMatchObject({ outcome: "extracted", jobs: 1, candidates: 0 });
+
+    expect(extractedPages).toEqual([[1, 2]]);
+    expect(
+      (
+        await admin.query(
+          `SELECT p.page_range_start, p.page_range_end, p.document_type, p.confidence, j.status
+             FROM classified_page p
+             JOIN extraction_job j ON j.classified_page_id=p.id
+            WHERE p.intake_upload_batch_id=$1`,
+          [batchId],
+        )
+      ).rows[0],
+    ).toEqual({
+      page_range_start: 1,
+      page_range_end: 2,
+      document_type: "discharge_summary",
+      confidence: "0.950",
+      status: "ready_for_review",
+    });
+  });
+
   it("an unfiled source document is parse_failed (no guessing a file), and RLS hides org A's batch from org B", async () => {
     const unfiled = await seedBatch(ORG_A, false);
     expect(await runDocLensIntake(deps(), job(ORG_A, unfiled))).toEqual({
