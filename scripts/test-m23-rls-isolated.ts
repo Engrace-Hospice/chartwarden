@@ -10,6 +10,7 @@ import {
   type M23NetworkInspection,
   M23_PGDATA_TMPFS,
   assertFreshM23DatabaseInventory,
+  buildM23VitestEnvironment,
   isCompleteM23Qualification,
   isM23SuiteEntirelySkipped,
   startLoopbackTcpRelay,
@@ -253,13 +254,12 @@ async function main() {
         cwd: ROOT,
         encoding: "utf8",
         maxBuffer: 16 * 1024 * 1024,
-        env: {
-          ...process.env,
-          CHARTWARDEN_TEST_DATABASE_URL: databaseUrl.toString(),
-          CHARTWARDEN_M23_RLS_ISOLATED_RUN: "true",
-          CHARTWARDEN_TEST_CLUSTER_ID: clusterName,
-          CHARTWARDEN_TEST_CLUSTER_SYSTEM_IDENTIFIER: identity.systemIdentifier,
-        },
+        env: buildM23VitestEnvironment(process.env, {
+          databaseUrl: databaseUrl.toString(),
+          clusterName,
+          systemIdentifier: identity.systemIdentifier,
+          privateWorkDir: reportDir,
+        }),
       },
     );
     if (child.error) throw child.error;

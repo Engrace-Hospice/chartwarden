@@ -81,6 +81,30 @@ export function isM23SuiteEntirelySkipped(input: {
   );
 }
 
+export function buildM23VitestEnvironment(
+  hostEnvironment: Readonly<Record<string, string | undefined>>,
+  isolated: {
+    databaseUrl: string;
+    clusterName: string;
+    systemIdentifier: string;
+    privateWorkDir: string;
+  },
+): Record<string, string> {
+  const environment: Record<string, string> = {};
+  const path = hostEnvironment.PATH;
+  if (path !== undefined) environment.PATH = path;
+  return {
+    ...environment,
+    HOME: isolated.privateWorkDir,
+    TMPDIR: isolated.privateWorkDir,
+    NODE_ENV: "test",
+    CHARTWARDEN_TEST_DATABASE_URL: isolated.databaseUrl,
+    CHARTWARDEN_M23_RLS_ISOLATED_RUN: "true",
+    CHARTWARDEN_TEST_CLUSTER_ID: isolated.clusterName,
+    CHARTWARDEN_TEST_CLUSTER_SYSTEM_IDENTIFIER: isolated.systemIdentifier,
+  };
+}
+
 /** Emits only allowlisted diagnostic facts, never arbitrary Vitest error text. */
 export function summarizeVitestFailureMessage(message: string): string[] {
   const summary = new Set<string>();
