@@ -671,9 +671,15 @@ export function buildDdeQueueService(
         ),
       );
       const asOf = toIsoDate(now());
+      const capability = capabilityFor(ports);
       return {
         items: page.items.map((r) => viewOf(r, asOf)),
-        providerCapability: capabilityFor(ports),
+        // The response schema's arrays are mutable; the capability's are readonly, so hand out copies.
+        providerCapability: {
+          ...capability,
+          submissionItemTypes: [...capability.submissionItemTypes],
+          statusCheckItemTypes: [...capability.statusCheckItemTypes],
+        },
         nextCursor: page.nextCursor,
         hasMore: page.hasMore,
       };
