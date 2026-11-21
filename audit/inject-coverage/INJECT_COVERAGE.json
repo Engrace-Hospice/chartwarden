@@ -4,7 +4,7 @@
     "covered": 40,
     "routes": 2123,
     "coveredRoutes": 2123,
-    "directRoutesReferenced": 1925
+    "directRoutesReferenced": 1926
   },
   "modules": [
     {
@@ -121,6 +121,7 @@
         "apps/backend/__tests__/m5-privacy-officer.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/m8-visit-note-drafting-admission.live.test.ts",
+        "apps/backend/__tests__/m8-visit-note-drafting-lpn-aide.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts",
         "apps/backend/__tests__/s11-adversarial-stages.live.test.ts"
       ],
@@ -216,13 +217,14 @@
         "apps/backend/__tests__/m8-note-closure.live.test.ts",
         "apps/backend/__tests__/m8-visit-note-draft-routes.live.test.ts",
         "apps/backend/__tests__/m8-visit-note-drafting-admission.live.test.ts",
+        "apps/backend/__tests__/m8-visit-note-drafting-lpn-aide.live.test.ts",
         "apps/backend/__tests__/m8-visit-note-drafting-recert.live.test.ts",
         "apps/backend/__tests__/note-closure-routes.test.ts",
         "apps/backend/__tests__/s11-adversarial-stages.live.test.ts",
         "apps/backend/__tests__/visit-note-draft-routes.test.ts",
         "apps/backend/__tests__/wounds.live.test.ts"
       ],
-      "directRoutesReferenced": 61
+      "directRoutesReferenced": 62
     },
     {
       "module": "09-assessments",
