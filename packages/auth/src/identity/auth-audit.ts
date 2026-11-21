@@ -204,9 +204,10 @@ export function buildAuthAuditEvent(facts: AuthRequestFacts): AuthAuditEvent | n
     case "/sign-out":
       return event("m2.auth.logout", "success", "info", actorFields);
     case "/two-factor/enable":
+      // Enrolment BEGINS here: the secret stays unverified (and counts for nothing) until a code is accepted, so the trail says "started".
       return event("m2.auth.2fa_enrolled", "success", "info", {
         ...actorFields,
-        context: { method: "totp" },
+        context: { method: "totp", stage: "started" },
       });
     case "/two-factor/disable":
       return event("m2.auth.2fa_disabled", "success", "warn", {

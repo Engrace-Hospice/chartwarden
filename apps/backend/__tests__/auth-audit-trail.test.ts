@@ -123,6 +123,22 @@ describe("authentication audit trail (M2 §8.1)", () => {
     await app.close();
   });
 
+  it("two-factor/enable is recorded as a started enrolment, never as a verified factor", async () => {
+    // Synthetic secret and backup code: the response body carries them, the event must not.
+    const { app, events } = build({
+      status: 200,
+      body: { totpURI: "otpauth://totp/x?secret=JBSWY3DPEHPK3PXP", backupCodes: ["aaaa-1111"] },
+    });
+    await post(app, "/api/auth/two-factor/enable", { password: "not-a-real-password" });
+    expect(events[0]).toMatchObject({
+      eventType: "m2.auth.2fa_enrolled",
+      context: { method: "totp", stage: "started" },
+    });
+    for (const secret of ["JBSWY3DPEHPK3PXP", "aaaa-1111", "not-a-real-password"])
+      expect(JSON.stringify(events[0])).not.toContain(secret);
+    await app.close();
+  });
+
   it("a backup-code sign-in writes backup_code_used and a wrong TOTP writes login_failed", async () => {
     const ok = build({ status: 200, body: { user: { id: "u-1" } } });
     await post(ok.app, "/api/auth/two-factor/verify-backup-code", { code: "abcd-1234" });
