@@ -37,6 +37,7 @@ import type {
   ScaleType,
 } from "@chartwarden/types";
 import type { DraftEncounter, DraftPorts, DraftViewer } from "./ports";
+import { readsPreviousVisit } from "./source-reads";
 import { draftUnavailable, guarded } from "./unavailable";
 
 /** The sources of a draft: `DraftInputs` minus the selection tree and slots, which `computeDraft` loads. */
@@ -574,7 +575,7 @@ export async function readDraftInputs(
       ports.organizationTimeZone(encounter.organizationId),
     ),
     // The previous signed visit bounds the "since the last visit" windows of the scale readings and the medication changes, and of nothing else.
-    needs.scales || needs.medicationChanges
+    readsPreviousVisit(needs)
       ? readPreviousVisitMs(ports, encounter, asOfMs)
       : Promise.resolve(null),
   ]);

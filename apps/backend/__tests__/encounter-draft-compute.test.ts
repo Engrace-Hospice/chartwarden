@@ -490,3 +490,33 @@ describe("snapshotStorePorts: the weights of a recertification or face-to-face d
     );
   });
 });
+
+describe("snapshotStorePorts: the store reads of a source the template does not draft from (S3)", () => {
+  it("takes the care-plan links alone for an aide, and a read of any other through its snapshot is a bug, not an empty answer", async () => {
+    const aide = encounter({ encounterType: "chha_visit", discipline: "chha" });
+    const store = fakePorts();
+    const ports = await snapshotStorePorts(store, aide, NOW);
+    expect(store.removedCarePlanElementIds).toHaveBeenCalledTimes(1);
+    expect(store.previousSignedVisitAt).not.toHaveBeenCalled();
+    expect(store.latestVitals).not.toHaveBeenCalled();
+    await expect(ports.removedCarePlanElementIds(aide.id)).resolves.toEqual(new Set());
+    await expect(ports.previousSignedVisitAt(aide)).rejects.toThrow(
+      "a previous signed visit read the snapshot did not take",
+    );
+    await expect(ports.latestVitals(aide.id, AS_OF)).rejects.toThrow(
+      "a vitals read the snapshot did not take",
+    );
+  });
+
+  it("takes the previous visit and no care-plan links for a face-to-face visit, which reads scores alone", async () => {
+    const f2f = encounter({ encounterType: "face_to_face", discipline: "md" });
+    const store = fakePorts();
+    const ports = await snapshotStorePorts(store, f2f, NOW);
+    expect(store.previousSignedVisitAt).toHaveBeenCalledTimes(1);
+    expect(store.removedCarePlanElementIds).not.toHaveBeenCalled();
+    await expect(ports.previousSignedVisitAt(f2f)).resolves.toBeNull();
+    await expect(ports.removedCarePlanElementIds(f2f.id)).rejects.toThrow(
+      "a removed care-plan links read the snapshot did not take",
+    );
+  });
+});

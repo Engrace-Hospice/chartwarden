@@ -10,7 +10,7 @@
 // computed from fewer sources for one viewer than for another. Asked at the draft routes only (the service's `loadOr404`), after the switch
 // and the tenant are known and before any source is read; finalize, sign and an addendum's recompute recompute the same full draft for the
 // signer without them (S1), and ask the admission facts' keys by template (`admission-reads.ts`).
-import { draftSourceNeeds } from "@chartwarden/hearthnote";
+import { type DraftSourceNeeds, draftSourceNeeds } from "@chartwarden/hearthnote";
 import { ForbiddenError } from "@chartwarden/types";
 import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
 
@@ -35,6 +35,14 @@ export function sourceDomainReadsFor(
     ...(needs.medicationChanges ? [SOURCE_DOMAIN_KEYS.medicationChanges] : []),
     ...(needs.scales ? [SOURCE_DOMAIN_KEYS.scales] : []),
   ];
+}
+
+/**
+ * Whether the draft reads the previous signed visit: it bounds the "since the last visit" windows of the scale readings and the medication
+ * changes, and of nothing else. ONE rule for the store snapshot (`compute.ts`) and the as-of reads (`inputs.ts`), so the two cannot disagree.
+ */
+export function readsPreviousVisit(needs: DraftSourceNeeds): boolean {
+  return needs.scales || needs.medicationChanges;
 }
 
 /** 403 for a caller who lacks one of the source-domain keys the template's draft needs. The message names the key, as `requirePermission` does. */
