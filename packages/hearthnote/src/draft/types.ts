@@ -64,7 +64,7 @@ export interface DraftSourceNeeds {
   readonly scales: boolean;
 }
 
-/** The care-plan goals and interventions linked to this visit, in the plan version in effect at `asOf`. */
+/** The care-plan goals and interventions relevant to this visit (those the author has not removed), in the plan version in effect at `asOf`. */
 export interface CarePlanDraftInput {
   readonly goals: readonly CarePlanGoalInput[];
   readonly interventions: readonly CarePlanInterventionInput[];

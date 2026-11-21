@@ -658,7 +658,7 @@ const faceToFaceVisitMap: SourceMap = (inputs, asOfMs) => [
 /** S3: the aide visit's one drafted section. */
 const AIDE_SECTION = { adl: "adl" } as const;
 
-/** The aide visit (S3): the care-plan interventions linked to it, in `adl`. No goal, vitals, scale or medication source is read. */
+/** The aide visit (S3): the care plan's active aide interventions, less those the author removed, in `adl`. No goal, vitals, scale or medication source is read. */
 const aideVisitMap: SourceMap = (inputs) => [
   [AIDE_SECTION.adl, interventionGroups(inputs.carePlan)],
 ];
