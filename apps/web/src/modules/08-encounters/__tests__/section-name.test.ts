@@ -24,6 +24,10 @@ describe("humanizeSection", () => {
     expect(humanizeSection("baseline_symptoms")).toBe("Baseline Symptoms");
   });
 
+  it("reads the aide visit's drafted section by its template heading, never as 'Adl'", () => {
+    expect(humanizeSection("adl")).toBe("Activities of Daily Living");
+  });
+
   it("does not take a name from the object prototype", () => {
     expect(humanizeSection("constructor")).toBe("Constructor");
   });

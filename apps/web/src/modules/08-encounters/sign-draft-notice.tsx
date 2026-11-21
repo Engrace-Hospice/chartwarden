@@ -21,6 +21,8 @@ const SECTION_NAME: ReadonlyMap<string, string> = new Map([
   ["advance_directive", "Advance Directive Acknowledgment"],
   ["caregiver_overview", "Caregiver Overview"],
   ["baseline_symptoms", "Baseline Symptoms"],
+  // S3 (aide visit): the template's own heading, not "Adl"
+  ["adl", "Activities of Daily Living"],
 ]);
 
 /** The read page has no template, so a section reads as its id in words ("vitals_review" -> "Vitals review"). */
