@@ -63,6 +63,19 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
   the 10 s acquire timeout fails with 503 (never a pass, never a partial write: the transaction rolls back). A tenant that signs through such a
   burst retries; a burst that long is an operations signal, not a data one.
 
+### LPN and aide drafts (ADR-0114 slice S3, design §3.5): limits recorded
+
+- **Fewer reads, by template.** `draftSourceNeeds` decides which of the care plan, vitals, medication changes and scales a draft reads (`inputs.ts`,
+  `compute.ts` `snapshotStorePorts`): an aide's draft is one care-plan read and its removed links; an LPN's adds the vitals and the medication changes.
+  No new seam, no new write, no migration. The face-to-face visit no longer reads the care plan, vitals or medication changes it never drafted from.
+- **Keys by template.** The three source-domain keys are asked by the service (`source-reads.ts`, `draft-service.ts`), no longer by static route
+  preHandlers: the same four routes, after the switch and the tenant are known. A tenant with no default aide or LPN role must grant the keys before it
+  enables the draft. Finalize, sign and an addendum's recompute still ask only the admission facts' keys (S1: the signer's draft is the same full draft).
+- **Cosign of a drafted note.** A cosigner without Part 2 disclosure cosigns the redacted view (VN-D13, VN-D43): the register (CW-AC-50, CW-AC-51)
+  records that they attest a note whose Part 2 sections they cannot read. An amendment by such a viewer is refused as before (VN-D30).
+- **"Performed" is the clinician's.** The aide's `adl` states an intervention performed for each one linked to the visit and not removed; the control is
+  the removal affordance and the per-section confirmation, as for the RN routine visit.
+
 ### RN admission visit drafts (ADR-0114 slice S2b, design §3.4): limits recorded
 
 - **Three more reads under the sign lock.** An admission draft adds M12's orders as of the visit, M5's roster for the service date and M39's

@@ -127,6 +127,19 @@ All DECIDED by the owner, 2026-11-20 (the S2 plan, accepted with its recommendat
 | VN-D37 | The admission visit's draft needs the read keys of the modules it states facts from, `patient.read` (M5), `consent.read` (M39) and `prescribing.read` (M12), on top of the three every draft needs. They are asked by template, in the same places as S2's (the draft routes, finalize, sign, an addendum's finalize and sign). `prescribing.read` is one of the three every draft needs and the draft routes guard on it already, but finalize, sign and an addendum's recompute ask only the template's own keys (S1: the signer's draft is the same full draft), so the admission template names it too: the orders in effect are the one source it is first to state in a section of its own. |
 | VN-D38 | The 16 S1 entries the admission visit shares (vitals, care-plan, medication-change and ESAS-r phrases) are tagged for it, so its `vitals_review`, `interventions` and `plan` draft as in the routine visit; the wording is untouched. The face-to-face visit's `med_reconciliation` stays undrafted. |
 
+### 2.7 Slice 3 decisions
+
+Recommended 2026-11-21; the owner confirmed the two it asked about (VN-D42, VN-D43) and the rest as recommended.
+
+| ID | Decision |
+|---|---|
+| VN-D39 | S3 drafts the LPN visits (`routine_visit` and `lpn_visit` by an `lpn`): `vitals_review`, `interventions` (the care-plan interventions and the medication changes) and `plan` (the care-plan goals), from S1's sources and wording. NOT `assessment` or `symptom_management`: a performance status is a functional determination that belongs to the RN or physician, so the PPS and ESAS-r phrases are not tagged for an LPN. `chief_concern` and the recorded-findings sections stay the clinician's own. |
+| VN-D40 | S3 drafts the aide visit (`chha_visit` by a `chha`): `adl` only. It states the recorded ADLs first (the sentence the assembled note states, carried into the drafted text because a confirmed section replaces the whole section), then one sentence per care-plan intervention linked to the visit and not removed. No goal, vitals, scale or medication source is read, and `plan` and `chief_concern` stay the aide's own. An aide with no linked intervention has no drafted `adl`, and the usual assembly states the recorded ADLs. |
+| VN-D41 | No new phrase. `narrative-vocab@2026.12.2` tags 12 S1 entries (vitals, care-plan, medication-change) for the LPN visits and one (`nv.cp.intervention_performed`) for the aide visit; wording untouched, review still pending (VN-D34). |
+| VN-D42 | The draft reads only the sources its template's drafted sections are built from, and asks the read key of each: the aide's draft the care plan's (`care_plan.read`), an LPN's the care plan's and the medication orders' (`prescribing.read`), an RN visit's all three (`assessment.read_trend` too), the face-to-face visit's the scales' alone, a template that drafts nothing none. The check moves from static route preHandlers to the service, by template, at the draft routes only (S1's design: finalize and sign recompute the same full draft without them), after the switch and the tenant are known and before any source is read. |
+| VN-D43 | Cosign is unchanged. A cosigner without Part 2 disclosure cosigns the redacted view of the note, as VN-D13 says (an amendment by such a viewer is refused, VN-D30). The register records the limit: that cosigner attests a note whose Part 2 sections they cannot read. |
+| VN-D44 | S3 changes the files S2b changed (`sources.ts`, `scope.ts`, `inputs.ts`, `draft-entries.ts`), so it is built on the S2b branch and rebased onto `main` after S2b merges. |
+
 ## 3. How a draft works
 
 1. The visit is published (`m17.visit.published`) and seeds an encounter as today.
@@ -279,6 +292,27 @@ Designed 2026-11-20 against `main` at `096e01f5e`. Within the decisions above; t
 - **No migration.** The eraser is unchanged.
 - **Not in S2b.** The face-to-face visit's `med_reconciliation`, code status, the content of an advance directive, caregiver contact details, home-medication history, mobile, offline, dictation and AI.
 
+### 3.5 S3 design: the LPN visits and the aide visit (VN-D39 to VN-D44)
+
+Designed 2026-11-21 against the S2b branch. Within the decisions above; the S1/S2/S2b pipeline (per-author draft recomputed as of the visit time, confirmation bound to the content hash and corpus version, gate check 13, sealed rows, per-viewer Part 2, amendments, the switch) is reused unchanged.
+
+- **Which templates draft.** Still read off the corpus tags (`draft/scope.ts`): `routine_visit:lpn` and `lpn_visit:lpn` draft `vitals_review`, `interventions` and `plan`; `chha_visit:chha` drafts `adl`. The LPN templates are sourced like the routine visit (the default map), and the PPS and ESAS-r phrases are untagged for them, so `assessment` and `symptom_management` are not drafted and no scale reading is stated. The aide visit has a source map of its own (`aideVisitMap`) and phrase map.
+
+| Section | Template | Fed by | Rule |
+|---|---|---|---|
+| `vitals_review` | LPN | the visit's vitals | as the routine visit's |
+| `interventions` | LPN | care-plan interventions linked to the visit, then medication changes since the last visit | as the routine visit's |
+| `plan` | LPN | care-plan goals | as the routine visit's |
+| `adl` | aide | the recorded ADLs, then the care-plan interventions linked to the visit and not removed | the recorded-ADL sentence first (the compiler carries it, as it carries the recorded body measures into `vitals_review`), then `Care-plan intervention performed: ...` per intervention by source id |
+
+- **Which sources are read.** `draftSourceNeeds(type, discipline)` (`draft/scope.ts`) is the union, over the template's drafted sections, of the S1 sources each is built from (`SECTION_SOURCES` in `draft/sources.ts`; a drafted section with no row throws). `readDraftInputs` and `snapshotStorePorts` read only those: an aide reads the care plan and the removed links, an LPN the care plan, the vitals and the medication changes. The face-to-face visit, which drafts `prognosis` alone, no longer reads the care plan, vitals or medication changes it never used.
+- **Permissions (VN-D42).** `source-reads.ts` names the keys from the same needs (`care_plan.read`, `prescribing.read`, `assessment.read_trend`, in that order) and `draft-service.ts` asks them in `loadOr404`, so the four draft routes (the draft, the section PUT and the two amendment-draft routes) ask them by template. They are no longer route preHandlers. There is no default aide or LPN role: a tenant's roles must hold the keys before it enables the switch.
+- **Cosign.** Unchanged machinery: an LPN or aide primary sign puts the note in `cosign_pending` with a request routed to the patient's RN case manager; the cosigner reads the note through the per-viewer view (VN-D13) and signs; an amendment opens an `addendum_cosignature_request`. S3 proves it end to end with a drafted note in its live suite (`m8-visit-note-drafting-lpn-aide.live.test.ts`).
+- **Menus.** The tags add the three care-plan draft phrases to an LPN's `interventions` menu with the switch on, as the RN routine visit's (they share the section's category). An LPN's `vitals_review` and `plan` and the aide's `adl` menus are unchanged: nothing is typed by hand that the draft states.
+- **The corpus.** `narrative-vocab@2026.12.2`: no new phrase, tags only. The deploy moves `VOCAB_VERSION` for every tenant, so a draft whose selections were saved before it answers `409 VOCAB_VERSION_MISMATCH` at finalize until they are saved again.
+- **No migration.** The eraser is unchanged.
+- **Not in S3.** M13 administrations (a new as-of seam), M15 discipline goals (S4), the aide's `plan`, an LPN's PPS or ESAS-r sections, mobile, offline, dictation and AI.
+
 ## 4. Constraints found
 
 ### 4.1 Backend and tenancy
@@ -316,7 +350,7 @@ Two tracks. Each slice is its own PR; pushes are batched (Actions minutes are me
 | S2 | Docs | RN recertification and the F2F visit's `prognosis` (the `pps`, `esas`, `prognosis` and `recert_summary` sections; decline evidence, the top CGS denial reason; VN-D31 to VN-D34, §3.3). The admission sections follow in the next slice | S1 | Recert narrative draft sets the F2F's facts beside the decline evidence |
 | S2b | Docs | The RN admission visit's four sections (`med_reconciliation`, `advance_directive`, `caregiver_overview`, `baseline_symptoms`; VN-D35 to VN-D38, §3.4) | S2 | Admission narrative draft states the orders in effect, the caregivers on record and the acknowledgment on file |
 | M2 | Mobile | On-device dictation into a section's free text, after its spike | M1 | Spike report; no audio retained; transcript is an unsent draft |
-| S3 | Docs | Aide and LPN notes, with cosign | S1 | Care-plan interventions drafted; cosigner sees per-viewer redaction (VN-D13) |
+| S3 | Docs | Aide and LPN notes, with cosign (the LPN visits' `vitals_review`, `interventions` and `plan`, the aide visit's `adl`; VN-D39 to VN-D44, §3.5) | S1, S2b | Care-plan interventions drafted; cosigner sees per-viewer redaction (VN-D13); keys asked by template |
 | S4 | Docs | Social work and chaplain notes | M15 goal link built | Discipline goals draft into the note |
 | S5 | Docs | MD/NP notes and the IDG "no-prep" note (recent care-plan changes and coordination notes) | S1 | IDG packet imports changes since the last meeting |
 | M3 | Mobile | Offline authoring: snapshot, vendored assembler, queue, unlock window, vault | M1, EVV offline device QA passed, its backend route proven deployed, security-owner sign-off on ADR-0072 decisions 8-12 | Device QA on the offline note path; unsynced writing survives logout |

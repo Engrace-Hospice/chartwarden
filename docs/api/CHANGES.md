@@ -6,6 +6,18 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-21 — Visit-note drafting slice 3 (M8, ADR-0114): the LPN visits and the aide visit, corpus release `narrative-vocab@2026.12.2`
+
+**No new route and no new field. Behaviour changes on routes that are not released yet; nothing changes for a tenant with the draft switched off.**
+
+- **`narrative-vocab@2026.12.2` is the active corpus for every tenant at deploy**: a draft encounter whose selections were saved before it carries an earlier version and answers `409 VOCAB_VERSION_MISMATCH` at finalize until `PATCH /encounters/{id}/selections` saves them again.
+- **`GET /encounters/{encounterId}/draft` and the amendment draft**, switch on: an LPN visit (`routine_visit` or `lpn_visit`, discipline `lpn`) drafts `vitals_review`, `interventions` and `plan`, never `assessment` or `symptom_management`. An aide visit (`chha_visit`, discipline `chha`) drafts `adl` from the recorded ADLs and the care-plan interventions linked to the visit. A section with nothing recorded to draft from is `empty`, never a sentence about an absence.
+- **Permission, now by template.** The draft routes (`GET .../draft`, `PUT .../draft/sections/{sectionId}` and the two amendment-draft routes) ask the read key of each source the template drafts from, and no longer all three of every draft: an aide visit needs `care_plan.read`; an LPN visit `care_plan.read` and `prescribing.read`; an RN routine, recertification or admission visit all three (`assessment.read_trend` too, as before); a face-to-face visit by a physician or nurse practitioner `assessment.read_trend` alone (it never used the care plan or the medications); a template that drafts nothing none. A caller who lacks one still gets `403` naming it, now after the `404` of a tenant with the switch off. The check was a route guard, so the order of the two answers changes for a caller who lacks a key on a tenant that has it off.
+- **`GET /encounters/{encounterId}/template`** (the authoring menu), switch on: an LPN visit's Interventions menu offers the three care-plan draft phrases, as the RN routine visit's does. An LPN visit's other sections and the aide visit's menus are unchanged.
+- **The draft switch cannot be enabled** (`409 CORPUS_REVIEW_PENDING`) on a clinical review of an earlier corpus release.
+
+---
+
 ## 2026-11-20 — Visit-note drafting slice 2b (M8, ADR-0114): the RN admission visit, corpus release `narrative-vocab@2026.12.1`
 
 **No new route. One response enum grows; nothing changes for a tenant with the draft switched off.**
