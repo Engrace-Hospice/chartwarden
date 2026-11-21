@@ -447,6 +447,11 @@ export function DocLensReviewWorkspace(): JSX.Element {
               <Glyph name="play" size={16} /> Start review
             </button>
           ) : null}
+          {!inProgress && !isComplete && reviewBlockedMessage ? (
+            <span role="status" className="wx-doclens-meta">
+              {reviewBlockedMessage}
+            </span>
+          ) : null}
           {canDecide ? (
             <>
               <button
