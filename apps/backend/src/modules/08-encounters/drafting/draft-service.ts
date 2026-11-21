@@ -22,6 +22,7 @@ import {
 import type { DraftPorts, DraftSeamPorts } from "./ports";
 import { resolveSection } from "./resolve-section";
 import { serialSeams } from "./serial-seams";
+import { assertMayReadSourceDomains } from "./source-reads";
 
 /** The authenticated caller of a draft route, from the server-assembled session. */
 export interface DraftCaller {
@@ -30,7 +31,10 @@ export interface DraftCaller {
   readonly roles: readonly string[];
   /** The active membership id, or `null` when the session carries none (a read then fails closed against a Part 2 release). */
   readonly membershipId: string | null;
-  /** The permission keys the session resolves to: the draft of a recertification or face-to-face visit needs the admission's read keys too. */
+  /**
+   * The permission keys the session resolves to: the draft asks the read key of each source domain its template reads (`source-reads.ts`, S3), and
+   * the draft of a recertification, face-to-face or admission visit the admission facts' keys too (`admission-reads.ts`).
+   */
   readonly permissions: ReadonlySet<string>;
 }
 
@@ -96,6 +100,7 @@ async function loadOr404(
   if (encounter === null) throw new NotFoundError("encounter");
   // After the switch and the tenant are known, so the refusal is no oracle for either; before any source is read.
   assertMayReadAdmissionFacts(encounter.encounterType, caller.permissions);
+  assertMayReadSourceDomains(encounter.encounterType, encounter.discipline, caller.permissions);
   return encounter;
 }
 

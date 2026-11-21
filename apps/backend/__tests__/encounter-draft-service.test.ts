@@ -20,13 +20,15 @@ import { NOW, carePlan, change, fakePorts, selectionFor } from "./_encounter-dra
 import { draftEncounterRow, memoryRunInOrg } from "./_encounter-draft-memory-store";
 
 const MEMBER = "00000000-0000-4000-8000-0000000000aa";
+/** The source-domain read keys of a draft that reads every S1 source (care plan, medication orders, scales): the RN visits'. */
+const SOURCE_KEYS = ["care_plan.read", "prescribing.read", "assessment.read_trend"];
 const AUDIT = { organizationId: "o", userId: "u", correlationId: "c" } as const;
 const caller = {
   organizationId: "00000000-0000-4000-8000-000000000001",
   userId: "00000000-0000-4000-8000-0000000000bb",
   roles: ["rn"],
   membershipId: MEMBER,
-  permissions: new Set<string>(),
+  permissions: new Set<string>(SOURCE_KEYS),
 };
 const withPrevious = { previous: new Date("2026-11-10T15:00:00.000Z") };
 
@@ -405,7 +407,11 @@ describe("the admission's read keys a recertification or face-to-face draft need
   const RECERT_KEYS = ["election.read", "cti.read", "f2f.read", "loc.read"];
   const recert = draftEncounterRow({ encounterType: "recert_visit", discipline: "rn" });
   const faceToFace = draftEncounterRow({ encounterType: "face_to_face", discipline: "md" });
-  const holding = (keys: readonly string[]) => ({ ...caller, permissions: new Set(keys) });
+  /** A caller holding the source-domain keys and `keys` (the admission facts' keys the tests vary). */
+  const holding = (keys: readonly string[]) => ({
+    ...caller,
+    permissions: new Set([...SOURCE_KEYS, ...keys]),
+  });
 
   function serviceFor(encounter: ReturnType<typeof draftEncounterRow>, enabled = true) {
     const selection = selectionFor(encounter.encounterType, encounter.discipline);
@@ -516,12 +522,12 @@ describe("the admission's read keys a recertification or face-to-face draft need
     "refuses an admission draft to a caller who lacks %s, naming it, before any source is read",
     async (missing) => {
       const { svc, seams } = serviceFor(admission);
-      const error = await svc
-        .getDraft(holding(ADMISSION_KEYS.filter((k) => k !== missing)), ID)
-        .then(
-          () => undefined,
-          (e: unknown) => e,
-        );
+      // `prescribing.read` is both a source-domain key and an admission key: lacking it means holding none of its two sources.
+      const without = [...SOURCE_KEYS, ...ADMISSION_KEYS].filter((k) => k !== missing);
+      const error = await svc.getDraft({ ...caller, permissions: new Set(without) }, ID).then(
+        () => undefined,
+        (e: unknown) => e,
+      );
       expect(error).toMatchObject({ statusCode: 403 });
       expect((error as Error).message).toContain(missing);
       expect(seams.carePlanAsOf).not.toHaveBeenCalled();
@@ -564,5 +570,104 @@ describe("the admission's read keys a recertification or face-to-face draft need
   it("answers 404 while the switch is off even to a caller who lacks the keys: the refusal is no oracle for the switch", async () => {
     const { svc } = serviceFor(recert, false);
     await expectCode(svc.getDraft(holding([]), ID), "NOT_FOUND", 404);
+  });
+});
+
+// S3 (VN-D42): the source-domain keys follow the template. An aide's draft reads the care plan alone, an LPN's the care plan and the medication
+// changes, an RN visit's every source; the service asks them at the draft routes, after the switch and before any source is read.
+describe("the source-domain read keys, by template (S3)", () => {
+  const ID = "00000000-0000-4000-8000-000000000004";
+  const aide = draftEncounterRow({ encounterType: "chha_visit", discipline: "chha" });
+  const lpn = draftEncounterRow({ encounterType: "lpn_visit", discipline: "lpn" });
+  const routine = draftEncounterRow();
+  const withKeys = (keys: readonly string[]) => ({ ...caller, permissions: new Set(keys) });
+
+  function serviceFor(encounter: ReturnType<typeof draftEncounterRow>, enabled = true) {
+    const selection = selectionFor(encounter.encounterType, encounter.discipline);
+    const mem = memoryRunInOrg({ ...withPrevious, encounter, enabled, selection });
+    const seams = seamPorts();
+    return {
+      ...mem,
+      seams,
+      svc: createDraftService({ runInOrg: mem.runInOrg, seams: () => seams, now: () => NOW }),
+    };
+  }
+
+  it("an aide's draft needs the care plan's key alone, and reads only the care plan", async () => {
+    const { svc, seams, store } = serviceFor(aide);
+    expect((await svc.getDraft(withKeys(["care_plan.read"]), ID)).templateKey).toBe(
+      "chha_visit:chha",
+    );
+    expect(seams.carePlanAsOf).toHaveBeenCalledTimes(1);
+    expect(seams.scaleSeries).not.toHaveBeenCalled();
+    expect(seams.medicationChangesBetween).not.toHaveBeenCalled();
+    expect(store.latestVitals).not.toHaveBeenCalled();
+    expect(store.previousSignedVisitAt).not.toHaveBeenCalled();
+  });
+
+  it.each(["prescribing.read", "assessment.read_trend"])(
+    "refuses an aide's draft to a caller holding %s but not care_plan.read, before any source is read",
+    async (held) => {
+      const { svc, seams } = serviceFor(aide);
+      await expectCode(svc.getDraft(withKeys([held]), ID), "FORBIDDEN", 403);
+      expect(seams.carePlanAsOf).not.toHaveBeenCalled();
+    },
+  );
+
+  it("an LPN's draft needs the care plan and the medication orders, not the scales, and reads no scale", async () => {
+    const { svc, seams } = serviceFor(lpn);
+    expect(
+      (await svc.getDraft(withKeys(["care_plan.read", "prescribing.read"]), ID)).templateKey,
+    ).toBe("lpn_visit:lpn");
+    expect(seams.scaleSeries).not.toHaveBeenCalled();
+    expect(seams.carePlanAsOf).toHaveBeenCalledTimes(1);
+    expect(seams.medicationChangesBetween).toHaveBeenCalledTimes(1);
+    await expectCode(svc.getDraft(withKeys(["care_plan.read"]), ID), "FORBIDDEN", 403);
+  });
+
+  it.each(SOURCE_KEYS)(
+    "an RN routine visit's draft is refused 403 naming %s when it is missing, before any source is read",
+    async (missing) => {
+      const { svc, seams } = serviceFor(routine);
+      const error = await svc.getDraft(withKeys(SOURCE_KEYS.filter((k) => k !== missing)), ID).then(
+        () => undefined,
+        (e: unknown) => e,
+      );
+      expect(error).toMatchObject({ statusCode: 403 });
+      expect((error as Error).message).toContain(missing);
+      expect(seams.carePlanAsOf).not.toHaveBeenCalled();
+      expect(seams.scaleSeries).not.toHaveBeenCalled();
+    },
+  );
+
+  it("refuses the section PUT the same way, and writes nothing", async () => {
+    const { svc, unit } = serviceFor(aide);
+    const spy = vi.spyOn(unit, "recordResolved");
+    await expectCode(
+      svc.resolveSection(
+        withKeys(["prescribing.read"]) as never,
+        ID,
+        "adl",
+        { resolution: "confirmed", contentHash: "a".repeat(64), corpusVersion: "x" },
+        AUDIT,
+      ),
+      "FORBIDDEN",
+      403,
+    );
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("a template that drafts nothing needs none of them, and reads no source", async () => {
+    const { svc, seams } = serviceFor(
+      draftEncounterRow({ encounterType: "msw_followup", discipline: "msw" }),
+    );
+    const view = await svc.getDraft(withKeys([]), ID);
+    expect(view.sections.every((s) => s.state === "not_drafted")).toBe(true);
+    expect(seams.carePlanAsOf).not.toHaveBeenCalled();
+  });
+
+  it("answers 404 while the switch is off even to a caller without the keys: the refusal is no oracle for the switch", async () => {
+    const { svc } = serviceFor(aide, false);
+    await expectCode(svc.getDraft(withKeys([]), ID), "NOT_FOUND", 404);
   });
 });

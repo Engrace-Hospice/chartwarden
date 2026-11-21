@@ -19,6 +19,7 @@ import type {
   WeightDraftInput,
 } from "@chartwarden/hearthnote";
 import {
+  draftSourceNeeds,
   isCaregiverRelationship,
   isWeightUnit,
   readsAdmissionRecord,
@@ -58,7 +59,7 @@ function instantMs(value: unknown, read: string): number {
 const isoOf = (ms: number): string => new Date(ms).toISOString();
 
 /** The care-plan vocabulary names two disciplines differently from the encounter vocabulary. */
-function interventionDisciplineFor(discipline: EncounterDiscipline): InterventionDiscipline {
+export function interventionDisciplineFor(discipline: EncounterDiscipline): InterventionDiscipline {
   switch (discipline) {
     case "md":
     case "np":
@@ -565,11 +566,17 @@ export async function readDraftInputs(
   asOf: string,
 ): Promise<DraftSourceInputs> {
   const asOfMs = instantMs(asOf, "the visit time");
+  // S3: only the sources the template's drafted sections are built from are read (an aide's draft reads the care plan alone), the same rule
+  // that decides which read keys the draft routes ask (`source-reads.ts`). A source not read is as if it were empty: nothing drafts from it.
+  const needs = draftSourceNeeds(encounter.encounterType, encounter.discipline);
   const [timeZone, previousMs] = await Promise.all([
     guarded("the organization time zone", () =>
       ports.organizationTimeZone(encounter.organizationId),
     ),
-    readPreviousVisitMs(ports, encounter, asOfMs),
+    // The previous signed visit bounds the "since the last visit" windows of the scale readings and the medication changes, and of nothing else.
+    needs.scales || needs.medicationChanges
+      ? readPreviousVisitMs(ports, encounter, asOfMs)
+      : Promise.resolve(null),
   ]);
   const previousIso = previousMs === null ? null : isoOf(previousMs);
   const part2Verdict = part2VerdictFor(ports, encounter, viewer);
@@ -592,10 +599,14 @@ export async function readDraftInputs(
     caregivers,
     advanceDirective,
   ] = await Promise.all([
-    readCarePlan(ports, encounter, viewer, asOf, part2Verdict),
-    readScaleReadings(ports, encounter, asOf, asOfMs, previousMs, timeZone, periodStart),
-    readVitals(ports, encounter, asOf, asOfMs),
-    readMedicationChanges(ports, encounter, previousIso, asOf, asOfMs, timeZone, part2Verdict),
+    needs.carePlan ? readCarePlan(ports, encounter, viewer, asOf, part2Verdict) : null,
+    needs.scales
+      ? readScaleReadings(ports, encounter, asOf, asOfMs, previousMs, timeZone, periodStart)
+      : [],
+    needs.vitals ? readVitals(ports, encounter, asOf, asOfMs) : null,
+    needs.medicationChanges
+      ? readMedicationChanges(ports, encounter, previousIso, asOf, asOfMs, timeZone, part2Verdict)
+      : [],
     readsPeriod
       ? readWeight(ports, encounter, periodStart, asOf, asOfMs, timeZone)
       : Promise.resolve(null),

@@ -12,6 +12,7 @@ import {
   HearthnoteAssemblyError,
   type SelectionState,
   compileDraft,
+  draftSourceNeeds,
   emptyDraft,
   readsBenefitPeriod,
   templateHasDraftedSection,
@@ -150,10 +151,19 @@ export async function snapshotStorePorts(
   );
   // S2: only the recertification and face-to-face visits read weights, and only they pay for the read (the routine visit's snapshot is as it was).
   const readsWeights = readsBenefitPeriod(encounter.encounterType);
+  // S3: the store reads of a source the template does not draft from are not taken either (an aide's snapshot is the care-plan links and the
+  // stored selections): `readDraftInputs` reads the same sources, by the same rule.
+  const needs = draftSourceNeeds(encounter.encounterType, encounter.discipline);
   const [previous, vitals, removed, stored, weights] = await Promise.all([
-    guarded("the previous signed visit", () => store.previousSignedVisitAt(encounter)),
-    guarded("the vitals", () => store.latestVitals(encounter.id, asOf)),
-    guarded("the removed care-plan links", () => store.removedCarePlanElementIds(encounter.id)),
+    needs.scales || needs.medicationChanges
+      ? guarded("the previous signed visit", () => store.previousSignedVisitAt(encounter))
+      : Promise.resolve(null),
+    needs.vitals
+      ? guarded("the vitals", () => store.latestVitals(encounter.id, asOf))
+      : Promise.resolve(null),
+    needs.carePlan
+      ? guarded("the removed care-plan links", () => store.removedCarePlanElementIds(encounter.id))
+      : Promise.resolve(new Set<string>()),
     guarded("the stored selections", () => store.loadSelection(encounter)),
     readsWeights
       ? guarded("the weights", () => store.weightReadings(encounter, WEIGHTS_FROM, asOf))

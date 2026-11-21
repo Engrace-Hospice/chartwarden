@@ -15,8 +15,8 @@ const caller = {
   userId: "00000000-0000-4000-8000-0000000000bb",
   roles: ["rn"],
   membershipId: AUTHOR,
-  // a routine visit's draft needs none of M6's read keys (`assertMayReadAdmissionFacts`)
-  permissions: new Set<string>(),
+  // a routine visit's draft needs none of M6's read keys (`assertMayReadAdmissionFacts`) but the three source domains' (`source-reads.ts`, S3)
+  permissions: new Set<string>(["care_plan.read", "prescribing.read", "assessment.read_trend"]),
 };
 const signedNote = draftEncounterRow({ status: "signed" });
 const amending = (over: Partial<Parameters<typeof memoryRunInOrg>[0] & object> = {}) => ({

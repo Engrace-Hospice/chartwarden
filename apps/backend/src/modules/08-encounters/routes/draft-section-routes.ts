@@ -7,12 +7,14 @@
 //                                                                   author alone (403 for anyone else, an absent addendum included)    encounter.read
 //   PUT /api/v1/encounters/:encounterId/addenda/:addendumId/draft/sections/:sectionId   the addendum's author confirms or deselects one   encounter.addendum_author
 //
-// All four also need the read key of each SOURCE domain every draft is compiled from (SOURCE_DOMAIN_READS): the care plan (M7), the medication
-// orders (M12) and the scored scales (M9) reach the draft through seams that apply no permission check of their own, so without them a role
-// holding only `encounter.read` would read goal text, medication names and scores it cannot read through those modules. Requiring them on the
-// route, rather than dropping the sections a caller lacks, keeps ONE draft per patient and visit: a section hash is never computed from fewer
-// sources for one viewer than for another, so a confirmation cannot be matched against a fuller view than the one its author saw. (The sign
-// recomputes the draft for the signer without these keys, which is the same full draft; only Part 2 redaction differs per viewer, by design.)
+// All four also need the read key of each SOURCE domain the template's draft is compiled from: the care plan (M7), the medication orders (M12)
+// and the scored scales (M9) reach the draft through seams that apply no permission check of their own, so without them a role holding only
+// `encounter.read` would read goal text, medication names and scores it cannot read through those modules. Until S3 these were static
+// preHandlers asking all three of every draft; the keys now follow the sources the template reads (an aide's draft reads the care plan alone),
+// so the SERVICE asks them by template (`source-reads.ts`), after the switch and the tenant are known and before any source is read.
+// Requiring them, rather than dropping the sections a caller lacks, keeps ONE draft per patient and visit: a section hash is never computed from
+// fewer sources for one viewer than for another, so a confirmation cannot be matched against a fuller view than the one its author saw. (The
+// sign recomputes the draft for the signer without these keys, which is the same full draft; only Part 2 redaction differs per viewer, by design.)
 // Since S2 a recertification or face-to-face draft also reads the admission's benefit period, level of care, face-to-face and certification
 // (M6), through seams with no check of their own either. M6 guards each with its own key (`election.read`, `loc.read`, `f2f.read`,
 // `cti.read`), and only the service knows the template, so IT refuses 403 a caller of such an encounter who lacks one (finalize, sign and an
@@ -75,10 +77,6 @@ async function callerOf<Membership extends string | null>(
   };
 }
 
-/** The sibling routes' read keys: M7 `GET /care-plan/...`, M12 `GET /medication-orders`, M9 `GET /patients/:id/scales/:type/series`. */
-const SOURCE_DOMAIN_READS = ["care_plan.read", "prescribing.read", "assessment.read_trend"].map(
-  (key) => requirePermission(key) as PreHandler,
-);
 const READ = requirePermission("encounter.read") as PreHandler;
 const AUTHOR = requirePermission("encounter.author") as PreHandler;
 const ADDENDUM_AUTHOR = requirePermission("encounter.addendum_author") as PreHandler;
@@ -124,12 +122,7 @@ export function registerDraftSectionRoutes(
   app.get(
     "/api/v1/encounters/:encounterId/draft",
     {
-      preHandler: [
-        READ,
-        ...SOURCE_DOMAIN_READS,
-        PARAMS_VALID(DraftParamsSchema),
-        SCOPE_FOR("encounter.read"),
-      ],
+      preHandler: [READ, PARAMS_VALID(DraftParamsSchema), SCOPE_FOR("encounter.read")],
       config: {
         // A chart open of the patient's own record: accountable against the patient named in the response (§164.528). Names only.
         auditRead: {
@@ -160,7 +153,6 @@ export function registerDraftSectionRoutes(
     {
       preHandler: [
         AUTHOR,
-        ...SOURCE_DOMAIN_READS,
         NO_AI,
         PARAMS_VALID(DraftSectionParamsSchema),
         SCOPE_FOR("encounter.author"),
@@ -186,7 +178,6 @@ export function registerDraftSectionRoutes(
     {
       preHandler: [
         READ,
-        ...SOURCE_DOMAIN_READS,
         PARAMS_VALID(AmendmentDraftParamsSchema),
         SCOPE_FOR("encounter.read"),
         IS_ADDENDUM_AUTHOR_TO_READ,
@@ -220,7 +211,6 @@ export function registerDraftSectionRoutes(
     {
       preHandler: [
         ADDENDUM_AUTHOR,
-        ...SOURCE_DOMAIN_READS,
         NO_AI,
         PARAMS_VALID(AmendmentSectionParamsSchema),
         SCOPE_FOR("encounter.addendum_author"),

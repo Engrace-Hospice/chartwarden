@@ -1,6 +1,9 @@
 // S1 PR C2a — `readDraftInputs` (VN-D5, VN-D9..VN-D11, design §3.2): the as-of, per-viewer reads behind a draft.
 import { describe, expect, it } from "vitest";
-import { readDraftInputs } from "../src/modules/08-encounters/drafting/inputs";
+import {
+  interventionDisciplineFor,
+  readDraftInputs,
+} from "../src/modules/08-encounters/drafting/inputs";
 import { EncounterStateError } from "../src/modules/08-encounters/lifecycle/errors";
 import {
   AS_OF,
@@ -96,18 +99,34 @@ describe("readDraftInputs: care plan", () => {
     expect(out?.interventions).toEqual([]);
   });
 
-  it("maps encounter disciplines onto the care-plan vocabulary", async () => {
+  // The map is pure, so it is tested directly: no drafting template reads the care plan for a physician, a therapist or a chaplain yet (S4, S5).
+  it("maps encounter disciplines onto the care-plan vocabulary", () => {
     for (const [discipline, expected] of [
       ["md", "md_np"],
       ["np", "md_np"],
       ["slp", "st"],
       ["chaplain", "chaplain"],
+      ["rn", "rn"],
+      ["lpn", "lpn"],
+      ["chha", "chha"],
     ] as const) {
-      const ports = fakePorts();
-      await readDraftInputs(ports, encounter({ discipline }), viewer(), AS_OF);
-      expect(ports.carePlanAsOf.mock.calls[0]?.[2]).toBe(expected);
+      expect(interventionDisciplineFor(discipline), discipline).toBe(expected);
     }
   });
+
+  it.each([
+    ["routine_visit", "rn"],
+    ["lpn_visit", "lpn"],
+    ["chha_visit", "chha"],
+  ] as const)(
+    "asks the care plan for the %s visit's own discipline (%s)",
+    async (encounterType, discipline) => {
+      const ports = fakePorts();
+      await readDraftInputs(ports, encounter({ encounterType, discipline }), viewer(), AS_OF);
+      expect(ports.carePlanAsOf.mock.calls[0]?.[1]).toBe(encounterType);
+      expect(ports.carePlanAsOf.mock.calls[0]?.[2]).toBe(discipline);
+    },
+  );
 
   it("refuses a plan that belongs to another patient", async () => {
     const ports = fakePorts({
@@ -629,5 +648,79 @@ describe("readDraftInputs: determinism", () => {
       AS_OF,
     );
     expect(JSON.stringify(plan)).toBe(before);
+  });
+});
+
+// S3 (VN-D42): a source no drafted section of the template is built from is not read, so an aide's draft reads the care plan alone and an LPN's
+// no scale, and the viewer's Part 2 verdict is asked only by a source that is read.
+describe("readDraftInputs: only the sources the template drafts from are read (S3)", () => {
+  const AIDE = encounter({ encounterType: "chha_visit", discipline: "chha" });
+  const LPN = encounter({ encounterType: "lpn_visit", discipline: "lpn" });
+
+  it("an aide's draft reads the care plan and the removed links, and nothing else of the S1 sources", async () => {
+    const ports = fakePorts({ carePlanAsOf: async () => carePlan() });
+    const inputs = await readDraftInputs(ports, AIDE, viewer(), AS_OF);
+    expect(ports.carePlanAsOf).toHaveBeenCalledTimes(1);
+    expect(ports.removedCarePlanElementIds).toHaveBeenCalledTimes(1);
+    expect(ports.scaleSeries).not.toHaveBeenCalled();
+    expect(ports.medicationChangesBetween).not.toHaveBeenCalled();
+    expect(ports.latestVitals).not.toHaveBeenCalled();
+    expect(ports.previousSignedVisitAt).not.toHaveBeenCalled();
+    expect(inputs.carePlan?.interventions.map((i) => i.id)).toEqual(["intervention-1"]);
+    expect(inputs.scaleReadings).toEqual([]);
+    expect(inputs.vitals).toBeNull();
+    expect(inputs.medicationChanges).toEqual([]);
+  });
+
+  const PREVIOUS = async () => new Date("2026-11-10T15:00:00.000Z");
+
+  it("an LPN's draft reads the care plan, the vitals and the medication changes, and no scale", async () => {
+    const ports = fakePorts({
+      carePlanAsOf: async () => carePlan(),
+      previousSignedVisitAt: PREVIOUS,
+    });
+    await readDraftInputs(ports, LPN, viewer(), AS_OF);
+    expect(ports.carePlanAsOf).toHaveBeenCalledTimes(1);
+    expect(ports.latestVitals).toHaveBeenCalledTimes(1);
+    expect(ports.medicationChangesBetween).toHaveBeenCalledTimes(1);
+    expect(ports.previousSignedVisitAt).toHaveBeenCalledTimes(1);
+    expect(ports.scaleSeries).not.toHaveBeenCalled();
+  });
+
+  it("an RN routine visit still reads every one of them", async () => {
+    const ports = fakePorts({
+      carePlanAsOf: async () => carePlan(),
+      previousSignedVisitAt: PREVIOUS,
+    });
+    await readDraftInputs(ports, encounter(), viewer(), AS_OF);
+    expect(ports.carePlanAsOf).toHaveBeenCalled();
+    expect(ports.scaleSeries).toHaveBeenCalled();
+    expect(ports.latestVitals).toHaveBeenCalled();
+    expect(ports.medicationChangesBetween).toHaveBeenCalled();
+    expect(ports.previousSignedVisitAt).toHaveBeenCalled();
+  });
+
+  it("the face-to-face visit reads the scales and the weights, and no longer the care plan, vitals or medication changes it never drafts from", async () => {
+    const ports = fakePorts();
+    await readDraftInputs(
+      ports,
+      encounter({ encounterType: "face_to_face", discipline: "md" }),
+      viewer(),
+      AS_OF,
+    );
+    expect(ports.scaleSeries).toHaveBeenCalled();
+    expect(ports.carePlanAsOf).not.toHaveBeenCalled();
+    expect(ports.latestVitals).not.toHaveBeenCalled();
+    expect(ports.medicationChangesBetween).not.toHaveBeenCalled();
+  });
+
+  it("an aide whose care plan is Part 2 redacted for an entitled viewer is refused, as for any other template", async () => {
+    const ports = fakePorts({
+      carePlanAsOf: async () => carePlan({ redacted: true }),
+      part2DisclosureAllowed: async () => true,
+    });
+    await expect(readDraftInputs(ports, AIDE, viewer(), AS_OF)).rejects.toMatchObject({
+      code: "DRAFT_UNAVAILABLE",
+    });
   });
 });

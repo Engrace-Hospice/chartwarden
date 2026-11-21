@@ -158,7 +158,7 @@ describe("the draft service reads its sources one at a time", () => {
         userId: "u",
         roles: ["rn"],
         membershipId: "m",
-        permissions: new Set(),
+        permissions: new Set(["care_plan.read", "prescribing.read", "assessment.read_trend"]),
       },
       "00000000-0000-4000-8000-000000000004",
     );
