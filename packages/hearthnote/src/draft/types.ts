@@ -22,7 +22,9 @@ export type DraftSourceKind =
   // S2b (RN admission visit, design §3.3):
   | "medication_order"
   | "caregiver"
-  | "advance_directive_acknowledgment";
+  | "advance_directive_acknowledgment"
+  // S3 (aide visit): the visit's own recorded ADLs, which lead the drafted `adl` section (one record per visit, so the ref id is the kind):
+  | "recorded_adl";
 
 // A `type`, not an `interface`: the canonical serializer takes plain data, and only an alias is
 // assignable to its index-signature shape.

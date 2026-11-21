@@ -1,7 +1,7 @@
 // How a section id reads on the screens that have no template (sign notice, signed note, amendment pickers): ids in words, and the
 // acronym ids by the template's own headings, never "Pps" or "F2f attestation" (ADR-0114 S2). Synthetic data only.
 import { describe, expect, it } from "vitest";
-import { ORIGIN_LABEL } from "../draft-model";
+import { ORIGIN_LABEL, originsText } from "../draft-model";
 import { humanizeSection } from "../sign-draft-notice";
 
 describe("humanizeSection", () => {
@@ -48,6 +48,12 @@ describe("ORIGIN_LABEL", () => {
     ] as const) {
       expect(ORIGIN_LABEL[kind]).not.toMatch(/reconcil|verified|complete/i);
     }
+  });
+
+  it("says the aide's drafted section leads with the ADLs recorded at the visit, before the care-plan interventions", () => {
+    expect(originsText(["recorded_adl", "care_plan_intervention"])).toBe(
+      "the activities of daily living recorded at this visit; care plan interventions",
+    );
   });
 
   it("does not claim a level of care the benefit-period sentence may leave out", () => {

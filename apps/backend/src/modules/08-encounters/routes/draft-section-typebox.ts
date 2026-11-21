@@ -57,6 +57,8 @@ const Origin = Type.Union([
   Type.Literal("medication_order"),
   Type.Literal("caregiver"),
   Type.Literal("advance_directive_acknowledgment"),
+  // S3 (aide visit): the visit's own recorded ADLs, which lead the drafted `adl` section. Kind only, never an id (VN-D7).
+  Type.Literal("recorded_adl"),
 ]);
 
 export const DraftSectionResponseSchema = Type.Object({

@@ -169,6 +169,20 @@ describe("the sections an aide note drafts", () => {
     );
   });
 
+  it("names the recorded ADLs as a source of the section, first as they lead the text, and none when no ADL was recorded", () => {
+    const withAdl = sectionOf(aideInputs(), "adl");
+    expect(withAdl.state === "drafted" && withAdl.sourceRefs.map((ref) => ref.kind)).toEqual([
+      "recorded_adl",
+      "care_plan_intervention",
+    ]);
+    const base = aideInputs();
+    const { recordedAdl: _unused, ...context } = base.context;
+    const without = sectionOf({ ...base, context }, "adl");
+    expect(without.state === "drafted" && without.sourceRefs.map((ref) => ref.kind)).toEqual([
+      "care_plan_intervention",
+    ]);
+  });
+
   it("never drafts the plan from the care-plan goals or the reason for visit, and states no scale, vitals or medication source", () => {
     const inputs = aideInputs();
     expect(inputs.carePlan?.goals.length).toBeGreaterThan(0);

@@ -153920,6 +153920,10 @@
                                 {
                                   "const": "advance_directive_acknowledgment",
                                   "type": "string"
+                                },
+                                {
+                                  "const": "recorded_adl",
+                                  "type": "string"
                                 }
                               ]
                             }
@@ -154108,6 +154112,10 @@
                           },
                           {
                             "const": "advance_directive_acknowledgment",
+                            "type": "string"
+                          },
+                          {
+                            "const": "recorded_adl",
                             "type": "string"
                           }
                         ]
@@ -156794,6 +156802,10 @@
                                 {
                                   "const": "advance_directive_acknowledgment",
                                   "type": "string"
+                                },
+                                {
+                                  "const": "recorded_adl",
+                                  "type": "string"
                                 }
                               ]
                             }
@@ -156974,6 +156986,10 @@
                           },
                           {
                             "const": "advance_directive_acknowledgment",
+                            "type": "string"
+                          },
+                          {
+                            "const": "recorded_adl",
                             "type": "string"
                           }
                         ]
