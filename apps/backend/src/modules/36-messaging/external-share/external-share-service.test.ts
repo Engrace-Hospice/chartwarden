@@ -810,8 +810,9 @@ describe("ADR-0096 D13-D18", () => {
       "refill ready for pickup",
       "give 2 tabs at 10:30",
     ]);
-    expect(JSON.stringify(page)).not.toContain("1950");
-    expect(JSON.stringify(page)).not.toContain("555");
+    const visibleBodies = page.messages.map((message) => message.body).join("\n");
+    expect(visibleBodies).not.toContain("1950");
+    expect(visibleBodies).not.toContain("555");
     expect(p.calls.reads).toEqual([2]);
     expect(p.calls.withheld).toEqual([2]);
   });

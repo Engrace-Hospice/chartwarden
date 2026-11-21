@@ -28,6 +28,12 @@ const DOM_GLOBS = ["apps/**/*.dom.test.tsx", "packages/**/*.dom.test.tsx"];
 
 export default defineConfig({
   test: {
+    // The non-live suite contains security-harness tests that execute the real fail-closed hook
+    // under its production 8s shell alarm. Letting Vitest consume every logical CPU can starve
+    // those child processes (and jsdom's async imports) long enough to report false timeouts even
+    // though the same files complete in seconds alone. Keep most of the host available to subprocesses;
+    // this is a runner scheduling limit, not a relaxation of any hook or test deadline.
+    maxWorkers: "25%",
     projects: [
       {
         plugins: [react()],
