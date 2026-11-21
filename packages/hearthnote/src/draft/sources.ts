@@ -28,7 +28,7 @@
 // The face-to-face visit (S2, `md` and `np`): prognosis from the PPS against the period's first reading, then the weight.
 // The LPN visits (S3, `routine_visit` and `lpn_visit` by an LPN) are sourced like the routine visit; the corpus tags leave out the PPS and ESAS-r
 // phrases, so `assessment` and `symptom_management` are not drafted for them (VN-D39).
-// The aide visit (S3, `chha_visit` by a `chha`): adl     the care-plan interventions linked to the visit    by source id
+// The aide visit (S3, `chha_visit` by a `chha`): adl     the care plan's active aide interventions, less those the author removed   by source id
 //   (the recorded ADLs are stated first in the section, by the compiler, as the recorded vitals' body measures are).
 // Every other template is sourced like the routine visit; the corpus tags decide whether it drafts at all (`scope.ts`).
 //

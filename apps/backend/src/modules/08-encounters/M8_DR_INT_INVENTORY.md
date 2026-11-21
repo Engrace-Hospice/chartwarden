@@ -84,7 +84,7 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
   the kind: `recorded-adl`); the section's origins read "the activities of daily living recorded at this visit; care plan interventions".
 - **Status codes say a little.** A caller without a source key gets 404 while the switch is off and 403 while it is on, so the switch state shows to
   them (documented, CW-AC-49). Finalize and sign recompute the draft without the source keys (S1): a signer without `care_plan.read` or
-  `prescribing.read` who is refused 422 or 409 for `adl`, `interventions` or `plan` learns that linked interventions or medication changes exist.
+  `prescribing.read` who is refused 422 or 409 for `adl`, `interventions` or `plan` learns that care-plan goals or interventions, or medication changes, exist for the patient (the 409 detail names the section id).
 - **The wounds read is not by template.** `computeDraft` reads M9's recorded wounds for every drafted template (the aide and LPN included), through
   no key; no drafted section states one, so none reaches a draft. "Only the sources its template drafts from" means the four S1 sources.
 - **Rollout.** The switch is tenant-wide, with no per-template flag: a tenant already switched on at deploy would get the LPN and aide drafts, their

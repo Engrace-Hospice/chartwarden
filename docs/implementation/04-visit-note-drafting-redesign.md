@@ -301,7 +301,7 @@ Designed 2026-11-21 against the S2b branch. Within the decisions above; the S1/S
 | Section | Template | Fed by | Rule |
 |---|---|---|---|
 | `vitals_review` | LPN | the visit's vitals | as the routine visit's |
-| `interventions` | LPN | care-plan interventions linked to the visit, then medication changes since the last visit | as the routine visit's |
+| `interventions` | LPN | the care plan's active interventions tagged for the LPN (VN-D5's relevant elements) less those removed from the visit, then medication changes since the last visit | as the routine visit's |
 | `plan` | LPN | care-plan goals | as the routine visit's |
 | `adl` | aide | the recorded ADLs (origin `recorded_adl`, listed first), then the care plan's active interventions tagged for the aide (VN-D5's relevant elements) less those removed from the visit | the recorded-ADL sentence first (the compiler carries it, as it carries the recorded body measures into `vitals_review`), then `Care-plan intervention performed: ...` per intervention by source id |
 
