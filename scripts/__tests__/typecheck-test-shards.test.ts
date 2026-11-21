@@ -102,16 +102,70 @@ describe("test typecheck shards", () => {
     }
   });
 
-  it("returns failure for a signalled shard and removes its generated configs", () => {
+  it("fails a shard the OS kills twice, and removes its generated configs", () => {
     const root = fixtureRoot();
     const spawn = vi.fn<TypecheckSpawn>(() => ({ signal: "SIGKILL", status: null }));
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     try {
       expect(runTestTypecheck(root, {}, spawn, vi.fn())).toBe(1);
       expect(error).toHaveBeenCalledWith("tsconfig.tests.json shard 1 received SIGKILL");
+      expect(spawn).toHaveBeenCalledTimes(2);
       expect(generatedDirectories(root)).toEqual([]);
     } finally {
       error.mockRestore();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("retries a SIGKILLed shard once on the same config, then carries on", () => {
+    const root = fixtureRoot();
+    const shardConfigs: string[] = [];
+    let killed = false;
+    const spawn = vi.fn<TypecheckSpawn>((_command, args) => {
+      shardConfigs.push(args[1] ?? "");
+      if (!killed && shardConfigs.length === 2) {
+        killed = true;
+        return { signal: "SIGKILL", status: null };
+      }
+      return { status: 0 };
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const log = vi.fn();
+    try {
+      expect(runTestTypecheck(root, { TEST_TYPECHECK_SHARD_SIZE: "2" }, spawn, log)).toBe(0);
+      // shard 1, shard 2 (killed), shard 2 again, then the dom program's shard.
+      expect(spawn).toHaveBeenCalledTimes(4);
+      expect(shardConfigs[2]).toBe(shardConfigs[1]);
+      expect(shardConfigs[0]).not.toBe(shardConfigs[1]);
+      expect(error).toHaveBeenCalledTimes(1);
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("retrying once"));
+      expect(generatedDirectories(root)).toEqual([]);
+    } finally {
+      error.mockRestore();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not retry a shard that aborts on its own (SIGABRT is a heap limit, not memory pressure)", () => {
+    const root = fixtureRoot();
+    const spawn = vi.fn<TypecheckSpawn>(() => ({ signal: "SIGABRT", status: null }));
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      expect(runTestTypecheck(root, {}, spawn, vi.fn())).toBe(1);
+      expect(spawn).toHaveBeenCalledTimes(1);
+    } finally {
+      error.mockRestore();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not retry a shard that fails with a type error", () => {
+    const root = fixtureRoot();
+    const spawn = vi.fn<TypecheckSpawn>(() => ({ status: 2 }));
+    try {
+      expect(runTestTypecheck(root, {}, spawn, vi.fn())).toBe(2);
+      expect(spawn).toHaveBeenCalledTimes(1);
+    } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
