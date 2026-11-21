@@ -443,10 +443,21 @@ const isText = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
 
 /**
+ * Whether an order's frequency code says as needed: `prn` or `asneeded` once case, spaces, underscores and hyphens are dropped. M13 reads the code
+ * the same way (`parseFrequencyCode`, which treats it as PRN whatever the flag says), and M12's store hands out a missing flag as `false`, so a
+ * PRN order whose flag was never set is as needed here too and is not drafted as if it were scheduled.
+ */
+function isPrnFrequency(frequencyCode: string | undefined): boolean {
+  const code = (frequencyCode ?? "").toLowerCase().replace(/[\s_-]+/g, "");
+  return code === "prn" || code === "asneeded";
+}
+
+/**
  * The orders in effect at the visit time. A SUD treatment order is left out for a viewer without Part 2 disclosure, as the medication changes
  * are (fail closed: only the literal `false` proves an order is not SUD treatment). Nothing is drafted at all when ANY order that remains
- * cannot be stated (a blank drug name, strength, form or route, or an as-needed flag that is not true or false): the section reads as the
- * orders in effect, and one skipped in silence would make it look complete.
+ * cannot be stated (a blank drug name, strength, form or route, or an as-needed flag that is not true or false: M12's own store never hands
+ * out such a flag, the check is for any other implementation of the port): the section reads as the orders in effect, and one skipped in
+ * silence would make it look complete.
  */
 async function readActiveMedications(
   ports: DraftPorts,
@@ -476,7 +487,7 @@ async function readActiveMedications(
       strength: order.strength,
       doseForm: order.doseForm,
       route: order.route,
-      asNeeded: order.sigStructured.asNeeded,
+      asNeeded: order.sigStructured.asNeeded || isPrnFrequency(order.sigStructured.frequencyCode),
       sudRelated: order.isSudTreatment !== false,
     }),
   );
@@ -493,12 +504,8 @@ async function readCaregivers(
   const roster = await guarded("the caregivers on record", () =>
     ports.caregiversOn(encounter.organizationId, encounter.patientId, encounter.serviceDate),
   );
-  const stated = roster.every(
-    (entry) => isText(entry.displayName) && isCaregiverRelationship(entry.relationship),
-  );
-  if (!stated) return [];
-  return roster.flatMap((entry): CaregiverInput[] =>
-    isCaregiverRelationship(entry.relationship)
+  const stated = roster.flatMap((entry): CaregiverInput[] =>
+    isText(entry.displayName) && isCaregiverRelationship(entry.relationship)
       ? [
           {
             id: entry.patientCaregiverId,
@@ -510,6 +517,8 @@ async function readCaregivers(
         ]
       : [],
   );
+  // one entry that cannot be stated leaves the whole roster undrafted: a partial list would read as the caregivers on record
+  return stated.length === roster.length ? stated : [];
 }
 
 /** The advance directive acknowledgment that was on file at the visit time: its record id as a source, never its content. */

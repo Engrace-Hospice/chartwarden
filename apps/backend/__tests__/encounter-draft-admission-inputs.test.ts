@@ -106,6 +106,35 @@ describe("the orders in effect", () => {
     ]);
   });
 
+  // M12's real store coerces a missing as-needed flag to false, and M13 reads a PRN frequency code as as-needed whatever the flag says, so the
+  // order is as needed when EITHER says so: a PRN order with no flag must not be drafted as if it were scheduled.
+  it.each([
+    ["the flag", { sigStructured: { asNeeded: true, frequencyCode: "q4h" } }, true],
+    [
+      "a PRN frequency code with the flag false",
+      { sigStructured: { asNeeded: false, frequencyCode: "prn" } },
+      true,
+    ],
+    ["a PRN code in capitals", { sigStructured: { asNeeded: false, frequencyCode: "PRN" } }, true],
+    [
+      "an as-needed code spelled out",
+      { sigStructured: { asNeeded: false, frequencyCode: "As Needed" } },
+      true,
+    ],
+    ["an as_needed code", { sigStructured: { asNeeded: false, frequencyCode: "as_needed" } }, true],
+    ["a scheduled code", { sigStructured: { asNeeded: false, frequencyCode: "q4h" } }, false],
+    ["no code", { sigStructured: { asNeeded: false, frequencyCode: "" } }, false],
+    [
+      "a code that only contains prn",
+      { sigStructured: { asNeeded: false, frequencyCode: "prnx" } },
+      false,
+    ],
+  ])("reads the as-needed state of an order from %s", async (_label, over, expected) => {
+    const ports = admissionPorts({ activeMedicationsAsOf: async () => [order(over)] });
+    const inputs = await readDraftInputs(ports, ADMISSION, viewer(), AS_OF);
+    expect(inputs.activeMedications?.map((m) => m.asNeeded)).toEqual([expected]);
+  });
+
   it("leave a SUD treatment order out for a viewer without Part 2 disclosure, asking the verdict once", async () => {
     const ports = admissionPorts({
       activeMedicationsAsOf: async () => [
