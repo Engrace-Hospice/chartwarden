@@ -583,6 +583,35 @@ describe.skipIf(!DB_URL)(
         "SELECT id::text FROM encounter_care_plan_link WHERE encounter_id = $1",
         [v.encounterId],
       );
+    /** S4b: the visit's links to M15 goals and interventions, whole rows, in a stable order. */
+    type DisciplineLink = {
+      goal_id: string | null;
+      intervention_id: string | null;
+      part2_derived: boolean;
+      removed: boolean;
+      removed_by_membership_id: string | null;
+      organization_id: string;
+      provider_entity_id: string | null;
+      location_id: string | null;
+    };
+    const disciplineLinksOf = (v: Visit) =>
+      rows<DisciplineLink>(
+        `SELECT goal_id::text, intervention_id::text, part2_derived, (removed_at IS NOT NULL) AS removed,
+                removed_by_membership_id::text, organization_id::text, provider_entity_id::text, location_id::text
+           FROM encounter_discipline_plan_link WHERE encounter_id = $1 ORDER BY coalesce(goal_id, intervention_id), created_at`,
+        [v.encounterId],
+      );
+    const elementId = (link: DisciplineLink) => link.goal_id ?? link.intervention_id ?? "";
+    const liveElementIds = (links: readonly DisciplineLink[]) =>
+      links
+        .filter((l) => !l.removed)
+        .map(elementId)
+        .sort();
+    const removedElementIds = (links: readonly DisciplineLink[]) =>
+      links
+        .filter((l) => l.removed)
+        .map(elementId)
+        .sort();
     const statusOf = async (v: Visit) =>
       one(
         await rows<{ status: string }>("SELECT status FROM encounter WHERE id = $1", [
@@ -1069,8 +1098,10 @@ describe.skipIf(!DB_URL)(
           expect(JSON.stringify(row.source_refs)).not.toMatch(/Supportive|grandson|cope/);
           expect(row.part2_derived).toBe(false);
         }
-        // S4a: confirming a section links nothing (the discipline's plan is not the M7 care plan's elements)
+        // The M7 care-plan table is not the one written (the discipline's plan is not the M7 care plan's elements). S4b: confirming keeps every goal and
+        // intervention the sections state, one live row each in the discipline's own link table.
         expect(await linksOf(v)).toEqual([]);
+        expect(liveElementIds(await disciplineLinksOf(v))).toEqual([GOAL_A, GOAL_B, IV_A].sort());
         expect(v.scenario.reads.carePlan).toBe(0);
       });
 
@@ -1222,7 +1253,7 @@ describe.skipIf(!DB_URL)(
         expect(await auditEvents("encounter_draft.viewed", v.encounterId)).toEqual([]);
       });
 
-      it("a confirmed plan records m8.encounter.draft_section_resolved with kinds, ids and counts, never the hash or the sentences, and links nothing", async () => {
+      it("a confirmed plan records m8.encounter.draft_section_resolved with kinds, ids and counts (the goals it kept), never the hash or the sentences", async () => {
         const v = await seedVisit({ kind: "msw" });
         const seen = sectionOf((await getDraft(v)).body, "plan");
         expect((await putSection(v, "plan", "confirmed", seen)).statusCode).toBe(200);
@@ -1242,7 +1273,8 @@ describe.skipIf(!DB_URL)(
               { kind: "discipline_plan_goal", id: GOAL_A },
               { kind: "discipline_plan_goal", id: GOAL_B },
             ],
-            carePlanElementsLinked: 0,
+            // S4b: confirming keeps each goal the section states (the counter counts M7 and M15 elements alike)
+            carePlanElementsLinked: 2,
             carePlanElementsRemoved: 0,
           },
         });
@@ -1268,6 +1300,389 @@ describe.skipIf(!DB_URL)(
           after: { sectionId: "plan", part2Derived: true },
         });
         expect(JSON.stringify(events)).not.toContain("SECRET-SUD");
+      });
+    });
+
+    // ===============================================================================================================
+    // 8. keeping and leaving out single goals and interventions (S4b, VN-D58 to VN-D63)
+    // ===============================================================================================================
+    describe("8. keeping and leaving out single goals and interventions (S4b)", () => {
+      type ElementView = {
+        elementId: string;
+        kind: "goal" | "intervention";
+        text: string;
+        kept: boolean;
+      };
+      const elementsUrl = (v: Visit, path = "") =>
+        encounterUrl(v, `/discipline-plan-elements${path}`);
+      const elementsOf = async (v: Visit, headers = v.headers) => {
+        const res = await get(elementsUrl(v), headers);
+        return { res, body: res.json() as { patientId: string; elements: ElementView[] } };
+      };
+      const setElement = (v: Visit, id: string, included: boolean, headers = v.headers) =>
+        put(elementsUrl(v, `/${id}`), headers, { included });
+      const keptOf = (view: { elements: ElementView[] }) =>
+        Object.fromEntries(view.elements.map((e) => [e.elementId, e.kept]));
+      const PLAN_WITH_ONLY_A = "Plan-of-care goal: Name two ways to cope with the diagnosis.";
+
+      it("lists the plan in effect at the visit, goals then interventions, every element kept, names the patient, and leaves a met goal and a stopped intervention out", async () => {
+        const v = await seedVisit({ kind: "msw" });
+        const { res, body } = await elementsOf(v);
+        expect(res.statusCode, res.body).toBe(200);
+        expect(body.patientId).toBe(v.patientId);
+        expect(body.elements).toEqual([
+          {
+            elementId: GOAL_A,
+            kind: "goal",
+            text: "Name two ways to cope with the diagnosis",
+            kept: true,
+          },
+          { elementId: GOAL_B, kind: "goal", text: "See my grandson", kept: true },
+          {
+            elementId: IV_A,
+            kind: "intervention",
+            text: "Supportive counselling, weekly",
+            kept: true,
+          },
+        ]);
+        expect(res.body).not.toContain(GOAL_CLOSED);
+        expect(res.body).not.toContain(IV_CLOSED);
+        expect(await disciplineLinksOf(v)).toEqual([]);
+        expect(v.scenario.reads.carePlan).toBe(0);
+      });
+
+      it("leaving a goal out takes its words and id out of the draft, changes the section's hash, and writes one soft removal attributed to the author and stamped with the visit's siting", async () => {
+        const v = await seedVisit({ kind: "msw" });
+        const before = sectionOf((await getDraft(v)).body, "plan");
+        const res = await setElement(v, GOAL_B, false);
+        expect(res.statusCode, res.body).toBe(200);
+        expect(keptOf(res.json())).toEqual({ [GOAL_A]: true, [GOAL_B]: false, [IV_A]: true });
+
+        const after = sectionOf((await getDraft(v)).body, "plan");
+        expect(after.text).toBe(PLAN_WITH_ONLY_A);
+        expect(after.contentHash).not.toBe(before.contentHash);
+
+        const encounter = one(
+          await rows<{ provider_entity_id: string | null; location_id: string | null }>(
+            "SELECT provider_entity_id::text, location_id::text FROM encounter WHERE id = $1",
+            [v.encounterId],
+          ),
+        );
+        const links = await disciplineLinksOf(v);
+        expect(links).toHaveLength(1);
+        expect(links[0]).toMatchObject({
+          goal_id: GOAL_B,
+          removed: true,
+          removed_by_membership_id: v.author.membershipId,
+          part2_derived: false,
+          organization_id: v.org.orgId,
+          provider_entity_id: encounter.provider_entity_id,
+          location_id: encounter.location_id,
+        });
+      });
+
+      it("keeping it again brings it back to exactly the content it had, and a repeat of either change writes no further row", async () => {
+        const v = await seedVisit({ kind: "msw" });
+        const original = sectionOf((await getDraft(v)).body, "plan");
+
+        expect((await setElement(v, GOAL_B, false)).statusCode).toBe(200);
+        const afterOut = (await disciplineLinksOf(v)).length;
+        expect((await setElement(v, GOAL_B, false)).statusCode).toBe(200);
+        expect(await disciplineLinksOf(v)).toHaveLength(afterOut);
+
+        const kept = await setElement(v, GOAL_B, true);
+        expect(kept.statusCode, kept.body).toBe(200);
+        expect(keptOf(kept.json())[GOAL_B]).toBe(true);
+        const afterIn = (await disciplineLinksOf(v)).length;
+        expect((await setElement(v, GOAL_B, true)).statusCode).toBe(200);
+        expect(await disciplineLinksOf(v)).toHaveLength(afterIn);
+
+        const back = sectionOf((await getDraft(v)).body, "plan");
+        expect(back.contentHash).toBe(original.contentHash);
+        expect(back.text).toBe(original.text);
+        expect(liveElementIds(await disciplineLinksOf(v))).toEqual([GOAL_B]);
+      });
+
+      it("a confirmed section needs confirming again once a goal is left out (finalize refuses until then), and the note signs with the plan as the clinician kept it, sealing only the kept goal's id", async () => {
+        const v = await seedVisit({ kind: "msw" });
+        await ownWords(v);
+        await confirmDrafted(v);
+        expect(sectionOf((await getDraft(v)).body, "plan").state).toBe("confirmed");
+
+        expect((await setElement(v, GOAL_B, false)).statusCode).toBe(200);
+        expect(sectionOf((await getDraft(v)).body, "plan").state).toBe("needs_reconfirmation");
+        const refused = await finalize(v);
+        expect(refused.statusCode, refused.body).toBe(422);
+        expect(await statusOf(v)).toBe("draft");
+
+        await confirmDrafted(v);
+        const fin = await finalize(v);
+        expect(fin.statusCode, fin.body).toBe(200);
+        const signedRes = await sign(v);
+        expect(signedRes.statusCode, signedRes.body).toBe(200);
+
+        const texts = await expectSealedEqualFinal(v);
+        const sealed = await noteRowsOf(v);
+        const at = (id: string) => sealed.findIndex((r) => r.section_id === id);
+        expect(texts[at("plan")]).toContain(PLAN_WITH_ONLY_A);
+        expect(texts.join("\n")).not.toContain("grandson");
+        expect(sealed.find((r) => r.section_id === "plan")?.source_refs).toEqual([
+          { kind: "discipline_plan_goal", id: GOAL_A },
+        ]);
+        const links = await disciplineLinksOf(v);
+        expect(liveElementIds(links)).toEqual([GOAL_A, IV_A].sort());
+        expect(removedElementIds(links)).toEqual([GOAL_B]);
+      });
+
+      it("deselecting a plan section leaves its goals out and the section is no longer drafted; keeping one brings the section back with just that goal", async () => {
+        const v = await seedVisit({ kind: "msw" });
+        const seen = sectionOf((await getDraft(v)).body, "plan");
+        expect((await putSection(v, "plan", "deselected", seen)).statusCode).toBe(200);
+
+        expect(removedElementIds(await disciplineLinksOf(v))).toEqual([GOAL_A, GOAL_B].sort());
+        const { body } = await elementsOf(v);
+        expect(keptOf(body)).toEqual({ [GOAL_A]: false, [GOAL_B]: false, [IV_A]: true });
+        expect(sectionOf((await getDraft(v)).body, "plan").state).toBe("not_drafted");
+
+        expect((await setElement(v, GOAL_A, true)).statusCode).toBe(200);
+        const back = sectionOf((await getDraft(v)).body, "plan");
+        expect(back.state).not.toBe("not_drafted");
+        expect(back.text).toBe(PLAN_WITH_ONLY_A);
+      });
+
+      it("a chaplain's plan works the same way: leaving its only goal out leaves nothing to draft", async () => {
+        const v = await seedVisit({ kind: "chaplain" });
+        const { body } = await elementsOf(v);
+        expect(body.elements.map((e) => e.elementId)).toEqual([GOAL_CHAPLAIN]);
+        expect((await setElement(v, GOAL_CHAPLAIN, false)).statusCode).toBe(200);
+        expect(sectionOf((await getDraft(v)).body, "plan").state).toBe("not_drafted");
+      });
+
+      it("an element the plan does not hold is 404, and writes nothing", async () => {
+        const v = await seedVisit({ kind: "msw" });
+        for (const id of [randomUUID(), GOAL_CLOSED, IV_CLOSED]) {
+          expect((await setElement(v, id, false)).statusCode, id).toBe(404);
+        }
+        expect(await disciplineLinksOf(v)).toEqual([]);
+      });
+
+      it("a signed note's elements cannot be changed (an addendum is the way), and a malformed id or body is 422", async () => {
+        const signedVisit = await seedVisit({ kind: "msw" });
+        await signed(signedVisit);
+        const refused = await setElement(signedVisit, GOAL_A, false);
+        expect(refused.statusCode, refused.body).toBe(409);
+
+        const v = await seedVisit({ kind: "msw" });
+        expect(
+          (await put(elementsUrl(v, "/not-a-uuid"), v.headers, { included: true })).statusCode,
+        ).toBe(422);
+        expect(
+          (await put(elementsUrl(v, `/${GOAL_A}`), v.headers, { included: "yes" })).statusCode,
+        ).toBe(422);
+        expect((await put(elementsUrl(v, `/${GOAL_A}`), v.headers, {})).statusCode).toBe(422);
+        expect(await disciplineLinksOf(v)).toEqual([]);
+      });
+
+      describe("Part 2", () => {
+        it("a viewer without disclosure is not handed a Part 2 element: it is absent from the list, and changing it is the same 404 as an element that does not exist", async () => {
+          part2Memberships.clear();
+          const member = await newMember(ORG_A, "elements-no-part2", AUTHOR_KEYS, "msw");
+          const v = await seedVisit({ kind: "msw", author: member, snapshot: SUD_SNAPSHOT });
+          const { res, body } = await elementsOf(v);
+          expect(res.statusCode, res.body).toBe(200);
+          expect(body.elements.map((e) => e.elementId)).toEqual([GOAL_A, IV_A]);
+          for (const hidden of ["SECRET-SUD", GOAL_SUD, IV_SUD]) {
+            expect(res.body, hidden).not.toContain(hidden);
+          }
+          const hiddenRes = await setElement(v, GOAL_SUD, false);
+          const absentRes = await setElement(v, randomUUID(), false);
+          expect(hiddenRes.statusCode).toBe(404);
+          expect(absentRes.statusCode).toBe(404);
+          expect(hiddenRes.json().error.code).toBe(absentRes.json().error.code);
+          expect(await disciplineLinksOf(v)).toEqual([]);
+        });
+
+        it("an entitled viewer's change is filed Part 2: the row carries the flag, and the audit image withholds the element id and files under the Part 2 retention class", async () => {
+          const member = await newMember(ORG_A, "elements-part2", AUTHOR_KEYS, "msw");
+          part2Memberships.clear();
+          part2Memberships.add(member.membershipId);
+          const v = await seedVisit({ kind: "msw", author: member, snapshot: SUD_SNAPSHOT });
+          const { body } = await elementsOf(v);
+          expect(body.elements.map((e) => e.elementId).sort()).toEqual(
+            [GOAL_A, GOAL_SUD, IV_A, IV_SUD].sort(),
+          );
+          expect((await setElement(v, GOAL_SUD, false)).statusCode).toBe(200);
+          expect((await setElement(v, GOAL_A, false)).statusCode).toBe(200);
+          part2Memberships.clear();
+
+          const links = await disciplineLinksOf(v);
+          expect(links.find((l) => l.goal_id === GOAL_SUD)).toMatchObject({
+            removed: true,
+            part2_derived: true,
+          });
+          expect(links.find((l) => l.goal_id === GOAL_A)).toMatchObject({
+            removed: true,
+            part2_derived: false,
+          });
+
+          const events = await rows<{
+            retention_class: string;
+            after: Record<string, unknown> | null;
+          }>(
+            `SELECT retention_class::text, after FROM audit_event
+              WHERE organization_id = $1 AND resource_kind = 'encounter_discipline_plan_link' AND after->>'encounter_id' = $2
+              ORDER BY created_at`,
+            [ORG_A, v.encounterId],
+          );
+          const part2Events = events.filter((e) => e.retention_class === "compliance_42cfr_part2");
+          const plainEvents = events.filter((e) => e.retention_class === "compliance");
+          expect(part2Events).toHaveLength(1);
+          expect(part2Events[0]?.after).toMatchObject({
+            part2_derived: true,
+            goal_id: "<changed>",
+          });
+          expect(JSON.stringify(part2Events)).not.toContain(GOAL_SUD);
+          expect(plainEvents).toHaveLength(1);
+          expect(JSON.stringify(plainEvents)).toContain(GOAL_A);
+        });
+      });
+
+      describe("who may, and what is audited", () => {
+        const without = (keys: readonly string[], key: string) => keys.filter((k) => k !== key);
+
+        it("needs discipline_plan.read to list and to change (403 naming it) with nothing read and nothing written; granting it then works", async () => {
+          const member = await newMember(
+            ORG_A,
+            "elements-lacks-plan",
+            without(AUTHOR_KEYS, PLAN_KEY),
+            "msw",
+          );
+          const v = await seedVisit({ kind: "msw", author: member });
+          const list = await get(elementsUrl(v), v.headers);
+          expect(list.statusCode).toBe(403);
+          expect(list.json().error.message).toContain(requiresKey(PLAN_KEY));
+          const change = await setElement(v, GOAL_A, false);
+          expect(change.statusCode).toBe(403);
+          expect(change.json().error.message).toContain(requiresKey(PLAN_KEY));
+          expect(v.scenario.reads).toEqual(NO_READS);
+          expect(await disciplineLinksOf(v)).toEqual([]);
+
+          setKeys(v.org, member, AUTHOR_KEYS);
+          expect((await elementsOf(v)).res.statusCode).toBe(200);
+        });
+
+        it("changing an element is the note's author's act: another clinician holding every key is refused and writes nothing", async () => {
+          const v = await seedVisit({ kind: "msw" });
+          const other = await newMember(ORG_A, "elements-other-msw", AUTHOR_KEYS, "msw");
+          const res = await setElement(v, GOAL_A, false, as(orgs.A, other));
+          expect([403, 404]).toContain(res.statusCode);
+          expect(await disciplineLinksOf(v)).toEqual([]);
+        });
+
+        it("a tenant with the switch off answers 404 to a list and a change, reads nothing and writes nothing", async () => {
+          const member = await newMember(ORG_C, "elements-off", AUTHOR_KEYS, "msw");
+          const v = await seedVisit({ org: orgs.C, kind: "msw", author: member });
+          expect((await get(elementsUrl(v), v.headers)).statusCode).toBe(404);
+          expect((await setElement(v, GOAL_A, false)).statusCode).toBe(404);
+          expect(v.scenario.reads).toEqual(NO_READS);
+          expect(await disciplineLinksOf(v)).toEqual([]);
+        });
+
+        it("the list's read event lands: encounter_discipline_plan_elements.viewed on the encounter, attributed to the patient, field names only", async () => {
+          const v = await seedVisit({ kind: "msw" });
+          const { res, body } = await elementsOf(v);
+          expect(res.statusCode).toBe(200);
+          const events = await rows<{
+            resource_kind: string;
+            actor_user_id: string | null;
+            context: { patientId?: string; fields?: string[] } | null;
+          }>(
+            `SELECT resource_kind, actor_user_id::text, context FROM audit_event
+              WHERE organization_id = $1 AND event_type = 'encounter_discipline_plan_elements.viewed' AND resource_id::text = $2`,
+            [ORG_A, v.encounterId],
+          );
+          expect(events).toHaveLength(1);
+          expect(events[0]).toMatchObject({
+            resource_kind: "encounter_discipline_plan_elements",
+            actor_user_id: v.author.userId,
+            context: { patientId: v.patientId },
+          });
+          expect(events[0]?.context?.fields).toEqual(
+            expect.arrayContaining(["elements", "kept", "text"]),
+          );
+          const trail = JSON.stringify(events[0]);
+          for (const element of body.elements) expect(trail).not.toContain(element.text);
+        });
+      });
+
+      describe("tenancy, as the application role", () => {
+        it("another tenant's author gets 404 for tenant A's elements, and writes nothing; B's own visit lists", async () => {
+          const theirs = await seedVisit({ kind: "msw" });
+          const mine = await seedVisit({ org: orgs.B, kind: "msw" });
+          const stranger = as(orgs.B, orgs.B.msw);
+          expect((await get(elementsUrl(theirs), stranger)).statusCode).toBe(404);
+          expect((await setElement(theirs, GOAL_A, false, stranger)).statusCode).toBe(404);
+          expect(await disciplineLinksOf(theirs)).toEqual([]);
+          expect((await get(elementsUrl(mine), stranger)).statusCode).toBe(200);
+        });
+
+        /** One statement as the NOBYPASSRLS application role, in `orgId`'s tenant. */
+        async function asApp<T>(orgId: string, run: (client: Client) => Promise<T>): Promise<T> {
+          const client = new Client({
+            connectionString: await appRoleConnectionString(admin, DB_URL as string),
+          });
+          await client.connect();
+          try {
+            await client.query("SELECT set_config('app.org_id', $1, false)", [orgId]);
+            return await run(client);
+          } finally {
+            await client.end();
+          }
+        }
+        const refusal = (error: unknown): { code?: string; message?: string } =>
+          error as { code?: string; message?: string };
+
+        it("a tenant sees only its own rows; the application role may read, add and soft-remove but never DELETE; a row cannot be filed under another tenant", async () => {
+          const v = await seedVisit({ kind: "msw" });
+          expect((await setElement(v, GOAL_A, false)).statusCode).toBe(200);
+          const count = (orgId: string) =>
+            asApp(orgId, async (c) =>
+              Number(
+                (
+                  await c.query(
+                    "SELECT count(*)::int AS n FROM encounter_discipline_plan_link WHERE encounter_id = $1",
+                    [v.encounterId],
+                  )
+                ).rows[0].n,
+              ),
+            );
+          expect(await count(ORG_A)).toBe(1);
+          expect(await count(ORG_B)).toBe(0);
+
+          const deleted = await asApp(ORG_A, (c) =>
+            c.query("DELETE FROM encounter_discipline_plan_link WHERE encounter_id = $1", [
+              v.encounterId,
+            ]),
+          ).then(
+            () => undefined,
+            (error: unknown) => refusal(error),
+          );
+          expect(deleted?.code).toBe("42501");
+
+          // tenant B cannot file a row under tenant A's encounter: not through RLS, and not through the organization guard
+          const filed = await asApp(ORG_B, (c) =>
+            c.query(
+              `INSERT INTO encounter_discipline_plan_link (organization_id, encounter_id, goal_id, part2_derived)
+               VALUES ($1, $2, $3, false)`,
+              [ORG_B, v.encounterId, randomUUID()],
+            ),
+          ).then(
+            () => undefined,
+            (error: unknown) => refusal(error),
+          );
+          expect(filed?.code).toBe("23503");
+          expect(await disciplineLinksOf(v)).toHaveLength(1);
+        });
       });
     });
 
