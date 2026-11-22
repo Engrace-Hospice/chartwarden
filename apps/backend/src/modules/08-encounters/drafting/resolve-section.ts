@@ -22,6 +22,7 @@ import type { DraftEncounterRow, DraftResolvedEvent, DraftStore } from "./draft-
 import { type DraftSectionView, sectionView } from "./draft-view";
 import type { DraftPorts, DraftSeamPorts, DraftViewer } from "./ports";
 import { type SectionStateName, sectionStates } from "./section-state";
+import { settleAll } from "./unavailable";
 
 export interface ResolveSectionInput {
   readonly encounter: DraftEncounterRow;
@@ -82,7 +83,7 @@ export async function resolveSection(
       `section '${sectionId}' is not part of template '${before.templateKey}'`,
     );
   }
-  const [confirmations, own] = await Promise.all([
+  const [confirmations, own] = await settleAll([
     store.confirmations(encounter.id),
     store.ownTextSectionIds(encounter.id),
   ]);

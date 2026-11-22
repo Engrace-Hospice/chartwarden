@@ -18,6 +18,7 @@ import type {
   RunInOrg,
 } from "./draft-store";
 import { isVisitNoteDraftEnabled } from "./policy-service";
+import { leaseTransaction } from "./transaction-lease";
 
 /** The explicit audit event one resolution records (catalogued in `M8_ACTION_CATALOG`); the confirmation's row trigger records the row too. */
 export const DRAFT_SECTION_AUDIT_EVENT = "m8.encounter.draft_section_resolved";
@@ -121,7 +122,18 @@ function createUnit(
 
 export function createDbRunInOrg(db: DbClient, ciphers?: HearthnoteCiphers): RunInOrg {
   return (scope, fn) =>
-    withOrgContext(db, { organizationId: scope.organizationId, userId: scope.userId }, (tx) =>
-      fn(createUnit(tx as unknown as DbClient, scope, ciphers)),
+    withOrgContext(
+      db,
+      { organizationId: scope.organizationId, userId: scope.userId },
+      async (tx) => {
+        // The unit is lent the transaction for the length of `fn` only: a draft read `guarded` abandoned at its time bound is still running, and
+        // must not start its next query on the connection once the transaction has ended (transaction-lease.ts).
+        const lease = leaseTransaction(tx as unknown as DbClient);
+        try {
+          return await fn(createUnit(lease.db, scope, ciphers));
+        } finally {
+          lease.close();
+        }
+      },
     );
 }

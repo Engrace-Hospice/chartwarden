@@ -20,7 +20,10 @@ export function draftUnavailable(read: string, cause?: unknown): EncounterStateE
  * The draft's store reads run on the request's transaction while its seam reads run beside them: with `Promise.all` a seam that fails at once rejects
  * the whole read, the transaction rolls back and its connection returns to the pool, and a store read still mid-way (`loadSelection` makes four
  * queries in turn) goes on to issue its next query on a connection that by then belongs to the NEXT request, where it can abort that request's
- * transaction. Waiting is safe because every read is bounded by `guarded`.
+ * transaction. Waiting is bounded because every read goes through `guarded`, which gives up after `DRAFT_SOURCE_READ_TIMEOUT_MS`.
+ *
+ * That covers a read that FAILS. A read `guarded` abandoned at its time bound is not cancelled and may still be mid-way when this settles: that one is
+ * cut off by the transaction lease (transaction-lease.ts), which makes its next query throw once the unit of work has ended.
  */
 export async function settleAll<T extends readonly unknown[] | []>(
   values: T,

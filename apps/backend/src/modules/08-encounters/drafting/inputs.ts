@@ -343,7 +343,7 @@ async function readScaleReadings(
     timeZone,
     periodStart,
   };
-  const readings = await Promise.all(DRAFTED_SCALES.map((scale) => readScale(context, scale)));
+  const readings = await settleAll(DRAFTED_SCALES.map((scale) => readScale(context, scale)));
   return readings.filter((r): r is ScaleReadingInput => r !== null);
 }
 
