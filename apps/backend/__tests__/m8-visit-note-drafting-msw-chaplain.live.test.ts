@@ -1670,6 +1670,33 @@ describe.skipIf(!DB_URL)(
           const trail = JSON.stringify(events[0]);
           for (const element of body.elements) expect(trail).not.toContain(element.text);
         });
+
+        it("a toggle answers the list's wording, so it leaves the same read event, actor and patient (and the row's own trigger event, attributed to the author)", async () => {
+          const v = await seedVisit({ kind: "msw" });
+          expect((await setElement(v, GOAL_A, false)).statusCode).toBe(200);
+          // a no-op toggle writes no row, and still answers the wording
+          expect((await setElement(v, GOAL_B, true)).statusCode).toBe(200);
+          const reads = await rows<{
+            actor_user_id: string | null;
+            context: { patientId?: string };
+          }>(
+            `SELECT actor_user_id::text, context FROM audit_event
+              WHERE organization_id = $1 AND event_type = 'encounter_discipline_plan_elements.viewed' AND resource_id::text = $2`,
+            [ORG_A, v.encounterId],
+          );
+          expect(reads).toHaveLength(2);
+          for (const read of reads) {
+            expect(read.actor_user_id).toBe(v.author.userId);
+            expect(read.context.patientId).toBe(v.patientId);
+          }
+          const writes = await rows<{ actor_user_id: string | null }>(
+            `SELECT actor_user_id::text FROM audit_event
+              WHERE organization_id = $1 AND event_type = 'encounter_discipline_plan_link.insert' AND after->>'encounter_id' = $2`,
+            [ORG_A, v.encounterId],
+          );
+          expect(writes).toHaveLength(1);
+          expect(writes[0]?.actor_user_id).toBe(v.author.userId);
+        });
       });
 
       describe("tenancy, as the application role", () => {

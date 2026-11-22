@@ -214,6 +214,26 @@ describe("GET /encounters/:encounterId/discipline-plan-elements", () => {
     });
     expect(declared[0]?.fields).toEqual(expect.arrayContaining(["elements", "kept", "text"]));
   });
+
+  it("the PUT answers the same wording, so it declares the same read audit (a toggle that writes nothing leaves no row-trigger event)", () => {
+    const declared: Record<string, unknown>[] = [];
+    const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+    app.addHook("onRoute", (route) => {
+      if (
+        route.url === "/api/v1/encounters/:encounterId/discipline-plan-elements/:elementId" &&
+        route.method === "PUT"
+      ) {
+        declared.push(route.config?.auditRead as unknown as Record<string, unknown>);
+      }
+    });
+    registerDraftSectionRoutes(app, { service: fakeService() as unknown as DraftService });
+    expect(declared).toHaveLength(1);
+    expect(declared[0]).toMatchObject({
+      resourceKind: "encounter_discipline_plan_elements",
+      resourceIdParam: "encounterId",
+      patientIdPayloadPath: "patientId",
+    });
+  });
 });
 
 describe("PUT /encounters/:encounterId/discipline-plan-elements/:elementId", () => {
