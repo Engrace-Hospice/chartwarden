@@ -12046,6 +12046,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/encounters/{encounterId}/discipline-plan-elements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The goals and interventions of the discipline's plan in effect at the visit (the latest version its clinicians signed at or before the visit time), as the calling viewer is handed them, each with its words and whether this visit keeps it (`kept`). A goal or intervention that may be 42 CFR Part 2 content is returned only to a viewer with disclosure. Only for a visit drafted from the discipline's plan (a social worker's or a chaplain's, else 422 UNKNOWN_TEMPLATE_SECTION); needs encounter.read and discipline_plan.read (403 without it); 404 for a tenant with the draft switched off and for an encounter that is not the caller's */
+        get: operations["getApiV1EncountersByEncounterIdDisciplineplanelements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/discipline-plan-elements/{elementId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Keep one goal or intervention in this visit's drafted plan (`included: true`) or leave it out (`included: false`). Idempotent; the note's author alone (encounter.author, caseload scope; a supervisor is refused 403), never an AI principal; a signed, cosigned or voided note is refused (an addendum is the way). Changing what the plan states changes the section's content hash, so a section already confirmed must be confirmed again (DRAFT_SECTION_STALE otherwise). An element the viewer is not handed (absent, another plan's, or Part 2 without disclosure) is the same 404; the answer is the updated list */
+        put: operations["putApiV1EncountersByEncounterIdDisciplineplanelementsByElementId"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/encounters/{encounterId}/draft": {
         parameters: {
             query?: never;
@@ -68741,6 +68775,81 @@ export interface operations {
                 content: {
                     "application/json": {
                         status: "pending" | "routed" | "acknowledged" | "escalated" | "hard_cap_reached" | "supervisor_released" | "signed";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersByEncounterIdDisciplineplanelements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        patientId: string;
+                        elements: {
+                            /** Format: uuid */
+                            elementId: string;
+                            kind: "goal" | "intervention";
+                            text: string;
+                            kept: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1EncountersByEncounterIdDisciplineplanelementsByElementId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                elementId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    included: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        patientId: string;
+                        elements: {
+                            /** Format: uuid */
+                            elementId: string;
+                            kind: "goal" | "intervention";
+                            text: string;
+                            kept: boolean;
+                        }[];
                     };
                 };
             };

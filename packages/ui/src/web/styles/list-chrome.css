@@ -1652,6 +1652,11 @@
   gap: 1rem;
   margin-top: 1rem;
 }
+
+/* A social-work or chaplain visit with no plan list to show (none for this viewer, or an empty plan) mounts nothing: no frame, no gap. */
+.wx-draft-rail:empty {
+  display: none;
+}
 /* The care-plan picker's rows in the composer's right rail read at body size, like the rest of the rail. */
 .wx-draft-rail .wx-action-check {
   align-items: flex-start;

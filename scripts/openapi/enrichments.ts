@@ -2190,9 +2190,11 @@ import {
 // ADR-0114 visit-note draft (M8): the per-tenant switch, then the draft and its section resolution.
 import {
   AmendmentDraftResponseSchema as M8AmendmentDraftResponseSchema,
+  DisciplinePlanElementsResponseSchema as M8DisciplinePlanElementsResponseSchema,
   DraftResponseSchema as M8DraftResponseSchema,
   DraftSectionResponseSchema as M8DraftSectionResponseSchema,
   ResolveSectionSchema as M8ResolveSectionSchema,
+  SetDisciplinePlanElementSchema as M8SetDisciplinePlanElementSchema,
 } from "../../apps/backend/src/modules/08-encounters/routes/draft-section-typebox";
 import {
   DraftPolicyResponseSchema as M8DraftPolicyResponseSchema,
@@ -6029,6 +6031,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Confirm or deselect one drafted section against the content the clinician saw (`contentHash` and `corpusVersion` from the draft). The server recomputes the draft for the same viewer and answers 409 DRAFT_SECTION_STALE when either no longer matches. Confirming links the section's care-plan goals and interventions to the encounter; deselecting removes them from it (a note never changes the care plan), so a deselected section is bound to what remains and a section left empty reads not_drafted. Idempotent. Only on an encounter that is not signed, cosigned or voided; encounter.author and caseload scope as the selections save, but the encounter's AUTHOR only (is_author; 403 for anyone else, a supervisor included: the signer must be who confirmed); AI principals refused; 404 when the tenant has the draft switched off. Answers the section's new state",
     body: M8ResolveSectionSchema,
     response: M8DraftSectionResponseSchema,
+  },
+  // ADR-0114 S4b - which of the discipline's goals and interventions a social-work or chaplain visit keeps in its drafted plan.
+  "GET /api/v1/encounters/:encounterId/discipline-plan-elements": {
+    summary:
+      "The goals and interventions of the discipline's plan in effect at the visit (the latest version its clinicians signed at or before the visit time), as the calling viewer is handed them, each with its words and whether this visit keeps it (`kept`). A goal or intervention that may be 42 CFR Part 2 content is returned only to a viewer with disclosure. Only for a visit drafted from the discipline's plan (a social worker's or a chaplain's, else 422 UNKNOWN_TEMPLATE_SECTION); needs encounter.read and discipline_plan.read (403 without it); 404 for a tenant with the draft switched off and for an encounter that is not the caller's",
+    response: M8DisciplinePlanElementsResponseSchema,
+  },
+  "PUT /api/v1/encounters/:encounterId/discipline-plan-elements/:elementId": {
+    summary:
+      "Keep one goal or intervention in this visit's drafted plan (`included: true`) or leave it out (`included: false`). Idempotent; the note's author alone (encounter.author, caseload scope; a supervisor is refused 403), never an AI principal; a signed, cosigned or voided note is refused (an addendum is the way). Changing what the plan states changes the section's content hash, so a section already confirmed must be confirmed again (DRAFT_SECTION_STALE otherwise). An element the viewer is not handed (absent, another plan's, or Part 2 without disclosure) is the same 404; the answer is the updated list",
+    body: M8SetDisciplinePlanElementSchema,
+    response: M8DisciplinePlanElementsResponseSchema,
   },
 });
 

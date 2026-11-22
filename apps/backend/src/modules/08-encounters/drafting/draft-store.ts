@@ -40,6 +40,24 @@ export interface DraftStore extends DraftStorePorts {
     removedByMembershipId: string,
     now: Date,
   ): Promise<number>;
+  /**
+   * S4b: idempotently keeps the M15 plan elements among `refs` in the visit's statement of the plan (a live `encounter_discipline_plan_link` row each);
+   * returns how many it wrote. `part2Derived` is the flag the rows carry: the section's verdict, so an element of a Part 2 derived section is
+   * filed as Part 2 (fail closed).
+   */
+  linkDisciplinePlan(
+    encounter: DraftEncounterRow,
+    refs: readonly DraftSourceRef[],
+    part2Derived: boolean,
+  ): Promise<number>;
+  /** S4b: leaves the M15 plan elements among `refs` out of the visit (soft-remove, or an already-removed tombstone); returns how many it changed. */
+  removeDisciplinePlan(
+    encounter: DraftEncounterRow,
+    refs: readonly DraftSourceRef[],
+    part2Derived: boolean,
+    removedByMembershipId: string,
+    now: Date,
+  ): Promise<number>;
 }
 
 /** The explicit audit event of one resolution (ids, enums and counts only). */

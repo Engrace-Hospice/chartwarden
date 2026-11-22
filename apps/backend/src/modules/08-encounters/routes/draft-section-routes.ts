@@ -44,9 +44,11 @@ import { auditContextOf } from "./audit-context";
 import {
   AmendmentDraftParamsSchema,
   AmendmentSectionParamsSchema,
+  DisciplinePlanElementParamsSchema,
   DraftParamsSchema,
   DraftSectionParamsSchema,
   ResolveSectionSchema,
+  SetDisciplinePlanElementSchema,
 } from "./draft-section-typebox";
 import { parse } from "./encounters-typebox";
 
@@ -97,6 +99,9 @@ const IS_ADDENDUM_AUTHOR_TO_READ = requireAbac(
 const NO_AI = rejectAiActor(
   "AI principals cannot confirm or deselect a visit-note section (D13)",
 ) as PreHandler;
+const NO_AI_ELEMENT = rejectAiActor(
+  "AI principals cannot keep or leave out an element of a visit-note plan (D13)",
+) as PreHandler;
 // The same `encounter.scope` caseload guard the selections routes carry; `notFoundOnDeny` keeps a cross-tenant or out-of-caseload denial
 // the same answer as an absent encounter.
 const SCOPE_FOR = (action: string): PreHandler =>
@@ -107,6 +112,16 @@ const SCOPE_FOR = (action: string): PreHandler =>
  * carries `is_addendum_author` for the same reason.) A supervisor reads the draft; they do not confirm it for the author.
  */
 const IS_AUTHOR = requireAbac("encounter.author", "is_author") as PreHandler;
+/**
+ * The goal and intervention wording of the patient's plan, as the viewer is handed it (S4b): accountable against the patient named in the
+ * response (§164.528). Field names only. The list read and the toggle (which answers the same list) declare it.
+ */
+const DISCIPLINE_PLAN_ELEMENTS_READ_AUDIT = {
+  resourceKind: "encounter_discipline_plan_elements",
+  resourceIdParam: "encounterId",
+  patientIdPayloadPath: "patientId",
+  fields: ["elements", "elementId", "kind", "text", "kept"],
+} as const;
 /** A malformed id is a 422 BEFORE the scope predicate casts it to a uuid (that cast would be a 500). */
 const PARAMS_VALID = (schema: TObject): PreHandler =>
   (async (request: FastifyRequest) => {
@@ -167,6 +182,46 @@ export function registerDraftSectionRoutes(
         await callerOf(request, actor),
         encounterId,
         sectionId,
+        body,
+        auditContextOf(request),
+      );
+    },
+  );
+  // ── S4b (VN-D60): which of the discipline's goals and interventions a social-work or chaplain visit keeps ─────────────────────────────────
+  app.get(
+    "/api/v1/encounters/:encounterId/discipline-plan-elements",
+    {
+      preHandler: [READ, PARAMS_VALID(DraftParamsSchema), SCOPE_FOR("encounter.read")],
+      config: { auditRead: DISCIPLINE_PLAN_ELEMENTS_READ_AUDIT },
+    },
+    async (request) => {
+      const { encounterId } = parse(DraftParamsSchema, request.params);
+      const actor = actorOf(request);
+      return service.getDisciplinePlanElements(await callerOf(request, actor), encounterId);
+    },
+  );
+
+  app.put(
+    "/api/v1/encounters/:encounterId/discipline-plan-elements/:elementId",
+    {
+      preHandler: [
+        AUTHOR,
+        NO_AI_ELEMENT,
+        PARAMS_VALID(DisciplinePlanElementParamsSchema),
+        SCOPE_FOR("encounter.author"),
+        IS_AUTHOR,
+      ],
+      // The answer is the same list, wording included, so the change is accountable as a read too (a toggle that writes nothing has no row event).
+      config: { auditRead: DISCIPLINE_PLAN_ELEMENTS_READ_AUDIT },
+    },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { encounterId, elementId } = parse(DisciplinePlanElementParamsSchema, request.params);
+      const body = parse(SetDisciplinePlanElementSchema, request.body);
+      return service.setDisciplinePlanElement(
+        await callerOf(request, actor),
+        encounterId,
+        elementId,
         body,
         auditContextOf(request),
       );

@@ -10,6 +10,12 @@ import { openStoredProse, sectionHasOwnText, storedSections } from "../selection
 import { linkElements, removeElements, removedCarePlanElementIds } from "./care-plan-links";
 import { carePlanElementsOf } from "./care-plan-refs";
 import { readConfirmations, upsertConfirmation } from "./confirmations";
+import {
+  linkDisciplineElements,
+  removeDisciplineElements,
+  removedDisciplinePlanElementIds,
+} from "./discipline-plan-links";
+import { disciplinePlanElementsOf } from "./discipline-plan-refs";
 import type { DraftStore } from "./draft-store";
 import type { DraftEncounter, WeightRow } from "./ports";
 import { previousVisitAsOf } from "./visit-time";
@@ -190,6 +196,8 @@ export function createDbDraftStore(tx: DbClient, deps: DbDraftStoreDeps): DraftS
     latestVitals: (encounterId, asOf) => latestVitals(tx, encounterId, asOf),
     weightReadings: (encounter, from, asOf) => weightReadings(tx, encounter, from, asOf),
     removedCarePlanElementIds: (encounterId) => removedCarePlanElementIds(tx, encounterId),
+    removedDisciplinePlanElementIds: (encounterId) =>
+      removedDisciplinePlanElementIds(tx, encounterId),
     loadSelection: (encounter) => loadSelection(tx, encounter, deps.freeTextCipher),
     confirmations: (encounterId) => readConfirmations(tx, encounterId),
     ownTextSectionIds: (encounterId) => ownTextSectionIds(tx, encounterId),
@@ -197,5 +205,16 @@ export function createDbDraftStore(tx: DbClient, deps: DbDraftStoreDeps): DraftS
     linkCarePlan: (encounter, refs) => linkElements(tx, encounter, carePlanElementsOf(refs)),
     removeCarePlan: (encounter, refs, removedBy, now) =>
       removeElements(tx, encounter, carePlanElementsOf(refs), removedBy, now),
+    linkDisciplinePlan: (encounter, refs, part2Derived) =>
+      linkDisciplineElements(tx, encounter, disciplinePlanElementsOf(refs), part2Derived),
+    removeDisciplinePlan: (encounter, refs, part2Derived, removedBy, now) =>
+      removeDisciplineElements(
+        tx,
+        encounter,
+        disciplinePlanElementsOf(refs),
+        part2Derived,
+        removedBy,
+        now,
+      ),
   };
 }

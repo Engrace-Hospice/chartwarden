@@ -219,6 +219,7 @@ export type M8TableName =
   | "hearthnote_assembled_output"
   | "hearthnote_llm_modification"
   | "encounter_draft_confirmation"
+  | "encounter_discipline_plan_link"
   | "hearthnote_signed_section"
   | "encounter_amendment"
   | "addendum_cosignature_request";
@@ -244,6 +245,8 @@ export const M8_AUDIT_DENYLIST: { readonly [K in M8TableName]: readonly string[]
   // ADR-0114: confirmations carry ids only; neither table's content hash (an unsalted SHA-256 of low-entropy text) reaches the audit diff,
   // nor does the signed section's sealed text. A Part 2 row also withholds `source_refs`, row-conditionally, in the same triggers.
   encounter_draft_confirmation: ["content_hash"],
+  // ADR-0114 S4b: a link carries ids and flags only. A Part 2 row withholds its element ids row-conditionally, in its trigger (as the source ids above).
+  encounter_discipline_plan_link: [],
   hearthnote_signed_section: ["text_cipher", "content_hash"],
   // ADR-0114 VN-D30: an amendment's resolution is as a confirmation's (the hash never reaches the audit diff, a Part 2 row withholds `source_refs`); the
   // addendum's cosignature request carries the same reason carrier as the encounter's.

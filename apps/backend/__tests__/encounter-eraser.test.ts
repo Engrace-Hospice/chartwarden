@@ -39,12 +39,13 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
       hearthnoteAssembledOutputs: 2,
       hearthnoteLlmModifications: 1,
       draftConfirmations: 3,
+      disciplinePlanLinks: 2,
       signedSections: 6,
       amendments: 2,
       addendumCosignatureRequests: 1,
     });
     const { erased, counts } = await eraseEncounterRecord("org_a", "pat_1", store);
-    expect(erased).toBe(39); // 37 satellites + 2 tombstoned roots
+    expect(erased).toBe(41); // 39 satellites + 2 tombstoned roots
     expect(counts.vitals).toBe(4);
     expect(counts.tombstonedRoots).toBe(2);
     // The recorded ADLs and nutrition are counted: the encounter root is only tombstoned, so no cascade would remove them.
@@ -52,6 +53,8 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
     expect(counts.nutritionRecords).toBe(3);
     // ADR-0114: the draft's confirmations and the sealed per-section rows go with the rest of the encounter subtree.
     expect(counts.draftConfirmations).toBe(3);
+    // ADR-0114 S4b: the links to the M15 goals and interventions a drafted plan kept (live and removed alike) go with it.
+    expect(counts.disciplinePlanLinks).toBe(2);
     expect(counts.signedSections).toBe(6);
     // ADR-0114 VN-D30: an amendment's naming and resolution rows and the cosignature request an amending addendum opened go with the subtree too.
     expect(counts.amendments).toBe(2);
@@ -101,6 +104,7 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
       hearthnoteAssembledOutputs: 0,
       hearthnoteLlmModifications: 0,
       draftConfirmations: 0,
+      disciplinePlanLinks: 0,
       signedSections: 0,
       amendments: 0,
       addendumCosignatureRequests: 0,

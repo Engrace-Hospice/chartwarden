@@ -42,6 +42,7 @@ import type {
   ScaleSeriesPoint,
   ScaleType,
 } from "@chartwarden/types";
+import { disciplinePlanElementKinds } from "./discipline-plan-refs";
 import type { DraftEncounter, DraftPorts, DraftViewer } from "./ports";
 import { readsPreviousVisit } from "./source-reads";
 import { draftUnavailable, guarded, settleAll } from "./unavailable";
@@ -137,20 +138,28 @@ function statedByOf(goal: DisciplineGoalAsOf): DisciplinePlanStatedBy | null {
   }
 }
 
-function disciplinePlanInput(plan: DisciplinePlanElementsAsOf): DisciplinePlanDraftInput {
+/** The plan's goals and interventions, less the ones this visit left out (S4b: a removed link and no live one). */
+function disciplinePlanInput(
+  plan: DisciplinePlanElementsAsOf,
+  removed: ReadonlySet<string>,
+): DisciplinePlanDraftInput {
   return {
-    goals: plan.goals.map((g) => ({
-      id: g.goalId,
-      goalText: g.text,
-      statedBy: statedByOf(g),
-      sudRelated: g.sudRelated,
-    })),
-    interventions: plan.interventions.map((i) => ({
-      id: i.interventionId,
-      interventionText: i.scopeText,
-      frequencyText: i.frequencyText,
-      sudRelated: i.sudRelated,
-    })),
+    goals: plan.goals
+      .filter((g) => !removed.has(g.goalId))
+      .map((g) => ({
+        id: g.goalId,
+        goalText: g.text,
+        statedBy: statedByOf(g),
+        sudRelated: g.sudRelated,
+      })),
+    interventions: plan.interventions
+      .filter((i) => !removed.has(i.interventionId))
+      .map((i) => ({
+        id: i.interventionId,
+        interventionText: i.scopeText,
+        frequencyText: i.frequencyText,
+        sudRelated: i.sudRelated,
+      })),
   };
 }
 
@@ -211,7 +220,8 @@ async function readCarePlan(
  * S4: the open goals and active interventions of the discipline's own plan (M15) in the signed version in effect at the visit time, for this
  * viewer. M15 redacts Part 2 per viewer in its own M39 call, so the cross-check of `readCarePlan` applies here as well: a plan it says it
  * withheld from a viewer this draft's own verdict clears was cut by an outage or a consent change in between, and is never passed off as complete.
- * No link is persisted (S4a): a confirmation applies to the section as a whole, so there is no removed-element set to apply either.
+ * S4b: the elements this visit LEFT OUT (a removed link and no live one, `encounter_discipline_plan_link`) are read beside the plan and dropped from it,
+ * as the care plan's removed links are; a viewer's Part 2 verdict does not change which elements are removed, only which the plan returned.
  */
 async function readDisciplinePlan(
   ports: DraftPorts,
@@ -220,24 +230,99 @@ async function readDisciplinePlan(
   asOf: string,
   part2Verdict: Part2Verdict,
 ): Promise<DisciplinePlanDraftInput | null> {
+  const checked = await readCheckedDisciplinePlan(ports, encounter, viewer, asOf, part2Verdict);
+  return checked === null ? null : disciplinePlanInput(checked.plan, checked.removed);
+}
+
+/** The plan as M15 handed it for this viewer (every check applied) and the elements this visit left out; `null` when no plan is in effect. */
+async function readCheckedDisciplinePlan(
+  ports: DraftPorts,
+  encounter: DraftEncounter,
+  viewer: DraftViewer,
+  asOf: string,
+  part2Verdict: Part2Verdict,
+): Promise<{
+  readonly plan: DisciplinePlanElementsAsOf;
+  readonly removed: ReadonlySet<string>;
+} | null> {
   const kind = disciplinePlanKindFor(encounter.discipline);
-  const plan = await guarded("the discipline plan", () =>
-    ports.disciplinePlanAsOf(
-      encounter.organizationId,
-      encounter.patientId,
-      encounter.admissionId,
-      kind,
-      { roles: viewer.roles, membershipId: viewer.membershipId },
-      asOf,
+  const [plan, removed] = await settleAll([
+    guarded("the discipline plan", () =>
+      ports.disciplinePlanAsOf(
+        encounter.organizationId,
+        encounter.patientId,
+        encounter.admissionId,
+        kind,
+        { roles: viewer.roles, membershipId: viewer.membershipId },
+        asOf,
+      ),
     ),
-  );
+    guarded("the removed discipline-plan links", () =>
+      ports.removedDisciplinePlanElementIds(encounter.id),
+    ),
+  ]);
   if (plan === null) return null;
   // A plan that is not this patient's must never reach a note, however the seam came to return it.
   if (plan.patientId !== encounter.patientId)
     throw draftUnavailable("the discipline plan (wrong patient)");
   if (plan.redacted && (await part2Verdict()))
     throw draftUnavailable("the discipline plan (withheld from a viewer entitled to it)");
-  return disciplinePlanInput(plan);
+  return { plan, removed };
+}
+
+/** One element of the discipline's plan as a visit sees it (S4b): its words, whether the visit keeps it, and its own Part 2 verdict (fails closed). */
+export interface DisciplinePlanElement {
+  readonly elementId: string;
+  readonly kind: "goal" | "intervention";
+  readonly text: string;
+  readonly kept: boolean;
+  /** True unless the plan says the literal `false`; it is the flag a link row for this element carries. */
+  readonly part2Derived: boolean;
+}
+
+/**
+ * The goals and then the interventions of the discipline's plan in effect at `asOf` for this viewer, in the plan's order, each with whether this
+ * visit keeps it (a removed link and no live one is "left out"). What the plan hands a viewer is all there is: a Part 2 element a viewer without
+ * disclosure is not handed is not here, so it can be neither read nor changed. The same read, checks and failure codes as the draft's own.
+ */
+export async function readDisciplinePlanElements(
+  ports: DraftPorts,
+  encounter: DraftEncounter,
+  viewer: DraftViewer,
+  asOf: string,
+): Promise<readonly DisciplinePlanElement[]> {
+  const checked = await readCheckedDisciplinePlan(
+    ports,
+    encounter,
+    viewer,
+    asOf,
+    part2VerdictFor(ports, encounter, viewer),
+  );
+  if (checked === null) return [];
+  const { plan, removed } = checked;
+  return [
+    ...plan.goals.map(
+      (g): DisciplinePlanElement => ({
+        elementId: g.goalId,
+        kind: "goal",
+        text: g.text,
+        kept: !removed.has(g.goalId),
+        part2Derived: g.sudRelated !== false,
+      }),
+    ),
+    ...(disciplinePlanElementKinds(encounter.discipline).includes("intervention")
+      ? plan.interventions
+      : []
+    ).map(
+      (i): DisciplinePlanElement => ({
+        elementId: i.interventionId,
+        kind: "intervention",
+        text: i.frequencyText.trim() === "" ? i.scopeText : `${i.scopeText}, ${i.frequencyText}`,
+        kept: !removed.has(i.interventionId),
+        part2Derived: i.sudRelated !== false,
+      }),
+    ),
+  ];
 }
 
 // ── scale readings ─────────────────────────────────────────────────────────────────────────────────

@@ -31,7 +31,12 @@ import { type UiFeedback, feedbackFor, transportFeedback } from "./compose-feedb
 import { gateRefusalWords } from "./compose-gate-refusal";
 import { humanize } from "./compose-text";
 import { ComposerDraftRail, ComposerDraftStrip } from "./composer-draft-chrome";
-import { STATE_LABEL, confirmedSectionIds, draftedStateOf } from "./draft-model";
+import {
+  STATE_LABEL,
+  confirmedSectionIds,
+  draftedStateOf,
+  isDisciplinePlanSection,
+} from "./draft-model";
 import { DraftSectionPanel } from "./draft-section-panel";
 import {
   attentionCard,
@@ -1255,6 +1260,10 @@ export function EncounterCompose(): JSX.Element {
                           busy={noteDraft.busySectionId === panelSection.sectionId}
                           blockedReason={blockedReason}
                           onResolve={(resolution) => resolveSection(panelSection, resolution)}
+                          planSection={isDisciplinePlanSection(
+                            encounter.discipline,
+                            panelSection.sectionId,
+                          )}
                         />
                       </div>
                     ) : null}
@@ -1542,15 +1551,14 @@ export function EncounterCompose(): JSX.Element {
                   ) : null}
                 </section>
 
-                {drafted ? (
-                  <ComposerDraftRail
-                    encounter={encounter}
-                    editable={editable}
-                    drafted={drafted}
-                    carePlanRevision={carePlanRevision}
-                    onLinksChanged={() => void noteDraft.reload()}
-                  />
-                ) : null}
+                <ComposerDraftRail
+                  encounter={encounter}
+                  editable={editable}
+                  drafted={drafted}
+                  draftReady={noteDraft.load.status === "ready"}
+                  carePlanRevision={carePlanRevision}
+                  onLinksChanged={() => void noteDraft.reload()}
+                />
               </aside>
             </div>
 

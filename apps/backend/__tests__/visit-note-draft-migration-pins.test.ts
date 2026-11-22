@@ -20,6 +20,7 @@ const PART2_PIN = read("1522_m8_assembled_output_part2_derived.sql");
 const AMENDMENTS = read("1523_m8_note_amendments.sql");
 const COSIGN_KIND = read("1524_m8_addendum_cosignature_signature_kind.sql");
 const NOTE_GUARDS = read("1525_m8_note_guards_after_sign.sql");
+const DISCIPLINE_LINK = read("1540_m8_encounter_discipline_plan_link.sql");
 
 /** The privilege list of the `GRANT ... ON "<table>" TO chartwarden_app` statement. */
 function appGrant(source: string, table: string): readonly string[] {
@@ -32,6 +33,7 @@ describe.each([
   ["1517", CONFIRMATION, "encounter_draft_confirmation"],
   ["1518", SIGNED_SECTION, "hearthnote_signed_section"],
   ["1519", POLICY, "visit_note_draft_policy"],
+  ["1540", DISCIPLINE_LINK, "encounter_discipline_plan_link"],
 ])("migration %s", (_ordinal, source, table) => {
   it("stays an expand (arch:migration-compat reads this header)", () => {
     expect(source.startsWith("-- compat: expand")).toBe(true);
@@ -98,6 +100,97 @@ describe("encounter_draft_confirmation", () => {
     const names = getTableConfig(schema.encounterDraftConfirmations).checks.map((c) => c.name);
     for (const name of names) expect(CONFIRMATION).toContain(`"${name}"`);
     expect(names).toHaveLength(3);
+  });
+});
+
+// ADR-0114 S4b (VN-D58, VN-D61): the link from an encounter to the M15 goals and interventions its drafted plan keeps. Soft-removed like M7's
+// `encounter_care_plan_link` (the application role holds DELETE on no M8 table), one element per row, never read as "the visit addressed this".
+describe("encounter_discipline_plan_link", () => {
+  const table = "encounter_discipline_plan_link";
+
+  it("is insert-and-soft-remove for the application role: SELECT and INSERT, UPDATE of the removal columns and the Part 2 flag only, never DELETE", () => {
+    expect(appGrant(DISCIPLINE_LINK, table)).toEqual(["SELECT", "INSERT"]);
+    expect(DISCIPLINE_LINK).toContain(
+      'GRANT UPDATE ("removed_at", "removed_by_membership_id", "part2_derived") ON "encounter_discipline_plan_link" TO chartwarden_app',
+    );
+  });
+
+  it("gives the destruction role an org-scoped policy beside its grant (without one the eraser's DELETE matches no row)", () => {
+    expect(DISCIPLINE_LINK).toMatch(
+      /CREATE POLICY "encounter_discipline_plan_link_destruction" ON "encounter_discipline_plan_link"\s+FOR ALL TO chartwarden_destruction\s+USING \("organization_id" = nullif\(current_setting\('app\.org_id', true\), ''\)::uuid\)/,
+    );
+  });
+
+  it("names exactly one M15 element per row and keeps the removal columns together", () => {
+    expect(DISCIPLINE_LINK).toContain(
+      'CHECK (("goal_id" IS NOT NULL) <> ("intervention_id" IS NOT NULL))',
+    );
+    expect(DISCIPLINE_LINK).toContain(
+      'CHECK (("removed_at" IS NULL) = ("removed_by_membership_id" IS NULL))',
+    );
+  });
+
+  it("allows one LIVE link per (encounter, element) and any number of removed ones", () => {
+    expect(DISCIPLINE_LINK).toMatch(
+      /CREATE UNIQUE INDEX "encounter_discipline_plan_link_live_goal_uniq"\s+ON "encounter_discipline_plan_link" \("encounter_id", "goal_id"\)\s+WHERE "removed_at" IS NULL AND "goal_id" IS NOT NULL/,
+    );
+    expect(DISCIPLINE_LINK).toMatch(
+      /CREATE UNIQUE INDEX "encounter_discipline_plan_link_live_intervention_uniq"\s+ON "encounter_discipline_plan_link" \("encounter_id", "intervention_id"\)\s+WHERE "removed_at" IS NULL AND "intervention_id" IS NOT NULL/,
+    );
+  });
+
+  it("carries part2_derived with no default, files Part 2 rows under the Part 2 class and withholds their element ids from the audit image", () => {
+    expect(DISCIPLINE_LINK).toMatch(/"part2_derived" boolean NOT NULL,/);
+    expect(DISCIPLINE_LINK).toContain("compliance_42cfr_part2");
+    expect(DISCIPLINE_LINK).toMatch(/audit_scrub\(v_before, ARRAY\['goal_id', 'intervention_id'\]/);
+    expect(DISCIPLINE_LINK).toMatch(/audit_scrub\(v_after, ARRAY\['goal_id', 'intervention_id'\]/);
+    expect(M8_AUDIT_DENYLIST.encounter_discipline_plan_link).toEqual([]);
+    expect(
+      getTableConfig(schema.encounterDisciplinePlanLinks).columns.map((c) => c.name),
+    ).toContain("part2_derived");
+  });
+
+  it("files every DELETE as Part 2 whatever the row's flag says (a row filed low, whose element a plan revision later made Part 2, is erased with its id withheld)", () => {
+    expect(DISCIPLINE_LINK).toMatch(
+      /v_part2 := TG_OP = 'DELETE' OR COALESCE\(OLD\.part2_derived, false\) OR COALESCE\(NEW\.part2_derived, false\);/,
+    );
+  });
+
+  it("holds a row to its encounter: the siting pair is the encounter's, and a signed, cosign-pending, cosigned or voided note takes no write except from the destruction role", () => {
+    expect(DISCIPLINE_LINK).toMatch(
+      /e\.provider_entity_id IS NOT DISTINCT FROM NEW\.provider_entity_id\s+AND e\.location_id IS NOT DISTINCT FROM NEW\.location_id/,
+    );
+    expect(DISCIPLINE_LINK).toContain(
+      "v_status IN ('signed', 'cosign_pending', 'cosigned', 'voided')",
+    );
+    expect(DISCIPLINE_LINK).toMatch(
+      /pg_has_role\(current_user, 'chartwarden_destruction', 'MEMBER'\)\s+AND NOT \(SELECT r\.rolsuper FROM pg_catalog\.pg_roles r WHERE r\.rolname = current_user\)/,
+    );
+    expect(DISCIPLINE_LINK).toMatch(/USING ERRCODE = 'restrict_violation'/);
+  });
+
+  it("lets an update change only the removal columns and raise the Part 2 flag: identity is frozen, a removal is final, a flag never comes down", () => {
+    for (const frozen of [
+      "NEW.encounter_id <> OLD.encounter_id",
+      "NEW.goal_id IS DISTINCT FROM OLD.goal_id",
+      "NEW.intervention_id IS DISTINCT FROM OLD.intervention_id",
+      "NEW.location_id IS DISTINCT FROM OLD.location_id",
+      "NEW.created_at IS DISTINCT FROM OLD.created_at",
+      "OLD.removed_at IS NOT NULL",
+      "OLD.part2_derived AND NOT NEW.part2_derived",
+    ]) {
+      expect(DISCIPLINE_LINK).toContain(frozen);
+    }
+    expect(DISCIPLINE_LINK).toMatch(
+      /BEFORE INSERT OR UPDATE ON "encounter_discipline_plan_link"\s+FOR EACH ROW EXECUTE FUNCTION encounter_discipline_plan_link_org_guard/,
+    );
+  });
+
+  it("matches its Drizzle mirror's constraint and index names", () => {
+    const config = getTableConfig(schema.encounterDisciplinePlanLinks);
+    for (const check of config.checks) expect(DISCIPLINE_LINK).toContain(`"${check.name}"`);
+    expect(config.checks).toHaveLength(2);
+    for (const index of config.indexes) expect(DISCIPLINE_LINK).toContain(`"${index.config.name}"`);
   });
 });
 
@@ -437,10 +530,11 @@ describe("migration 1525: the database-side guards behind a signed note (C5, D1-
 });
 
 describe("module manifest", () => {
-  it("lists the five tables under M8", () => {
+  it("lists the draft tables under M8", () => {
     const m8 = MODULES.find((m) => m.id === 8);
     expect(m8?.ownedTables).toEqual(
       expect.arrayContaining([
+        "encounter_discipline_plan_link",
         "encounter_draft_confirmation",
         "hearthnote_signed_section",
         "visit_note_draft_policy",

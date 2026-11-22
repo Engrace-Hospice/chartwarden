@@ -6,6 +6,19 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-21 — Visit-note drafting slice 4b (M8, ADR-0114): keeping and leaving out single goals and interventions of a social-work or chaplain visit's drafted plan
+
+**Two new routes and one changed behaviour, for a tenant with the draft switched on; nothing changes for a tenant with it off. Migration 1540 (an `expand`) adds a table; no existing field and no enum changes, and the corpus release does not move (no `VOCAB_VERSION` effect).**
+
+- **`GET /encounters/{encounterId}/discipline-plan-elements`**: the goals and interventions of the discipline's plan in effect at the visit (the latest version its clinicians signed at or before the visit time), as the calling viewer is handed them, goals first, each with `elementId`, `kind`, its words (`text`) and whether this visit keeps it (`kept`). A met goal and a stopped intervention are not offered, and a chaplain's list is goals only (its note states no interventions). Only for a visit drafted from the discipline's plan (a social worker's or a chaplain's), else `422 UNKNOWN_TEMPLATE_SECTION`. Needs `encounter.read` and `discipline_plan.read` (`403` naming the key without it); `404` for a tenant with the draft switched off and for an encounter that is not the caller's. The response names the patient and the read is audited against them (`encounter_discipline_plan_elements.viewed`, field names only).
+- **`PUT /encounters/{encounterId}/discipline-plan-elements/{elementId}`** with `{"included": true | false}`: keeps one element in the visit's drafted plan or leaves it out. Idempotent; the answer is the updated list, and it is read-audited like the list (`encounter_discipline_plan_elements.viewed`). The note's author alone (`encounter.author`, caseload scope; a supervisor and another clinician are refused `403`), never an AI principal. A signed, cosigned or voided note is refused `409` (an addendum is the way). An element the viewer is not handed (absent, another plan's, or 42 CFR Part 2 content without disclosure) is the same `404`. A body with any other property, or a malformed id, is `422`.
+- **Changed: confirming and deselecting a social-work or chaplain plan section.** Confirming a section now keeps the goals or interventions it states (one live row each); deselecting it leaves them out, so the section is no longer drafted (until now it stayed drafted and deselected). Leaving a goal out changes the section's `contentHash`, so a section already confirmed reads `needs_reconfirmation` and finalize answers `422` until it is confirmed again. `carePlanElementsLinked` and `carePlanElementsRemoved` on `m8.encounter.draft_section_resolved` now count these elements too.
+- **42 CFR Part 2.** A Part 2 goal or intervention is listed and changeable only for a viewer module 39 clears for the patient; a row for one is filed under the Part 2 retention class and its audit image withholds the element id.
+- **The note-closure allowlist** gains both routes, as the care-plan link routes are: a clinician past the closure block can still finish the note.
+- **No cosign, no amendment change**: an amending addendum reads the note's kept elements and changes none.
+
+---
+
 ## 2026-11-21 — Visit-note drafting slice 5 (M8, ADR-0114): the face-to-face visit by a physician or nurse practitioner and the IDG follow-up, corpus release `narrative-vocab@2026.12.4`
 
 **No new route and no new field. The read key changes for one template that is not released yet; nothing changes for a tenant with the draft switched off.**

@@ -125,6 +125,8 @@ const CLOSED_STORE: DraftStorePorts = {
   weightReadings: () => Promise.reject(new Error("a store read after its transaction closed")),
   removedCarePlanElementIds: () =>
     Promise.reject(new Error("a store read after its transaction closed")),
+  removedDisciplinePlanElementIds: () =>
+    Promise.reject(new Error("a store read after its transaction closed")),
   loadSelection: () => Promise.reject(new Error("a store read after its transaction closed")),
 };
 
@@ -160,7 +162,7 @@ export async function snapshotStorePorts(
   // S3: the store reads of a source the template does not draft from are not taken either (an aide's snapshot is the care-plan links and the
   // stored selections): `readDraftInputs` reads the same sources, by the same rule.
   const needs = draftSourceNeeds(encounter.encounterType, encounter.discipline);
-  const [previous, vitals, removed, stored, weights] = await settleAll([
+  const [previous, vitals, removed, removedDiscipline, stored, weights] = await settleAll([
     readsPreviousVisit(needs)
       ? guarded("the previous signed visit", () => store.previousSignedVisitAt(encounter))
       : Promise.resolve(null),
@@ -169,6 +171,11 @@ export async function snapshotStorePorts(
       : Promise.resolve(null),
     needs.carePlan
       ? guarded("the removed care-plan links", () => store.removedCarePlanElementIds(encounter.id))
+      : Promise.resolve(new Set<string>()),
+    needs.disciplinePlan
+      ? guarded("the removed discipline-plan links", () =>
+          store.removedDisciplinePlanElementIds(encounter.id),
+        )
       : Promise.resolve(new Set<string>()),
     guarded("the stored selections", () => store.loadSelection(encounter)),
     readsWeights
@@ -190,7 +197,37 @@ export async function snapshotStorePorts(
     removedCarePlanElementIds: needs.carePlan
       ? async () => removed
       : notTaken("removed care-plan links"),
+    removedDisciplinePlanElementIds: needs.disciplinePlan
+      ? async () => removedDiscipline
+      : notTaken("removed discipline-plan links"),
     loadSelection: async () => stored,
+  };
+}
+
+/**
+ * The store reads of the per-element routes of a social-work or chaplain visit (S4b): the zone and the removed links, and nothing else. The response never
+ * shows the clinician's stored selections, so they are neither loaded nor decrypted; a read of any other port is a bug, refused loudly (as `snapshotStorePorts`).
+ */
+export async function snapshotDisciplinePlanPorts(
+  store: DraftStorePorts,
+  encounter: DraftEncounter,
+): Promise<DraftStorePorts> {
+  const [orgTimeZone, removed] = await settleAll([
+    guarded("the organization time zone", () =>
+      store.organizationTimeZone(encounter.organizationId),
+    ),
+    guarded("the removed discipline-plan links", () =>
+      store.removedDisciplinePlanElementIds(encounter.id),
+    ),
+  ]);
+  return {
+    organizationTimeZone: async () => orgTimeZone,
+    removedDisciplinePlanElementIds: async () => removed,
+    previousSignedVisitAt: notTaken("previous signed visit"),
+    latestVitals: notTaken("vitals"),
+    weightReadings: notTaken("weights"),
+    removedCarePlanElementIds: notTaken("removed care-plan links"),
+    loadSelection: notTaken("stored selections"),
   };
 }
 

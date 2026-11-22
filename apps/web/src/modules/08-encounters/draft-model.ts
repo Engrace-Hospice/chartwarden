@@ -56,7 +56,8 @@ export const ORIGIN_LABEL: Readonly<Record<DraftOrigin, string>> = {
   // S3 (aide visit): the ADLs the aide recorded for this visit lead the section.
   recorded_adl: "the activities of daily living recorded at this visit",
   // S4 (social-work and chaplain visits): the goals and interventions of the discipline's own plan, as signed at the visit time. Not the care
-  // plan's elements, so a confirmation links nothing (`touchesCarePlan` stays false).
+  // plan's elements, so a confirmation links nothing of the care plan (`touchesCarePlan` stays false); since S4b it keeps the discipline's own
+  // elements instead (`touchesDisciplinePlan`).
   discipline_plan_goal: "the goals of the discipline's plan of care at the visit",
   discipline_plan_intervention: "the interventions of the discipline's plan of care at the visit",
 };
@@ -97,12 +98,42 @@ const DISCIPLINE_PLAN_ORIGINS: readonly DraftOrigin[] = [
 
 /**
  * Whether a section of the draft is built from the discipline's own plan (S4: the social-work and chaplain visits). Confirming such a section
- * links nothing to the visit, so the care-plan panel must not say that a confirmation does.
+ * links nothing of the CARE PLAN to the visit (it keeps the discipline's own elements, S4b), so the care-plan panel must not say that a confirmation links its items.
  */
 export const draftsFromDisciplinePlan = (draft: Pick<DraftView, "sections">): boolean =>
-  draft.sections.some((section) =>
-    section.origins.some((origin) => DISCIPLINE_PLAN_ORIGINS.includes(origin)),
-  );
+  draft.sections.some(touchesDisciplinePlan);
+
+/**
+ * The disciplines whose notes are drafted from their own plan (a social worker's and a chaplain's). The server decides per template (a visit of such a
+ * discipline that is not drafted from the plan answers the plan list 422 and the picker then shows nothing); this only keeps every other discipline
+ * from asking. Unlike `draftsFromDisciplinePlan` it holds when every item has been left out and the draft's own sections name no origin.
+ */
+export const isDisciplinePlanVisit = (discipline: string): boolean =>
+  discipline === "msw" || discipline === "chaplain";
+
+/**
+ * Whether a section of a social-work or chaplain template is the one the discipline's plan feeds (the server's source map, S4: a social worker's
+ * `interventions` and `plan`, a chaplain's `plan`). An empty one may be a section whose items were left out; any other (a chief concern, a psychosocial
+ * or spiritual assessment) has no plan items to keep, so it says the record holds nothing like every other section.
+ */
+export function isDisciplinePlanSection(discipline: string, sectionId: string): boolean {
+  if (discipline === "msw") return sectionId === "interventions" || sectionId === "plan";
+  return discipline === "chaplain" && sectionId === "plan";
+}
+
+/** What the panel of a discipline's own plan is called: not the care plan's "Care plan for this visit", which a social worker or chaplain also sees. */
+export const disciplinePlanTitle = (discipline: string): string =>
+  discipline === "chaplain"
+    ? "Spiritual care plan for this visit"
+    : "Social work plan for this visit";
+
+/**
+ * Whether a section is built from the discipline's own plan (S4b): confirming it keeps its goals and interventions in this visit's statement of the
+ * plan and deselecting it leaves them out, so the plan list reads again after either. Not the care plan's elements (`touchesCarePlan`).
+ */
+export function touchesDisciplinePlan(section: Pick<DraftSectionView, "origins">): boolean {
+  return section.origins.some((origin) => DISCIPLINE_PLAN_ORIGINS.includes(origin));
+}
 
 export const isDrafted = (section: Pick<DraftSectionView, "state">): boolean =>
   section.state !== "not_drafted";
@@ -256,7 +287,9 @@ export function resolutionNote(
   }
   const unlinked = touchesCarePlan(previous)
     ? " Its care-plan items were unlinked from this visit; link them again in the care-plan list if needed."
-    : "";
+    : touchesDisciplinePlan(previous)
+      ? " Its plan items were left out of this visit; keep them again in the plan list if needed."
+      : "";
   if (next.state === "not_drafted") {
     return {
       tone: "info",

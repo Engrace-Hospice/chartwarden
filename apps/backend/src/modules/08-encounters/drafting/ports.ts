@@ -183,6 +183,11 @@ export interface DraftStorePorts {
   latestVitals(encounterId: string, asOf: string): Promise<VitalsDraftInput | null>;
   /** Goal and intervention ids whose link to this encounter was removed (VN-D8), which the draft leaves out. */
   removedCarePlanElementIds(encounterId: string): Promise<ReadonlySet<string>>;
+  /**
+   * S4b (VN-D59): M15 goal and intervention ids whose link to this encounter was removed, which a social-work or chaplain draft leaves out (a removed
+   * row and no live one). Read only by a template that drafts from the discipline's plan.
+   */
+  removedDisciplinePlanElementIds(encounterId: string): Promise<ReadonlySet<string>>;
   /** The stored selection tree (prose opened) and the slots that render it. */
   loadSelection(
     encounter: DraftEncounter,
