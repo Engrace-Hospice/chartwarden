@@ -261,7 +261,7 @@ export function draftGateRefusal(details: unknown): DraftGateRefusal | null {
 const IDG_FOLLOWUP_SECTION = "idg_followup";
 /** Why that section can go stale at sign and what ends it: the item it states is no longer one the author is handed (reassigned, closed by another hand, Part 2), and the link is the author's to change. */
 const IDG_FOLLOWUP_STALE_HINT =
-  "The IDG action item this visit follows up is no longer available to you: choose another item, or No follow-up item, in the IDG follow-up item panel beside the note, then confirm the section again.";
+  "The IDG action item this visit follows up is no longer available to you: choose another item, or press Clear the follow-up item, in the IDG follow-up item panel beside the note, then confirm the section again.";
 
 /** What the signer reads when the sign is refused 409 `DRAFT_SECTION_STALE`: the sections named (when it named any) and what to do. */
 export function signStaleMessage(

@@ -15,8 +15,12 @@
 //
 // WHAT THE PANEL SAYS. An empty list says there is no item to choose and that the section is documented below; a role without `idg.act` is told, calmly, that the
 // section is not drafted for it (a note, not an error); a visit the server has no list for (no draft switch, not the viewer's, not an IDG follow-up) shows nothing,
-// or says so to someone who was waiting on the answer. Clearing the choice needs no key and no M14, so "Clear the follow-up item" is on the panels that have no list
-// to choose from (no key, M14 not answering), and the list is read again after a clear because the clear's own answer is not the list.
+// or says so to someone who was waiting on the answer.
+//
+// CLEARING needs no key and no M14, and it is the only way to end a link the list no longer shows (the server keeps the link when M14 stops handing the item, and a
+// sign is refused until it is cleared). The client cannot tell "no link" from "a link that is not shown", so "Clear the follow-up item" is on every panel an author
+// can reach without an item to uncheck: no key, M14 not answering, an empty list, and under a list in which no item is linked. The list is read again after a clear
+// because the clear's own answer is not the list; until it answers, the picture is the list with nothing linked (`settle`), so nothing flashes and the focus stays.
 import { Button, InlineAlert, Panel, formatDateOnly, useApiClient } from "@chartwarden/ui";
 import { Fragment, useId, useRef } from "react";
 import type { JSX, KeyboardEvent, ReactNode } from "react";
@@ -70,9 +74,12 @@ const NO_ACCESS_WORDS =
 const UNAVAILABLE_WORDS = "There are no IDG action items to show for this visit.";
 const NO_ITEM_CHOSEN_WORDS = "No follow-up item was chosen for this visit.";
 const LINKED_CLOSED_WORDS =
-  "The item this visit follows up is closed. The drafted section still states it. Choose another item, or no item, to change that.";
+  "The item this visit follows up is closed. The drafted section still states it.";
+const CHANGE_CLOSED_WORDS = " Choose another item, or no item, to change that.";
 const DESCRIPTION_WORDS =
-  "Choose the one IDG action item this visit follows up. The drafted section states its meeting date, decision and due date.";
+  "The IDG action item this visit follows up. The drafted section states its meeting date, decision and due date.";
+const CHOOSE_WORDS =
+  " Choose the one item to follow up. The arrow keys move between the choices without choosing; Space or Enter chooses.";
 
 /** What a refused change says: the picker's own words for the answers that need them, the shared copy for the rest. */
 function refusalWords(failure: { readonly status: number; readonly error: unknown }): string {
@@ -276,10 +283,11 @@ export function ComposerIdgActionItemPicker({
               {words}
             </InlineAlert>
           </div>
-          {problem && load.status !== "no-access" ? (
-            <InlineAlert tone="error">{problem}</InlineAlert>
+          {problem ? <InlineAlert tone="error">{problem}</InlineAlert> : null}
+          {/* Clearing needs no key and no M14, and a link the list no longer shows (reassigned, Part 2) can only be ended here. */}
+          {(load.status === "no-access" || load.status === "empty") && clearButton ? (
+            <div>{clearButton}</div>
           ) : null}
-          {load.status === "no-access" && clearButton ? <div>{clearButton}</div> : null}
         </Panel>
       </fieldset>
     );
@@ -321,7 +329,11 @@ export function ComposerIdgActionItemPicker({
       <Panel
         title={TITLE}
         icon="calendar-check"
-        description={<span id={descriptionId}>{DESCRIPTION_WORDS}</span>}
+        description={
+          <span id={descriptionId}>
+            {editable ? `${DESCRIPTION_WORDS}${CHOOSE_WORDS}` : DESCRIPTION_WORDS}
+          </span>
+        }
         stack
       >
         {status}
@@ -340,7 +352,14 @@ export function ComposerIdgActionItemPicker({
         ) : (
           <p>{linked ? <ItemWords item={linked} /> : NO_ITEM_CHOSEN_WORDS}</p>
         )}
-        {linked && !isOpen(linked) ? <p className="wx-row-sub">{LINKED_CLOSED_WORDS}</p> : null}
+        {/* No listed item is linked, yet the visit may still be linked to one the list no longer shows: only a clear can end that (it needs no key and no M14). */}
+        {editable && linked === undefined ? <div>{clearButton}</div> : null}
+        {linked && !isOpen(linked) ? (
+          <p className="wx-row-sub">
+            {LINKED_CLOSED_WORDS}
+            {editable ? CHANGE_CLOSED_WORDS : ""}
+          </p>
+        ) : null}
         {/* After the list: it comes and goes with every save, and above it it would move every row under the person's pointer. */}
         {reason ? (
           <p id={reasonId} className="wx-row-sub">

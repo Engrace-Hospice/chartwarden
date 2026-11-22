@@ -232,13 +232,13 @@ describe("signStaleMessage", () => {
     expect(text).toContain("Plan (changed since you resolved it)");
   });
 
-  it("says how to end a stale IDG follow-up section: the item it states is no longer the author's, so choose another or none", () => {
+  it("says how to end a stale IDG follow-up section: the item it states is no longer the author's, so choose another or clear it", () => {
     const text = signStaleMessage(
       [{ field: "idg_followup", code: "DRAFT_SECTION_STALE", message: "changed" }],
       headingOf,
     );
     expect(text).toContain("idg_followup (changed since you resolved it)");
-    expect(text).toContain("choose another item, or No follow-up item");
+    expect(text).toContain("choose another item, or press Clear the follow-up item");
     expect(text).not.toMatch(/idg\.act|IDG_ACTION/);
   });
 

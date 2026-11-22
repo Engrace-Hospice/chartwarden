@@ -16,6 +16,7 @@ import {
   PATIENT,
   TITLE,
   gate,
+  initialItems,
   mount,
   noIdgAct,
   panel,
@@ -85,8 +86,14 @@ describe("the item list", () => {
     const names = screen.getAllByRole("radio").map((r) => r.getAttribute("name"));
     expect(new Set(names).size).toBe(1);
     expect(screen.getAllByRole("radio")).toHaveLength(3);
+    expect(panel()).toHaveAccessibleDescription(/The IDG action item this visit follows up/);
+  });
+
+  it("says in its description that the arrow keys move between the choices and Space or Enter chooses", async () => {
+    mount();
+    await screen.findByRole("radio", { name: referral });
     expect(panel()).toHaveAccessibleDescription(
-      /Choose the one IDG action item this visit follows up/,
+      /The arrow keys move between the choices without choosing; Space or Enter chooses/,
     );
   });
 
@@ -170,6 +177,7 @@ describe("an item's status, in words", () => {
     expect(screen.getByText(/Closed \(automatically\)/)).toBeVisible();
     expect(screen.getByText(/The item this visit follows up is closed/)).toBeVisible();
     expect(screen.getByText(/The drafted section still states it/)).toBeVisible();
+    expect(screen.getByText(/Choose another item, or no item, to change that/)).toBeVisible();
   });
 
   it("does not say an open item is closed", async () => {
@@ -185,6 +193,58 @@ describe("an item's status, in words", () => {
     mount();
     const row = await screen.findByRole("radio", { name: referral });
     expect(row).toHaveAccessibleName(/, Status unknown$/);
+  });
+});
+
+describe("a follow-up item the list no longer shows can still be cleared", () => {
+  // The server keeps the link when M14 stops handing the item (reassigned, Part 2), and the list then omits it: nothing in the list is `linked`, so the client cannot
+  // tell "no link" from "a link that is not shown", and the only way to end it (a sign is refused until it is) is a clear, which needs no key and no M14.
+  it("an empty list offers the clear, and it sends it", async () => {
+    world.items = [];
+    const { user, onChanged } = mount();
+    const clear = await screen.findByRole("button", { name: "Clear the follow-up item" });
+    await user.click(clear);
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(puts()[0]?.body).toEqual({ actionItemId: null });
+    await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+    expect(screen.getByRole("status")).toHaveTextContent("Follow-up item cleared.");
+    expect(clear).toHaveFocus();
+  });
+
+  it("a list with items but none linked offers the clear under the list, and it sends it (the 'No follow-up item' radio is already checked and sends nothing)", async () => {
+    world.items = world.items.map((item) => ({ ...item, linked: false }));
+    const { user } = mount();
+    expect(await screen.findByRole("radio", { name: "No follow-up item" })).toBeChecked();
+    await user.click(screen.getByRole("radio", { name: "No follow-up item" }));
+    await settled();
+    expect(puts()).toHaveLength(0);
+
+    const clear = screen.getByRole("button", { name: "Clear the follow-up item" });
+    await user.click(clear);
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(puts()[0]?.body).toEqual({ actionItemId: null });
+    // the items still on offer stay on offer, and the focus stays on the button that was pressed
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("cleared"));
+    expect(radio(referral)).toBeInTheDocument();
+    expect(clear).toHaveFocus();
+  });
+
+  it("is not on the page while a listed item is linked (the 'No follow-up item' radio does it)", async () => {
+    mount();
+    await screen.findByRole("radio", { name: referral });
+    expect(screen.queryByRole("button", { name: "Clear the follow-up item" })).toBeNull();
+  });
+
+  it("is not offered to a note that cannot be edited, whatever the list is", async () => {
+    world.items = [];
+    mount({}, { editable: false });
+    await screen.findByText(/no open IDG action item assigned to you/);
+    expect(screen.queryByRole("button", { name: "Clear the follow-up item" })).toBeNull();
+    cleanup();
+    world.items = initialItems().map((item) => ({ ...item, linked: false }));
+    mount({}, { editable: false });
+    await screen.findByText("No follow-up item was chosen for this visit.");
+    expect(screen.queryByRole("button", { name: "Clear the follow-up item" })).toBeNull();
   });
 });
 
@@ -443,6 +503,24 @@ describe("a note that is no longer a draft", () => {
     mount({}, { editable: false });
     expect(await screen.findByText("No follow-up item was chosen for this visit.")).toBeVisible();
     expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+  });
+
+  it("describes the item without asking the reader to choose, or to press keys, on a note that cannot be edited", async () => {
+    mount({}, { editable: false });
+    await screen.findByText(/Decision: a referral/);
+    expect(panel()).toHaveAccessibleDescription(/The IDG action item this visit follows up/);
+    expect(panel()).not.toHaveAccessibleDescription(/Choose|arrow keys|Space or Enter/);
+    expect(screen.queryByText(/Changing the item changes the drafted section/)).toBeNull();
+  });
+
+  it("says a closed linked item is closed and still stated, without telling the reader to choose another", async () => {
+    world.items = world.items.map((item) =>
+      item.actionItemId === ITEM_1 ? { ...item, status: "auto_closed" } : item,
+    );
+    mount({}, { editable: false });
+    expect(await screen.findByText(/The item this visit follows up is closed/)).toBeVisible();
+    expect(screen.getByText(/The drafted section still states it/)).toBeVisible();
+    expect(screen.queryByText(/Choose another item/)).not.toBeInTheDocument();
   });
 
   it("does not tell a note that cannot be edited to document the section below, whatever the list is", async () => {

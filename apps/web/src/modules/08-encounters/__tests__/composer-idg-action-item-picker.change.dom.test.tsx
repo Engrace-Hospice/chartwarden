@@ -56,20 +56,57 @@ describe("choosing", () => {
     expect(screen.queryByText(/no open IDG action item/)).not.toBeInTheDocument();
   });
 
-  it("clearing a closed linked item takes it off the list at once (M14 lists it only for being linked) and after the re-read", async () => {
+  it("a clear shows the list without the link at once, while the re-read is still out: no empty-panel flash, and the focus stays on the radio pressed", async () => {
+    const reread = gate();
+    let readCount = 0;
+    const { user } = mount({
+      [`GET ${LIST}`]: async () => {
+        readCount += 1;
+        const snapshot = view();
+        if (readCount === 2) await reread.promise;
+        return { body: snapshot };
+      },
+    });
+    await user.click(await screen.findByRole("radio", { name: "No follow-up item" }));
+    await waitFor(() => expect(reads()).toHaveLength(2));
+    // the re-read has not answered: what is on the screen is the picker's own picture of the cleared list
+    expect(screen.queryByText(/no open IDG action item/)).not.toBeInTheDocument();
+    expect(radio("No follow-up item")).toBeChecked();
+    expect(radio(referral)).not.toBeChecked();
+    expect(radio(planUpdate)).toBeInTheDocument();
+    expect(radio("No follow-up item")).toHaveFocus();
+    reread.open();
+    await settled();
+    expect(radio("No follow-up item")).toBeChecked();
+    expect(radio("No follow-up item")).toHaveFocus();
+  });
+
+  it("clearing a closed linked item takes it off the list at once, while the re-read is still out, and after it", async () => {
     world.items = world.items.map((item) =>
       item.actionItemId === ITEM_1 ? { ...item, status: "auto_closed" } : item,
     );
+    const reread = gate();
+    let readCount = 0;
     const { user } = mount({
+      [`GET ${LIST}`]: async () => {
+        readCount += 1;
+        const snapshot = view();
+        if (readCount === 2) await reread.promise;
+        return { body: snapshot };
+      },
       [`PUT ${LINK}`]: (call) => {
         world.items = world.items.filter((item) => item.actionItemId !== ITEM_1);
         return applyLink(call);
       },
     });
     await user.click(await screen.findByRole("radio", { name: "No follow-up item" }));
-    await waitFor(() => expect(screen.queryByRole("radio", { name: referral })).toBeNull());
-    expect(radio("No follow-up item")).toBeChecked();
     await waitFor(() => expect(reads()).toHaveLength(2));
+    expect(screen.queryByRole("radio", { name: referral })).toBeNull();
+    expect(radio("No follow-up item")).toBeChecked();
+    expect(radio(planUpdate)).toBeInTheDocument();
+    reread.open();
+    await settled();
+    expect(screen.queryByRole("radio", { name: referral })).toBeNull();
     expect(radio(planUpdate)).toBeInTheDocument();
   });
 
@@ -327,6 +364,43 @@ describe("a change the server did not take", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Follow-up item cleared.");
     expect(screen.getByText(/role cannot work with IDG action items/)).toBeVisible();
     expect(clear).toHaveFocus();
+  });
+
+  it.each([
+    ["a server fault", () => ({ status: 500, body: { error: {} } }), /service is unavailable/, 1],
+    ["a signed note", refusal(409, "IMMUTABLE_AFTER_SIGN"), /already signed/, 0],
+    ["an item that is gone (404)", refusal(404, "NOT_FOUND"), /no longer available to you/, 0],
+  ])(
+    "a clear from the no-key panel that ends in %s is said beside the note, not swallowed",
+    async (_name, answer, words, composerTold) => {
+      const { user, onChanged } = mount({ [`GET ${LIST}`]: noIdgAct, [`PUT ${LINK}`]: answer });
+      await user.click(await screen.findByRole("button", { name: "Clear the follow-up item" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(words);
+      // the note is still there, and so is the way to try again
+      expect(screen.getByText(/role cannot work with IDG action items/)).toBeVisible();
+      expect(screen.getByRole("button", { name: "Clear the follow-up item" })).toBeVisible();
+      // only a change whose outcome is unknown (a fault) may have landed
+      expect(onChanged).toHaveBeenCalledTimes(composerTold);
+    },
+  );
+
+  it("a clear from the no-key panel that gets no answer at all is said too, and tells the composer (it may have landed)", async () => {
+    const { user, onChanged } = mount({
+      [`GET ${LIST}`]: noIdgAct,
+      [`PUT ${LINK}`]: (): never => {
+        throw new Error("offline");
+      },
+    });
+    await user.click(await screen.findByRole("button", { name: "Clear the follow-up item" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Could not reach the server/);
+    await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+  });
+
+  it("a failed clear from the empty panel is said there too", async () => {
+    world.items = [];
+    const { user } = mount({ [`PUT ${LINK}`]: refusal(409, "IMMUTABLE_AFTER_SIGN") });
+    await user.click(await screen.findByRole("button", { name: "Clear the follow-up item" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/already signed/);
   });
 
   it("a 403 that is not about the key is said in the shared words (the code is matched, not the message)", async () => {
