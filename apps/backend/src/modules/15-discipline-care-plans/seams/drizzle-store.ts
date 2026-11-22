@@ -49,7 +49,6 @@ import {
   asc,
   desc,
   eq,
-  gt,
   inArray,
   isNotNull,
   isNull,
@@ -386,12 +385,14 @@ export function createDrizzleDisciplinePlanSeamStore(
     },
 
     /**
-     * ADR-0114 S4 (VN-D11): the version in effect at `asOf` — M7's rule (`07-care-plan/seams/drizzle-store.ts`), with one difference
-     * that matters: M15 stamps `superseded_at` only when a discharge supersedes the signed chain, never when a later version is signed,
-     * so more than one signed version can qualify and `ORDER BY signed_at DESC, sequence DESC` is what picks the one in effect. A
-     * `superseded` row with no instant is in effect at no instant (fail closed). Deliberately NOT filtered on the plan's status: a late
-     * entry for a visit before a discharge still reads the plan that was in effect. A spiritual plan the patient had declined at or
-     * before `asOf` answers null. The snapshot crosses RAW: the provider redacts and projects it.
+     * ADR-0114 S4 (VN-D11): the version the clinicians had signed as of `asOf`. Unlike M7's rule (`07-care-plan/seams/drizzle-store.ts`), it
+     * does not read `superseded_at` to place a version in time: M15 stamps it only when a discharge supersedes the signed chain, never when
+     * a later version is signed, so more than one signed version can qualify and `ORDER BY signed_at DESC, sequence DESC` is what picks the
+     * one in effect. The `discharge` version is excluded: the discharge consumer builds it from every current goal and intervention row (unsigned
+     * edits and closed goals included) and stamps it signed itself, so a visit on or after the discharge reads the last version the clinicians
+     * signed. A `superseded` row with no instant cannot be placed in time and is never read (fail closed). Deliberately NOT filtered on the
+     * plan's status: a late entry for a visit before or after a discharge still reads the plan that was in effect. A spiritual plan the patient
+     * had declined at or before `asOf` answers null. The snapshot crosses RAW: the provider redacts and projects it.
      */
     async planVersionAsOf(organizationId, patientId, admissionId, kind, asOf) {
       const at = new Date(asOf);
@@ -419,9 +420,12 @@ export function createDrizzleDisciplinePlanSeamStore(
                 eq(P.patientId, patientId),
                 eq(P.admissionId, admissionId),
                 eq(P.kind, kind),
+                // The system-built discharge version is never read: it is made from every current working row, not from a signature.
+                ne(V.kind, "discharge"),
                 inArray(V.status, ["signed", "superseded"]),
                 lte(V.signedAt, at),
-                or(gt(V.supersededAt, at), and(isNull(V.supersededAt), eq(V.status, "signed"))),
+                // A superseded version must say when, or it cannot be placed in time (fail closed).
+                or(eq(V.status, "signed"), isNotNull(V.supersededAt)),
               ),
             )
             .orderBy(desc(V.signedAt), desc(V.sequence))

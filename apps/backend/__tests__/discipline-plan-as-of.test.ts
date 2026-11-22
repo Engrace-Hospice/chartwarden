@@ -185,8 +185,11 @@ describe("DisciplinePlanReader.planElementsAsOf: which version is in effect (VN-
     expect((await ask(readerOver([V1, V2]), "2027-01-01T00:00:00.000Z"))?.goals).toHaveLength(1);
   });
 
-  it("reads the versions a discharge superseded while they were in effect, and the discharge version after", async () => {
-    const dischargeSnapshot = snapshot({ goals: [goal("goal-final")] });
+  // The discharge consumer builds its `discharge` version from every CURRENT goal and intervention row of the plan (any status, unsigned edits
+  // included) and stamps it signed by the system. It is not what the clinicians signed, so a note is never drafted from it: a visit after the
+  // discharge reads the last version the clinicians signed.
+  it("reads the versions a discharge superseded, and after the discharge still the last signed one, never the system-built discharge version", async () => {
+    const dischargeSnapshot = snapshot({ goals: [goal("goal-final-unsigned")] });
     const reader = readerOver([
       version({ status: "superseded", supersededAt: DISCHARGED }),
       version({
@@ -198,16 +201,39 @@ describe("DisciplinePlanReader.planElementsAsOf: which version is in effect (VN-
       }),
       version({
         versionId: "ver-discharge",
+        versionKind: "discharge",
         signedAt: DISCHARGED,
         stateSnapshot: dischargeSnapshot,
       }),
     ]);
 
     const beforeDischarge = await ask(reader, "2026-03-20T00:00:00.000Z");
+    const atDischarge = await ask(reader, DISCHARGED);
     const afterDischarge = await ask(reader, "2026-04-02T00:00:00.000Z");
 
     expect(beforeDischarge?.goals.map((g) => g.goalId)).toEqual(["goal-v2"]);
-    expect(afterDischarge?.goals.map((g) => g.goalId)).toEqual(["goal-final"]);
+    expect(atDischarge?.goals.map((g) => g.goalId)).toEqual(["goal-v2"]);
+    expect(afterDischarge?.goals.map((g) => g.goalId)).toEqual(["goal-v2"]);
+    expect(JSON.stringify(afterDischarge)).not.toContain("goal-final-unsigned");
+  });
+
+  it("answers null for a plan whose only version is the discharge version", async () => {
+    const reader = readerOver([version({ versionKind: "discharge" })]);
+
+    expect(await ask(reader, "2026-03-05T00:00:00.000Z")).toBeNull();
+  });
+
+  it("settles two versions signed at the same instant by sequence, however the rows arrive", async () => {
+    const low = version({ versionId: "low", sequence: 1, stateSnapshot: SNAPSHOT_V1 });
+    const high = version({ versionId: "high", sequence: 2, stateSnapshot: SNAPSHOT_V2 });
+
+    for (const rows of [
+      [low, high],
+      [high, low],
+    ]) {
+      const out = await ask(readerOver(rows), "2026-03-05T00:00:00.000Z");
+      expect(out?.goals.map((g) => g.goalId)).toEqual(["goal-v2"]);
+    }
   });
 
   it("fails closed on a superseded version with no superseded_at (it cannot be placed in time)", async () => {
@@ -433,6 +459,34 @@ describe("DisciplinePlanReader.planElementsAsOf: 42 CFR Part 2 (per viewer, fail
     expect(out?.interventions.find((i) => i.interventionId === "iv-sud")).toMatchObject({
       sudRelated: true,
     });
+  });
+
+  // `redacted` says something that would have been listed was withheld. A Part 2 goal that is closed is not listed for anyone, so it must not
+  // make the draft ask a second verdict (and fail on an outage) for a plan whose visible content is whole.
+  it("says redacted only when something that would have been listed was withheld", async () => {
+    const closedOnly = version({
+      stateSnapshot: snapshot({
+        goals: [goal("goal-a"), goal("goal-sud-closed", { sudRelated: true, status: "met" })],
+      }),
+    });
+    const openSud = version({
+      stateSnapshot: snapshot({ goals: [goal("goal-a"), goal("goal-sud", { sudRelated: true })] }),
+    });
+    const anchoredToClosed = version({
+      stateSnapshot: snapshot({
+        goals: [goal("goal-sud-closed", { sudRelated: true, status: "met" })],
+        interventions: [intervention("iv-anchored", { goalRefs: ["goal-sud-closed"] })],
+      }),
+    });
+    const asOf = "2026-03-05T00:00:00.000Z";
+
+    expect((await ask(readerOver([closedOnly], portOf(NO_RELEASE)), asOf))?.redacted).toBe(false);
+    expect((await ask(readerOver([openSud], portOf(NO_RELEASE)), asOf))?.redacted).toBe(true);
+    // an active intervention that serves a Part 2 goal is Part 2 content by its anchor, whatever the goal's status
+    expect((await ask(readerOver([anchoredToClosed], portOf(NO_RELEASE)), asOf))?.redacted).toBe(
+      true,
+    );
+    expect((await ask(readerOver([openSud], portOf(RELEASE)), asOf))?.redacted).toBe(false);
   });
 
   it("returns different results to two viewers of the same version", async () => {

@@ -649,15 +649,17 @@ export interface DisciplinePlanReader {
     planId: DisciplinePlanId,
   ): Promise<DisciplinePlanIdgDigest | null>;
   /**
-   * ADR-0114 S4 (VN-D11, VN-D46): the patient's plan of `kind` for `admissionId` AS OF `asOf`, from the SEALED `state_snapshot` of the signed
-   * version in effect then (never today's rows). The version in effect is the latest signed one whose `signed_at` is at or before `asOf`
-   * and that was not superseded at or before it (M15 stamps `superseded_at` only at discharge, so the latest signed one is the answer).
-   * The same per-viewer Part 2 redaction as the plan reads: M15 resolves the verdict itself from `viewer`, and a viewer without disclosure
-   * never receives a Part 2 goal or an intervention anchored to one.
+   * ADR-0114 S4 (VN-D11, VN-D46): the patient's plan of `kind` for `admissionId` AS OF `asOf`, from the SEALED `state_snapshot` of the version
+   * the clinicians had signed then (never today's rows). That is the latest signed version whose `signed_at` is at or before `asOf` (M15 stamps
+   * `superseded_at` only at discharge, never when a later version is signed, so the newest signature is the answer). The system-built `discharge`
+   * version is never read: the discharge consumer makes it from every current goal and intervention row, unsigned edits included, so a visit after
+   * a discharge reads the last version the clinicians signed. The same per-viewer Part 2 redaction as the plan reads: M15 resolves the verdict
+   * itself from `viewer`, and a viewer without disclosure never receives a Part 2 goal or an intervention anchored to one.
    *
-   * Open goals only (`not_started`, `in_progress`, `revised`) and active interventions only. FAIL CLOSED: `null` when no signed version is
-   * in effect, when a spiritual-care declination was recorded at or before `asOf`, or when the snapshot is not of the expected shape.
-   * Throws when `asOf` is not an ISO instant.
+   * Open goals only (`not_started`, `in_progress`, `revised`) and active interventions only; an element whose words are nothing once trailing
+   * periods are dropped is left out. FAIL CLOSED: `null` when no signed version qualifies, when a spiritual-care declination was recorded at or
+   * before `asOf`, or when the snapshot is not of the expected shape (or holds an unreasonable number of elements). `redacted` is true only when
+   * something that would have been listed was withheld. Throws when `asOf` is not an ISO instant.
    */
   planElementsAsOf(
     orgId: string,

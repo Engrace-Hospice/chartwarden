@@ -95,7 +95,8 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
 
 - **One new read, M15's plan as of the visit.** `DisciplinePlanReader.planElementsAsOf` (M15 `seams/`), asked through `disciplinePlanAsOf` of the draft ports,
   takes its turn with the other seam reads (`serial-seams.ts`), is bounded and fails closed like them. It reads the SEALED `state_snapshot` of the signed
-  plan version in effect at the visit (M15 supersedes only at discharge, so the latest signed version at or before the visit is the one in effect). No
+  plan version in effect at the visit (M15 supersedes only at discharge, so the latest signed version at or before the visit is the one in effect; the
+  system-built `discharge` version is never read, because the discharge consumer makes it from every current working row, unsigned edits included). No
   write, no migration, no M7 read: a social-work or chaplain draft reads the discipline plan and nothing else.
 - **Part 2 through M15's rule, with the draft's cross-check.** M15 resolves the verdict itself from the session identity (`resolveSudAllowed`), asks M39 only
   when the sealed version holds a goal that is, or may be, Part 2, and redacts on an M39 failure. The draft then refuses (503, `DRAFT_UNAVAILABLE`) a plan M15

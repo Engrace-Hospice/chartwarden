@@ -178,11 +178,20 @@ export async function planElementsFromVersion(
         sudRelated: anchoredTo(i, sudGoalIds),
       }),
     );
+  // `redacted` says something that would have been LISTED was withheld: a Part 2 goal that is closed (or has no words) is listed for no one, so
+  // it must not make the draft ask a second verdict, and fail on an outage, for a plan whose visible content is whole.
+  const withheldGoal = raw.goals.some(
+    (g) =>
+      g.sudRelated && OPEN_GOAL_STATUSES.has(g.status) && statable(g.revisedText ?? g.originalText),
+  );
+  const withheldIntervention = raw.interventions.some(
+    (i) => i.status === "active" && statable(i.scopeText) && anchoredTo(i, sudGoalIds),
+  );
   return {
     planId: version.planId,
     patientId: version.patientId,
     goals,
     interventions,
-    redacted: !allowed && sudGoalIds.size > 0,
+    redacted: !allowed && (withheldGoal || withheldIntervention),
   };
 }

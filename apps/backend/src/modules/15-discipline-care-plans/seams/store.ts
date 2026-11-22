@@ -29,6 +29,7 @@ import type {
   DisciplinePlanId,
   DisciplinePlanIdgDigest,
   DisciplinePlanKind,
+  DisciplinePlanVersionKind,
   DisciplinePlanVersionStatus,
   FiscalYear,
   IsoInstant,
@@ -108,11 +109,13 @@ export interface DisciplinePlanSeamStore {
   planById(planId: DisciplinePlanId): Promise<DisciplinePlanFull | null>;
   planIdgDigest(planId: DisciplinePlanId): Promise<DisciplinePlanIdgDigest | null>;
   /**
-   * ADR-0114 S4: the version of the patient's `kind` plan for `admissionId` in effect at `asOf`. Status `signed` or `superseded`,
-   * `signed_at <= asOf`, and either `superseded_at > asOf` or (`superseded_at` null and status `signed`); a `superseded` row with no
-   * instant is in effect at no instant (fail closed). M15 stamps `superseded_at` only at discharge, so several versions can qualify and
-   * the LATEST `signed_at` (then `sequence`) is the one in effect. Null when none is, and for a spiritual plan the patient had declined at
-   * or before `asOf`. The snapshot crosses RAW.
+   * ADR-0114 S4: the version of the patient's `kind` plan for `admissionId` the clinicians had signed as of `asOf`: status `signed` or
+   * `superseded`, `signed_at <= asOf`, the LATEST `signed_at` (then `sequence`) of those. A `superseded` row with no `superseded_at` cannot be
+   * placed in time and is never read (fail closed). M15 stamps `superseded_at` only at discharge, never when a later version is signed, so several
+   * versions can qualify at once and the newest signature is the one in effect. The system-built `discharge` version is NEVER read: the discharge
+   * consumer builds it from every current goal and intervention row of the plan (unsigned edits and closed goals included) and stamps it signed
+   * itself, so it is not what the clinicians signed; a visit after the discharge reads the last version they signed. Null when none qualifies, and
+   * for a spiritual plan the patient had declined at or before `asOf`. The snapshot crosses RAW.
    */
   planVersionAsOf(
     organizationId: string,
@@ -166,6 +169,10 @@ export interface SeededDisciplinePlanVersion extends DisciplinePlanVersionAtReco
   readonly organizationId?: string;
   readonly admissionId: AdmissionId;
   readonly kind: DisciplinePlanKind;
+  /** The version's own kind (`discharge` is never read); defaults to a signed `initial` version. */
+  readonly versionKind?: DisciplinePlanVersionKind;
+  /** The version's sequence, which settles two versions signed at the same instant; defaults to 0. */
+  readonly sequence?: number;
   readonly status: DisciplinePlanVersionStatus;
   readonly signedAt: IsoInstant | null;
   readonly supersededAt: IsoInstant | null;
@@ -247,13 +254,19 @@ export function createInMemoryDisciplinePlanSeamStore(seed: DisciplinePlanSeamSe
           if (v.patientId !== patientId || v.admissionId !== admissionId || v.kind !== kind) {
             return false;
           }
+          // The system-built `discharge` version is never read (see the port).
+          if (v.versionKind === "discharge") return false;
           if (v.status !== "signed" && v.status !== "superseded") return false;
           if (!(instant(v.signedAt) <= at)) return false;
-          return v.supersededAt === null ? v.status === "signed" : instant(v.supersededAt) > at;
+          // A superseded version must say when, or it cannot be placed in time (fail closed).
+          return v.status === "signed" || v.supersededAt !== null;
         };
         const [latest] = (seed.versions ?? [])
           .filter(inEffect)
-          .sort((a, b) => instant(b.signedAt) - instant(a.signedAt));
+          .sort(
+            (a, b) =>
+              instant(b.signedAt) - instant(a.signedAt) || (b.sequence ?? 0) - (a.sequence ?? 0),
+          );
         if (latest === undefined) return null;
         const declinedAt = instant(latest.spiritualCareDeclinedAt);
         if (kind === "spiritual_plan" && declinedAt <= at) return null;

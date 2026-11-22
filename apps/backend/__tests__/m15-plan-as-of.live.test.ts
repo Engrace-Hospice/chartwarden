@@ -114,6 +114,7 @@ describe.skipIf(!DB_URL)(
     const adm = {
       chain: randomUUID(), // two signed versions, never superseded by M15's own signing
       discharged: randomUUID(), // a chain a discharge superseded, with its discharge version
+      dischargeOnly: randomUUID(), // a plan with nothing but the system-built discharge version
       orphan: randomUUID(),
       mangled: randomUUID(),
       readmit: randomUUID(),
@@ -285,6 +286,15 @@ describe.skipIf(!DB_URL)(
         kind: "discharge",
       });
 
+      // A plan whose only version is the system-built discharge version: nothing the clinicians signed.
+      const dischargeOnly = await seedPlan(adm.dischargeOnly, "msw_plan", { status: "discharged" });
+      await seedVersion(dischargeOnly, 1, {
+        status: "signed",
+        signedAt: DISCHARGED,
+        snapshot: SNAP_FINAL,
+        kind: "discharge",
+      });
+
       // A superseded version that carries no instant: in effect at no instant.
       const orphan = await seedPlan(adm.orphan, "msw_plan");
       await seedVersion(orphan, 1, {
@@ -380,11 +390,21 @@ describe.skipIf(!DB_URL)(
       expect(goalIds(await ask("2026-03-05T00:00:00.000Z", adm.tie))).toEqual([G_V2]);
     });
 
-    it("reads the versions a discharge superseded while they were in effect, and the discharge version after", async () => {
+    // The discharge consumer builds the `discharge` version from every CURRENT goal and intervention row (here G_FINAL, an edit nobody signed) and
+    // stamps it signed itself: a visit on or after the discharge must read the last version the clinicians signed, never that one.
+    it("reads the versions a discharge superseded, and after the discharge still the last signed one, never the system-built discharge version", async () => {
       expect(goalIds(await ask("2026-03-05T00:00:00.000Z", adm.discharged))).toEqual([G_V1]);
       expect(goalIds(await ask("2026-03-20T00:00:00.000Z", adm.discharged))).toEqual([G_V2]);
       expect(goalIds(await ask("2026-03-31T23:59:59.999Z", adm.discharged))).toEqual([G_V2]);
-      expect(goalIds(await ask(DISCHARGED, adm.discharged))).toEqual([G_FINAL]);
+      expect(goalIds(await ask(DISCHARGED, adm.discharged))).toEqual([G_V2]);
+      expect(goalIds(await ask("2026-04-02T00:00:00.000Z", adm.discharged))).toEqual([G_V2]);
+      expect(JSON.stringify(await ask("2030-01-01T00:00:00.000Z", adm.discharged))).not.toContain(
+        G_FINAL,
+      );
+    });
+
+    it("answers null for a plan whose only version is the discharge version", async () => {
+      expect(await ask("2026-04-02T00:00:00.000Z", adm.dischargeOnly)).toBeNull();
     });
 
     it("still answers a late entry for a visit before the plan was discharged", async () => {

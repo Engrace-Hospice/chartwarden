@@ -26,6 +26,7 @@ function measured(ms: number) {
     };
   const base = fakePorts({
     carePlanAsOf: read("carePlan", () => carePlan()),
+    disciplinePlanAsOf: read("disciplinePlan", () => null),
     scaleSeries: async (patientId, scaleType, from, to) => {
       await read("scale", () => null)();
       return honestSeries({})(patientId, scaleType, from, to);
@@ -110,6 +111,38 @@ describe("serialSeams", () => {
 
     expect(stats.peak).toBe(1);
     expect(stats.order).toEqual(["periods", "levelOfCare", "faceToFace", "certification", "part2"]);
+  });
+
+  it("takes the social-work and chaplain draft's plan read in turn with the Part 2 verdict (S4)", async () => {
+    const { stats, seams } = measured(5);
+    const serial = serialSeams(seams);
+
+    await Promise.all([
+      serial.disciplinePlanAsOf(
+        "o",
+        "p",
+        "a",
+        "msw_plan",
+        { roles: ["msw"], membershipId: null },
+        "2026-11-18T00:00:00.000Z",
+      ),
+      serial.part2DisclosureAllowed({
+        organizationId: "o",
+        patientId: "p",
+        viewer: { roles: [], membershipId: null },
+      }),
+      serial.disciplinePlanAsOf(
+        "o",
+        "p",
+        "a",
+        "spiritual_plan",
+        { roles: ["chaplain"], membershipId: null },
+        "2026-11-18T00:00:00.000Z",
+      ),
+    ]);
+
+    expect(stats.peak).toBe(1);
+    expect(stats.order).toEqual(["disciplinePlan", "part2", "disciplinePlan"]);
   });
 
   it("a read that fails fails only itself: the reads queued behind it still run", async () => {

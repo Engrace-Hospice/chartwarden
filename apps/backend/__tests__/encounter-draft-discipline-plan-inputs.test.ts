@@ -1,8 +1,9 @@
 // S4 — `readDraftInputs` for the social-work and chaplain visits (design §3.6, VN-D11, VN-D45 to VN-D49): the open goals and active interventions
 // of the discipline's own plan (M15) in the signed version in effect at the visit time, for this viewer. Synthetic ids and values only.
 import type { DisciplinePlanElementsAsOf } from "@chartwarden/types";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readDraftInputs } from "../src/modules/08-encounters/drafting/inputs";
+import { DRAFT_SOURCE_READ_TIMEOUT_MS } from "../src/modules/08-encounters/drafting/unavailable";
 import { AS_OF, PATIENT_ID, encounter, fakePorts, viewer } from "./_encounter-draft-fixtures";
 
 const MSW = encounter({ encounterType: "msw_followup", discipline: "msw" });
@@ -149,6 +150,18 @@ describe("readDraftInputs: the discipline plan", () => {
     await expect(readDraftInputs(ports, MSW, viewer(), AS_OF)).rejects.toMatchObject({
       code: "DRAFT_UNAVAILABLE",
     });
+  });
+
+  it("is DRAFT_UNAVAILABLE when the seam never answers, once the read's bound has passed", async () => {
+    vi.useFakeTimers();
+    try {
+      const ports = fakePorts({ disciplinePlanAsOf: () => new Promise<never>(() => undefined) });
+      const pending = readDraftInputs(ports, MSW, viewer(), AS_OF).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(DRAFT_SOURCE_READ_TIMEOUT_MS + 1);
+      expect(await pending).toMatchObject({ code: "DRAFT_UNAVAILABLE", statusCode: 503 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("is DRAFT_UNAVAILABLE when the seam fails, naming the read and not the cause", async () => {
