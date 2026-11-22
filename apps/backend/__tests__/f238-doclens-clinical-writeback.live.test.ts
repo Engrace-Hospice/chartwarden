@@ -173,8 +173,8 @@ describe.skipIf(!DB_URL)(
       const batchId = (
         await admin.query(
           `INSERT INTO intake_upload_batch (organization_id, patient_id, initial_document_id, source_channel,
-           uploaded_by_membership_id, correlation_id, status)
-         VALUES ($1,$2,$3,'fax',$4,gen_random_uuid(),'extraction_complete') RETURNING id`,
+           uploaded_by_membership_id, correlation_id, status, identity_status)
+         VALUES ($1,$2,$3,'fax',$4,gen_random_uuid(),'extraction_complete','match') RETURNING id`,
           [opts.org, opts.patientId, opts.sourceDocumentId, by],
         )
       ).rows[0].id as string;
