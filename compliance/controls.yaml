@@ -84,7 +84,7 @@ controls:
       # PostgreSQL suites apply the full migration chain and run as chartwarden_app/NOBYPASSRLS.
       - script: test:rls:live:m40
       - script: test:m24:remittance-feedback:live
-      - file: packages/db/migrations/1540_m40_medicaid_payer_classification_and_m24_submission_provenance.sql
+      - file: packages/db/migrations/1541_m40_medicaid_payer_classification_and_m24_submission_provenance.sql
       - file: packages/db/migrations/__tests__/m40-rls-isolation.live.test.ts
       - file: apps/backend/__tests__/f172-m24-remittance-feedback.live.test.ts
 
