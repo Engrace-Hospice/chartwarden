@@ -192,6 +192,53 @@ export function reverseKeys<T>(value: T): T {
   return value;
 }
 
+/**
+ * S4: the social-work and chaplain templates' source: the open goals and active interventions of the discipline's plan in effect at the visit.
+ * Four goals (one of each way of being stated) and three interventions (a frequency, none, and a blank one). Fresh copy per call.
+ */
+export function disciplinePlanSources(): Pick<DraftInputs, "disciplinePlan"> {
+  return {
+    disciplinePlan: {
+      goals: [
+        {
+          id: "goal-b",
+          goalText: "Name two ways to cope with the diagnosis",
+          statedBy: null,
+          sudRelated: false,
+        },
+        { id: "goal-a", goalText: "See my grandson", statedBy: "patient", sudRelated: false },
+        {
+          id: "goal-d",
+          goalText: "Keep the farm in the family",
+          statedBy: "agent",
+          sudRelated: false,
+        },
+        {
+          id: "goal-c",
+          goalText: "Plan the memorial together",
+          statedBy: "family",
+          sudRelated: false,
+        },
+      ],
+      interventions: [
+        {
+          id: "iv-b",
+          interventionText: "Supportive counselling",
+          frequencyText: "weekly",
+          sudRelated: false,
+        },
+        {
+          id: "iv-a",
+          interventionText: "Caregiver resource referral",
+          frequencyText: null,
+          sudRelated: false,
+        },
+        { id: "iv-c", interventionText: "Legacy work", frequencyText: "  ", sudRelated: false },
+      ],
+    },
+  };
+}
+
 /** S2b: the admission visit's own sources (the orders in effect, the caregivers on record, the acknowledgment on file). Fresh copy per call. */
 export function admissionSources(): Pick<
   DraftInputs,

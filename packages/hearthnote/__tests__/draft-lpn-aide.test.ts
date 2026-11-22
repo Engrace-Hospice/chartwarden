@@ -235,6 +235,7 @@ describe("the sources a template needs read (draftSourceNeeds)", () => {
         vitals: true,
         medicationChanges: true,
         scales: false,
+        disciplinePlan: false,
       });
     }
   });
@@ -245,6 +246,7 @@ describe("the sources a template needs read (draftSourceNeeds)", () => {
       vitals: false,
       medicationChanges: false,
       scales: false,
+      disciplinePlan: false,
     });
   });
 
@@ -255,6 +257,7 @@ describe("the sources a template needs read (draftSourceNeeds)", () => {
         vitals: true,
         medicationChanges: true,
         scales: true,
+        disciplinePlan: false,
       });
     }
   });
@@ -266,16 +269,18 @@ describe("the sources a template needs read (draftSourceNeeds)", () => {
         vitals: false,
         medicationChanges: false,
         scales: true,
+        disciplinePlan: false,
       });
     }
   });
 
   it("a template that drafts nothing needs nothing", () => {
-    expect(draftSourceNeeds("msw_followup", "msw")).toEqual({
+    expect(draftSourceNeeds("telephonic", "msw")).toEqual({
       carePlan: false,
       vitals: false,
       medicationChanges: false,
       scales: false,
+      disciplinePlan: false,
     });
   });
 });
