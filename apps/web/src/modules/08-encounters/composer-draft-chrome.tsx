@@ -60,7 +60,7 @@ export interface ComposerDraftRailProps {
   /**
    * The draft, which names the visit time the scores are read up to. Null when nothing is drafted: a social-work or chaplain visit still shows its
    * plan picker then (with every item left out nothing is drafted, and the items must stay reachable to be kept again, also after a reload), and an
-   * IDG follow-up visit its item picker (with no item chosen, or no `idg.read` key, its section is not drafted); any other visit shows no rail.
+   * IDG follow-up visit its item picker (with no item chosen, or no `idg.act` key, its section is not drafted); any other visit shows no rail.
    */
   readonly drafted: DraftView | null;
   /**
@@ -97,9 +97,10 @@ export function ComposerDraftRail({
           visitTime={drafted.asOf}
         />
       ) : null}
+      {/* A picker per visit (the key), so a visit's items are never shown under the next visit's; the keys differ, as siblings' must. */}
       {idgList ? (
         <ComposerIdgActionItemPicker
-          key={encounter.id}
+          key={`idg-${encounter.id}`}
           encounterId={encounter.id}
           editable={editable}
           onChanged={onLinksChanged}
@@ -107,6 +108,7 @@ export function ComposerDraftRail({
       ) : null}
       {planList ? (
         <ComposerDisciplinePlanPicker
+          key={`plan-${encounter.id}`}
           encounterId={encounter.id}
           discipline={encounter.discipline}
           editable={editable}

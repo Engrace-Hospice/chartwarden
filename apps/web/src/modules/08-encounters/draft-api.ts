@@ -13,7 +13,7 @@
 //   GET  /api/v1/encounters/{id}/discipline-plan-elements     (S4b) the goals and interventions of a social-work or chaplain visit's plan, kept or not
 //   PUT  /api/v1/encounters/{id}/discipline-plan-elements/{elementId}   keep or leave out one of them
 //   GET  /api/v1/encounters/{id}/idg-action-items             (S5b) the open IDG action items the viewer may follow up in an IDG follow-up visit
-//   PUT  /api/v1/encounters/{id}/idg-action-item              link the visit to ONE of them, or clear the link (`null`)
+//   PUT  /api/v1/encounters/{id}/idg-action-item              link the visit to ONE of them, or clear the link (`null`; no key needed)
 //   GET  /api/v1/patients/{id}/scales/{scale}/series          the score trend beside the note
 //
 // VN-D7: the draft carries source KINDS only (`origins`), never ids; nothing here asks for more. A call that throws (offline) is
@@ -276,16 +276,13 @@ export function setDisciplinePlanElement(
 
 // ── the IDG follow-up's action item (S5b) ───────────────────────────────────────────────────────────────
 
-/** The permission the two IDG routes ask of the viewer, and so the one a 403 from them names. */
-const IDG_READ_KEY = "idg.read";
+/** The stable code of the 403 the two IDG routes answer a viewer without the `idg.act` key (the message names the key; the code is what is matched). */
+export const IDG_ACTION_PERMISSION_REQUIRED_CODE = "IDG_ACTION_PERMISSION_REQUIRED";
 
-/**
- * Whether a refusal says it is the `idg.read` key the viewer lacks. The API's 403 carries the permission it asked for in its message; any other 403 (the
- * visit is not the viewer's, say) does not name it.
- */
-export function namesIdgRead(error: unknown): boolean {
-  const message = (error as { error?: { message?: unknown } } | null | undefined)?.error?.message;
-  return typeof message === "string" && message.includes(IDG_READ_KEY);
+/** Whether a refusal is the missing-`idg.act` one. Matched on the error's CODE, never on its message text. */
+export function isIdgActionPermissionRefusal(error: unknown): boolean {
+  const code = (error as { error?: { code?: unknown } } | null | undefined)?.error?.code;
+  return code === IDG_ACTION_PERMISSION_REQUIRED_CODE;
 }
 
 /** The open IDG action items the viewer may follow up in this visit (an IDG follow-up visit only), the linked one marked. Facts only, never a title. */
@@ -300,7 +297,10 @@ export function loadIdgActionItems(
   );
 }
 
-/** Link the visit to ONE action item, or clear the link (`null`). The answer is the whole updated list. */
+/**
+ * Link the visit to ONE action item, or clear the link (`null`). Linking answers the whole updated list; clearing needs no key and no M14 and answers an empty list
+ * that is NOT the list the viewer is handed, so the caller reads it again.
+ */
 export function setIdgActionItem(
   client: ApiClient,
   encounterId: string,

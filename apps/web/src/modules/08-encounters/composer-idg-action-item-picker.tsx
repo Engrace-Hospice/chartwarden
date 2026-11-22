@@ -1,65 +1,60 @@
 // apps/web/src/modules/08-encounters — the IDG action item picker of an IDG follow-up visit's composer (ADR-0114 S5b, VN-D64 to VN-D67). The author chooses the ONE
-// open IDG action item this visit follows up, or none. The server decides everything: which items this viewer is handed (a Part 2 item a viewer may not read is
-// not in the list, and neither is anything without the `idg.read` key), who may change the choice and the cap on changes; this shows the list, sends the one
-// change and takes the server's answer. It shows the facts the drafted section states (the meeting date, the decision, the due date, the status) and never an
-// item's title or words: the API does not send them.
+// IDG action item this visit follows up, or none. The server decides everything: which items this viewer is handed (a Part 2 item a viewer may not read is not in
+// the list, and neither is anything without the `idg.act` key), who may change the choice and the cap on changes; this shows the list, sends the one change and
+// takes the server's answer. It shows the facts the drafted section states (the meeting date, the decision, the due date, the status) and never an item's title or
+// words: the API does not send them.
 //
-// ONE CHOICE. A radio group plus "No follow-up item"; the checked one is the item the visit is linked to. Choosing changes the section the draft states, so a
-// section already confirmed needs confirming again, and the caller re-reads the draft after every change here (`onChanged`). A change is one request at a time, and
-// a re-read that was served before a change settled never lands over it. While a change is saved the radios are `aria-disabled` and do nothing (the one pressed
-// would otherwise drop keyboard focus), and a status that was already on the page says "Saving…" and "Saved." A change the server did not take (a refusal, or an
-// answer that is not a list) reads the list again, so the choice never stays where the server no longer has it.
+// ONE CHOICE. A radio group plus "No follow-up item"; the checked one is the item the visit is linked to. The linked item is listed even once M14 has closed it
+// (the draft still states it), and says so in words. Choosing changes the section the draft states, so a section already confirmed needs confirming again, and the
+// caller re-reads the draft after every change here (`onChanged`). The reads, the one change at a time, the focus and the retry are `useSerializedListPicker`'s
+// (shared with the plan picker): while a change is saved the radios are `aria-disabled` and do nothing (the one pressed would otherwise drop keyboard focus), and a
+// status that was already on the page says "Saving…" and "Saved."
 //
-// FOCUS (as the plan picker's). When an answer replaces the control that held the focus (a retry button that gives way to the list, an item that was withdrawn, the
-// list that gives way to a note) the panel takes the focus, instead of it dropping to the page. Focus that was already elsewhere, or on a control that is still
-// there, is never moved. A retry that fails again says "still", with its attempt number so a reader hears the change.
+// KEYBOARD. A native radio group checks, and so commits, every radio the arrow keys pass. A commit here is a request, so the arrow keys only MOVE the focus
+// (round the group) and Space or Enter on the focused radio chooses it.
 //
-// WHAT THE PANEL SAYS. An empty list says there is no item to choose and that the section is documented below; a role without `idg.read` is told, calmly, that the
-// section is not drafted for it (a note, not an error); a visit the server has no list for (no draft switch, not the viewer's, not an IDG follow-up) shows nothing.
+// WHAT THE PANEL SAYS. An empty list says there is no item to choose and that the section is documented below; a role without `idg.act` is told, calmly, that the
+// section is not drafted for it (a note, not an error); a visit the server has no list for (no draft switch, not the viewer's, not an IDG follow-up) shows nothing,
+// or says so to someone who was waiting on the answer. Clearing the choice needs no key and no M14, so "Clear the follow-up item" is on the panels that have no list
+// to choose from (no key, M14 not answering), and the list is read again after a clear because the clear's own answer is not the list.
 import { Button, InlineAlert, Panel, formatDateOnly, useApiClient } from "@chartwarden/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { JSX, ReactNode } from "react";
+import { Fragment, useId, useRef } from "react";
+import type { JSX, KeyboardEvent, ReactNode } from "react";
 import {
   type IdgActionItem,
   type IdgActionItemsView,
   type Outcome,
   describeDraftRefusal,
+  isIdgActionPermissionRefusal,
   loadIdgActionItems,
-  namesIdgRead,
   setIdgActionItem,
 } from "./draft-api";
-import { useFocusRequest } from "./use-focus-request";
-import { useIsMounted } from "./use-is-mounted";
+import { PickerRetryPanel } from "./picker-retry-panel";
+import { type PickerLoad, useSerializedListPicker } from "./use-serialized-list-picker";
 
 export interface ComposerIdgActionItemPickerProps {
   readonly encounterId: string;
   /** The choice can change only while the note is a draft. Otherwise the chosen item is shown, without controls. */
   readonly editable: boolean;
-  /** The choice changed here: the draft is built from it, so the caller re-reads the draft. */
+  /** The choice changed here (or may have): the draft is built from it, so the caller re-reads the draft. */
   readonly onChanged: () => void;
 }
 
-type Load =
-  | { readonly status: "loading" }
+type IdgState =
   /** No list for this visit (no draft switch, not the viewer's visit, not an IDG follow-up): the panel takes no room. */
   | { readonly status: "none" }
   | { readonly status: "empty" }
+  /** The same, said to someone who was waiting on the answer (a refused change read again), so the panel and the focus do not vanish. */
+  | { readonly status: "unavailable" }
   | { readonly status: "no-access" }
-  /** `attempt`: 1 for the first failure; a retry that fails again counts up, so its words change and are announced. */
-  | { readonly status: "error"; readonly attempt: number }
   | { readonly status: "ready"; readonly items: readonly IdgActionItem[] };
 
-/** A read a person is waiting on: "Try again" was pressed, or a change was refused and the list is read again. */
-type WaitedOn = "retry" | "refusal" | null;
-
-/** The statuses that mean "this visit has no IDG list for you" (a 403 that names `idg.read` is told apart: it has a note). */
+/** The statuses that mean "this visit has no IDG list for you" (a 403 with the missing-key code is told apart: it has a note). */
 const NOT_SHOWN_STATUSES: readonly number[] = [403, 404, 422];
 
 const TITLE = "IDG follow-up item";
-const NO_ITEM_ID = "idg-follow-up-none";
-const RADIO_NAME = "idg-follow-up-item";
-const REASON_ID = "idg-follow-up-reason";
-const NOTE_ID = "idg-follow-up-note";
+const NO_ITEM_LABEL = "No follow-up item";
+const CLEAR_LABEL = "Clear the follow-up item";
 const NOT_A_DRAFT_REASON = "The item can change only while the note is a draft.";
 const SAVING_REASON = "Saving the change to this visit's follow-up item…";
 const NOT_CONFIRMED_WORDS = "Could not confirm the change. Check the choice before you go on.";
@@ -67,12 +62,17 @@ const COULD_NOT_LOAD_WORDS =
   "The IDG action items could not be loaded. Your documentation is not affected.";
 const stillCouldNotLoadWords = (attempt: number): string =>
   `Still could not load the IDG action items (attempt ${attempt}). Your documentation is not affected.`;
+const DOCUMENT_BELOW = " Document it in the note below.";
 const EMPTY_WORDS =
-  "There is no open IDG action item assigned to you for this patient. This section is not drafted: document it in the note below.";
+  "There is no open IDG action item assigned to you for this patient. This section is not drafted.";
 const NO_ACCESS_WORDS =
-  "Your role cannot see IDG action items, so this section is not drafted. Document it in the note below.";
-const NO_ITEM_LABEL = "No follow-up item";
+  "Your role cannot work with IDG action items, so this section is not drafted.";
+const UNAVAILABLE_WORDS = "There are no IDG action items to show for this visit.";
 const NO_ITEM_CHOSEN_WORDS = "No follow-up item was chosen for this visit.";
+const LINKED_CLOSED_WORDS =
+  "The item this visit follows up is closed. The drafted section still states it. Choose another item, or no item, to change that.";
+const DESCRIPTION_WORDS =
+  "Choose the one IDG action item this visit follows up. The drafted section states its meeting date, decision and due date.";
 
 /** What a refused change says: the picker's own words for the answers that need them, the shared copy for the rest. */
 function refusalWords(failure: { readonly status: number; readonly error: unknown }): string {
@@ -82,40 +82,115 @@ function refusalWords(failure: { readonly status: number; readonly error: unknow
   if (failure.status === 422) {
     return "This note is not drafted from an IDG action item, so nothing was changed.";
   }
-  if (failure.status === 403 && namesIdgRead(failure.error)) {
-    return "Your role cannot see IDG action items, so nothing was changed.";
+  if (failure.status === 403 && isIdgActionPermissionRefusal(failure.error)) {
+    return "Your role cannot work with IDG action items, so nothing was changed.";
   }
   return describeDraftRefusal(failure).message;
 }
 
-const STATUS_WORDS: Readonly<Record<IdgActionItem["status"], string>> = {
+/** In words, never blank: a closed item says it is closed (and how), and a status this screen does not know says so. */
+const STATUS_WORDS: Readonly<Record<string, string>> = {
   open: "Open",
   in_progress: "In progress",
+  completed: "Closed (completed)",
+  cancelled: "Closed (cancelled)",
+  auto_closed: "Closed (automatically)",
 };
+const statusWords = (status: string): string => STATUS_WORDS[status] ?? "Status unknown";
+const isOpen = (item: IdgActionItem): boolean =>
+  item.status === "open" || item.status === "in_progress";
+
+/** An element of the answer that has what a row shows (the status is any text: an unknown one is said, not hidden). */
+function isItem(value: unknown): value is IdgActionItem {
+  if (value === null || typeof value !== "object") return false;
+  const item = value as Partial<Record<keyof IdgActionItem, unknown>>;
+  return (
+    typeof item.actionItemId === "string" &&
+    item.actionItemId !== "" &&
+    typeof item.meetingDate === "string" &&
+    typeof item.decisionLabel === "string" &&
+    (item.dueDate === null || typeof item.dueDate === "string") &&
+    typeof item.status === "string" &&
+    typeof item.linked === "boolean"
+  );
+}
+
+/** What an answer is: a list, an empty one, a role without the key, a visit with no list, or a failure to try again (an element that is not an item is one). */
+function classifyIdg(outcome: Outcome<IdgActionItemsView>, waited: boolean): IdgState | null {
+  if (outcome.ok) {
+    const items: unknown = outcome.data?.items;
+    if (!Array.isArray(items) || !items.every(isItem)) return null;
+    return items.length > 0 ? { status: "ready", items } : { status: "empty" };
+  }
+  if (outcome.status === 403 && isIdgActionPermissionRefusal(outcome.error)) {
+    return { status: "no-access" };
+  }
+  return NOT_SHOWN_STATUSES.includes(outcome.status)
+    ? { status: waited ? "unavailable" : "none" }
+    : null;
+}
+
+/** The item the draft is built from: when a read finds it changed, the draft is read again. */
+const linkedIdOf = (state: IdgState): string | undefined => {
+  if (state.status === "empty") return "";
+  if (state.status !== "ready") return undefined;
+  return state.items.find((item) => item.linked)?.actionItemId ?? "";
+};
+
+/** What a cleared choice looks like before the list is read again: the same items, none linked, and a closed one (listed only for being linked) gone. */
+function afterClear(load: PickerLoad<IdgState>): IdgState | undefined {
+  if (load.status !== "ready") return undefined;
+  const open = load.items.filter(isOpen).map((item) => ({ ...item, linked: false }));
+  return open.length > 0 ? { status: "ready", items: open } : { status: "empty" };
+}
 
 /** One item in words: the team's decision (a label such as "a referral"), then when they met, when it is due and where it stands. */
 function ItemWords({ item }: { readonly item: IdgActionItem }): JSX.Element {
   const facts = [
     `Meeting ${formatDateOnly(item.meetingDate)}`,
     item.dueDate === null ? "No due date" : `Due ${formatDateOnly(item.dueDate)}`,
-    STATUS_WORDS[item.status],
-  ].join(" · ");
+    statusWords(item.status),
+  ];
   return (
     <>
-      <span>Decision: {item.decisionLabel}</span> <span className="wx-row-sub">{facts}</span>
+      <span>Decision: {item.decisionLabel}</span>
+      <span className="wx-sr-only">. </span>
+      <span className="wx-row-sub">
+        {facts.map((fact, index) => (
+          <Fragment key={fact}>
+            {/* The dot is for the eye; a reader is given a comma, so the name does not read "Meeting … dot Due …". */}
+            {index > 0 ? <span aria-hidden="true"> · </span> : null}
+            {index > 0 ? <span className="wx-sr-only">, </span> : null}
+            {fact}
+          </Fragment>
+        ))}
+      </span>
     </>
   );
 }
 
-/** What a read found, as the state it gives the panel; null when it failed (an answer that is not a list too) and is to be tried again. */
-function readOf(outcome: Outcome<IdgActionItemsView>): Load | null {
-  if (outcome.ok) {
-    const items = outcome.data?.items;
-    if (!Array.isArray(items)) return null;
-    return items.length > 0 ? { status: "ready", items } : { status: "empty" };
+const ARROW_STEP: Readonly<Record<string, number>> = {
+  ArrowDown: 1,
+  ArrowRight: 1,
+  ArrowUp: -1,
+  ArrowLeft: -1,
+};
+
+/** The arrow keys move the focus round the group without checking; Enter chooses the focused radio (Space does natively). */
+function moveOrChoose(event: KeyboardEvent<HTMLInputElement>, group: HTMLElement | null): void {
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  if (event.key === "Enter") {
+    event.preventDefault();
+    event.currentTarget.click();
+    return;
   }
-  if (outcome.status === 403 && namesIdgRead(outcome.error)) return { status: "no-access" };
-  return NOT_SHOWN_STATUSES.includes(outcome.status) ? { status: "none" } : null;
+  const step = ARROW_STEP[event.key];
+  if (step === undefined || group === null) return;
+  const radios = Array.from(group.querySelectorAll<HTMLInputElement>('input[type="radio"]'));
+  const at = radios.indexOf(event.currentTarget);
+  if (at < 0) return;
+  event.preventDefault();
+  radios[(at + step + radios.length) % radios.length]?.focus();
 }
 
 export function ComposerIdgActionItemPicker({
@@ -124,116 +199,87 @@ export function ComposerIdgActionItemPicker({
   onChanged,
 }: ComposerIdgActionItemPickerProps): JSX.Element | null {
   const client = useApiClient();
-  const mounted = useIsMounted();
-  const [load, setLoad] = useState<Load>({ status: "loading" });
-  const [readKey, setReadKey] = useState(0);
-  // A read is out. After a failure the panel stays (waiting) while it is read again; the first read shows nothing.
-  const [reading, setReading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [said, setSaid] = useState("");
-  const [anchor, focusAnchor] = useFocusRequest<HTMLFieldSetElement>();
-  // Moves when a change begins and again when it settles, so a read that began in between is told apart from the one held.
-  const changeEpoch = useRef(0);
-  const saveInFlight = useRef(false);
-  const readOwed = useRef(false);
-  // Set when a read is being waited on, and spent by the read that settles (whatever it finds): a later read that nobody waits on never moves the focus.
-  const waitedOn = useRef<WaitedOn>(null);
-  const failedReads = useRef(0);
-  // Whether the focus sat inside the panel when the answer that replaces its content was taken; spent after the commit.
-  const heldInside = useRef(false);
-  const showLoad = useCallback(
-    (next: Load): void => {
-      heldInside.current = anchor.current?.contains(document.activeElement) ?? false;
-      setLoad(next);
-    },
-    [anchor],
-  );
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `load` is the commit this runs after, not read in the body.
-  useEffect(() => {
-    if (!heldInside.current) return;
-    heldInside.current = false;
-    if (!anchor.current?.contains(document.activeElement)) focusAnchor();
-  }, [load, anchor, focusAnchor]);
+  const { load, anchor, reading, isSaving, problem, said, retry, save } = useSerializedListPicker<
+    IdgActionItemsView,
+    IdgState
+  >({
+    read: () => loadIdgActionItems(client, encounterId),
+    readOn: [client, encounterId],
+    classify: classifyIdg,
+    signatureOf: linkedIdOf,
+    onChanged,
+  });
+  const uid = useId();
+  const noteId = `${uid}-note`;
+  const reasonId = `${uid}-reason`;
+  const descriptionId = `${uid}-description`;
+  const group = useRef<HTMLDivElement>(null);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `readKey` is the re-read trigger, not read in the body.
-  useEffect(() => {
-    let active = true;
-    const begunAt = changeEpoch.current;
-    // The list known stays known while it is read again, and so does the failure (its retry button keeps the focus).
-    setReading(true);
-    void loadIdgActionItems(client, encounterId).then((outcome) => {
-      if (!active) return;
-      if (saveInFlight.current || changeEpoch.current !== begunAt) {
-        // Read before a change committed, answered after it: older than the list held. Read again once the change has settled.
-        if (saveInFlight.current) readOwed.current = true;
-        else setReadKey((key) => key + 1);
-        return;
-      }
-      setReading(false);
-      const waited = waitedOn.current;
-      waitedOn.current = null;
-      const found = readOf(outcome);
-      if (found === null) {
-        failedReads.current = waited === "retry" ? failedReads.current + 1 : 1;
-        showLoad({ status: "error", attempt: failedReads.current });
-        return;
-      }
-      failedReads.current = 0;
-      // A retry that was answered settles a refusal that stood beside the failure: the list shown now is the truth about it.
-      if (waited === "retry") setProblem(null);
-      // Someone was waiting for this answer and it is "no list": the panel they were in says so, instead of vanishing with their focus.
-      showLoad(found.status === "none" && waited !== null ? { status: "empty" } : found);
-    });
-    return () => {
-      active = false;
-    };
-  }, [client, encounterId, readKey, showLoad]);
+  const choose = (actionItemId: string | null): void => {
+    if (!editable) return;
+    const words = { refusalWords, notConfirmedWords: NOT_CONFIRMED_WORDS };
+    void save(
+      () => setIdgActionItem(client, encounterId, actionItemId),
+      actionItemId === null
+        ? {
+            ...words,
+            savedWords: "Follow-up item cleared.",
+            settle: () => afterClear(load),
+            rereadAfter: true,
+          }
+        : { ...words, savedWords: "Follow-up item saved." },
+    );
+  };
+  /** Always on the page (a region mounted with its text is not announced): says the change is being saved, and that it was. */
+  const status = <output className="wx-sr-only">{isSaving ? "Saving…" : said}</output>;
+  const clearButton = editable ? (
+    <Button
+      tone="tertiary"
+      size="sm"
+      aria-disabled={isSaving || undefined}
+      onClick={() => choose(null)}
+    >
+      {CLEAR_LABEL}
+    </Button>
+  ) : null;
 
   if (load.status === "loading" || load.status === "none") return null;
-  if (load.status === "empty" || load.status === "no-access") {
-    return (
-      <fieldset ref={anchor} tabIndex={-1} className="wx-fieldset-reset" aria-describedby={NOTE_ID}>
-        <legend className="wx-sr-only">{TITLE}</legend>
-        <Panel title={TITLE} icon="calendar-check" stack>
-          {/* A note that is already there when the panel mounts: the panel is described by it for the reader the focus moves to. */}
-          <div id={NOTE_ID}>
-            <InlineAlert tone="info" live={false}>
-              {load.status === "empty" ? EMPTY_WORDS : NO_ACCESS_WORDS}
-            </InlineAlert>
-          </div>
-          {problem && load.status === "empty" ? (
-            <InlineAlert tone="error">{problem}</InlineAlert>
-          ) : null}
-        </Panel>
-      </fieldset>
-    );
-  }
   if (load.status === "error") {
     return (
-      <fieldset ref={anchor} tabIndex={-1} className="wx-fieldset-reset">
+      <PickerRetryPanel
+        anchor={anchor}
+        title={TITLE}
+        icon="calendar-check"
+        words={load.attempt > 1 ? stillCouldNotLoadWords(load.attempt) : COULD_NOT_LOAD_WORDS}
+        problem={problem}
+        reading={reading}
+        onRetry={retry}
+      >
+        {clearButton}
+        {status}
+      </PickerRetryPanel>
+    );
+  }
+  if (load.status !== "ready") {
+    const words =
+      load.status === "unavailable"
+        ? UNAVAILABLE_WORDS
+        : `${load.status === "empty" ? EMPTY_WORDS : NO_ACCESS_WORDS}${editable ? DOCUMENT_BELOW : ""}`;
+    return (
+      <fieldset ref={anchor} tabIndex={-1} className="wx-fieldset-reset" aria-describedby={noteId}>
         <legend className="wx-sr-only">{TITLE}</legend>
         <Panel title={TITLE} icon="calendar-check" stack>
-          {/* One region for the first failure and the next: its text changing is what a reader who cannot see the button is told. */}
-          <InlineAlert tone="warning">
-            {load.attempt > 1 ? stillCouldNotLoadWords(load.attempt) : COULD_NOT_LOAD_WORDS}
-          </InlineAlert>
-          {/* A refused change whose re-read failed too: the person is still told the change was not saved. */}
-          {problem ? <InlineAlert tone="error">{problem}</InlineAlert> : null}
-          <div>
-            <Button
-              tone="secondary"
-              size="sm"
-              aria-disabled={reading || undefined}
-              onClick={() => {
-                if (reading) return;
-                waitedOn.current = "retry";
-                setReadKey((key) => key + 1);
-              }}
-            >
-              {reading ? "Trying again…" : "Try again"}
-            </Button>
+          {status}
+          {/* A note that is already there when the panel mounts: the panel is described by it for the reader the focus moves to. */}
+          <div id={noteId}>
+            <InlineAlert tone="info" live={false}>
+              {words}
+            </InlineAlert>
           </div>
+          {problem && load.status !== "no-access" ? (
+            <InlineAlert tone="error">{problem}</InlineAlert>
+          ) : null}
+          {load.status === "no-access" && clearButton ? <div>{clearButton}</div> : null}
         </Panel>
       </fieldset>
     );
@@ -242,41 +288,6 @@ export function ComposerIdgActionItemPicker({
   const { items } = load;
   const linked = items.find((item) => item.linked);
   const reason = !editable ? NOT_A_DRAFT_REASON : isSaving ? SAVING_REASON : null;
-
-  const choose = async (actionItemId: string | null): Promise<void> => {
-    if (!editable || isSaving) return;
-    setIsSaving(true);
-    setProblem(null);
-    setSaid("");
-    changeEpoch.current += 1;
-    saveInFlight.current = true;
-    const outcome = await setIdgActionItem(client, encounterId, actionItemId);
-    saveInFlight.current = false;
-    changeEpoch.current += 1;
-    if (!mounted.current) return;
-    setIsSaving(false);
-    if (readOwed.current) {
-      readOwed.current = false;
-      setReadKey((key) => key + 1);
-    }
-    if (!outcome.ok) {
-      // The server did not take the change: what it holds may differ from the choice (an item closed since), so the list is read again.
-      setProblem(refusalWords(outcome));
-      waitedOn.current = "refusal";
-      setReadKey((key) => key + 1);
-      return;
-    }
-    if (Array.isArray(outcome.data?.items)) {
-      const { items: answered } = outcome.data;
-      showLoad(answered.length > 0 ? { status: "ready", items: answered } : { status: "empty" });
-      setSaid(actionItemId === null ? "Follow-up item cleared." : "Follow-up item saved.");
-    } else {
-      setProblem(NOT_CONFIRMED_WORDS);
-      waitedOn.current = "refusal";
-      setReadKey((key) => key + 1);
-    }
-    onChanged();
-  };
 
   const option = (
     id: string,
@@ -288,45 +299,51 @@ export function ComposerIdgActionItemPicker({
       <input
         id={id}
         type="radio"
-        name={RADIO_NAME}
+        name={uid}
         checked={checked}
         aria-disabled={isSaving || undefined}
-        aria-describedby={reason ? REASON_ID : undefined}
-        onChange={() => void choose(actionItemId)}
+        aria-describedby={reason ? reasonId : undefined}
+        onChange={() => choose(actionItemId)}
+        onKeyDown={(event) => moveOrChoose(event, group.current)}
       />
       <label htmlFor={id}>{label}</label>
     </div>
   );
 
   return (
-    <fieldset ref={anchor} tabIndex={-1} className="wx-fieldset-reset">
+    <fieldset
+      ref={anchor}
+      tabIndex={-1}
+      className="wx-fieldset-reset"
+      aria-describedby={descriptionId}
+    >
       <legend className="wx-sr-only">{TITLE}</legend>
       <Panel
         title={TITLE}
         icon="calendar-check"
-        description="Choose the one IDG action item this visit follows up. The drafted section states its meeting date, decision and due date."
+        description={<span id={descriptionId}>{DESCRIPTION_WORDS}</span>}
         stack
       >
-        {/* Always on the page (a region mounted with its text is not announced): says the change is being saved, and that it was. */}
-        <output className="wx-sr-only">{isSaving ? "Saving…" : said}</output>
+        {status}
         {editable ? (
-          <div className="wx-form-stack">
+          <div ref={group} className="wx-form-stack">
             {items.map((item) =>
               option(
-                `idg-follow-up-${item.actionItemId}`,
+                `${uid}-${item.actionItemId}`,
                 item.linked,
                 item.actionItemId,
                 <ItemWords item={item} />,
               ),
             )}
-            {option(NO_ITEM_ID, linked === undefined, null, NO_ITEM_LABEL)}
+            {option(`${uid}-none`, linked === undefined, null, NO_ITEM_LABEL)}
           </div>
         ) : (
           <p>{linked ? <ItemWords item={linked} /> : NO_ITEM_CHOSEN_WORDS}</p>
         )}
+        {linked && !isOpen(linked) ? <p className="wx-row-sub">{LINKED_CLOSED_WORDS}</p> : null}
         {/* After the list: it comes and goes with every save, and above it it would move every row under the person's pointer. */}
         {reason ? (
-          <p id={REASON_ID} className="wx-row-sub">
+          <p id={reasonId} className="wx-row-sub">
             {reason}
           </p>
         ) : null}
