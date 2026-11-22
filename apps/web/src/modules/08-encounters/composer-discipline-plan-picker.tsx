@@ -13,6 +13,9 @@
 // box never stays where the server no longer has it. After a failed read, "Try again" keeps the panel on the page (the focused button is not unmounted
 // for a blank one) and the panel takes the focus when the list arrives.
 //
+// A read someone waited on (a retry, or after a refused change) that finds nothing to show says so and keeps the focus on the panel, instead of the panel
+// vanishing under the button or box that held it; a retry that fails again says "still"; a read nobody waited on never moves the focus.
+//
 // NO EMPTY FRAME: a visit with no plan list (not drafted from the discipline's plan, or a viewer who may not read it) or an empty plan shows nothing.
 import { Button, InlineAlert, Panel, useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
@@ -42,8 +45,14 @@ export interface ComposerDisciplinePlanPickerProps {
 type Load =
   | { readonly status: "loading" }
   | { readonly status: "none" }
-  | { readonly status: "error" }
+  /** A read someone was waiting on (a retry, or after a refused change) found nothing to show: the panel stays and says so. */
+  | { readonly status: "nothing" }
+  /** `again`: this failure answers a retry, so it says "still". */
+  | { readonly status: "error"; readonly again: boolean }
   | { readonly status: "ready"; readonly elements: readonly DisciplinePlanElement[] };
+
+/** A read a person is waiting on: "Try again" was pressed, or a change was refused and the list is read again. */
+type WaitedOn = "retry" | "refusal" | null;
 
 /** The statuses that mean "this visit has no plan list for you": the panel then takes no room. */
 const NOT_SHOWN_STATUSES: readonly number[] = [403, 404, 422];
@@ -53,6 +62,11 @@ const SAVING_REASON = "Saving the change to this visit's plan items…";
 const REASON_ID = "discipline-plan-picker-reason";
 const NOT_CONFIRMED_WORDS =
   "Could not confirm the change, so the list was read again. Check it before you go on.";
+const COULD_NOT_LOAD_WORDS =
+  "The plan items could not be loaded. Your documentation is not affected.";
+const STILL_COULD_NOT_LOAD_WORDS =
+  "Still could not load the plan items. Your documentation is not affected.";
+const NOTHING_TO_SHOW_WORDS = "There are no plan items to show for this visit.";
 
 /** What a refused change says: the picker's own words for the two answers the shared copy words for the addendum, the shared copy for the rest. */
 function refusalWords(failure: { readonly status: number; readonly error: unknown }): string {
@@ -87,8 +101,8 @@ export function ComposerDisciplinePlanPicker({
   const changeEpoch = useRef(0);
   const saving = useRef(false);
   const readOwed = useRef(false);
-  // "Try again" was pressed: when the list arrives the panel takes the focus the button held (if it still is where the person left it).
-  const retried = useRef(false);
+  // Set when a read is being waited on, and spent by the read that settles (whatever it finds): a later read that nobody waits on never moves the focus.
+  const waitedOn = useRef<WaitedOn>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `revision` and `readKey` are the re-read triggers, not read in the body.
   useEffect(() => {
@@ -99,6 +113,11 @@ export function ComposerDisciplinePlanPicker({
       current.status === "ready" || current.status === "error" ? current : { status: "loading" },
     );
     setReading(true);
+    // The panel takes the focus the button (or box) held, if it still is where the person left it.
+    const focusIfHeld = (): void => {
+      const held = document.activeElement;
+      if (held === null || held === document.body || anchor.current?.contains(held)) focusAnchor();
+    };
     void loadDisciplinePlanElements(client, encounterId).then((outcome) => {
       if (!active) return;
       if (saving.current || changeEpoch.current !== begunAt) {
@@ -108,19 +127,24 @@ export function ComposerDisciplinePlanPicker({
         return;
       }
       setReading(false);
-      if (outcome.ok) {
-        const read = outcome.data?.elements;
-        setLoad(Array.isArray(read) ? { status: "ready", elements: read } : { status: "error" });
-        if (Array.isArray(read) && retried.current) {
-          retried.current = false;
-          const held = document.activeElement;
-          if (held === null || held === document.body || anchor.current?.contains(held)) {
-            focusAnchor();
-          }
-        }
+      const waited = waitedOn.current;
+      waitedOn.current = null;
+      const read = outcome.ok ? outcome.data?.elements : undefined;
+      if (Array.isArray(read) && read.length > 0) {
+        setLoad({ status: "ready", elements: read });
+        if (waited === "retry") focusIfHeld();
         return;
       }
-      setLoad({ status: NOT_SHOWN_STATUSES.includes(outcome.status) ? "none" : "error" });
+      const hidden = outcome.ok ? Array.isArray(read) : NOT_SHOWN_STATUSES.includes(outcome.status);
+      if (!hidden) {
+        setLoad({ status: "error", again: waited === "retry" });
+      } else if (waited === null) {
+        setLoad({ status: "none" });
+      } else {
+        // Someone was waiting for this answer and it is "no list": the panel they were in says so, instead of vanishing with their focus.
+        setLoad({ status: "nothing" });
+        focusIfHeld();
+      }
     });
     return () => {
       active = false;
@@ -128,13 +152,25 @@ export function ComposerDisciplinePlanPicker({
   }, [client, encounterId, revision, readKey, anchor, focusAnchor]);
 
   if (load.status === "loading" || load.status === "none") return null;
+  if (load.status === "nothing") {
+    return (
+      <fieldset ref={anchor} tabIndex={-1} className="wx-fieldset-reset">
+        <legend className="wx-sr-only">{title}</legend>
+        <Panel title={title} icon="clipboard-list" stack>
+          <InlineAlert tone="info">{NOTHING_TO_SHOW_WORDS}</InlineAlert>
+          {problem ? <InlineAlert tone="error">{problem}</InlineAlert> : null}
+        </Panel>
+      </fieldset>
+    );
+  }
   if (load.status === "error") {
     return (
       <fieldset ref={anchor} tabIndex={-1} className="wx-fieldset-reset">
         <legend className="wx-sr-only">{title}</legend>
         <Panel title={title} icon="clipboard-list">
+          {/* One region for the first failure and the next: its text changing is what a reader who cannot see the button is told. */}
           <InlineAlert tone="warning">
-            The plan items could not be loaded. Your documentation is not affected.
+            {load.again ? STILL_COULD_NOT_LOAD_WORDS : COULD_NOT_LOAD_WORDS}
           </InlineAlert>
           <div>
             <Button
@@ -143,7 +179,7 @@ export function ComposerDisciplinePlanPicker({
               aria-disabled={reading || undefined}
               onClick={() => {
                 if (reading) return;
-                retried.current = true;
+                waitedOn.current = "retry";
                 setReadKey((key) => key + 1);
               }}
             >
@@ -183,6 +219,7 @@ export function ComposerDisciplinePlanPicker({
     if (!outcome.ok) {
       // The server did not take the change: what it holds may differ from the box (an item withdrawn since), so the list is read again.
       setProblem(refusalWords(outcome));
+      waitedOn.current = "refusal";
       setReadKey((key) => key + 1);
       return;
     }
@@ -191,6 +228,7 @@ export function ComposerDisciplinePlanPicker({
       setSaid("Saved.");
     } else {
       setProblem(NOT_CONFIRMED_WORDS);
+      waitedOn.current = "refusal";
       setReadKey((key) => key + 1);
     }
     onChanged();
@@ -232,15 +270,16 @@ export function ComposerDisciplinePlanPicker({
         description="Untick what this visit does not keep. The plan itself is never changed."
         stack
       >
+        {/* Always on the page (a region mounted with its text is not announced): says the change is being saved, and that it was. */}
+        <output className="wx-sr-only">{pendingId !== null ? "Saving…" : said}</output>
+        {group("Goals", "goal")}
+        {group("Interventions", "intervention")}
+        {/* After the lists: it comes and goes with every save, and above them it would move every row under the person's pointer. */}
         {reason ? (
           <p id={REASON_ID} className="wx-row-sub">
             {reason}
           </p>
         ) : null}
-        {/* Always on the page (a region mounted with its text is not announced): says the change is being saved, and that it was. */}
-        <output className="wx-sr-only">{pendingId !== null ? "Saving…" : said}</output>
-        {group("Goals", "goal")}
-        {group("Interventions", "intervention")}
         <p className="wx-row-sub">
           Confirming a drafted section keeps its items here. Deselecting it leaves them out.
         </p>

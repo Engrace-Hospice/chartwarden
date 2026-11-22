@@ -5,6 +5,7 @@
 import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import axe from "axe-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ComposerDisciplinePlanPicker } from "../composer-discipline-plan-picker";
 import { type Call, type Responder, makeFetch } from "./closure-test-harness";
@@ -246,6 +247,8 @@ describe("a box that is waiting (the keyboard user keeps their place)", () => {
       },
     });
     const goal = await screen.findByRole("checkbox", { name: /Name two ways to cope/ });
+    // the live region is on the page, and silent, before anything is saved (one that mounts with its text is not announced)
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
     await user.click(goal);
 
     await waitFor(() => expect(goal).toHaveAttribute("aria-disabled", "true"));
@@ -390,4 +393,149 @@ describe("a retry keeps the keyboard user's place", () => {
     expect(await screen.findByRole("checkbox", { name: /Name two ways to cope/ })).toBeChecked();
     expect(screen.getByRole("group", { name: "Social work plan for this visit" })).toHaveFocus();
   });
+
+  it("says it is still failing when a retry fails again, in the region that was already on the page", async () => {
+    const { user } = mount({ [`GET ${BASE}`]: () => ({ status: 500, body: { error: {} } }) });
+    const retry = await screen.findByRole("button", { name: "Try again" });
+    const first = screen.getByText(/could not be loaded/).closest("output");
+    await user.click(retry);
+    expect(await screen.findByText(/Still could not load the plan items/)).toBeInTheDocument();
+    expect(screen.getByText(/Still could not load/).closest("output")).toBe(first);
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+  });
+
+  it("does not run a second read when the waiting button is pressed again", async () => {
+    const hold = gate();
+    let healthy = false;
+    const { user } = mount({
+      [`GET ${BASE}`]: async () => {
+        if (!healthy) return { status: 500, body: { error: {} } };
+        await hold.promise;
+        return { body: view() };
+      },
+    });
+    const retry = await screen.findByRole("button", { name: "Try again" });
+    healthy = true;
+    await user.click(retry);
+    const waiting = screen.getByRole("button", { name: /Trying again/ });
+    expect(waiting).toHaveAttribute("aria-disabled", "true");
+    await user.click(waiting);
+    await user.click(waiting);
+    hold.open();
+    await screen.findByRole("checkbox", { name: /Name two ways to cope/ });
+    expect(reads()).toHaveLength(2);
+  });
+
+  it.each([
+    ["an empty plan", () => ({ body: { patientId: PATIENT, elements: [] } })],
+    ["a plan the viewer may not read (403)", () => ({ status: 403, body: { error: {} } })],
+    ["a visit with no plan list (404)", () => ({ status: 404, body: { error: {} } })],
+    ["a note not drafted from a plan (422)", () => ({ status: 422, body: { error: {} } })],
+  ])(
+    "a retry that finds nothing to show says so and keeps the focus on the panel, not on a button that is gone (%s)",
+    async (_name, answer) => {
+      let failing = true;
+      const { user } = mount({
+        [`GET ${BASE}`]: () => (failing ? { status: 500, body: { error: {} } } : answer()),
+      });
+      const retry = await screen.findByRole("button", { name: "Try again" });
+      retry.focus();
+      failing = false;
+      await user.click(retry);
+      expect(await screen.findByText(/no plan items to show for this visit/i)).toBeInTheDocument();
+      expect(screen.getByRole("group", { name: "Social work plan for this visit" })).toHaveFocus();
+      expect(screen.queryByRole("button", { name: /Try again/ })).toBeNull();
+    },
+  );
+
+  it("does not take the focus when the person moved on while the retry was reading", async () => {
+    const hold = gate();
+    let healthy = false;
+    const { user } = mount({
+      [`GET ${BASE}`]: async () => {
+        if (!healthy) return { status: 500, body: { error: {} } };
+        await hold.promise;
+        return { body: view() };
+      },
+    });
+    const elsewhere = document.createElement("input");
+    elsewhere.setAttribute("aria-label", "Somewhere else");
+    document.body.append(elsewhere);
+    try {
+      const retry = await screen.findByRole("button", { name: "Try again" });
+      healthy = true;
+      await user.click(retry);
+      elsewhere.focus();
+      hold.open();
+      await screen.findByRole("checkbox", { name: /Name two ways to cope/ });
+      expect(elsewhere).toHaveFocus();
+    } finally {
+      elsewhere.remove();
+    }
+  });
+
+  it("a retry that failed leaves no claim on the focus: a later read that loads does not pull it to the panel", async () => {
+    let healthy = false;
+    const { user, bump } = mount({
+      [`GET ${BASE}`]: () => (healthy ? { body: view() } : { status: 500, body: { error: {} } }),
+    });
+    const retry = await screen.findByRole("button", { name: "Try again" });
+    await user.click(retry);
+    await screen.findByText(/Still could not load/);
+    // the person moves on; the list becomes readable later (a draft resolve moved the revision)
+    (document.activeElement as HTMLElement | null)?.blur();
+    healthy = true;
+    bump(1);
+    await screen.findByRole("checkbox", { name: /Name two ways to cope/ });
+    expect(
+      screen.getByRole("group", { name: "Social work plan for this visit" }),
+    ).not.toHaveFocus();
+  });
+});
+
+describe("a refused change that leaves nothing to show", () => {
+  it("keeps the refusal on the page and says there is nothing left, with the focus on the panel", async () => {
+    const { user } = mount({
+      [`PUT ${BASE}/${GOAL_1}`]: () => {
+        elements = [];
+        return { status: 404, body: { error: { code: "NOT_FOUND", message: "x" } } };
+      },
+    });
+    await user.click(await screen.findByRole("checkbox", { name: /Name two ways to cope/ }));
+    expect(await screen.findByText(/no plan items to show for this visit/i)).toBeInTheDocument();
+    expect(screen.getByText(/no longer in this visit's plan/)).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Social work plan for this visit" })).toHaveFocus();
+  });
+});
+
+describe("the layout under a saving box", () => {
+  it("puts the reason for a waiting box after the lists, so no row moves under the pointer while it saves", async () => {
+    const hold = gate();
+    const { user } = mount({
+      [`PUT ${BASE}/${GOAL_1}`]: async (call) => {
+        await hold.promise;
+        return applyToggle(call);
+      },
+    });
+    const goal = await screen.findByRole("checkbox", { name: /Name two ways to cope/ });
+    await user.click(goal);
+    const reason = await screen.findByText(/Saving the change/);
+    // document order: every box comes before the reason, so nothing above a box appears or disappears
+    for (const label of [/Name two ways to cope/, /Write a letter/, /Supportive counselling/]) {
+      expect(
+        box(label).compareDocumentPosition(reason) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+    hold.open();
+    await waitFor(() => expect(goal).not.toBeChecked());
+  });
+});
+
+describe("accessibility", () => {
+  it("has no axe violations on the plan panel, with its fieldsets, legends and live region", async () => {
+    mount();
+    const group = await screen.findByRole("group", { name: "Social work plan for this visit" });
+    const results = await axe.run(group);
+    expect(results.violations).toEqual([]);
+  }, 60_000);
 });
