@@ -1176,8 +1176,9 @@ export const REQUIRED_SEAMS = [
     phi: true,
     denyStub: idgScheduleProviderDenyStub,
   },
-  // `IdgFollowUpReader` (ADR-0114 S5b) is the open-action-items read M8's visit-note draft consumes: facts only (meeting date,
-  // decision kind, due date), Part 2 decided per viewer by M14. Patient-linked → phi: true; fail-closed until M14 registers it.
+  // `IdgFollowUpReader` (ADR-0114 S5b) is the action-item read M8's visit-note draft consumes: the open items a visit may link (`openFollowUpItems`) and the
+  // one it is linked to, by id and in any status (`linkedFollowUpItem`); facts only (meeting date, decision kind, due date, status), Part 2 decided per
+  // viewer by M14. Patient-linked → phi: true; fail-closed until M14 registers it.
   {
     key: "IdgFollowUpReader",
     ownerModule: 14,

@@ -1,4 +1,4 @@
-// ADR-0114 S5b: IdgFollowUpReader.openFollowUpItems over the in-memory M14 store. Facts only, Part 2 decided per viewer (W-SUD-01), no membership = nothing.
+// ADR-0114 S5b: IdgFollowUpReader (openFollowUpItems: the open candidates; linkedFollowUpItem: the one linked item by id, in any status) over the in-memory M14 store. Facts only, Part 2 decided per viewer (W-SUD-01), no membership = nothing.
 import type { IsoInstant, PatientId } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import type { PacketDisclosurePort } from "../src/modules/14-idg/routes/packet-disclosure";

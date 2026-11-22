@@ -10,8 +10,6 @@ import type {
   BenefitPeriodDraftInput,
   CarePlanDraftInput,
   CaregiverInput,
-  DisciplinePlanDraftInput,
-  DisciplinePlanStatedBy,
   DraftInputs,
   MedicationChangeInput,
   MedicationChangeKind,
@@ -30,9 +28,6 @@ import {
 } from "@chartwarden/hearthnote";
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
 import type {
-  DisciplineGoalAsOf,
-  DisciplinePlanElementsAsOf,
-  DisciplinePlanKind,
   ElectionPeriodSummary,
   EncounterDiscipline,
   InterventionDiscipline,
