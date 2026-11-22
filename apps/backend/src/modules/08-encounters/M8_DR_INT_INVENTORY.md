@@ -62,6 +62,14 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
   pool can wait on the pool. The bound is `DRAFT_SOURCE_READ_TIMEOUT_MS` (5 s) per source read, and a request that cannot acquire a connection within
   the 10 s acquire timeout fails with 503 (never a pass, never a partial write: the transaction rolls back). A tenant that signs through such a
   burst retries; a burst that long is an operations signal, not a data one.
+- **A failed read never outlives the answer (S5).** The store reads run on the request's transaction beside the seam reads. A draft computation used to
+  reject at the first failure (`Promise.all`) while a multi-query store read (`loadSelection`: the selection, the fall, the ADLs, the nutrition) was still
+  issuing queries; on a section PUT, whose transaction holds the row lock, the transaction then rolled back and its connection returned to the pool, and the
+  leftover queries ran on a connection that by then belonged to the next request, where one (an `encounter` select with no tenant setting) aborted that
+  request's transaction (`25P02`, a `500` for an unrelated caller; the leftover queries are reads with their own tenant predicate under row-level
+  security, and the harm observed is the aborted transaction).
+  `settleAll` (`drafting/unavailable.ts`) now waits for every read, each bounded by `guarded`, and throws the first failure in the order the reads are
+  listed. The cost is that a failing request waits for its slowest read, at most `DRAFT_SOURCE_READ_TIMEOUT_MS`.
 
 ### LPN and aide drafts (ADR-0114 slice S3, design §3.5): limits recorded
 
@@ -90,6 +98,28 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
 - **Rollout.** The switch is tenant-wide, with no per-template flag: a tenant already switched on at deploy would get the LPN and aide drafts, their
   keys requirement and the unreviewed 2026.12.2 tags at once. Enabling is refused (409 `CORPUS_REVIEW_PENDING`) while the review is pending, so none
   should be on; the operator confirms that before the deploy.
+
+### Face-to-face (physician, nurse practitioner) and IDG follow-up drafts (ADR-0114 slice S5, design §3.7): limits recorded
+
+- **No new seam, route or migration.** The face-to-face visit reads the visit's recorded vitals (M8's own), the orders in effect as of the visit time (M12
+  `getMedicationsAsOf`, the read S2b built), and S2's benefit period and scales; the IDG follow-up reads what the discipline's own visit reads (a social
+  worker's and a chaplain's from M15, as S4). A physician's or nurse practitioner's draft reads no care plan, no medication change and no discipline plan.
+- **A new key for the face-to-face draft.** `prescribing.read` is asked by encounter type (`admission-reads.ts`) at the draft routes, finalize, sign and an
+  addendum's recompute, beside `election.read`. Only `medical_director` has a role template, so a tenant grants `prescribing.read`, `election.read` and the
+  scale key to its physician and nurse practitioner roles before it enables the switch. The IDG follow-up of a physician or nurse practitioner asks no source
+  key. A signer without `prescribing.read` who is refused for `med_reconciliation` learns that active orders exist (S3's limit, extended).
+- **Drafted facts in a certifying visit.** The vitals and the orders in effect are what is on record; the physician confirms the section, and the draft
+  states no reconciliation, no judgement and no attestation (VN-D32, VN-D53). The note is still readable by every holder of `encounter.read`.
+- **Part 2.** An order flagged `isSudTreatment` is left out of the draft for a viewer without disclosure and fails closed (only the literal `false` is "not
+  SUD"); a signed note's orders section holding one is withheld whole from a reader without it, as in S2b. The M12 order read is the one S2b and S1 use.
+- **The IDG follow-up names no decision.** Nothing links the visit to the decision that prompted it (M14 closes an action item by the signer, and the M17
+  proposal that names the decision carries a denylisted payload that may hold narrative), so the `idg_followup` section is the clinician's own words (S5b).
+- **An LPN's IDG follow-up is cosigned.** The case manager reads the redacted view and cosigns it (VN-D13), as for any LPN note.
+- **Not proven live.** An amendment of a signed face-to-face or IDG follow-up note (S1's path, unchanged), the real M12 and M39 on these routes (fakes in
+  the live suite, as in S2b), and a physician who also authored a note as a cosigner. The IDG packet's import of these notes is M14's and was not run.
+- **Rollout.** The switch is tenant-wide: a tenant already switched on at deploy would get these drafts, the new key requirement and the unreviewed
+  2026.12.4 tags at once. Enabling is refused (409 `CORPUS_REVIEW_PENDING`) while the review is pending, so none should be on; the operator confirms that
+  before the deploy.
 
 ### Social-work and chaplain drafts (ADR-0114 slice S4, design §3.6): limits recorded
 

@@ -154,6 +154,19 @@ Recommended 2026-11-21 and accepted by the owner as recommended (D45 to D50); D5
 | VN-D50 | `narrative-vocab@2026.12.3`: six phrases (`nv.dp.*`) in one draft-only category (`discipline_plan`, wired to no section menu); the corpus clinical review stays pending (VN-D34), so the switch stays dark. |
 | VN-D51 | S4 changes the files S3 changed (`sources.ts`, `scope.ts`, `inputs.ts`, `draft-entries.ts`), so it is built on the S3 branch and rebased onto `main` after S3 merges (as VN-D44). |
 
+### 2.9 Slice 5 decisions
+
+Recommended 2026-11-21 and accepted by the owner as recommended (D52 to D56); D57 is the build order. D55 is worded differently from the plan: the corpus tags, not an explicit source row, are what keep an LPN's IDG follow-up from drafting a performance status.
+
+| ID | Decision |
+|---|---|
+| VN-D52 | S5 drafts the face-to-face visit by a physician or nurse practitioner (`face_to_face`, `md`/`np`): `vitals_review` (S1's vitals phrases, over the visit's own recorded vitals) and `med_reconciliation` (S2b's orders in effect at the visit time, never "reconciled" or "verified"), beside S2's `prognosis`. It also drafts the IDG follow-up (`idg_followup`) of all six disciplines, each as that discipline's own visit: an RN as the routine visit, an LPN as S3, a social worker and a chaplain from the discipline's own plan as S4, a physician or nurse practitioner the recorded vitals only. This reverses VN-D38's "the face-to-face visit's `med_reconciliation` stays undrafted". |
+| VN-D53 | A physician's or nurse practitioner's note drafts nothing else: never `chief_concern`, `assessment`, `symptom_management`, `functional_status`, `nutrition`, `skin_wounds`, `interventions`, `plan` or the attestation. The care plan's goals and interventions are the team's, and in a certifying visit they would read as the physician's own plan; the physician's findings are the physician's own (VN-D32 already keeps the certification narrative out). |
+| VN-D54 | The `idg_followup` section itself is never drafted. Nothing links an IDG follow-up visit to the decision that prompted it: M14 closes an action item by the signer's membership (the encounter did not exist when the item was written), and the M17 proposal that names the decision carries a denylisted payload that may hold narrative, four modules away. The section stays the clinician's own words; S5b would add the link. |
+| VN-D55 | Scope is read off the corpus tags (`draft/scope.ts`), so the IDG follow-up of an RN, an LPN, a physician or a nurse practitioner needs no source row of its own: the PPS and ESAS-r phrases are not tagged for an LPN, a physician or a nurse practitioner, so those sections never draft. Only the templates whose source differs have rows (the social worker's and the chaplain's, from M15; the face-to-face visit's own map). A test pins the drafted set of every legal pair. |
+| VN-D56 | `narrative-vocab@2026.12.4`: no new phrase. It tags S1's 20 shared phrases for the IDG follow-up (its six vitals phrases also for `face_to_face` and for `md` and `np`), S2b's two order phrases for `face_to_face`, and S4's six plan phrases for the IDG follow-up. The clinical review stays pending (VN-D34), so the switch stays dark. |
+| VN-D57 | S5 changes files S4 changed (`sources.ts`, `scope.ts`, `inputs.ts`, `draft-entries.ts`), so it is built on the S4 branch (itself on S3) and rebased onto `main` after both merge (as VN-D44 and VN-D51). |
+
 ## 3. How a draft works
 
 1. The visit is published (`m17.visit.published`) and seeds an encounter as today.
@@ -350,6 +363,34 @@ Designed 2026-11-21 against the S3 branch. Within the decisions above; the S1/S2
 - **Limits recorded.** `discipline_plan.read` is not kind-scoped (a holder reads the other discipline's plan by route). The note is readable by every holder of `encounter.read`, a wider audience than the plan's readers, and a goal's words can carry sensitive psychosocial or spiritual content that nothing flags (only Part 2 is flagged). A single goal cannot be dropped from a confirmed section (S4b). S4's live suite does not exercise an amendment of a signed note; that path is S1's, unchanged.
 - **Not in S4.** Per-goal deselection and a link table (S4b), the psychosocial, spiritual and family sections, telephonic and bereavement-contact notes (M16), IDG follow-up (S5), M13 administrations, mobile, offline, dictation and AI.
 
+### 3.7 S5 design: the physician's and nurse practitioner's face-to-face visit and the IDG follow-up (VN-D52 to VN-D57)
+
+Designed 2026-11-21 against the S4 branch. Within the decisions above; the S1 to S4 pipeline (per-author draft recomputed as of the visit time, confirmation bound to the content hash and corpus version, gate check 13, sealed rows, per-viewer Part 2, amendments, the switch) is reused unchanged. No new seam, no new route and no migration.
+
+- **Which pairs draft.** Read off the corpus tags (`draft/scope.ts`), pinned by a test for every legal pair:
+
+| Pair | Drafts | Never drafts |
+|---|---|---|
+| `face_to_face` by `md` or `np` | `vitals_review`, `med_reconciliation`, `prognosis` (S2) | `chief_concern`, `assessment`, `symptom_management`, `functional_status`, `nutrition`, `skin_wounds`, `interventions`, `plan`, `f2f_attestation` |
+| `idg_followup` by `rn` | the five sections of the routine visit (S1) | `chief_concern`, `idg_followup` |
+| `idg_followup` by `lpn` | `vitals_review`, `interventions`, `plan` (S3) | the PPS and ESAS-r sections, `chief_concern`, `idg_followup` |
+| `idg_followup` by `msw` | `interventions`, `plan` from the social-work plan (S4) | `psychosocial`, `chief_concern`, `idg_followup` |
+| `idg_followup` by `chaplain` | `plan` from the spiritual plan (S4) | `spiritual`, `chief_concern`, `idg_followup` |
+| `idg_followup` by `md` or `np` | `vitals_review` | everything else |
+| `telephonic`, every discipline | nothing (a call measures nothing, and no section has a source that was discussed) | |
+
+- **Sources.** The face-to-face visit reads the visit's own recorded vitals (M8), the orders in effect as of the visit time (M12 `getMedicationsAsOf`, the read S2b built), the benefit period and the scales (S2's decline evidence), and NOT the care plan, the medication changes or a discipline plan. `readsActiveOrders(encounterType)` (the admission visit and the face-to-face visit) decides the orders read; the caregivers and the advance directive stay the admission visit's alone (`readsAdmissionRecord`). The IDG follow-up reads what the discipline's own visit reads, and a physician's or nurse practitioner's only the vitals.
+- **Words.** No phrase is added or reworded (VN-D56): the sentences are S1's vitals, S2b's orders and S4's plan sentences, byte for byte, and a test pins each.
+- **Keys (by template, as S3).** The face-to-face draft asks `election.read` (S2) and now `prescribing.read` (`admission-reads.ts`, by encounter type: the draft routes, finalize, sign and an addendum's recompute), and the scale key for the decline evidence; never the care plan's key. The IDG follow-up of a physician or nurse practitioner asks none; a social worker's and a chaplain's ask `discipline_plan.read` alone; an RN's and an LPN's ask what their own visits do.
+- **Part 2.** Unchanged mechanisms. An order flagged `isSudTreatment` is left out of the face-to-face draft for a viewer without disclosure and fails closed (only the literal `false` is "not SUD"); a signed note's orders section holding one is withheld whole from a reader without it. A plan goal and an intervention anchored to one follow M15's rule as in S4.
+- **Cosign.** Unchanged: only `lpn` and `chha` need one (`COSIGN_REQUIRED_DISCIPLINES`), so a physician's or nurse practitioner's note signs into `signed`, and an LPN's IDG follow-up goes to the RN case manager, who reads the redacted view and cosigns it (VN-D13).
+- **IDG, "no prep".** The IDG packet already imports what changed since the last meeting: M14's packet build reads the signed notes through `SignedEncountersReader`, the orders, the medications, the assessment changes and the care-plan summary. S5 changes none of it; what it adds is that the notes it reads arrive drafted.
+- **A defect found and fixed here.** The live suite showed that a draft computation could answer while a store read was still running on the request's transaction (`Promise.all` rejects at the first failure, and `loadSelection` makes four queries in turn). A seam that fails at once, as the orders read of a face-to-face draft does, rolled the transaction back, and the leftover queries ran on a connection that already belonged to the next request, whose transaction one of them aborted (`25P02`, a 500 for an unrelated caller). `settleAll` (`drafting/unavailable.ts`) now waits for every read, bounded by `guarded`, and reports the first failure in the order the reads are listed. It covers every draft, not only S5's.
+- **No migration.** No table or enum changes; the eraser is unchanged. The response enum is unchanged (the origin kinds are S2b's and S4's).
+- **Proof.** Unit tests for each layer (`draft-md-np-idg.test.ts`, `encounter-draft-md-np-idg-inputs.test.ts`, `encounter-draft-settles-reads.test.ts`, and the corpus, scope and service tests); `m8-visit-note-drafting-md-np-idg.live.test.ts` (the routes, the keys, the as-of read, Part 2 per viewer, the chain, the stale order, the IDG follow-up of every discipline, the telephonic visit, tenancy, a failing source and the audit trail), and the recertification live suite updated for the face-to-face visit, all as `chartwarden_app` on a private Postgres.
+- **Limits recorded.** The drafted vitals and orders appear in the visit that supports certification: they state what is on record and the physician confirms the section, but they are not the physician's finding. `med_reconciliation` states the orders in effect, never a reconciliation. Only `medical_director` has a role template, so a tenant grants `prescribing.read`, `election.read` and the scale key to its physician and nurse practitioner roles before it enables the switch. The IDG follow-up names no decision (VN-D54). An RN's IDG follow-up states the PPS and ESAS-r readings exactly as the routine visit does.
+- **Not in S5.** The telephonic visit of any discipline, PT, OT, speech therapy, volunteer and bereavement contacts, the link of an IDG follow-up to its decision (S5b), the IDG packet itself (M14's), mobile, offline, dictation and AI.
+
 ## 4. Constraints found
 
 ### 4.1 Backend and tenancy
@@ -390,7 +431,8 @@ Two tracks. Each slice is its own PR; pushes are batched (Actions minutes are me
 | S3 | Docs | Aide and LPN notes, with cosign (the LPN visits' `vitals_review`, `interventions` and `plan`, the aide visit's `adl`; VN-D39 to VN-D44, §3.5) | S1, S2b | Care-plan interventions drafted; cosigner sees per-viewer redaction (VN-D13); keys asked by template |
 | S4 | Docs | Social-work and chaplain notes: the plan of both and the social-work interventions, from the sealed M15 plan in effect at the visit (VN-D45 to VN-D51, §3.6). Section-level confirmation; no link | S1, S3; M15 plan versions (the as-of read is built here: no M15 goal link exists) | Discipline goals draft into the note; Part 2 per viewer; keys asked by template |
 | S4b | Docs | Per-goal deselection of a drafted plan: an expand-only link table from an encounter to M15 goals and interventions | S4 | Optional; not started |
-| S5 | Docs | MD/NP notes and the IDG "no-prep" note (recent care-plan changes and coordination notes) | S1 | IDG packet imports changes since the last meeting |
+| S5 | Docs | The face-to-face visit by a physician or nurse practitioner (the recorded vitals and the orders in effect, beside S2's `prognosis`) and the IDG follow-up of every discipline, as its own visit (VN-D52 to VN-D57, §3.7). The IDG packet's "since the last meeting" import is M14's and is unchanged: it reads the signed notes | S1, S2, S2b, S3, S4 | A physician's or nurse practitioner's face-to-face note arrives with its vitals and orders drafted; an IDG follow-up arrives drafted like the discipline's own visit; the `idg_followup` section is the clinician's own |
+| S5b | Docs | Link an IDG follow-up visit to its IDG action item or decision (an expand-only link table and a small M14 read), so the `idg_followup` section can state the meeting date, the decision kind and the due date, never the item's title or body | S5 | Optional; not started; field clinicians would need `idg.read` |
 | M3 | Mobile | Offline authoring: snapshot, vendored assembler, queue, unlock window, vault | M1, EVV offline device QA passed, its backend route proven deployed, security-owner sign-off on ADR-0072 decisions 8-12 | Device QA on the offline note path; unsynced writing survives logout |
 | A1 | Later | AI suggestions for empty sections (VN-D9), behind AI governance | S1; M32 inference built; its own ADR | Not specified here |
 
@@ -399,7 +441,7 @@ Two tracks. Each slice is its own PR; pushes are batched (Actions minutes are me
 - ~~**Amendment details** on the M8 addendum state machine (VN-D30)~~ Settled in PR E2 (§3.2 "Amendments"): the audit trail is the row triggers plus one `m8.encounter.section_amended` per signed addendum, an amendment's cosignature request has its own window and clock, and an amendment never re-opens billing.
 - **The exact section list for S1.** The RN routine visit is `routine_visit` with discipline `rn` (sections `chief_concern`, `vitals_review`, `assessment`, `symptom_management`, `interventions`, `plan`); confirm against `packages/hearthnote/src/templates/registry.ts` at S1 start.
 - **AI-content labelling.** The AI governance document says AI content is visibly labelled in the record and also that provenance is audit-only (two passages, RECON). The AI slice (A1) must resolve that conflict; VN-D7 settles it only for deterministic sections.
-- **Per-discipline designs** for S5 (MD/NP and the IDG note). S3 and S4 are settled (§3.5, §3.6); which M15 goals link to a note is S4b.
+- **Per-discipline designs.** S3, S4 and S5 are settled (§3.5, §3.6, §3.7); which M15 goals link to a note is S4b, and which IDG decision an IDG follow-up answers is S5b.
 - **The HOPE gate check** (check 4): needs an encounter-to-HOPE-timepoint correspondence M8 does not carry; owned by M10 work.
 - **Server-side or ambient dictation:** an ADR superseding ADR-0094 for native, after a BAA path exists.
 - **`controls.yaml` rows** for the sign gate, the offline vault, the unlock window and the version header. Drafted with each build, applied only with the owner's approval.
