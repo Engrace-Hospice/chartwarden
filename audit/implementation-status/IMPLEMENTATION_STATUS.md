@@ -33,7 +33,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M21 Supplies, DME & Comfort Kits | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 40/40 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M22 Document Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 59/59 ✅ | ✅ | ✅ | — | 21/21 ✅ |
 | M23 Billing — Medicare | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 127/127 ✅ | ✅ | ✅ | ✅ | 58/66 ⚠️ |
-| M24 Billing — Medicaid | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 46/46 ✅ | ✅ | ✅ | ✅ | 18/18 ✅ |
+| M24 Billing — Medicaid | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 46/46 ✅ | ✅ | ✅ | ✅ | 20/20 ✅ |
 | M25 Remittance & Denials | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 177/177 ✅ | ✅ | ✅ | ✅ | 59/61 ⚠️ |
 | M26 Cap Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M27 Cost Report | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 45/45 ✅ | ✅ | ✅ | ✅ | 15/15 ✅ |

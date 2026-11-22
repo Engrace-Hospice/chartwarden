@@ -236,7 +236,13 @@ describe("M24 assembly preview read audit", () => {
     expect(auditConfig).toMatchObject({
       resourceKind: "medicaid_claim_assembly_preview",
       patientIdBodyPath: "patientId",
-      fields: ["coverage", "eligibility", "room_and_board", "medicare_coordination"],
+      fields: [
+        "coverage",
+        "eligibility",
+        "room_and_board",
+        "medicare_coordination",
+        "payer_authorization_evidence",
+      ],
     });
     expect(auditConfig).not.toHaveProperty("none");
     expect(previewPreHandlerCount).toBe(3); // permission + provider scope + M5 patient scope

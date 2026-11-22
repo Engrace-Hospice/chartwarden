@@ -68,6 +68,13 @@ const BLOCKED_ARRANGEMENT_PREVIEW = {
     canonicalPayerName: null,
     reasonCode: "PROGRAM_ASSIGNMENT_MISSING",
   },
+  payerAuthorizationEvidence: {
+    clinicalDocuments: "missing",
+    notification: "missing",
+    authorization: "missing",
+    policyQualification: "unqualified",
+    reasonCodes: ["PAYER_AUTHORIZATION_POLICY_UNQUALIFIED"],
+  },
   enrollmentReadiness: [],
   selectedClearinghouse: { status: "unavailable", vendor: null, configurationStatus: null },
   tradingPartnerCredential: { status: "missing", reasonCode: "TRADING_PARTNER_CREDENTIAL_MISSING" },

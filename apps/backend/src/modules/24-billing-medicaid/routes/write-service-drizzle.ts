@@ -29,6 +29,7 @@ import {
   medicaidClaimRouteReadiness,
   parseMedicaidControlNumber,
   rbArrangementMachine,
+  resolvePayerAuthorizationEvidence,
   runMedicaidRules,
 } from "@chartwarden/medicaid-adapters";
 import { StaleVersionError } from "@chartwarden/shared/route-kit";
@@ -1209,6 +1210,7 @@ export function buildDrizzleM24WriteService(
   const SPC = schema.medicaidStatePlanCode;
   const PA = schema.medicaidProgramAssignment;
   const EE = schema.medicaidEnrollmentEvidence;
+  const PAE = schema.medicaidPayerAuthorizationEvent;
   const L = schema.medicaidClaimLine;
   const LE = schema.medicaidClaimLineEncounter;
   const RULES_BY_KEY = new Map(DEFAULT_MEDICAID_RULES.map((r) => [r.key, r]));
@@ -1584,6 +1586,13 @@ export function buildDrizzleM24WriteService(
         canonicalPayerName: null,
         reasonCode: "PROGRAM_RESPONSIBILITY_UNAVAILABLE",
       };
+      let payerAuthorizationEvidence: AssemblyPreviewView["payerAuthorizationEvidence"] = {
+        clinicalDocuments: "missing",
+        notification: "missing",
+        authorization: "missing",
+        policyQualification: "unqualified",
+        reasonCodes: ["PAYER_AUTHORIZATION_POLICY_UNQUALIFIED", "PAYER_AUTHORIZATION_UNRESOLVED"],
+      };
       let enrollmentReadiness: AssemblyPreviewView["enrollmentReadiness"] =
         ENROLLMENT_REQUIREMENTS.map((kind) => ({
           kind,
@@ -1854,6 +1863,62 @@ export function buildDrizzleM24WriteService(
                   )
                   .orderBy(EE.effectiveFrom, EE.id)
               : [];
+          const authorizationRows =
+            medicaidResolution?.status === "uniform" &&
+            projectedProgramResponsibility.status === "verified" &&
+            projectedProgramResponsibility.canonicalPayerId
+              ? await tx
+                  .select({
+                    id: PAE.id,
+                    canonicalPayerId: PAE.canonicalPayerId,
+                    serviceFrom: PAE.serviceFrom,
+                    serviceTo: PAE.serviceTo,
+                    eventKind: PAE.eventKind,
+                    evidenceStatus: PAE.evidenceStatus,
+                    supersedesId: PAE.supersedesId,
+                    createdAt: PAE.createdAt,
+                  })
+                  .from(PAE)
+                  .where(
+                    and(
+                      eq(PAE.organizationId, actor.organizationId),
+                      eq(PAE.providerEntityId, input.providerEntityId),
+                      eq(PAE.patientId, input.patientId),
+                      eq(PAE.patientPayerId, medicaidResolution.coverage.id),
+                      eq(PAE.admissionId, input.admissionId),
+                      eq(PAE.canonicalPayerId, projectedProgramResponsibility.canonicalPayerId),
+                      lte(PAE.serviceFrom, rangeTo),
+                      gte(PAE.serviceTo, rangeFrom),
+                    ),
+                  )
+                  .orderBy(PAE.createdAt, PAE.id)
+              : [];
+          const authorizationProjection = resolvePayerAuthorizationEvidence({
+            canonicalPayerId: projectedProgramResponsibility.canonicalPayerId ?? "",
+            serviceFrom: input.serviceFrom,
+            serviceTo: input.serviceTo,
+            events: authorizationRows.map((row) => ({
+              id: row.id,
+              canonicalPayerId: row.canonicalPayerId,
+              serviceFrom: day(row.serviceFrom),
+              serviceTo: day(row.serviceTo),
+              eventKind: row.eventKind,
+              evidenceStatus: row.evidenceStatus,
+              supersedesId: row.supersedesId,
+              createdAt: iso(row.createdAt),
+            })),
+          });
+          const projectedPayerAuthorizationEvidence: AssemblyPreviewView["payerAuthorizationEvidence"] =
+            {
+              clinicalDocuments: authorizationProjection.clinicalDocuments,
+              notification: authorizationProjection.notification,
+              authorization: authorizationProjection.authorization,
+              policyQualification: "unqualified",
+              reasonCodes: [
+                ...authorizationProjection.reasonCodes,
+                "PAYER_AUTHORIZATION_POLICY_UNQUALIFIED",
+              ],
+            };
           const routeRowsForProvider = enrollmentRows.filter(
             (row) =>
               row.evidenceKind === "clearinghouse_payer_route" &&
@@ -1907,6 +1972,7 @@ export function buildDrizzleM24WriteService(
             projectedTradingPartnerCredential,
             projectedEligibility,
             projectedProgramResponsibility,
+            projectedPayerAuthorizationEvidence,
             projectedEnrollmentReadiness,
             arrangementRows,
             dayRows,
@@ -1914,6 +1980,7 @@ export function buildDrizzleM24WriteService(
         });
         recordedEligibility = previewReads.projectedEligibility;
         programResponsibility = previewReads.projectedProgramResponsibility;
+        payerAuthorizationEvidence = previewReads.projectedPayerAuthorizationEvidence;
         enrollmentReadiness = previewReads.projectedEnrollmentReadiness;
         tradingPartnerCredential = previewReads.projectedTradingPartnerCredential;
 
@@ -2067,6 +2134,7 @@ export function buildDrizzleM24WriteService(
         medicareEvidence,
         stateBillingPolicy,
         programResponsibility,
+        payerAuthorizationEvidence,
         enrollmentReadiness,
         selectedClearinghouse,
         tradingPartnerCredential,

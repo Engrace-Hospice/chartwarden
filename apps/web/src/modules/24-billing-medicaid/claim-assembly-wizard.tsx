@@ -80,6 +80,13 @@ interface AssemblyPreview {
     canonicalPayerName: string | null;
     reasonCode: string;
   };
+  payerAuthorizationEvidence: {
+    clinicalDocuments: string;
+    notification: string;
+    authorization: string;
+    policyQualification: "unqualified";
+    reasonCodes: string[];
+  };
   enrollmentReadiness: {
     kind: string;
     status: string;
@@ -641,6 +648,18 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                   label="Trading-partner credential configuration"
                   value={`${humanize(preview.tradingPartnerCredential.status)} · ${humanize(preview.tradingPartnerCredential.reasonCode)}; configuration is not payer enrollment`}
                 />
+                <Field
+                  label="Clinical documents"
+                  value={`${humanize(preview.payerAuthorizationEvidence.clinicalDocuments)}; the signed clinical record remains owned by M6`}
+                />
+                <Field
+                  label="Payer notification"
+                  value={`${humanize(preview.payerAuthorizationEvidence.notification)}; sending a notice is not payer receipt`}
+                />
+                <Field
+                  label="Payer authorization evidence"
+                  value={`${humanize(preview.payerAuthorizationEvidence.authorization)} · ${humanize(preview.payerAuthorizationEvidence.policyQualification)} payer policy; this record does not authorize transmission`}
+                />
                 {preview.enrollmentReadiness.map((item) => (
                   <Field
                     key={item.kind}
@@ -674,6 +693,18 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                         ? "Cannot assess until payer responsibility is resolved"
                         : "Unconfirmed; secondary Medicaid claim formats remain unavailable"
                   }
+                />
+                <Field
+                  label="Clinical quantity"
+                  value="Clinical quantity missing or unqualified · no hours are inferred from date-only LOC records"
+                />
+                <Field
+                  label="Pricing information"
+                  value="Pricing information required · no qualified payer-specific rate is currently available"
+                />
+                <Field
+                  label="Electronic submission"
+                  value="Unavailable · this workflow is for local draft preparation only"
                 />
                 {needsRb ? (
                   <Field

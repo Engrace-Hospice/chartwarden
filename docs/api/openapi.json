@@ -209503,6 +209503,7 @@
                     "medicareEvidence",
                     "stateBillingPolicy",
                     "programResponsibility",
+                    "payerAuthorizationEvidence",
                     "enrollmentReadiness",
                     "selectedClearinghouse",
                     "tradingPartnerCredential",
@@ -210057,6 +210058,104 @@
                         },
                         "reasonCode": {
                           "type": "string"
+                        }
+                      }
+                    },
+                    "payerAuthorizationEvidence": {
+                      "type": "object",
+                      "required": [
+                        "clinicalDocuments",
+                        "notification",
+                        "authorization",
+                        "policyQualification",
+                        "reasonCodes"
+                      ],
+                      "properties": {
+                        "clinicalDocuments": {
+                          "anyOf": [
+                            {
+                              "const": "missing",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unverified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "available",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "notification": {
+                          "anyOf": [
+                            {
+                              "const": "missing",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unverified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "prepared",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sent",
+                              "type": "string"
+                            },
+                            {
+                              "const": "acknowledged",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "authorization": {
+                          "anyOf": [
+                            {
+                              "const": "missing",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unverified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "approved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "denied",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "revoked",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "policyQualification": {
+                          "const": "unqualified",
+                          "type": "string"
+                        },
+                        "reasonCodes": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
                         }
                       }
                     },

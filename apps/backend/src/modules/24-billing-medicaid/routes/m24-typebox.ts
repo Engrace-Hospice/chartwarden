@@ -274,6 +274,22 @@ export const AssemblyPreviewResponse = Type.Object({
     canonicalPayerName: nullableStr(),
     reasonCode: Type.String(),
   }),
+  payerAuthorizationEvidence: Type.Object({
+    clinicalDocuments: lit(["missing", "unverified", "available"] as const),
+    notification: lit(["missing", "unverified", "prepared", "sent", "acknowledged"] as const),
+    authorization: lit([
+      "missing",
+      "unverified",
+      "pending",
+      "approved",
+      "denied",
+      "expired",
+      "revoked",
+      "ambiguous",
+    ] as const),
+    policyQualification: Type.Literal("unqualified"),
+    reasonCodes: Type.Array(Type.String()),
+  }),
   enrollmentReadiness: Type.Array(
     Type.Object({
       kind: Type.String(),

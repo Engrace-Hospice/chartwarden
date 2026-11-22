@@ -82564,6 +82564,14 @@ export interface operations {
                             canonicalPayerName: string | null;
                             reasonCode: string;
                         };
+                        payerAuthorizationEvidence: {
+                            clinicalDocuments: "missing" | "unverified" | "available";
+                            notification: "missing" | "unverified" | "prepared" | "sent" | "acknowledged";
+                            authorization: "missing" | "unverified" | "pending" | "approved" | "denied" | "expired" | "revoked" | "ambiguous";
+                            /** @constant */
+                            policyQualification: "unqualified";
+                            reasonCodes: string[];
+                        };
                         enrollmentReadiness: {
                             kind: string;
                             status: "not_applicable" | "missing" | "pending" | "verified" | "expired" | "revoked" | "ambiguous" | "unavailable";
