@@ -139,7 +139,7 @@ in place (it adds the `listen 443 ssl` block and the certificate paths), so **ne
   on a dedicated `scan` network that only `clamav`, `api` and `worker` join (postgres, seaweedfs, docling and the rest
   cannot reach it), and it is capped (`mem_limit: 4g`, `cpus: 2`) so a scan flood or a bad signature reload cannot
   starve the host. The image is upstream's Alpine `clamav/clamav:1.4`, pinned by digest. Dev compose already builds
-  `deploy/clamav/Dockerfile` (ClamAV 1.4 on Wolfi, multi-arch); production moves to it when `clamav-image.yml` (manual,
+  `deploy/clamav/Dockerfile` (ClamAV 1.5 on Wolfi, multi-arch; the Alpine pin is 1.4.6 and Wolfi has no 1.4 past 1.4.3); production moves to it when `clamav-image.yml` (manual,
   `main` only: builds, scans, signs and SBOM-attests it as `ghcr.io/engrace-hospice/chartwarden-clamav`) has published a
   digest: verify it with `cosign verify` / `verify-attestation` as for the Postgres image, pin it in `compose.yml`, and
   deploy (the swap is stateless: the signature DB stays in `clamav-data`, which the new image re-chowns to uid 100, the
@@ -770,7 +770,7 @@ arch:compose-policy` (part of `arch:fitness`) fails on any literal image without
 | seaweedfs | `chrislusf/seaweedfs:4.52` | SeaweedFS 4.52 (pinned 2026-11-05) |
 | fluent-bit | `fluent/fluent-bit:5.1.5` | Fluent Bit 5.1.5 (pinned 2026-11-05) |
 | minio (legacy profile, cutover only) | `cgr.dev/chainguard/minio:latest` | MinIO `RELEASE.2026-10-23T20-06-51Z` |
-| clamav | `clamav/clamav:1.4` (Alpine) | ClamAV 1.4.x (to be replaced by the Wolfi `chartwarden-clamav` once published, see the `clamav` service above) |
+| clamav | `clamav/clamav:1.4` (Alpine) | ClamAV 1.4.6 (to be replaced by the Wolfi `chartwarden-clamav`, ClamAV 1.5.x, once published; see the `clamav` service above) |
 
 SeaweedFS: `test:object-store:conformance:live` and `test:object-store:resilience:live` (CI job
 `object-store-conformance-live`) run against the same image and the same `object-store/` files; re-run them on a bump.

@@ -1,6 +1,6 @@
 name: Publish ClamAV image
 
-# Builds deploy/clamav (Wolfi + ClamAV 1.4), fails on any HIGH/CRITICAL, pushes it to GHCR, signs it keyless and attests
+# Builds deploy/clamav (Wolfi + ClamAV 1.5), fails on any HIGH/CRITICAL, pushes it to GHCR, signs it keyless and attests
 # its SBOM, the same chain postgres-image.yml and deploy.yml run. Manual only: production pins the digest this prints in
 # deploy/production/compose.yml by hand. The scanner is stateless (the signature DB is a volume), so a bump is a plain
 # image swap: `docker compose up -d --no-deps clamav` (deploy.sh keeps it up without recreating it between releases).
@@ -39,7 +39,7 @@ jobs:
           context: deploy/clamav
           platforms: linux/amd64
           push: true
-          tags: ${{ env.IMAGE }}:1.4-sha-${{ github.sha }}
+          tags: ${{ env.IMAGE }}:1.5-sha-${{ github.sha }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
       - name: Scan (HIGH/CRITICAL fail the publish)
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
@@ -72,7 +72,7 @@ jobs:
           {
             echo "### Published"
             echo '```'
-            echo "${IMAGE}:1.4-sha-${GITHUB_SHA}@${DIGEST}"
+            echo "${IMAGE}:1.5-sha-${GITHUB_SHA}@${DIGEST}"
             echo '```'
             echo "Pin it as the clamav image in deploy/production/compose.yml; verify with cosign first (deploy/production/README.md, ClamAV image)."
           } >> "$GITHUB_STEP_SUMMARY"

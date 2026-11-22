@@ -13,19 +13,20 @@
 #
 # Bump: refresh the base digest (`crane digest cgr.dev/chainguard/wolfi-base:latest`) and the package pins
 # (`apk add -s <pkgs>` in that base shows what resolves); Wolfi keeps old versions, so pins stay buildable.
-# clamav-1.4 is ClamAV's LTS line; moving to 1.5 is an engine upgrade, not a base bump.
+# Wolfi's clamav-1.4 stops at 1.4.3 (production's Alpine image had 1.4.6), so this runs the 1.5 line. Moving engine line
+# is an upgrade, not a base bump.
 FROM cgr.dev/chainguard/wolfi-base@sha256:8509ee4351a2e501b7f98201f2e2642396e82020c61a589cacdcfe74b9de46c1
 
-ARG CLAMAV_VERSION=1.4.3-r3
+ARG CLAMAV_VERSION=1.5.2-r7
 
 # uid/gid 100 is the clamav user upstream's Alpine image used, so the existing production volume needs no re-chown.
 RUN addgroup -g 100 clamav \
  && adduser -D -H -u 100 -G clamav -h /var/lib/clamav -s /sbin/nologin clamav \
  && apk add --no-cache \
-      "clamav-1.4=${CLAMAV_VERSION}" \
-      "clamav-1.4-daemon=${CLAMAV_VERSION}" \
-      "clamav-1.4-freshclam=${CLAMAV_VERSION}" \
-      "clamav-1.4-clamdscan=${CLAMAV_VERSION}" \
+      "clamav-1.5=${CLAMAV_VERSION}" \
+      "clamav-1.5-daemon=${CLAMAV_VERSION}" \
+      "clamav-1.5-freshclam=${CLAMAV_VERSION}" \
+      "clamav-1.5-clamdscan=${CLAMAV_VERSION}" \
       gosu=1.20-r1 tini=0.19.0-r27 netcat-openbsd=1.239-r1 \
  && install -d -o clamav -g clamav -m 0755 /var/lib/clamav /var/log/clamav
 
