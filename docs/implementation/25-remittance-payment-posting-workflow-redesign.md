@@ -1,8 +1,8 @@
 # ChartWarden — Workflow 25: Remittance & Payment Posting — Implementation Plan
 
-**Destination:** `docs/implementation/25-remittance-payment-posting-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — audit and approval before code changes  
+**Destination:** `docs/implementation/25-remittance-payment-posting-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — audit and approval before code changes
 **Source:** Static file-path inspection of user-uploaded `chartwarden-main.zip` (November 2026); no runtime or live integration verified.
 
 ## Objective
@@ -75,10 +75,10 @@ Redesign **Remittance & Payment Posting** into an accessible, task-oriented Char
 
 **Required WP0 artifacts** (`docs/implementation/evidence/25-*`):
 
-- `25-current-state-audit.md` — route graph, user journey and evidence. 
-- `25-contracts-and-permissions.md` — states, DTOs, endpoints, ABAC/RLS, jobs, integrations. 
-- `25-ux-findings.md` — task walkthroughs, friction, screenshots with synthetic data only. 
-- `25-compliance-risk-register.md` — applicable rules, assumptions, safety and financial risks. 
+- `25-current-state-audit.md` — route graph, user journey and evidence.
+- `25-contracts-and-permissions.md` — states, DTOs, endpoints, ABAC/RLS, jobs, integrations.
+- `25-ux-findings.md` — task walkthroughs, friction, screenshots with synthetic data only.
+- `25-compliance-risk-register.md` — applicable rules, assumptions, safety and financial risks.
 - `25-redesign-decision.md` — proposed screens, API impact, rollout, rollback and approval requests.
 
 **G0 STOP:** Present audit and decision package for approval. Do not implement until approved.

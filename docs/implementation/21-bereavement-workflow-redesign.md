@@ -1,8 +1,8 @@
 # ChartWarden — Workflow 21: Bereavement — Implementation Plan
 
-**Destination:** `docs/implementation/21-bereavement-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — WP0 audit and explicit approval required  
+**Destination:** `docs/implementation/21-bereavement-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — WP0 audit and explicit approval required
 **Source:** Static inspection of user-uploaded `chartwarden-main.zip` (November 2026). No running app, production data, or live integration verified.
 
 ## Executive objective

@@ -1,9 +1,9 @@
 # ChartWarden — Workflow 12: Pharmacy / DoseSpot Integration & UX Redesign
 
-**Destination:** `docs/implementation/12-pharmacy-dosespot-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — mandatory audit and approval gate  
-**Sequence:** Workflow 11 Medication Orders → **12 Pharmacy / DoseSpot** → 13 Medication Administration (eMAR)  
+**Destination:** `docs/implementation/12-pharmacy-dosespot-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — mandatory audit and approval gate
+**Sequence:** Workflow 11 Medication Orders → **12 Pharmacy / DoseSpot** → 13 Medication Administration (eMAR)
 **Baseline:** Static source inspection of uploaded `chartwarden-main.zip` (November 2026). No runtime, live database, external vendor account, sandbox, production transmission, or test execution verified during preparation.
 
 ## 0. Executive decision

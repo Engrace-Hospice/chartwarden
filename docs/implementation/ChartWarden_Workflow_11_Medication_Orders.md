@@ -1,9 +1,9 @@
 # ChartWarden — Workflow 11: Medication Orders Redesign
 
-**Destination:** `docs/implementation/11-medication-orders-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — audit and approval required before application changes  
-**Sequence:** Workflow 10 EVV → **11 Medication Orders** → 12 Pharmacy / DoseSpot  
+**Destination:** `docs/implementation/11-medication-orders-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — audit and approval required before application changes
+**Sequence:** Workflow 10 EVV → **11 Medication Orders** → 12 Pharmacy / DoseSpot
 **Baseline:** Static inspection of the user-uploaded `chartwarden-main.zip` (November 2026). No live application, database, external DoseSpot environment, or automated tests were run during preparation.
 
 ## 0. Executive decision

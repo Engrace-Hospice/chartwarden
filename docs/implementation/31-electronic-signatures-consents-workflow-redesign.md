@@ -1,8 +1,8 @@
 # ChartWarden — Workflow 31: Electronic Signatures & Consents — Implementation Plan
 
-**Repository destination:** `docs/implementation/31-electronic-signatures-consents-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — WP0 audit and approval required  
+**Repository destination:** `docs/implementation/31-electronic-signatures-consents-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — WP0 audit and approval required
 **Evidence basis:** Static inspection of paths in user-uploaded `chartwarden-main.zip`; functionality, runtime behavior and integrations not independently validated.
 
 ## Objective

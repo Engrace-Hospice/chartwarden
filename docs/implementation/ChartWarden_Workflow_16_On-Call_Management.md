@@ -1,9 +1,9 @@
 # ChartWarden — Workflow 16: On-Call Management — Implementation Plan
 
-**Destination:** `docs/implementation/16-on-call-management-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — WP0 audit and approval mandatory  
-**Baseline:** Static inspection of user-provided `chartwarden-main.zip` (November 2026); no runtime, live database, vendor connectivity, or production behavior verified.  
+**Destination:** `docs/implementation/16-on-call-management-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — WP0 audit and approval mandatory
+**Baseline:** Static inspection of user-provided `chartwarden-main.zip` (November 2026); no runtime, live database, vendor connectivity, or production behavior verified.
 **Scope:** Existing workflow UX and safe integration with adjacent ChartWarden modules; **not** an unapproved backend rewrite.
 
 ## Executive decision

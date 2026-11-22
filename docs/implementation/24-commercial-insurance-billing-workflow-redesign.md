@@ -1,8 +1,8 @@
 # ChartWarden — Workflow 24: Commercial Insurance Billing — Implementation Plan
 
-**Destination:** `docs/implementation/24-commercial-insurance-billing-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — audit and approval before code changes  
+**Destination:** `docs/implementation/24-commercial-insurance-billing-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — audit and approval before code changes
 **Source:** Static file-path inspection of user-uploaded `chartwarden-main.zip` (November 2026); no runtime or live integration verified.
 
 ## Objective
@@ -79,10 +79,10 @@ Redesign **Commercial Insurance Billing** into an accessible, task-oriented Char
 
 **Required WP0 artifacts** (`docs/implementation/evidence/24-*`):
 
-- `24-current-state-audit.md` — route graph, user journey and evidence. 
-- `24-contracts-and-permissions.md` — states, DTOs, endpoints, ABAC/RLS, jobs, integrations. 
-- `24-ux-findings.md` — task walkthroughs, friction, screenshots with synthetic data only. 
-- `24-compliance-risk-register.md` — applicable rules, assumptions, safety and financial risks. 
+- `24-current-state-audit.md` — route graph, user journey and evidence.
+- `24-contracts-and-permissions.md` — states, DTOs, endpoints, ABAC/RLS, jobs, integrations.
+- `24-ux-findings.md` — task walkthroughs, friction, screenshots with synthetic data only.
+- `24-compliance-risk-register.md` — applicable rules, assumptions, safety and financial risks.
 - `24-redesign-decision.md` — proposed screens, API impact, rollout, rollback and approval requests.
 
 **G0 STOP:** Present audit and decision package for approval. Do not implement until approved.

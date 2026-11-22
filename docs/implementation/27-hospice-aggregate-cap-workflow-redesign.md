@@ -1,8 +1,8 @@
 # ChartWarden — Workflow 27: Hospice Aggregate Cap — Implementation Plan
 
-**Destination:** `docs/implementation/27-hospice-aggregate-cap-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — audit and approval before code changes  
+**Destination:** `docs/implementation/27-hospice-aggregate-cap-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — audit and approval before code changes
 **Source:** Static file-path inspection of user-uploaded `chartwarden-main.zip` (November 2026); no runtime or live integration verified.
 
 ## Objective
@@ -78,10 +78,10 @@ Redesign **Hospice Aggregate Cap** into an accessible, task-oriented ChartWarden
 
 **Required WP0 artifacts** (`docs/implementation/evidence/27-*`):
 
-- `27-current-state-audit.md` — route graph, user journey and evidence. 
-- `27-contracts-and-permissions.md` — states, DTOs, endpoints, ABAC/RLS, jobs, integrations. 
-- `27-ux-findings.md` — task walkthroughs, friction, screenshots with synthetic data only. 
-- `27-compliance-risk-register.md` — applicable rules, assumptions, safety and financial risks. 
+- `27-current-state-audit.md` — route graph, user journey and evidence.
+- `27-contracts-and-permissions.md` — states, DTOs, endpoints, ABAC/RLS, jobs, integrations.
+- `27-ux-findings.md` — task walkthroughs, friction, screenshots with synthetic data only.
+- `27-compliance-risk-register.md` — applicable rules, assumptions, safety and financial risks.
 - `27-redesign-decision.md` — proposed screens, API impact, rollout, rollback and approval requests.
 
 **G0 STOP:** Present audit and decision package for approval. Do not implement until approved.

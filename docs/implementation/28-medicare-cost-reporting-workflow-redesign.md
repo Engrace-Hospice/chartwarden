@@ -1,8 +1,8 @@
 # ChartWarden — Workflow 28: Medicare Cost Reporting — Implementation Plan
 
-**Repository destination:** `docs/implementation/28-medicare-cost-reporting-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — WP0 audit and approval required  
+**Repository destination:** `docs/implementation/28-medicare-cost-reporting-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — WP0 audit and approval required
 **Evidence basis:** Static inspection of paths in user-uploaded `chartwarden-main.zip`; functionality, runtime behavior and integrations not independently validated.
 
 ## Objective

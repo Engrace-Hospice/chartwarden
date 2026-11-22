@@ -1,8 +1,8 @@
 # ChartWarden — Workflow 40: Family Support & Bereavement
 
-**Repository destination:** `docs/implementation/40-family-support-bereavement-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — mandatory WP0 and approval gate  
+**Repository destination:** `docs/implementation/40-family-support-bereavement-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — mandatory WP0 and approval gate
 **Evidence:** Static path verification against uploaded `chartwarden-main.zip`; not a live runtime audit.
 
 ## Mission and boundaries

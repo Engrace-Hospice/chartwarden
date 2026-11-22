@@ -1,10 +1,10 @@
 # ChartWarden — Workflow 46: Cross-Workflow Integration Audit & Release Gates
 
-**Target path:** `docs/implementation/46-cross-workflow-integration-audit.md`  
-**Executor:** Claude Code (read-only audit first; no application changes without explicit approval)  
-**Status:** PROPOSED — not an executed audit  
-**Baseline:** The user-supplied `chartwarden-main.zip` and the 45 prior workflow implementation specifications. Current Git checkout, not this historical ZIP, is authoritative when executing.  
-**Priority:** P0 integration safety and regulatory correctness; P1 UX continuity; P2 operational efficiency.  
+**Target path:** `docs/implementation/46-cross-workflow-integration-audit.md`
+**Executor:** Claude Code (read-only audit first; no application changes without explicit approval)
+**Status:** PROPOSED — not an executed audit
+**Baseline:** The user-supplied `chartwarden-main.zip` and the 45 prior workflow implementation specifications. Current Git checkout, not this historical ZIP, is authoritative when executing.
+**Priority:** P0 integration safety and regulatory correctness; P1 UX continuity; P2 operational efficiency.
 
 ## Executive mandate
 

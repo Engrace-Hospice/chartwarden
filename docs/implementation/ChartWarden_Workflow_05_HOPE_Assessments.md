@@ -1,11 +1,11 @@
 # ChartWarden — Workflow 05: HOPE Assessments UX and Workflow Redesign
 
-**Repository destination:** `docs/implementation/05-hope-assessments-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** Proposed; **audit and approval required before product-code changes**  
-**Sequence:** After Workflow 04 (Initial Assessments); before Workflow 06 (Care Plan Management)  
-**Baseline:** Static inspection of the uploaded `chartwarden-main.zip` on November 14, 2026. No live application, database, authenticated browser workflow, or deployed iQIES integration was tested.  
-**Scope:** HOPE timepoint tracking, capture, validation, signature, symptom follow-up visits (SFV), submission readiness, iQIES submission visibility, corrections, and operational monitoring.  
+**Repository destination:** `docs/implementation/05-hope-assessments-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** Proposed; **audit and approval required before product-code changes**
+**Sequence:** After Workflow 04 (Initial Assessments); before Workflow 06 (Care Plan Management)
+**Baseline:** Static inspection of the uploaded `chartwarden-main.zip` on November 14, 2026. No live application, database, authenticated browser workflow, or deployed iQIES integration was tested.
+**Scope:** HOPE timepoint tracking, capture, validation, signature, symptom follow-up visits (SFV), submission readiness, iQIES submission visibility, corrections, and operational monitoring.
 **Out of scope:** Replacing the HOPE domain engine, inventing CMS data specifications, silently changing timepoint clocks, or merging HOPE with general initial assessments.
 
 ## 0. Executive decision
@@ -97,8 +97,8 @@ The organizational HOPE dashboard and submission worklist remain separate cross-
 
 ### 3.3 Patient vs organization experiences
 
-**Clinician:** “What do I need to complete for this patient now?”  
-**Supervisor:** “Which timepoints are at risk, who owns them, and how do I intervene?”  
+**Clinician:** “What do I need to complete for this patient now?”
+**Supervisor:** “Which timepoints are at risk, who owns them, and how do I intervene?”
 **Submission operator:** “Which signed records are package-ready, what was transmitted, and what did CMS accept?”
 
 Do not combine these into one giant dashboard. Provide links across them with preserved patient/timepoint context.

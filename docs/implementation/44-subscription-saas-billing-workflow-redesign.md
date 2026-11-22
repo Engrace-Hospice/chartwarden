@@ -1,8 +1,8 @@
 # ChartWarden — Workflow 44: Subscription & SaaS Billing
 
-**Repository destination:** `docs/implementation/44-subscription-saas-billing-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — WP0 audit and explicit approval required  
+**Repository destination:** `docs/implementation/44-subscription-saas-billing-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — WP0 audit and explicit approval required
 **Source:** Static path verification against uploaded `chartwarden-main.zip`; not a live runtime verification.
 
 ## Mission

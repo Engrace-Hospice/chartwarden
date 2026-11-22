@@ -1,8 +1,8 @@
 # ChartWarden — Workflow 26: Denials, Rejections & Appeals — Implementation Plan
 
-**Destination:** `docs/implementation/26-denials-rejections-appeals-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — audit and approval before code changes  
+**Destination:** `docs/implementation/26-denials-rejections-appeals-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — audit and approval before code changes
 **Source:** Static file-path inspection of user-uploaded `chartwarden-main.zip` (November 2026); no runtime or live integration verified.
 
 ## Objective
@@ -80,10 +80,10 @@ Redesign **Denials, Rejections & Appeals** into an accessible, task-oriented Cha
 
 **Required WP0 artifacts** (`docs/implementation/evidence/26-*`):
 
-- `26-current-state-audit.md` — route graph, user journey and evidence. 
-- `26-contracts-and-permissions.md` — states, DTOs, endpoints, ABAC/RLS, jobs, integrations. 
-- `26-ux-findings.md` — task walkthroughs, friction, screenshots with synthetic data only. 
-- `26-compliance-risk-register.md` — applicable rules, assumptions, safety and financial risks. 
+- `26-current-state-audit.md` — route graph, user journey and evidence.
+- `26-contracts-and-permissions.md` — states, DTOs, endpoints, ABAC/RLS, jobs, integrations.
+- `26-ux-findings.md` — task walkthroughs, friction, screenshots with synthetic data only.
+- `26-compliance-risk-register.md` — applicable rules, assumptions, safety and financial risks.
 - `26-redesign-decision.md` — proposed screens, API impact, rollout, rollback and approval requests.
 
 **G0 STOP:** Present audit and decision package for approval. Do not implement until approved.

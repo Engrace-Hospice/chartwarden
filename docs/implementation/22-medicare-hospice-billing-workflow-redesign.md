@@ -1,8 +1,8 @@
 # ChartWarden — Workflow 22: Medicare Hospice Billing — Implementation Plan
 
-**Destination:** `docs/implementation/22-medicare-hospice-billing-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — WP0 audit and explicit approval required  
+**Destination:** `docs/implementation/22-medicare-hospice-billing-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — WP0 audit and explicit approval required
 **Source:** Static inspection of user-uploaded `chartwarden-main.zip` (November 2026). No running app, production data, or live integration verified.
 
 ## Executive objective

@@ -1,8 +1,8 @@
 # ChartWarden — Workflow 38: Family Access & Permissions
 
-**Repository destination:** `docs/implementation/38-family-access-permissions-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — mandatory WP0 and approval gate  
+**Repository destination:** `docs/implementation/38-family-access-permissions-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — mandatory WP0 and approval gate
 **Evidence:** Static path verification against uploaded `chartwarden-main.zip`; not a live runtime audit.
 
 ## Mission and boundaries

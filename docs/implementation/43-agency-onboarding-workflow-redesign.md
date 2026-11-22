@@ -1,8 +1,8 @@
 # ChartWarden — Workflow 43: Agency Onboarding
 
-**Repository destination:** `docs/implementation/43-agency-onboarding-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — WP0 audit and explicit approval required  
+**Repository destination:** `docs/implementation/43-agency-onboarding-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — WP0 audit and explicit approval required
 **Source:** Static path verification against uploaded `chartwarden-main.zip`; not a live runtime verification.
 
 ## Mission

@@ -1,10 +1,10 @@
 # ChartWarden — Workflow 09: Clinical Visits & Documentation Redesign
 
-**Repository destination:** `docs/implementation/09-clinical-visits-documentation-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — mandatory WP0 audit and approval before application changes  
-**Sequence:** After Workflow 08 (Visit Scheduling), before Workflow 10 (Electronic Visit Verification)  
-**Baseline:** Static inspection of user-supplied `chartwarden-main.zip` (November 2026). No authenticated browser session, database execution, or live clinical verification performed.  
+**Repository destination:** `docs/implementation/09-clinical-visits-documentation-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — mandatory WP0 audit and approval before application changes
+**Sequence:** After Workflow 08 (Visit Scheduling), before Workflow 10 (Electronic Visit Verification)
+**Baseline:** Static inspection of user-supplied `chartwarden-main.zip` (November 2026). No authenticated browser session, database execution, or live clinical verification performed.
 **Scope:** Staff-facing execution of scheduled/authorized hospice visits, clinical encounter authoring, documentation review, finalization, signature, cosignature, late entry, addenda, and handoffs to care plans, EVV, and reporting. Preserve existing backend domain authority and the Lantern design system.
 
 ---

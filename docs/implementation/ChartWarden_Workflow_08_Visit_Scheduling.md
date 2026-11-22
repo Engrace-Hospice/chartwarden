@@ -1,10 +1,10 @@
 # ChartWarden — Workflow 08: Visit Scheduling Redesign
 
-**Repository destination:** `docs/implementation/08-visit-scheduling-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — WP0 audit and explicit approval required before application changes  
-**Sequence:** After Workflow 07 (Discipline-Specific Care Plans), before Workflow 09 (Clinical Visits & Documentation)  
-**Baseline:** Static inspection of user-supplied `chartwarden-main.zip`, November 2026. No authenticated browser execution, database test, or production validation was performed.  
+**Repository destination:** `docs/implementation/08-visit-scheduling-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — WP0 audit and explicit approval required before application changes
+**Sequence:** After Workflow 07 (Discipline-Specific Care Plans), before Workflow 09 (Clinical Visits & Documentation)
+**Baseline:** Static inspection of user-supplied `chartwarden-main.zip`, November 2026. No authenticated browser execution, database test, or production validation was performed.
 **Goal:** Make scheduling, assigning, publishing, rescheduling, and monitoring hospice visits straightforward for authorized coordinators and clinicians while preserving the existing M17 scheduling domain, server authorization, visit lifecycle, care-plan-driven proposals, and downstream encounter/EVV/billing integrations.
 
 ---

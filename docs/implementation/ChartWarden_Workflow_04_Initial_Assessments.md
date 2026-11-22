@@ -1,10 +1,10 @@
 # ChartWarden — Workflow 04: Initial Assessments Redesign
 
-**Repository destination:** `docs/implementation/04-initial-assessments-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** Proposed — audit and approval required before code changes  
-**Sequence:** After Workflow 03 (Patient Chart & Demographics); before Workflow 05 (HOPE Assessments)  
-**Source baseline:** Static inspection of the user-uploaded `chartwarden-main.zip`, November 14, 2026. No running application, production database, or browser session was inspected.  
+**Repository destination:** `docs/implementation/04-initial-assessments-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** Proposed — audit and approval required before code changes
+**Sequence:** After Workflow 03 (Patient Chart & Demographics); before Workflow 05 (HOPE Assessments)
+**Source baseline:** Static inspection of the user-uploaded `chartwarden-main.zip`, November 14, 2026. No running application, production database, or browser session was inspected.
 **Scope:** Initial hospice clinical assessment experience, including RN initial/comprehensive assessment handoff, interdisciplinary initial assessments, structured scale capture, documentation, signature, review, deadlines, and care-plan handoff. HOPE is an adjacent but **separate** workflow.
 
 ## 0. Executive decision

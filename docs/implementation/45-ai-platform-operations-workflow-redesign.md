@@ -1,8 +1,8 @@
 # ChartWarden — Workflow 45: AI Platform Operations
 
-**Repository destination:** `docs/implementation/45-ai-platform-operations-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — WP0 audit and explicit approval required  
+**Repository destination:** `docs/implementation/45-ai-platform-operations-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — WP0 audit and explicit approval required
 **Source:** Static path verification against uploaded `chartwarden-main.zip`; not a live runtime verification.
 
 ## Mission

@@ -1,8 +1,8 @@
 # ChartWarden — Workflow 39: Family Document Signing
 
-**Repository destination:** `docs/implementation/39-family-document-signing-workflow-redesign.md`  
-**Executor:** Claude Code  
-**Status:** PROPOSED — mandatory WP0 and approval gate  
+**Repository destination:** `docs/implementation/39-family-document-signing-workflow-redesign.md`
+**Executor:** Claude Code
+**Status:** PROPOSED — mandatory WP0 and approval gate
 **Evidence:** Static path verification against uploaded `chartwarden-main.zip`; not a live runtime audit.
 
 ## Mission and boundaries
