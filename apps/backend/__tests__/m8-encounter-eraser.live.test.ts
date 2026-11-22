@@ -95,6 +95,7 @@ const OWNED_TABLES = {
   hearthnoteAssembledOutputs: "hearthnote_assembled_output",
   hearthnoteLlmModifications: "hearthnote_llm_modification",
   draftConfirmations: "encounter_draft_confirmation",
+  disciplinePlanLinks: "encounter_discipline_plan_link",
   signedSections: "hearthnote_signed_section",
   amendments: "encounter_amendment",
   addendumCosignatureRequests: "addendum_cosignature_request",
@@ -104,6 +105,7 @@ const OWNED_KEYS = Object.keys(OWNED_TABLES) as OwnedKey[];
 /** The ADR-0114 tables (1517/1518/1523), whose destruction-role grants, policies and delete path this suite proves from the catalog. */
 const VISIT_NOTE_KEYS = [
   "draftConfirmations",
+  "disciplinePlanLinks",
   "signedSections",
   "amendments",
   "addendumCosignatureRequests",
@@ -129,6 +131,7 @@ const PER_ROOT: Record<OwnedKey, number> = {
   hearthnoteAssembledOutputs: 3,
   hearthnoteLlmModifications: 1,
   draftConfirmations: 2,
+  disciplinePlanLinks: 2,
   signedSections: 4,
   amendments: 2,
   addendumCosignatureRequests: 1,
@@ -175,6 +178,7 @@ const OWNED_SCOPE: Record<OwnedKey, string> = {
   hearthnoteAssembledOutputs: HEARTHNOTE_SCOPE,
   hearthnoteLlmModifications: `assembled_output_id IN (SELECT id FROM hearthnote_assembled_output WHERE ${HEARTHNOTE_SCOPE})`,
   draftConfirmations: `encounter_id IN (${ENCOUNTERS_OF})`,
+  disciplinePlanLinks: `encounter_id IN (${ENCOUNTERS_OF})`,
   signedSections: `encounter_id IN (${ENCOUNTERS_OF})`,
   amendments: `encounter_id IN (${ENCOUNTERS_OF})`,
   addendumCosignatureRequests: `encounter_id IN (${ENCOUNTERS_OF})`,
@@ -476,6 +480,18 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       `INSERT INTO encounter_care_plan_link (organization_id, provider_entity_id, location_id, encounter_id, problem_id)
        VALUES ($1,$2,$3,$4,$5)`,
       [...site, encounterId, randomUUID()],
+    );
+    // ADR-0114 S4b: one live link to a goal, and one removed link to a Part 2 intervention (the removal columns come together).
+    await admin.query(
+      `INSERT INTO encounter_discipline_plan_link (organization_id, provider_entity_id, location_id, encounter_id, goal_id, part2_derived)
+       VALUES ($1,$2,$3,$4,$5,false)`,
+      [...site, encounterId, randomUUID()],
+    );
+    await admin.query(
+      `INSERT INTO encounter_discipline_plan_link (organization_id, provider_entity_id, location_id, encounter_id, intervention_id, part2_derived,
+         removed_at, removed_by_membership_id)
+       VALUES ($1,$2,$3,$4,$5,true,now(),$6)`,
+      [...site, encounterId, randomUUID(), member],
     );
     await admin.query(
       `INSERT INTO cosignature_request (organization_id, provider_entity_id, location_id, encounter_id, routed_to_membership_id)

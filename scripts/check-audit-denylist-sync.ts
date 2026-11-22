@@ -206,6 +206,19 @@ const CONDITIONAL_REDACTIONS: ReadonlyArray<{
       "'compliance_42cfr_part2'",
     ],
   },
+  // ADR-0114 S4b: a Part 2 link row withholds its M15 element ids and files under the Part 2 class (the flat denylist is empty: the ids are not
+  // sensitive unless the element is Part 2).
+  {
+    key: "M8.encounter_discipline_plan_link",
+    migration: "packages/db/migrations/1535_m8_encounter_discipline_plan_link.sql",
+    mustContain: [
+      "v_part2",
+      "part2_derived",
+      "audit_scrub(v_before, ARRAY['goal_id', 'intervention_id']",
+      "audit_scrub(v_after, ARRAY['goal_id', 'intervention_id']",
+      "'compliance_42cfr_part2'",
+    ],
+  },
   {
     key: "M8.encounter_amendment",
     migration: "packages/db/migrations/1523_m8_note_amendments.sql",

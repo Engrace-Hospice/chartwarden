@@ -321,6 +321,7 @@ export * from "./encounter/hearthnote-llm-modifications";
 export * from "./encounter/documentation-obligation-policies";
 export * from "./encounter/documentation-obligation-overrides";
 // ADR-0114 / migrations 1517-1519: the visit-note draft's per-section confirmations, the sealed per-section signed rows, and the per-tenant switch.
+export * from "./encounter/encounter-discipline-plan-links";
 export * from "./encounter/encounter-draft-confirmations";
 export * from "./encounter/hearthnote-signed-sections";
 export * from "./encounter/encounter-amendments"; // ADR-0114 VN-D30: the sections an addendum amends and the author's resolution of each (1523)
