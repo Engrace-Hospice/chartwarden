@@ -16,8 +16,17 @@ export interface MedicaidEraObservation {
     readonly paymentDate: string | null;
     readonly paymentMethod: ParsedRemittanceAdvice["paymentMethod"];
     readonly paymentCents: number | null;
-    readonly payer: { readonly name: string | null; readonly identifier: string | null };
-    readonly payee: { readonly name: string | null; readonly identifier: string | null };
+    readonly payer: {
+      readonly name: string | null;
+      readonly identifier: string | null;
+      readonly identifierQualifier: string | null;
+    };
+    readonly payee: {
+      readonly name: string | null;
+      readonly identifier: string | null;
+      readonly identifierQualifier: string | null;
+      readonly taxIdentifier: string | null;
+    };
   };
   readonly claims: readonly {
     readonly patientControlNumber: string | null;
@@ -158,8 +167,17 @@ export function observeParsedMedicaidEra(parsed: ParsedRemittanceAdvice): Medica
       paymentDate: parsed.paymentEffectiveDate ?? null,
       paymentMethod: parsed.paymentMethod,
       paymentCents: cents(parsed.totalPaymentAmount),
-      payer: { name: parsed.payer?.name ?? null, identifier: parsed.payer?.id ?? null },
-      payee: { name: parsed.payee?.name ?? null, identifier: parsed.payee?.id ?? null },
+      payer: {
+        name: parsed.payer?.name ?? null,
+        identifier: parsed.payer?.id ?? null,
+        identifierQualifier: parsed.payer?.idQualifier ?? null,
+      },
+      payee: {
+        name: parsed.payee?.name ?? null,
+        identifier: parsed.payee?.id ?? null,
+        identifierQualifier: parsed.payee?.idQualifier ?? null,
+        taxIdentifier: parsed.payee?.taxId ?? null,
+      },
     },
     claims,
     providerAdjustments,
