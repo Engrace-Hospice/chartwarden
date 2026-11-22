@@ -4,6 +4,7 @@
 // (discipline-plan-links.ts) executes them against `encounter_discipline_plan_link`. A link says the clinician KEPT the element in this visit's statement
 // of the plan; it never says the visit addressed it, and nothing here writes an M15 table.
 import type { DraftSourceRef } from "@chartwarden/hearthnote";
+import type { EncounterDiscipline } from "@chartwarden/types";
 import type { CarePlanElement } from "./care-plan-refs";
 
 const ELEMENT_OF_KIND: Readonly<Record<string, CarePlanElement["kind"]>> = {
@@ -27,6 +28,6 @@ export function disciplinePlanElementsOf(refs: readonly DraftSourceRef[]): CareP
  * has no interventions section for it). An element the note never states cannot be kept or left out in any way the note shows, so it is not listed.
  */
 export const disciplinePlanElementKinds = (
-  discipline: string,
+  discipline: EncounterDiscipline,
 ): readonly CarePlanElement["kind"][] =>
   discipline === "chaplain" ? ["goal"] : ["goal", "intervention"];
