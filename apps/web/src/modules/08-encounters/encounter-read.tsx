@@ -13,7 +13,7 @@ import {
   t,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
@@ -116,6 +116,29 @@ function hasAnyValue(record: Record<string, unknown> | null | undefined): boolea
   );
 }
 
+const emptyVitalsForm = (): VitalsForm => ({
+  bpSystolic: "",
+  bpDiastolic: "",
+  heartRate: "",
+  respiratoryRate: "",
+  temperature: "",
+  temperatureUnit: "f",
+  spo2: "",
+  painScore: "",
+  painScale: "nrs_0_10",
+});
+
+const emptyMileageForm = (): MileageForm => ({
+  odometerStart: "",
+  odometerEnd: "",
+  milesDriven: "",
+  source: "manual_override",
+  manualOverrideReason: "",
+});
+
+const routeKeyOf = (patientId?: string, encounterId?: string): string =>
+  `${patientId ?? ""}:${encounterId ?? ""}`;
+
 export function EncounterRead(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
@@ -126,14 +149,27 @@ export function EncounterRead(): JSX.Element {
     encounterId: string;
   }>();
 
+  // Route changes keep this component mounted. Async reads and writes capture the id they started for;
+  // this ref lets them refuse to publish a late result into a different encounter's screen.
+  const routeKey = routeKeyOf(patientId, encounterId);
+  const activeRouteKey = useRef(routeKey);
+  useLayoutEffect(() => {
+    activeRouteKey.current = routeKey;
+  }, [routeKey]);
+  const loadSequence = useRef(0);
+
   const [encounter, setEncounter] = useState<Encounter | null>(null);
+  const activeEncounter =
+    encounter && encounter.id === encounterId && encounter.patientId === patientId
+      ? encounter
+      : null;
   // ADR-0114: the pre-drafted sections the signer must have resolved. Read once the encounter is known, and again when its status moves.
   const { load: draftLoad, reload: reloadDraft } = useNoteDraft(
-    encounter ? encounter.id : undefined,
-    encounter?.status,
+    activeEncounter?.id,
+    activeEncounter?.status,
   );
   // The sections an amending addendum may name: offered to this viewer only when the draft is on and the session does not rule them out.
-  const amendable = useAmendableSections(draftLoad, encounter);
+  const amendable = useAmendableSections(draftLoad, activeEncounter);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [cosignStatus, setCosignStatus] = useState<string | null>(null);
   const [carePlan, setCarePlan] = useState<CarePlanRelevant | null>(null);
@@ -178,25 +214,9 @@ export function EncounterRead(): JSX.Element {
   // The draft's note text is the author's edit rather than the generated text.
   const [noteEdited, setNoteEdited] = useState(false);
 
-  const [vitals, setVitals] = useState<VitalsForm>({
-    bpSystolic: "",
-    bpDiastolic: "",
-    heartRate: "",
-    respiratoryRate: "",
-    temperature: "",
-    temperatureUnit: "f",
-    spo2: "",
-    painScore: "",
-    painScale: "nrs_0_10",
-  });
+  const [vitals, setVitals] = useState<VitalsForm>(emptyVitalsForm);
 
-  const [mileage, setMileage] = useState<MileageForm>({
-    odometerStart: "",
-    odometerEnd: "",
-    milesDriven: "",
-    source: "manual_override",
-    manualOverrideReason: "",
-  });
+  const [mileage, setMileage] = useState<MileageForm>(emptyMileageForm);
 
   // GAP-123 — the instrument catalog the shared RecordAssessmentModal renders its item fields from. It was
   // a raw-JSON textarea here with a hard-coded list of all fourteen scale types, ten of which have no
@@ -226,17 +246,58 @@ export function EncounterRead(): JSX.Element {
   // open editor, the scroll position) survives the read. The promise settles when the screen holds the new read.
   const load = useCallback(
     async (inPlace?: boolean) => {
-      if (!encounterId) return;
+      const requestedEncounterId = encounterId;
+      const requestedPatientId = patientId;
+      const requestedRouteKey = routeKeyOf(requestedPatientId, requestedEncounterId);
+      if (
+        !requestedEncounterId ||
+        !requestedPatientId ||
+        activeRouteKey.current !== requestedRouteKey
+      )
+        return;
+      const sequence = ++loadSequence.current;
+      const isCurrent = () =>
+        sequence === loadSequence.current && activeRouteKey.current === requestedRouteKey;
 
-      if (!inPlace) setLoading(true);
+      if (!inPlace) {
+        setLoading(true);
+        setEncounter(null);
+        setPatient(null);
+        setCosignStatus(null);
+        setCarePlan(null);
+        setAssessments([]);
+        setHopeAssessments([]);
+        setNoteText("");
+        setNoteEdited(false);
+        setVitals(emptyVitalsForm());
+        setMileage(emptyMileageForm());
+        setCeremony(null);
+        setUtilityModal(null);
+        setBusy(false);
+        setActionError(null);
+        setActionRemediation(null);
+        setSectionErrors({});
+        setFieldErrors({});
+        setReason("");
+        setAmendIds([]);
+        setNotice(null);
+        setDelivery(initialDelivery(null));
+      }
       setError(null);
       setRetryable(false);
 
-      const read = await readEncounter(client, encounterId, patientId);
+      const read = await readEncounter(client, requestedEncounterId);
+      if (!isCurrent()) return;
 
       if (!read.ok) {
         setRetryable(read.noteViewUnavailable);
         setError(read.message);
+        setLoading(false);
+        return;
+      }
+
+      if (read.encounter.patientId !== requestedPatientId) {
+        setError("This encounter is not available for this patient.");
         setLoading(false);
         return;
       }
@@ -258,6 +319,9 @@ export function EncounterRead(): JSX.Element {
 
   useEffect(() => {
     void load();
+    return () => {
+      loadSequence.current += 1;
+    };
   }, [load]);
 
   // The cosigner's acknowledge / sign / supervisor release for THIS note's request: one ceremony, shared with an amendment's.
@@ -266,6 +330,13 @@ export function EncounterRead(): JSX.Element {
     [encounterId],
   );
   const cosign = useCosignCeremony(cosignSubject, () => void load());
+  const cosignRouteKey = useRef(routeKey);
+  useEffect(() => {
+    if (cosignRouteKey.current === routeKey) return;
+    cosignRouteKey.current = routeKey;
+    // Retire any open or in-flight ceremony before this hook's subject can be used for another route.
+    cosign.close();
+  }, [routeKey, cosign.close]);
 
   const clearFieldError = useCallback((field: string) => {
     setFieldErrors((current) => {
@@ -321,7 +392,14 @@ export function EncounterRead(): JSX.Element {
   }, [clearFieldError]);
 
   const runSign = useCallback(async () => {
-    if (!encounterId) return;
+    const requestedEncounterId = encounterId;
+    const requestedRouteKey = routeKeyOf(patientId, requestedEncounterId);
+    if (
+      !requestedEncounterId ||
+      encounter?.id !== requestedEncounterId ||
+      encounter.patientId !== patientId
+    )
+      return;
 
     setBusy(true);
     setActionError(null);
@@ -330,7 +408,7 @@ export function EncounterRead(): JSX.Element {
     const init = {
       params: {
         path: {
-          encounterId,
+          encounterId: requestedEncounterId,
         },
       },
       body: {
@@ -357,6 +435,7 @@ export function EncounterRead(): JSX.Element {
         init as never,
       )) as WriteOutcome;
     } catch {
+      if (activeRouteKey.current !== requestedRouteKey) return;
       // An offline/aborted request rejects rather than resolving to an error envelope: never leave `busy` stuck.
       // A lost reply may mean the action already landed, so say so: retrying an unchanged form is safe (the same
       // idempotency key replays), but a changed form is a new intent and the server may answer that it is done.
@@ -366,6 +445,7 @@ export function EncounterRead(): JSX.Element {
       );
       return;
     }
+    if (activeRouteKey.current !== requestedRouteKey) return;
     const { error: err, response } = outcome;
 
     if (err) {
@@ -405,6 +485,7 @@ export function EncounterRead(): JSX.Element {
     refreshClosureStatus();
   }, [
     encounterId,
+    patientId,
     encounter,
     delivery,
     client,
@@ -425,6 +506,9 @@ export function EncounterRead(): JSX.Element {
     supportedFields: readonly string[] = [],
     section?: EncounterSection,
   ): Promise<void> {
+    const requestedEncounterId = activeEncounter?.id;
+    const requestedRouteKey = routeKeyOf(activeEncounter?.patientId, requestedEncounterId);
+    if (!requestedEncounterId || activeRouteKey.current !== requestedRouteKey) return;
     setBusy(true);
     setActionError(null);
     setActionRemediation(null);
@@ -435,6 +519,7 @@ export function EncounterRead(): JSX.Element {
     clearFieldErrors(supportedFields);
 
     const res = await action();
+    if (activeRouteKey.current !== requestedRouteKey) return;
 
     setBusy(false);
 
@@ -476,11 +561,11 @@ export function EncounterRead(): JSX.Element {
       clearSectionError(section);
     }
 
-    await load();
+    await load(true);
   }
 
   async function saveVitals(): Promise<void> {
-    if (!encounterId) return;
+    if (!activeEncounter) return;
 
     const n = (value: string): number | undefined => (value.trim() ? Number(value) : undefined);
 
@@ -489,7 +574,7 @@ export function EncounterRead(): JSX.Element {
         post("/api/v1/encounters/{encounterId}/vitals", {
           params: {
             path: {
-              encounterId,
+              encounterId: activeEncounter.id,
             },
           },
           body: {
@@ -521,7 +606,7 @@ export function EncounterRead(): JSX.Element {
   }
 
   async function saveMileage(): Promise<void> {
-    if (!encounterId) return;
+    if (!activeEncounter) return;
 
     const n = (value: string): number | undefined => (value.trim() ? Number(value) : undefined);
 
@@ -530,7 +615,7 @@ export function EncounterRead(): JSX.Element {
         post("/api/v1/encounters/{encounterId}/mileage", {
           params: {
             path: {
-              encounterId,
+              encounterId: activeEncounter.id,
             },
           },
           body: {
@@ -551,14 +636,14 @@ export function EncounterRead(): JSX.Element {
     kind: "problem" | "goal" | "intervention",
     id: string,
   ): Promise<void> {
-    if (!encounterId) return;
+    if (!activeEncounter) return;
 
     await runMutation(
       () =>
         post("/api/v1/encounters/{encounterId}/care-plan-links", {
           params: {
             path: {
-              encounterId,
+              encounterId: activeEncounter.id,
             },
           },
           body:
@@ -579,7 +664,9 @@ export function EncounterRead(): JSX.Element {
   }
 
   async function createCarePlanFromEncounter(): Promise<void> {
-    if (!encounter) return;
+    if (!activeEncounter) return;
+    const requestedEncounterId = activeEncounter.id;
+    const requestedRouteKey = routeKeyOf(activeEncounter.patientId, requestedEncounterId);
 
     setBusy(true);
     setActionError(null);
@@ -589,13 +676,14 @@ export function EncounterRead(): JSX.Element {
     const res = await post("/api/v1/patients/{patientId}/care-plan", {
       params: {
         path: {
-          patientId: encounter.patientId,
+          patientId: activeEncounter.patientId,
         },
       },
       body: {
-        admissionId: encounter.admissionId,
+        admissionId: activeEncounter.admissionId,
       },
     });
+    if (activeRouteKey.current !== requestedRouteKey) return;
 
     setBusy(false);
 
@@ -606,18 +694,18 @@ export function EncounterRead(): JSX.Element {
       return;
     }
 
-    navigate(`/patients/${encounter.patientId}/care-plan`);
+    navigate(`/patients/${activeEncounter.patientId}/care-plan`);
   }
 
   async function finalizeEncounter(): Promise<void> {
-    if (!encounterId) return;
+    if (!activeEncounter) return;
 
     await runMutation(
       () =>
         post("/api/v1/encounters/{encounterId}/finalize", {
           params: {
             path: {
-              encounterId,
+              encounterId: activeEncounter.id,
             },
           },
           body: {},
@@ -644,14 +732,14 @@ export function EncounterRead(): JSX.Element {
   }
 
   async function voidDraft(): Promise<void> {
-    if (!encounterId) return;
+    if (!activeEncounter) return;
 
     await runMutation(
       () =>
         post("/api/v1/encounters/{encounterId}/void", {
           params: {
             path: {
-              encounterId,
+              encounterId: activeEncounter.id,
             },
           },
           body: {
@@ -664,10 +752,10 @@ export function EncounterRead(): JSX.Element {
   }
 
   async function createAddendum(): Promise<void> {
-    if (!encounterId) return;
+    if (!activeEncounter) return;
 
     await runMutation(
-      () => openAddendum(client, encounterId, reason.trim(), amendIds),
+      () => openAddendum(client, activeEncounter.id, reason.trim(), amendIds),
       amendIds.length > 0
         ? "Addendum opened. Review the redrafted sections in the Addenda panel, then sign it."
         : "Addendum opened.",
@@ -675,17 +763,18 @@ export function EncounterRead(): JSX.Element {
     );
   }
 
-  const bailBanner = patient ? (
-    <PatientBanner
-      name={`${patient.firstName} ${patient.lastName}`}
-      meta={`DOB ${patient.dob}`}
-      chips={<MonoChip>{patient.mrn}</MonoChip>}
-    />
-  ) : (
-    <PatientBanner name="Encounter" />
-  );
+  const bailBanner =
+    activeEncounter && patient ? (
+      <PatientBanner
+        name={`${patient.firstName} ${patient.lastName}`}
+        meta={`DOB ${patient.dob}`}
+        chips={<MonoChip>{patient.mrn}</MonoChip>}
+      />
+    ) : (
+      <PatientBanner name="Encounter" />
+    );
 
-  if (loading) {
+  if (loading || (encounter !== null && activeEncounter === null)) {
     return (
       <PatientChartBail banner={bailBanner} patientId={patientId} current="encounters">
         <LoadingSpinner />
