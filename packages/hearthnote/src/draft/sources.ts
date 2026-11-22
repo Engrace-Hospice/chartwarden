@@ -25,9 +25,15 @@
 //   advance_directive    the advance directive acknowledgment that was on file (the fact, never its content)   one source
 //   caregiver_overview   the caregivers on record on the service date (name and relationship, no contact)      primary first, then by name
 //   (`assessment` and `symptom_management` draft nothing here, for the reason the recertification's do not.)
-// The face-to-face visit (S2, `md` and `np`): prognosis from the PPS against the period's first reading, then the weight.
+// The face-to-face visit (`md` and `np`): prognosis (S2) from the PPS against the period's first reading, then the weight; and (S5)
+//   vitals_review        the visit's recorded vitals, as the routine visit states them
+//   med_reconciliation   the orders in effect at the visit, as the admission visit states them (by drug name, then id)
+//   Nothing the clinician judges is drafted for it: no reason for visit, assessment, plan, interventions or attestation (VN-D53).
 // The LPN visits (S3, `routine_visit` and `lpn_visit` by an LPN) are sourced like the routine visit; the corpus tags leave out the PPS and ESAS-r
 // phrases, so `assessment` and `symptom_management` are not drafted for them (VN-D39).
+// The IDG follow-up (S5, `idg_followup`) is sourced as the discipline's own visit is: an RN as the routine visit, an LPN as the LPN visit, a social
+//   worker and a chaplain as below, and a physician or nurse practitioner the recorded vitals only (VN-D52). Its own `idg_followup` section is
+//   never drafted: nothing links the visit to the decision that prompted it (VN-D54).
 // The aide visit (S3, `chha_visit` by a `chha`): adl     the care plan's active aide interventions, less those the author removed   by source id
 //   (the recorded ADLs are stated first in the section, by the compiler, as the recorded vitals' body measures are).
 // The social-work visits (S4, `msw_assessment` and `msw_followup`):

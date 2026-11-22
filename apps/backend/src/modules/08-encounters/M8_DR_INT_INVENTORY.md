@@ -62,14 +62,22 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
   pool can wait on the pool. The bound is `DRAFT_SOURCE_READ_TIMEOUT_MS` (5 s) per source read, and a request that cannot acquire a connection within
   the 10 s acquire timeout fails with 503 (never a pass, never a partial write: the transaction rolls back). A tenant that signs through such a
   burst retries; a burst that long is an operations signal, not a data one.
-- **A failed read never outlives the answer (S5).** The store reads run on the request's transaction beside the seam reads. A draft computation used to
-  reject at the first failure (`Promise.all`) while a multi-query store read (`loadSelection`: the selection, the fall, the ADLs, the nutrition) was still
-  issuing queries; on a section PUT, whose transaction holds the row lock, the transaction then rolled back and its connection returned to the pool, and the
-  leftover queries ran on a connection that by then belonged to the next request, where one (an `encounter` select with no tenant setting) aborted that
-  request's transaction (`25P02`, a `500` for an unrelated caller; the leftover queries are reads with their own tenant predicate under row-level
-  security, and the harm observed is the aborted transaction).
-  `settleAll` (`drafting/unavailable.ts`) now waits for every read, each bounded by `guarded`, and throws the first failure in the order the reads are
-  listed. The cost is that a failing request waits for its slowest read, at most `DRAFT_SOURCE_READ_TIMEOUT_MS`.
+- **A draft read does not run on after the answer, on either path (S5).** The store reads run on the request's transaction beside the seam reads. A draft
+  computation used to reject at the first failure (`Promise.all`) while a multi-query store read (`loadSelection`: the selection, the fall, the ADLs, the
+  nutrition) was still issuing queries; on a section PUT, whose transaction holds the row lock, the transaction then rolled back and its connection returned
+  to the pool, and the leftover queries ran on a connection that by then belonged to the next request, where one (an `encounter` select with no tenant
+  setting) aborted that request's transaction (`25P02`, a `500` for an unrelated caller; the leftover queries are reads with their own tenant predicate
+  under row-level security, and the harm observed is the aborted transaction). Two guards close it:
+  - A read that **fails fast**: `settleAll` (`drafting/unavailable.ts`) waits for every read and throws the first failure in the order the reads are
+    listed, at every place the drafting module joins reads that touch the store (`computeDraft`, `snapshotStorePorts`, `readDraftInputs`, the care-plan
+    pair, the scale series, the section PUT's two store reads). The cost is that a failing request waits for its slowest read.
+  - A read **abandoned at its time bound**: `guarded` stops waiting after `DRAFT_SOURCE_READ_TIMEOUT_MS` (5 s) but cannot cancel the read, so it may
+    still be mid-way. `transaction-lease.ts` lends the draft the transaction's client for the length of the unit of work only (the draft routes' unit in
+    `db-draft-unit.ts`, finalize and sign in `note-draft-flow.ts`, an addendum's recompute in `amendment-flow.ts`); once the unit ends, every call on it
+    throws, so the abandoned read ends at its next query instead of running it on a pooled connection.
+  - The limit: a query already sent when the unit ends is not cancelled. It finishes on its connection ahead of the transaction's commit or rollback, which
+    queue behind it, and its result is discarded. The lease cuts off a query started through the leased client; a query builder made before the close and
+    run after it would not be, and none of the draft's reads does that.
 
 ### LPN and aide drafts (ADR-0114 slice S3, design §3.5): limits recorded
 
@@ -107,7 +115,14 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
 - **A new key for the face-to-face draft.** `prescribing.read` is asked by encounter type (`admission-reads.ts`) at the draft routes, finalize, sign and an
   addendum's recompute, beside `election.read`. Only `medical_director` has a role template, so a tenant grants `prescribing.read`, `election.read` and the
   scale key to its physician and nurse practitioner roles before it enables the switch. The IDG follow-up of a physician or nurse practitioner asks no source
-  key. A signer without `prescribing.read` who is refused for `med_reconciliation` learns that active orders exist (S3's limit, extended).
+  key. A signer without `prescribing.read` is refused outright (403 naming the key) before any source is read, so nothing of the orders is disclosed.
+- **Finalize and sign do not ask the source-domain keys of the IDG templates (S3's limit, extended).** They ask the admission-fact keys by encounter type
+  (`election.read`, `prescribing.read`) and not the scale key, `care_plan.read` or `discipline_plan.read`, which only the draft routes ask. A signer without
+  one of those still has that source read, and learns, from the section names in a `DRAFT_SECTION_STALE` 409 or the finalize 422 list, that the plan,
+  interventions or scale sections are non-empty. Nothing of the source's content is returned.
+- **The Part 2 verdict is asked only when an order could be Part 2 (S1 and S2b's rule).** During an M39 outage a viewer without disclosure gets 503
+  `DRAFT_UNAVAILABLE` only for a patient who has a SUD or unflagged order, and a success means none does. It needs the outage, and asking the verdict of
+  every face-to-face draft would make each one depend on M39. Left as it is, on purpose.
 - **Drafted facts in a certifying visit.** The vitals and the orders in effect are what is on record; the physician confirms the section, and the draft
   states no reconciliation, no judgement and no attestation (VN-D32, VN-D53). The note is still readable by every holder of `encounter.read`.
 - **Part 2.** An order flagged `isSudTreatment` is left out of the draft for a viewer without disclosure and fails closed (only the literal `false` is "not
