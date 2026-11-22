@@ -183,10 +183,11 @@ describe.skipIf(!DB_URL)("F-238 — DocLens → M7 diagnosis proposals — LIVE 
       await admin.query(
         `INSERT INTO intake_upload_batch (organization_id, patient_id, initial_document_id, source_channel,
            uploaded_by_membership_id, correlation_id, status, sud_status, sud_resolved_by_membership_id,
-           sud_resolved_at)
+           sud_resolved_at, identity_status)
          VALUES ($1,$2,$3,'fax',$4,gen_random_uuid(),'extraction_complete',$5::intake_batch_sud_status,
            CASE WHEN $5::text IN ('confirmed','rejected') THEN $4::uuid END,
-           CASE WHEN $5::text IN ('confirmed','rejected') THEN now() END) RETURNING id`,
+           CASE WHEN $5::text IN ('confirmed','rejected') THEN now() END,
+           CASE WHEN $2::uuid IS NULL THEN 'no_target' ELSE 'match' END) RETURNING id`,
         [
           opts.org,
           opts.patientId,
