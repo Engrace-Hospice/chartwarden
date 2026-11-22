@@ -1,6 +1,6 @@
 /**
  * ChartWarden — revenue-cycle scenario data: M23 (Billing-Medicare) / M24 (Billing-Medicaid) / M25
- * (Remittance/Denials) / M26 (Cap Management) / M27 (Cost Report) for the flagship patient + org
+ * (Remittance/Denials) / M26 (Cap Management) / M27 (Cost Report) for the demo patients + org
  * (local dev). NOT for production.
  *
  * Genuine platform gaps hit and worked around/documented (all confirmed by reading the actual route/
@@ -57,7 +57,7 @@
  *     unset in bare local dev), which is fine — the report visibly sitting in `validating` is a real,
  *     honest QA state, not a bug.
  *
- * Idempotent: wipes prior M23/M24/M26/M27 rows for Whitfield/the org before recreating (M26's platform
+ * Idempotent: wipes prior M23/M24/M26/M27 rows for Whitfield/Yarbrough/the org before recreating (M26's platform
  * constant is left alone — `publishConstant` itself is `onConflictDoNothing`, so re-running is already
  * idempotent without a wipe).
  * Prereqs: bun run db:seed:org-admin, db:seed:staff, db:seed:scenario-admissions, db:seed:org-structure.
@@ -78,7 +78,6 @@ const LOCATION_MAIN_ID = "55555555-0000-4000-8000-000000000001"; // db:seed:org-
 const CAP_YEAR = "FY2027";
 const isoDate = (d: Date): string => d.toISOString().slice(0, 10);
 const today = new Date();
-const daysAgo = (n: number): Date => new Date(today.getTime() - n * 86_400_000);
 
 /**
  * Grants `orgadmin@chartwarden.local` (created by `seed-org-admin.ts`) the PE/location scope M24's pure
@@ -119,6 +118,7 @@ async function seedMedicaidCoverage(
   organizationId: string,
   providerEntityId: string,
   patientId: string,
+  coverage: { readonly rank: number; readonly subscriberId: string },
 ): Promise<void> {
   if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
   const db = new Client({ connectionString: ADMIN_URL });
@@ -129,25 +129,52 @@ async function seedMedicaidCoverage(
      ON CONFLICT (id) DO NOTHING`,
     [OREGON_MEDICAID_PAYER_ID],
   );
-  // rank 1 is already taken by the db:seed:patients Medicare row every demo patient carries.
+  // Rank 1 is taken by the Medicare row db:seed:clinical gives every demo patient except the Medicaid-primary one,
+  // so the others get Medicaid at rank 2 and that one gets it at rank 1.
   await db.query(
     `INSERT INTO patient_payer
        (patient_id, organization_id, provider_entity_id, payer_id, rank, coverage_kind, subscriber_id, effective_from)
-     VALUES ($1,$2,$3,$4,2,'medicaid','OHP-DEV-0001', CURRENT_DATE - 90)`,
-    [patientId, organizationId, providerEntityId, OREGON_MEDICAID_PAYER_ID],
+     VALUES ($1,$2,$3,$4,$5,'medicaid',$6, CURRENT_DATE - 90)`,
+    [
+      patientId,
+      organizationId,
+      providerEntityId,
+      OREGON_MEDICAID_PAYER_ID,
+      coverage.rank,
+      coverage.subscriberId,
+    ],
   );
   await db.end();
 }
 
-async function wipePriorBilling(patientId: string, organizationId: string): Promise<void> {
+/** The UTC day an admission's first M6 level-of-care period starts (the earliest day a claim for it can begin). */
+async function firstLocDay(admissionId: string): Promise<string> {
+  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
+  const db = new Client({ connectionString: ADMIN_URL });
+  await db.connect();
+  const res = await db.query<{ day: string | null }>(
+    `SELECT to_char(min(effective_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day
+       FROM level_of_care_period WHERE admission_id = $1`,
+    [admissionId],
+  );
+  await db.end();
+  const day = res.rows[0]?.day;
+  if (!day) throw new Error(`admission ${admissionId} has no level-of-care period`);
+  return day;
+}
+
+async function wipePriorBilling(
+  patientIds: readonly string[],
+  organizationId: string,
+): Promise<void> {
   if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
   const db = new Client({ connectionString: ADMIN_URL });
   await db.connect();
   await db.query("SET session_replication_role = replica");
 
   // M23 — claim + children (partitioned; DELETE on the parent reaches whichever partition holds it).
-  const claims = await db.query<{ id: string }>("SELECT id FROM claim WHERE patient_id = $1", [
-    patientId,
+  const claims = await db.query<{ id: string }>("SELECT id FROM claim WHERE patient_id = ANY($1)", [
+    patientIds,
   ]);
   const claimIds = claims.rows.map((r) => r.id);
   if (claimIds.length) {
@@ -166,8 +193,8 @@ async function wipePriorBilling(patientId: string, organizationId: string): Prom
 
   // M24 — medicaid_claim + children (partitioned by provider_entity_id).
   const mClaims = await db.query<{ id: string }>(
-    "SELECT id FROM medicaid_claim WHERE patient_id = $1",
-    [patientId],
+    "SELECT id FROM medicaid_claim WHERE patient_id = ANY($1)",
+    [patientIds],
   );
   const mClaimIds = mClaims.rows.map((r) => r.id);
   if (mClaimIds.length) {
@@ -176,9 +203,10 @@ async function wipePriorBilling(patientId: string, organizationId: string): Prom
     }
     await db.query("DELETE FROM medicaid_claim WHERE id = ANY($1)", [mClaimIds]);
   }
-  await db.query("DELETE FROM patient_payer WHERE patient_id = $1 AND coverage_kind = 'medicaid'", [
-    patientId,
-  ]);
+  await db.query(
+    "DELETE FROM patient_payer WHERE patient_id = ANY($1) AND coverage_kind = 'medicaid'",
+    [patientIds],
+  );
   await db.query(
     `DELETE FROM state_medicaid_trading_partner_credential WHERE organization_id = $1 AND provider_entity_id = $2 AND service_state = 'OR'`,
     [organizationId, PROVIDER_ENTITY_ID],
@@ -270,24 +298,27 @@ function fiscalYearStartingOf(isoDate: string): number {
 
 async function main(): Promise<void> {
   const admin = await signIn("orgadmin@chartwarden.local");
-  const log = new ScenarioLog("billing (Whitfield / org-wide)");
+  const log = new ScenarioLog("billing (Yarbrough / org-wide)");
 
   // The census AND the chart's election/certification read are patient-scoped (F-096; `election.read` is
   // `caseload_or_scope`), and `org_admin` is a tenant administrator, not an org-wide patient reader, so both
   // are done as the admin persona the admissions scenario uses (attending on the demo caseload). The billing
   // writes below stay with `orgadmin`, who holds the billing permissions and the PE/location scope.
   const chartReader = await signIn("admin@chartwarden.local");
-  const patientId = await findPatientIdByLastName(chartReader, "Whitfield");
+  // Whitfield keeps Medicare primary with Medicaid secondary (a dual-eligible chart), and M24 refuses every claim kind
+  // for her. Yarbrough is Medicaid-primary with no Medicare, so she is the patient M24 assembles a claim for.
+  const dualEligiblePatientId = await findPatientIdByLastName(chartReader, "Whitfield");
+  const patientId = await findPatientIdByLastName(chartReader, "Yarbrough");
   const cert = await chartReader.client.GET("/api/v1/patients/{patientId}/election-certification", {
     params: { path: { patientId } },
   });
   const admissionId = (cert.data as unknown as { admission?: { id?: string } } | undefined)
     ?.admission?.id;
   if (!admissionId)
-    throw new Error("Whitfield has no admission — run db:seed:scenario-admissions first");
+    throw new Error("Yarbrough has no admission — run db:seed:scenario-admissions first");
 
   console.log("wiping any prior billing data for a clean re-run...");
-  await wipePriorBilling(patientId, admin.organizationId);
+  await wipePriorBilling([dualEligiblePatientId, patientId], admin.organizationId);
 
   const authCtx = await admin.client.GET("/api/v1/auth/context", {});
   const membershipId = (authCtx.data as unknown as { membershipId?: string } | undefined)
@@ -296,11 +327,13 @@ async function main(): Promise<void> {
     throw new Error("could not resolve orgadmin's membershipId from /auth/context");
   await grantBillingScope(admin.organizationId, membershipId);
 
-  // Whitfield's M6 level-of-care period starts the day the admission scenario script ran (today), not
+  // Yarbrough's M6 level-of-care period starts the day the admission scenario script ran (today), not
   // 30 days ago — a window ending yesterday overlaps no LOC period at all (confirmed live:
-  // MEDICAID_NO_BILLABLE_LOC_DAYS). serviceTo must include today.
-  const serviceFrom = isoDate(daysAgo(7));
-  const serviceTo = isoDate(today);
+  // MEDICAID_NO_BILLABLE_LOC_DAYS). Validation also requires the stored lines to partition the claim range exactly
+  // along the LOC periods (MEDICAID_CLAIM_LINE_LOC_SNAPSHOT_STALE), so the range starts on the first LOC day rather
+  // than a week earlier, and serviceTo must include today.
+  const serviceFrom = await firstLocDay(admissionId);
+  const serviceTo = serviceFrom > isoDate(today) ? serviceFrom : isoDate(today);
 
   // ── M23 — Billing Medicare: the provider entity's MAC submitter credential ─────────────────────────
   // Claim assembly resolves the provider entity's MAC jurisdiction from this credential; without one every
@@ -321,19 +354,21 @@ async function main(): Promise<void> {
     "Medicare (M23): MAC submitter credential seeded; rate tables / sequestration are tenant-entered (assemble names whichever is missing)",
   );
 
-  // ── M24 — Billing Medicaid (assemble → validate → submit, when payer policy allows a claim) ────────
-  // Every demo patient carries Medicare at rank 1 (seed-clinical.ts), and M24 refuses every Medicaid claim kind
-  // while Medicare is primary (`evaluateMedicaidPayerResponsibility`), so the demo org gets no Medicaid claim from
-  // this script. The error codes M24 answers with in that case (payer policy, not a fault):
-  const MEDICARE_PRIMARY_CLAIM_REFUSALS: ReadonlySet<string> = new Set([
-    "MEDICARE_PRIMARY_HOSPICE_RESPONSIBILITY",
-    "MEDICAID_SECONDARY_RB_FORMAT_UNVERIFIED",
-    "MEDICAID_SECONDARY_COMBINED_FORMAT_UNVERIFIED",
-  ]);
+  // ── M24 — Billing Medicaid (assemble → validate; submit is refused until a state/program route is certified) ──
+  // M24 refuses every Medicaid claim kind while Medicare is primary (`evaluateMedicaidPayerResponsibility`), and
+  // every demo patient but Yarbrough carries Medicare at rank 1 (db:seed:clinical). So the claim below is
+  // Yarbrough's, with Medicaid at rank 1; Whitfield only gets Medicaid as her secondary coverage, for the chart.
   try {
     // The persisted local fixture stops at a validated claim today: submission below is expected to
     // prove the typed fail-closed answer until a state/program route is certified.
-    await seedMedicaidCoverage(admin.organizationId, PROVIDER_ENTITY_ID, patientId);
+    await seedMedicaidCoverage(admin.organizationId, PROVIDER_ENTITY_ID, patientId, {
+      rank: 1,
+      subscriberId: "OHP-DEV-0002",
+    });
+    await seedMedicaidCoverage(admin.organizationId, PROVIDER_ENTITY_ID, dualEligiblePatientId, {
+      rank: 2,
+      subscriberId: "OHP-DEV-0001",
+    });
 
     await stepUpSession(admin.userId);
     const credential = await admin.client.POST(
@@ -362,57 +397,47 @@ async function main(): Promise<void> {
         providerEntityId: PROVIDER_ENTITY_ID,
         serviceFrom,
         serviceTo,
-        // The demo patient keeps Medicare primary and Medicaid secondary (rank 2).
+        // Medicaid is her primary and only coverage, so payer policy allows a claim of any kind.
         kind: "hospice_only",
       },
     });
-    // With Medicare primary, M24 refuses every Medicaid claim kind by payer policy: hospice services go through M23,
-    // and the secondary R&B-only and combined claim formats are unverified. That is the expected answer for this
-    // patient, not a seed fault, so it is reported as skipped (as M25 is below) rather than failing the section.
-    const assembleCode = (claim.error as { error?: { code?: string } } | undefined)?.error?.code;
     const claimData = claim.data as unknown as { id: string; version: number } | undefined;
-    if (assembleCode !== undefined && MEDICARE_PRIMARY_CLAIM_REFUSALS.has(assembleCode)) {
-      log.dup(
-        `Medicaid (M24): claim assembly skipped, refused by payer policy (${assembleCode}); the demo patient's Medicare is primary`,
+    if (claim.error || !claimData)
+      throw new Error(`medicaid claim assemble failed: ${JSON.stringify(claim.error)}`);
+
+    const validate = await admin.client.POST("/api/v1/medicaid-claims/{id}/validate", {
+      params: { path: { id: claimData.id } },
+      headers: { "Idempotency-Key": crypto.randomUUID(), "If-Match": String(claimData.version) },
+    });
+    if (validate.error)
+      throw new Error(`medicaid claim validate failed: ${JSON.stringify(validate.error)}`);
+
+    // validate returns only { validationRunId }; re-read the claim for the version submit's If-Match needs.
+    const validated = await admin.client.GET("/api/v1/medicaid-claims/{id}", {
+      params: { path: { id: claimData.id } },
+    });
+    const validatedData = validated.data as unknown as { version: number } | undefined;
+    if (validated.error || typeof validatedData?.version !== "number")
+      throw new Error(`medicaid claim re-read failed: ${JSON.stringify(validated.error)}`);
+
+    await stepUpSession(admin.userId);
+    const submit = await admin.client.POST("/api/v1/medicaid-claims/{id}/submit", {
+      params: { path: { id: claimData.id } },
+      headers: {
+        "Idempotency-Key": crypto.randomUUID(),
+        "If-Match": String(validatedData.version),
+      },
+      body: { channelHint: "direct_mmis" },
+    });
+    const submitCode = (submit.error as { error?: { code?: string } } | undefined)?.error?.code;
+    if (submitCode === "MEDICAID_STATE_NO_ELECTRONIC_GATEWAY") {
+      log.ok(
+        "Medicaid (M24): 1 hospice claim assembled and validated; electronic submit refused because no state/program route is certified",
       );
+    } else if (submit.error) {
+      throw new Error(`medicaid claim submit failed: ${JSON.stringify(submit.error)}`);
     } else {
-      if (claim.error || !claimData)
-        throw new Error(`medicaid claim assemble failed: ${JSON.stringify(claim.error)}`);
-
-      const validate = await admin.client.POST("/api/v1/medicaid-claims/{id}/validate", {
-        params: { path: { id: claimData.id } },
-        headers: { "Idempotency-Key": crypto.randomUUID(), "If-Match": String(claimData.version) },
-      });
-      if (validate.error)
-        throw new Error(`medicaid claim validate failed: ${JSON.stringify(validate.error)}`);
-
-      // validate returns only { validationRunId }; re-read the claim for the version submit's If-Match needs.
-      const validated = await admin.client.GET("/api/v1/medicaid-claims/{id}", {
-        params: { path: { id: claimData.id } },
-      });
-      const validatedData = validated.data as unknown as { version: number } | undefined;
-      if (validated.error || typeof validatedData?.version !== "number")
-        throw new Error(`medicaid claim re-read failed: ${JSON.stringify(validated.error)}`);
-
-      await stepUpSession(admin.userId);
-      const submit = await admin.client.POST("/api/v1/medicaid-claims/{id}/submit", {
-        params: { path: { id: claimData.id } },
-        headers: {
-          "Idempotency-Key": crypto.randomUUID(),
-          "If-Match": String(validatedData.version),
-        },
-        body: { channelHint: "direct_mmis" },
-      });
-      const submitCode = (submit.error as { error?: { code?: string } } | undefined)?.error?.code;
-      if (submitCode === "MEDICAID_STATE_NO_ELECTRONIC_GATEWAY") {
-        log.ok(
-          "Medicaid (M24): 1 hospice claim assembled and validated; electronic submit refused because no state/program route is certified",
-        );
-      } else if (submit.error) {
-        throw new Error(`medicaid claim submit failed: ${JSON.stringify(submit.error)}`);
-      } else {
-        log.ok("Medicaid (M24): 1 hospice claim assembled, validated, and submitted");
-      }
+      log.ok("Medicaid (M24): 1 hospice claim assembled, validated, and submitted");
     }
   } catch (err) {
     log.fail(`M24 Medicaid: ${String(err)}`);

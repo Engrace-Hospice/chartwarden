@@ -93,6 +93,17 @@ export const PATIENTS = [
     },
     phone: "+18285554215",
   },
+  // The Medicaid-primary demo patient (no Medicare): the only demo patient M24 will assemble a Medicaid claim for,
+  // because every other one carries Medicare at rank 1. Oregon, to match the Oregon-only Medicaid adapter. Keep this
+  // last name sorting after "Whitfield": db:seed:clinical pairs its per-patient detail rows by last-name order.
+  {
+    lastName: "Yarbrough",
+    firstName: "Dolores",
+    dob: "1968-04-17",
+    administrativeSex: "female",
+    primaryAddress: { line1: "58 Alder Way", city: "Pendleton", state: "OR", postalCode: "97801" },
+    phone: "+15415550123",
+  },
 ];
 
 function adminPassword(): string {

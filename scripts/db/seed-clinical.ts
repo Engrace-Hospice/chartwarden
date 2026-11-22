@@ -8,7 +8,7 @@
  * there's no built screen to show them yet.
  *
  * Idempotent: clears prior demo clinical rows for the demo patients, then re-inserts.
- * Prereqs: bun run db:seed:patients (the 6 demo patients must exist).
+ * Prereqs: bun run db:seed:patients (the 7 demo patients must exist).
  * Run:     bun run db:seed:clinical
  */
 import { Client } from "pg";
@@ -126,6 +126,27 @@ const DETAIL = [
     payers: ["medicare"],
     flags: [],
   },
+  // Yarbrough: Medicaid-primary, no Medicare, so no MBI and no coverage row here. db:seed:scenario-billing adds
+  // her Oregon Medicaid coverage at rank 1, once the provider entity it is scoped to exists (db:seed:org-structure
+  // runs after this script).
+  {
+    gi: "female",
+    pr: "she_her",
+    ms: "married",
+    race: ["2106-3"],
+    eth: ["2186-5"],
+    mbi: null,
+    cg: {
+      first: "Leon",
+      last: "Yarbrough",
+      rel: "spouse",
+      lr: "next_of_kin",
+      phone: "+15415550124",
+    },
+    ec: [{ name: "Leon Yarbrough", rel: "Spouse", phone: "+15415550124", pri: 1 }],
+    payers: [] as string[],
+    flags: [],
+  },
 ];
 
 // Primary home address per patient (last-name order). Admit doesn't persist primaryAddress, so seed here.
@@ -136,6 +157,7 @@ const ADDR = [
   { line1: "330 Sweeten Creek Rd", city: "Asheville", state: "NC", postal: "28803" }, // Nakamura
   { line1: "1187 Birch St", city: "Asheville", state: "NC", postal: "28805" }, // Okonkwo
   { line1: "42 Camellia Ln", city: "Asheville", state: "NC", postal: "28801" }, // Whitfield
+  { line1: "58 Alder Way", city: "Pendleton", state: "OR", postal: "97801" }, // Yarbrough
 ];
 
 async function main(): Promise<void> {
@@ -253,12 +275,14 @@ async function main(): Promise<void> {
       [pid, org, a.line1, a.city, a.state, a.postal, today],
     );
 
-    // MBI identifier
-    await db.query(
-      `INSERT INTO patient_identifier (patient_id, organization_id, kind, value, issuer, effective_from)
-       VALUES ($1,$2,'mbi',$3,'CMS',$4)`,
-      [pid, org, d.mbi, "2024-01-01"],
-    );
+    // MBI identifier (a Medicaid-only patient has none)
+    if (d.mbi) {
+      await db.query(
+        `INSERT INTO patient_identifier (patient_id, organization_id, kind, value, issuer, effective_from)
+         VALUES ($1,$2,'mbi',$3,'CMS',$4)`,
+        [pid, org, d.mbi, "2024-01-01"],
+      );
+    }
 
     // Care team — assignments (RN drives caseload), one caregiver, emergency contacts
     await db.query(
@@ -316,7 +340,7 @@ async function main(): Promise<void> {
 
   await db.end();
   console.log(
-    `✓ clinical seed: enriched ${n} patients (demographics, MBI, care team, payers; ` +
+    `✓ clinical seed: enriched ${n} patients (demographics, MBI where the patient has one, care team, payers; ` +
       `${DETAIL.filter((d) => d.flags.length).length} with a privacy flag, recorded after admission). Caseload RN = ${rnEmail}.`,
   );
 }

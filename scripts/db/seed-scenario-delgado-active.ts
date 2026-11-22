@@ -26,7 +26,7 @@
  *      `[today-80, +89]` (the same 90-day window `transferIn` now writes). A no-op on any admission created by
  *      the current code. This is the one hand-written SQL beyond the step-up/patient-status precedent, and it
  *      exists only for pre-fix dev rows — re-running `db:seed:scenario-admissions` (which wipes + re-drives
- *      all 6 demo patients) makes it unnecessary.
+ *      all 7 demo patients) makes it unnecessary.
  *
  * Prereqs: db:seed:scenario-admissions has run (Delgado has a transfer-in admission); backend running with the
  * D9 fix; DATABASE_ADMIN_URL set (admin DB URL: status stand-in + repair + one version read).
