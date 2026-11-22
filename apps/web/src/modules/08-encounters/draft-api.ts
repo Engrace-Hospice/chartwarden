@@ -12,6 +12,8 @@
 //   GET  /api/v1/internal/care-plan/relevant-elements         the goals and interventions a visit may link
 //   GET  /api/v1/encounters/{id}/discipline-plan-elements     (S4b) the goals and interventions of a social-work or chaplain visit's plan, kept or not
 //   PUT  /api/v1/encounters/{id}/discipline-plan-elements/{elementId}   keep or leave out one of them
+//   GET  /api/v1/encounters/{id}/idg-action-items             (S5b) the open IDG action items the viewer may follow up in an IDG follow-up visit
+//   PUT  /api/v1/encounters/{id}/idg-action-item              link the visit to ONE of them, or clear the link (`null`)
 //   GET  /api/v1/patients/{id}/scales/{scale}/series          the score trend beside the note
 //
 // VN-D7: the draft carries source KINDS only (`origins`), never ids; nothing here asks for more. A call that throws (offline) is
@@ -45,6 +47,8 @@ export type DisciplinePlanElementsView = Ok<
   operations["getApiV1EncountersByEncounterIdDisciplineplanelements"]
 >;
 export type DisciplinePlanElement = DisciplinePlanElementsView["elements"][number];
+export type IdgActionItemsView = Ok<operations["getApiV1EncountersByEncounterIdIdgactionitems"]>;
+export type IdgActionItem = IdgActionItemsView["items"][number];
 export type ScaleSeries = Ok<operations["getApiV1PatientsByPatientIdScalesByScaleTypeSeries"]>;
 
 export type { Outcome };
@@ -69,6 +73,8 @@ const REFUSAL_COPY: Readonly<Record<string, string>> = {
   FORBIDDEN: "You do not have access to do that on this note.",
   DISCIPLINE_PLAN_LINK_LIMIT:
     "This visit has recorded as many changes to its plan items as it can hold, so nothing was changed. Tell your administrator if you need to change more.",
+  IDG_ACTION_ITEM_LINK_LIMIT:
+    "This visit has recorded as many changes to its IDG follow-up item as it can hold, so nothing was changed. Tell your administrator if you need to change more.",
 };
 
 /** A refusal that means "the section you saw is not the section there is now": the caller re-reads the draft. */
@@ -264,6 +270,46 @@ export function setDisciplinePlanElement(
     client.PUT("/api/v1/encounters/{encounterId}/discipline-plan-elements/{elementId}", {
       params: { path: { encounterId, elementId } },
       body: { included },
+    }),
+  );
+}
+
+// ── the IDG follow-up's action item (S5b) ───────────────────────────────────────────────────────────────
+
+/** The permission the two IDG routes ask of the viewer, and so the one a 403 from them names. */
+const IDG_READ_KEY = "idg.read";
+
+/**
+ * Whether a refusal says it is the `idg.read` key the viewer lacks. The API's 403 carries the permission it asked for in its message; any other 403 (the
+ * visit is not the viewer's, say) does not name it.
+ */
+export function namesIdgRead(error: unknown): boolean {
+  const message = (error as { error?: { message?: unknown } } | null | undefined)?.error?.message;
+  return typeof message === "string" && message.includes(IDG_READ_KEY);
+}
+
+/** The open IDG action items the viewer may follow up in this visit (an IDG follow-up visit only), the linked one marked. Facts only, never a title. */
+export function loadIdgActionItems(
+  client: ApiClient,
+  encounterId: string,
+): Promise<Outcome<IdgActionItemsView>> {
+  return settle(() =>
+    client.GET("/api/v1/encounters/{encounterId}/idg-action-items", {
+      params: { path: { encounterId } },
+    }),
+  );
+}
+
+/** Link the visit to ONE action item, or clear the link (`null`). The answer is the whole updated list. */
+export function setIdgActionItem(
+  client: ApiClient,
+  encounterId: string,
+  actionItemId: string | null,
+): Promise<Outcome<IdgActionItemsView>> {
+  return settle(() =>
+    client.PUT("/api/v1/encounters/{encounterId}/idg-action-item", {
+      params: { path: { encounterId } },
+      body: { actionItemId },
     }),
   );
 }

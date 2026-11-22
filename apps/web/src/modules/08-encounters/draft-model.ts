@@ -115,6 +115,13 @@ export const isDisciplinePlanVisit = (discipline: string): boolean =>
   discipline === "msw" || discipline === "chaplain";
 
 /**
+ * An IDG follow-up visit (S5b), of any discipline: the one visit whose note drafts a section from an IDG action item the author links. The server decides
+ * (any other visit answers the item list 422); this only keeps every other visit from asking, and holds whatever the draft's sections name.
+ */
+export const isIdgFollowUpVisit = (encounterType: string): boolean =>
+  encounterType === "idg_followup";
+
+/**
  * Whether a section of a social-work or chaplain template is the one the discipline's plan feeds (the server's source map, S4: a social worker's
  * `interventions` and `plan`, a chaplain's `plan`). An empty one may be a section whose items were left out; any other (a chief concern, a psychosocial
  * or spiritual assessment) has no plan items to keep, so it says the record holds nothing like every other section.

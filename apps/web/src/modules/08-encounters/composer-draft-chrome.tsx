@@ -5,9 +5,10 @@ import { useState } from "react";
 import type { JSX } from "react";
 import { ComposerCarePlanPicker } from "./composer-care-plan-picker";
 import { ComposerDisciplinePlanPicker } from "./composer-discipline-plan-picker";
+import { ComposerIdgActionItemPicker } from "./composer-idg-action-item-picker";
 import { ComposerScoreTrend } from "./composer-score-trend";
 import type { DraftView, PickerEncounter } from "./draft-api";
-import { draftsFromDisciplinePlan, isDisciplinePlanVisit } from "./draft-model";
+import { draftsFromDisciplinePlan, isDisciplinePlanVisit, isIdgFollowUpVisit } from "./draft-model";
 import { DraftStrip, DraftSummary, DraftUnavailable } from "./draft-summary";
 import { useDraftRetry } from "./use-draft-retry";
 import type { NoteDraft } from "./use-note-draft";
@@ -58,13 +59,13 @@ export interface ComposerDraftRailProps {
   readonly editable: boolean;
   /**
    * The draft, which names the visit time the scores are read up to. Null when nothing is drafted: a social-work or chaplain visit still shows its
-   * plan picker then (with every item left out nothing is drafted, and the items must stay reachable to be kept again, also after a reload);
-   * any other visit shows no rail.
+   * plan picker then (with every item left out nothing is drafted, and the items must stay reachable to be kept again, also after a reload), and an
+   * IDG follow-up visit its item picker (with no item chosen, or no `idg.read` key, its section is not drafted); any other visit shows no rail.
    */
   readonly drafted: DraftView | null;
   /**
-   * The draft was read for this visit. A plan visit's list is mounted only then: with the tenant switch off (or no access) the draft answers 404 and so
-   * would the list, and the composer stays exactly as it was, without a request or an empty frame.
+   * The draft was read for this visit. A plan visit's list and an IDG follow-up visit's items are mounted only then: with the tenant switch off (or no
+   * access) the draft answers 404 and so would they, and the composer stays exactly as it was, without a request or an empty frame.
    */
   readonly draftReady: boolean;
   readonly carePlanRevision: number;
@@ -83,8 +84,10 @@ export function ComposerDraftRail({
   // Once the draft was read, a later re-read that fails (after a change in the list) must not unmount the list under the box that was pressed.
   const [readFor, setReadFor] = useState<string | null>(null);
   if (draftReady && readFor !== encounter.id) setReadFor(encounter.id);
-  const planList = planVisit && (draftReady || readFor === encounter.id);
-  if (drafted === null && !planList) return null;
+  const draftWasRead = draftReady || readFor === encounter.id;
+  const planList = planVisit && draftWasRead;
+  const idgList = isIdgFollowUpVisit(encounter.encounterType) && draftWasRead;
+  if (drafted === null && !planList && !idgList) return null;
   return (
     <div className="wx-draft-rail">
       {drafted ? (
@@ -92,6 +95,14 @@ export function ComposerDraftRail({
           patientId={encounter.patientId}
           serviceDate={encounter.serviceDate}
           visitTime={drafted.asOf}
+        />
+      ) : null}
+      {idgList ? (
+        <ComposerIdgActionItemPicker
+          key={encounter.id}
+          encounterId={encounter.id}
+          editable={editable}
+          onChanged={onLinksChanged}
         />
       ) : null}
       {planList ? (
