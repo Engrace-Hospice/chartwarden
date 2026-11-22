@@ -42,6 +42,7 @@ import type {
   ScaleSeriesPoint,
   ScaleType,
 } from "@chartwarden/types";
+import { disciplinePlanElementKinds } from "./discipline-plan-refs";
 import type { DraftEncounter, DraftPorts, DraftViewer } from "./ports";
 import { readsPreviousVisit } from "./source-reads";
 import { draftUnavailable, guarded, settleAll } from "./unavailable";
@@ -309,7 +310,10 @@ export async function readDisciplinePlanElements(
         part2Derived: g.sudRelated !== false,
       }),
     ),
-    ...plan.interventions.map(
+    ...(disciplinePlanElementKinds(encounter.discipline).includes("intervention")
+      ? plan.interventions
+      : []
+    ).map(
       (i): DisciplinePlanElement => ({
         elementId: i.interventionId,
         kind: "intervention",

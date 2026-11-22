@@ -21,3 +21,12 @@ export function disciplinePlanElementsOf(refs: readonly DraftSourceRef[]): CareP
     return kind === undefined ? [] : [{ kind, id: ref.id }];
   });
 }
+
+/**
+ * The kinds of M15 element a template's note states: a social worker's note states goals and interventions, a chaplain's goals only (the corpus
+ * has no interventions section for it). An element the note never states cannot be kept or left out in any way the note shows, so it is not listed.
+ */
+export const disciplinePlanElementKinds = (
+  discipline: string,
+): readonly CarePlanElement["kind"][] =>
+  discipline === "chaplain" ? ["goal"] : ["goal", "intervention"];

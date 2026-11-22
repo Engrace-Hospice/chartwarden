@@ -128,6 +128,26 @@ describe("getDisciplinePlanElements", () => {
     expect(seams.carePlanAsOf).not.toHaveBeenCalled();
   });
 
+  it("lists a chaplain's goals only: the chaplain's note drafts no interventions, so one could be neither kept nor left out in any way the note shows", async () => {
+    const { svc } = service({
+      memory: {
+        encounter: draftEncounterRow({ encounterType: "chaplain_visit", discipline: "chaplain" }),
+        selection: selectionFor("chaplain_visit", "chaplain"),
+      },
+    });
+    const chaplain = { ...caller, roles: ["chaplain"] };
+    const view = await svc.getDisciplinePlanElements(chaplain, ENCOUNTER);
+    expect(view.elements.map((e) => [e.kind, e.elementId])).toEqual([
+      ["goal", GOAL_1],
+      ["goal", GOAL_2],
+    ]);
+    await expectCode(
+      svc.setDisciplinePlanElement(chaplain, ENCOUNTER, IV_1, out, AUDIT),
+      "NOT_FOUND",
+      404,
+    );
+  });
+
   it("marks an element the visit left out as not kept, and a re-kept one as kept", async () => {
     const removed = {
       id: "l1",
