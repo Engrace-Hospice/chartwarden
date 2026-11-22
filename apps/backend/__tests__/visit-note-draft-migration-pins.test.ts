@@ -222,6 +222,19 @@ describe("encounter_idg_action_item_link", () => {
     );
   });
 
+  it("checks a NEW row's action item at INSERT: one of the row's organization and of the encounter's patient (a read of M14's table, no reference; the id is not otherwise validated by the database)", () => {
+    expect(IDG_LINK).toMatch(
+      /IF TG_OP = 'INSERT' AND NOT EXISTS \(\s+SELECT 1 FROM idg_action_item a\s+WHERE a\.id = NEW\.action_item_id AND a\.organization_id = NEW\.organization_id\s+AND a\.patient_id = \(SELECT e\.patient_id FROM encounter e WHERE e\.id = NEW\.encounter_id\)\) THEN/,
+    );
+    expect(IDG_LINK).toContain(
+      "the action item must be one of the row''s organization and of the encounter''s patient",
+    );
+    // the guard reads under the caller's own RLS, not with definer rights
+    expect(IDG_LINK).toMatch(
+      /CREATE OR REPLACE FUNCTION encounter_idg_action_item_link_org_guard\(\) RETURNS trigger\s+LANGUAGE plpgsql SECURITY INVOKER/,
+    );
+  });
+
   it("allows ONE live link per encounter and any number of removed ones (VN-D64)", () => {
     expect(IDG_LINK).toMatch(
       /CREATE UNIQUE INDEX "encounter_idg_action_item_link_live_uniq"\s+ON "encounter_idg_action_item_link" \("encounter_id"\)\s+WHERE "removed_at" IS NULL;/,

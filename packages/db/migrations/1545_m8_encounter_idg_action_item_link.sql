@@ -12,7 +12,8 @@
 --   PART 2. `part2_derived` has no default: the writer states it (the M14 verdict for the item's patient, W-SUD-01). An action item id of a Part 2 row
 --   is withheld from its audit image (the row files under compliance_42cfr_part2), and a DELETE (the erasure) is always filed so, since a flag filed low
 --   is raised only when the store next writes the row.
--- The M14 action item id is a LOGICAL reference (app-validated against the viewer's own candidates, no cross-module FK: M8 must not import M14).
+-- The M14 action item id is a LOGICAL reference: app-validated against the viewer's own candidates and, at INSERT, checked by the guard trigger below to be an
+-- action item of the row's own organization and of the encounter's own patient (no cross-module FK: M8 must not import M14; the check is a read, not a reference).
 -- Roles are the post-1139 names (chartwarden_*).
 CREATE TABLE "encounter_idg_action_item_link" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -86,7 +87,8 @@ CREATE TRIGGER "trg_audit_encounter_idg_action_item_link"
   AFTER INSERT OR UPDATE OR DELETE ON encounter_idg_action_item_link
   FOR EACH ROW EXECUTE FUNCTION audit_phi_write_encounter_idg_action_item_link();--> statement-breakpoint
 -- A foreign key check ignores RLS: the encounter and the two members must belong to the row's own organization, and the siting pair be the
--- encounter's (the 1525 / 1540 shape). The row is frozen with the note: a signed, cosign-pending, cosigned or voided encounter takes no write (a note is
+-- encounter's (the 1525 / 1540 shape); a NEW row's action item must be one of the row's own organization AND of the encounter's own patient (this guard runs
+-- invoker-rights, so the read of M14's table is under the caller's own RLS too). The row is frozen with the note: a signed, cosign-pending, cosigned or voided encounter takes no write (a note is
 -- changed only through an addendum), except from the destruction role. An update may change only the removal columns and raise the Part 2 flag: the
 -- row's identity stays put, a removed row is not revived, and a flag that is up never comes down (a lowered flag would file the action item id of a
 -- Part 2 row in the plain audit class on every later write).
@@ -104,6 +106,13 @@ BEGIN
      OR (NEW.removed_by_membership_id IS NOT NULL
          AND NOT EXISTS (SELECT 1 FROM membership m WHERE m.id = NEW.removed_by_membership_id AND m.organization_id = NEW.organization_id)) THEN
     RAISE EXCEPTION 'encounter_idg_action_item_link: the encounter and the members must belong to the row''s organization, and the siting pair be the encounter''s'
+      USING ERRCODE = '23503';
+  END IF;
+  IF TG_OP = 'INSERT' AND NOT EXISTS (
+       SELECT 1 FROM idg_action_item a
+        WHERE a.id = NEW.action_item_id AND a.organization_id = NEW.organization_id
+          AND a.patient_id = (SELECT e.patient_id FROM encounter e WHERE e.id = NEW.encounter_id)) THEN
+    RAISE EXCEPTION 'encounter_idg_action_item_link: the action item must be one of the row''s organization and of the encounter''s patient'
       USING ERRCODE = '23503';
   END IF;
   IF v_status IN ('signed', 'cosign_pending', 'cosigned', 'voided')
