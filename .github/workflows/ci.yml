@@ -495,6 +495,9 @@ jobs:
           # ADR-0114 S5 (VN-D52 to VN-D56) — the face-to-face visit by a physician or nurse practitioner (vitals, the orders in effect, the S2 decline evidence)
           # and the IDG follow-up of every discipline: sources read and read keys asked by template, per-viewer Part 2, the chain, tenancy, as the NOBYPASSRLS app role.
           - { name: "M8 visit-note drafting MD/NP face-to-face and IDG follow-up", scripts: "test:m8:visit-note-drafting-md-np-idg:live" }
+          # ADR-0114 S5b (VN-D64 to VN-D69) — the IDG follow-up's own section from the ONE M14 action item the author links (M14's real IdgFollowUpReader over real rows):
+          # the candidates, link and clear, the idg.read key asked for that section alone, per-viewer Part 2, sign and the freeze, tenancy, as the NOBYPASSRLS app role.
+          - { name: "M8 visit-note drafting IDG follow-up action item", scripts: "test:m8:visit-note-drafting-idg-followup:live" }
           # M36 WP 3.2 — OrderProvider.linkSummary, as the NOBYPASSRLS app role.
           - { name: "M11 link summary seam", scripts: "test:m11:link-summary:live" }
           # M36 WP 3.2 — MedicationOrderProvider.linkSummary (ids + status only), as the NOBYPASSRLS app role.
