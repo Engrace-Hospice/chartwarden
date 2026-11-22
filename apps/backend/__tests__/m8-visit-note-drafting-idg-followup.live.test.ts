@@ -50,6 +50,7 @@ import { createCareTeamProvider } from "../src/modules/05-patient/seams/care-tea
 import { createDrizzleCareTeamStore } from "../src/modules/05-patient/seams/drizzle-stores";
 import { createDbRunInOrg } from "../src/modules/08-encounters/drafting/db-draft-unit";
 import { createDraftService } from "../src/modules/08-encounters/drafting/draft-service";
+import { PART2_WITHHELD_MARKER } from "../src/modules/08-encounters/drafting/pinned-note";
 import { putDraftPolicy } from "../src/modules/08-encounters/drafting/policy-service";
 import {
   createDrizzleFindingsService,
@@ -64,6 +65,7 @@ import {
 } from "../src/modules/08-encounters/index";
 import { registerDraftSectionRoutes } from "../src/modules/08-encounters/routes/draft-section-routes";
 import { noWoundReader } from "../src/modules/08-encounters/wound-reader";
+import { buildM14ActionItemAutoCloseConsumer } from "../src/modules/14-idg/consumers/bindings";
 import { createDrizzleIdgSeamStore, createIdgFollowUpReader } from "../src/modules/14-idg/index";
 import { requiredSectionSelections } from "./_hearthnote-fixtures";
 import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
@@ -471,10 +473,18 @@ describe.skipIf(!DB_URL)(
     async function ownWords(v: Visit): Promise<void> {
       const { body } = await getDraft(v);
       const drafted = new Set(draftedIds(body));
+      // the encounter's current version (a second call, after a first save, is not at 0)
+      const version = Number(
+        one(
+          await rows<{ version: string }>("SELECT version FROM encounter WHERE id = $1", [
+            v.encounterId,
+          ]),
+        ).version,
+      );
       await svc.updateSelections(
         v.org.orgId,
         v.encounterId,
-        0,
+        version,
         {
           sections: requiredSectionSelections("idg_followup", "np").sections.filter(
             (section) => !drafted.has(section.sectionId),
@@ -498,6 +508,28 @@ describe.skipIf(!DB_URL)(
       expect(res.statusCode, res.body).toBe(200);
       expect(res.json().status).toBe("signed");
     }
+
+    // M14's REAL auto-close consumer (D8), over the real store as the application role: on `m8.encounter.signed` it closes EVERY open encounter-kind item of
+    // the signer's membership, whichever encounter they signed. The outbox dispatcher is not wired in this suite, so the test hands the consumer the event.
+    let m14AutoClose: ReturnType<typeof buildM14ActionItemAutoCloseConsumer>;
+    const signedEventOf = (org: OrgFixture, member: Member, encounterId: string) => ({
+      id: randomUUID(),
+      eventType: "m8.encounter.signed",
+      organizationId: org.orgId,
+      payload: { encounterId, signedByMembershipId: member.membershipId },
+    });
+    const statusOf = async (v: Visit) =>
+      one(
+        await rows<{ status: string }>("SELECT status::text FROM encounter WHERE id = $1", [
+          v.encounterId,
+        ]),
+      ).status;
+    const itemStatusOf = async (itemId: string) =>
+      one(
+        await rows<{ status: string }>("SELECT status::text FROM idg_action_item WHERE id = $1", [
+          itemId,
+        ]),
+      ).status;
 
     // ── what was stored ─────────────────────────────────────────────────────────────────────────────
     type LinkRow = {
@@ -589,6 +621,10 @@ describe.skipIf(!DB_URL)(
         connectionString: await appRoleConnectionString(admin, DB_URL as string),
       });
 
+      m14AutoClose = buildM14ActionItemAutoCloseConsumer({
+        db: handle.db,
+        outbox: { publish: async () => undefined },
+      });
       // M14's REAL seam over the REAL store, wrapped only to record the reads and to fail on demand. The Part 2 verdict it asks is the real
       // `seamPacketDisclosurePort`, which reaches the M39 fake below through the registry.
       const realFollowUp = createIdgFollowUpReader(createDrizzleIdgSeamStore(handle.db));
@@ -597,6 +633,13 @@ describe.skipIf(!DB_URL)(
           idgReads.push({ patientId: query.patientId, membershipId: query.viewer.membershipId });
           if (idgFailing) throw new Error(UPSTREAM_DETAIL);
           return realFollowUp.openFollowUpItems(query);
+        },
+        linkedFollowUpItem: async (
+          query: Parameters<typeof realFollowUp.linkedFollowUpItem>[0],
+        ) => {
+          idgReads.push({ patientId: query.patientId, membershipId: query.viewer.membershipId });
+          if (idgFailing) throw new Error(UPSTREAM_DETAIL);
+          return realFollowUp.linkedFollowUpItem(query);
         },
       } as never);
       // M39: the per-actor Part 2 verdict (a membership in `part2Memberships` is cleared).
@@ -1043,26 +1086,29 @@ describe.skipIf(!DB_URL)(
         expect(draftedIds((await getDraft(keyed)).body)).toEqual(["idg_followup", "vitals_review"]);
       });
 
-      it("never drafts stale text: an item that is no longer open, or no longer the author's, leaves the section not drafted", async () => {
-        for (const change of [
-          (id: string) => setItem(id, "status = 'completed'::idg_action_item_status"),
-          (id: string) => setItem(id, "status = 'auto_closed'::idg_action_item_status"),
-          (id: string) => setItem(id, "assigned_to_membership_id = $2", [randomUUID()]),
-          (id: string) =>
-            setItem(id, "linked_artifact_kind = 'order'::idg_action_item_linked_kind"),
-        ]) {
+      it("H1: the draft does not depend on the item staying open: a completed, cancelled or auto-closed item is still stated; an item reassigned to someone else never is", async () => {
+        for (const status of ["completed", "cancelled", "auto_closed"]) {
           const v = await seedVisit();
           const a = await seedItem(v);
           await linkItem(v, a);
-          expect(sectionOf((await getDraft(v)).body, "idg_followup").state).toBe("unresolved");
-          await change(a);
+          await setItem(a, "status = $2::idg_action_item_status", [status]);
           const { res, body } = await getDraft(v);
-          expect(res.statusCode, res.body).toBe(200);
-          expect(sectionOf(body, "idg_followup")).toMatchObject({
-            state: "not_drafted",
-            text: null,
+          expect(res.statusCode, `${status}: ${res.body}`).toBe(200);
+          expect(sectionOf(body, "idg_followup"), status).toMatchObject({
+            state: "unresolved",
+            text: SENTENCE,
           });
         }
+        // an item that is no longer the author's (reassigned) is not handed to them, so it is never drafted (fails closed, no stale text)
+        const v = await seedVisit();
+        const a = await seedItem(v);
+        await linkItem(v, a);
+        expect(sectionOf((await getDraft(v)).body, "idg_followup").state).toBe("unresolved");
+        await setItem(a, "assigned_to_membership_id = $2", [randomUUID()]);
+        expect(sectionOf((await getDraft(v)).body, "idg_followup")).toMatchObject({
+          state: "not_drafted",
+          text: null,
+        });
       });
 
       it("M14 failing is DRAFT_UNAVAILABLE (503) for a linked visit, and silent for an unlinked one", async () => {
@@ -1274,6 +1320,285 @@ describe.skipIf(!DB_URL)(
     // ===============================================================================================================
     // 6. tenancy
     // ===============================================================================================================
+    // ===============================================================================================================
+    // 5b. M14's auto-close, the silent drop, the clear, the audit of a refusal, the database check, the Part 2 flag
+    // ===============================================================================================================
+    describe("5b. M14's auto-close, a silent drop, a clear that always works, and what the database and the audit hold", () => {
+      const attemptAsApp = (orgId: string, sql: string, params: readonly unknown[]) =>
+        asApp(orgId, (c) => c.query(sql, [...params])).then(
+          () => undefined,
+          (error: unknown) => refusal(error),
+        );
+      const stale = (body: string) => {
+        expect(body).toContain("DRAFT_SECTION_STALE");
+        expect(body).toContain("idg_followup");
+      };
+
+      it("H1: the sentence is sealed after M14's REAL auto-close has closed the item (another note signed by the same author closes every open encounter item they hold)", async () => {
+        const v = await seedVisit();
+        const a = await seedItem(v);
+        await linkItem(v, a);
+        await ownWords(v);
+        await confirmDrafted(v);
+        expect(sectionOf((await getDraft(v)).body, "idg_followup").state).toBe("confirmed");
+
+        // the author signs ANOTHER visit; M14's consumer closes the item they linked here (assignee-matched, by design)
+        const other = await seedVisit();
+        await signedNote(other);
+        await m14AutoClose.handle(signedEventOf(v.org, v.author, other.encounterId) as never);
+        expect(await itemStatusOf(a)).toBe("auto_closed");
+
+        // the draft still states it, as confirmed; the picker lists it closed and linked; and the sign seals the sentence
+        const { body } = await getDraft(v);
+        expect(sectionOf(body, "idg_followup")).toMatchObject({
+          state: "confirmed",
+          text: SENTENCE,
+        });
+        const { items } = await listItems(v);
+        expect(items.map((i) => [i.actionItemId, i.status, i.linked])).toEqual([
+          [a, "auto_closed", true],
+        ]);
+        const done = await finalize(v);
+        expect(done.statusCode, done.body).toBe(200);
+        const signedNow = await sign(v);
+        expect(signedNow.statusCode, signedNow.body).toBe(200);
+        const section = one((await noteRowsOf(v)).filter((r) => r.section_id === "idg_followup"));
+        expect(await open(v.org, section.text_cipher)).toBe(`IDG Decision Follow-Up\n${SENTENCE}`);
+        expect(section.source_refs).toEqual([{ kind: "idg_action_item", id: a }]);
+      });
+
+      it("B: finalize refuses a confirmed section whose item was reassigned, naming idg_followup and nothing of the item; the author clears the link and finalizes", async () => {
+        const v = await seedVisit();
+        const a = await seedItem(v);
+        await linkItem(v, a);
+        await ownWords(v);
+        await confirmDrafted(v);
+        await setItem(a, "assigned_to_membership_id = $2", [randomUUID()]);
+
+        const refused = await finalize(v);
+        expect(refused.statusCode, refused.body).toBe(422);
+        stale(refused.body);
+        expect(refused.body).not.toContain(a);
+        expect(refused.body).not.toContain("referral");
+        expect(await statusOf(v)).toBe("draft");
+
+        // the author clears the link (no key, no M14 needed) and writes the section in their own words
+        expect((await linkItem(v, null)).statusCode).toBe(200);
+        await ownWords(v);
+        const done = await finalize(v);
+        expect(done.statusCode, done.body).toBe(200);
+      });
+
+      it("B: sign refuses (409 DRAFT_SECTION_STALE naming idg_followup) a finalized note whose confirmed section is no longer drafted, seals nothing, and the author can clear the link", async () => {
+        const v = await seedVisit();
+        const a = await seedItem(v);
+        await linkItem(v, a);
+        await ownWords(v);
+        await confirmDrafted(v);
+        expect((await finalize(v)).statusCode).toBe(200);
+        await setItem(a, "assigned_to_membership_id = $2", [randomUUID()]);
+
+        const refused = await sign(v);
+        expect(refused.statusCode, refused.body).toBe(409);
+        stale(refused.body);
+        expect(refused.body).not.toContain(a);
+        expect(await statusOf(v)).toBe("finalized");
+        expect(await noteRowsOf(v)).toEqual([]);
+        // a finalized note is still the author's to edit: the link can be cleared
+        expect((await linkItem(v, null)).statusCode).toBe(200);
+        expect(await liveLinkOf(v)).toEqual([]);
+        // ... the section is then the clinician's own (a required section with no source), and the author signs again
+        await ownWords(v);
+        const again = await sign(v);
+        expect(again.statusCode, again.body).toBe(200);
+        const sealed = one((await noteRowsOf(v)).filter((r) => r.section_id === "idg_followup"));
+        expect(await open(v.org, sealed.text_cipher)).not.toContain(SENTENCE);
+      });
+
+      it("B: a viewer without idg.act is refused nothing (VN-D66), and neither is an author whose link was cleared or whose section was never confirmed", async () => {
+        const keyless = await seedVisit({ author: orgs.A.npNoIdg });
+        const a = await seedItem(keyless);
+        await seedLink(keyless, a);
+        await ownWords(keyless);
+        await confirmDrafted(keyless);
+        const done = await finalize(keyless);
+        expect(done.statusCode, done.body).toBe(200);
+        expect((await sign(keyless)).statusCode).toBe(200);
+        expect(
+          (await noteRowsOf(keyless)).some((r) =>
+            r.source_refs.some((ref) => ref.kind === "idg_action_item"),
+          ),
+        ).toBe(false);
+      });
+
+      it("D: a clear needs no idg.act and no M14: an author who lost the key, with M14 down, clears their link; the row is raised to Part 2 (fails closed)", async () => {
+        const v = await seedVisit({ author: orgs.A.npNoIdg });
+        const a = await seedItem(v);
+        await seedLink(v, a);
+        idgFailing = true;
+        idgReads.length = 0;
+        const cleared = await linkItem(v, null);
+        expect(cleared.statusCode, cleared.body).toBe(200);
+        expect(cleared.json()).toEqual({ patientId: v.patientId, items: [] });
+        expect(idgReads).toEqual([]);
+        expect(await linksOf(v)).toEqual([
+          expect.objectContaining({ removed: true, part2_derived: true }),
+        ]);
+        // a link, though, still asks the key and M14
+        expect((await linkItem(v, a)).statusCode).toBe(403);
+        // a linked visit with M14 down: the draft is 503 (the author can clear), as it was
+        const linked = await seedVisit();
+        const b = await seedItem(linked);
+        await seedLink(linked, b);
+        expect((await get(encounterUrl(linked, "/draft"), linked.headers)).statusCode).toBe(503);
+        expect((await linkItem(linked, null)).statusCode).toBe(200);
+        idgFailing = false;
+        expect((await getDraft(linked)).res.statusCode).toBe(200);
+      });
+
+      it("I: a refused link leaves m8.encounter.idg_follow_up_link_refused (warn, denied, the encounter and an enum, NO item id); a success leaves none", async () => {
+        const v = await seedVisit();
+        const mine = await seedItem(v);
+        const foreign = await seedItem(v, { assignee: v.org.other });
+        const refusedEvents = () =>
+          rows<{
+            outcome: string;
+            severity: string;
+            retention_class: string;
+            actor_user_id: string | null;
+            resource_kind: string;
+            context: { refusal?: string };
+            whole: string;
+          }>(
+            `SELECT outcome::text, severity::text, retention_class::text, actor_user_id::text, resource_kind, context, to_jsonb(audit_event)::text AS whole
+               FROM audit_event
+              WHERE organization_id = $1 AND event_type = 'm8.encounter.idg_follow_up_link_refused' AND resource_id::text = $2 ORDER BY created_at`,
+            [v.org.orgId, v.encounterId],
+          );
+        expect((await linkItem(v, mine)).statusCode).toBe(200);
+        expect(await refusedEvents()).toEqual([]);
+
+        expect((await linkItem(v, foreign)).statusCode).toBe(404);
+        let events = await refusedEvents();
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          outcome: "denied",
+          severity: "warn",
+          retention_class: "compliance",
+          actor_user_id: v.author.userId,
+          resource_kind: "encounter",
+          context: { refusal: "not_offered" },
+        });
+        for (const id of [foreign, mine, v.patientId]) expect(events[0]?.whole).not.toContain(id);
+
+        // the cap: a table that holds as many rows as the cap allows refuses a RE-link (a new live row for an item that already has rows)
+        await admin.query(
+          `INSERT INTO encounter_idg_action_item_link (organization_id, provider_entity_id, location_id, encounter_id, action_item_id,
+             linked_by_membership_id, part2_derived, removed_at, removed_by_membership_id)
+           SELECT organization_id, provider_entity_id, location_id, id, $2, $3, false, now(), $3 FROM encounter, generate_series(1, 99) WHERE id = $1`,
+          [v.encounterId, mine, v.author.membershipId],
+        );
+        expect((await linkItem(v, null)).statusCode).toBe(200);
+        const full = await linkItem(v, mine);
+        expect(full.statusCode, full.body).toBe(409);
+        expect(full.json().error.code).toBe("IDG_ACTION_ITEM_LINK_LIMIT");
+        events = await refusedEvents();
+        expect(events.map((e) => e.context.refusal)).toEqual(["not_offered", "link_limit"]);
+        expect(events.map((e) => e.whole).join()).not.toContain(mine);
+      });
+
+      it("H: the database holds a NEW row's action item to one of the row's organization and the encounter's patient", async () => {
+        const v = await seedVisit();
+        const own = await seedItem(v);
+        const stranger = await seedVisit();
+        const otherPatients = await seedItem(stranger);
+        const b = await seedVisit({ org: orgs.B });
+        const otherOrgs = await seedItem(b);
+        const file = (itemId: string) =>
+          attemptAsApp(
+            v.org.orgId,
+            `INSERT INTO encounter_idg_action_item_link (organization_id, provider_entity_id, location_id, encounter_id, action_item_id,
+               linked_by_membership_id, part2_derived)
+             SELECT organization_id, provider_entity_id, location_id, id, $2, $3, false FROM encounter WHERE id = $1`,
+            [v.encounterId, itemId, v.author.membershipId],
+          );
+        for (const [what, id] of [
+          ["another patient's item", otherPatients],
+          ["another organization's item", otherOrgs],
+          ["an item that does not exist", randomUUID()],
+        ] as const) {
+          expect((await file(id))?.code, what).toBe("23503");
+        }
+        expect(await linksOf(v)).toEqual([]);
+        expect(await file(own)).toBeUndefined();
+        expect(await liveLinkOf(v)).toHaveLength(1);
+      });
+
+      it("G: a flag raised AFTER the link: the next resolve raises the row to Part 2, so the update's audit images withhold the action item id; a read writes nothing", async () => {
+        const v = await seedVisit();
+        const a = await seedItem(v);
+        await linkItem(v, a);
+        expect(await linksOf(v)).toEqual([expect.objectContaining({ part2_derived: false })]);
+        // the patient is flagged since the link was made (the meeting's packet now reads flagged), and the author is cleared
+        await admin.query(
+          `UPDATE idg_patient_packet SET built_snapshot = jsonb_set(built_snapshot, '{patientCover,activeSudFlag}', 'true'::jsonb) WHERE patient_id = $1`,
+          [v.patientId],
+        );
+        part2Memberships.add(v.author.membershipId);
+        const { body } = await getDraft(v);
+        const seen = sectionOf(body, "idg_followup");
+        expect(seen.part2Derived).toBe(true);
+        expect(await linksOf(v)).toEqual([expect.objectContaining({ part2_derived: false })]);
+
+        expect((await putSection(v, "idg_followup", seen)).statusCode).toBe(200);
+        expect(await linksOf(v)).toEqual([expect.objectContaining({ part2_derived: true })]);
+        const updates = await rows<{ retention_class: string; before: unknown; after: unknown }>(
+          `SELECT retention_class::text, before, after FROM audit_event
+            WHERE organization_id = $1 AND event_type = 'encounter_idg_action_item_link.update' AND after->>'encounter_id' = $2`,
+          [v.org.orgId, v.encounterId],
+        );
+        expect(updates.length).toBeGreaterThan(0);
+        expect(updates.every((e) => e.retention_class === "compliance_42cfr_part2")).toBe(true);
+        expect(JSON.stringify(updates)).not.toContain(a);
+      });
+
+      it("a Part 2 item: confirm, finalize and sign (a cleared author); the signed note is the sentence for a reader with disclosure and withheld from one without", async () => {
+        const v = await seedVisit();
+        const flagged = await seedItem(v, { packetFlag: true });
+        part2Memberships.add(v.author.membershipId);
+        expect((await linkItem(v, flagged)).statusCode).toBe(200);
+        await signedNote(v);
+        const sealed = one((await noteRowsOf(v)).filter((r) => r.section_id === "idg_followup"));
+        expect(sealed.part2_derived).toBe(true);
+        expect(await open(v.org, sealed.text_cipher)).toContain(SENTENCE);
+
+        const view = async () => {
+          const res = await get(encounterUrl(v), v.headers);
+          expect(res.statusCode, res.body).toBe(200);
+          const body = res.json() as {
+            finalDocumentation: string;
+            finalDocumentationView: {
+              withheld: boolean;
+              sections: { sectionId: string | null; text: string | null; withheld: boolean }[];
+            };
+          };
+          return { res, body, sections: body.finalDocumentationView.sections };
+        };
+        const cleared = await view();
+        expect(cleared.sections.filter((x) => x.withheld)).toHaveLength(0);
+        expect(cleared.sections.find((x) => x.sectionId === "idg_followup")?.text).toContain(
+          SENTENCE,
+        );
+
+        part2Memberships.clear();
+        const redacted = await view();
+        // the Part 2 section is withheld whole (its own entry names no section and carries no text), and the sentence is nowhere in the response
+        expect(redacted.sections.filter((x) => x.withheld)).toHaveLength(1);
+        expect(redacted.body.finalDocumentation).toContain(PART2_WITHHELD_MARKER);
+        expect(redacted.res.body).not.toContain("This visit follows up the team");
+      });
+    });
+
     describe("6. tenancy, as the application role", () => {
       it("another tenant's author gets 404 for tenant A's visit, the list and the link, and writes nothing; B's own visit lists only B's items", async () => {
         const theirs = await seedVisit();
