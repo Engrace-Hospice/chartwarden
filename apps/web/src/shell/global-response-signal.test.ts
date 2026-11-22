@@ -200,6 +200,21 @@ describe("503 BILLING_ENTITLEMENT_UNAVAILABLE", () => {
   });
 });
 
+describe("503 EXTRACTION_DISABLED", () => {
+  const url = `${ORIGIN}/api/v1/intake/uploads/batch-1/extraction/run`;
+  const response = new Response(
+    JSON.stringify({ error: { code: "EXTRACTION_DISABLED", message: "x" } }),
+    { status: 503, headers: { "content-type": "application/json" } },
+  );
+  afterEach(() => setGlobalResponseSignal(null));
+
+  it("keeps the upload result on screen because a tenant capability refusal is not an outage", async () => {
+    handleObservedResponse(503, url, response);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getGlobalResponseSignal()).toBeNull();
+  });
+});
+
 // ADR-0113 — the visit-note gate: a 403 NOTE_CLOSURE_REQUIRED is the shell's cue to show the closure banner and (off an allowed screen)
 // open My notes; its 503 twin NOTE_CLOSURE_UNAVAILABLE refuses ONE action and must never route to /maintenance.
 describe("403 NOTE_CLOSURE_REQUIRED (ADR-0113)", () => {

@@ -194,6 +194,12 @@ describe("local docker-compose.yml (RustFS) and CI use the OBJECT_STORE_* contra
     expect(rustfs.RUSTFS_SECRET_KEY).toBe(env(localCompose, "api").OBJECT_STORE_SECRET_KEY);
   });
 
+  it("signs browser uploads with the host endpoint while internal consumers stay on Compose DNS", () => {
+    expect(env(localCompose, "api").OBJECT_STORE_PUBLIC_ENDPOINT).toBe("http://localhost:9000");
+    expect(env(localCompose, "migrate").OBJECT_STORE_PUBLIC_ENDPOINT).toBeUndefined();
+    expect(env(localCompose, "worker").OBJECT_STORE_PUBLIC_ENDPOINT).toBeUndefined();
+  });
+
   it("the CI e2e job configures its RustFS through OBJECT_STORE_* only", () => {
     const ciText = read(".github/workflows/ci.yml");
     const ci = yaml.load(ciText) as { jobs: Record<string, { env?: Record<string, string> }> };
