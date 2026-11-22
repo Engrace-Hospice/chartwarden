@@ -24,6 +24,18 @@ export const AmendmentSectionParamsSchema = Type.Object({
   sectionId: Type.String({ pattern: "^[a-z][a-z0-9_]{0,63}$" }),
 });
 
+/** S4b (VN-D60): one element of the discipline's plan, named by its M15 id. */
+export const DisciplinePlanElementParamsSchema = Type.Object({
+  encounterId: Type.String({ format: "uuid" }),
+  elementId: Type.String({ format: "uuid" }),
+});
+
+/** Keep the element in the visit's statement of the plan (`true`) or leave it out (`false`). Nothing else is read from the body: the viewer is the session. */
+export const SetDisciplinePlanElementSchema = Type.Object(
+  { included: Type.Boolean() },
+  { additionalProperties: false },
+);
+
 /** What the clinician saw: the server recomputes the draft for the same viewer and refuses (409 DRAFT_SECTION_STALE) unless both still match. */
 export const ResolveSectionSchema = Type.Object({
   resolution: Type.Union([Type.Literal("confirmed"), Type.Literal("deselected")]),
@@ -63,6 +75,22 @@ const Origin = Type.Union([
   Type.Literal("discipline_plan_goal"),
   Type.Literal("discipline_plan_intervention"),
 ]);
+
+/** S4b: the goals and interventions of the discipline's plan in effect at the visit, as the calling viewer is handed them, and whether the visit keeps each. */
+export const DisciplinePlanElementsResponseSchema = Type.Object({
+  /** The encounter's patient: the audited read is accountable against it. */
+  patientId: Type.String({ format: "uuid" }),
+  elements: Type.Array(
+    Type.Object({
+      elementId: Type.String({ format: "uuid" }),
+      kind: Type.Union([Type.Literal("goal"), Type.Literal("intervention")]),
+      /** The goal's words (the clinician's revision when there is one), or the intervention's scope and frequency. */
+      text: Type.String(),
+      /** Whether this visit keeps the element in its statement of the plan (false: left out). */
+      kept: Type.Boolean(),
+    }),
+  ),
+});
 
 export const DraftSectionResponseSchema = Type.Object({
   sectionId: Type.String(),

@@ -61,6 +61,8 @@ const NOTE_CLOSING_ROUTES: readonly string[] = [
   "POST /api/v1/encounters/:encounterId/cosignature/acknowledge",
   "POST /api/v1/encounters/:encounterId/cosignature/sign",
   "POST /api/v1/encounters/:encounterId/cosignature/supervisor-release",
+  "GET /api/v1/encounters/:encounterId/discipline-plan-elements",
+  "PUT /api/v1/encounters/:encounterId/discipline-plan-elements/:elementId",
   "GET /api/v1/encounters/:encounterId/draft",
   "PUT /api/v1/encounters/:encounterId/draft/sections/:sectionId",
   "POST /api/v1/encounters/:encounterId/evv-reconcile",

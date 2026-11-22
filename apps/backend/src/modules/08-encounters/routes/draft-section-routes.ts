@@ -44,9 +44,11 @@ import { auditContextOf } from "./audit-context";
 import {
   AmendmentDraftParamsSchema,
   AmendmentSectionParamsSchema,
+  DisciplinePlanElementParamsSchema,
   DraftParamsSchema,
   DraftSectionParamsSchema,
   ResolveSectionSchema,
+  SetDisciplinePlanElementSchema,
 } from "./draft-section-typebox";
 import { parse } from "./encounters-typebox";
 
@@ -96,6 +98,9 @@ const IS_ADDENDUM_AUTHOR_TO_READ = requireAbac(
 ) as PreHandler;
 const NO_AI = rejectAiActor(
   "AI principals cannot confirm or deselect a visit-note section (D13)",
+) as PreHandler;
+const NO_AI_ELEMENT = rejectAiActor(
+  "AI principals cannot keep or leave out an element of a visit-note plan (D13)",
 ) as PreHandler;
 // The same `encounter.scope` caseload guard the selections routes carry; `notFoundOnDeny` keeps a cross-tenant or out-of-caseload denial
 // the same answer as an absent encounter.
@@ -167,6 +172,52 @@ export function registerDraftSectionRoutes(
         await callerOf(request, actor),
         encounterId,
         sectionId,
+        body,
+        auditContextOf(request),
+      );
+    },
+  );
+  // ── S4b (VN-D60): which of the discipline's goals and interventions a social-work or chaplain visit keeps ─────────────────────────────────
+  app.get(
+    "/api/v1/encounters/:encounterId/discipline-plan-elements",
+    {
+      preHandler: [READ, PARAMS_VALID(DraftParamsSchema), SCOPE_FOR("encounter.read")],
+      config: {
+        // The goal and intervention wording of the patient's plan: accountable against the patient named in the response (§164.528). Names only.
+        auditRead: {
+          resourceKind: "encounter_discipline_plan_elements",
+          resourceIdParam: "encounterId",
+          patientIdPayloadPath: "patientId",
+          fields: ["elements", "elementId", "kind", "text", "kept"],
+        },
+      },
+    },
+    async (request) => {
+      const { encounterId } = parse(DraftParamsSchema, request.params);
+      const actor = actorOf(request);
+      return service.getDisciplinePlanElements(await callerOf(request, actor), encounterId);
+    },
+  );
+
+  app.put(
+    "/api/v1/encounters/:encounterId/discipline-plan-elements/:elementId",
+    {
+      preHandler: [
+        AUTHOR,
+        NO_AI_ELEMENT,
+        PARAMS_VALID(DisciplinePlanElementParamsSchema),
+        SCOPE_FOR("encounter.author"),
+        IS_AUTHOR,
+      ],
+    },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { encounterId, elementId } = parse(DisciplinePlanElementParamsSchema, request.params);
+      const body = parse(SetDisciplinePlanElementSchema, request.body);
+      return service.setDisciplinePlanElement(
+        await callerOf(request, actor),
+        encounterId,
+        elementId,
         body,
         auditContextOf(request),
       );

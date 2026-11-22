@@ -229,6 +229,21 @@ async function readDisciplinePlan(
   asOf: string,
   part2Verdict: Part2Verdict,
 ): Promise<DisciplinePlanDraftInput | null> {
+  const checked = await readCheckedDisciplinePlan(ports, encounter, viewer, asOf, part2Verdict);
+  return checked === null ? null : disciplinePlanInput(checked.plan, checked.removed);
+}
+
+/** The plan as M15 handed it for this viewer (every check applied) and the elements this visit left out; `null` when no plan is in effect. */
+async function readCheckedDisciplinePlan(
+  ports: DraftPorts,
+  encounter: DraftEncounter,
+  viewer: DraftViewer,
+  asOf: string,
+  part2Verdict: Part2Verdict,
+): Promise<{
+  readonly plan: DisciplinePlanElementsAsOf;
+  readonly removed: ReadonlySet<string>;
+} | null> {
   const kind = disciplinePlanKindFor(encounter.discipline);
   const [plan, removed] = await settleAll([
     guarded("the discipline plan", () =>
@@ -251,7 +266,59 @@ async function readDisciplinePlan(
     throw draftUnavailable("the discipline plan (wrong patient)");
   if (plan.redacted && (await part2Verdict()))
     throw draftUnavailable("the discipline plan (withheld from a viewer entitled to it)");
-  return disciplinePlanInput(plan, removed);
+  return { plan, removed };
+}
+
+/** One element of the discipline's plan as a visit sees it (S4b): its words, whether the visit keeps it, and its own Part 2 verdict (fails closed). */
+export interface DisciplinePlanElement {
+  readonly elementId: string;
+  readonly kind: "goal" | "intervention";
+  readonly text: string;
+  readonly kept: boolean;
+  /** True unless the plan says the literal `false`; it is the flag a link row for this element carries. */
+  readonly part2Derived: boolean;
+}
+
+/**
+ * The goals and then the interventions of the discipline's plan in effect at `asOf` for this viewer, in the plan's order, each with whether this
+ * visit keeps it (a removed link and no live one is "left out"). What the plan hands a viewer is all there is: a Part 2 element a viewer without
+ * disclosure is not handed is not here, so it can be neither read nor changed. The same read, checks and failure codes as the draft's own.
+ */
+export async function readDisciplinePlanElements(
+  ports: DraftPorts,
+  encounter: DraftEncounter,
+  viewer: DraftViewer,
+  asOf: string,
+): Promise<readonly DisciplinePlanElement[]> {
+  const checked = await readCheckedDisciplinePlan(
+    ports,
+    encounter,
+    viewer,
+    asOf,
+    part2VerdictFor(ports, encounter, viewer),
+  );
+  if (checked === null) return [];
+  const { plan, removed } = checked;
+  return [
+    ...plan.goals.map(
+      (g): DisciplinePlanElement => ({
+        elementId: g.goalId,
+        kind: "goal",
+        text: g.text,
+        kept: !removed.has(g.goalId),
+        part2Derived: g.sudRelated !== false,
+      }),
+    ),
+    ...plan.interventions.map(
+      (i): DisciplinePlanElement => ({
+        elementId: i.interventionId,
+        kind: "intervention",
+        text: i.frequencyText.trim() === "" ? i.scopeText : `${i.scopeText}, ${i.frequencyText}`,
+        kept: !removed.has(i.interventionId),
+        part2Derived: i.sudRelated !== false,
+      }),
+    ),
+  ];
 }
 
 // ── scale readings ─────────────────────────────────────────────────────────────────────────────────

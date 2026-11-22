@@ -11,6 +11,11 @@ import { checkMutableForEdit } from "../lifecycle/validation";
 import { assertMayReadAdmissionFacts } from "./admission-reads";
 import { computeDraftOverview, snapshotStorePorts } from "./compute";
 import { defaultDraftPorts } from "./default-ports";
+import {
+  type DisciplinePlanElementsView,
+  assertDraftsFromDisciplinePlan,
+  disciplinePlanElementsView,
+} from "./discipline-plan-elements";
 import type { AmendmentRef, DraftEncounterRow, DraftUnit, RunInOrg } from "./draft-store";
 import {
   type AmendmentDraftView,
@@ -19,10 +24,13 @@ import {
   amendmentDraftView,
   draftView,
 } from "./draft-view";
+import { readDisciplinePlanElements } from "./inputs";
 import type { DraftPorts, DraftSeamPorts } from "./ports";
 import { resolveSection } from "./resolve-section";
 import { serialSeams } from "./serial-seams";
 import { assertMayReadSourceDomains } from "./source-reads";
+import { guarded } from "./unavailable";
+import { visitAsOf } from "./visit-time";
 
 /** The authenticated caller of a draft route, from the server-assembled session. */
 export interface DraftCaller {
@@ -55,6 +63,25 @@ export interface DraftService extends AmendmentDraftService {
     body: ResolveSectionRequest,
     audit: AuditContext,
   ): Promise<DraftSectionView>;
+  /**
+   * S4b (VN-D60): the goals and interventions of the discipline's plan in effect at the visit, as the calling viewer is handed them, each with whether
+   * the visit keeps it. Only for a visit drafted from the discipline's plan (a social worker's or a chaplain's); 404 for a tenant with the draft off.
+   */
+  getDisciplinePlanElements(
+    caller: DraftCaller,
+    encounterId: string,
+  ): Promise<DisciplinePlanElementsView>;
+  /**
+   * S4b: keeps one element in the visit's statement of the plan (`included: true`) or leaves it out. Idempotent; the encounter row is locked first, as a
+   * section's resolution does. An element the viewer is not handed (absent, or Part 2 without disclosure) is the same 404.
+   */
+  setDisciplinePlanElement(
+    caller: DraftCaller & { readonly membershipId: string },
+    encounterId: string,
+    elementId: string,
+    body: { readonly included: boolean },
+    audit: AuditContext,
+  ): Promise<DisciplinePlanElementsView>;
 }
 
 export interface AmendmentDraftService {
@@ -136,6 +163,20 @@ async function loadAuthoredAmendmentOr404(
   return amendment;
 }
 
+/** The visit time the draft is built as of (the end of the service date in the organization's zone, capped at now), by the same rule and the same failure code. */
+async function visitTimeOf(
+  encounter: DraftEncounterRow,
+  store: Pick<DraftPorts, "organizationTimeZone">,
+  now: Date,
+): Promise<string> {
+  const orgTimeZone = await guarded("the organization time zone", () =>
+    store.organizationTimeZone(encounter.organizationId),
+  );
+  return guarded("the visit time", async () =>
+    visitAsOf({ serviceDate: encounter.serviceDate, orgTimeZone, now }),
+  );
+}
+
 export function createDraftService(deps: DraftServiceDeps): DraftService {
   const clock = deps.now ?? (() => new Date());
   // One request's source reads take turns (serial-seams.ts): each opens a pooled transaction beside the request's own.
@@ -186,6 +227,67 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
           });
           if (outcome.event !== null) await unit.recordResolved(outcome.event);
           return outcome.view;
+        },
+      );
+    },
+
+    async getDisciplinePlanElements(caller, encounterId) {
+      const now = clock();
+      const scope = { organizationId: caller.organizationId, userId: caller.userId, now };
+      // As the draft's own read: the store facts in one short transaction that closes before the plan (M15, its own pooled transaction) is asked.
+      const { encounter, storePorts } = await deps.runInOrg(scope, async (unit) => {
+        const row = await loadOr404(unit, encounterId, false, caller);
+        assertDraftsFromDisciplinePlan(row);
+        return { encounter: row, storePorts: await snapshotStorePorts(unit.store, row, now) };
+      });
+      const asOf = await visitTimeOf(encounter, storePorts, now);
+      const elements = await readDisciplinePlanElements(
+        { ...seams(), ...storePorts },
+        encounter,
+        { roles: caller.roles, membershipId: caller.membershipId },
+        asOf,
+      );
+      return disciplinePlanElementsView(encounter, elements);
+    },
+
+    async setDisciplinePlanElement(caller, encounterId, elementId, body, audit) {
+      const now = clock();
+      return deps.runInOrg(
+        { organizationId: caller.organizationId, userId: caller.userId, now, audit },
+        async (unit) => {
+          // Locked, and a signed, cosigned or voided note is edited only through an addendum, as a section's resolution is.
+          const encounter = await loadOr404(unit, encounterId, true, caller);
+          checkMutableForEdit({ status: encounter.status });
+          assertDraftsFromDisciplinePlan(encounter);
+          const asOf = await visitTimeOf(encounter, unit.store, now);
+          const elements = await readDisciplinePlanElements(
+            { ...seams(), ...unit.store },
+            encounter,
+            { roles: caller.roles, membershipId: caller.membershipId },
+            asOf,
+          );
+          // An element this viewer was not handed (another plan's, absent, or Part 2 without disclosure) is not here: one answer for all of them.
+          const element = elements.find((e) => e.elementId === elementId);
+          if (element === undefined) throw new NotFoundError("plan element");
+          const ref = {
+            kind: element.kind === "goal" ? "discipline_plan_goal" : "discipline_plan_intervention",
+            id: element.elementId,
+          } as const;
+          if (body.included) {
+            await unit.store.linkDisciplinePlan(encounter, [ref], element.part2Derived);
+          } else {
+            await unit.store.removeDisciplinePlan(
+              encounter,
+              [ref],
+              element.part2Derived,
+              caller.membershipId,
+              now,
+            );
+          }
+          return disciplinePlanElementsView(
+            encounter,
+            elements.map((e) => (e.elementId === elementId ? { ...e, kept: body.included } : e)),
+          );
         },
       );
     },
