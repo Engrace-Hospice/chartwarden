@@ -5,10 +5,11 @@
 // ONE CHANGE AT A TIME. While a change is saved a second one does nothing (`save` returns at once), and a read that was served before a change settled never
 // lands over it: it is dropped and the list is read again once the change has settled (`changeEpoch`, `saveInFlight`, `readOwed`).
 //
-// A QUIET RE-READ is the one after a change whose answer is not the whole list (`rereadAfter`): while a list is on the screen, a failure of that read leaves the
-// list there (the change itself was taken). Every other read that fails is said: a read someone WAITS on (a retry, a refused change read again) and a re-read
-// that follows a change the server made elsewhere (`readOn` moved, e.g. a draft resolve changed which items are kept) both show the failure with its "Try again",
-// because the list on the screen may be out of date. A retry that fails again counts up (`attempt`), so its words change and a reader hears the change.
+// A QUIET RE-READ is the one after a change whose answer is not the whole list (`rereadAfter`): the change was taken, so a failure of that read leaves whatever is on
+// the screen (a list, a note) there, and an answer that says there is no list for the visit keeps the panel and says so. The pass belongs to that one change: a later
+// change, or a retry, clears it. Every other read that fails is said: a read someone WAITS on (a retry, a refused change read again) and a re-read that follows a change
+// the server made elsewhere (`readOn` moved, e.g. a draft resolve changed which items are kept) both show the failure with its "Try again", because what is on the
+// screen may be out of date. A retry that fails again counts up (`attempt`), so its words change and a reader hears the change.
 //
 // FOCUS. When an answer replaces the control that held the focus (a retry button that gives way to the list, a box whose item was withdrawn, the list that gives
 // way to a note) the panel takes the focus, instead of it dropping to the page. Focus that was already elsewhere, or on a control that is still there, is never
@@ -47,6 +48,8 @@ interface SerializedListPickerOptions<V, S extends PickerState> {
    * answer, so a "no list" answer must keep the panel (and the focus) instead of vanishing.
    */
   readonly classify: (outcome: Outcome<V>, waited: boolean) => S | null;
+  /** Other states of the picker (besides `ready` and the failure) whose panel stays on the screen, and keeps the focus, while the list is read again. */
+  readonly keepWhileReading?: readonly string[];
   /** The part of a state that the draft is built from, or undefined for a state that does not know it. A read that finds it changed tells `onChanged`. */
   readonly signatureOf?: (state: S) => string | undefined;
   /** The list changed here, or may have: the caller re-reads what is built from it. */
@@ -62,7 +65,7 @@ interface SaveOptions<V, S extends PickerState> {
   readonly savedWords: string;
   /** What the answer shows. By default the answer IS the new list (`classify`); undefined leaves what is on the screen, null is "not what was expected". */
   readonly settle?: (data: V) => S | null | undefined;
-  /** The answer is not the whole list: it is read again after the change (quietly when a list is on the screen, else as a read someone waits on). */
+  /** The answer is not the whole list: it is read again after the change, quietly (a failure of that read leaves whatever is on the screen, which was right to act on). */
   readonly rereadAfter?: boolean;
 }
 
@@ -147,8 +150,13 @@ export function useSerializedListPicker<V, S extends PickerState>(
   useEffect(() => {
     let active = true;
     const begunAt = changeEpoch.current;
-    // The list known stays known while it is read again, and so does the failure (its retry button keeps the focus); the first time nothing is known.
-    if (shown.current.status !== "ready" && shown.current.status !== "error") {
+    // The list known stays known while it is read again, and so does the failure (its retry button keeps the focus) and any state the picker names; the first time nothing is known.
+    const known = shown.current.status;
+    if (
+      known !== "ready" &&
+      known !== "error" &&
+      !latest.current.keepWhileReading?.includes(known)
+    ) {
       shown.current = LOADING;
       setLoad(LOADING);
     }
@@ -166,10 +174,11 @@ export function useSerializedListPicker<V, S extends PickerState>(
       waitedOn.current = null;
       const quiet = quietRead.current;
       quietRead.current = false;
-      const found = latest.current.classify(outcome, waited !== null);
+      // A quiet re-read is one someone is, in effect, waiting on: a "no list for this visit" answer keeps the panel (and the focus) and says so.
+      const found = latest.current.classify(outcome, waited !== null || quiet);
       if (found === null) {
-        // The change was taken and only the picture of it could not be refreshed: the list on the screen is still right to act on.
-        if (quiet && shown.current.status === "ready") return;
+        // The change was taken and only the picture of it could not be refreshed: whatever the screen shows is still right to act on.
+        if (quiet && shown.current.status !== "loading") return;
         failedReads.current = waited === "retry" ? failedReads.current + 1 : 1;
         showLoad({ status: "error", attempt: failedReads.current });
         return;
@@ -188,6 +197,7 @@ export function useSerializedListPicker<V, S extends PickerState>(
 
   const retry = (): void => {
     if (reading) return;
+    quietRead.current = false;
     waitedOn.current = "retry";
     setReadKey((key) => key + 1);
   };
@@ -195,6 +205,8 @@ export function useSerializedListPicker<V, S extends PickerState>(
   const save = useCallback(
     async (send: () => Promise<Outcome<V>>, saveOptions: SaveOptions<V, S>): Promise<void> => {
       if (saveInFlight.current) return;
+      // A quiet pass belongs to the re-read of the change that asked for it: a later change must not inherit it (its own failure is to be said).
+      quietRead.current = false;
       setIsSaving(true);
       setProblem(null);
       setSaid("");
@@ -232,9 +244,7 @@ export function useSerializedListPicker<V, S extends PickerState>(
         }
         setSaid(saveOptions.savedWords);
         if (saveOptions.rereadAfter) {
-          const listOnScreen = shown.current.status === "ready";
-          waitedOn.current = listOnScreen ? null : "reread";
-          quietRead.current = listOnScreen;
+          quietRead.current = true;
           setReadKey((key) => key + 1);
         }
       }

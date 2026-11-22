@@ -16,6 +16,8 @@ export const LINK = `/api/v1/encounters/${ENC}/idg-action-item`;
 export const TITLE = "IDG follow-up item";
 export const DECOY_TITLE = "Call the pharmacy about the SYNTHETIC-DECOY title";
 export const NO_ACCESS_CODE = "IDG_ACTION_PERMISSION_REQUIRED";
+/** What the status line says once a clear was taken: true whether or not anything was linked (the answer does not say). */
+export const CLEARED_WORDS = "No follow-up item is linked now.";
 
 export interface Item {
   actionItemId: string;

@@ -73,6 +73,11 @@ const NO_ACCESS_WORDS =
   "Your role cannot work with IDG action items, so this section is not drafted.";
 const UNAVAILABLE_WORDS = "There are no IDG action items to show for this visit.";
 const NO_ITEM_CHOSEN_WORDS = "No follow-up item was chosen for this visit.";
+/** What the status line says after a clear: true whether or not anything was linked (the answer does not say which). */
+const CLEARED_WORDS = "No follow-up item is linked now.";
+/** The refusal for a link by a role that has lost the key: the no-key note already says it, so it is not repeated beside it as an error. */
+const LOST_KEY_REFUSAL_WORDS =
+  "Your role cannot work with IDG action items, so nothing was changed.";
 const LINKED_CLOSED_WORDS =
   "The item this visit follows up is closed. The drafted section still states it.";
 const CHANGE_CLOSED_WORDS = " Choose another item, or no item, to change that.";
@@ -90,7 +95,7 @@ function refusalWords(failure: { readonly status: number; readonly error: unknow
     return "This note is not drafted from an IDG action item, so nothing was changed.";
   }
   if (failure.status === 403 && isIdgActionPermissionRefusal(failure.error)) {
-    return "Your role cannot work with IDG action items, so nothing was changed.";
+    return LOST_KEY_REFUSAL_WORDS;
   }
   return describeDraftRefusal(failure).message;
 }
@@ -213,6 +218,8 @@ export function ComposerIdgActionItemPicker({
     read: () => loadIdgActionItems(client, encounterId),
     readOn: [client, encounterId],
     classify: classifyIdg,
+    // A note (nothing to choose, no key, no list) stays while the list is read again after a clear: it is not blanked, and the focus on it is not lost.
+    keepWhileReading: ["empty", "no-access", "unavailable"],
     signatureOf: linkedIdOf,
     onChanged,
   });
@@ -230,7 +237,7 @@ export function ComposerIdgActionItemPicker({
       actionItemId === null
         ? {
             ...words,
-            savedWords: "Follow-up item cleared.",
+            savedWords: CLEARED_WORDS,
             settle: () => afterClear(load),
             rereadAfter: true,
           }
@@ -283,7 +290,9 @@ export function ComposerIdgActionItemPicker({
               {words}
             </InlineAlert>
           </div>
-          {problem ? <InlineAlert tone="error">{problem}</InlineAlert> : null}
+          {problem && !(load.status === "no-access" && problem === LOST_KEY_REFUSAL_WORDS) ? (
+            <InlineAlert tone="error">{problem}</InlineAlert>
+          ) : null}
           {/* Clearing needs no key and no M14, and a link the list no longer shows (reassigned, Part 2) can only be ended here. */}
           {(load.status === "no-access" || load.status === "empty") && clearButton ? (
             <div>{clearButton}</div>

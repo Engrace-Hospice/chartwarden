@@ -4,6 +4,7 @@
 import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  CLEARED_WORDS,
   ITEM_1,
   ITEM_2,
   LINK,
@@ -41,14 +42,14 @@ describe("choosing", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Follow-up item saved.");
   });
 
-  it("'No follow-up item' clears the link, says it was cleared, and reads the list again because the clear's own answer is not the list", async () => {
+  it("'No follow-up item' clears the link, says no item is linked now, and reads the list again because the clear's own answer is not the list", async () => {
     const { user, onChanged } = mount();
     await user.click(await screen.findByRole("radio", { name: "No follow-up item" }));
 
     await waitFor(() => expect(radio("No follow-up item")).toBeChecked());
     expect(puts()[0]?.body).toEqual({ actionItemId: null });
     expect(onChanged).toHaveBeenCalledOnce();
-    expect(screen.getByRole("status")).toHaveTextContent("Follow-up item cleared.");
+    expect(screen.getByRole("status")).toHaveTextContent(CLEARED_WORDS);
     // the answer to a clear carries no items; the items still on offer stay on offer
     expect(radio(referral)).not.toBeChecked();
     expect(radio(planUpdate)).not.toBeChecked();
@@ -349,6 +350,9 @@ describe("a change the server did not take", () => {
     ).toBeVisible();
     expect(panel()).toHaveFocus();
     expect(screen.queryByRole("radio")).toBeNull();
+    // the note is calm: the refusal that led here is not repeated beside it as an error
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText(/so nothing was changed/)).toBeNull();
     // clearing needs no key, so the way out is on the panel
     expect(screen.getByRole("button", { name: "Clear the follow-up item" })).toBeVisible();
   });
@@ -361,7 +365,7 @@ describe("a change the server did not take", () => {
     expect(puts()[0]?.body).toEqual({ actionItemId: null });
     await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
     await waitFor(() => expect(reads()).toHaveLength(2));
-    expect(screen.getByRole("status")).toHaveTextContent("Follow-up item cleared.");
+    expect(screen.getByRole("status")).toHaveTextContent(CLEARED_WORDS);
     expect(screen.getByText(/role cannot work with IDG action items/)).toBeVisible();
     expect(clear).toHaveFocus();
   });
@@ -613,5 +617,122 @@ describe("the list is never older than the change just made", () => {
     await settled();
     expect(onChanged).not.toHaveBeenCalled();
     expect(reads()).toHaveLength(1);
+  });
+});
+
+describe("the re-read after a clear is quiet, and only that one", () => {
+  it("a clear's slow re-read does not leave its quiet pass behind for a later read: a later change refused, then a read that fails, is said", async () => {
+    const reread = gate();
+    const secondChange = gate();
+    let getCount = 0;
+    let putCount = 0;
+    const { user } = mount({
+      [`GET ${LIST}`]: async () => {
+        getCount += 1;
+        const snapshot = view();
+        if (getCount === 2) await reread.promise;
+        if (getCount >= 3) return { status: 503, body: { error: {} } };
+        return { body: snapshot };
+      },
+      [`PUT ${LINK}`]: async (call) => {
+        putCount += 1;
+        if (putCount === 1) return applyLink(call);
+        await secondChange.promise;
+        return { status: 404, body: { error: { code: "NOT_FOUND", message: "x" } } };
+      },
+    });
+    // the clear: its re-read is out and slow
+    await user.click(await screen.findByRole("radio", { name: "No follow-up item" }));
+    await waitFor(() => expect(reads()).toHaveLength(2));
+    // the author picks the second item before it answers, and that change is still being saved when the slow re-read answers (it is dropped)
+    await user.click(radio(planUpdate));
+    await waitFor(() => expect(puts()).toHaveLength(2));
+    reread.open();
+    await settled();
+    secondChange.open();
+    // the change is refused and the list read again; that read fails: it is said, with the way to try again, not hidden behind a list that may be out of date
+    expect(await screen.findByText(/could not be loaded/)).toBeVisible();
+    expect(screen.getByText(/no longer available to you/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeVisible();
+  });
+
+  it.each([
+    ["a role without the key (403)", noIdgAct, /role cannot work with IDG action items/],
+    [
+      "a visit with no list (404)",
+      refusal(404, "NOT_FOUND"),
+      /no IDG action items to show for this visit/,
+    ],
+    [
+      "a visit with no list (422)",
+      refusal(422, "UNKNOWN_TEMPLATE_SECTION"),
+      /no IDG action items to show for this visit/,
+    ],
+  ])(
+    "a clear whose re-read answers %s keeps the panel, says so in a note, keeps what was announced and puts the focus on the panel",
+    async (_name, answer, words) => {
+      let cleared = false;
+      const { user } = mount({
+        [`GET ${LIST}`]: (call) => (cleared ? answer(call) : { body: view() }),
+        [`PUT ${LINK}`]: (call) => {
+          cleared = true;
+          return applyLink(call);
+        },
+      });
+      await user.click(await screen.findByRole("radio", { name: "No follow-up item" }));
+      expect(await screen.findByText(words)).toBeVisible();
+      expect(screen.getByRole("status")).toHaveTextContent(CLEARED_WORDS);
+      expect(panel()).toHaveFocus();
+      expect(screen.queryByRole("alert")).toBeNull();
+    },
+  );
+
+  it("a clear that leaves nothing listed (the only item was the linked, closed one) keeps the note when its re-read fails, as it keeps a list that has items", async () => {
+    world.items = [{ ...world.items[0], status: "auto_closed" } as (typeof world.items)[number]];
+    let cleared = false;
+    const { user } = mount({
+      [`GET ${LIST}`]: () => (cleared ? { status: 503, body: { error: {} } } : { body: view() }),
+      [`PUT ${LINK}`]: (call) => {
+        cleared = true;
+        world.items = [];
+        return applyLink(call);
+      },
+    });
+    await user.click(await screen.findByRole("radio", { name: "No follow-up item" }));
+    expect(await screen.findByText(/no open IDG action item assigned to you/)).toBeVisible();
+    await waitFor(() => expect(reads()).toHaveLength(2));
+    await settled();
+    expect(screen.queryByText(/could not be loaded/)).not.toBeInTheDocument();
+    expect(screen.getByText(/no open IDG action item assigned to you/)).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent(CLEARED_WORDS);
+  });
+
+  it("a clear from the no-key panel whose re-read fails keeps the note rather than replacing it with a failure", async () => {
+    let cleared = false;
+    const { user } = mount({
+      [`GET ${LIST}`]: () => (cleared ? { status: 503, body: { error: {} } } : noIdgAct()),
+      [`PUT ${LINK}`]: (call) => {
+        cleared = true;
+        return applyLink(call);
+      },
+    });
+    await user.click(await screen.findByRole("button", { name: "Clear the follow-up item" }));
+    await waitFor(() => expect(reads()).toHaveLength(2));
+    await settled();
+    expect(screen.queryByText(/could not be loaded/)).not.toBeInTheDocument();
+    expect(screen.getByText(/role cannot work with IDG action items/)).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent(CLEARED_WORDS);
+  });
+});
+
+describe("what a clear says", () => {
+  it("says no item is linked now, which is true whether or not one was, and still tells the composer (the answer does not say whether anything changed)", async () => {
+    world.items = world.items.map((item) => ({ ...item, linked: false }));
+    const { user, onChanged } = mount();
+    await user.click(await screen.findByRole("button", { name: "Clear the follow-up item" }));
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+    expect(screen.getByRole("status")).toHaveTextContent(CLEARED_WORDS);
+    expect(screen.getByRole("status")).not.toHaveTextContent(/cleared/i);
   });
 });

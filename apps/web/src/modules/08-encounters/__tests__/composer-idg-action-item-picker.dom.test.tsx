@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ComposerIdgActionItemPicker } from "../composer-idg-action-item-picker";
 import { makeFetch } from "./closure-test-harness";
 import {
+  CLEARED_WORDS,
   ENC,
   ITEM_1,
   LIST,
@@ -207,7 +208,7 @@ describe("a follow-up item the list no longer shows can still be cleared", () =>
     await waitFor(() => expect(puts()).toHaveLength(1));
     expect(puts()[0]?.body).toEqual({ actionItemId: null });
     await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
-    expect(screen.getByRole("status")).toHaveTextContent("Follow-up item cleared.");
+    expect(screen.getByRole("status")).toHaveTextContent(CLEARED_WORDS);
     expect(clear).toHaveFocus();
   });
 
@@ -224,7 +225,7 @@ describe("a follow-up item the list no longer shows can still be cleared", () =>
     await waitFor(() => expect(puts()).toHaveLength(1));
     expect(puts()[0]?.body).toEqual({ actionItemId: null });
     // the items still on offer stay on offer, and the focus stays on the button that was pressed
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("cleared"));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(CLEARED_WORDS));
     expect(radio(referral)).toBeInTheDocument();
     expect(clear).toHaveFocus();
   });
@@ -476,7 +477,7 @@ describe("a list that could not be read", () => {
     await waitFor(() => expect(puts()).toHaveLength(1));
     expect(puts()[0]?.body).toEqual({ actionItemId: null });
     await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
-    expect(screen.getByText("Follow-up item cleared.")).toBeInTheDocument();
+    expect(screen.getByText(CLEARED_WORDS)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
