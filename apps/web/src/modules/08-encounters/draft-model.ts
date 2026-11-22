@@ -257,6 +257,12 @@ export function draftGateRefusal(details: unknown): DraftGateRefusal | null {
   return { issues, others };
 }
 
+/** The section the IDG follow-up's linked action item feeds (S5b). */
+const IDG_FOLLOWUP_SECTION = "idg_followup";
+/** Why that section can go stale at sign and what ends it: the item it states is no longer one the author is handed (reassigned, closed by another hand, Part 2), and the link is the author's to change. */
+const IDG_FOLLOWUP_STALE_HINT =
+  "The IDG action item this visit follows up is no longer available to you: choose another item, or No follow-up item, in the IDG follow-up item panel beside the note, then confirm the section again.";
+
 /** What the signer reads when the sign is refused 409 `DRAFT_SECTION_STALE`: the sections named (when it named any) and what to do. */
 export function signStaleMessage(
   details: unknown,
@@ -264,7 +270,10 @@ export function signStaleMessage(
 ): string {
   const issues = draftIssuesFrom(details);
   const named = issues.length > 0 ? `: ${describeIssues(issues, headingOf)}` : "";
-  return `Some drafted sections need another look before this note can be signed${named}. Review them in the note editor, then sign again.`;
+  const idgHint = issues.some((issue) => issue.sectionId === IDG_FOLLOWUP_SECTION)
+    ? ` ${IDG_FOLLOWUP_STALE_HINT}`
+    : "";
+  return `Some drafted sections need another look before this note can be signed${named}. Review them in the note editor, then sign again.${idgHint}`;
 }
 
 // ── what a resolve says back ───────────────────────────────────────────────────────────────────────────
