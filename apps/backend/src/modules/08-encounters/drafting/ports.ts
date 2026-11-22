@@ -10,6 +10,8 @@ import type {
 import type {
   CarePlanElementsAudience,
   CertificationSummary,
+  DisciplinePlanElementsAsOf,
+  DisciplinePlanKind,
   ElectionPeriodSummary,
   EncounterDiscipline,
   EncounterType,
@@ -65,6 +67,19 @@ export interface DraftSeamPorts {
     viewer: CarePlanElementsAudience,
     asOf: string,
   ): Promise<RelevantCarePlanElements | null>;
+  /**
+   * M15 `DisciplinePlanReader.planElementsAsOf` (S4, the social-work and chaplain visits): the open goals and active interventions of the
+   * discipline's own plan of `kind` for the admission, from the signed version in effect AT `asOf`. M15 redacts Part 2 per viewer itself, from
+   * the session identity it is handed (`viewer`), and answers `redacted` when it withheld anything.
+   */
+  disciplinePlanAsOf(
+    organizationId: string,
+    patientId: string,
+    admissionId: string,
+    kind: DisciplinePlanKind,
+    viewer: DraftViewer,
+    asOf: string,
+  ): Promise<DisciplinePlanElementsAsOf | null>;
   /** M9 `ScaleSeriesProvider.series`: bounds are inclusive and filter on `captured_at`. */
   scaleSeries(
     patientId: string,

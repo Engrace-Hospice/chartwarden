@@ -153924,6 +153924,14 @@
                                 {
                                   "const": "recorded_adl",
                                   "type": "string"
+                                },
+                                {
+                                  "const": "discipline_plan_goal",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "discipline_plan_intervention",
+                                  "type": "string"
                                 }
                               ]
                             }
@@ -154116,6 +154124,14 @@
                           },
                           {
                             "const": "recorded_adl",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discipline_plan_goal",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discipline_plan_intervention",
                             "type": "string"
                           }
                         ]
@@ -156806,6 +156822,14 @@
                                 {
                                   "const": "recorded_adl",
                                   "type": "string"
+                                },
+                                {
+                                  "const": "discipline_plan_goal",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "discipline_plan_intervention",
+                                  "type": "string"
                                 }
                               ]
                             }
@@ -156990,6 +157014,14 @@
                           },
                           {
                             "const": "recorded_adl",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discipline_plan_goal",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discipline_plan_intervention",
                             "type": "string"
                           }
                         ]

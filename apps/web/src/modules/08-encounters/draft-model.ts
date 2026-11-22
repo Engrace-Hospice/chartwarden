@@ -55,6 +55,10 @@ export const ORIGIN_LABEL: Readonly<Record<DraftOrigin, string>> = {
   advance_directive_acknowledgment: "the advance directive acknowledgment on file at the visit",
   // S3 (aide visit): the ADLs the aide recorded for this visit lead the section.
   recorded_adl: "the activities of daily living recorded at this visit",
+  // S4 (social-work and chaplain visits): the goals and interventions of the discipline's own plan, as signed at the visit time. Not the care
+  // plan's elements, so a confirmation links nothing (`touchesCarePlan` stays false).
+  discipline_plan_goal: "the goals of the discipline's plan of care at the visit",
+  discipline_plan_intervention: "the interventions of the discipline's plan of care at the visit",
 };
 
 export function originsText(origins: readonly DraftOrigin[]): string {

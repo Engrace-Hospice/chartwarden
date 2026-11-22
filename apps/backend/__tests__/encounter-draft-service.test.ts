@@ -278,7 +278,7 @@ describe("connections held while a source is asked (S3)", () => {
 
   it("a read of an encounter whose template the corpus does not draft asks no source and needs no store read after its transaction", async () => {
     const { svc, state } = counted({
-      encounter: draftEncounterRow({ encounterType: "msw_followup", discipline: "msw" }),
+      encounter: draftEncounterRow({ encounterType: "telephonic", discipline: "msw" }),
     });
     const view = await svc.getDraft(caller, ENCOUNTER);
     expect(view.sections.every((s) => s.state === "not_drafted")).toBe(true);
@@ -659,7 +659,7 @@ describe("the source-domain read keys, by template (S3)", () => {
 
   it("a template that drafts nothing needs none of them, and reads no source", async () => {
     const { svc, seams } = serviceFor(
-      draftEncounterRow({ encounterType: "msw_followup", discipline: "msw" }),
+      draftEncounterRow({ encounterType: "telephonic", discipline: "msw" }),
     );
     const view = await svc.getDraft(withKeys([]), ID);
     expect(view.sections.every((s) => s.state === "not_drafted")).toBe(true);

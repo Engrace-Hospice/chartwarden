@@ -24,6 +24,8 @@ export function serialSeams(seams: DraftSeamPorts): DraftSeamPorts {
     };
   return {
     carePlanAsOf: inTurn(seams.carePlanAsOf.bind(seams)),
+    // S4: the social-work and chaplain draft's one source, M15's plan, takes its turn like the others (it opens its own pooled transaction).
+    disciplinePlanAsOf: inTurn(seams.disciplinePlanAsOf.bind(seams)),
     scaleSeries: inTurn(seams.scaleSeries.bind(seams)),
     medicationChangesBetween: inTurn(seams.medicationChangesBetween.bind(seams)),
     // S2: the four module-6 reads of a recertification draft take their turn too.
