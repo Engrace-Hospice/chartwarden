@@ -34,7 +34,12 @@ interface Walk {
 
 /** Every protected file under `dir` (repo-relative), recursively when asked; a directory that is not there is no finding. */
 function walk(root: string, dir: string, recursive: boolean, state: Walk): string[] {
-  let entries: Array<{ name: string; isDirectory(): boolean; isFile(): boolean }>;
+  let entries: Array<{
+    name: string;
+    isDirectory(): boolean;
+    isFile(): boolean;
+    isSymbolicLink(): boolean;
+  }>;
   try {
     entries = readdirSync(`${root}${dir}`, { withFileTypes: true });
   } catch (error) {
@@ -49,7 +54,10 @@ function walk(root: string, dir: string, recursive: boolean, state: Walk): strin
       break;
     }
     const rel = dir === "" ? entry.name : `${dir}/${entry.name}`;
-    if (entry.isFile() && isProtectedPath(rel)) out.push(rel);
+    // Protect the link's own name without following it. A protected directory may intentionally
+    // contain symlinked shared skills, and omitting those entries lets an exact `find -name -delete`
+    // or wildcard pathspec target them without appearing in the protected-name inventory.
+    if ((entry.isFile() || entry.isSymbolicLink()) && isProtectedPath(rel)) out.push(rel);
     else if (entry.isDirectory() && recursive) {
       if (rel.split("/").length <= MAX_DEPTH) out.push(...walk(root, rel, true, state));
       else state.complete = false;

@@ -182,7 +182,8 @@ local `plans/` and `prds/`), `scripts/harness/`, `compliance/`, `.githooks/`, `.
 pattern, one fragment pattern derived from it for text, and a list of sample names; the three agree on every tracked protected
 file, `harness-protected-definition.test.ts`; the names the find rule and the wildcard pathspec rules try are read from the tree by
 `protected-names.ts`, each listing root with a budget of its own, and a listing that is incomplete (a root over its budget, an
-unreadable directory, a file deeper than the walk) makes every name test and every wildcard "may match": it fails closed, wave 7,
+unreadable directory, a file deeper than the walk) makes every name test and every wildcard "may match": it fails closed; protected
+symlinks are listed by their own path and are never followed, wave 7,
 CR5-5; and the Stop gate's `arch:compliance` map asks the same `isProtectedPath`)
 judges a shell write, a Codex patch, an MCP string and Claude's own Write/Edit/MultiEdit/NotebookEdit, which ASK
 for every one of them: the `permissions.ask` rules in `settings.json` name fewer paths, and an Edit tool call

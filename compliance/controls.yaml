@@ -2085,9 +2085,12 @@ controls:
       - script: harness:phi-scan
       - file: .claude/settings.json
       - file: scripts/harness/pre-tool-guard.ts
+      - file: scripts/harness/protected-names.ts
       - file: docs/compliance/AGENT_HARNESS.md
       - file: scripts/__tests__/harness-hooks.test.ts
       - file: scripts/__tests__/harness-bypasses.test.ts
+      - file: scripts/__tests__/harness-protected-names.test.ts
+      - file: scripts/__tests__/harness-destructive.test.ts
       - file: .github/CODEOWNERS
       - file: .agents/rules/phi-and-secrets.md
       - file: .codex/hooks.json
