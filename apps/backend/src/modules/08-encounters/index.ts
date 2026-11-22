@@ -55,6 +55,11 @@ export function mountEncounterRoutes(
      * is not the composition root (a test) only.
      */
     readonly overrideRateLimit?: PreHandler;
+    /**
+     * The per-actor limiter for the IDG follow-up link route (ADR-0114 S5b), which bounds the refused-link audit rows one author can add
+     * (note-closure-gate-wiring.test.ts pins that the composition root builds it). Absent, the route is unlimited: a mount that is not the composition root only.
+     */
+    readonly idgLinkRateLimit?: PreHandler;
   },
 ): void {
   _registerM8Abac({ resolver: createDbEncounterAbacResolver(db) });
@@ -72,6 +77,7 @@ export function mountEncounterRoutes(
   });
   _registerM8DraftingRoutes(app, { service: createDbDraftRouteService({ db }) });
   _registerM8DraftSectionRoutes(app, {
+    ...(closure?.idgLinkRateLimit ? { idgLinkRateLimit: closure.idgLinkRateLimit } : {}),
     service: createDraftService({
       runInOrg: createDbRunInOrg(db, ciphers),
       ...(closure?.onRefusalAuditFailure

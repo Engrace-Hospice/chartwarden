@@ -12,9 +12,15 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { createInMemoryRateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";
+import {
+  IDG_FOLLOW_UP_LINK_ROUTE_RATE_LIMIT,
+  createRouteRateLimit,
+} from "../src/bootstrap/plugins/route-rate-limit";
 import type { DraftService } from "../src/modules/08-encounters/drafting/draft-service";
 import {
   buildEncounterAbacPredicates,
@@ -74,7 +80,7 @@ function fakeService() {
   } as unknown as { [K in keyof DraftService]: ReturnType<typeof vi.fn> };
 }
 
-function makeServer(options: { inCaseload?: boolean } = {}) {
+function makeServer(options: { inCaseload?: boolean; idgLinkRateLimit?: PreHandler } = {}) {
   const backend = createInMemoryEncounterBackend({
     encounters: [
       {
@@ -115,7 +121,10 @@ function makeServer(options: { inCaseload?: boolean } = {}) {
   registerDraftingRoutes(app, {
     service: { getPolicy: vi.fn(), putPolicy: vi.fn() } as never,
   });
-  registerDraftSectionRoutes(app, { service: service as unknown as DraftService });
+  registerDraftSectionRoutes(app, {
+    service: service as unknown as DraftService,
+    ...(options.idgLinkRateLimit ? { idgLinkRateLimit: options.idgLinkRateLimit } : {}),
+  });
   return { app, service };
 }
 
@@ -438,5 +447,75 @@ describe("PUT /encounters/:encounterId/idg-action-item", () => {
     expect(res.statusCode).toBe(403);
     expect(res.json().error.code).toBe("IDG_ACTION_PERMISSION_REQUIRED");
     expect(res.json().error.message).toContain("idg.act");
+  });
+});
+
+describe("the per-actor limiter on the link route (bounds the immutable refused-link audit rows one author can add)", () => {
+  const limiter = (perUser: number, keyPrefix: string): PreHandler =>
+    createRouteRateLimit({
+      store: createInMemoryRateLimitStore(),
+      limit: { perUser, perOrg: 100, windowMs: 60_000, failMode: "open" },
+      keyPrefix,
+    }) as PreHandler;
+  const put = (
+    app: ReturnType<typeof makeServer>["app"],
+    headers: Record<string, string>,
+    payload: { actionItemId: string | null } = { actionItemId: ITEM },
+  ) => app.inject({ method: "PUT", url: linkUrl(), headers, payload });
+
+  it("refuses 429 RATE_LIMITED with Retry-After once the budget is spent, and the service is not reached", async () => {
+    const { app, service } = makeServer({ idgLinkRateLimit: limiter(3, "test-idg-link") });
+    for (let i = 0; i < 3; i += 1) expect((await put(app, AUTHOR)).statusCode).toBe(200);
+    const refused = await put(app, AUTHOR);
+    expect(refused.statusCode).toBe(429);
+    expect(refused.headers["retry-after"]).toBe("60");
+    expect(refused.json().error.code).toBe("RATE_LIMITED");
+    expect(service.setIdgActionItem).toHaveBeenCalledTimes(3);
+  });
+
+  it("counts a refused link and a clear as the requests they are (a clear that fails is not free)", async () => {
+    const { app, service } = makeServer({ idgLinkRateLimit: limiter(2, "test-idg-link-kinds") });
+    service.setIdgActionItem.mockRejectedValueOnce(
+      Object.assign(new Error("action item not found"), { code: "NOT_FOUND", statusCode: 404 }),
+    );
+    expect((await put(app, AUTHOR)).statusCode).toBe(404);
+    expect((await put(app, AUTHOR, { actionItemId: null })).statusCode).toBe(200);
+    expect((await put(app, AUTHOR)).statusCode).toBe(429);
+  });
+
+  it("is per author: one author's spent budget does not refuse another", async () => {
+    const { app } = makeServer({ idgLinkRateLimit: limiter(1, "test-idg-link-actor") });
+    expect((await put(app, AUTHOR)).statusCode).toBe(200);
+    expect((await put(app, AUTHOR)).statusCode).toBe(429);
+    // another clinician is refused by the author's own rule (403), not by the limiter: they never reach it
+    expect((await put(app, OTHER)).statusCode).toBe(403);
+  });
+
+  it("sits after the guards: a caller they refuse never spends the budget, and the GET is not limited", async () => {
+    const { app, service } = makeServer({ idgLinkRateLimit: limiter(1, "test-idg-link-order") });
+    const readOnly = await put(app, VIEWER);
+    const again = await put(app, VIEWER);
+    const notAuthor = await put(app, SUPERVISOR);
+    const ai = await put(app, { ...AUTHOR, "x-test-actor-kind": "ai_agent" });
+    expect([readOnly.statusCode, again.statusCode, notAuthor.statusCode, ai.statusCode]).toEqual([
+      403, 403, 403, 403,
+    ]);
+    for (let i = 0; i < 3; i += 1) {
+      expect(
+        (await app.inject({ method: "GET", url: listUrl(), headers: AUTHOR })).statusCode,
+      ).toBe(200);
+    }
+    // the one request that clears the guards still has its whole budget
+    expect((await put(app, AUTHOR)).statusCode).toBe(200);
+    expect(service.setIdgActionItem).toHaveBeenCalledTimes(1);
+  });
+
+  it("the production limit is 10 a minute per user, 100 a minute per org, fail-open", () => {
+    expect(IDG_FOLLOW_UP_LINK_ROUTE_RATE_LIMIT).toEqual({
+      perUser: 10,
+      perOrg: 100,
+      windowMs: 60_000,
+      failMode: "open",
+    });
   });
 });

@@ -7,7 +7,7 @@
 //                                                                   author alone (403 for anyone else, an absent addendum included)    encounter.read
 //   PUT /api/v1/encounters/:encounterId/addenda/:addendumId/draft/sections/:sectionId   the addendum's author confirms or deselects one   encounter.addendum_author
 //   GET /api/v1/encounters/:encounterId/idg-action-items            (S5b) the open IDG action items the viewer may link an IDG follow-up visit to   encounter.read + idg.act
-//   PUT /api/v1/encounters/:encounterId/idg-action-item             (S5b) link the visit to one action item, or clear the link                   encounter.author + idg.act (not to clear)
+//   PUT /api/v1/encounters/:encounterId/idg-action-item             (S5b) link the visit to one action item, or clear the link                   encounter.author + idg.act (not to clear); 10/min/user
 //   (S4b: GET and PUT .../discipline-plan-elements keep or leave out single goals of a social-work or chaplain visit's drafted plan.)
 //
 // All four also need the read key of each SOURCE domain the template's draft is compiled from: the care plan (M7), the medication orders (M12)
@@ -58,6 +58,11 @@ import { parse } from "./encounters-typebox";
 
 export interface DraftSectionRouteDeps {
   readonly service: DraftService;
+  /**
+   * The per-actor limiter for the IDG follow-up link route (`createRouteRateLimit`, built by the composition root; note-closure-gate-wiring.test.ts pins that it
+   * is): it bounds the immutable refused-link audit rows one author can add. Absent, the route is unlimited: a mount that is not the composition root (a test) only.
+   */
+  readonly idgLinkRateLimit?: PreHandler;
 }
 
 /**
@@ -276,6 +281,8 @@ export function registerDraftSectionRoutes(
         PARAMS_VALID(DraftParamsSchema),
         SCOPE_FOR("encounter.author"),
         IS_AUTHOR,
+        // After the guards, so a caller they refuse never spends the budget.
+        deps.idgLinkRateLimit ?? (async () => {}),
       ],
       // The answer is the same list, so the change is accountable as a read too (clearing a link that was never made writes no row event).
       config: { auditRead: IDG_ACTION_ITEMS_READ_AUDIT },

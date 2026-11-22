@@ -395,6 +395,7 @@ import {
   EMERGENCY_ROUTE_RATE_LIMIT,
   HELP_REQUEST_ROUTE_RATE_LIMIT,
   HOPE_SFV_COMPLETION_ROUTE_RATE_LIMIT,
+  IDG_FOLLOW_UP_LINK_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
   MAC_CREDENTIAL_TEST_ROUTE_RATE_LIMIT,
   MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
@@ -6689,6 +6690,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 store: rateLimitStore ?? createInMemoryRateLimitStore(),
                 limit: CLOSURE_OVERRIDE_ROUTE_RATE_LIMIT,
                 keyPrefix: "m8-closure-override",
+              }),
+              // ADR-0114 S5b - fail-open: 10/min/user, 100/min/org on the IDG follow-up link route, which bounds the immutable refused-link audit rows one
+              // author can add (the org-wide 600/min tier alone allowed about 36,000 an hour).
+              idgLinkRateLimit: createRouteRateLimit({
+                store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                limit: IDG_FOLLOW_UP_LINK_ROUTE_RATE_LIMIT,
+                keyPrefix: "m8-idg-link",
               }),
             },
           );

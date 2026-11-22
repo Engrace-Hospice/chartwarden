@@ -154,6 +154,22 @@ export const CLOSURE_OVERRIDE_ROUTE_RATE_LIMIT: RouteRateLimit = {
   failMode: "open",
 };
 
+/**
+ * M8 `PUT /encounters/:encounterId/idg-action-item` (ADR-0114 S5b): 10/min/user and 100/min/org. A refused link (an item the viewer is not handed, or the
+ * re-link cap) writes an immutable compliance-retention `m8.encounter.idg_follow_up_link_refused` audit row per request, and the route had only the
+ * org-wide tier, so one author looping random ids could add about 36,000 permanent rows an hour. This caps it at 10 a minute (600 an hour) per author, where a
+ * clinician choosing which action item a visit follows up makes a handful of changes in a visit (a retry after a refusal still counts and is nowhere near
+ * 10 a minute). 100/min/org leaves room for every clinician of a large agency documenting follow-ups together. Counted on every request that reaches the
+ * handler (a link, a clear, a refused link) after the permission, caseload and author checks, so a caller those refuse never spends it. Fail-OPEN: an
+ * availability control; a clear must not be refused because the limiter's store is down.
+ */
+export const IDG_FOLLOW_UP_LINK_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 10,
+  perOrg: 100,
+  windowMs: 60_000,
+  failMode: "open",
+};
+
 /** M36 WP 6.8 (ADR-0097): the acknowledge-required broadcast routes, 20/min/user and 200/min/org. Fail-open: an availability control. */
 export const ACK_BROADCAST_ROUTE_RATE_LIMIT: RouteRateLimit = {
   perUser: 20,
