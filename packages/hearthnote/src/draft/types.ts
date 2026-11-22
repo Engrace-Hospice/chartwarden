@@ -22,7 +22,9 @@ export type DraftSourceKind =
   // S2b (RN admission visit, design §3.3):
   | "medication_order"
   | "caregiver"
-  | "advance_directive_acknowledgment";
+  | "advance_directive_acknowledgment"
+  // S3 (aide visit): the visit's own recorded ADLs, which lead the drafted `adl` section (one record per visit, so the ref id is the kind):
+  | "recorded_adl";
 
 // A `type`, not an `interface`: the canonical serializer takes plain data, and only an alias is
 // assignable to its index-signature shape.
@@ -50,7 +52,19 @@ export interface CarePlanInterventionInput extends DraftSourceBase {
   readonly interventionText: string;
 }
 
-/** The care-plan goals and interventions linked to this visit, in the plan version in effect at `asOf`. */
+/**
+ * Which of the four S1 sources a template's draft is built from (S3). A source no drafted section uses is never read, so a note's author
+ * needs the read key of only the domains behind what is drafted for them. The S2 and S2b records (benefit period, weight, orders in effect,
+ * caregivers, acknowledgment) are decided separately, by encounter type.
+ */
+export interface DraftSourceNeeds {
+  readonly carePlan: boolean;
+  readonly vitals: boolean;
+  readonly medicationChanges: boolean;
+  readonly scales: boolean;
+}
+
+/** The care-plan goals and interventions relevant to this visit (those the author has not removed), in the plan version in effect at `asOf`. */
 export interface CarePlanDraftInput {
   readonly goals: readonly CarePlanGoalInput[];
   readonly interventions: readonly CarePlanInterventionInput[];

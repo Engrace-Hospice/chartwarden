@@ -53,6 +53,8 @@ export const ORIGIN_LABEL: Readonly<Record<DraftOrigin, string>> = {
   medication_order: "the medication orders in effect at the visit",
   caregiver: "the caregivers on record on the visit date",
   advance_directive_acknowledgment: "the advance directive acknowledgment on file at the visit",
+  // S3 (aide visit): the ADLs the aide recorded for this visit lead the section.
+  recorded_adl: "the activities of daily living recorded at this visit",
 };
 
 export function originsText(origins: readonly DraftOrigin[]): string {

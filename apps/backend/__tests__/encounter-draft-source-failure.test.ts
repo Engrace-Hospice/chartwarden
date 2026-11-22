@@ -49,7 +49,7 @@ const caller = {
   userId: "00000000-0000-4000-8000-0000000000bb",
   roles: ["rn"],
   membershipId: "00000000-0000-4000-8000-0000000000aa",
-  permissions: new Set<string>(),
+  permissions: new Set<string>(["care_plan.read", "prescribing.read", "assessment.read_trend"]),
 };
 const scope = { organizationId: encounter.organizationId, userId: "u", now: NOW };
 
@@ -154,7 +154,15 @@ describe("an RN routine visit whose source never answers", () => {
 const recertEncounter = draftEncounterRow({ encounterType: "recert_visit", discipline: "rn" });
 /** A reader holding the four M6 read keys a recertification draft needs (`assertMayReadAdmissionFacts`). */
 const ADMISSION_READER = reader({
-  permissions: new Set(["election.read", "cti.read", "f2f.read", "loc.read"]),
+  permissions: new Set([
+    "election.read",
+    "cti.read",
+    "f2f.read",
+    "loc.read",
+    "care_plan.read",
+    "prescribing.read",
+    "assessment.read_trend",
+  ]),
 });
 const RECERT_SEAM_SOURCES = [
   "electionPeriods",
@@ -213,7 +221,15 @@ describe("an RN recertification visit whose source fails", () => {
         .getDraft(
           {
             ...caller,
-            permissions: new Set(["election.read", "cti.read", "f2f.read", "loc.read"]),
+            permissions: new Set([
+              "election.read",
+              "cti.read",
+              "f2f.read",
+              "loc.read",
+              "care_plan.read",
+              "prescribing.read",
+              "assessment.read_trend",
+            ]),
           },
           recertEncounter.id,
         )

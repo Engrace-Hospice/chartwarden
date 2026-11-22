@@ -19,15 +19,19 @@ import { draftEncounterRow, memoryRunInOrg } from "./_encounter-draft-memory-sto
 type Pair = readonly [EncounterType, EncounterDiscipline];
 
 /**
- * The pairs that draft: S1's RN routine visit, S2's RN recertification visit and face-to-face visit (physician or nurse practitioner) and
- * S2b's RN admission visit. Stated here, not derived, so widening the corpus is a deliberate edit of this test.
+ * The pairs that draft: S1's RN routine visit, S2's RN recertification visit and face-to-face visit (physician or nurse practitioner),
+ * S2b's RN admission visit and S3's LPN visits and aide visit. Stated here, not derived, so widening the corpus is a deliberate edit of this
+ * test.
  */
 const DRAFTED_PAIRS: ReadonlySet<string> = new Set([
   "routine_visit:rn",
+  "routine_visit:lpn",
   "recert_visit:rn",
   "admission_visit:rn",
   "face_to_face:md",
   "face_to_face:np",
+  "lpn_visit:lpn",
+  "chha_visit:chha",
 ]);
 const UNDRAFTED_PAIRS: readonly Pair[] = (
   Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]
@@ -112,7 +116,7 @@ describe("the gate and sign read nothing for a template the corpus does not draf
       },
     });
     const encounter = {
-      ...draftEncounterRow({ encounterType: "chha_visit", discipline: "chha" }),
+      ...draftEncounterRow({ encounterType: "msw_followup", discipline: "msw" }),
       providerEntityId: null,
       locationId: null,
     };
@@ -183,7 +187,7 @@ describe("the draft routes for a template the corpus does not draft", () => {
   }
 
   it("PUT a section is stale (nothing is drafted to confirm), writes nothing and reads no source", async () => {
-    const { svc, seams, store, events } = service(["chha_visit", "chha"]);
+    const { svc, seams, store, events } = service(["msw_followup", "msw"]);
     const error = await svc
       .resolveSection(
         caller,
@@ -200,7 +204,7 @@ describe("the draft routes for a template the corpus does not draft", () => {
   });
 
   it("PUT a section the template lacks is still a 422", async () => {
-    const { svc } = service(["chha_visit", "chha"]);
+    const { svc } = service(["msw_followup", "msw"]);
     const error = await svc
       .resolveSection(
         caller,

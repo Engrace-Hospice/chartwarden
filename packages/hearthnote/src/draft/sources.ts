@@ -26,6 +26,10 @@
 //   caregiver_overview   the caregivers on record on the service date (name and relationship, no contact)      primary first, then by name
 //   (`assessment` and `symptom_management` draft nothing here, for the reason the recertification's do not.)
 // The face-to-face visit (S2, `md` and `np`): prognosis from the PPS against the period's first reading, then the weight.
+// The LPN visits (S3, `routine_visit` and `lpn_visit` by an LPN) are sourced like the routine visit; the corpus tags leave out the PPS and ESAS-r
+// phrases, so `assessment` and `symptom_management` are not drafted for them (VN-D39).
+// The aide visit (S3, `chha_visit` by a `chha`): adl     the care plan's active aide interventions, less those the author removed   by source id
+//   (the recorded ADLs are stated first in the section, by the compiler, as the recorded vitals' body measures are).
 // Every other template is sourced like the routine visit; the corpus tags decide whether it drafts at all (`scope.ts`).
 //
 // Sources are ordered by id (or the key above), never by the order they arrived in: a database that returns
@@ -49,6 +53,7 @@ import type {
   CaregiverInput,
   DraftInputs,
   DraftSourceBase,
+  DraftSourceNeeds,
   DraftSourceRef,
   FaceToFaceDraftInput,
   MedicationChangeInput,
@@ -650,12 +655,21 @@ const faceToFaceVisitMap: SourceMap = (inputs, asOfMs) => [
   ],
 ];
 
-/** The templates S2 sources differently from the routine visit. Every other template is sourced like the routine visit (S1's rule). */
+/** S3: the aide visit's one drafted section. */
+const AIDE_SECTION = { adl: "adl" } as const;
+
+/** The aide visit (S3): the care plan's active aide interventions, less those the author removed, in `adl`. No goal, vitals, scale or medication source is read. */
+const aideVisitMap: SourceMap = (inputs) => [
+  [AIDE_SECTION.adl, interventionGroups(inputs.carePlan)],
+];
+
+/** The templates S2 and S3 source differently from the routine visit. Every other template is sourced like the routine visit (S1's rule). */
 const SOURCE_MAPS: ReadonlyMap<string, SourceMap> = new Map([
   [templateKey("recert_visit", "rn"), recertVisitMap],
   [templateKey("admission_visit", "rn"), admissionVisitMap],
   [templateKey("face_to_face", "md"), faceToFaceVisitMap],
   [templateKey("face_to_face", "np"), faceToFaceVisitMap],
+  [templateKey("chha_visit", "chha"), aideVisitMap],
 ]);
 
 const scaleCodesOf = (sectionId: string): readonly string[] =>
@@ -728,11 +742,58 @@ const SECTION_PHRASES: ReadonlyMap<string, Readonly<Record<string, readonly stri
   ],
   [templateKey("face_to_face", "md"), { [RECERT_SECTION.prognosis]: prognosisEvidencePhrases }],
   [templateKey("face_to_face", "np"), { [RECERT_SECTION.prognosis]: prognosisEvidencePhrases }],
+  [
+    templateKey("chha_visit", "chha"),
+    { [AIDE_SECTION.adl]: [CARE_PLAN_CODES.interventionPerformed] },
+  ],
 ]);
 
 /** The phrases each section of the template with this key is drafted from. */
 export function draftSectionPhrases(key: string): Readonly<Record<string, readonly string[]>> {
   return SECTION_PHRASES.get(key) ?? ROUTINE_SECTION_PHRASES;
+}
+
+const SOURCE_NAMES = ["carePlan", "vitals", "medicationChanges", "scales"] as const;
+
+/**
+ * The S1 sources each drafted section is built from (S3). One row per section id any template drafts; a template reads the union over the
+ * sections it drafts (`draftSourceNeeds` in scope.ts), and the S2 and S2b records are decided by encounter type, so those rows are empty.
+ * `prognosis` is the PPS against the period's first reading, then the weight (the weight is the S2 record).
+ */
+const SECTION_SOURCES: Readonly<Record<string, readonly (typeof SOURCE_NAMES)[number][]>> = {
+  [SECTION.vitals]: ["vitals"],
+  [SECTION.assessment]: ["scales"],
+  [SECTION.symptoms]: ["scales"],
+  [SECTION.interventions]: ["carePlan", "medicationChanges"],
+  [SECTION.plan]: ["carePlan"],
+  [AIDE_SECTION.adl]: ["carePlan"],
+  [RECERT_SECTION.pps]: ["scales"],
+  [RECERT_SECTION.esas]: ["scales"],
+  [RECERT_SECTION.prognosis]: ["scales"],
+  [RECERT_SECTION.summary]: [],
+  [ADMISSION_SECTION.symptoms]: ["scales"],
+  [ADMISSION_SECTION.medications]: [],
+  [ADMISSION_SECTION.advanceDirective]: [],
+  [ADMISSION_SECTION.caregivers]: [],
+};
+
+/**
+ * The S1 sources the given drafted sections need read. Throws for a section with no row above: a section the corpus can draft must say which
+ * sources feed it, or the backend would read none of them (a draft silently short of its sources).
+ */
+export function sourceNeedsOf(sectionIds: Iterable<string>): DraftSourceNeeds {
+  const needed = new Set<string>();
+  for (const id of sectionIds) {
+    const sources = SECTION_SOURCES[id];
+    if (sources === undefined) throw new Error(`draft section '${id}' declares no sources`);
+    for (const source of sources) needed.add(source);
+  }
+  return {
+    carePlan: needed.has("carePlan"),
+    vitals: needed.has("vitals"),
+    medicationChanges: needed.has("medicationChanges"),
+    scales: needed.has("scales"),
+  };
 }
 
 /** Every section of the inputs' template that has at least one source, with its sources in order. Empty sections are absent. */

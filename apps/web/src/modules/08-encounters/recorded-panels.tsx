@@ -20,8 +20,8 @@ export interface RecordedPanelsProps {
   readonly patientId: string;
   /** The note cannot take a write right now (finalized, being edited, or busy): every panel is read-only. */
   readonly disabled: boolean;
-  /** A panel saved something the note states: re-read the note. */
-  readonly onChanged: () => void;
+  /** A panel saved something the note states: re-read the note. The kind says which panel, since only some records are a source of the draft. */
+  readonly onChanged: (panel: RecordedPanelKind) => void;
   readonly onStatusChange: (panel: RecordedPanelKind, status: PanelStatus) => void;
 }
 
@@ -46,14 +46,14 @@ function RecordedPanelsView({
               <AdlPanel
                 encounterId={encounterId}
                 disabled={disabled}
-                onSaved={onChanged}
+                onSaved={() => onChanged(kind)}
                 onStatusChange={report}
               />
             ) : kind === "nutrition" ? (
               <NutritionPanel
                 encounterId={encounterId}
                 disabled={disabled}
-                onSaved={onChanged}
+                onSaved={() => onChanged(kind)}
                 onStatusChange={report}
               />
             ) : (
@@ -61,7 +61,7 @@ function RecordedPanelsView({
                 encounterId={encounterId}
                 patientId={patientId}
                 disabled={disabled}
-                onChanged={onChanged}
+                onChanged={() => onChanged(kind)}
                 onStatusChange={report}
               />
             )}

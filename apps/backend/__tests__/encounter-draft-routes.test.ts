@@ -49,7 +49,8 @@ const SECTION = {
 };
 
 // The draft is computed from the care plan (M7), medication orders (M12) and scored scales (M9) through seams that apply no permission
-// check of their own, so both draft routes ask for each source domain's read key on top of the encounter's (the keys of the sibling routes).
+// check of their own, so the draft asks for each source domain's read key the template reads on top of the encounter's (the keys of the sibling
+// routes). The SERVICE asks them by template since S3; these seeds hold or miss one key to show the route leaves that decision to it.
 const DOMAIN_READS = ["care_plan.read", "prescribing.read", "assessment.read_trend"];
 const without = (key: string) => DOMAIN_READS.filter((k) => k !== key);
 const PERMISSION_SEED = [
@@ -209,8 +210,10 @@ describe("GET /encounters/:encounterId/draft", () => {
     );
   });
 
+  // S3 (VN-D42): the source-domain keys are asked by the SERVICE, by template (`source-reads.ts`, tested in encounter-draft-service.test.ts), so the
+  // route no longer refuses a missing one itself: it passes the session's permissions through and the service decides.
   it.each(DOMAIN_READS)(
-    "needs %s as well: a role with encounter.read that misses it is refused 403 and nothing is computed or read",
+    "does not refuse a role that misses %s itself: it reaches the service with the permissions it holds, which asks the keys by template",
     async (missing) => {
       const { app, service } = makeServer();
       const res = await app.inject({
@@ -218,21 +221,22 @@ describe("GET /encounters/:encounterId/draft", () => {
         url: draftUrl(),
         headers: as(`no_${missing}`, "rn"),
       });
-      expect(res.statusCode).toBe(403);
-      expect(res.json().error.message).toContain(missing);
-      expect(service.getDraft).not.toHaveBeenCalled();
+      expect(res.statusCode).toBe(200);
+      const caller = service.getDraft.mock.calls[0]?.[0] as { permissions: ReadonlySet<string> };
+      expect(caller.permissions.has(missing)).toBe(false);
+      expect(caller.permissions.has("encounter.read")).toBe(true);
     },
   );
 
-  it("refuses a role holding encounter.read and none of the source domains' read keys", async () => {
+  it("a role holding encounter.read and none of the source domains' keys reaches the service too (an aide's or a chaplain's draft may need none)", async () => {
     const { app, service } = makeServer();
     const res = await app.inject({
       method: "GET",
       url: draftUrl(),
       headers: as("encounter_only", "chaplain"),
     });
-    expect(res.statusCode).toBe(403);
-    expect(service.getDraft).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(200);
+    expect(service.getDraft).toHaveBeenCalledTimes(1);
   });
 
   it("needs encounter.read: a caller without it is refused 403 and nothing is computed", async () => {
@@ -443,9 +447,8 @@ describe("PUT /encounters/:encounterId/draft/sections/:sectionId", () => {
   });
 
   it.each(DOMAIN_READS)(
-    "needs %s as well: the section it answers carries source text, so an author missing it is refused 403 and nothing is written",
+    "does not refuse an author that misses %s itself: the service asks the source-domain keys by template",
     async (missing) => {
-      // The caller IS the encounter's author, so only the missing source-domain key can refuse this call.
       const { app, service } = makeServer({ author: `no_${missing}` });
       const res = await app.inject({
         method: "PUT",
@@ -453,8 +456,11 @@ describe("PUT /encounters/:encounterId/draft/sections/:sectionId", () => {
         headers: as(`no_${missing}`, "rn"),
         payload: BODY,
       });
-      expect(res.statusCode).toBe(403);
-      expect(service.resolveSection).not.toHaveBeenCalled();
+      expect(res.statusCode).toBe(200);
+      const caller = service.resolveSection.mock.calls[0]?.[0] as {
+        permissions: ReadonlySet<string>;
+      };
+      expect(caller.permissions.has(missing)).toBe(false);
     },
   );
 

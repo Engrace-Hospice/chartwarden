@@ -15,8 +15,10 @@ export interface ComposerDraftInput {
   readonly activeSectionId: string | undefined;
   /** The composer is saving or finalizing. */
   readonly saving: boolean;
-  /** The clinician has edits that are not saved. */
-  readonly dirty: boolean;
+  /** The clinician has ticked or typed note content that the Save draft button has not saved. */
+  readonly selectionsDirty: boolean;
+  /** The names of the parts of the note whose own form (ADLs, nutrition, wounds, vitals, plan) holds input its own Save has not saved. */
+  readonly unsavedPanels: readonly string[];
 }
 
 export interface ComposerDraft {
@@ -44,7 +46,8 @@ export interface ComposerDraft {
 interface BlockInput {
   readonly status: string | undefined;
   readonly saving: boolean;
-  readonly dirty: boolean;
+  readonly selectionsDirty: boolean;
+  readonly unsavedPanels: readonly string[];
   readonly refreshing: boolean;
   readonly busySectionId: string | null;
   readonly sectionId: string | undefined;
@@ -53,7 +56,8 @@ interface BlockInput {
 function blockedReasonFor({
   status,
   saving,
-  dirty,
+  selectionsDirty,
+  unsavedPanels,
   refreshing,
   busySectionId,
   sectionId,
@@ -62,7 +66,11 @@ function blockedReasonFor({
     return `This note is ${stateLabel(status).toLowerCase()}, so its drafted sections can no longer be changed.`;
   }
   if (saving) return "Wait for the save to finish.";
-  if (dirty) {
+  // A part of the note with its own form is saved by its own button, not by Save draft: name it, or the block never clears.
+  if (unsavedPanels.length > 0) {
+    return `Save or discard the unsaved entries in ${unsavedPanels.join(", ")} first, so what you confirm is what you will sign.`;
+  }
+  if (selectionsDirty) {
     return "You have unsaved changes. Save the draft first, so what you confirm is what you will sign.";
   }
   if (refreshing) {
@@ -79,7 +87,8 @@ export function useComposerDraft({
   encounterStatus,
   activeSectionId,
   saving,
-  dirty,
+  selectionsDirty,
+  unsavedPanels,
 }: ComposerDraftInput): ComposerDraft {
   const noteDraft = useNoteDraft(encounterId, encounterStatus);
   const [carePlanRevision, setCarePlanRevision] = useState(0);
@@ -99,7 +108,8 @@ export function useComposerDraft({
   const blockedReason = blockedReasonFor({
     status: encounterStatus,
     saving,
-    dirty,
+    selectionsDirty,
+    unsavedPanels,
     refreshing: noteDraft.refreshing,
     busySectionId: noteDraft.busySectionId,
     sectionId: panelSection?.sectionId,

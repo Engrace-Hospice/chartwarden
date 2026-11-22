@@ -37,6 +37,12 @@ const SHARED_WITH_RECERT = new Set([
   ...["goal_progress", "goal_listed", "intervention_performed"].map((s) => `nv.cp.${s}`),
   ...["started", "changed", "discontinued"].map((s) => `nv.med.${s}`),
 ]);
+/** Of those, the ones an LPN visit drafts from too (S3 tags them for it): the vitals, care-plan and medication-change phrases, no PPS or ESAS-r. */
+const SHARED_WITH_LPN = new Set(
+  [...SHARED_WITH_RECERT].filter((code) => !code.startsWith("nv.scale.")),
+);
+/** The one S1 entry the aide visit drafts from too (S3 tags it for it). */
+const SHARED_WITH_AIDE = new Set(["nv.cp.intervention_performed"]);
 /** Of those, the ones the RN admission visit drafts from too (S2b tags them for it): everything but the PPS phrases. */
 const SHARED_WITH_ADMISSION = new Set(
   [...SHARED_WITH_RECERT].filter((code) => !code.startsWith("nv.scale.pps_")),
@@ -44,16 +50,25 @@ const SHARED_WITH_ADMISSION = new Set(
 
 describe("corpus release", () => {
   it("is a new release, registered with its own uuid and a date", () => {
-    expect(VOCAB_VERSION).toBe("narrative-vocab@2026.12.1");
+    expect(VOCAB_VERSION).toBe("narrative-vocab@2026.12.2");
     expect(NARRATIVE_VOCAB_RELEASES.map((r) => r.version)).toEqual([
       "narrative-vocab@2026.06.0",
       "narrative-vocab@2026.11.0",
       "narrative-vocab@2026.11.1",
       "narrative-vocab@2026.12.0",
       "narrative-vocab@2026.12.1",
+      "narrative-vocab@2026.12.2",
     ]);
     expect(activeNarrativeVocabRelease(VOCAB_VERSION).version).toBe(VOCAB_VERSION);
-    expect(activeNarrativeVocabRelease(VOCAB_VERSION).releasedOn).toBe("2026-11-20");
+    expect(activeNarrativeVocabRelease(VOCAB_VERSION).releasedOn).toBe("2026-11-21");
+  });
+
+  it("keeps the 2026.12.1 release row untouched (a note signed under it pins that id)", () => {
+    expect(NARRATIVE_VOCAB_RELEASES[4]).toEqual({
+      version: "narrative-vocab@2026.12.1",
+      id: "c032c8df-7afa-421b-99a2-86e8ad4b1154",
+      releasedOn: "2026-11-20",
+    });
   });
 
   it("keeps the 2026.12.0 release row untouched (a note signed under it pins that id)", () => {
@@ -153,19 +168,41 @@ describe("draft entries", () => {
     for (const e of NEW_ENTRIES) expect(LEGACY_CODES.has(e.code)).toBe(false);
   });
 
-  it("the 25 of 2026.11.0 are tagged for the RN routine visit, 20 of them also for the recertification visit and 16 also for the admission visit", () => {
+  it("the 25 of 2026.11.0 are tagged for the RN routine visit, 20 of them also for the recertification visit, 16 also for the admission visit, 12 also for the LPN visits and 1 also for the aide visit", () => {
     for (const e of ROUTINE_ENTRIES) {
-      expect(e.disciplines, e.code).toEqual(["rn"]);
-      expect(e.encounterTypes, e.code).toEqual(
-        SHARED_WITH_ADMISSION.has(e.code)
+      expect(e.disciplines, e.code).toEqual([
+        "rn",
+        ...(SHARED_WITH_LPN.has(e.code) ? ["lpn"] : []),
+        ...(SHARED_WITH_AIDE.has(e.code) ? ["chha"] : []),
+      ]);
+      expect(e.encounterTypes, e.code).toEqual([
+        ...(SHARED_WITH_ADMISSION.has(e.code)
           ? ["routine_visit", "recert_visit", "admission_visit"]
           : SHARED_WITH_RECERT.has(e.code)
             ? ["routine_visit", "recert_visit"]
-            : ["routine_visit"],
-      );
+            : ["routine_visit"]),
+        ...(SHARED_WITH_LPN.has(e.code) ? ["lpn_visit"] : []),
+        ...(SHARED_WITH_AIDE.has(e.code) ? ["chha_visit"] : []),
+      ]);
     }
     expect(ROUTINE_ENTRIES.filter((e) => SHARED_WITH_RECERT.has(e.code))).toHaveLength(20);
     expect(ROUTINE_ENTRIES.filter((e) => SHARED_WITH_ADMISSION.has(e.code))).toHaveLength(16);
+    expect(ROUTINE_ENTRIES.filter((e) => SHARED_WITH_LPN.has(e.code))).toHaveLength(12);
+    expect(ROUTINE_ENTRIES.filter((e) => SHARED_WITH_AIDE.has(e.code))).toHaveLength(1);
+  });
+
+  it("no LPN entry carries a PPS or ESAS-r phrase, and no aide entry anything but the intervention performed", () => {
+    for (const e of VOCABULARY.filter((x) => DRAFT_VOCAB_CODES.has(x.code))) {
+      if (e.disciplines.includes("lpn")) expect(e.code.startsWith("nv.scale."), e.code).toBe(false);
+      if (e.disciplines.includes("chha")) expect(e.code).toBe("nv.cp.intervention_performed");
+    }
+  });
+
+  it("the wording of every S1 entry is untouched by the 2026.12.2 tags (the draft golden test pins the text)", () => {
+    expect(ROUTINE_ENTRIES.map((e) => e.phrase)).toHaveLength(ROUTINE_ENTRY_COUNT);
+    expect(getVocabEntry("nv.cp.intervention_performed")?.phrase).toBe(
+      "Care-plan intervention performed: ${intervention_text}",
+    );
   });
 
   it("the 5 of 2026.12.1 are tagged for the RN admission visit alone, in one draft-only category", () => {
@@ -201,10 +238,13 @@ describe("draft entries", () => {
   it("surface in no other legal (encounter type x discipline) menu than the templates that draft", () => {
     const drafting = new Set([
       "routine_visit:rn",
+      "routine_visit:lpn",
       "recert_visit:rn",
       "admission_visit:rn",
       "face_to_face:md",
       "face_to_face:np",
+      "lpn_visit:lpn",
+      "chha_visit:chha",
     ]);
     for (const type of Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]) {
       for (const discipline of ENCOUNTER_DISCIPLINE_RULES[type]) {
@@ -216,11 +256,18 @@ describe("draft entries", () => {
   });
 
   it("surface in the menus of the templates that draft, and only the entries tagged for each", () => {
-    const codes = (type: EncounterType, discipline: "rn" | "md" | "np"): string[] =>
+    const codes = (
+      type: EncounterType,
+      discipline: "rn" | "md" | "np" | "lpn" | "chha",
+    ): string[] =>
       entriesFor(type, discipline)
         .filter((e) => DRAFT_VOCAB_CODES.has(e.code))
         .map((e) => e.code);
     expect(codes("routine_visit", "rn").sort()).toEqual(ROUTINE_ENTRIES.map((e) => e.code).sort());
+    for (const type of ["routine_visit", "lpn_visit"] as const) {
+      expect(codes(type, "lpn").sort(), type).toEqual([...SHARED_WITH_LPN].sort());
+    }
+    expect(codes("chha_visit", "chha")).toEqual(["nv.cp.intervention_performed"]);
     expect(codes("recert_visit", "rn").sort()).toEqual(
       [...SHARED_WITH_RECERT, ...RECERT_ENTRIES.map((e) => e.code)].sort(),
     );

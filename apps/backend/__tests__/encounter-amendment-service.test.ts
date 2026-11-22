@@ -15,8 +15,8 @@ const caller = {
   userId: "00000000-0000-4000-8000-0000000000bb",
   roles: ["rn"],
   membershipId: AUTHOR,
-  // a routine visit's draft needs none of M6's read keys (`assertMayReadAdmissionFacts`)
-  permissions: new Set<string>(),
+  // a routine visit's draft needs none of M6's read keys (`assertMayReadAdmissionFacts`) but the three source domains' (`source-reads.ts`, S3)
+  permissions: new Set<string>(["care_plan.read", "prescribing.read", "assessment.read_trend"]),
 };
 const signedNote = draftEncounterRow({ status: "signed" });
 const amending = (over: Partial<Parameters<typeof memoryRunInOrg>[0] & object> = {}) => ({
@@ -325,5 +325,42 @@ describe("resolving a named section", () => {
     const writes = ctx.amendmentSaved.get("plan");
     await ctx.svc.resolveAmendmentSection(caller, ENCOUNTER, ADDENDUM, "plan", request, AUDIT);
     expect(ctx.amendmentSaved.get("plan")).toBe(writes);
+  });
+});
+
+// S3 (VN-D42): the source-domain keys are asked by the service for the amendment's routes as for the note's, so one missing key is a 403 on
+// both, before any source is read; nothing but the shared `loadOr404` stands between a keyless caller and the care plan, orders and scores.
+describe("the source-domain read keys, on the amendment's routes (S3)", () => {
+  const keyless = {
+    ...caller,
+    permissions: new Set<string>(["care_plan.read", "assessment.read_trend"]),
+  };
+
+  it("refuses the amendment draft to a caller without a key the template's draft reads, before any source is read", async () => {
+    const ctx = service(amending());
+    expect(await codeOf(ctx.svc.getAmendmentDraft(keyless, ENCOUNTER, ADDENDUM))).toEqual([
+      "FORBIDDEN",
+      403,
+    ]);
+    expect(ctx.seams.carePlanAsOf).not.toHaveBeenCalled();
+    expect(ctx.seams.medicationChangesBetween).not.toHaveBeenCalled();
+  });
+
+  it("refuses a section's resolution the same way, and writes nothing", async () => {
+    const ctx = service(amending());
+    expect(
+      await codeOf(
+        ctx.svc.resolveAmendmentSection(
+          keyless,
+          ENCOUNTER,
+          ADDENDUM,
+          "plan",
+          { resolution: "confirmed", contentHash: "e".repeat(64), corpusVersion: "x" },
+          AUDIT,
+        ),
+      ),
+    ).toEqual(["FORBIDDEN", 403]);
+    expect(ctx.seams.carePlanAsOf).not.toHaveBeenCalled();
+    expect(ctx.amendmentSaved.size).toBe(0);
   });
 });

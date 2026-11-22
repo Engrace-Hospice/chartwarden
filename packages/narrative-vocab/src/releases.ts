@@ -80,6 +80,12 @@ export const NARRATIVE_VOCAB_RELEASES: readonly NarrativeVocabRelease[] = [
     id: "c032c8df-7afa-421b-99a2-86e8ad4b1154",
     releasedOn: "2026-11-20",
   },
+  // The LPN and aide tags on existing S1 draft phrases (ADR-0114 S3). Additive: no phrase's wording changed, none added.
+  {
+    version: "narrative-vocab@2026.12.2",
+    id: "5d40c87a-2544-4b85-a46f-cc37f0786e11",
+    releasedOn: "2026-11-21",
+  },
 ];
 
 /** Raised when {@link VOCAB_VERSION} names a release this registry does not carry. */

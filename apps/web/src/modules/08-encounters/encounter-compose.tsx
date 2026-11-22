@@ -216,6 +216,13 @@ const REASON_SECTION_ID = "chief_concern";
 /** The parts of the note that keep their own form and say so (see `useReportPanelStatus`). */
 type PanelKey = RecordedPanelKind | "vitals" | "plan";
 type PanelStatuses = Readonly<Partial<Record<PanelKey, PanelStatus>>>;
+
+/**
+ * The recorded panels whose saved record the draft compiler states (`describeRecordedAdl`, for the aide's `adl` section); the others are not.
+ * Keyed by panel, not by template: on a note whose template drafts nothing from the ADLs the re-read is harmless (it reads no source).
+ * Keep it in step with the compiler (a drift note sits beside `describeRecordedAdl` in `compile.ts`).
+ */
+const DRAFT_SOURCE_PANELS: ReadonlySet<RecordedPanelKind> = new Set<RecordedPanelKind>(["adl"]);
 const NO_SECTIONS: ReadonlySet<string> = new Set();
 
 export function EncounterCompose(): JSX.Element {
@@ -520,7 +527,8 @@ export function EncounterCompose(): JSX.Element {
     encounterStatus: encounter?.status,
     activeSectionId: active?.sectionId,
     saving: busy,
-    dirty,
+    selectionsDirty: editable && selectionsDirty,
+    unsavedPanels: editable ? dirtyPanels.map(panelTitle) : [],
   });
   // The server's check 1 counts drafted text the clinician confirmed as populating a required section; so does every count here.
   const confirmedIds = useMemo(() => confirmedSectionIds(drafted), [drafted]);
@@ -688,9 +696,17 @@ export function EncounterCompose(): JSX.Element {
     applyStored(stored);
   }, [applyStored, readStored]);
   // The panels' "something they state was saved": stable, so the memoised panels are not re-rendered by a keystroke in the free text.
-  const refreshFromPanel = useCallback((): void => {
-    void refreshPreview();
-  }, [refreshPreview]);
+  // A saved ADL record is a source of the draft (the aide's recorded ADLs lead the drafted `adl` section), so the draft is re-read too:
+  // the text, its hash and its state must be the ones the author is about to confirm. The nutrition and wound records are not a source of
+  // any drafted section, so saving them re-reads the preview alone (a draft read is a full recompute and a patient-attributed audit row).
+  const reloadDraft = noteDraft.reload;
+  const refreshFromPanel = useCallback(
+    (panel: RecordedPanelKind): void => {
+      void refreshPreview();
+      if (DRAFT_SOURCE_PANELS.has(panel)) void reloadDraft();
+    },
+    [refreshPreview, reloadDraft],
+  );
 
   /** Edit the note text. Unsaved selections are saved first, so the text being edited is the note as it now reads. */
   async function startEdit(): Promise<void> {

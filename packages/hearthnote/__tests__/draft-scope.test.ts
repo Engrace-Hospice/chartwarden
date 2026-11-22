@@ -12,6 +12,7 @@ import {
   type DraftInputs,
   HearthnoteAssemblyError,
   compileDraft,
+  draftSourceNeeds,
   draftedSectionIds,
   emptyDraft,
   resolveTemplate,
@@ -51,16 +52,19 @@ const draftedIdsOf = (pair: Pair): readonly string[] =>
     .map((s) => s.sectionId);
 
 describe("the templates the corpus drafts", () => {
-  it("today that is the RN routine, admission and recertification visits and the face-to-face visit, and no other legal pair", () => {
+  it("today that is the RN routine, admission and recertification visits, the face-to-face visit, the LPN visits and the aide visit, and no other legal pair", () => {
     const drafted = LEGAL_PAIRS.filter(([type, discipline]) =>
       templateHasDraftedSection(type, discipline),
     ).map(([type, discipline]) => templateKey(type, discipline));
     expect(drafted).toEqual([
       "routine_visit:rn",
+      "routine_visit:lpn",
       "admission_visit:rn",
       "recert_visit:rn",
       "face_to_face:md",
       "face_to_face:np",
+      "lpn_visit:lpn",
+      "chha_visit:chha",
     ]);
   });
 
@@ -86,21 +90,25 @@ describe("the templates the corpus drafts", () => {
   });
 
   it("leaves every section of an undrafted template empty even with every source supplied", () => {
-    const draft = compileDraft(maximalInputs(["chha_visit", "chha"]), DEPS);
+    const draft = compileDraft(maximalInputs(["msw_followup", "msw"]), DEPS);
     expect(draft.sections.map((s) => s.state)).toEqual(draft.sections.map(() => "empty"));
   });
 
   it("a section is drafted only when every phrase it is built from is tagged for the pair", () => {
-    // Retag the RN routine visit's entries for the CHHA visit: its `plan` (care-plan goals) becomes draftable, its other sections do not exist.
+    // Retag the RN routine visit's entries for the MSW follow-up: its `interventions` and `plan` (the care plan) become draftable, its other
+    // sections do not exist in that template.
     const retagged = entriesFor("routine_visit", "rn").map((entry) => ({
       ...entry,
-      disciplines: ["chha"] as const,
-      encounterTypes: ["chha_visit"] as const,
+      disciplines: ["msw"] as const,
+      encounterTypes: ["msw_followup"] as const,
     }));
-    expect([...draftedSectionIds("chha_visit", "chha", retagged)]).toEqual(["plan"]);
-    // Drop one of the goal phrases: the section is no longer fully covered, so it is not drafted.
+    expect([...draftedSectionIds("msw_followup", "msw", retagged)].sort()).toEqual([
+      "interventions",
+      "plan",
+    ]);
+    // Drop one of the goal phrases: `plan` is no longer fully covered, so it is not drafted.
     const withoutGoal = retagged.filter((entry) => entry.code !== "nv.cp.goal_progress");
-    expect([...draftedSectionIds("chha_visit", "chha", withoutGoal)]).toEqual([]);
+    expect([...draftedSectionIds("msw_followup", "msw", withoutGoal)]).toEqual(["interventions"]);
   });
 
   it("is false for a pair that has no template", () => {
@@ -142,4 +150,33 @@ describe("emptyDraft", () => {
   it("refuses a pair that has no template, like the compiler", () => {
     expect(() => emptyDraft("routine_visit", "volunteer", AS_OF)).toThrow(HearthnoteAssemblyError);
   });
+});
+
+// S3: `draftSourceNeeds` decides which sources are READ (and which read keys are asked), so it must be exactly what the drafted sections are
+// built from. A row that omits a source the builder uses would pass every literal check and draft short of its sources; this one compiles.
+describe("the sources a template needs read are the sources its drafted sections are built from", () => {
+  const WITHOUT = {
+    carePlan: { carePlan: null },
+    vitals: { vitals: null },
+    medicationChanges: { medicationChanges: [] },
+    scales: { scaleReadings: [] },
+  } as const;
+  const SOURCES = Object.keys(WITHOUT) as (keyof typeof WITHOUT)[];
+  const DRAFTED_PAIRS = LEGAL_PAIRS.filter(([type, discipline]) =>
+    templateHasDraftedSection(type, discipline),
+  );
+  const draftOf = (pair: Pair, without: Partial<DraftInputs>) =>
+    compileDraft({ ...maximalInputs(pair), ...without }, DEPS);
+
+  for (const pair of DRAFTED_PAIRS) {
+    it(`${templateKey(pair[0], pair[1])}: taking away a source it needs changes the draft, and one it does not need changes nothing`, () => {
+      const needs = draftSourceNeeds(pair[0], pair[1]);
+      const full = draftOf(pair, {});
+      for (const source of SOURCES) {
+        const without = draftOf(pair, WITHOUT[source]);
+        if (needs[source]) expect(without, `${source} is needed`).not.toEqual(full);
+        else expect(without, `${source} is not needed`).toEqual(full);
+      }
+    });
+  }
 });

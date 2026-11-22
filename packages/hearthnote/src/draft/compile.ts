@@ -11,6 +11,7 @@ import {
   resolveSelectionTemplate,
 } from "../assembly/assemble";
 import { joinSentences } from "../assembly/grammar";
+import { describeRecordedAdl } from "../assembly/recorded-findings";
 import { describeRecordedBodyMeasures } from "../assembly/vitals";
 import { templateKey } from "../templates/types";
 import { canonicalJson, normalizeText } from "./canonical";
@@ -21,6 +22,7 @@ import type {
   DraftDeps,
   DraftInputs,
   DraftSection,
+  DraftSourceRef,
   DraftedSection,
   EmptyDraftSection,
 } from "./types";
@@ -29,6 +31,8 @@ import { DraftInputError, instantMs } from "./validate";
 /** Written into every hashed payload; a change to the canonical rule needs a new value (see canonical.ts). */
 const CONTENT_FORMAT = "hearthnote-draft-section/1";
 const SHA256_HEX = /^[0-9a-f]{64}$/;
+/** The visit has one ADL record, so the kind names it; the visit itself is already on every audit row the ref rides on. */
+const RECORDED_ADL_REF: DraftSourceRef = { kind: "recorded_adl", id: "recorded-adl" };
 
 const emptySection = (sectionId: string): EmptyDraftSection => ({
   sectionId,
@@ -40,15 +44,28 @@ const emptySection = (sectionId: string): EmptyDraftSection => ({
 const isPart2Derived = (groups: readonly SourceGroup[]): boolean =>
   !groups.every((g) => g.sudRelated === false);
 
+/** What a drafted section says besides the sentences built from its sources: text that leads it, and the clinician's own words after. */
+interface SectionWords {
+  /** Text taken from a record the draft does not source sentences from (the visit's recorded ADLs), with the ref that names that record. */
+  readonly lead: { readonly text: string; readonly ref: DraftSourceRef };
+  readonly own: string;
+}
+
 function draftedSection(
   sectionId: string,
   groups: readonly SourceGroup[],
-  ownText: string,
+  words: SectionWords,
   deps: DraftDeps,
 ): DraftedSection {
   const drafted = joinSentences(groups.flatMap((g) => g.sentences));
-  const text = normalizeText(ownText.length === 0 ? drafted : `${drafted} ${ownText}`);
-  const sourceRefs = groups.map((g) => g.ref);
+  const text = normalizeText(
+    [words.lead.text, drafted, words.own].filter((part) => part.length > 0).join(" "),
+  );
+  // The lead record leads the text, so its ref leads the refs (and the origins the clinician reads) when it said anything.
+  const sourceRefs = [
+    ...(words.lead.text.length > 0 ? [words.lead.ref] : []),
+    ...groups.map((g) => g.ref),
+  ];
   const part2Derived = isPart2Derived(groups);
   const contentHash = deps.sha256Hex(
     canonicalJson({ format: CONTENT_FORMAT, part2Derived, sectionId, sourceRefs, text }),
@@ -101,10 +118,21 @@ export function compileDraft(inputs: DraftInputs, deps: DraftDeps): Draft {
       section.vitalsSummary === true
         ? describeRecordedBodyMeasures(inputs.context.recordedVitals)
         : "";
+    // Likewise the recorded ADLs of a section that states them (the aide's `adl`): the confirmed text replaces the section, so a recorded
+    // ADL the draft left out would vanish from the note. It LEADS the section, as it does in the assembled note. A recorded finding stated
+    // here is a source of the draft: add its panel to `DRAFT_SOURCE_PANELS` in apps/web `encounter-compose.tsx`, or the composer will not re-read
+    // the draft when the author saves it.
+    const recordedAdl =
+      section.adlSummary === true ? describeRecordedAdl(inputs.context.recordedAdl) : "";
     const ownText = [measures, own === undefined ? "" : renderSection(own, inputs.context)]
       .filter((part) => part.length > 0)
       .join(" ");
-    return draftedSection(section.id, sourced, ownText, deps);
+    return draftedSection(
+      section.id,
+      sourced,
+      { lead: { text: recordedAdl, ref: RECORDED_ADL_REF }, own: ownText },
+      deps,
+    );
   });
   return { templateKey: template.key, asOf: inputs.asOf, sections };
 }

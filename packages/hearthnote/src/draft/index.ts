@@ -14,6 +14,7 @@ export type {
   DraftSection,
   DraftSourceBase,
   DraftSourceKind,
+  DraftSourceNeeds,
   DraftSourceRef,
   DraftedSection,
   EmptyDraftSection,
@@ -30,6 +31,7 @@ export type {
 export { type CanonicalValue, canonicalJson, normalizeText } from "./canonical";
 export { compileDraft } from "./compile";
 export {
+  draftSourceNeeds,
   draftedSectionIds,
   emptyDraft,
   readsAdmissionRecord,
