@@ -1596,6 +1596,101 @@ describe("a finalized note whose Part 2 view cannot be decided", () => {
   });
 });
 
+// ADR-0114 S4b: a social-work or chaplain visit keeps or leaves out single plan items. The list is the visit's own, so it is mounted for the visit and
+// not for what the draft names: with every item left out nothing is drafted, and (after a reload) nothing says the visit is one of these.
+describe("a social-work or chaplain visit's plan list (S4b)", () => {
+  const ELEMENTS = `${BASE}/discipline-plan-elements`;
+  const PLAN_GOAL = "ffffffff-6666-4666-8666-ffffffffff01";
+  const elementsBody = (kept: boolean) => ({
+    patientId: PATIENT,
+    elements: [{ elementId: PLAN_GOAL, kind: "goal", text: "Name two ways to cope", kept }],
+  });
+  const planVisit = (discipline: string, encounterType: string): Record<string, Responder> => ({
+    [`GET ${BASE}`]: () => ({
+      body: {
+        id: ENC,
+        organizationId: "org-1",
+        patientId: PATIENT,
+        admissionId: "adm-1",
+        visitId: null,
+        encounterType,
+        discipline,
+        serviceDate: world.serviceDate,
+        status: world.status,
+        lateEntryTier: "on_time",
+        version: 3,
+        authoredByUserId: "user-1",
+        isF2f: false,
+        signedAt: null,
+        cosignedAt: null,
+      },
+    }),
+    [`GET ${ELEMENTS}`]: () => ({ body: elementsBody(true) }),
+  });
+
+  it.each([
+    ["msw", "msw_followup"],
+    ["chaplain", "chaplain_visit"],
+  ])(
+    "still offers a %s visit's plan items on a fresh load where every item was left out and nothing is drafted",
+    async (discipline, type) => {
+      world.draftSections = [empty("interventions"), empty("plan")];
+      mountComposer({
+        ...planVisit(discipline, type),
+        [`GET ${ELEMENTS}`]: () => ({ body: elementsBody(false) }),
+      });
+      await ready();
+      const goal = await screen.findByRole("checkbox", { name: "Name two ways to cope" });
+      expect(goal).not.toBeChecked();
+      // nothing is drafted, so the draft's own rail (scores, care plan) stays away
+      expect(screen.queryByRole("heading", { name: "Scores and trend" })).toBeNull();
+      expect(calls.some((c) => c.path.includes("relevant-elements"))).toBe(false);
+    },
+  );
+
+  it("reads the plan items again after a plan section is confirmed (it keeps its items)", async () => {
+    const user = userEvent.setup();
+    world.draftSections = [
+      drafted({ sectionId: "plan", origins: ["discipline_plan_goal"], text: "Plan text." }),
+    ];
+    mountComposer(planVisit("msw", "msw_followup"));
+    await ready();
+    await screen.findByRole("checkbox", { name: "Name two ways to cope" });
+    expect(callsTo("GET", "/discipline-plan-elements")).toHaveLength(1);
+
+    await openSection(user, /^Plan and Next Visit/);
+    await user.click(await screen.findByRole("button", { name: "Confirm section" }));
+    await waitFor(() => expect(callsTo("PUT", "/draft/sections/plan")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("GET", "/discipline-plan-elements")).toHaveLength(2));
+  });
+
+  it("says before the click that deselecting a plan section leaves its items out, and where to keep them again", async () => {
+    const user = userEvent.setup();
+    world.draftSections = [
+      drafted({ sectionId: "plan", origins: ["discipline_plan_goal"], text: "Plan text." }),
+    ];
+    mountComposer(planVisit("msw", "msw_followup"));
+    await ready();
+    await openSection(user, /^Plan and Next Visit/);
+    expect(
+      await screen.findByText(/Deselecting leaves this section's plan items out/),
+    ).toBeVisible();
+  });
+
+  it("names the plan list, not the record, when a plan section has nothing left to draft", async () => {
+    const user = userEvent.setup();
+    world.draftSections = [
+      drafted({ sectionId: "vitals_review", origins: ["vitals"], text: VITALS_TEXT }),
+      empty("plan"),
+    ];
+    mountComposer(planVisit("msw", "msw_followup"));
+    await ready();
+    await openSection(user, /^Plan and Next Visit/);
+    expect(await screen.findByText(/keep them again in the plan list/)).toBeVisible();
+    expect(screen.queryByText(/nothing in the record to draft this section from/i)).toBeNull();
+  });
+});
+
 describe("accessibility", () => {
   it(
     "has no axe violations on the drafted section, its summary and the right rail",

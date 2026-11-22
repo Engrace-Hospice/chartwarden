@@ -55,8 +55,12 @@ export function ComposerDraftStrip({
 export interface ComposerDraftRailProps {
   readonly encounter: PickerEncounter & { readonly serviceDate: string };
   readonly editable: boolean;
-  /** The draft, which names the visit time the scores are read up to. */
-  readonly drafted: DraftView;
+  /**
+   * The draft, which names the visit time the scores are read up to. Null when nothing is drafted: a social-work or chaplain visit still shows its
+   * plan picker then (with every item left out nothing is drafted, and the items must stay reachable to be kept again, also after a reload);
+   * any other visit shows no rail.
+   */
+  readonly drafted: DraftView | null;
   readonly carePlanRevision: number;
   readonly onLinksChanged: () => void;
 }
@@ -67,29 +71,37 @@ export function ComposerDraftRail({
   drafted,
   carePlanRevision,
   onLinksChanged,
-}: ComposerDraftRailProps): JSX.Element {
+}: ComposerDraftRailProps): JSX.Element | null {
+  const planVisit = isDisciplinePlanVisit(encounter.discipline);
+  if (drafted === null && !planVisit) return null;
   return (
     <div className="wx-draft-rail">
-      <ComposerScoreTrend
-        patientId={encounter.patientId}
-        serviceDate={encounter.serviceDate}
-        visitTime={drafted.asOf}
-      />
-      {isDisciplinePlanVisit(encounter.discipline) ? (
+      {drafted ? (
+        <ComposerScoreTrend
+          patientId={encounter.patientId}
+          serviceDate={encounter.serviceDate}
+          visitTime={drafted.asOf}
+        />
+      ) : null}
+      {planVisit ? (
         <ComposerDisciplinePlanPicker
           encounterId={encounter.id}
+          discipline={encounter.discipline}
           editable={editable}
           revision={carePlanRevision}
           onChanged={onLinksChanged}
         />
       ) : null}
-      <ComposerCarePlanPicker
-        encounter={encounter}
-        editable={editable}
-        revision={carePlanRevision}
-        onChanged={onLinksChanged}
-        confirmationLinks={!draftsFromDisciplinePlan(drafted)}
-      />
+      {drafted ? (
+        <ComposerCarePlanPicker
+          encounter={encounter}
+          editable={editable}
+          revision={carePlanRevision}
+          onChanged={onLinksChanged}
+          // A plan visit's sections keep its own plan's items (the picker above), never the care plan's, whatever the draft names.
+          confirmationLinks={!planVisit && !draftsFromDisciplinePlan(drafted)}
+        />
+      ) : null}
     </div>
   );
 }

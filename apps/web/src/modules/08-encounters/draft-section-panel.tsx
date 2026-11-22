@@ -19,6 +19,7 @@ import {
   type SectionNote,
   originsText,
   touchesCarePlan,
+  touchesDisciplinePlan,
 } from "./draft-model";
 import { useFocusRequest } from "./use-focus-request";
 
@@ -36,6 +37,11 @@ export interface DraftSectionPanelProps {
   readonly amending?: boolean;
   /** The panel's heading and region name; default "Pre-drafted from the record". Each amended section names itself, so regions stay unique. */
   readonly label?: string;
+  /**
+   * The visit is a social worker's or a chaplain's, whose sections are built from the discipline's own plan (S4b): a section with nothing to draft may
+   * be one whose items the clinician left out, so it points at the plan list instead of saying the record holds nothing.
+   */
+  readonly planVisit?: boolean;
 }
 
 const STALE_EXPLANATION =
@@ -46,6 +52,10 @@ const REVIEW_EXPLANATION =
 const WAITING_STYLE = { opacity: 0.6, cursor: "not-allowed" } as const;
 const CARE_PLAN_DESELECT_HINT =
   "Deselecting unlinks this section's care-plan goals and interventions from this visit. The care plan itself is never changed.";
+const DISCIPLINE_PLAN_DESELECT_HINT =
+  "Deselecting leaves this section's plan items out of this visit; you can keep them again in the plan list. The plan itself is never changed.";
+const PLAN_ITEMS_LEFT_OUT_EMPTY =
+  "Nothing is drafted for this section. If you left out its plan items, keep them again in the plan list. Otherwise document it below.";
 
 export function DraftSectionPanel({
   section,
@@ -56,6 +66,7 @@ export function DraftSectionPanel({
   idPrefix = "draft",
   amending = false,
   label = "Pre-drafted from the record",
+  planVisit = false,
 }: DraftSectionPanelProps): JSX.Element {
   // The heading of a drafted section, or the whole region of an empty one (a deselect can leave a section with nothing to draft).
   // Focus is moved after React has committed the new state: when a deselect leaves the section empty, the element that had the focus
@@ -87,7 +98,9 @@ export function DraftSectionPanel({
         <span className="wx-row-sub">
           {amending
             ? amendedSectionOutcome("not_drafted")
-            : "There is nothing in the record to draft this section from. Document it below."}
+            : planVisit
+              ? PLAN_ITEMS_LEFT_OUT_EMPTY
+              : "There is nothing in the record to draft this section from. Document it below."}
         </span>
         {status}
       </section>
@@ -157,6 +170,9 @@ export function DraftSectionPanel({
       ) : null}
       {!amending && canDeselect && touchesCarePlan(section) ? (
         <p className="wx-row-sub">{CARE_PLAN_DESELECT_HINT}</p>
+      ) : null}
+      {!amending && canDeselect && touchesDisciplinePlan(section) ? (
+        <p className="wx-row-sub">{DISCIPLINE_PLAN_DESELECT_HINT}</p>
       ) : null}
       {status}
     </section>

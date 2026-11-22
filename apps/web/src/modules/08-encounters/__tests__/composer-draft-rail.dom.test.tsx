@@ -29,7 +29,12 @@ const DRAFT = {
   sections: [{ sectionId: "plan", state: "not_drafted", origins: [] }],
 } as unknown as DraftView;
 
-function mount(discipline: string, encounterType: string, over: Record<string, Responder> = {}) {
+function mount(
+  discipline: string,
+  encounterType: string,
+  over: Record<string, Responder> = {},
+  draft: DraftView | null = DRAFT,
+) {
   const routes: Record<string, Responder> = {
     [`GET ${PLAN_URL}`]: () => ({
       body: {
@@ -52,7 +57,7 @@ function mount(discipline: string, encounterType: string, over: Record<string, R
           serviceDate: "2026-11-18",
         }}
         editable
-        drafted={DRAFT}
+        drafted={draft}
         carePlanRevision={0}
         onLinksChanged={() => undefined}
       />
@@ -62,15 +67,15 @@ function mount(discipline: string, encounterType: string, over: Record<string, R
 
 describe("the composer rail", () => {
   it.each([
-    ["msw", "msw_followup"],
-    ["chaplain", "chaplain_visit"],
+    ["msw", "msw_followup", "Social work plan for this visit"],
+    ["chaplain", "chaplain_visit", "Spiritual care plan for this visit"],
   ])(
     "shows a %s visit's plan picker, even when every goal is left out",
-    async (discipline, type) => {
+    async (discipline, type, title) => {
       mount(discipline, type);
       const goal = await screen.findByRole("checkbox", { name: /Name two ways to cope/ });
       expect(goal).not.toBeChecked();
-      expect(screen.getByText("Plan of care for this visit")).toBeInTheDocument();
+      expect(screen.getByRole("group", { name: title })).toBeInTheDocument();
     },
   );
 
@@ -83,6 +88,53 @@ describe("the composer rail", () => {
     mount(discipline, type);
     await waitFor(() => expect(calls.length).toBeGreaterThan(0));
     expect(calls.some((c) => c.path === PLAN_URL)).toBe(false);
-    expect(screen.queryByText("Plan of care for this visit")).not.toBeInTheDocument();
+    expect(screen.queryByText(/plan for this visit/)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["msw", "msw_followup"],
+    ["chaplain", "chaplain_visit"],
+  ])(
+    "shows a %s visit's plan picker with no draft at all, and nothing else (the score trend and the care-plan list are the draft's)",
+    async (discipline, type) => {
+      mount(discipline, type, {}, null);
+      expect(await screen.findByRole("checkbox", { name: /Name two ways to cope/ })).toBeVisible();
+      expect(screen.queryByRole("heading", { name: "Scores and trend" })).not.toBeInTheDocument();
+      expect(screen.queryByText("Care plan for this visit")).not.toBeInTheDocument();
+      expect(calls.some((c) => c.path.includes("/scales/"))).toBe(false);
+      expect(calls.some((c) => c.path.includes("relevant-elements"))).toBe(false);
+    },
+  );
+
+  it("shows a rail with no draft only to a social-work or chaplain visit", async () => {
+    const { container } = mount("rn", "routine_visit", {}, null);
+    await waitFor(() => expect(container.querySelector(".wx-draft-rail")).toBeNull());
+    expect(calls).toEqual([]);
+  });
+
+  it("does not say confirming a section links care-plan items on a plan visit, even when every goal is left out and the draft names no origin", async () => {
+    mount("msw", "msw_followup", {
+      "GET /api/v1/internal/care-plan/relevant-elements": () => ({
+        body: {
+          planId: "plan-1",
+          patientId: PATIENT,
+          problems: [],
+          goals: [
+            {
+              goalId: "dddddddd-4444-4444-8444-dddddddddd02",
+              problemId: "prob-1",
+              text: "Keep the patient comfortable at rest",
+              source: "clinical",
+              status: "in_progress",
+            },
+          ],
+          interventions: [],
+          redacted: false,
+        },
+      }),
+      [`GET /api/v1/encounters/${ENC}/care-plan-links`]: () => ({ body: { links: [] } }),
+    });
+    await screen.findByRole("checkbox", { name: /Keep the patient comfortable at rest/ });
+    expect(screen.queryByText(/links its goals and interventions here/)).not.toBeInTheDocument();
   });
 });

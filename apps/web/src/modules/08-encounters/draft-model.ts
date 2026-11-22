@@ -111,6 +111,12 @@ export const draftsFromDisciplinePlan = (draft: Pick<DraftView, "sections">): bo
 export const isDisciplinePlanVisit = (discipline: string): boolean =>
   discipline === "msw" || discipline === "chaplain";
 
+/** What the panel of a discipline's own plan is called: not the care plan's "Care plan for this visit", which a social worker or chaplain also sees. */
+export const disciplinePlanTitle = (discipline: string): string =>
+  discipline === "chaplain"
+    ? "Spiritual care plan for this visit"
+    : "Social work plan for this visit";
+
 /**
  * Whether a section is built from the discipline's own plan (S4b): confirming it keeps its goals and interventions in this visit's statement of the
  * plan and deselecting it leaves them out, so the plan list reads again after either. Not the care plan's elements (`touchesCarePlan`).

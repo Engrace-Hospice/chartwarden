@@ -3,7 +3,7 @@
 // kept in this visit or left out, one idempotent toggle per box. The server decides everything (what the viewer is handed, Part 2, who may change it); the
 // picker shows the list, sends the one change and takes the server's answer. Synthetic data only.
 import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ComposerDisciplinePlanPicker } from "../composer-discipline-plan-picker";
@@ -59,7 +59,11 @@ const applyToggle: Responder = (call) => {
 
 function mount(
   over: Record<string, Responder> = {},
-  props: { readonly editable?: boolean; readonly onChanged?: () => void } = {},
+  props: {
+    readonly editable?: boolean;
+    readonly onChanged?: () => void;
+    readonly discipline?: string;
+  } = {},
 ) {
   const routes: Record<string, Responder> = {
     [`GET ${BASE}`]: () => ({ body: view() }),
@@ -72,6 +76,7 @@ function mount(
     <ApiClientProvider client={client}>
       <ComposerDisciplinePlanPicker
         encounterId={ENC}
+        discipline={props.discipline ?? "msw"}
         editable={props.editable ?? true}
         revision={revision}
         onChanged={onChanged}
@@ -87,6 +92,8 @@ function mount(
 }
 
 const box = (label: RegExp) => screen.getByRole("checkbox", { name: label });
+/** Lets the answer that was just recorded be rendered (a panel that is absent must be absent after it, not before it). */
+const settled = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 20)));
 
 describe("the plan list", () => {
   it("shows each goal and intervention with a box ticked when this visit keeps it", async () => {
@@ -109,8 +116,11 @@ describe("the plan list", () => {
     async (status) => {
       mount({ [`GET ${BASE}`]: () => ({ status, body: { error: { code: "X" } } }) });
       await waitFor(() => expect(reads()).toHaveLength(1));
+      await settled();
+      // not an error panel either: this visit simply has no plan list for the viewer
+      expect(screen.queryByText(/could not be loaded/)).not.toBeInTheDocument();
       expect(screen.queryByText("Goals")).not.toBeInTheDocument();
-      expect(screen.queryByText(/Plan of care for this visit/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/plan for this visit/)).not.toBeInTheDocument();
     },
   );
 
@@ -118,8 +128,10 @@ describe("the plan list", () => {
     elements = [];
     mount();
     await waitFor(() => expect(reads()).toHaveLength(1));
+    await settled();
+    expect(screen.queryByText(/could not be loaded/)).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Plan of care for this visit/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/plan for this visit/)).not.toBeInTheDocument();
   });
 
   it("says so, and offers a retry, when the list could not be loaded (and the note is not affected)", async () => {
@@ -210,5 +222,172 @@ describe("keeping and leaving out", () => {
     expect(goal).toBeDisabled();
     expect(screen.getByText(/can change only while the note is a draft/i)).toBeInTheDocument();
     expect(puts()).toHaveLength(0);
+  });
+});
+
+describe("naming, so the discipline's plan is not mistaken for the care plan", () => {
+  it.each([
+    ["msw", "Social work plan for this visit"],
+    ["chaplain", "Spiritual care plan for this visit"],
+  ])("a %s visit's panel is called %s", async (discipline, title) => {
+    mount({}, { discipline });
+    await screen.findByRole("checkbox", { name: /Name two ways to cope/ });
+    expect(screen.getByRole("group", { name: title })).toBeInTheDocument();
+  });
+});
+
+describe("a box that is waiting (the keyboard user keeps their place)", () => {
+  it("while a change is saved the pressed box stays focused and focusable, says it is waiting and why, and acts again after", async () => {
+    const hold = gate();
+    const { user } = mount({
+      [`PUT ${BASE}/${GOAL_1}`]: async (call) => {
+        await hold.promise;
+        return applyToggle(call);
+      },
+    });
+    const goal = await screen.findByRole("checkbox", { name: /Name two ways to cope/ });
+    await user.click(goal);
+
+    await waitFor(() => expect(goal).toHaveAttribute("aria-disabled", "true"));
+    expect(goal).not.toBeDisabled();
+    expect(goal).toHaveFocus();
+    expect(goal).toHaveAccessibleDescription(/saving/i);
+    // a live region that was already there says it, for a reader who cannot see the box
+    expect(screen.getByRole("status")).toHaveTextContent("Saving");
+    hold.open();
+    await waitFor(() => expect(goal).not.toBeChecked());
+    expect(goal).not.toHaveAttribute("aria-disabled");
+    expect(goal).toHaveFocus();
+    expect(screen.getByRole("status")).toHaveTextContent("Saved");
+  });
+
+  it("a note that is no longer a draft disables the boxes, and the reason is their accessible description", async () => {
+    mount({}, { editable: false });
+    const goal = await screen.findByRole("checkbox", { name: /Name two ways to cope/ });
+    expect(goal).toBeDisabled();
+    expect(goal).toHaveAccessibleDescription(/only while the note is a draft/i);
+  });
+});
+
+describe("the list is never older than the change just made", () => {
+  it("a read that began before the change committed and answers after it is dropped, and the list is read once more", async () => {
+    const staleRead = gate();
+    let readCount = 0;
+    const { user, bump } = mount({
+      [`GET ${BASE}`]: async () => {
+        readCount += 1;
+        const snapshot = view();
+        if (readCount === 2) await staleRead.promise;
+        return { body: snapshot };
+      },
+    });
+    const goal = await screen.findByRole("checkbox", { name: /Name two ways to cope/ });
+    // A draft resolve moved the revision: the list is read again, and that read is served before the change below commits.
+    bump(1);
+    await waitFor(() => expect(reads()).toHaveLength(2));
+    await user.click(goal);
+    await waitFor(() => expect(goal).not.toBeChecked());
+    staleRead.open();
+    await waitFor(() => expect(reads()).toHaveLength(3));
+    await settled();
+    expect(goal).not.toBeChecked();
+  });
+
+  it("a revision that moves while a change is being saved is read once the change has settled, and shows the server's list", async () => {
+    const hold = gate();
+    const { user, bump } = mount({
+      [`PUT ${BASE}/${GOAL_1}`]: async (call) => {
+        await hold.promise;
+        return applyToggle(call);
+      },
+    });
+    const goal = await screen.findByRole("checkbox", { name: /Name two ways to cope/ });
+    await user.click(goal);
+    await waitFor(() => expect(goal).toHaveAttribute("aria-disabled", "true"));
+    bump(1);
+    await waitFor(() => expect(reads()).toHaveLength(2));
+    hold.open();
+    await waitFor(() => expect(reads()).toHaveLength(3));
+    await waitFor(() => expect(goal).not.toBeChecked());
+    expect(goal).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("keeps the list it knows on screen while it is read again (no flicker to an empty panel)", async () => {
+    const reread = gate();
+    let readCount = 0;
+    const { bump } = mount({
+      [`GET ${BASE}`]: async () => {
+        readCount += 1;
+        if (readCount === 2) await reread.promise;
+        return { body: view() };
+      },
+    });
+    await screen.findByRole("checkbox", { name: /Name two ways to cope/ });
+    bump(1);
+    await waitFor(() => expect(reads()).toHaveLength(2));
+    expect(box(/Name two ways to cope/)).toBeEnabled();
+    reread.open();
+    await settled();
+    expect(box(/Name two ways to cope/)).toBeChecked();
+  });
+});
+
+describe("a change the server did not take", () => {
+  it("a refused change reads the list again, so a box never stays where the server no longer has it", async () => {
+    const { user } = mount({
+      [`PUT ${BASE}/${GOAL_1}`]: () => {
+        elements = elements.filter((e) => e.elementId !== GOAL_1);
+        return { status: 404, body: { error: { code: "NOT_FOUND", message: "x" } } };
+      },
+    });
+    await user.click(await screen.findByRole("checkbox", { name: /Name two ways to cope/ }));
+    expect(await screen.findByText(/no longer in this visit's plan/)).toBeInTheDocument();
+    await waitFor(() => expect(reads()).toHaveLength(2));
+    await waitFor(() =>
+      expect(screen.queryByRole("checkbox", { name: /Name two ways to cope/ })).toBeNull(),
+    );
+  });
+
+  it("a note that is not drafted from a plan is said in the picker's own words, not the addendum's", async () => {
+    const { user } = mount({
+      [`PUT ${BASE}/${GOAL_1}`]: () => ({
+        status: 422,
+        body: { error: { code: "UNKNOWN_TEMPLATE_SECTION", message: "x" } },
+      }),
+    });
+    await user.click(await screen.findByRole("checkbox", { name: /Name two ways to cope/ }));
+    expect(await screen.findByText(/not drafted from a plan/)).toBeInTheDocument();
+    expect(screen.queryByText(/addendum/i)).not.toBeInTheDocument();
+  });
+
+  it("an answer that is not a list is not taken as the change: it says so and reads the list again", async () => {
+    const { user, onChanged } = mount({ [`PUT ${BASE}/${GOAL_1}`]: () => ({ body: {} }) });
+    await user.click(await screen.findByRole("checkbox", { name: /Name two ways to cope/ }));
+    expect(await screen.findByText(/could not confirm the change/i)).toBeInTheDocument();
+    await waitFor(() => expect(reads()).toHaveLength(2));
+    expect(onChanged).toHaveBeenCalled();
+  });
+});
+
+describe("a retry keeps the keyboard user's place", () => {
+  it("keeps the panel (and the focused button) while it reads again, then puts focus on the plan panel when the list loads", async () => {
+    let healthy = false;
+    const reread = gate();
+    const { user } = mount({
+      [`GET ${BASE}`]: async () => {
+        if (!healthy) return { status: 500, body: { error: {} } };
+        await reread.promise;
+        return { body: view() };
+      },
+    });
+    const retry = await screen.findByRole("button", { name: "Try again" });
+    retry.focus();
+    healthy = true;
+    await user.click(retry);
+    // still the same button, waiting, focused: not unmounted for a blank "loading" panel
+    expect(screen.getByRole("button", { name: /Trying again/ })).toHaveFocus();
+    reread.open();
+    expect(await screen.findByRole("checkbox", { name: /Name two ways to cope/ })).toBeChecked();
+    expect(screen.getByRole("group", { name: "Social work plan for this visit" })).toHaveFocus();
   });
 });
