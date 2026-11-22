@@ -17,10 +17,65 @@ export interface MedicaidClaimContextView {
 export interface MedicaidClaimFactsView {
   claimContext(orgId: string, claimId: string): Promise<MedicaidClaimContextView | null>;
   medicaidClaimIds(orgId: string, claimIds: readonly string[]): Promise<ReadonlySet<string>>;
+  submissionEvidenceForLine(
+    orgId: string,
+    providerEntityId: string,
+    keys: { readonly claimControlNumber: string },
+  ): Promise<MedicaidSubmissionEvidenceView[]>;
+}
+
+export interface MedicaidSubmissionEvidenceView {
+  readonly disposition: "SUBMISSION_UNVERIFIED" | "SUBMISSION_EVIDENCE";
+  readonly claimId: string | null;
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  readonly claimControlNumber: string;
+  readonly canonicalPayerId: string | null;
+  readonly programKind: string | null;
+  readonly serviceState: string;
+  readonly serviceFrom: string;
+  readonly serviceTo: string;
+  readonly claimState: string;
+  readonly claimVersion: number;
+  readonly replacesClaimId: string | null;
+  readonly replacedByClaimId: string | null;
+  readonly attempts: readonly {
+    readonly submissionId: string;
+    readonly attemptIndex: number;
+    readonly claimVersion: number | null;
+    readonly sourceAccountRef: string | null;
+    readonly environment: string | null;
+    readonly vendor: string;
+    readonly vendorTransactionId: string | null;
+    readonly payerId: string | null;
+    readonly payerClassificationId: string | null;
+    readonly programKind: string | null;
+    readonly assignmentId: string | null;
+    readonly assignmentVersion: number | null;
+    readonly provenanceStatus: string;
+    readonly result: string;
+    readonly submittedAt: string | null;
+    readonly acknowledgments: readonly {
+      readonly kind: string;
+      readonly outcome: string;
+      readonly payerClaimControlNumber: string | null;
+      readonly receivedAt: string;
+    }[];
+  }[];
 }
 
 const liveView = (): MedicaidClaimFactsView =>
   getSeam("MedicaidClaimMatchProvider") as MedicaidClaimFactsView;
+
+/** Server-owned claim/submission evidence; incomplete attempts remain ID-hidden and unverified. */
+export async function medicaidSubmissionEvidence(
+  organizationId: string,
+  providerEntityId: string,
+  claimControlNumber: string,
+  view: () => Pick<MedicaidClaimFactsView, "submissionEvidenceForLine"> = liveView,
+): Promise<MedicaidSubmissionEvidenceView[]> {
+  return view().submissionEvidenceForLine(organizationId, providerEntityId, { claimControlNumber });
+}
 
 /** One seam call (one M24 connection): the claim's context, null when absent. Logs (ids only, no PHI) and rethrows on failure. */
 export async function medicaidClaimContext(

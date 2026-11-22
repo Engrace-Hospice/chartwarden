@@ -79,6 +79,14 @@ controls:
       - file: packages/db/migrations/1538_m24_payer_authorization_evidence.sql
       - file: packages/db/migrations/1539_m24_payer_rate_policy_evidence.sql
       - file: packages/db/migrations/__tests__/m24-rls-isolation.live.test.ts
+      # M24-1075-L6A: M40 payer classification is global reference data (app read, canonical-writer insert,
+      # append-only, FORCE RLS); M24 submission provenance is nullable/unverified by default. Fresh disposable
+      # PostgreSQL suites apply the full migration chain and run as chartwarden_app/NOBYPASSRLS.
+      - script: test:rls:live:m40
+      - script: test:m24:remittance-feedback:live
+      - file: packages/db/migrations/1540_m40_medicaid_payer_classification_and_m24_submission_provenance.sql
+      - file: packages/db/migrations/__tests__/m40-rls-isolation.live.test.ts
+      - file: apps/backend/__tests__/f172-m24-remittance-feedback.live.test.ts
 
   - id: CW-AC-02
     title: Unique user identification and authorization at the route (RBAC + ABAC predicates)

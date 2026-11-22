@@ -358,6 +358,7 @@ exports.MODULES = [
       "external_grief_resource",
       "nppes_sync_log",
       "payer",
+      "mdm_medicaid_payer_program_classification",
     ],
   },
   {

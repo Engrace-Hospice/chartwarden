@@ -31,9 +31,10 @@ import { createHash } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@chartwarden/db";
+import { createDbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { ParsedRemittanceAdvice, X12WorkerResult } from "@chartwarden/x12-835-client";
+import { eq } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
@@ -475,10 +476,12 @@ describe.skipIf(!DB_URL)(
       const SHARED_CCN = "SHARED-CCN-001";
       const MEDICARE_CLAIM_ID = "00000000-0000-0000-0000-0000000c7201";
       const MEDICAID_CLAIM_ID = "00000000-0000-0000-0000-0000000c7202";
+      const MEDICAID_SUBMISSION_ID = "00000000-0000-0000-0000-0000000c7203";
+      let m24Seams: ReturnType<typeof registerM24PublishedSeams>;
 
       beforeAll(async () => {
         registerSeam("ClaimSubmissionReader", buildM23ClaimSubmissionReader(handle.db));
-        registerM24PublishedSeams(handle.db);
+        m24Seams = registerM24PublishedSeams(handle.db);
 
         await seedMedicareClaim({
           id: MEDICARE_CLAIM_ID,
@@ -493,6 +496,52 @@ describe.skipIf(!DB_URL)(
           state: "ACK_ACCEPTED",
           controlNumber: SHARED_CCN,
         });
+        await admin.query(
+          `INSERT INTO medicaid_submission
+           (id,organization_id,medicaid_claim_id,provider_entity_id,service_state,channel,
+            medicaid_claim_control_number,attempt_index,adapter_vendor,adapter_version,result,
+            vendor_transaction_id,submitted_at)
+           VALUES ($1,$2,$3,$4,'OR','cco_clearinghouse',$5,0,'synthetic-vendor','test',
+            'accepted_sync','synthetic-tx',now())`,
+          [MEDICAID_SUBMISSION_ID, ORG_A, MEDICAID_CLAIM_ID, peA, SHARED_CCN],
+        );
+      });
+
+      it("projects stored attempts as unverified and blocks app-side provenance promotion", async () => {
+        const projected = await m24Seams!.claimMatch.submissionEvidenceForLine(ORG_A, peA, {
+          claimControlNumber: SHARED_CCN,
+        });
+        expect(projected).toHaveLength(1);
+        expect(projected[0]).toMatchObject({
+          disposition: "SUBMISSION_UNVERIFIED",
+          claimId: null,
+          organizationId: ORG_A,
+          providerEntityId: peA,
+          claimVersion: 1,
+          claimState: "ACK_ACCEPTED",
+          attempts: [
+            {
+              submissionId: MEDICAID_SUBMISSION_ID,
+              sourceAccountRef: null,
+              environment: null,
+              provenanceStatus: "unverified",
+            },
+          ],
+        });
+        expect(
+          await m24Seams!.claimMatch.submissionEvidenceForLine(ORG_B, peA, {
+            claimControlNumber: SHARED_CCN,
+          }),
+        ).toEqual([]);
+        await expect(
+          withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+            tx
+              .update(schema.medicaidSubmission)
+              .set({ sourceProvenanceStatus: "verified" })
+              .where(eq(schema.medicaidSubmission.id, MEDICAID_SUBMISSION_ID)),
+          ),
+        ).rejects.toThrow();
+        expect((await loadMedicaidClaim(MEDICAID_CLAIM_ID))?.state).toBe("ACK_ACCEPTED");
       });
 
       function buildIngestService() {

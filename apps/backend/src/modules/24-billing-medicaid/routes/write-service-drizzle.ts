@@ -56,6 +56,7 @@ import {
   patientLifecycleServiceRangeIssue,
 } from "../claim-range-guards";
 import type { CredentialCipherPort } from "../credential-crypto";
+import { qualifyMedicaidProgramClassification } from "../medicaid-payer-classification";
 import type { M24Actor } from "./actor";
 import {
   enrollmentTransactionMatches,
@@ -1001,6 +1002,13 @@ export interface CanonicalPayerIdentityReader {
     stateCode: string | null;
     status: "active" | "deactivated" | "provisional";
   } | null>;
+  medicaidProgramClassifications?(
+    organizationId: string,
+    canonicalPayerId: string,
+    serviceState: string,
+    serviceFrom: string,
+    serviceTo: string,
+  ): Promise<readonly import("@chartwarden/mdm").MedicaidPayerProgramClassification[]>;
 }
 export interface TenantClearinghouseReadPort {
   selectedTenantRoute(organizationId: string): Promise<{
@@ -1840,11 +1848,34 @@ export function buildDrizzleM24WriteService(
                   : "CANONICAL_PAYER_READER_UNBOUND",
               };
             } else {
-              projectedProgramResponsibility = {
-                ...projectedProgramResponsibility,
-                canonicalPayerId: payer.id,
-                canonicalPayerName: payer.displayName,
-              };
+              const classifications = await canonicalPayerReader?.medicaidProgramClassifications(
+                actor.organizationId,
+                payer.id,
+                serviceState,
+                input.serviceFrom,
+                input.serviceTo,
+              );
+              const classification = qualifyMedicaidProgramClassification(
+                classifications ?? [],
+                projectedProgramResponsibility.programKind,
+                payer.id,
+                serviceState,
+                input.serviceFrom,
+                input.serviceTo,
+              );
+              projectedProgramResponsibility = classification.qualified
+                ? {
+                    ...projectedProgramResponsibility,
+                    canonicalPayerId: payer.id,
+                    canonicalPayerName: payer.displayName,
+                  }
+                : {
+                    status: "unavailable",
+                    programKind: "unresolved",
+                    canonicalPayerId: null,
+                    canonicalPayerName: null,
+                    reasonCode: classification.reasonCode,
+                  };
             }
           }
           const enrollmentRows =
@@ -2444,7 +2475,33 @@ export function buildDrizzleM24WriteService(
             };
             canonicalPayer = null;
           } else {
-            programResolution = { ...programResolution, canonicalPayerId: canonicalPayer.id };
+            const classifications = await canonicalPayerReader?.medicaidProgramClassifications(
+              actor.organizationId,
+              canonicalPayer.id,
+              serviceState,
+              day(input.serviceFrom),
+              day(input.serviceTo),
+            );
+            const classification = qualifyMedicaidProgramClassification(
+              classifications ?? [],
+              programResolution.programKind,
+              canonicalPayer.id,
+              serviceState,
+              day(input.serviceFrom),
+              day(input.serviceTo),
+            );
+            if (!classification.qualified) {
+              programResolution = {
+                status: "unavailable",
+                programKind: "unresolved",
+                canonicalPayerId: null,
+                assignmentIds: programResolution.assignmentIds,
+                reasonCode: classification.reasonCode,
+              };
+              canonicalPayer = null;
+            } else {
+              programResolution = { ...programResolution, canonicalPayerId: canonicalPayer.id };
+            }
           }
         }
         const programAssignmentId =
@@ -3956,10 +4013,34 @@ export function buildDrizzleM24WriteService(
             "the selected M40 payer is not an active Medicaid payer for this service state",
           );
         }
+        const assignmentFrom = day(row.effectiveFrom);
+        const assignmentTo = day(row.effectiveTo ?? row.effectiveFrom);
+        const classifications = await canonicalPayerReader.medicaidProgramClassifications?.(
+          actor.organizationId,
+          payer.id,
+          row.serviceState,
+          assignmentFrom,
+          assignmentTo,
+        );
+        const classificationDecision = qualifyMedicaidProgramClassification(
+          classifications ?? [],
+          row.programKind,
+          payer.id,
+          row.serviceState,
+          assignmentFrom,
+          assignmentTo,
+        );
+        if (!classificationDecision.qualified) {
+          throw new ConflictError(
+            classificationDecision.reasonCode,
+            "M40 has no single source-verified payer classification compatible with this assignment and service period",
+          );
+        }
         const updated = await tx
           .update(PA)
           .set({
             status: "verified",
+            canonicalPayerClassificationId: classificationDecision.classification.id,
             verifiedAt: new Date(),
             verifiedByMembershipId: membershipId,
             verificationSource: input.verificationSource,

@@ -38,6 +38,7 @@ export const medicaidProgramAssignment = pgTable(
     serviceState: varchar("service_state", { length: 2 }).notNull(),
     programKind: m24MedicaidProgramKind("program_kind").notNull(),
     canonicalPayerId: uuid("canonical_payer_id"), // logical M40 reference
+    canonicalPayerClassificationId: uuid("canonical_payer_classification_id"), // logical M40 evidence record
     payerSnapshot: jsonb("payer_snapshot"), // stable identity label/identifier, no patient data
     status: m24ProgramAssignmentStatus("status").notNull().default("candidate"),
     effectiveFrom: timestamp("effective_from", { withTimezone: true, mode: "date" }).notNull(),

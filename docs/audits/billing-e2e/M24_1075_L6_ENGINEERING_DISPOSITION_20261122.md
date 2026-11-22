@@ -90,3 +90,9 @@ No EOCCO production qualification is claimed. Customer/Engrace 835 enrollment, E
 ## Safety
 
 L6 made no code or database mutation. No vendor or payer API/SFTP request occurred; no real ERA was retrieved; no payment was posted; no M24 state or financial outbox event changed; no Medicaid submission, production migration, or deployment occurred. Existing Medicaid submission refusal remains in force. No unverified evidence, EOCCO rate, authorization, or secondary Medicaid Room & Board path was enabled.
+
+## L6A follow-up — authoritative foundations
+
+L6A subsequently implemented the M40 source-backed, effective-dated Medicaid payer/program classification model and enforced compatibility during new M24 program-assignment verification and current service-window resolution. It also added nullable, unqualified submission provenance fields and the M24-owned tenant/provider-scoped claim/submission/acknowledgment read seam consumed through M25's existing Medicaid claim-facts boundary. Historical submissions remain unverified; no catalog classifications are seeded. The earlier L6 findings above describe the review at that point in time and are superseded on these two engineering gaps by the L6A implementation report.
+
+The L6A disposition is **`M24_1075_L6A_COMPLETE`**: migration 1540 and the focused M24/M40 NOBYPASSRLS suites passed on private disposable PostgreSQL after ensuring one test database at a time. Full backend typecheck remains incomplete after a bounded 3 GiB V8 heap OOM. No Medicaid ERA ingestion, durable review persistence, operator API/worklist, financial posting, or outbound submission was added. See [`M24_1075_L6A_IMPLEMENTATION_QUALIFICATION_20261122.md`](./M24_1075_L6A_IMPLEMENTATION_QUALIFICATION_20261122.md) for exact implementation and gate results.

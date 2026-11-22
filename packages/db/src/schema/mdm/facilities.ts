@@ -4,7 +4,7 @@
 // that anchor inbound-message routing + the §7.9/§7.10 BAA gate (gin-indexed for containment
 // lookups). A `merged` row redirects to its survivor via `merged_into_id` (§2.4.1, §7.2).
 // Canonical → no organization_id (NON_ORG_SCOPED allowlist); facility has no Phase-1 overlay
-// table (manifest owns 11 tables). RLS/grants/audit triggers land in M40-T03 (§3.6). Not PHI.
+// table (M40 ownership is declared in the module manifest). RLS/grants/audit triggers land in M40-T03 (§3.6). Not PHI.
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,

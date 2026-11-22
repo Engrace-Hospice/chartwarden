@@ -65,6 +65,7 @@ export {
 export type {
   MdmEntityProvider,
   MdmResolved,
+  MedicaidPayerProgramClassification,
   CanonicalFields,
   CanonicalFieldsByKind,
   CanonicalBaseFields,
