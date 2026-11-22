@@ -8,10 +8,17 @@
  * (M19) survived because the old test accepted "or an extension it has a sample for".
  */
 import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { protectedFindSamples } from "../harness/find-expr";
 import { classifyBash } from "../harness/patterns";
-import { protectedNameSamples, protectedTreeFiles } from "../harness/protected-names";
+import {
+  listProtectedFrom,
+  protectedNameSamples,
+  protectedTreeFiles,
+} from "../harness/protected-names";
 import { PROTECTED_LISTING_ROOTS, isProtectedPath } from "../harness/protected-paths";
 
 const ctx = { root: "/repo", home: "/Users/dev", cwd: "/repo", exists: () => false };
@@ -111,6 +118,27 @@ describe("CR-C3: find cannot be narrowed away from a protected file the tree hol
       "find . -newer package.json -print",
     ]) {
       expect(d(cmd), cmd).toBe("allow");
+    }
+  });
+});
+
+describe("a protected symlink is listed by its own path and never followed", () => {
+  it("lists a symlinked skill entry (file link and directory link) without descending into it", () => {
+    const root = mkdtempSync(join(tmpdir(), "protected-symlink-"));
+    try {
+      mkdirSync(join(root, ".claude/skills"), { recursive: true });
+      mkdirSync(join(root, "outside/dir"), { recursive: true });
+      writeFileSync(join(root, "outside/shared.md"), "x");
+      writeFileSync(join(root, "outside/dir/inner.md"), "x");
+      symlinkSync(join(root, "outside/shared.md"), join(root, ".claude/skills/shared.md"));
+      symlinkSync(join(root, "outside/dir"), join(root, ".claude/skills/linked-dir"));
+      const { files, complete } = listProtectedFrom(root);
+      expect(files).toContain(".claude/skills/shared.md");
+      expect(files).toContain(".claude/skills/linked-dir");
+      expect(files.some((f) => f.includes("inner.md"))).toBe(false);
+      expect(complete).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });
