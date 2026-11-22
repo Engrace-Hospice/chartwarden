@@ -122,6 +122,7 @@
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/m8-visit-note-drafting-admission.live.test.ts",
         "apps/backend/__tests__/m8-visit-note-drafting-lpn-aide.live.test.ts",
+        "apps/backend/__tests__/m8-visit-note-drafting-md-np-idg.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts",
         "apps/backend/__tests__/s11-adversarial-stages.live.test.ts"
       ],
@@ -218,6 +219,7 @@
         "apps/backend/__tests__/m8-visit-note-draft-routes.live.test.ts",
         "apps/backend/__tests__/m8-visit-note-drafting-admission.live.test.ts",
         "apps/backend/__tests__/m8-visit-note-drafting-lpn-aide.live.test.ts",
+        "apps/backend/__tests__/m8-visit-note-drafting-md-np-idg.live.test.ts",
         "apps/backend/__tests__/m8-visit-note-drafting-msw-chaplain.live.test.ts",
         "apps/backend/__tests__/m8-visit-note-drafting-recert.live.test.ts",
         "apps/backend/__tests__/note-closure-routes.test.ts",
@@ -333,6 +335,7 @@
         "apps/backend/__tests__/m15-aide-supervision-roster-route.test.ts",
         "apps/backend/__tests__/m15-aide-supervision-roster.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
+        "apps/backend/__tests__/m8-visit-note-drafting-md-np-idg.live.test.ts",
         "apps/backend/__tests__/m8-visit-note-drafting-msw-chaplain.live.test.ts"
       ],
       "directRoutesReferenced": 31

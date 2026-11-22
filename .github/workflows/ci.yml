@@ -492,6 +492,9 @@ jobs:
           # cosign_pending routed to the RN case manager (M5's real care team), per-viewer Part 2 for the cosigner, staleness and amendments, as the NOBYPASSRLS app role.
           - { name: "M8 visit-note drafting LPN and aide", scripts: "test:m8:visit-note-drafting-lpn-aide:live" }
           - { name: "M8 visit-note drafting social work and chaplain", scripts: "test:m8:visit-note-drafting-msw-chaplain:live" }
+          # ADR-0114 S5 (VN-D52 to VN-D56) — the face-to-face visit by a physician or nurse practitioner (vitals, the orders in effect, the S2 decline evidence)
+          # and the IDG follow-up of every discipline: sources read and read keys asked by template, per-viewer Part 2, the chain, tenancy, as the NOBYPASSRLS app role.
+          - { name: "M8 visit-note drafting MD/NP face-to-face and IDG follow-up", scripts: "test:m8:visit-note-drafting-md-np-idg:live" }
           # M36 WP 3.2 — OrderProvider.linkSummary, as the NOBYPASSRLS app role.
           - { name: "M11 link summary seam", scripts: "test:m11:link-summary:live" }
           # M36 WP 3.2 — MedicationOrderProvider.linkSummary (ids + status only), as the NOBYPASSRLS app role.
