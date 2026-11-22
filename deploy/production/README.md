@@ -139,8 +139,8 @@ in place (it adds the `listen 443 ssl` block and the certificate paths), so **ne
   on a dedicated `scan` network that only `clamav`, `api` and `worker` join (postgres, seaweedfs, docling and the rest
   cannot reach it), and it is capped (`mem_limit: 4g`, `cpus: 2`) so a scan flood or a bad signature reload cannot
   starve the host. The image is upstream's Alpine `clamav/clamav:1.4`, pinned by digest. Dev compose already builds
-  `deploy/clamav/Dockerfile` (ClamAV 1.5 on Wolfi, multi-arch; the Alpine pin is 1.4.6 and Wolfi has no 1.4 past 1.4.3); production moves to it when `clamav-image.yml` (manual,
-  `main` only: builds, scans, signs and SBOM-attests it as `ghcr.io/engrace-hospice/chartwarden-clamav`) has published a
+  `deploy/clamav/Dockerfile` (ClamAV 1.5 on Wolfi, multi-arch; the Alpine pin is 1.4.6 and Wolfi has no 1.4 past 1.4.3);
+  production moves to it when `clamav-image.yml` (manual, `main` only: builds, scans, signs and SBOM-attests it as `ghcr.io/engrace-hospice/chartwarden-clamav`) has published a
   digest: verify it with `cosign verify` / `verify-attestation` as for the Postgres image, pin it in `compose.yml`, and
   deploy (the swap is stateless: the signature DB stays in `clamav-data`, which the new image re-chowns to uid 100, the
   uid the Alpine image used). Follow-up: alert on a stale signature database (for example `docker

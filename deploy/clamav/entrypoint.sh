@@ -2,10 +2,13 @@
 # clamd needs a signature DB to start: fetch it on the first start (the volume is empty), then keep it fresh while clamd
 # runs in the foreground as PID 1's child. freshclam is a one-shot in a loop, not `--daemon`: a daemon that dies (or
 # fails to update) is a zombie nobody notices, the loop just tries again at the next interval.
-# FRESHCLAM_CHECKS = updates per day (upstream's variable and default of 1).
+# FRESHCLAM_CHECKS = updates per day (upstream's variable and default of 1; freshclam allows 1..50).
 set -eu
 
-interval=$((86400 / ${FRESHCLAM_CHECKS:-1}))
+checks=${FRESHCLAM_CHECKS:-1}
+[ "$checks" -ge 1 ] && [ "$checks" -le 50 ] 2>/dev/null \
+  || { echo "FRESHCLAM_CHECKS must be 1..50 (updates per day), got: $checks" >&2; exit 1; }
+interval=$((86400 / checks))
 
 chown -R clamav:clamav /var/lib/clamav
 

@@ -7,8 +7,8 @@
 #
 # Same contract as upstream's /init: the signature DB lives in the /var/lib/clamav volume (chowned to this image's
 # clamav uid on every start, so a volume an older image created still opens), freshclam fetches it on the first start
-# and then refreshes it in-container (a retrying loop, entrypoint.sh), and clamd runs in the foreground reading /etc/clamav/clamd.conf, which the
-# compose files bind-mount (deploy/clamav/clamd.conf). clamd drops to `clamav` (the mounted config sets no User).
+# and then refreshes it in-container (a retrying loop, entrypoint.sh), and clamd runs in the foreground reading
+# /etc/clamav/clamd.conf, which the compose files bind-mount (deploy/clamav/clamd.conf). clamd drops to `clamav` (the mounted config sets no User).
 # Port 3310 is unauthenticated: compose-network only, on the `scan` network (see clamd.conf).
 #
 # Bump: refresh the base digest (`crane digest cgr.dev/chainguard/wolfi-base:latest`) and the package pins
