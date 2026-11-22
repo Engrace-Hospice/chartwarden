@@ -43,6 +43,8 @@ type SeedIds = {
   credential: string;
   programAssignment: string;
   enrollmentEvidence: string;
+  payerAuthorizationEvent: string;
+  payerRatePolicy: string;
 };
 
 const COVERED: { table: string; key: keyof SeedIds; idCol?: string }[] = [
@@ -62,6 +64,8 @@ const COVERED: { table: string; key: keyof SeedIds; idCol?: string }[] = [
   { table: "state_medicaid_trading_partner_credential", key: "credential" },
   { table: "medicaid_program_assignment", key: "programAssignment" },
   { table: "medicaid_enrollment_evidence", key: "enrollmentEvidence" },
+  { table: "medicaid_payer_authorization_event", key: "payerAuthorizationEvent" },
+  { table: "medicaid_payer_rate_policy", key: "payerRatePolicy" },
 ];
 
 describe.skipIf(!DB_URL)(
@@ -69,6 +73,7 @@ describe.skipIf(!DB_URL)(
   () => {
     let db: Client;
     let a: SeedIds;
+    let b: SeedIds;
 
     async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
       await db.query("SET ROLE chartwarden_app");
@@ -135,6 +140,29 @@ describe.skipIf(!DB_URL)(
           `INSERT INTO medicaid_enrollment_evidence
            (organization_id, provider_entity_id, service_state, transaction_type, evidence_kind, status, effective_from, recorded_by_membership_id)
            VALUES ($1,$2,'OR','837I','837i_enrollment','pending',$3,$4) RETURNING id`,
+          [org, pe, from, m],
+        )
+      ).rows[0].id as string;
+      const payerAuthorizationEvent = (
+        await db.query(
+          `INSERT INTO medicaid_payer_authorization_event
+             (organization_id, provider_entity_id, patient_id, patient_payer_id, admission_id,
+              canonical_payer_id, service_state, service_from, service_to, event_kind,
+              evidence_status, evidence_source, evidence_reference, recorded_by_membership_id)
+           VALUES ($1,$2,$3,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),$4,$5,$6,
+                   'authorization_pending','unverified','operator_record','payer-response:synthetic-test',$7)
+           RETURNING id`,
+          [org, pe, patient, st, from, to, m],
+        )
+      ).rows[0].id as string;
+      const payerRatePolicy = (
+        await db.query(
+          `INSERT INTO medicaid_payer_rate_policy
+             (organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
+              locality_code, service_category, unit_basis, bucket_from, bucket_to, rate_cents,
+              source_kind, effective_from, recorded_by_membership_id)
+           VALUES ($1,$2,gen_random_uuid(),'managed_care','OR','CBSA-TEST','RHC','per_day',1,60,
+                   10000,'cco_contract',$3,$4) RETURNING id`,
           [org, pe, from, m],
         )
       ).rows[0].id as string;
@@ -268,6 +296,8 @@ describe.skipIf(!DB_URL)(
         credential,
         programAssignment,
         enrollmentEvidence,
+        payerAuthorizationEvent,
+        payerRatePolicy,
       };
     }
 
@@ -281,7 +311,7 @@ describe.skipIf(!DB_URL)(
         [ORG_A, ORG_B],
       );
       a = await seedOrg(ORG_A, 1);
-      await seedOrg(ORG_B, 2);
+      b = await seedOrg(ORG_B, 2);
     }, 120_000);
 
     afterAll(async () => {
@@ -360,9 +390,155 @@ describe.skipIf(!DB_URL)(
           ),
         ),
       ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO medicaid_payer_authorization_event
+             (organization_id, provider_entity_id, patient_id, patient_payer_id, admission_id,
+              canonical_payer_id, service_state, service_from, service_to, event_kind,
+              evidence_status, evidence_source, recorded_by_membership_id)
+             VALUES ($1,$2,$3,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),'OR','2026-01-01','2026-01-31',
+                     'authorization_approved','unverified','operator_record','00000000-0000-0000-0000-000000000000')`,
+            [ORG_A, a.pe, "44444444-4444-4444-4444-444444444444"],
+          ),
+        ),
+      ).rejects.toThrow();
     });
 
-    // ── WX-PR-011 — `medicaid_state_plan_code` is PLATFORM-SHARED (no organization_id), unlike the 14
+    it("new rate and authorization evidence reject a provider entity from another organization", async () => {
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            `INSERT INTO medicaid_payer_authorization_event
+               (organization_id, provider_entity_id, patient_id, patient_payer_id, admission_id,
+                canonical_payer_id, service_state, service_from, service_to, event_kind,
+                evidence_status, evidence_source, recorded_by_membership_id)
+             VALUES ($1,$2,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),
+                     'OR','2026-01-01','2026-01-31','authorization_pending','unverified',
+                     'operator_record','00000000-0000-0000-0000-000000000000')`,
+            [ORG_A, b.pe],
+          ),
+        ),
+      ).rejects.toThrow(/provider entity must belong/);
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            `INSERT INTO medicaid_payer_rate_policy
+               (organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
+                locality_code, service_category, unit_basis, rate_cents, source_kind, effective_from,
+                recorded_by_membership_id)
+             VALUES ($1,$2,gen_random_uuid(),'managed_care','OR','CBSA-TEST','RHC','per_day',
+                     10000,'cco_contract','2026-01-01','00000000-0000-0000-0000-000000000000')`,
+            [ORG_A, b.pe],
+          ),
+        ),
+      ).rejects.toThrow(/provider entity must belong/);
+    });
+
+    it("authorization evidence is append-only for the application role", async () => {
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            "UPDATE medicaid_payer_authorization_event SET evidence_status='verified' WHERE id=$1",
+            [a.payerAuthorizationEvent],
+          ),
+        ),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query("DELETE FROM medicaid_payer_authorization_event WHERE id=$1", [
+            a.payerAuthorizationEvent,
+          ]),
+        ),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            `INSERT INTO medicaid_payer_authorization_event
+               (organization_id, provider_entity_id, patient_id, patient_payer_id, admission_id,
+                canonical_payer_id, service_state, service_from, service_to, event_kind,
+                evidence_status, evidence_source, evidence_reference, verified_at,
+                verified_by_membership_id, recorded_by_membership_id)
+             VALUES ($1,$2,'44444444-4444-4444-4444-444444444444',gen_random_uuid(),gen_random_uuid(),
+                     gen_random_uuid(),'OR','2026-01-01','2026-01-31','authorization_approved',
+                     'verified','payer_response','payer-response:test-review',now(),
+                     gen_random_uuid(),gen_random_uuid())`,
+            [ORG_A, a.pe],
+          ),
+        ),
+      ).rejects.toThrow(/separate reviewer path/);
+    });
+
+    it("authorization event audit records omit patient and evidence references", async () => {
+      const audit = await db.query<{ after: unknown }>(
+        `SELECT after FROM audit_event
+         WHERE resource_kind='medicaid_payer_authorization_event' AND resource_id=$1
+         ORDER BY created_at DESC LIMIT 1`,
+        [a.payerAuthorizationEvent],
+      );
+      expect(audit.rows).toHaveLength(1);
+      const payload = JSON.stringify(audit.rows[0].after);
+      expect(payload).not.toContain("44444444-4444-4444-4444-444444444444");
+      expect(payload).not.toContain("payer-response:synthetic-test");
+    });
+
+    it("payer rate policy is append-only and application inserts cannot assert verification", async () => {
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            "UPDATE medicaid_payer_rate_policy SET verification_status='verified' WHERE id=$1",
+            [a.payerRatePolicy],
+          ),
+        ),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query("DELETE FROM medicaid_payer_rate_policy WHERE id=$1", [a.payerRatePolicy]),
+        ),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            `INSERT INTO medicaid_payer_rate_policy
+               (organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
+                locality_code, service_category, unit_basis, rate_cents, source_kind, effective_from,
+                recorded_by_membership_id)
+             VALUES ($1,$2,gen_random_uuid(),'managed_care','OR','   ','RHC','per_day',
+                     10000,'cco_contract','2026-01-01','00000000-0000-0000-0000-000000000000')`,
+            [ORG_A, a.pe],
+          ),
+        ),
+      ).rejects.toThrow(/medicaid_payer_rate_policy_locality_valid/);
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            `INSERT INTO medicaid_payer_rate_policy
+               (organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
+                locality_code, service_category, unit_basis, bucket_from, bucket_to, rate_cents,
+                source_kind, verification_status, effective_from, source_document_ref, verified_at,
+                verified_by_membership_id, recorded_by_membership_id)
+             VALUES ($1,$2,gen_random_uuid(),'managed_care','OR','CBSA-TEST','RHC','per_day',1,60,
+                     10000,'cco_contract','verified','2026-01-01','doc:synthetic',now(),
+                     gen_random_uuid(),gen_random_uuid())`,
+            [ORG_A, a.pe],
+          ),
+        ),
+      ).rejects.toThrow(/separate reviewer path/);
+    });
+
+    it("payer rate policy audit omits source document references", async () => {
+      const audit = await db.query<{ after: unknown }>(
+        `SELECT after FROM audit_event
+         WHERE resource_kind='medicaid_payer_rate_policy' AND resource_id=$1
+         ORDER BY created_at DESC LIMIT 1`,
+        [a.payerRatePolicy],
+      );
+      expect(audit.rows).toHaveLength(1);
+      const payload = JSON.stringify(audit.rows[0].after);
+      expect(payload).not.toContain("doc:synthetic");
+    });
+
+    // ── WX-PR-011 — `medicaid_state_plan_code` is PLATFORM-SHARED (no organization_id), unlike the
     // tenant-scoped tables above — read-all for every tenant, write-only via `medicaid_platform_loader`
     // (the wage_index_factor precedent). Proves 0177's seed row is real + readable, and that chartwarden_app
     // truly cannot write it (not just "the app never happens to").

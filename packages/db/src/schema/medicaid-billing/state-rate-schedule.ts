@@ -12,16 +12,7 @@
 // A schedule row with level_of_care='NF_RB' would be actively wrong to bill from, so the CHECK below forbids
 // it outright rather than merely omitting seed data for it.
 import { sql } from "drizzle-orm";
-import {
-  check,
-  index,
-  integer,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { check, index, integer, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { m24ClaimLineLoc } from "./enums";
 
 export const medicaidStateRateSchedule = pgTable(
@@ -47,13 +38,9 @@ export const medicaidStateRateSchedule = pgTable(
     loadedAt: timestamp("loaded_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    uniqueByStateLocCountyFrom: uniqueIndex("medicaid_state_rate_schedule_uq").on(
-      t.stateCode,
-      t.levelOfCare,
-      t.canonicalPayerId,
-      t.countyCode,
-      t.effectiveFrom,
-    ),
+    uniqueByStateLocCountyFrom: unique("medicaid_state_rate_schedule_uq")
+      .on(t.stateCode, t.levelOfCare, t.canonicalPayerId, t.countyCode, t.effectiveFrom)
+      .nullsNotDistinct(),
     byStateLoc: index("medicaid_state_rate_schedule_state_loc_idx").on(t.stateCode, t.levelOfCare),
     ratePositive: check("medicaid_state_rate_schedule_rate_positive", sql`rate_cents > 0`),
     sourceKindValid: check(

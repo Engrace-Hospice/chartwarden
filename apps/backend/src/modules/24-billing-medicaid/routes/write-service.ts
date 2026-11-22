@@ -124,6 +124,21 @@ export interface AssemblyPreviewView {
     canonicalPayerName: string | null;
     reasonCode: string;
   };
+  payerAuthorizationEvidence: {
+    clinicalDocuments: "missing" | "unverified" | "available";
+    notification: "missing" | "unverified" | "prepared" | "sent" | "acknowledged";
+    authorization:
+      | "missing"
+      | "unverified"
+      | "pending"
+      | "approved"
+      | "denied"
+      | "expired"
+      | "revoked"
+      | "ambiguous";
+    policyQualification: "unqualified";
+    reasonCodes: readonly string[];
+  };
   enrollmentReadiness: ReadonlyArray<{
     kind: string;
     status:

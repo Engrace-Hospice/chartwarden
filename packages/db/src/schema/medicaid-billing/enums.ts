@@ -112,6 +112,22 @@ export const m24EnrollmentEvidenceStatus = pgEnum("m24_enrollment_evidence_statu
   "revoked",
   "superseded",
 ]);
+export const m24PayerAuthorizationEventKind = pgEnum("m24_payer_authorization_event_kind", [
+  "clinical_document_available",
+  "notification_prepared",
+  "notification_sent",
+  "receipt_acknowledged",
+  "authorization_pending",
+  "authorization_approved",
+  "authorization_denied",
+  "authorization_expired",
+  "authorization_revoked",
+  "unknown_unverified",
+]);
+export const m24PayerAuthorizationEvidenceStatus = pgEnum(
+  "m24_payer_authorization_evidence_status",
+  ["unverified", "verified", "rejected", "superseded"],
+);
 
 export const m24RbArrangementState = pgEnum("m24_rb_arrangement_state", [
   "DRAFT",

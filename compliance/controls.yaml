@@ -72,6 +72,13 @@ controls:
       - file: packages/db/migrations/1530_m9_wound.sql
       - file: packages/db/migrations/1531_m9_wound_observation.sql
       - file: packages/db/migrations/1532_m7_care_plan_change_proposal.sql
+      # M24-1075-L2B: payer authorization and rate evidence are org-scoped, RLS/FORCEd, and append-only;
+      # the live M24 suite runs as chartwarden_app and verifies cross-tenant denial, verification-write
+      # rejection, immutable rows, and audit-reference scrubbing.
+      - script: test:rls:live:m24
+      - file: packages/db/migrations/1538_m24_payer_authorization_evidence.sql
+      - file: packages/db/migrations/1539_m24_payer_rate_policy_evidence.sql
+      - file: packages/db/migrations/__tests__/m24-rls-isolation.live.test.ts
 
   - id: CW-AC-02
     title: Unique user identification and authorization at the route (RBAC + ABAC predicates)

@@ -2,7 +2,7 @@
 // plus every table module; the central ../index.ts re-exports this barrel.
 //
 // Tenancy (ADR-0010 / ARCH-011, §3.3): Medicaid billing is per-CCN (ProviderEntity). The tenancy spine
-// resolves at the PE-scoped root claim and the subtree inherits it. All 14 tables carry organization_id
+// resolves at the PE-scoped root claim and the subtree inherits it. Tenant-owned tables carry organization_id
 // NOT NULL → the canonical app.org_id RLS predicate applies directly (single org-only policy, ADR-0010 D3;
 // provider-entity narrowing is M3 ABAC, NOT a second permissive RLS policy). location_id is nullable
 // throughout (claims are PE-scoped, not Location-scoped).
@@ -34,3 +34,5 @@ export * from "./trading-partner"; // state_medicaid_trading_partner_credential
 export * from "./state-plan-code"; // medicaid_state_plan_code (platform-shared, WX-PR-011)
 export * from "./state-rate-schedule"; // medicaid_state_rate_schedule (platform-shared, WX-PR-011 line-assembly)
 export * from "./payer-readiness"; // medicaid_program_assignment + medicaid_enrollment_evidence
+export * from "./authorization-evidence"; // append-only payer notification / authorization evidence
+export * from "./payer-rate-policy"; // tenant/provider-scoped payer rate source evidence

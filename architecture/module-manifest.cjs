@@ -987,6 +987,8 @@ exports.MODULES = [
       "medicaid_state_rate_schedule",
       "medicaid_program_assignment",
       "medicaid_enrollment_evidence",
+      "medicaid_payer_authorization_event",
+      "medicaid_payer_rate_policy",
     ],
   },
   {

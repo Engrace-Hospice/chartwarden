@@ -174,6 +174,27 @@ No wider questionnaire is needed before L1. Do not ask the customer for PHI; syn
 - Load only authorized effective-dated fee/contract values; retain unknown allowed amounts when no source exists; do not use OHA FFS schedule as EOCCO contract price.
 - Acceptance: policy-evidence-linked unit/coding examples, missing/expired authorization holds, rate boundaries, unknown-price refusal, adjustment/void rules, and no duplicate R&B. R&B ownership remains #1072/#1073.
 
+### M24-1075-L2B — Foundational qualification increment
+
+- Migrations 1535–1539 add explicit payer/program evidence, inclusive claim-line service-through dates,
+  null-safe rate identity uniqueness, append-only notification/authorization observations and an empty
+  tenant/provider-scoped payer-rate evidence model. Migration 1537 checks existing rate identities
+  before tightening uniqueness and leaves duplicates for explicit operator remediation.
+- M24 now projects clinical-document, payer-notification/receipt and authorization evidence separately
+  in assembly preview. The ledger supports provenance and correction links; the app role cannot record
+  an externally verified state. EOCCO policy remains unqualified and this evidence does not authorize
+  submission. No operator verification/write screen or notification transport is included.
+- Pure date segmentation preserves inclusive service windows, LOC/coverage/program/rate/policy
+  boundaries and exact clinical-minute evidence. Date-only LOC records cannot produce CHC hours; M6
+  lacks an in-home respite representation and actual CHC-hour source. Both remain unresolved.
+- A generic exact-match selector and schema can represent future OHA FFS or CCO contract evidence, but
+  no amount is loaded, verified or wired into claim pricing. The existing
+  `MEDICAID_RATE_POLICY_UNRESOLVED` assembly stop remains effective. OHA FFS, Medicare and EOCCO prices
+  are not interchangeable.
+- Qualification used a fresh private PostgreSQL container. Record actual suite results and any skipped
+  assembly paths in the L2B implementation report/PR; the prior migration changes were not applied to a
+  shared or production database.
+
 ### M24-1075-L3 — Qualified 837I transport and acknowledgments
 
 - Reuse M23/X12 components where their contract matches; map M24 lines to institutional 5010 and vendor request shape; persist vendor and payer IDs against org/PE/claim.

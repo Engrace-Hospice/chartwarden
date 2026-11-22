@@ -28,13 +28,54 @@ guide, provider enrollment, claim acceptance or production route.
   resolution, RHC election-day buckets, CHC hour units, usual-charge ceilings, provider
   quality-reporting differential and in-home respite service data. These cases must stay unresolved
   until the required facts and calculations are supplied and validated.
-- No payer authorization record lifecycle or EOCCO notification transport was added in this increment.
-  The 2025 manual is not enough to establish a current contractual effective date. Signed M6 CTI,
-  election and plan records are clinical evidence, not payer acknowledgment or approval.
+- L2B adds an append-only, payer-scoped notification/authorization observation ledger and a
+  policy-neutral projection. Clinical document availability, notice preparation/sending, payer receipt,
+  and authorization outcomes remain separate. The app role can only record unverified observations;
+  verification requires a separate reviewer path. This lot adds no operator mutation endpoint, and
+  `authorizationSatisfied` remains false because the payer's policy is unqualified. The 2025 manual is
+  not enough to establish a current contractual effective date. Signed M6 CTI, election and plan records
+  are clinical evidence, not payer acknowledgment or approval.
+- L2B adds an empty tenant/provider-scoped rate evidence table for OHA FFS and future CCO contract source
+  classes, including payer identity, exact locality, service/unit/bucket, quality-reporting state,
+  optional charge ceiling, effective dates, secured source-document reference, reviewer provenance and
+  append-only version lineage. No EOCCO or OHA amount is loaded or verified. A pure selector requires an
+  exact payer/provider/geography/unit/date match and fails on duplicates or incomplete evidence. Claim
+  assembly does not call this selector and retains `MEDICAID_RATE_POLICY_UNRESOLVED`.
+- Migration 1537 replaces nullable rate-schedule uniqueness with `UNIQUE NULLS NOT DISTINCT`; a
+  duplicate preflight aborts with remediation guidance and does not merge or delete rows. Migrations
+  1535-1539 applied to a fresh isolated PostgreSQL 18 container during qualification. Historical claim
+  line `service_date_to` values remain NULL when their span is unknown.
+- L2B adds a pure segmentation primitive for inclusive service windows and verified LOC, coverage,
+  program, rate, policy and quantity boundaries. Daily units remain date-based; hourly units require
+  explicit clinical minutes. M6 has no authoritative actual CHC-hours contract and no in-home respite
+  service type, so those cases remain unresolved/blocked. M24 continues not to price segmented output.
 - Oregon adapter metadata no longer claims combined hospice/R&B support, a live channel, synchronous
   acknowledgment semantics or 817/818 replacement/void support. Its remaining 811-814 TOB list reflects
   OHA FFS instructions only and does not qualify EOCCO.
 - Medicaid electronic submission remains unconditionally unavailable.
+
+### L2B qualification evidence (2026-11-22)
+
+- `bun run test:m24:claim-line-assembly:live`: passed, 24 passed / 8 skipped. The skipped cases require
+  priced assembly which remains intentionally unresolved; the suite includes no-persistence assertions
+  for the rate-policy refusal.
+- `bun run test:rls:live:m24`: passed, 31 tests against the isolated database, including cross-tenant
+  denial, provider-entity isolation, append-only behavior, verification-write rejection and audit-reference
+  redaction for both new evidence tables.
+- Focused adapter and UI suites: 52 tests passed, covering segmentation, payer-rate matching,
+  authorization lifecycle and wizard rendering.
+- Assembly-preview route validation: 17 tests passed, including the patient-scoped read-audit category.
+- `bun run openapi:emit`, `bun run client:gen`, `bun run openapi:check`, and `bun run client:check` all
+  passed. `arch:migration-numbering`, `arch:migration-compat`, `arch:ddl`, `arch:tenancy`,
+  `arch:tables`, and `arch:manifest-mirror` passed.
+- A backend-wide scoped TypeScript check with `NODE_OPTIONS=--max-old-space-size=1024` ended in a
+  JavaScript heap out-of-memory at the cap. The `packages/medicaid-adapters` project check passed;
+  `packages/db` scoped typecheck also passed; backend-wide type qualification remains incomplete.
+- `bun run arch:fitness` completed 50 gates with four failures: `arch:docling-lock` could not find
+  `uv`; `arch:parity` reported the pre-existing orphan `packages/domain` and `packages/admin-ui-shell`
+  directories; `arch:boundaries` hit its 2 GiB Node heap cap; and `arch:status-matrix` was stale before
+  regenerating the report. After regeneration, `bun run arch:status-matrix` passed. The independent
+  table-ownership, tenancy, DDL, migration, manifest, compliance and OpenAPI gates passed.
 
 ## External evidence still required
 
