@@ -175,3 +175,91 @@ describe("IdgFollowUpReader.openFollowUpItems", () => {
     ).toBe(MAX_FOLLOW_UP_ITEMS);
   });
 });
+
+describe("IdgFollowUpReader.linkedFollowUpItem", () => {
+  const linkedQuery = (actionItemId: string, viewer = VIEWER, patientId = PATIENT, org = ORG) => ({
+    organizationId: org,
+    patientId,
+    actionItemId,
+    viewer,
+  });
+
+  it("hands over the linked item in ANY status (M14's auto-close may have closed it since it was linked), facts only", async () => {
+    for (const status of ["completed", "cancelled", "auto_closed"] as const) {
+      const reader = createIdgFollowUpReader(
+        seeded([item("i-linked", { status })]),
+        disclosure(true),
+      );
+      expect(await reader.linkedFollowUpItem(linkedQuery("i-linked")), status).toEqual({
+        actionItemId: "i-linked",
+        meetingAt: "2026-11-02T15:00:00.000Z",
+        decisionKind: "referral",
+        dueAt: "2026-11-20T08:00:00.000Z",
+        status,
+        sudRelated: false,
+      });
+    }
+  });
+
+  it("is the open read's counterpart, not its superset: the candidate list still holds open and in-progress items only", async () => {
+    const reader = createIdgFollowUpReader(
+      seeded([item("i-closed", { status: "auto_closed" }), item("i-open")]),
+      disclosure(true),
+    );
+    expect(
+      (
+        await reader.openFollowUpItems({ organizationId: ORG, patientId: PATIENT, viewer: VIEWER })
+      ).map((i) => i.actionItemId),
+    ).toEqual(["i-open"]);
+  });
+
+  it("answers null for an absent id, another assignee's item, another patient's, another organization's, and a viewer with no membership", async () => {
+    const reader = createIdgFollowUpReader(seeded([item("i-1")]), disclosure(true));
+    expect(await reader.linkedFollowUpItem(linkedQuery("i-absent"))).toBeNull();
+    expect(
+      await reader.linkedFollowUpItem(
+        linkedQuery("i-1", { roles: ["rn"], membershipId: "00000000-0000-4000-8000-0000000000c2" }),
+      ),
+    ).toBeNull();
+    expect(
+      await reader.linkedFollowUpItem(
+        linkedQuery("i-1", VIEWER, "00000000-0000-4000-8000-0000000000b2" as PatientId),
+      ),
+    ).toBeNull();
+    expect(
+      await reader.linkedFollowUpItem(
+        linkedQuery("i-1", VIEWER, PATIENT, "00000000-0000-4000-8000-0000000000a2"),
+      ),
+    ).toBeNull();
+    expect(
+      await reader.linkedFollowUpItem(linkedQuery("i-1", { roles: ["rn"], membershipId: null })),
+    ).toBeNull();
+  });
+
+  it("decides Part 2 per viewer exactly as the open read does: a flagged item is handed flagged to a cleared viewer, to anyone else not at all, and an outage denies", async () => {
+    const flagged = seeded([item("i-sud", { needsRelease: true, status: "auto_closed" })]);
+    const cleared = createIdgFollowUpReader(flagged, disclosure(true));
+    expect(await cleared.linkedFollowUpItem(linkedQuery("i-sud"))).toMatchObject({
+      actionItemId: "i-sud",
+      status: "auto_closed",
+      sudRelated: true,
+    });
+    const denied = createIdgFollowUpReader(flagged, disclosure(false, true));
+    expect(await denied.linkedFollowUpItem(linkedQuery("i-sud"))).toBeNull();
+    const down: PacketDisclosurePort = {
+      part2ReleaseActive: vi.fn(async () => {
+        throw new Error("consent store down");
+      }),
+    };
+    expect(
+      await createIdgFollowUpReader(flagged, down).linkedFollowUpItem(linkedQuery("i-sud")),
+    ).toBeNull();
+  });
+
+  it("does not ask the Part 2 verdict for an item that needs no release", async () => {
+    const port = disclosure(false);
+    const reader = createIdgFollowUpReader(seeded([item("i-1", { status: "completed" })]), port);
+    expect(await reader.linkedFollowUpItem(linkedQuery("i-1"))).not.toBeNull();
+    expect(port.part2ReleaseActive).not.toHaveBeenCalled();
+  });
+});

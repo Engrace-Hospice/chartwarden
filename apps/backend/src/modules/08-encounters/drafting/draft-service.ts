@@ -352,17 +352,16 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
         return { encounter: row, storePorts: await snapshotIdgFollowUpPorts(unit.store, row) };
       });
       const timeZone = await storePorts.organizationTimeZone(encounter.organizationId);
+      const linked = await storePorts.linkedIdgActionItemId(encounter.id);
+      // The candidates, and the item the visit is linked to even when M14 has closed it since (marked `linked`).
       const candidates = await readIdgFollowUpCandidates(
         seams(),
         encounter,
         viewerOf(caller),
         timeZone,
+        linked,
       );
-      return idgFollowUpItemsView(
-        encounter,
-        candidates,
-        await storePorts.linkedIdgActionItemId(encounter.id),
-      );
+      return idgFollowUpItemsView(encounter, candidates, linked);
     },
 
     async setIdgActionItem(caller, encounterId, body, audit) {
@@ -395,18 +394,21 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
           const timeZone = await guarded("the organization time zone", () =>
             unit.store.organizationTimeZone(encounter.organizationId),
           );
+          const live = await guarded("the linked IDG action item", () =>
+            unit.store.linkedIdgActionItemId(encounter.id),
+          );
+          // The open candidates, and the item the visit is already linked to even if M14 has closed it since: naming it again is then the idempotent no-op it
+          // always was, and its own verdict (not a guess) judges the row being left.
           const candidates = await readIdgFollowUpCandidates(
             seams(),
             encounter,
             viewerOf(caller),
             timeZone,
+            live,
           );
-          // An item this viewer was not handed (absent, closed, reassigned, another patient's, or Part 2 without disclosure) is not here: one answer.
+          // An item this viewer was not handed (absent, closed and not the linked one, reassigned, another patient's, or Part 2 without disclosure) is not here: one answer.
           const target = candidates.find((c) => c.actionItemId === actionItemId);
           if (target === undefined) throw new NotFoundError("action item");
-          const live = await guarded("the linked IDG action item", () =>
-            unit.store.linkedIdgActionItemId(encounter.id),
-          );
           // The verdict for the item being left: its own when M14 still hands it over, else Part 2 (fails closed: the flag only moves the audit class).
           const leaving =
             live === null ? undefined : candidates.find((c) => c.actionItemId === live);

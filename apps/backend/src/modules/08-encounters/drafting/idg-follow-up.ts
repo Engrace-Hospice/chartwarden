@@ -14,7 +14,7 @@ import type { IdgFollowUpDraftInput } from "@chartwarden/hearthnote";
 import { draftSourceNeeds } from "@chartwarden/hearthnote";
 import { IDG_DECISION_KIND_LABELS } from "@chartwarden/narrative-vocab";
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
-import { ForbiddenError } from "@chartwarden/types";
+import type { IdgActionItemStatus, IdgFollowUpItem } from "@chartwarden/types";
 import { EncounterStateError } from "../lifecycle/errors";
 import type { DraftEncounter, DraftPorts, DraftViewer } from "./ports";
 import { guarded } from "./unavailable";
@@ -26,10 +26,14 @@ export const IDG_ACT_KEY = "idg.act";
 export const mayActOnIdgItems = (permissions: ReadonlySet<string> | undefined): boolean =>
   permissions?.has(IDG_ACT_KEY) === true;
 
-/** 403 for a caller who lacks the key; the message names it, as `requirePermission` does. Asked by the picker's list and link, never by a clear. */
+/** 403 `IDG_ACTION_PERMISSION_REQUIRED` for a caller who lacks the key (the message still names it). Asked by the picker's list and link, never by a clear. */
 export function assertMayActOnIdgItems(permissions: ReadonlySet<string>): void {
-  if (!permissions.has(IDG_ACT_KEY))
-    throw new ForbiddenError(`requires permission '${IDG_ACT_KEY}'`);
+  if (!permissions.has(IDG_ACT_KEY)) {
+    throw new EncounterStateError(
+      "IDG_ACTION_PERMISSION_REQUIRED",
+      `requires permission '${IDG_ACT_KEY}'`,
+    );
+  }
 }
 
 /**
@@ -55,7 +59,8 @@ export interface IdgFollowUpCandidate {
   readonly decisionLabel: string;
   /** Org-local `YYYY-MM-DD` the item is due, or `null`. */
   readonly dueDate: string | null;
-  readonly status: "open" | "in_progress";
+  /** The candidates are open or in progress; the item a visit is linked to keeps the status it has now (M14's auto-close may have closed it). */
+  readonly status: IdgActionItemStatus;
   /** M14's verdict, fail-closed: true unless the seam says the literal `false`. */
   readonly part2Derived: boolean;
 }
@@ -71,53 +76,90 @@ function localDateOf(instant: unknown, timeZone: string): string | null {
   return Number.isNaN(ms) ? null : localDateInTimeZone(new Date(ms), timeZone);
 }
 
+/** One item M14 handed over as a candidate, or `null` when the note cannot state it (no label for its kind, an instant that is not one). */
+function candidateOf(item: IdgFollowUpItem, timeZone: string): IdgFollowUpCandidate | null {
+  const decisionLabel = labelOf(item.decisionKind);
+  const meetingDate = localDateOf(item.meetingAt, timeZone);
+  const dueDate = item.dueAt === null ? null : localDateOf(item.dueAt, timeZone);
+  if (
+    decisionLabel === undefined ||
+    meetingDate === null ||
+    (item.dueAt !== null && dueDate === null)
+  ) {
+    return null;
+  }
+  return {
+    actionItemId: item.actionItemId,
+    meetingDate,
+    decisionKind: item.decisionKind,
+    decisionLabel,
+    dueDate,
+    status: item.status,
+    part2Derived: item.sudRelated !== false,
+  };
+}
+
+/** Newest meeting first, then the greater id: the order M14's own read answers in. */
+const newestFirst = (a: IdgFollowUpItem, b: IdgFollowUpItem): number =>
+  a.meetingAt === b.meetingAt
+    ? b.actionItemId.localeCompare(a.actionItemId)
+    : b.meetingAt.localeCompare(a.meetingAt);
+
+/** The ONE item a visit is linked to, by id and in any status, as M14 hands it to this viewer: the same facts, the same Part 2 verdict. `null` when it hands nothing. */
+async function readLinkedItem(
+  ports: Pick<DraftPorts, "linkedIdgFollowUpItem">,
+  encounter: DraftEncounter,
+  viewer: DraftViewer,
+  linkedActionItemId: string,
+): Promise<IdgFollowUpItem | null> {
+  const item = await guarded("the linked IDG action item", () =>
+    ports.linkedIdgFollowUpItem(
+      encounter.organizationId,
+      encounter.patientId,
+      linkedActionItemId,
+      viewer,
+    ),
+  );
+  // An item the seam answers for another id is not the linked one, however it came to be returned.
+  return item !== null && item.actionItemId === linkedActionItemId ? item : null;
+}
+
 /**
  * The action items M14 hands this viewer for the visit's patient, as candidates: open or in progress, assigned to the viewer, linked to an encounter. An
  * item M14 handed over that the note cannot state (no label for its kind, an instant that is not one) is left out. The viewer must hold `idg.act`
- * (a caller that did not check it gets nothing).
+ * (a caller that did not check it gets nothing). `linkedActionItemId` is the item the visit is already linked to: when M14 no longer lists it as open (its own
+ * auto-close closes an encounter-kind item when the assignee signs ANY visit) it is read by id and listed too, with the status it has now, so the author
+ * can see, keep or clear what they linked. Only a LISTED item can be newly linked, so an item that is closed and not the linked one is never offered.
  */
 export async function readIdgFollowUpCandidates(
-  ports: Pick<DraftPorts, "idgFollowUpItems">,
+  ports: Pick<DraftPorts, "idgFollowUpItems" | "linkedIdgFollowUpItem">,
   encounter: DraftEncounter,
   viewer: DraftViewer,
   timeZone: string,
+  linkedActionItemId: string | null = null,
 ): Promise<readonly IdgFollowUpCandidate[]> {
   if (!mayActOnIdgItems(viewer.permissions)) return [];
-  const items = await guarded("the IDG action items", () =>
+  const open = await guarded("the IDG action items", () =>
     ports.idgFollowUpItems(encounter.organizationId, encounter.patientId, viewer),
   );
-  return items.flatMap((item): IdgFollowUpCandidate[] => {
-    const decisionLabel = labelOf(item.decisionKind);
-    const meetingDate = localDateOf(item.meetingAt, timeZone);
-    const dueDate = item.dueAt === null ? null : localDateOf(item.dueAt, timeZone);
-    if (
-      decisionLabel === undefined ||
-      meetingDate === null ||
-      (item.dueAt !== null && dueDate === null) ||
-      (item.status !== "open" && item.status !== "in_progress")
-    ) {
-      return [];
-    }
-    return [
-      {
-        actionItemId: item.actionItemId,
-        meetingDate,
-        decisionKind: item.decisionKind,
-        decisionLabel,
-        dueDate,
-        status: item.status,
-        part2Derived: item.sudRelated !== false,
-      },
-    ];
-  });
+  const missing =
+    linkedActionItemId !== null && !open.some((i) => i.actionItemId === linkedActionItemId);
+  const linked = missing
+    ? await readLinkedItem(ports, encounter, viewer, linkedActionItemId)
+    : null;
+  // M14 answers newest meeting first; the linked item, merged in, takes its place in that order.
+  const items = linked === null ? open : [...open, linked].sort(newestFirst);
+  return items.flatMap((item) => candidateOf(item, timeZone) ?? []);
 }
 
 /**
  * What the draft states of the linked action item: its facts, or `null` (the section is then not drafted) when the viewer lacks `idg.act`, nothing is
- * linked, or M14 no longer hands this viewer the linked item. The link is read from the store (a snapshot port), the facts from M14.
+ * linked, or M14 hands this viewer nothing for the linked item (reassigned, Part 2 without disclosure, no recorded decision, no label for its kind). The link
+ * is read from the store (a snapshot port), the facts from M14 BY ID in any status: the draft does not depend on the item staying open, so a section the
+ * author confirmed is still drafted after M14's auto-close has closed the item.
  */
 export async function readIdgFollowUp(
-  ports: Pick<DraftPorts, "idgFollowUpItems" | "linkedIdgActionItemId">,
+  ports: Pick<DraftPorts, "linkedIdgFollowUpItem" | "linkedIdgActionItemId">,
   encounter: DraftEncounter,
   viewer: DraftViewer,
   timeZone: string,
@@ -127,9 +169,9 @@ export async function readIdgFollowUp(
     ports.linkedIdgActionItemId(encounter.id),
   );
   if (linked === null) return null;
-  const candidates = await readIdgFollowUpCandidates(ports, encounter, viewer, timeZone);
-  const item = candidates.find((candidate) => candidate.actionItemId === linked);
-  if (item === undefined) return null;
+  const found = await readLinkedItem(ports, encounter, viewer, linked);
+  const item = found === null ? null : candidateOf(found, timeZone);
+  if (item === null) return null;
   return {
     id: item.actionItemId,
     meetingOn: item.meetingDate,
@@ -146,7 +188,7 @@ export interface IdgFollowUpItemView {
   readonly decisionKind: string;
   readonly decisionLabel: string;
   readonly dueDate: string | null;
-  readonly status: "open" | "in_progress";
+  readonly status: IdgActionItemStatus;
   readonly linked: boolean;
 }
 
@@ -156,7 +198,7 @@ export interface IdgFollowUpItemsView {
   readonly items: readonly IdgFollowUpItemView[];
 }
 
-/** The picker's answer: the viewer's candidates, newest meeting first as M14 orders them, the linked one marked. No title, no body, no Part 2 flag. */
+/** The picker's answer: the viewer's candidates, newest meeting first as M14 orders them, the linked one marked (and listed even when no longer open). No title, no body, no Part 2 flag. */
 export function idgFollowUpItemsView(
   encounter: DraftEncounter,
   candidates: readonly IdgFollowUpCandidate[],

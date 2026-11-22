@@ -112,7 +112,14 @@ export const IdgActionItemsResponseSchema = Type.Object({
       decisionLabel: Type.String(),
       /** The org-local date (`YYYY-MM-DD`) the item is due; null when it has none. */
       dueDate: Type.Union([Type.String({ format: "date" }), Type.Null()]),
-      status: Type.Union([Type.Literal("open"), Type.Literal("in_progress")]),
+      /** `open` or `in_progress` for a candidate; the item the visit is linked to keeps its real status (M14 closes an encounter-kind item when its assignee signs any visit). */
+      status: Type.Union([
+        Type.Literal("open"),
+        Type.Literal("in_progress"),
+        Type.Literal("completed"),
+        Type.Literal("cancelled"),
+        Type.Literal("auto_closed"),
+      ]),
       /** Whether this visit is linked to the item. */
       linked: Type.Boolean(),
     }),

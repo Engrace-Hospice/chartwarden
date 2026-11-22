@@ -96,6 +96,17 @@ export interface DraftSeamPorts {
     patientId: string,
     viewer: DraftViewer,
   ): Promise<readonly IdgFollowUpItem[]>;
+  /**
+   * M14 `IdgFollowUpReader.linkedFollowUpItem` (S5b): the ONE action item this visit is linked to, by id and in ANY status (M14's own auto-close closes an
+   * encounter-kind item when its assignee signs any visit, so the item a confirmed section states may have closed since), for the viewer's membership, with the
+   * same facts and the same per-viewer Part 2 verdict as `idgFollowUpItems`. `null` when M14 hands this viewer nothing for it. THROWS when M14 cannot answer.
+   */
+  linkedIdgFollowUpItem(
+    organizationId: string,
+    patientId: string,
+    actionItemId: string,
+    viewer: DraftViewer,
+  ): Promise<IdgFollowUpItem | null>;
   /** M9 `ScaleSeriesProvider.series`: bounds are inclusive and filter on `captured_at`. */
   scaleSeries(
     patientId: string,

@@ -161,6 +161,7 @@ export function fakePorts(over: Partial<DraftPorts> = {}): Spied {
     carePlanAsOf: async () => null,
     disciplinePlanAsOf: async () => null,
     idgFollowUpItems: async () => [],
+    linkedIdgFollowUpItem: async () => null,
     scaleSeries: honestSeries({}),
     medicationChangesBetween: async () => [],
     electionPeriods: async () => [],

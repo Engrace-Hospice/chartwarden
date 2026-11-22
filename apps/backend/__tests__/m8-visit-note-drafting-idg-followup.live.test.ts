@@ -789,6 +789,7 @@ describe.skipIf(!DB_URL)(
 
         const denied = await get(encounterUrl(v, "/idg-action-items"), as(v.org, v.org.npNoIdg));
         expect(denied.statusCode).toBe(403);
+        expect(denied.json().error.code).toBe("IDG_ACTION_PERMISSION_REQUIRED");
         expect(denied.json().error.message).toContain("idg.act");
         expect(
           (await get(encounterUrl(v, "/idg-action-items"), as(v.org, v.org.readerNoIdg)))
@@ -947,6 +948,7 @@ describe.skipIf(!DB_URL)(
         const mine = await seedItem(keyless);
         const refused = await linkItem(keyless, mine);
         expect(refused.statusCode, refused.body).toBe(403);
+        expect(refused.json().error.code).toBe("IDG_ACTION_PERMISSION_REQUIRED");
         expect(refused.json().error.message).toContain("idg.act");
         expect(await linksOf(v)).toEqual([]);
         expect(await linksOf(keyless)).toEqual([]);

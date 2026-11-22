@@ -763,7 +763,11 @@ export interface IdgFollowUpItem {
   readonly decisionKind: IdgDecisionKind;
   /** The item's due date, or `null` when it has none. */
   readonly dueAt: IsoInstant | null;
-  readonly status: "open" | "in_progress";
+  /**
+   * The item's status. `openFollowUpItems` hands over `open` and `in_progress` only; `linkedFollowUpItem` hands over the real status, because the item a visit
+   * is linked to may have closed since (M14 closes an encounter-kind item when its assignee signs ANY visit, `m8.encounter.signed`).
+   */
+  readonly status: IdgActionItemStatus;
   /** True when the patient's team record may hold 42 CFR Part 2 content (the viewer was cleared for it): whatever is drafted from the item files as Part 2. */
   readonly sudRelated: boolean;
 }
@@ -785,6 +789,19 @@ export interface IdgFollowUpReader {
     readonly patientId: PatientId;
     readonly viewer: IdgFollowUpViewer;
   }): Promise<readonly IdgFollowUpItem[]>;
+
+  /**
+   * The ONE action item a visit is linked to, by id, in ANY status (completed, cancelled and auto-closed too), for the viewer's own membership and the patient:
+   * the draft states the item the author linked and confirmed, which M14's own auto-close may have closed since. The same facts, and the same per-viewer Part 2
+   * verdict, as `openFollowUpItems`; `null` when the item is absent, not assigned to the viewer, another patient's or organization's, has no recorded decision, or
+   * is Part 2 and the viewer is not cleared. Throws when a read fails.
+   */
+  linkedFollowUpItem(query: {
+    readonly organizationId: string;
+    readonly patientId: PatientId;
+    readonly actionItemId: IdgActionItemId;
+    readonly viewer: IdgFollowUpViewer;
+  }): Promise<IdgFollowUpItem | null>;
 }
 
 /** §4.8 — schedule + cadence reads (consumed by M28 FHIR `CareTeam`/`Encounter`, M30 cadence measure, M33). */

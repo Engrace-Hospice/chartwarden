@@ -216,13 +216,13 @@ describe("GET /encounters/:encounterId/idg-action-items", () => {
     expect(refused.json().error.code).toBe("UNKNOWN_TEMPLATE_SECTION");
 
     service.getIdgActionItems.mockRejectedValueOnce(
-      Object.assign(new Error("requires permission 'idg.act'"), {
-        code: "FORBIDDEN",
-        statusCode: 403,
-      }),
+      new EncounterStateError("IDG_ACTION_PERMISSION_REQUIRED", "requires permission 'idg.act'"),
     );
     const forbidden = await app.inject({ method: "GET", url: listUrl(), headers: AUTHOR });
     expect(forbidden.statusCode).toBe(403);
+    // a stable code in the standard envelope: a client matches on it, never on the message
+    expect(forbidden.json().error.code).toBe("IDG_ACTION_PERMISSION_REQUIRED");
+    expect(forbidden.json().error.message).toContain("idg.act");
   });
 
   it("declares a read audit against the encounter, attributed to the patient named in the response (names of fields only, no title or body)", () => {
@@ -422,5 +422,21 @@ describe("PUT /encounters/:encounterId/idg-action-item", () => {
     });
     expect(full.statusCode).toBe(409);
     expect(full.json().error.code).toBe("IDG_ACTION_ITEM_LINK_LIMIT");
+  });
+
+  it("carries a 403 IDG_ACTION_PERMISSION_REQUIRED from the service for a link without idg.act, in the standard error envelope", async () => {
+    const { app, service } = makeServer();
+    service.setIdgActionItem.mockRejectedValueOnce(
+      new EncounterStateError("IDG_ACTION_PERMISSION_REQUIRED", "requires permission 'idg.act'"),
+    );
+    const res = await app.inject({
+      method: "PUT",
+      url: linkUrl(),
+      headers: AUTHOR,
+      payload: { actionItemId: ITEM },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe("IDG_ACTION_PERMISSION_REQUIRED");
+    expect(res.json().error.message).toContain("idg.act");
   });
 });

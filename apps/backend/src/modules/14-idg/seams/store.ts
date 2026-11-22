@@ -15,6 +15,7 @@ import type {
   DisciplineKey,
   DisciplineViewBlock,
   IdgActionItemId,
+  IdgActionItemStatus,
   IdgDecisionDto,
   IdgDecisionKind,
   IdgMeetingDigest,
@@ -51,7 +52,7 @@ export interface IdgFollowUpRow {
   readonly meetingAt: IsoInstant;
   readonly decisionKind: IdgDecisionKind;
   readonly dueAt: IsoInstant | null;
-  readonly status: "open" | "in_progress";
+  readonly status: IdgActionItemStatus;
   readonly needsRelease: boolean;
 }
 
@@ -119,6 +120,16 @@ export interface IdgSeamStore {
     assigneeMembershipId: string,
     limit: number,
   ): Promise<ReadonlyArray<IdgFollowUpRow>>;
+  /**
+   * The ONE item `actionItemId`, in ANY status and of any artifact kind, when it is assigned to `assigneeMembershipId`, belongs to the patient and the explicit org
+   * and names a decision; `null` otherwise (the visit's own link: M14's auto-close may have closed the item since it was linked).
+   */
+  followUpRowById(
+    organizationId: string,
+    patientId: PatientId,
+    assigneeMembershipId: string,
+    actionItemId: IdgActionItemId,
+  ): Promise<IdgFollowUpRow | null>;
 }
 
 // ── in-memory slice store ─────────────────────────────────────────────────────────────────────────────────
@@ -225,7 +236,8 @@ export function createInMemoryIdgSeamStore(seed: IdgSeamSeed = {}): { store: Idg
               (r) =>
                 r.organizationId === organizationId &&
                 r.patientId === patientId &&
-                r.assigneeMembershipId === assigneeMembershipId,
+                r.assigneeMembershipId === assigneeMembershipId &&
+                (r.row.status === "open" || r.row.status === "in_progress"),
             )
             .map((r) => r.row)
             // The Drizzle read's order: newest meeting first, then the greater id.
@@ -235,6 +247,17 @@ export function createInMemoryIdgSeamStore(seed: IdgSeamSeed = {}): { store: Idg
                 : b.meetingAt.localeCompare(a.meetingAt),
             )
             .slice(0, limit)
+        );
+      },
+      async followUpRowById(organizationId, patientId, assigneeMembershipId, actionItemId) {
+        return (
+          (seed.followUps ?? []).find(
+            (r) =>
+              r.organizationId === organizationId &&
+              r.patientId === patientId &&
+              r.assigneeMembershipId === assigneeMembershipId &&
+              r.row.actionItemId === actionItemId,
+          )?.row ?? null
         );
       },
       /** Slice default: 0/0 — M30's kernel SUPPRESSES rather than scoring perfect cadence. */

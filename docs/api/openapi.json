@@ -157718,7 +157718,7 @@
         "tags": [
           "08-encounters"
         ],
-        "summary": "Link this IDG follow-up visit to ONE M14 action item (`actionItemId`), or clear the link (`null`). Idempotent; a different item replaces the linked one. The draft's `idg_followup` section then states the item's meeting date, decision kind and due date (one sentence) for a viewer holding idg.read, and is not drafted for anyone else; the link does not close the item (M14's own auto-close is unchanged). The note's author alone (encounter.author, caseload scope; a supervisor is refused 403) holding idg.read (403 naming the key), never an AI principal; a signed, cosigned or voided note is refused (an addendum is the way). An item the viewer is not handed (absent, closed, reassigned, another patient's, or Part 2 without disclosure) is the same 404; a re-link past the per-visit row cap is 409 IDG_ACTION_ITEM_LINK_LIMIT; the answer is the updated list",
+        "summary": "Link this IDG follow-up visit to ONE M14 action item (`actionItemId`), or clear the link (`null`). Idempotent (naming the linked item again, even after M14 has closed it, changes nothing); a different item replaces the linked one. The draft's `idg_followup` section then states the item's meeting date, decision kind and due date (one sentence) for a viewer holding idg.act, and is not drafted for anyone else; the link does not close the item (M14's own auto-close is unchanged), and the draft states the item whatever its status. Linking needs encounter.author, idg.act (403 `IDG_ACTION_PERMISSION_REQUIRED`, a stable code, without it), the note's author alone (caseload scope; a supervisor is refused 403) and no AI principal; CLEARING (`null`) needs the author's checks only, no idg.act and no M14, and answers an empty `items` list (read the list again with GET). A signed, cosigned or voided note is refused 409 (an addendum is the way). An item the viewer is not handed (absent, closed and not the linked one, reassigned, another patient's, or Part 2 without disclosure) is the same 404; a re-link past the per-visit row cap is 409 IDG_ACTION_ITEM_LINK_LIMIT; a link answers the updated list",
         "parameters": [
           {
             "name": "encounterId",
@@ -157833,6 +157833,18 @@
                               },
                               {
                                 "const": "in_progress",
+                                "type": "string"
+                              },
+                              {
+                                "const": "completed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              },
+                              {
+                                "const": "auto_closed",
                                 "type": "string"
                               }
                             ]
@@ -157890,7 +157902,7 @@
         "tags": [
           "08-encounters"
         ],
-        "summary": "The open IDG action items the calling viewer may link an IDG follow-up visit to: open or in progress, assigned to the viewer's own membership, for the visit's patient, linked to an encounter and naming a decision, newest meeting first, the linked one marked (`linked`). Facts only: the organization-local meeting date, the decision kind and the fixed label the note states for it, the due date and the status, never an item's title or body or the decision's narrative. M14 decides 42 CFR Part 2 per viewer: for a patient with an active SUD flag, or one no packet vouches for, a viewer without disclosure is handed nothing. Only for an IDG follow-up visit (else 422 UNKNOWN_TEMPLATE_SECTION); needs encounter.read and idg.read (403 naming the key without it); 404 for a tenant with the draft switched off and for an encounter that is not the caller's; 503 DRAFT_UNAVAILABLE when M14 cannot answer",
+        "summary": "The IDG action items the calling viewer may link an IDG follow-up visit to: open or in progress, assigned to the viewer's own membership, for the visit's patient, linked to an encounter and naming a decision, newest meeting first, AND the item the visit is already linked to even when M14 has closed it since (M14 closes an encounter-kind item when its assignee signs any visit), each marked `linked`. Facts only: the organization-local meeting date, the decision kind and the fixed label the note states for it, the due date and the status (`open`, `in_progress`, or for the linked item `completed`, `cancelled`, `auto_closed`), never an item's title or body or the decision's narrative. M14 decides 42 CFR Part 2 per viewer: for a patient with an active SUD flag, or one no packet vouches for, a viewer without disclosure is handed nothing. Only for an IDG follow-up visit (else 422 UNKNOWN_TEMPLATE_SECTION); needs encounter.read and idg.act (403 `IDG_ACTION_PERMISSION_REQUIRED`, a stable code, without it); 404 for a tenant with the draft switched off and for an encounter that is not the caller's; 503 DRAFT_UNAVAILABLE when M14 cannot answer",
         "parameters": [
           {
             "name": "encounterId",
@@ -158005,6 +158017,18 @@
                               },
                               {
                                 "const": "in_progress",
+                                "type": "string"
+                              },
+                              {
+                                "const": "completed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              },
+                              {
+                                "const": "auto_closed",
                                 "type": "string"
                               }
                             ]

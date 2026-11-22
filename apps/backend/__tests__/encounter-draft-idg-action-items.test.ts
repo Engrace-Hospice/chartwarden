@@ -47,6 +47,8 @@ const item = (id: string, over: Partial<IdgFollowUpItem> = {}): IdgFollowUpItem 
 function service(
   over: {
     items?: readonly IdgFollowUpItem[];
+    /** Items M14 no longer lists as open (completed, cancelled, auto-closed) but still hands over BY ID, as the linked item. */
+    closed?: readonly IdgFollowUpItem[];
     memory?: Parameters<typeof memoryRunInOrg>[0];
     failing?: Error;
   } = {},
@@ -61,6 +63,14 @@ function service(
       if (over.failing !== undefined) throw over.failing;
       return over.items ?? [item(ITEM_1)];
     },
+    linkedIdgFollowUpItem: async (_organizationId, _patientId, actionItemId) => {
+      if (over.failing !== undefined) throw over.failing;
+      return (
+        [...(over.items ?? [item(ITEM_1)]), ...(over.closed ?? [])].find(
+          (i) => i.actionItemId === actionItemId,
+        ) ?? null
+      );
+    },
   });
   return {
     ...mem,
@@ -68,6 +78,9 @@ function service(
     svc: createDraftService({ runInOrg: mem.runInOrg, seams: () => seams, now: () => NOW }),
   };
 }
+
+const SENTENCE =
+  "This visit follows up the team's decision of 2026-11-01: a referral; due 2026-11-20.";
 
 const liveLink = (actionItemId: string, part2Derived = false) => ({
   id: `idg-link-${actionItemId}`,
@@ -140,6 +153,40 @@ describe("getIdgActionItems", () => {
     expect(store.latestVitals).not.toHaveBeenCalled();
   });
 
+  it("lists the linked item even when M14's auto-close has closed it, marked linked, with its real status, in meeting order; an item that is closed and NOT linked is never listed", async () => {
+    const closedLinked = item(ITEM_2, {
+      status: "auto_closed",
+      meetingAt: "2026-11-09T15:00:00.000Z" as IdgFollowUpItem["meetingAt"],
+    });
+    const closedOther = item(ITEM_SUD, { status: "completed" });
+    const { svc, seams } = service({
+      items: [item(ITEM_1)],
+      closed: [closedLinked, closedOther],
+      memory: { idgLinks: [liveLink(ITEM_2)] },
+    });
+    const view = await svc.getIdgActionItems(caller, ENCOUNTER);
+    expect(view.items.map((i) => [i.actionItemId, i.status, i.linked])).toEqual([
+      [ITEM_2, "auto_closed", true], // the later meeting
+      [ITEM_1, "open", false],
+    ]);
+    expect(seams.linkedIdgFollowUpItem).toHaveBeenCalledTimes(1);
+    expect(seams.linkedIdgFollowUpItem).toHaveBeenCalledWith(
+      caller.organizationId,
+      PATIENT_ID,
+      ITEM_2,
+      expect.objectContaining({ membershipId: MEMBER }),
+    );
+  });
+
+  it("does not read the linked item by id when the visit is linked to an item M14 still lists as open, or to none", async () => {
+    const open = service({ memory: { idgLinks: [liveLink(ITEM_1)] } });
+    await open.svc.getIdgActionItems(caller, ENCOUNTER);
+    const none = service();
+    await none.svc.getIdgActionItems(caller, ENCOUNTER);
+    expect(open.seams.linkedIdgFollowUpItem).not.toHaveBeenCalled();
+    expect(none.seams.linkedIdgFollowUpItem).not.toHaveBeenCalled();
+  });
+
   it("leaves out an item the note cannot state: a decision kind the corpus has no label for, or an instant that is not one", async () => {
     const { svc } = service({
       items: [
@@ -154,7 +201,11 @@ describe("getIdgActionItems", () => {
 
   it("is refused 403 naming idg.act for a caller without it, before M14 is asked", async () => {
     const { svc, seams } = service();
-    await expectCode(svc.getIdgActionItems(withoutIdgKey, ENCOUNTER), "FORBIDDEN", 403);
+    await expectCode(
+      svc.getIdgActionItems(withoutIdgKey, ENCOUNTER),
+      "IDG_ACTION_PERMISSION_REQUIRED",
+      403,
+    );
     expect(seams.idgFollowUpItems).not.toHaveBeenCalled();
     const error = await svc.getIdgActionItems(withoutIdgKey, ENCOUNTER).catch((e: unknown) => e);
     expect((error as Error).message).toContain("idg.act");
@@ -258,6 +309,32 @@ describe("setIdgActionItem", () => {
     expect(idgLinks[0]).toMatchObject({ actionItemId: ITEM_SUD, part2Derived: true });
   });
 
+  it("naming the linked item again after M14 closed it is the idempotent no-op it was; another closed item is the same 404 as an absent one", async () => {
+    const { svc, idgLinks } = service({
+      items: [item(ITEM_2)],
+      closed: [item(ITEM_1, { status: "auto_closed" }), item(ITEM_SUD, { status: "completed" })],
+      memory: { idgLinks: [liveLink(ITEM_1)] },
+    });
+    const view = await svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_1 }, AUDIT);
+    expect(idgLinks).toHaveLength(1);
+    expect(idgLinks[0]?.removedAt).toBeNull();
+    expect(view.items.find((i) => i.linked)).toMatchObject({
+      actionItemId: ITEM_1,
+      status: "auto_closed",
+    });
+    await expectCode(
+      svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_SUD }, AUDIT),
+      "NOT_FOUND",
+      404,
+    );
+    // replacing the closed linked item with an open one leaves it removed, judged by its own verdict (not raised to Part 2 on a guess)
+    await svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_2 }, AUDIT);
+    expect(idgLinks.find((l) => l.actionItemId === ITEM_1)).toMatchObject({
+      removedAt: NOW,
+      part2Derived: false,
+    });
+  });
+
   it("a clear needs no idg.act and no M14: a clinician who lost the key, or whose M14 is down, can always clear a link they made (the row is raised to Part 2, fails closed)", async () => {
     const lostKey = service({ memory: { idgLinks: [liveLink(ITEM_1)] } });
     await lostKey.svc.setIdgActionItem(withoutIdgKey, ENCOUNTER, { actionItemId: null }, AUDIT);
@@ -335,7 +412,7 @@ describe("setIdgActionItem", () => {
     const keyless = service();
     await expectCode(
       keyless.svc.setIdgActionItem(withoutIdgKey, ENCOUNTER, { actionItemId: ITEM_1 }, AUDIT),
-      "FORBIDDEN",
+      "IDG_ACTION_PERMISSION_REQUIRED",
       403,
     );
     const routine = service({ memory: ROUTINE_RN });
@@ -361,7 +438,7 @@ describe("the draft's own idg_followup section", () => {
     const section = await sectionOf(svc, caller);
     expect(section).toMatchObject({
       state: "unresolved",
-      text: "This visit follows up the team's decision of 2026-11-01: a referral; due 2026-11-20.",
+      text: SENTENCE,
       origins: ["idg_action_item"],
       part2Derived: false,
     });
@@ -388,6 +465,24 @@ describe("the draft's own idg_followup section", () => {
     const rest = (v: typeof withKey) => v.sections.filter((s) => s.sectionId !== "idg_followup");
     expect(rest(without)).toEqual(rest(withKey));
     expect(without.sections.length).toBe(withKey.sections.length);
+  });
+
+  it("H1: the draft does not depend on the item staying open: a section whose item M14's auto-close has closed since is still drafted, by id", async () => {
+    for (const status of ["completed", "cancelled", "auto_closed"] as const) {
+      const { svc, seams } = service({
+        items: [],
+        closed: [item(ITEM_1, { status })],
+        memory: { idgLinks: [liveLink(ITEM_1)] },
+      });
+      expect(await sectionOf(svc, caller), status).toMatchObject({
+        state: "unresolved",
+        text: SENTENCE,
+        origins: ["idg_action_item"],
+      });
+      // the draft read is the by-id read alone: it never searches M14's open list
+      expect(seams.idgFollowUpItems).not.toHaveBeenCalled();
+      expect(seams.linkedIdgFollowUpItem).toHaveBeenCalledTimes(1);
+    }
   });
 
   it("never drafts stale text: an item M14 no longer hands this viewer (closed, completed, reassigned, Part 2 withheld) leaves the section not drafted", async () => {

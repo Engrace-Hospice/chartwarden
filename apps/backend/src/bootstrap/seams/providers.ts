@@ -1331,6 +1331,9 @@ export const idgFollowUpReaderDenyStub: IdgFollowUpReader = {
   openFollowUpItems() {
     throw new NotImplementedError("IdgFollowUpReader");
   },
+  linkedFollowUpItem() {
+    throw new NotImplementedError("IdgFollowUpReader");
+  },
 };
 
 /** M17 — the visit read seam (encounter context / EVV geofence target / IDG since-meeting) M8/M18/M14 consume.

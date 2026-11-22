@@ -82,6 +82,13 @@ export function defaultDraftPorts(): DraftSeamPorts {
         patientId: patientId as PatientId,
         viewer: { roles: viewer.roles, membershipId: viewer.membershipId },
       }),
+    linkedIdgFollowUpItem: (organizationId, patientId, actionItemId, viewer) =>
+      getSeam("IdgFollowUpReader").linkedFollowUpItem({
+        organizationId,
+        patientId: patientId as PatientId,
+        actionItemId,
+        viewer: { roles: viewer.roles, membershipId: viewer.membershipId },
+      }),
     scaleSeries: (patientId, scaleType, from, to) =>
       getSeam("ScaleSeriesProvider").series(patientId as PatientId, scaleType, from, to),
     medicationChangesBetween: (organizationId, patientId, from, to) =>

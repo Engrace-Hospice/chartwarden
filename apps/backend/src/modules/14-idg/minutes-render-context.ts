@@ -58,6 +58,51 @@ export async function patientsNeedingRelease(
   return needs;
 }
 
+/**
+ * The same W-SUD-01 fact as {@link patientsNeedingRelease}, asked for ONE patient across SEVERAL meetings in two queries however many meetings there are (the
+ * follow-up seam asks it for up to fifty items' meetings): which of `meetingIds` do NOT vouch the patient clear of Part 2, so a viewer needs a release for them.
+ * A meeting is clear only when its packet for the patient, the LATEST built (a rebuild inserts a fresh row), reads `activeSudFlag: false`, and no decision of
+ * it marks a care-plan problem SUD related (audit D-11); a meeting with no packet is undeterminable, so it needs a release (fail closed).
+ */
+export async function meetingsNeedingRelease(
+  tx: DbClient,
+  meetingIds: readonly string[],
+  patientId: string,
+): Promise<Set<string>> {
+  const needs = new Set<string>(meetingIds);
+  if (meetingIds.length === 0) return needs;
+  const pkts = await tx
+    .select({
+      meetingId: PKT.idgMeetingId,
+      builtAt: PKT.builtAt,
+      builtSnapshot: PKT.builtSnapshot,
+    })
+    .from(PKT)
+    .where(and(inArray(PKT.idgMeetingId, [...meetingIds]), eq(PKT.patientId, patientId)))
+    .orderBy(asc(PKT.builtAt));
+  const latest = new Map<string, unknown>();
+  for (const p of pkts) {
+    latest.set(
+      p.meetingId,
+      (p.builtSnapshot as { patientCover?: { activeSudFlag?: unknown } } | null)?.patientCover
+        ?.activeSudFlag,
+    );
+  }
+  for (const [meetingId, flag] of latest) if (flag === false) needs.delete(meetingId);
+  const flagged = await tx
+    .select({ meetingId: DEC.idgMeetingId })
+    .from(DEC)
+    .where(
+      and(
+        inArray(DEC.idgMeetingId, [...meetingIds]),
+        eq(DEC.patientId, patientId),
+        sql`${DEC.payload} @> '{"mutations":[{"sudRelated":true}]}'::jsonb`,
+      ),
+    );
+  for (const row of flagged) needs.add(row.meetingId);
+  return needs;
+}
+
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
 /** Every membership a minutes render may need to name (attendees, recorders, assignees, note authors). */

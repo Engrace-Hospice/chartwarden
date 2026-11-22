@@ -91,10 +91,11 @@ function mswHarness(broken: MswSource | null, how: () => Promise<never>) {
   return { seams, ...mem, svc };
 }
 
-// S5b: the IDG follow-up visit's own section reads this visit's live link (a store read) and M14's open action items (a seam read). A viewer holding `idg.act`
-// and a link makes both reads; either failing is the draft being unavailable, never a section quietly left out (the viewer without the key makes neither).
-const IDG_SOURCES = ["idgFollowUpItems", "linkedIdgActionItemId"] as const;
-type IdgSource = (typeof IDG_SOURCES)[number];
+// S5b: the IDG follow-up visit's own section reads this visit's live link (a store read) and M14's facts for the linked item BY ID (a seam read; the picker
+// list also reads M14's open items). A viewer holding `idg.act` and a link makes the two draft reads; either failing is the draft being unavailable, never a
+// section quietly left out (the viewer without the key makes neither).
+const IDG_SOURCES = ["linkedIdgFollowUpItem", "linkedIdgActionItemId"] as const;
+type IdgSource = (typeof IDG_SOURCES)[number] | "idgFollowUpItems";
 const idgEncounter = draftEncounterRow({ encounterType: "idg_followup", discipline: "msw" });
 const IDG_PERMISSIONS = new Set(["discipline_plan.read", "idg.act"]);
 const IDG_READER = reader({ roles: ["msw"], permissions: IDG_PERMISSIONS });
@@ -103,7 +104,13 @@ const IDG_ITEM = "00000000-0000-4000-8000-0000000000e1";
 
 /** Healthy fakes for an IDG follow-up visit of a social worker, linked to an item; `broken` replaces one of the two IDG reads by `how`. */
 function idgHarness(broken: IdgSource | null, how: () => Promise<never>) {
-  const seams = fakePorts(broken === "idgFollowUpItems" ? { idgFollowUpItems: how } : {});
+  const seams = fakePorts(
+    broken === "idgFollowUpItems"
+      ? { idgFollowUpItems: how }
+      : broken === "linkedIdgFollowUpItem"
+        ? { linkedIdgFollowUpItem: how }
+        : {},
+  );
   const mem = memoryRunInOrg({
     encounter: idgEncounter,
     selection: selectionFor("idg_followup", "msw"),
@@ -383,6 +390,18 @@ describe("an IDG follow-up visit whose IDG source fails", () => {
       expect(listError).toMatchObject({ code: "DRAFT_UNAVAILABLE", statusCode: 503 });
     });
   }
+
+  it("the picker list alone also reads M14's open items: that read failing is DRAFT_UNAVAILABLE there and leaves the draft as it was", async () => {
+    const listError = await idgHarness("idgFollowUpItems", outage)
+      .svc.getIdgActionItems(idgCaller, idgEncounter.id)
+      .catch((e: unknown) => e);
+    expect(listError).toMatchObject({ code: "DRAFT_UNAVAILABLE", statusCode: 503 });
+    const draft = await idgHarness("idgFollowUpItems", outage).svc.getDraft(
+      idgCaller,
+      idgEncounter.id,
+    );
+    expect(draft.sections.find((s) => s.sectionId === "idg_followup")).toBeDefined();
+  });
 
   it("a viewer without idg.act never makes either read, so a broken IDG source does not touch their draft (VN-D66)", async () => {
     const keyless = { ...idgCaller, permissions: new Set(["discipline_plan.read"]) };
