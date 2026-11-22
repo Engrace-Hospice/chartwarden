@@ -79,6 +79,17 @@ guide, provider enrollment, claim acceptance or production route.
 
 ## External evidence still required
 
+### L3 follow-up status (2026-11-22)
+
+- A deterministic M24 institutional document mapper and explicitly synthetic fixture pathway now reuse the shared X12 837I serializer. The shared member identity contract is generic for Medicaid while preserving M23's `mbi` caller compatibility and Medicare filing default.
+- Synthetic line checks preserve inclusive service spans and unit basis; daily quantities must match inclusive days, and clinical-minute quantities require explicit evidence. Missing clinical, code, price, payer or route facts remain gaps. This validates representation only; it does not qualify Oregon billing units or EOCCO coding.
+- Offline mappers represent Stedi institutional JSON, Stedi raw X12, and Claim.MD multipart 837I upload contracts. They do not instantiate transports or certify vendor acceptance. All synthetic route values are inert fixtures.
+- Synthetic acknowledgment helpers reuse shared 999 parsing, 277CA control/date reading and stage routing, and only correlate in memory. They do not process vendor webhooks, persist attempts, advance claims or imply payment.
+- Focused L3 test coverage and exact statuses are recorded in `M24_1075_L3_TECHNICAL_QUALIFICATION_20261122.md`. No PostgreSQL objects changed in L3, so no migration/RLS qualification was needed for this increment.
+- Medicaid electronic submission, vendor/payer transactions, ERA delivery, and production activation remain disabled and unqualified.
+
+## External evidence still required
+
 1. EOCCO's current hospice policy/contract exhibit, effective dates, notification acknowledgment and
    authorization reference/validity semantics, including inpatient LOC handling.
 2. Provider-specific EOCCO rate agreement, including adjustments, effective periods, unit definitions

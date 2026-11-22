@@ -8,7 +8,7 @@ const withClaim = (patch: object) => ({
   ...CLAIM_INPUT,
   claim: { ...CLAIM_INPUT.claim, ...patch },
 });
-const line = CLAIM_INPUT.claim.lines[0];
+const line = CLAIM_INPUT.claim.lines[0]!;
 
 describe("buildStediClaimJson", () => {
   it("maps the sandbox claim onto Stedi's JSON shape", () => {
@@ -106,6 +106,31 @@ describe("buildStediClaimJson", () => {
     ]);
     expect(c.conditionCodesList).toEqual([[{ conditionCode: "D0" }]]);
     expect(c.serviceLines[0]?.institutionalService.procedureModifiers).toEqual(["PM"]);
+  });
+
+  it("preserves inclusive service-through dates and the explicit unit basis", () => {
+    const input = {
+      ...CLAIM_INPUT,
+      claim: {
+        ...CLAIM_INPUT.claim,
+        lines: [
+          {
+            ...line,
+            serviceDate: "2026-01-02",
+            serviceThroughDate: "2026-01-04",
+            unitBasis: "DA" as const,
+            units: 3,
+          },
+        ],
+      },
+    };
+    const json = buildStediClaimJson(input);
+    expect(json.claimInformation.serviceLines[0]).toMatchObject({
+      serviceDate: "20260102",
+      serviceDateEnd: "20260104",
+      institutionalService: { measurementUnit: "DA", serviceUnitCount: "3" },
+    });
+    expect(compareStediClaimJsonToX12(json, build837iClaim(input))).toEqual([]);
   });
 
   it("pads decimal value amounts and maps address2 and middle names", () => {
@@ -347,7 +372,7 @@ describe("compareStediClaimJsonToX12 — raw and JSON agree", () => {
       (j: StediClaimJson) => Object.assign(j.attending, { npi: "1679576722" }),
     ],
     [
-      "subscriber.mbi",
+      "subscriber.memberId",
       (j: StediClaimJson) => Object.assign(j.subscriber, { memberId: "1AA0AA0AA00" }),
     ],
     [
