@@ -1704,6 +1704,7 @@ controls:
       - file: packages/hearthnote/__tests__/draft-md-np-idg.test.ts
       - file: apps/backend/__tests__/encounter-draft-settles-reads.test.ts
       - file: apps/backend/__tests__/encounter-draft-transaction-lease.test.ts
+      - file: apps/backend/__tests__/encounter-draft-lease-wiring.test.ts
       - file: apps/backend/src/modules/15-discipline-care-plans/seams/plan-elements-as-of.ts
       - file: apps/backend/__tests__/discipline-plan-as-of.test.ts
       - file: apps/backend/__tests__/discipline-plan-as-of-second-filter.test.ts
