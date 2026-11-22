@@ -21,7 +21,7 @@ import { ASSEMBLY_ERROR_CODE, EncounterStateError } from "../lifecycle/errors";
 import { readDraftInputs } from "./inputs";
 import type { DraftEncounter, DraftPorts, DraftStorePorts, DraftViewer } from "./ports";
 import { readsPreviousVisit } from "./source-reads";
-import { draftUnavailable, guarded } from "./unavailable";
+import { draftUnavailable, guarded, settleAll } from "./unavailable";
 import { visitAsOf } from "./visit-time";
 
 /** What a draft view needs: the draft, the instant it describes and the template. */
@@ -90,7 +90,8 @@ export async function computeDraft(
   const asOf = await guarded("the visit time", () =>
     visitAsOf({ serviceDate: encounter.serviceDate, orgTimeZone, now }),
   );
-  const [sources, stored, wounds] = await Promise.all([
+  // `settleAll`, not `Promise.all`: the stored-selection read is several queries on the request's transaction, and must not outlive a seam that fails at once.
+  const [sources, stored, wounds] = await settleAll([
     readDraftInputs(call, encounter, viewer, asOf),
     guarded("the stored selections", () => call.loadSelection(encounter)),
     guarded("the recorded wounds", () =>
@@ -159,7 +160,7 @@ export async function snapshotStorePorts(
   // S3: the store reads of a source the template does not draft from are not taken either (an aide's snapshot is the care-plan links and the
   // stored selections): `readDraftInputs` reads the same sources, by the same rule.
   const needs = draftSourceNeeds(encounter.encounterType, encounter.discipline);
-  const [previous, vitals, removed, stored, weights] = await Promise.all([
+  const [previous, vitals, removed, stored, weights] = await settleAll([
     readsPreviousVisit(needs)
       ? guarded("the previous signed visit", () => store.previousSignedVisitAt(encounter))
       : Promise.resolve(null),

@@ -44,7 +44,7 @@ import type {
 } from "@chartwarden/types";
 import type { DraftEncounter, DraftPorts, DraftViewer } from "./ports";
 import { readsPreviousVisit } from "./source-reads";
-import { draftUnavailable, guarded } from "./unavailable";
+import { draftUnavailable, guarded, settleAll } from "./unavailable";
 
 /** The sources of a draft: `DraftInputs` minus the selection tree and slots, which `computeDraft` loads. */
 export type DraftSourceInputs = Omit<DraftInputs, "selection" | "context">;
@@ -182,7 +182,7 @@ async function readCarePlan(
   asOf: string,
   part2Verdict: Part2Verdict,
 ): Promise<CarePlanDraftInput | null> {
-  const [plan, removed] = await Promise.all([
+  const [plan, removed] = await settleAll([
     guarded("the care plan", () =>
       ports.carePlanAsOf(
         encounter.patientId,
@@ -657,7 +657,7 @@ export async function readDraftInputs(
   // S3: only the sources the template's drafted sections are built from are read (an aide's draft reads the care plan alone), the same rule
   // that decides which read keys the draft routes ask (`source-reads.ts`). A source not read is as if it were empty: nothing drafts from it.
   const needs = draftSourceNeeds(encounter.encounterType, encounter.discipline);
-  const [timeZone, previousMs] = await Promise.all([
+  const [timeZone, previousMs] = await settleAll([
     guarded("the organization time zone", () =>
       ports.organizationTimeZone(encounter.organizationId),
     ),
@@ -689,7 +689,7 @@ export async function readDraftInputs(
     caregivers,
     advanceDirective,
     disciplinePlan,
-  ] = await Promise.all([
+  ] = await settleAll([
     needs.carePlan ? readCarePlan(ports, encounter, viewer, asOf, part2Verdict) : null,
     needs.scales
       ? readScaleReadings(ports, encounter, asOf, asOfMs, previousMs, timeZone, periodStart)

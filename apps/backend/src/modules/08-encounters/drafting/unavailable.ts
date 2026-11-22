@@ -16,6 +16,25 @@ export function draftUnavailable(read: string, cause?: unknown): EncounterStateE
 }
 
 /**
+ * `Promise.all`, except that it does not answer until EVERY promise has settled, and then throws the first failure in the order given.
+ * The draft's store reads run on the request's transaction while its seam reads run beside them: with `Promise.all` a seam that fails at once rejects
+ * the whole read, the transaction rolls back and its connection returns to the pool, and a store read still mid-way (`loadSelection` makes four
+ * queries in turn) goes on to issue its next query on a connection that by then belongs to the NEXT request, where it can abort that request's
+ * transaction. Waiting is safe because every read is bounded by `guarded`.
+ */
+export async function settleAll<T extends readonly unknown[] | []>(
+  values: T,
+): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }> {
+  const settled = await Promise.allSettled(values);
+  for (const result of settled) {
+    if (result.status === "rejected") throw result.reason;
+  }
+  return settled.map((result) => (result as PromiseFulfilledResult<unknown>).value) as {
+    -readonly [P in keyof T]: Awaited<T[P]>;
+  };
+}
+
+/**
  * How long one source read may take before the draft is unavailable. A read inside the sign transaction that never answers would hold that
  * transaction (and its row lock) open, so every read is bounded; the bound is generous for an in-process seam and short enough that a hung
  * one fails the request instead of the connection pool.
