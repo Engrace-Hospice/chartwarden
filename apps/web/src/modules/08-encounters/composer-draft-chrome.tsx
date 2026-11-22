@@ -3,9 +3,10 @@
 // Moved out of encounter-compose.tsx unchanged.
 import type { JSX } from "react";
 import { ComposerCarePlanPicker } from "./composer-care-plan-picker";
+import { ComposerDisciplinePlanPicker } from "./composer-discipline-plan-picker";
 import { ComposerScoreTrend } from "./composer-score-trend";
 import type { DraftView, PickerEncounter } from "./draft-api";
-import { draftsFromDisciplinePlan } from "./draft-model";
+import { draftsFromDisciplinePlan, isDisciplinePlanVisit } from "./draft-model";
 import { DraftStrip, DraftSummary, DraftUnavailable } from "./draft-summary";
 import { useDraftRetry } from "./use-draft-retry";
 import type { NoteDraft } from "./use-note-draft";
@@ -74,6 +75,14 @@ export function ComposerDraftRail({
         serviceDate={encounter.serviceDate}
         visitTime={drafted.asOf}
       />
+      {isDisciplinePlanVisit(encounter.discipline) ? (
+        <ComposerDisciplinePlanPicker
+          encounterId={encounter.id}
+          editable={editable}
+          revision={carePlanRevision}
+          onChanged={onLinksChanged}
+        />
+      ) : null}
       <ComposerCarePlanPicker
         encounter={encounter}
         editable={editable}

@@ -100,9 +100,23 @@ const DISCIPLINE_PLAN_ORIGINS: readonly DraftOrigin[] = [
  * links nothing to the visit, so the care-plan panel must not say that a confirmation does.
  */
 export const draftsFromDisciplinePlan = (draft: Pick<DraftView, "sections">): boolean =>
-  draft.sections.some((section) =>
-    section.origins.some((origin) => DISCIPLINE_PLAN_ORIGINS.includes(origin)),
-  );
+  draft.sections.some(touchesDisciplinePlan);
+
+/**
+ * The disciplines whose notes are drafted from their own plan (a social worker's and a chaplain's). The server decides per template (a visit of such a
+ * discipline that is not drafted from the plan answers the plan list 422 and the picker then shows nothing); this only keeps every other discipline
+ * from asking. Unlike `draftsFromDisciplinePlan` it holds when every item has been left out and the draft's own sections name no origin.
+ */
+export const isDisciplinePlanVisit = (discipline: string): boolean =>
+  discipline === "msw" || discipline === "chaplain";
+
+/**
+ * Whether a section is built from the discipline's own plan (S4b): confirming it keeps its goals and interventions in this visit's statement of the
+ * plan and deselecting it leaves them out, so the plan list reads again after either. Not the care plan's elements (`touchesCarePlan`).
+ */
+export function touchesDisciplinePlan(section: Pick<DraftSectionView, "origins">): boolean {
+  return section.origins.some((origin) => DISCIPLINE_PLAN_ORIGINS.includes(origin));
+}
 
 export const isDrafted = (section: Pick<DraftSectionView, "state">): boolean =>
   section.state !== "not_drafted";
@@ -256,7 +270,9 @@ export function resolutionNote(
   }
   const unlinked = touchesCarePlan(previous)
     ? " Its care-plan items were unlinked from this visit; link them again in the care-plan list if needed."
-    : "";
+    : touchesDisciplinePlan(previous)
+      ? " Its plan items were left out of this visit; keep them again in the plan list if needed."
+      : "";
   if (next.state === "not_drafted") {
     return {
       tone: "info",

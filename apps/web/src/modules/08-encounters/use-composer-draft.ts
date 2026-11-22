@@ -3,7 +3,7 @@
 // not act right now, and the care-plan picker's re-read trigger. The draft itself (loading, resolving, ordering) is `useNoteDraft`.
 import { useCallback, useState } from "react";
 import type { DraftSectionView, DraftView, Resolution } from "./draft-api";
-import { draftIsActive, touchesCarePlan } from "./draft-model";
+import { draftIsActive, touchesCarePlan, touchesDisciplinePlan } from "./draft-model";
 import { stateLabel } from "./encounter-status";
 import { type NoteDraft, useNoteDraft } from "./use-note-draft";
 
@@ -120,7 +120,9 @@ export function useComposerDraft({
     async (section: DraftSectionView, resolution: Resolution): Promise<boolean> => {
       refuse(null);
       const recorded = await resolve(section, resolution);
-      if (recorded && touchesCarePlan(section)) setCarePlanRevision((revision) => revision + 1);
+      // A resolve of a section built from a plan keeps or leaves out its items (M7's linked elements, or the discipline's own, S4b): both lists read again.
+      if (recorded && (touchesCarePlan(section) || touchesDisciplinePlan(section)))
+        setCarePlanRevision((revision) => revision + 1);
       return recorded;
     },
     [resolve],

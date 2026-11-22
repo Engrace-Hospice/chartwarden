@@ -16,6 +16,7 @@ import {
   reviewCounts,
   signStaleMessage,
   touchesCarePlan,
+  touchesDisciplinePlan,
   trendOf,
   trendWindow,
 } from "../draft-model";
@@ -103,6 +104,19 @@ describe("touchesCarePlan", () => {
         section({ origins: ["discipline_plan_goal", "discipline_plan_intervention"] }),
       ),
     ).toBe(false);
+  });
+});
+
+// S4b: confirming or deselecting a section built from the discipline's own plan now keeps or leaves out its goals and interventions, so the composer
+// must tell the plan list to read again (the care plan's own links are untouched, which `touchesCarePlan` above still says).
+describe("touchesDisciplinePlan", () => {
+  it("is true for a section built from the discipline's own plan, and false for every other", () => {
+    expect(touchesDisciplinePlan(section({ origins: ["discipline_plan_goal"] }))).toBe(true);
+    expect(
+      touchesDisciplinePlan(section({ origins: ["vitals", "discipline_plan_intervention"] })),
+    ).toBe(true);
+    expect(touchesDisciplinePlan(section({ origins: ["care_plan_goal"] }))).toBe(false);
+    expect(touchesDisciplinePlan(section({ origins: [] }))).toBe(false);
   });
 });
 
@@ -260,6 +274,18 @@ describe("resolutionNote", () => {
   it("warns that a care-plan deselect unlinked the items from the visit", () => {
     const note = resolutionNote("deselected", section(), section({ state: "deselected" }));
     expect(note.text).toMatch(/unlinked from this visit/);
+  });
+
+  // S4b: a deselected plan section leaves its goals out of the visit, which says where they are kept again; it is not the care plan's wording.
+  it("says a deselected discipline-plan section left its items out of this visit, and where to keep them again", () => {
+    const note = resolutionNote(
+      "deselected",
+      section({ origins: ["discipline_plan_goal"] }),
+      section({ state: "deselected" }),
+    );
+    expect(note.text).toMatch(/left out of this visit/);
+    expect(note.text).toMatch(/plan list/);
+    expect(note.text).not.toMatch(/care-plan|unlinked/i);
   });
 
   it("explains a section that was left empty by the deselect", () => {

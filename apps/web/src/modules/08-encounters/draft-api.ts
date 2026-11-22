@@ -10,6 +10,8 @@
 //                                                             CORPUS_REVIEW_PENDING
 //   GET / POST / DELETE /api/v1/encounters/{id}/care-plan-links   the visit's live care-plan links (the composer's picker)
 //   GET  /api/v1/internal/care-plan/relevant-elements         the goals and interventions a visit may link
+//   GET  /api/v1/encounters/{id}/discipline-plan-elements     (S4b) the goals and interventions of a social-work or chaplain visit's plan, kept or not
+//   PUT  /api/v1/encounters/{id}/discipline-plan-elements/{elementId}   keep or leave out one of them
 //   GET  /api/v1/patients/{id}/scales/{scale}/series          the score trend beside the note
 //
 // VN-D7: the draft carries source KINDS only (`origins`), never ids; nothing here asks for more. A call that throws (offline) is
@@ -39,6 +41,10 @@ export type DraftPolicyView = Ok<operations["getApiV1EncountersDraftpolicy"]>;
 export type CarePlanLinksView = Ok<operations["getApiV1EncountersByEncounterIdCareplanlinks"]>;
 export type CarePlanLink = CarePlanLinksView["links"][number];
 export type RelevantElements = Ok<operations["getApiV1InternalCareplanRelevantelements"]>;
+export type DisciplinePlanElementsView = Ok<
+  operations["getApiV1EncountersByEncounterIdDisciplineplanelements"]
+>;
+export type DisciplinePlanElement = DisciplinePlanElementsView["elements"][number];
 export type ScaleSeries = Ok<operations["getApiV1PatientsByPatientIdScalesByScaleTypeSeries"]>;
 
 export type { Outcome };
@@ -229,6 +235,35 @@ export function unlinkCarePlanElement(
       response: result.response,
     };
   });
+}
+
+// ── the discipline's plan (S4b) ──────────────────────────────────────────────────────────────────────────
+
+/** The goals and interventions of a social-work or chaplain visit's plan, each with whether the visit keeps it. */
+export function loadDisciplinePlanElements(
+  client: ApiClient,
+  encounterId: string,
+): Promise<Outcome<DisciplinePlanElementsView>> {
+  return settle(() =>
+    client.GET("/api/v1/encounters/{encounterId}/discipline-plan-elements", {
+      params: { path: { encounterId } },
+    }),
+  );
+}
+
+/** Keep one element in the visit's statement of the plan (`included`) or leave it out. The answer is the whole updated list. */
+export function setDisciplinePlanElement(
+  client: ApiClient,
+  encounterId: string,
+  elementId: string,
+  included: boolean,
+): Promise<Outcome<DisciplinePlanElementsView>> {
+  return settle(() =>
+    client.PUT("/api/v1/encounters/{encounterId}/discipline-plan-elements/{elementId}", {
+      params: { path: { encounterId, elementId } },
+      body: { included },
+    }),
+  );
 }
 
 // ── the score trend ────────────────────────────────────────────────────────────────────────────────────
