@@ -1297,22 +1297,45 @@ export function createDbDocumentRouteService(
           );
         }
         const candidates = await tx
-          .select({ id: EC.id })
+          .select({ id: EC.id, identityResolution: CP.identityResolution })
           .from(EC)
           .innerJoin(EJ, eq(EJ.id, EC.extractionJobId))
           .innerJoin(CP, eq(CP.id, EJ.classifiedPageId))
           .where(eq(CP.intakeUploadBatchId, r.batchId));
+        // A reviewer resolves an entire page as another patient's; its candidates are not reviewable for
+        // this chart (recordDecision rejects approvals and every writeback path excludes them). Requiring a
+        // field-by-field decision here would make the review impossible to complete. Compare candidate ids,
+        // not only row counts, so a decision made before that page was excluded cannot mask an undecided
+        // candidate on an eligible page.
+        const eligibleCandidateIds = new Set(
+          candidates
+            .filter((candidate) => candidate.identityResolution !== "other_patient")
+            .map((c) => c.id),
+        );
         const decisions = await tx
           .select({ candidateId: ED.extractionCandidateId })
           .from(ED)
           .where(eq(ED.extractionReviewId, reviewId));
-        if (candidates.length > decisions.length) {
+        const decidedEligibleCandidateIds = new Set(
+          decisions
+            .map((decision) => decision.candidateId)
+            .filter((candidateId) => eligibleCandidateIds.has(candidateId)),
+        );
+        const candidatesRemaining = eligibleCandidateIds.size - decidedEligibleCandidateIds.size;
+        if (candidatesRemaining > 0) {
           throw new ChartWardenError(
             "REVIEW_INCOMPLETE",
-            `${candidates.length - decisions.length} extracted field(s) still need a decision`,
+            `${candidatesRemaining} extracted field(s) still need a decision`,
             409,
           );
         }
+        await tx
+          .update(ER)
+          .set({
+            candidatesTotal: eligibleCandidateIds.size,
+            candidatesDecided: decidedEligibleCandidateIds.size,
+          })
+          .where(eq(ER.id, reviewId));
         // §7.1 W1 steps 11–12 (F-235) — provenance + `m22.extraction.commit_requested`, in THIS transaction.
         const m5Summary = await commitReviewWriteback(tx, writeback, {
           organizationId,

@@ -450,6 +450,15 @@ describe.skipIf(!DB_URL)(
         candidateId: phone(1),
         decision: "approve",
       });
+      for (const candidate of ws.candidates.filter(
+        (candidate) => candidate.page === 1 && candidate.id !== phone(1),
+      )) {
+        await svc.recordDecision(ORG, actor, review.id, {
+          candidateId: candidate.id,
+          decision: "reject",
+          reason: "not selected for chart writeback",
+        });
+      }
 
       const done = await svc.completeReview(ORG, actor, review.id);
       expect(done.status).toBe("complete");
@@ -911,15 +920,27 @@ describe.skipIf(!DB_URL)(
       const ws = await workspace.getWorkspace(ORG, packet.batch, membership);
       const cand = (fieldPath: string) =>
         ws.candidates.find((c) => c.page === 1 && c.fieldPath === fieldPath)?.id as string;
+      const addressLine1 = cand("patient.address.line1");
+      const addressCity = cand("patient.address.city");
       await svc.recordDecision(ORG, actor, review.id, {
-        candidateId: cand("patient.address.line1"),
+        candidateId: addressLine1,
         decision: "approve",
       });
       await svc.recordDecision(ORG, actor, review.id, {
-        candidateId: cand("patient.address.city"),
+        candidateId: addressCity,
         decision: "reject",
         reason: "wrong city",
       });
+      for (const candidate of ws.candidates.filter(
+        (candidate) =>
+          candidate.page === 1 && candidate.id !== addressLine1 && candidate.id !== addressCity,
+      )) {
+        await svc.recordDecision(ORG, actor, review.id, {
+          candidateId: candidate.id,
+          decision: "reject",
+          reason: "not selected for chart writeback",
+        });
+      }
       expect((await pending.pendingForPatient(ORG, arthur)).items).toEqual([
         expect.objectContaining({
           batchId: packet.batch,
