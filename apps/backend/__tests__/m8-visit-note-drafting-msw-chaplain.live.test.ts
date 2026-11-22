@@ -1545,6 +1545,63 @@ describe.skipIf(!DB_URL)(
           expect(plainEvents).toHaveLength(1);
           expect(JSON.stringify(plainEvents)).toContain(GOAL_A);
         });
+
+        describe("a live link filed before its goal became Part 2 (the plan was revised since)", () => {
+          /** A live link as an earlier visit state filed it: the goal was not Part 2 then, so the row's flag is false. */
+          async function seedStaleLiveLink(v: Visit): Promise<void> {
+            await admin.query(
+              `INSERT INTO encounter_discipline_plan_link (organization_id, provider_entity_id, location_id, encounter_id, goal_id, part2_derived)
+               SELECT organization_id, provider_entity_id, location_id, id, $2, false FROM encounter WHERE id = $1`,
+              [v.encounterId, GOAL_SUD],
+            );
+          }
+          const updateEvents = (v: Visit) =>
+            rows<{ retention_class: string; before: unknown; after: unknown }>(
+              `SELECT retention_class::text, before, after FROM audit_event
+                WHERE organization_id = $1 AND event_type = 'encounter_discipline_plan_link.update' AND after->>'encounter_id' = $2`,
+              [ORG_A, v.encounterId],
+            );
+
+          it("leaving it out raises the row to Part 2 in the same statement, so neither image of the update carries its id", async () => {
+            const member = await newMember(ORG_A, "elements-stale-leave", AUTHOR_KEYS, "msw");
+            part2Memberships.clear();
+            part2Memberships.add(member.membershipId);
+            const v = await seedVisit({ kind: "msw", author: member, snapshot: SUD_SNAPSHOT });
+            await seedStaleLiveLink(v);
+            expect((await setElement(v, GOAL_SUD, false)).statusCode).toBe(200);
+            part2Memberships.clear();
+
+            const links = await disciplineLinksOf(v);
+            expect(links).toHaveLength(1);
+            expect(links[0]).toMatchObject({ removed: true, part2_derived: true });
+            // two updates (the flag is raised, then the removal is stamped), each already filed as Part 2
+            const events = await updateEvents(v);
+            expect(events).toHaveLength(2);
+            expect(events.map((e) => e.retention_class)).toEqual([
+              "compliance_42cfr_part2",
+              "compliance_42cfr_part2",
+            ]);
+            expect(JSON.stringify(events)).not.toContain(GOAL_SUD);
+          });
+
+          it("confirming the section that states it raises the row to Part 2 too (the confirmation row refreshes its flag on every write)", async () => {
+            const member = await newMember(ORG_A, "elements-stale-confirm", AUTHOR_KEYS, "msw");
+            part2Memberships.clear();
+            part2Memberships.add(member.membershipId);
+            const v = await seedVisit({ kind: "msw", author: member, snapshot: SUD_SNAPSHOT });
+            await seedStaleLiveLink(v);
+            const seen = sectionOf((await getDraft(v)).body, "plan");
+            expect((await putSection(v, "plan", "confirmed", seen)).statusCode).toBe(200);
+            part2Memberships.clear();
+
+            const stale = (await disciplineLinksOf(v)).find((l) => l.goal_id === GOAL_SUD);
+            expect(stale).toMatchObject({ removed: false, part2_derived: true });
+            const events = await updateEvents(v);
+            expect(events).toHaveLength(1);
+            expect(events[0]?.retention_class).toBe("compliance_42cfr_part2");
+            expect(JSON.stringify(events)).not.toContain(GOAL_SUD);
+          });
+        });
       });
 
       describe("who may, and what is audited", () => {

@@ -3,7 +3,7 @@
 // and intervention ids only; this loads the rows and executes the plan on the caller's transaction, as care-plan-links.ts does for M7. The application role
 // holds no DELETE on any M8 table, so a removal is a soft `removed_at`. A live row means "kept in this visit's statement of the plan", never "addressed".
 import { type DbClient, schema } from "@chartwarden/db";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import {
   type CarePlanElement,
   type LinkOp,
@@ -79,12 +79,41 @@ async function execute(
   return ops.length;
 }
 
+/**
+ * Raises to Part 2 the rows of these elements that were filed while the verdict was lower (a plan revision since marked the element SUD related): a
+ * flag only ever goes up, so no later write on the row (an update, or the eraser's delete) files its element id in the plain audit class. One statement,
+ * and only for a Part 2 verdict; it runs before the change itself so that change's own audit images are already scrubbed.
+ */
+async function raisePart2Flag(
+  tx: DbClient,
+  encounterId: string,
+  elements: readonly CarePlanElement[],
+  part2Derived: boolean,
+): Promise<void> {
+  if (!part2Derived) return;
+  const idsOf = (kind: CarePlanElement["kind"]) =>
+    elements.filter((element) => element.kind === kind).map((element) => element.id);
+  const goalIds = idsOf("goal");
+  const interventionIds = idsOf("intervention");
+  const named = or(
+    goalIds.length > 0 ? inArray(L.goalId, goalIds) : undefined,
+    interventionIds.length > 0 ? inArray(L.interventionId, interventionIds) : undefined,
+  );
+  if (named === undefined) return;
+  await tx
+    .update(L)
+    .set({ part2Derived: true })
+    .where(and(eq(L.encounterId, encounterId), eq(L.part2Derived, false), named));
+}
+
 export async function linkDisciplineElements(
   tx: DbClient,
   encounter: DraftEncounterRow,
   elements: readonly CarePlanElement[],
   part2Derived: boolean,
 ): Promise<number> {
+  if (elements.length === 0) return 0; // a section with no M15 element (the other templates') costs no read
+  await raisePart2Flag(tx, encounter.id, elements, part2Derived);
   return execute(
     tx,
     encounter,
@@ -102,6 +131,8 @@ export async function removeDisciplineElements(
   removedBy: string,
   now: Date,
 ): Promise<number> {
+  if (elements.length === 0) return 0;
+  await raisePart2Flag(tx, encounter.id, elements, part2Derived);
   return execute(
     tx,
     encounter,
