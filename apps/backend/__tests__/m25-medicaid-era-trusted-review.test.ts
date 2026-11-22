@@ -1,11 +1,8 @@
 import { createHash } from "node:crypto";
 import { parseX12835AllSets } from "@chartwarden/x12-835-client";
 import { describe, expect, it } from "vitest";
-import {
-  CLEAN_BODY,
-  wrap835,
-} from "../../../../../../../packages/x12-835-client/__tests__/fixtures-835";
-import { observeParsedMedicaidEra } from "../medicaid-era-observation";
+import { CLEAN_BODY, wrap835 } from "../../../packages/x12-835-client/__tests__/fixtures-835";
+import { observeParsedMedicaidEra } from "../src/modules/25-remittance/domain/medicaid-era-observation";
 import {
   type AuthenticatedMedicaidEraSource,
   type MedicaidEraAccountEvidence,
@@ -14,7 +11,7 @@ import {
   createMedicaidEraReviewService,
   matchMedicaidEraClaim,
   resolveMedicaidEraAttribution,
-} from "../medicaid-era-trusted-review";
+} from "../src/modules/25-remittance/domain/medicaid-era-trusted-review";
 
 const parsed = () => {
   const result = parseX12835AllSets(wrap835(CLEAN_BODY, { isa15: "T" }), "medicaid", {

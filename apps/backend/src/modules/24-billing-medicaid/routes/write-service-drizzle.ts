@@ -1807,33 +1807,38 @@ export function buildDrizzleM24WriteService(
                     canonicalPayerName: null,
                     reasonCode: "MEDICAID_COVERAGE_UNRESOLVED",
                   }
-                : resolveProgramResponsibility(
-                    programRows.map((row) => ({
-                      id: row.id,
-                      programKind: row.programKind as
-                        | "ffs_open_card"
-                        | "managed_care"
-                        | "other_managed_care"
-                        | "unsupported",
-                      canonicalPayerId: row.canonicalPayerId,
-                      status: row.status,
-                      effectiveFrom: day(row.effectiveFrom),
-                      effectiveTo: row.effectiveTo ? day(row.effectiveTo) : null,
-                    })),
-                    input.serviceFrom,
-                    input.serviceTo,
-                  );
-          projectedProgramResponsibility = {
-            ...projectedProgramResponsibility,
-            canonicalPayerName: null,
-          };
+                : {
+                    ...resolveProgramResponsibility(
+                      programRows.map((row) => ({
+                        id: row.id,
+                        programKind: row.programKind as
+                          | "ffs_open_card"
+                          | "managed_care"
+                          | "other_managed_care"
+                          | "unsupported",
+                        canonicalPayerId: row.canonicalPayerId,
+                        status: row.status,
+                        effectiveFrom: day(row.effectiveFrom),
+                        effectiveTo: row.effectiveTo ? day(row.effectiveTo) : null,
+                      })),
+                      input.serviceFrom,
+                      input.serviceTo,
+                    ),
+                    canonicalPayerName: null,
+                  };
+          const verifiedPayerId = projectedProgramResponsibility.canonicalPayerId;
+          const verifiedProgramKind = projectedProgramResponsibility.programKind;
           if (projectedProgramResponsibility.status === "verified") {
-            const payer = await canonicalPayerReader?.resolvePayer(
-              actor.organizationId,
-              projectedProgramResponsibility.canonicalPayerId,
-            );
+            // A verified resolution always carries a payer id, a program kind and a service state; a null
+            // here fails closed into the unresolved branch below rather than reaching the reader.
+            const payer =
+              verifiedPayerId && serviceState
+                ? await canonicalPayerReader?.resolvePayer(actor.organizationId, verifiedPayerId)
+                : null;
             if (
               !payer ||
+              !verifiedProgramKind ||
+              !serviceState ||
               payer.status !== "active" ||
               payer.kind !== "medicaid" ||
               payer.stateCode !== serviceState
@@ -1848,7 +1853,7 @@ export function buildDrizzleM24WriteService(
                   : "CANONICAL_PAYER_READER_UNBOUND",
               };
             } else {
-              const classifications = await canonicalPayerReader?.medicaidProgramClassifications(
+              const classifications = await canonicalPayerReader?.medicaidProgramClassifications?.(
                 actor.organizationId,
                 payer.id,
                 serviceState,
@@ -1857,7 +1862,7 @@ export function buildDrizzleM24WriteService(
               );
               const classification = qualifyMedicaidProgramClassification(
                 classifications ?? [],
-                projectedProgramResponsibility.programKind,
+                verifiedProgramKind,
                 payer.id,
                 serviceState,
                 input.serviceFrom,
@@ -1918,8 +1923,8 @@ export function buildDrizzleM24WriteService(
                       eq(PAE.patientPayerId, medicaidResolution.coverage.id),
                       eq(PAE.admissionId, input.admissionId),
                       eq(PAE.canonicalPayerId, projectedProgramResponsibility.canonicalPayerId),
-                      lte(PAE.serviceFrom, rangeTo),
-                      gte(PAE.serviceTo, rangeFrom),
+                      lte(PAE.serviceFrom, input.serviceTo),
+                      gte(PAE.serviceTo, input.serviceFrom),
                     ),
                   )
                   .orderBy(PAE.createdAt, PAE.id)
@@ -2475,7 +2480,7 @@ export function buildDrizzleM24WriteService(
             };
             canonicalPayer = null;
           } else {
-            const classifications = await canonicalPayerReader?.medicaidProgramClassifications(
+            const classifications = await canonicalPayerReader?.medicaidProgramClassifications?.(
               actor.organizationId,
               canonicalPayer.id,
               serviceState,

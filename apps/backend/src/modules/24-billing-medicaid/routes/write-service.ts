@@ -205,7 +205,6 @@ export interface CreateCustomRuleInput {
 export interface RefreshEligibilityInput {
   patientId: string;
   patientPayerId: string;
-  admissionId: string;
   asOfServiceDate: string;
   providerEntityId?: string;
 }
@@ -266,6 +265,7 @@ export interface LoadRateScheduleInput {
 export interface RecordProgramAssignmentInput {
   patientId: string;
   patientPayerId: string;
+  admissionId: string;
   providerEntityId: string;
   serviceState: string;
   programKind:
@@ -286,6 +286,7 @@ export interface RecordEnrollmentEvidenceInput {
   programKind?: "ffs_open_card" | "managed_care" | "other_managed_care";
   canonicalPayerId?: string;
   clearinghouse?: "stedi" | "claimmd" | "other";
+  vendorPayerId?: string;
   transactionType?: "837I" | "835";
   evidenceKind:
     | "state_medicaid_provider_enrollment"

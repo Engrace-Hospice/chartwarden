@@ -4,13 +4,13 @@ import {
   CLEAN_BODY,
   wrap835,
   wrap835Sets,
-} from "../../../../../../../packages/x12-835-client/__tests__/fixtures-835";
-import { classifyClaimMdEraCrossSourceDuplicate } from "../../ingest/claimmd-era-duplicate";
-import { observeParsedMedicaidEra } from "../medicaid-era-observation";
+} from "../../../packages/x12-835-client/__tests__/fixtures-835";
+import { observeParsedMedicaidEra } from "../src/modules/25-remittance/domain/medicaid-era-observation";
 import {
   planClaimMdTestEraRetrieval,
   planStediTestEraRetrieval,
-} from "../medicaid-era-offline-contracts";
+} from "../src/modules/25-remittance/domain/medicaid-era-offline-contracts";
+import { classifyClaimMdEraCrossSourceDuplicate } from "../src/modules/25-remittance/ingest/claimmd-era-duplicate";
 
 const parse = (raw: string) => {
   const result = parseX12835AllSets(raw, "medicaid", { allowTestFiles: true });
