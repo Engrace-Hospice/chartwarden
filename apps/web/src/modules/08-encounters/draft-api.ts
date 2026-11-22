@@ -277,7 +277,7 @@ export function setDisciplinePlanElement(
 // ── the IDG follow-up's action item (S5b) ───────────────────────────────────────────────────────────────
 
 /** The stable code of the 403 the two IDG routes answer a viewer without the `idg.act` key (the message names the key; the code is what is matched). */
-export const IDG_ACTION_PERMISSION_REQUIRED_CODE = "IDG_ACTION_PERMISSION_REQUIRED";
+const IDG_ACTION_PERMISSION_REQUIRED_CODE = "IDG_ACTION_PERMISSION_REQUIRED";
 
 /** Whether a refusal is the missing-`idg.act` one. Matched on the error's CODE, never on its message text. */
 export function isIdgActionPermissionRefusal(error: unknown): boolean {

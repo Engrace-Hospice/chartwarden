@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-// What the composer list pickers share (`useSerializedListPicker`, hosted here by the discipline plan picker, whose own suite is unchanged): a refresh nobody
-// asked for that fails leaves the list on the screen, a change whose outcome is unknown tells the caller, and a change that lands after the picker left the screen
-// touches nothing. Synthetic data only.
+// What the composer list pickers share (`useSerializedListPicker`, hosted here by the discipline plan picker, whose own suite is unchanged): a re-read after the
+// server's list changed elsewhere that fails is said, not hidden behind a list that may be out of date; a change whose outcome is unknown tells the caller; and a
+// change that lands after the picker left the screen touches nothing. (The quiet re-read after a clear, which keeps the list, is in the IDG picker's change suite.)
+// Synthetic data only.
 import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -54,10 +55,10 @@ function mount(over: Record<string, Responder> = {}) {
   };
 }
 
-describe("a refresh nobody asked for", () => {
-  it("that fails leaves the list on the screen, and the next one that works replaces it", async () => {
+describe("a re-read after the server's list changed elsewhere (the revision moved)", () => {
+  it("that fails says so and offers Try again: the list on the screen may be out of date, so it is not left as if it were right", async () => {
     let state: "ok" | "failing" | "changed" = "ok";
-    const { bump } = mount({
+    const { bump, user } = mount({
       [`GET ${BASE}`]: () => {
         if (state === "failing") return { status: 503, body: { error: {} } };
         const body = view();
@@ -65,23 +66,18 @@ describe("a refresh nobody asked for", () => {
         return { body };
       },
     });
-    const goal = await screen.findByRole("checkbox", { name: /Name two ways to cope/ });
-    expect(goal).toBeChecked();
+    expect(await screen.findByRole("checkbox", { name: /Name two ways to cope/ })).toBeChecked();
 
     state = "failing";
     bump(1);
-    await waitFor(() => expect(reads()).toHaveLength(2));
-    await waitFor(() =>
-      expect(screen.getByRole("checkbox", { name: /Name two ways/ })).toBeEnabled(),
-    );
-    expect(screen.queryByText(/could not be loaded/)).not.toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: /Name two ways to cope/ })).toBeChecked();
+    expect(await screen.findByText(/could not be loaded/)).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
 
     state = "changed";
-    bump(2);
-    await waitFor(() =>
-      expect(screen.getByRole("checkbox", { name: /Name two ways to cope/ })).not.toBeChecked(),
-    );
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(
+      await screen.findByRole("checkbox", { name: /Name two ways to cope/ }),
+    ).not.toBeChecked();
   });
 
   it("that finds no list for the visit any more takes the list off the screen (that is an answer, not a failure)", async () => {

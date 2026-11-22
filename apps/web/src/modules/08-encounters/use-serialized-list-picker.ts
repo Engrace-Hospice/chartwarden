@@ -5,9 +5,10 @@
 // ONE CHANGE AT A TIME. While a change is saved a second one does nothing (`save` returns at once), and a read that was served before a change settled never
 // lands over it: it is dropped and the list is read again once the change has settled (`changeEpoch`, `saveInFlight`, `readOwed`).
 //
-// A READ NOBODY ASKED FOR (a draft resolve moved `readOn`) that fails leaves the list on the screen: a working picker is not replaced by an error because a
-// refresh failed. A read someone WAITS on (a retry, a refused change read again) says so when it fails, and a retry that fails again counts up (`attempt`),
-// so its words change and a reader hears the change.
+// A QUIET RE-READ is the one after a change whose answer is not the whole list (`rereadAfter`): while a list is on the screen, a failure of that read leaves the
+// list there (the change itself was taken). Every other read that fails is said: a read someone WAITS on (a retry, a refused change read again) and a re-read
+// that follows a change the server made elsewhere (`readOn` moved, e.g. a draft resolve changed which items are kept) both show the failure with its "Try again",
+// because the list on the screen may be out of date. A retry that fails again counts up (`attempt`), so its words change and a reader hears the change.
 //
 // FOCUS. When an answer replaces the control that held the focus (a retry button that gives way to the list, a box whose item was withdrawn, the list that gives
 // way to a note) the panel takes the focus, instead of it dropping to the page. Focus that was already elsewhere, or on a control that is still there, is never
@@ -23,7 +24,7 @@ import { useFocusRequest } from "./use-focus-request";
 import { useIsMounted } from "./use-is-mounted";
 
 /** What a picker's own state looks like to the hook: a `status`, and a `ready` one that holds the list. */
-export interface PickerState {
+interface PickerState {
   readonly status: string;
 }
 
@@ -36,7 +37,7 @@ export type PickerLoad<S extends PickerState> =
 /** A read a person is waiting on: "Try again" was pressed, or a change was refused (or left to be read) and the list is read again. */
 type WaitedOn = "retry" | "reread" | null;
 
-export interface SerializedListPickerOptions<V, S extends PickerState> {
+interface SerializedListPickerOptions<V, S extends PickerState> {
   /** Reads the list. The latest closure is the one called. */
   readonly read: () => Promise<Outcome<V>>;
   /** What the read depends on (the client, the visit, a revision that moves): when one changes the list is read again. Constant in length. */
@@ -52,7 +53,7 @@ export interface SerializedListPickerOptions<V, S extends PickerState> {
   readonly onChanged: () => void;
 }
 
-export interface SaveOptions<V, S extends PickerState> {
+interface SaveOptions<V, S extends PickerState> {
   /** What a refused change says. */
   readonly refusalWords: (failure: { readonly status: number; readonly error: unknown }) => string;
   /** What is said when the answer is not what was expected: the change is not taken as made and the list is read again. */
@@ -65,7 +66,7 @@ export interface SaveOptions<V, S extends PickerState> {
   readonly rereadAfter?: boolean;
 }
 
-export interface SerializedListPicker<V, S extends PickerState> {
+interface SerializedListPicker<V, S extends PickerState> {
   readonly load: PickerLoad<S>;
   /** The panel the focus returns to; put it on the picker's fieldset. */
   readonly anchor: RefObject<HTMLFieldSetElement>;
@@ -112,6 +113,8 @@ export function useSerializedListPicker<V, S extends PickerState>(
   const readOwed = useRef(false);
   // Set when a read is being waited on, and spent by the read that settles (whatever it finds): a later read that nobody waits on never moves the focus.
   const waitedOn = useRef<WaitedOn>(null);
+  // Set for the one read that follows a change whose answer was not the list, and spent by the read that settles: that read may fail without taking the list off the screen.
+  const quietRead = useRef(false);
   const failedReads = useRef(0);
   const signature = useRef<string | undefined>(undefined);
   // Whether the focus sat inside the panel when the answer that replaces its content was taken; spent after the commit.
@@ -161,10 +164,12 @@ export function useSerializedListPicker<V, S extends PickerState>(
       setReading(false);
       const waited = waitedOn.current;
       waitedOn.current = null;
+      const quiet = quietRead.current;
+      quietRead.current = false;
       const found = latest.current.classify(outcome, waited !== null);
       if (found === null) {
-        // A refresh nobody asked for must not take a working list off the screen.
-        if (waited === null && shown.current.status === "ready") return;
+        // The change was taken and only the picture of it could not be refreshed: the list on the screen is still right to act on.
+        if (quiet && shown.current.status === "ready") return;
         failedReads.current = waited === "retry" ? failedReads.current + 1 : 1;
         showLoad({ status: "error", attempt: failedReads.current });
         return;
@@ -227,7 +232,9 @@ export function useSerializedListPicker<V, S extends PickerState>(
         }
         setSaid(saveOptions.savedWords);
         if (saveOptions.rereadAfter) {
-          waitedOn.current = shown.current.status === "ready" ? null : "reread";
+          const listOnScreen = shown.current.status === "ready";
+          waitedOn.current = listOnScreen ? null : "reread";
+          quietRead.current = listOnScreen;
           setReadKey((key) => key + 1);
         }
       }
