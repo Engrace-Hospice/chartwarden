@@ -6,6 +6,19 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-21 — Visit-note drafting slice 4 (M8, ADR-0114): the social-work and chaplain visits, corpus release `narrative-vocab@2026.12.3`
+
+**No new route and no new field. One response enum grows; the read key changes for four templates that are not released yet; nothing changes for a tenant with the draft switched off.**
+
+- **`narrative-vocab@2026.12.3` is the active corpus for every tenant at deploy**: a draft encounter whose selections were saved before it carries an earlier version and answers `409 VOCAB_VERSION_MISMATCH` at finalize until `PATCH /encounters/{id}/selections` saves them again.
+- **`GET /encounters/{encounterId}/draft` and the amendment draft**, switch on: a social-work visit (`msw_assessment` or `msw_followup`, discipline `msw`) drafts `interventions` and `plan`; a chaplain visit (`chaplain_assessment` or `chaplain_visit`, discipline `chaplain`) drafts `plan`. They are built from the discipline's own care plan (module 15) as signed at the visit time: its open goals (with who stated them, where the plan records the patient, the family or the patient's agent and a clinician has not revised the goal) and its active interventions with their stated frequency. Never a goal's status, progress or outcome, never a psychosocial or spiritual assessment, never the module 7 care plan. A patient with no signed plan in effect at the visit, or a spiritual plan the patient had declined, drafts nothing (every section `not_drafted`). A confirmation applies to the whole section; nothing is linked to the visit, and one goal cannot be taken out of a confirmed section. `origins[]` of a drafted section can now also be `discipline_plan_goal` and `discipline_plan_intervention` (kinds only, never an id). A client that decodes `origins` strictly must accept them.
+- **Permission, now `discipline_plan.read` for these four templates.** The draft routes (`GET .../draft`, `PUT .../draft/sections/{sectionId}` and the two amendment-draft routes) ask `discipline_plan.read`, and no longer the care plan's key, for them. The key is not scoped by plan kind (a holder reads the social-work and the spiritual plan alike) and is granted by default to `rn` and `rn_case_manager` only, so a tenant grants it to its social-work and chaplain roles before it enables the switch. A caller who lacks it gets `403` naming it, after the `404` of a tenant with the switch off.
+- **42 CFR Part 2.** A goal flagged substance-use-related, and an intervention anchored to one, are drafted only for a viewer module 39 clears for the patient (or an RN case manager where no release names other staff); for anyone else they are left out of the draft and the signed note's view withholds the section whole, as for every other drafted section.
+- **`GET /encounters/{encounterId}/template`** (the authoring menu): unchanged. The six new phrases are in no section menu.
+- **Notes signed are not re-read.** A signed note keeps the text sealed at its finalize; a plan version signed later changes no signed note.
+
+---
+
 ## 2026-11-21 — Visit-note drafting slice 3 (M8, ADR-0114): the LPN visits and the aide visit, corpus release `narrative-vocab@2026.12.2`
 
 **No new route and no new field. One response enum grows; behaviour changes on routes that are not released yet; nothing changes for a tenant with the draft switched off.**

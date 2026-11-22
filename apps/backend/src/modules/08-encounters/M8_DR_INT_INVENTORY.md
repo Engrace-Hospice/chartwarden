@@ -91,6 +91,32 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
   keys requirement and the unreviewed 2026.12.2 tags at once. Enabling is refused (409 `CORPUS_REVIEW_PENDING`) while the review is pending, so none
   should be on; the operator confirms that before the deploy.
 
+### Social-work and chaplain drafts (ADR-0114 slice S4, design §3.6): limits recorded
+
+- **One new read, M15's plan as of the visit.** `DisciplinePlanReader.planElementsAsOf` (M15 `seams/`), asked through `disciplinePlanAsOf` of the draft ports,
+  takes its turn with the other seam reads (`serial-seams.ts`), is bounded and fails closed like them. It reads the SEALED `state_snapshot` of the signed
+  plan version in effect at the visit (M15 supersedes only at discharge, so the latest signed version at or before the visit is the one in effect). No
+  write, no migration, no M7 read: a social-work or chaplain draft reads the discipline plan and nothing else.
+- **Part 2 through M15's rule, with the draft's cross-check.** M15 resolves the verdict itself from the session identity (`resolveSudAllowed`), asks M39 only
+  when the sealed version holds a goal that is, or may be, Part 2, and redacts on an M39 failure. The draft then refuses (503, `DRAFT_UNAVAILABLE`) a plan M15
+  says it withheld from a viewer the draft's own verdict clears, so an outage never hands an entitled viewer a reduced plan as if it were whole.
+- **Key by template, not by plan kind.** The draft routes ask `discipline_plan.read` for these four templates (`source-reads.ts`). M15 does not scope that
+  key by kind, so a holder reads the social-work and the spiritual plan alike by M15's own routes; it is granted by default to `rn` and `rn_case_manager`
+  only, so a tenant grants it to its social-work and chaplain roles before it enables the switch. Finalize, sign and an addendum's recompute do not ask it (S1).
+- **A wider audience than the plan's.** A drafted section becomes note text readable by every holder of `encounter.read`, wider than the holders of
+  `discipline_plan.read`. A goal's words can carry sensitive psychosocial or spiritual content that nothing flags (only Part 2 is flagged), and a Part 2 goal
+  is withheld from a viewer without disclosure in the draft and in the sealed note's view (no cosigner is needed for these disciplines).
+- **No link, section-level confirmation.** A confirmation applies to the whole section; one goal cannot be left out of a confirmed section (S4b would add an
+  expand-only link table). The audit refs name M15 goal and intervention ids (kinds `discipline_plan_goal`, `discipline_plan_intervention`); the response
+  carries kinds only.
+- **Words, not outcomes.** The draft lists open goals and active interventions ("Plan-of-care goal: ...", "Plan-of-care intervention: ..."), attributing a goal
+  to the patient, the family or the patient's agent only where the record says so and a clinician has not revised it. It never states a status, progress,
+  outcome, a met or discontinued goal, a declination or an assessment. What happened at the visit is the clinician's own text.
+- **Not proven live.** The live suites do not exercise an amendment of a signed social-work or chaplain note (S1's path, unchanged), nor an M39 outage
+  between M15's read and the draft's own verdict (unit-proven).
+- **Rollout.** The switch is tenant-wide: a tenant already switched on at deploy would get these drafts, their key requirement and the unreviewed 2026.12.3
+  phrases at once. Enabling is refused (409 `CORPUS_REVIEW_PENDING`) while the review is pending, so none should be on; the operator confirms that before the deploy.
+
 ### RN admission visit drafts (ADR-0114 slice S2b, design §3.4): limits recorded
 
 - **Three more reads under the sign lock.** An admission draft adds M12's orders as of the visit, M5's roster for the service date and M39's
