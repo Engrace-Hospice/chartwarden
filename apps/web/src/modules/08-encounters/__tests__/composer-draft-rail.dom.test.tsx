@@ -260,3 +260,85 @@ describe("the composer rail for an IDG follow-up visit", () => {
     expect(reads(IDG_LIST_URL)).toHaveLength(1);
   });
 });
+
+describe("the composer rail when the visit changes under it", () => {
+  const ENC_B = "bbbbbbbb-2222-4222-8222-bbbbbbbbbb99";
+  const ITEM_B = "dddddddd-4444-4444-8444-dddddddddd99";
+  const GOAL_B = "dddddddd-4444-4444-8444-dddddddddd98";
+
+  it("gives each visit its own pickers: the first visit's items and goals are gone while the second visit's are read, never shown under it", async () => {
+    let release = (): void => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const routes: Record<string, Responder> = {
+      [`GET ${IDG_LIST_URL}`]: () => ({ body: idgItems(true) }),
+      [`GET ${PLAN_URL}`]: () => ({
+        body: {
+          patientId: PATIENT,
+          elements: [{ elementId: GOAL, kind: "goal", text: "Name two ways to cope", kept: true }],
+        },
+      }),
+      [`GET /api/v1/encounters/${ENC_B}/idg-action-items`]: async () => {
+        await held;
+        return {
+          body: {
+            patientId: PATIENT,
+            items: [
+              { ...idgItems(false).items[0], actionItemId: ITEM_B, decisionLabel: "a team note" },
+            ],
+          },
+        };
+      },
+      [`GET /api/v1/encounters/${ENC_B}/discipline-plan-elements`]: async () => {
+        await held;
+        return {
+          body: {
+            patientId: PATIENT,
+            elements: [{ elementId: GOAL_B, kind: "goal", text: "Write a letter", kept: true }],
+          },
+        };
+      },
+    };
+    const client = createApiClient({
+      baseUrl: "http://localhost",
+      fetch: makeFetch(routes, calls),
+    });
+    const tree = (id: string) => (
+      <ApiClientProvider client={client}>
+        <ComposerDraftRail
+          encounter={{
+            id,
+            patientId: PATIENT,
+            admissionId: "adm-1",
+            encounterType: "idg_followup",
+            discipline: "msw",
+            serviceDate: "2026-11-18",
+          }}
+          editable
+          drafted={null}
+          draftReady
+          carePlanRevision={0}
+          onLinksChanged={() => undefined}
+        />
+      </ApiClientProvider>
+    );
+    const rendered = render(tree(ENC));
+    expect(await screen.findByRole("radio", { name: /a referral/ })).toBeChecked();
+    expect(await screen.findByRole("checkbox", { name: /Name two ways to cope/ })).toBeChecked();
+
+    rendered.rerender(tree(ENC_B));
+    // the second visit's answers are still out: nothing of the first visit's is left on the page
+    await waitFor(() =>
+      expect(reads(`/api/v1/encounters/${ENC_B}/idg-action-items`)).toHaveLength(1),
+    );
+    expect(screen.queryByRole("radio", { name: /a referral/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: /Name two ways to cope/ }),
+    ).not.toBeInTheDocument();
+
+    release();
+    expect(await screen.findByRole("radio", { name: /a team note/ })).not.toBeChecked();
+    expect(await screen.findByRole("checkbox", { name: /Write a letter/ })).toBeChecked();
+  });
+});
