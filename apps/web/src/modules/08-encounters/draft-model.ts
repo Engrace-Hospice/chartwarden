@@ -56,7 +56,8 @@ export const ORIGIN_LABEL: Readonly<Record<DraftOrigin, string>> = {
   // S3 (aide visit): the ADLs the aide recorded for this visit lead the section.
   recorded_adl: "the activities of daily living recorded at this visit",
   // S4 (social-work and chaplain visits): the goals and interventions of the discipline's own plan, as signed at the visit time. Not the care
-  // plan's elements, so a confirmation links nothing (`touchesCarePlan` stays false).
+  // plan's elements, so a confirmation links nothing of the care plan (`touchesCarePlan` stays false); since S4b it keeps the discipline's own
+  // elements instead (`touchesDisciplinePlan`).
   discipline_plan_goal: "the goals of the discipline's plan of care at the visit",
   discipline_plan_intervention: "the interventions of the discipline's plan of care at the visit",
 };
@@ -97,7 +98,7 @@ const DISCIPLINE_PLAN_ORIGINS: readonly DraftOrigin[] = [
 
 /**
  * Whether a section of the draft is built from the discipline's own plan (S4: the social-work and chaplain visits). Confirming such a section
- * links nothing to the visit, so the care-plan panel must not say that a confirmation does.
+ * links nothing of the CARE PLAN to the visit (it keeps the discipline's own elements, S4b), so the care-plan panel must not say that a confirmation links its items.
  */
 export const draftsFromDisciplinePlan = (draft: Pick<DraftView, "sections">): boolean =>
   draft.sections.some(touchesDisciplinePlan);

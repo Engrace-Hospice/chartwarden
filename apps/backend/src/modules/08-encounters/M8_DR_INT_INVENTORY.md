@@ -152,9 +152,19 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
 - **A wider audience than the plan's.** A drafted section becomes note text readable by every holder of `encounter.read`, wider than the holders of
   `discipline_plan.read`. A goal's words can carry sensitive psychosocial or spiritual content that nothing flags (only Part 2 is flagged), and a Part 2 goal
   is withheld from a viewer without disclosure in the draft and in the sealed note's view (no cosigner is needed for these disciplines).
-- **No link, section-level confirmation.** A confirmation applies to the whole section; one goal cannot be left out of a confirmed section (S4b would add an
-  expand-only link table). The audit refs name M15 goal and intervention ids (kinds `discipline_plan_goal`, `discipline_plan_intervention`); the response
-  carries kinds only.
+- **Keeping and leaving out single goals (S4b).** A confirmation or deselection still applies to the whole section, and since S4b one goal or intervention can
+  be left out of it: `encounter_discipline_plan_link` (migration 1535) holds one row per M15 element the visit keeps or leaves out (soft-removed, no DELETE for
+  the application role), by the care-plan rules. A live row means "kept in this visit's statement of the plan", never "addressed": no outbox event and no
+  consumer reads it, and nothing may. A deselected plan section is no longer drafted (S4a kept it drafted and deselected). The audit refs name M15 goal and
+  intervention ids (kinds `discipline_plan_goal`, `discipline_plan_intervention`); the response carries kinds only, and the list route returns ids and words to a
+  holder of `discipline_plan.read` who may read the draft.
+- **The Part 2 flag of a link row.** The toggle writes the element's own flag (fail closed); a confirm or deselect writes the section's verdict, so a non-Part-2
+  goal in a Part 2 derived section is filed as Part 2 too. A Part 2 row withholds its element id from the audit image and files under the Part 2 retention
+  class. An element a viewer is not handed (a Part 2 goal without disclosure) can be neither listed nor changed, and answers the same 404 as one that does not
+  exist.
+- **A change is audited by the row trigger.** The toggle writes no explicit catalog event of its own: the link row's trigger records the actor, the row and the
+  Part 2 class (the list read leaves `encounter_discipline_plan_elements.viewed`). A confirm or deselect still records `m8.encounter.draft_section_resolved`,
+  whose two counters count M7 and M15 elements alike.
 - **Words, not outcomes.** The draft lists open goals and active interventions ("Plan-of-care goal: ...", "Plan-of-care intervention: ..."), attributing a goal
   to the patient, the family or the patient's agent only where the record says so and a clinician has not revised it. It never states a status, progress,
   outcome, a met or discontinued goal, a declination or an assessment. What happened at the visit is the clinician's own text.

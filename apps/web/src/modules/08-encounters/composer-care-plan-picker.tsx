@@ -44,7 +44,7 @@ export interface ComposerCarePlanPickerProps {
   readonly onChanged: () => void;
   /**
    * Whether confirming a drafted section links its care-plan elements to this visit (the default). False for a draft built from the discipline's
-   * own plan (S4), which links nothing: the footnote that says it does is then left out.
+   * own plan (S4), which links nothing of the care plan (its own plan items are `ComposerDisciplinePlanPicker`'s, S4b): the footnote that says it does is then left out.
    */
   readonly confirmationLinks?: boolean;
 }
