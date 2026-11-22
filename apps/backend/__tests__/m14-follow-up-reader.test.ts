@@ -177,7 +177,12 @@ describe("IdgFollowUpReader.openFollowUpItems", () => {
 });
 
 describe("IdgFollowUpReader.linkedFollowUpItem", () => {
-  const linkedQuery = (actionItemId: string, viewer = VIEWER, patientId = PATIENT, org = ORG) => ({
+  const linkedQuery = (
+    actionItemId: string,
+    viewer: { roles: string[]; membershipId: string | null } = VIEWER,
+    patientId = PATIENT,
+    org = ORG,
+  ) => ({
     organizationId: org,
     patientId,
     actionItemId,
