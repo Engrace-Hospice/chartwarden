@@ -60,6 +60,9 @@ export const ORIGIN_LABEL: Readonly<Record<DraftOrigin, string>> = {
   // elements instead (`touchesDisciplinePlan`).
   discipline_plan_goal: "the goals of the discipline's plan of care at the visit",
   discipline_plan_intervention: "the interventions of the discipline's plan of care at the visit",
+  // S5b (IDG follow-up visits): the one IDG action item the author linked the visit to (its meeting date, decision kind and due date; never its title or body).
+  idg_action_item:
+    "the IDG action item this visit follows up (the team's decision and its due date)",
 };
 
 export function originsText(origins: readonly DraftOrigin[]): string {

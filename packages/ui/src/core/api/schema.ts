@@ -12199,6 +12199,40 @@ export interface paths {
         patch: operations["patchApiV1EncountersByEncounterIdHearthnoteModificationsByModIdDecisions"];
         trace?: never;
     };
+    "/api/v1/encounters/{encounterId}/idg-action-item": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Link this IDG follow-up visit to ONE M14 action item (`actionItemId`), or clear the link (`null`). Idempotent; a different item replaces the linked one. The draft's `idg_followup` section then states the item's meeting date, decision kind and due date (one sentence) for a viewer holding idg.read, and is not drafted for anyone else; the link does not close the item (M14's own auto-close is unchanged). The note's author alone (encounter.author, caseload scope; a supervisor is refused 403) holding idg.read (403 naming the key), never an AI principal; a signed, cosigned or voided note is refused (an addendum is the way). An item the viewer is not handed (absent, closed, reassigned, another patient's, or Part 2 without disclosure) is the same 404; a re-link past the per-visit row cap is 409 IDG_ACTION_ITEM_LINK_LIMIT; the answer is the updated list */
+        put: operations["putApiV1EncountersByEncounterIdIdgactionitem"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/idg-action-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The open IDG action items the calling viewer may link an IDG follow-up visit to: open or in progress, assigned to the viewer's own membership, for the visit's patient, linked to an encounter and naming a decision, newest meeting first, the linked one marked (`linked`). Facts only: the organization-local meeting date, the decision kind and the fixed label the note states for it, the due date and the status, never an item's title or body or the decision's narrative. M14 decides 42 CFR Part 2 per viewer: for a patient with an active SUD flag, or one no packet vouches for, a viewer without disclosure is handed nothing. Only for an IDG follow-up visit (else 422 UNKNOWN_TEMPLATE_SECTION); needs encounter.read and idg.read (403 naming the key without it); 404 for a tenant with the draft switched off and for an encounter that is not the caller's; 503 DRAFT_UNAVAILABLE when M14 cannot answer */
+        get: operations["getApiV1EncountersByEncounterIdIdgactionitems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/encounters/{encounterId}/late-entry-override": {
         parameters: {
             query?: never;
@@ -68131,7 +68165,7 @@ export interface operations {
                             contentHash: string | null;
                             corpusVersion: string | null;
                             part2Derived: boolean | null;
-                            origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change" | "weight_reading" | "benefit_period" | "face_to_face" | "certification" | "medication_order" | "caregiver" | "advance_directive_acknowledgment" | "recorded_adl" | "discipline_plan_goal" | "discipline_plan_intervention")[];
+                            origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change" | "weight_reading" | "benefit_period" | "face_to_face" | "certification" | "medication_order" | "caregiver" | "advance_directive_acknowledgment" | "recorded_adl" | "discipline_plan_goal" | "discipline_plan_intervention" | "idg_action_item")[];
                         }[];
                     };
                 };
@@ -68174,7 +68208,7 @@ export interface operations {
                         contentHash: string | null;
                         corpusVersion: string | null;
                         part2Derived: boolean | null;
-                        origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change" | "weight_reading" | "benefit_period" | "face_to_face" | "certification" | "medication_order" | "caregiver" | "advance_directive_acknowledgment" | "recorded_adl" | "discipline_plan_goal" | "discipline_plan_intervention")[];
+                        origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change" | "weight_reading" | "benefit_period" | "face_to_face" | "certification" | "medication_order" | "caregiver" | "advance_directive_acknowledgment" | "recorded_adl" | "discipline_plan_goal" | "discipline_plan_intervention" | "idg_action_item")[];
                     };
                 };
             };
@@ -68887,7 +68921,7 @@ export interface operations {
                             contentHash: string | null;
                             corpusVersion: string | null;
                             part2Derived: boolean | null;
-                            origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change" | "weight_reading" | "benefit_period" | "face_to_face" | "certification" | "medication_order" | "caregiver" | "advance_directive_acknowledgment" | "recorded_adl" | "discipline_plan_goal" | "discipline_plan_intervention")[];
+                            origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change" | "weight_reading" | "benefit_period" | "face_to_face" | "certification" | "medication_order" | "caregiver" | "advance_directive_acknowledgment" | "recorded_adl" | "discipline_plan_goal" | "discipline_plan_intervention" | "idg_action_item")[];
                         }[];
                     };
                 };
@@ -68929,7 +68963,7 @@ export interface operations {
                         contentHash: string | null;
                         corpusVersion: string | null;
                         part2Derived: boolean | null;
-                        origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change" | "weight_reading" | "benefit_period" | "face_to_face" | "certification" | "medication_order" | "caregiver" | "advance_directive_acknowledgment" | "recorded_adl" | "discipline_plan_goal" | "discipline_plan_intervention")[];
+                        origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change" | "weight_reading" | "benefit_period" | "face_to_face" | "certification" | "medication_order" | "caregiver" | "advance_directive_acknowledgment" | "recorded_adl" | "discipline_plan_goal" | "discipline_plan_intervention" | "idg_action_item")[];
                     };
                 };
             };
@@ -69100,6 +69134,88 @@ export interface operations {
                 content: {
                     "application/json": {
                         modificationId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1EncountersByEncounterIdIdgactionitem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    actionItemId: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        patientId: string;
+                        items: {
+                            /** Format: uuid */
+                            actionItemId: string;
+                            /** Format: date */
+                            meetingDate: string;
+                            decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note" | "discipline_plan_update";
+                            decisionLabel: string;
+                            dueDate: string | null;
+                            status: "open" | "in_progress";
+                            linked: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersByEncounterIdIdgactionitems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        patientId: string;
+                        items: {
+                            /** Format: uuid */
+                            actionItemId: string;
+                            /** Format: date */
+                            meetingDate: string;
+                            decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note" | "discipline_plan_update";
+                            decisionLabel: string;
+                            dueDate: string | null;
+                            status: "open" | "in_progress";
+                            linked: boolean;
+                        }[];
                     };
                 };
             };

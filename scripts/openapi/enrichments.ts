@@ -2193,8 +2193,10 @@ import {
   DisciplinePlanElementsResponseSchema as M8DisciplinePlanElementsResponseSchema,
   DraftResponseSchema as M8DraftResponseSchema,
   DraftSectionResponseSchema as M8DraftSectionResponseSchema,
+  IdgActionItemsResponseSchema as M8IdgActionItemsResponseSchema,
   ResolveSectionSchema as M8ResolveSectionSchema,
   SetDisciplinePlanElementSchema as M8SetDisciplinePlanElementSchema,
+  SetIdgActionItemSchema as M8SetIdgActionItemSchema,
 } from "../../apps/backend/src/modules/08-encounters/routes/draft-section-typebox";
 import {
   DraftPolicyResponseSchema as M8DraftPolicyResponseSchema,
@@ -6043,6 +6045,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Keep one goal or intervention in this visit's drafted plan (`included: true`) or leave it out (`included: false`). Idempotent; the note's author alone (encounter.author, caseload scope; a supervisor is refused 403), never an AI principal; a signed, cosigned or voided note is refused (an addendum is the way). Changing what the plan states changes the section's content hash, so a section already confirmed must be confirmed again (DRAFT_SECTION_STALE otherwise). An element the viewer is not handed (absent, another plan's, or Part 2 without disclosure) is the same 404; the answer is the updated list",
     body: M8SetDisciplinePlanElementSchema,
     response: M8DisciplinePlanElementsResponseSchema,
+  },
+  // ADR-0114 S5b - the one M14 IDG action item an IDG follow-up visit follows up.
+  "GET /api/v1/encounters/:encounterId/idg-action-items": {
+    summary:
+      "The open IDG action items the calling viewer may link an IDG follow-up visit to: open or in progress, assigned to the viewer's own membership, for the visit's patient, linked to an encounter and naming a decision, newest meeting first, the linked one marked (`linked`). Facts only: the organization-local meeting date, the decision kind and the fixed label the note states for it, the due date and the status, never an item's title or body or the decision's narrative. M14 decides 42 CFR Part 2 per viewer: for a patient with an active SUD flag, or one no packet vouches for, a viewer without disclosure is handed nothing. Only for an IDG follow-up visit (else 422 UNKNOWN_TEMPLATE_SECTION); needs encounter.read and idg.read (403 naming the key without it); 404 for a tenant with the draft switched off and for an encounter that is not the caller's; 503 DRAFT_UNAVAILABLE when M14 cannot answer",
+    response: M8IdgActionItemsResponseSchema,
+  },
+  "PUT /api/v1/encounters/:encounterId/idg-action-item": {
+    summary:
+      "Link this IDG follow-up visit to ONE M14 action item (`actionItemId`), or clear the link (`null`). Idempotent; a different item replaces the linked one. The draft's `idg_followup` section then states the item's meeting date, decision kind and due date (one sentence) for a viewer holding idg.read, and is not drafted for anyone else; the link does not close the item (M14's own auto-close is unchanged). The note's author alone (encounter.author, caseload scope; a supervisor is refused 403) holding idg.read (403 naming the key), never an AI principal; a signed, cosigned or voided note is refused (an addendum is the way). An item the viewer is not handed (absent, closed, reassigned, another patient's, or Part 2 without disclosure) is the same 404; a re-link past the per-visit row cap is 409 IDG_ACTION_ITEM_LINK_LIMIT; the answer is the updated list",
+    body: M8SetIdgActionItemSchema,
+    response: M8IdgActionItemsResponseSchema,
   },
 });
 

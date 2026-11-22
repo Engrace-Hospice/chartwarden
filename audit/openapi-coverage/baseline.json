@@ -27,17 +27,17 @@
       "mutatingNoBody": 0
     },
     "07-care-plan": {
-      "routes": 25,
+      "routes": 32,
       "deficit": 0,
       "mutatingNoBody": 0
     },
     "08-encounters": {
-      "routes": 56,
+      "routes": 67,
       "deficit": 0,
       "mutatingNoBody": 0
     },
     "09-assessments": {
-      "routes": 20,
+      "routes": 26,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -112,7 +112,7 @@
       "mutatingNoBody": 0
     },
     "24-billing-medicaid": {
-      "routes": 39,
+      "routes": 40,
       "deficit": 0,
       "mutatingNoBody": 0
     },

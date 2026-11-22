@@ -6,7 +6,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, isNull } from "drizzle-orm";
 import { EncounterStateError } from "../lifecycle/errors";
-import type { DraftEncounterRow } from "./draft-store";
+import type { DraftEncounterRow, IdgLinkTarget } from "./draft-store";
 
 const L = schema.encounterIdgActionItemLinks;
 
@@ -23,12 +23,6 @@ export interface IdgLinkRowState {
   readonly id: string;
   readonly actionItemId: string;
   readonly removedAt: Date | null;
-}
-
-/** What the viewer asked: link this item (with its Part 2 verdict), or clear the link. */
-export interface IdgLinkTarget {
-  readonly actionItemId: string;
-  readonly part2Derived: boolean;
 }
 
 /** The plan for one change: which live row to remove, which rows to raise to Part 2, and which new live row to file. Pure data. */

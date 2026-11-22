@@ -4,7 +4,6 @@
 import type { AuditContext } from "@chartwarden/audit";
 import type { DraftSourceRef } from "@chartwarden/hearthnote";
 import type { EncounterStatus } from "@chartwarden/types";
-import type { IdgLinkTarget } from "./idg-action-item-links";
 import type { DraftEncounter, DraftStorePorts } from "./ports";
 import type { ConfirmationRecord } from "./section-state";
 
@@ -13,6 +12,12 @@ export interface DraftEncounterRow extends DraftEncounter {
   readonly status: EncounterStatus;
   readonly providerEntityId: string | null;
   readonly locationId: string | null;
+}
+
+/** What the viewer asked of the IDG follow-up's link (S5b): link this M14 action item, with its Part 2 verdict (fails closed). `null` elsewhere is a clear. */
+export interface IdgLinkTarget {
+  readonly actionItemId: string;
+  readonly part2Derived: boolean;
 }
 
 /** One confirmation to keep (an upsert on encounter + section). `sourceRefs` are ids and kinds only, never text (VN-D7). */
