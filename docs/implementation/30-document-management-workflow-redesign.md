@@ -162,4 +162,3 @@ These paths exist in the supplied ZIP. They are investigation starting points, n
 ## Claude Code execution instruction
 
 Start at **WP0 only**. Read this file, inspect repository HEAD and the relevant source, create the evidence artifacts, run only safe focused tests, and report a factual audit with file:line references and a proposed design. **Stop for approval.** Do not implement WP1–WP5, change database schema, alter regulatory logic, or connect live external services until authorized.
-
