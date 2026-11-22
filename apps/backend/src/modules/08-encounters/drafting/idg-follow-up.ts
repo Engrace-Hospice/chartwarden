@@ -2,9 +2,10 @@
 // M14's open action items the author may link the visit to, what the draft states of the linked one, and the key that gates both. Reads M14 only through
 // the `IdgFollowUpReader` seam (draft ports), which hands over FACTS and decides 42 CFR Part 2 per viewer (W-SUD-01); nothing here reads an M14 table.
 //
-// THE KEY (VN-D66). `idg.read` is asked ONLY for this section: the draft routes never refuse for want of it. A viewer without it gets the section as not
-// drafted and the REST of the draft is as it was, so a tenant whose roles lack the key sees no regression. The two picker routes (`idg-action-items`) ask
-// it themselves and refuse 403 naming it.
+// THE KEY (VN-D66). `idg.act` (M14's key for working one's OWN assigned action items, self-scoped to the assignee) is asked ONLY for this section: the draft
+// routes never refuse for want of it. A viewer without it gets the section as not drafted and the REST of the draft is as it was, so a tenant whose roles
+// lack the key sees no regression. The picker's list and link refuse 403 naming it; CLEARING the link needs no key, so a clinician who lost it can always
+// clear a link they made.
 //
 // FAIL CLOSED. An item the seam no longer hands this viewer (closed, completed, reassigned, Part 2 without disclosure, of another patient) is not drafted
 // and cannot be linked, never stale text; a fact the corpus cannot state (a decision kind with no label, an instant that is not one) leaves the item out
@@ -18,17 +19,17 @@ import { EncounterStateError } from "../lifecycle/errors";
 import type { DraftEncounter, DraftPorts, DraftViewer } from "./ports";
 import { guarded } from "./unavailable";
 
-/** The key of M14's own reads (`GET /idg/...`): the draft asks it for this section alone. */
-export const IDG_READ_KEY = "idg.read";
+/** M14's key for working one's own assigned action items (`idg.act`, self-scoped to the assignee): the draft asks it for this section alone. */
+export const IDG_ACT_KEY = "idg.act";
 
 /** Whether the viewer may be handed M14's action items. Absent permissions are none. */
-export const mayReadIdgItems = (permissions: ReadonlySet<string> | undefined): boolean =>
-  permissions?.has(IDG_READ_KEY) === true;
+export const mayActOnIdgItems = (permissions: ReadonlySet<string> | undefined): boolean =>
+  permissions?.has(IDG_ACT_KEY) === true;
 
-/** 403 for a caller who lacks the key; the message names it, as `requirePermission` does. Asked by the picker routes only. */
-export function assertMayReadIdgItems(permissions: ReadonlySet<string>): void {
-  if (!permissions.has(IDG_READ_KEY))
-    throw new ForbiddenError(`requires permission '${IDG_READ_KEY}'`);
+/** 403 for a caller who lacks the key; the message names it, as `requirePermission` does. Asked by the picker's list and link, never by a clear. */
+export function assertMayActOnIdgItems(permissions: ReadonlySet<string>): void {
+  if (!permissions.has(IDG_ACT_KEY))
+    throw new ForbiddenError(`requires permission '${IDG_ACT_KEY}'`);
 }
 
 /**
@@ -72,7 +73,7 @@ function localDateOf(instant: unknown, timeZone: string): string | null {
 
 /**
  * The action items M14 hands this viewer for the visit's patient, as candidates: open or in progress, assigned to the viewer, linked to an encounter. An
- * item M14 handed over that the note cannot state (no label for its kind, an instant that is not one) is left out. The viewer must hold `idg.read`
+ * item M14 handed over that the note cannot state (no label for its kind, an instant that is not one) is left out. The viewer must hold `idg.act`
  * (a caller that did not check it gets nothing).
  */
 export async function readIdgFollowUpCandidates(
@@ -81,7 +82,7 @@ export async function readIdgFollowUpCandidates(
   viewer: DraftViewer,
   timeZone: string,
 ): Promise<readonly IdgFollowUpCandidate[]> {
-  if (!mayReadIdgItems(viewer.permissions)) return [];
+  if (!mayActOnIdgItems(viewer.permissions)) return [];
   const items = await guarded("the IDG action items", () =>
     ports.idgFollowUpItems(encounter.organizationId, encounter.patientId, viewer),
   );
@@ -112,7 +113,7 @@ export async function readIdgFollowUpCandidates(
 }
 
 /**
- * What the draft states of the linked action item: its facts, or `null` (the section is then not drafted) when the viewer lacks `idg.read`, nothing is
+ * What the draft states of the linked action item: its facts, or `null` (the section is then not drafted) when the viewer lacks `idg.act`, nothing is
  * linked, or M14 no longer hands this viewer the linked item. The link is read from the store (a snapshot port), the facts from M14.
  */
 export async function readIdgFollowUp(
@@ -121,7 +122,7 @@ export async function readIdgFollowUp(
   viewer: DraftViewer,
   timeZone: string,
 ): Promise<IdgFollowUpDraftInput | null> {
-  if (!mayReadIdgItems(viewer.permissions)) return null;
+  if (!mayActOnIdgItems(viewer.permissions)) return null;
   const linked = await guarded("the linked IDG action item", () =>
     ports.linkedIdgActionItemId(encounter.id),
   );

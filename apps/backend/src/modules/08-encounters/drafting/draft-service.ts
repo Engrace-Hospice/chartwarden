@@ -32,9 +32,9 @@ import {
 import {
   type IdgFollowUpItemsView,
   assertDraftsFromIdgFollowUp,
-  assertMayReadIdgItems,
+  assertMayActOnIdgItems,
   idgFollowUpItemsView,
-  mayReadIdgItems,
+  mayActOnIdgItems,
   readIdgFollowUpCandidates,
 } from "./idg-follow-up";
 import { readDisciplinePlanElements } from "./inputs";
@@ -98,7 +98,7 @@ export interface DraftService extends AmendmentDraftService {
   /**
    * S5b (VN-D64 to VN-D67): the open IDG action items the calling viewer may link an IDG follow-up visit to (assigned to them, for the visit's patient,
    * linked to an encounter), with the linked one marked. M14 decides Part 2 per viewer and hands a viewer it does not clear nothing for a flagged patient.
-   * Needs `idg.read` (403 naming it); only for an IDG follow-up visit (422 otherwise); 404 for a tenant with the draft off.
+   * Needs `idg.act` (403 naming it); only for an IDG follow-up visit (422 otherwise); 404 for a tenant with the draft off.
    */
   getIdgActionItems(caller: DraftCaller, encounterId: string): Promise<IdgFollowUpItemsView>;
   /**
@@ -193,7 +193,7 @@ async function loadAuthoredAmendmentOr404(
 }
 
 /**
- * The viewer a draft is computed for: the session's roles and membership, and the permission keys it resolves to (the draft asks `idg.read` itself, for
+ * The viewer a draft is computed for: the session's roles and membership, and the permission keys it resolves to (the draft asks `idg.act` itself, for
  * the IDG follow-up's own section alone: S5b, VN-D66).
  */
 const viewerOf = (caller: DraftCaller): DraftViewer => ({
@@ -236,7 +236,7 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
             unit.store,
             row,
             now,
-            mayReadIdgItems(caller.permissions),
+            mayActOnIdgItems(caller.permissions),
           ),
         };
       });
@@ -348,7 +348,7 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
       const { encounter, storePorts } = await deps.runInOrg(scope, async (unit) => {
         const row = await loadOr404(unit, encounterId, false, caller);
         assertDraftsFromIdgFollowUp(row);
-        assertMayReadIdgItems(caller.permissions);
+        assertMayActOnIdgItems(caller.permissions);
         return { encounter: row, storePorts: await snapshotIdgFollowUpPorts(unit.store, row) };
       });
       const timeZone = await storePorts.organizationTimeZone(encounter.organizationId);
@@ -374,7 +374,24 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
           const encounter = await loadOr404(unit, encounterId, true, caller);
           checkMutableForEdit({ status: encounter.status });
           assertDraftsFromIdgFollowUp(encounter);
-          assertMayReadIdgItems(caller.permissions);
+          const { actionItemId } = body;
+          if (actionItemId === null) {
+            // CLEARING asks the author's checks (the routes') and nothing of M14, key or seam: a clinician who lost `idg.act`, or whose M14 is down, can always clear
+            // a link they made. The row being left cannot be judged without M14, so it is raised to Part 2 (fails closed: the flag only moves the audit class).
+            const live = await guarded("the linked IDG action item", () =>
+              unit.store.linkedIdgActionItemId(encounter.id),
+            );
+            await unit.store.setIdgActionItemLink(
+              encounter,
+              null,
+              live !== null,
+              caller.membershipId,
+              now,
+            );
+            // No candidate was read, so there is nothing to list: the client re-reads the list (GET) when it wants one.
+            return idgFollowUpItemsView(encounter, [], null);
+          }
+          assertMayActOnIdgItems(caller.permissions);
           const timeZone = await guarded("the organization time zone", () =>
             unit.store.organizationTimeZone(encounter.organizationId),
           );
@@ -385,10 +402,7 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
             timeZone,
           );
           // An item this viewer was not handed (absent, closed, reassigned, another patient's, or Part 2 without disclosure) is not here: one answer.
-          const target =
-            body.actionItemId === null
-              ? null
-              : (candidates.find((c) => c.actionItemId === body.actionItemId) ?? undefined);
+          const target = candidates.find((c) => c.actionItemId === actionItemId);
           if (target === undefined) throw new NotFoundError("action item");
           const live = await guarded("the linked IDG action item", () =>
             unit.store.linkedIdgActionItemId(encounter.id),
@@ -398,14 +412,12 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
             live === null ? undefined : candidates.find((c) => c.actionItemId === live);
           await unit.store.setIdgActionItemLink(
             encounter,
-            target === null
-              ? null
-              : { actionItemId: target.actionItemId, part2Derived: target.part2Derived },
+            { actionItemId: target.actionItemId, part2Derived: target.part2Derived },
             live !== null && (leaving?.part2Derived ?? true),
             caller.membershipId,
             now,
           );
-          return idgFollowUpItemsView(encounter, candidates, target?.actionItemId ?? null);
+          return idgFollowUpItemsView(encounter, candidates, target.actionItemId);
         },
       );
     },
@@ -422,7 +434,7 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
             unit.store,
             row,
             now,
-            mayReadIdgItems(caller.permissions),
+            mayActOnIdgItems(caller.permissions),
           ),
         };
       });

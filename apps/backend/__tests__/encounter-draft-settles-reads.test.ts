@@ -66,7 +66,7 @@ describe("a draft computation settles every read before it answers", () => {
       latestVitals: outage,
       loadSelection: selection.read as never,
     });
-    await expect(snapshotStorePorts(ports, F2F, NOW)).rejects.toMatchObject({
+    await expect(snapshotStorePorts(ports, F2F, NOW, true)).rejects.toMatchObject({
       code: "DRAFT_UNAVAILABLE",
     });
     expect(selection.state.done).toBe(true);

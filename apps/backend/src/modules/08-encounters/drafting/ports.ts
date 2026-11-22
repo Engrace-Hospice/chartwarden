@@ -48,7 +48,7 @@ export interface DraftViewer {
   /** The actor's ACTIVE membership id, or `null` when the session carries none (fails closed against a release). */
   readonly membershipId: string | null;
   /**
-   * The permission keys the session resolves to. The draft asks ONE of them itself, `idg.read`, and only for the IDG follow-up's own section
+   * The permission keys the session resolves to. The draft asks ONE of them itself, `idg.act`, and only for the IDG follow-up's own section
    * (S5b, VN-D66): a viewer without it gets that section as not drafted and the rest of the draft is unaffected. Absent is NONE (fails closed).
    */
   readonly permissions?: ReadonlySet<string> | undefined;

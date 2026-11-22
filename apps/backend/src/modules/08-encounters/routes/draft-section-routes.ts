@@ -6,8 +6,8 @@
 //                                                                   author sees it: only the sections the addendum names; the addendum's
 //                                                                   author alone (403 for anyone else, an absent addendum included)    encounter.read
 //   PUT /api/v1/encounters/:encounterId/addenda/:addendumId/draft/sections/:sectionId   the addendum's author confirms or deselects one   encounter.addendum_author
-//   GET /api/v1/encounters/:encounterId/idg-action-items            (S5b) the open IDG action items the viewer may link an IDG follow-up visit to   encounter.read + idg.read
-//   PUT /api/v1/encounters/:encounterId/idg-action-item             (S5b) link the visit to one action item, or clear the link                   encounter.author + idg.read
+//   GET /api/v1/encounters/:encounterId/idg-action-items            (S5b) the open IDG action items the viewer may link an IDG follow-up visit to   encounter.read + idg.act
+//   PUT /api/v1/encounters/:encounterId/idg-action-item             (S5b) link the visit to one action item, or clear the link                   encounter.author + idg.act (not to clear)
 //   (S4b: GET and PUT .../discipline-plan-elements keep or leave out single goals of a social-work or chaplain visit's drafted plan.)
 //
 // All four also need the read key of each SOURCE domain the template's draft is compiled from: the care plan (M7), the medication orders (M12)

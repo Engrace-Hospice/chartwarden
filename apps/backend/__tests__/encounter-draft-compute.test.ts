@@ -458,7 +458,7 @@ describe("snapshotStorePorts: the weights of a recertification or face-to-face d
 
   it("takes the weights once, from the epoch to the visit time, and serves them cut at the period start the later read names", async () => {
     const store = fakePorts({ weightReadings: async () => rows });
-    const ports = await snapshotStorePorts(store, recert, NOW);
+    const ports = await snapshotStorePorts(store, recert, NOW, true);
     expect(store.weightReadings).toHaveBeenCalledTimes(1);
     expect(store.weightReadings).toHaveBeenCalledWith(
       recert,
@@ -474,7 +474,7 @@ describe("snapshotStorePorts: the weights of a recertification or face-to-face d
 
   it("takes none for a routine visit, and a read of them through its snapshot is a bug, not an empty answer", async () => {
     const store = fakePorts();
-    const ports = await snapshotStorePorts(store, encounter(), NOW);
+    const ports = await snapshotStorePorts(store, encounter(), NOW, true);
     expect(store.weightReadings).not.toHaveBeenCalled();
     await expect(
       ports.weightReadings(encounter(), "1970-01-01T00:00:00.000Z", AS_OF),
@@ -483,7 +483,7 @@ describe("snapshotStorePorts: the weights of a recertification or face-to-face d
 
   it("reads nothing for a template that drafts nothing: every store read through it is refused", async () => {
     const store = fakePorts();
-    const ports = await snapshotStorePorts(store, encounter({ discipline: "msw" }), NOW);
+    const ports = await snapshotStorePorts(store, encounter({ discipline: "msw" }), NOW, true);
     expect(store.organizationTimeZone).not.toHaveBeenCalled();
     expect(store.weightReadings).not.toHaveBeenCalled();
     await expect(ports.latestVitals(encounter().id, AS_OF)).rejects.toThrow(
@@ -499,7 +499,7 @@ describe("snapshotStorePorts: the store reads of a source the template does not 
   it("takes the care-plan links alone for an aide, and a read of any other through its snapshot is a bug, not an empty answer", async () => {
     const aide = encounter({ encounterType: "chha_visit", discipline: "chha" });
     const store = fakePorts();
-    const ports = await snapshotStorePorts(store, aide, NOW);
+    const ports = await snapshotStorePorts(store, aide, NOW, true);
     expect(store.removedCarePlanElementIds).toHaveBeenCalledTimes(1);
     expect(store.previousSignedVisitAt).not.toHaveBeenCalled();
     expect(store.latestVitals).not.toHaveBeenCalled();
@@ -516,7 +516,7 @@ describe("snapshotStorePorts: the store reads of a source the template does not 
     const f2f = encounter({ encounterType: "face_to_face", discipline: "md" });
     const recorded = { id: "vitals-1", recordedAt: "2026-11-18T14:20:00.000Z", heartRate: 72 };
     const store = fakePorts({ latestVitals: async () => recorded as never });
-    const ports = await snapshotStorePorts(store, f2f, NOW);
+    const ports = await snapshotStorePorts(store, f2f, NOW, true);
     expect(store.previousSignedVisitAt).toHaveBeenCalledTimes(1);
     expect(store.latestVitals).toHaveBeenCalledTimes(1);
     expect(store.removedCarePlanElementIds).not.toHaveBeenCalled();
@@ -530,24 +530,24 @@ describe("snapshotStorePorts: the store reads of a source the template does not 
   it("takes the discipline-plan links alone for a social-work visit (S4b), and a read of them through any other template's snapshot is a bug, not an empty answer", async () => {
     const msw = encounter({ encounterType: "msw_followup", discipline: "msw" });
     const store = fakePorts();
-    const ports = await snapshotStorePorts(store, msw, NOW);
+    const ports = await snapshotStorePorts(store, msw, NOW, true);
     expect(store.removedDisciplinePlanElementIds).toHaveBeenCalledTimes(1);
     expect(store.removedCarePlanElementIds).not.toHaveBeenCalled();
     await expect(ports.removedDisciplinePlanElementIds(msw.id)).resolves.toEqual(new Set());
 
     const aide = encounter({ encounterType: "chha_visit", discipline: "chha" });
     const aideStore = fakePorts();
-    const aidePorts = await snapshotStorePorts(aideStore, aide, NOW);
+    const aidePorts = await snapshotStorePorts(aideStore, aide, NOW, true);
     expect(aideStore.removedDisciplinePlanElementIds).not.toHaveBeenCalled();
     await expect(aidePorts.removedDisciplinePlanElementIds(aide.id)).rejects.toThrow(
       "a removed discipline-plan links read the snapshot did not take",
     );
   });
 
-  it("takes the IDG follow-up's live link for an IDG follow-up visit (S5b) only when the viewer holds idg.read, and for no other template", async () => {
+  it("takes the IDG follow-up's live link for an IDG follow-up visit (S5b) only when the viewer holds idg.act, and for no other template", async () => {
     const idg = encounter({ encounterType: "idg_followup", discipline: "rn" });
     const store = fakePorts({ linkedIdgActionItemId: async () => "the-item" });
-    const ports = await snapshotStorePorts(store, idg, NOW);
+    const ports = await snapshotStorePorts(store, idg, NOW, true);
     expect(store.linkedIdgActionItemId).toHaveBeenCalledTimes(1);
     await expect(ports.linkedIdgActionItemId(idg.id)).resolves.toBe("the-item");
 
@@ -559,7 +559,7 @@ describe("snapshotStorePorts: the store reads of a source the template does not 
 
     const routine = encounter();
     const routineStore = fakePorts();
-    const routinePorts = await snapshotStorePorts(routineStore, routine, NOW);
+    const routinePorts = await snapshotStorePorts(routineStore, routine, NOW, true);
     expect(routineStore.linkedIdgActionItemId).not.toHaveBeenCalled();
     await expect(routinePorts.linkedIdgActionItemId(routine.id)).rejects.toThrow(
       "a linked IDG action item read the snapshot did not take",

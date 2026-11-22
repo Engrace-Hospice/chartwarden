@@ -1,5 +1,5 @@
 // ADR-0114 S5b (VN-D64 to VN-D67) — the IDG follow-up visit's one linked action item, through the draft service: the open items M14 hands the calling viewer
-// (never a title or body), one idempotent link or clear, and the draft's own `idg_followup` section. The switch answers 404 first; `idg.read` is asked ONLY for
+// (never a title or body), one idempotent link or clear, and the draft's own `idg_followup` section. The switch answers 404 first; `idg.act` is asked ONLY for
 // this section (a viewer without it gets that section as not drafted and the rest of the draft as it was, never a 403 at the draft), and by the two picker routes
 // (403 naming it); an item the viewer is not handed (closed, reassigned, another patient's, Part 2 without disclosure) is the same 404 as an absent one and is
 // never drafted. Dates are the organization's. Fakes only; the live suite proves the Drizzle unit and the real M14 seam. Synthetic ids only.
@@ -16,14 +16,14 @@ const ITEM_2 = "00000000-0000-4000-8000-0000000000e2";
 const ITEM_SUD = "00000000-0000-4000-8000-0000000000e3";
 const UNKNOWN = "00000000-0000-4000-8000-0000000000ff";
 const AUDIT = { organizationId: "o", userId: "u", correlationId: "c" } as const;
-/** Every key the RN's IDG follow-up draft asks at the draft routes (its sources' keys), plus `idg.read` for the section alone. */
+/** Every key the RN's IDG follow-up draft asks at the draft routes (its sources' keys), plus `idg.act` for the section alone. */
 const SOURCE_KEYS = ["care_plan.read", "prescribing.read", "assessment.read_trend"];
 const caller = {
   organizationId: "00000000-0000-4000-8000-000000000001",
   userId: "00000000-0000-4000-8000-0000000000bb",
   roles: ["rn"],
   membershipId: MEMBER,
-  permissions: new Set<string>([...SOURCE_KEYS, "idg.read"]),
+  permissions: new Set<string>([...SOURCE_KEYS, "idg.act"]),
 };
 const withoutIdgKey = { ...caller, permissions: new Set<string>(SOURCE_KEYS) };
 const IDG_RN = draftEncounterRow({ encounterType: "idg_followup", discipline: "rn" });
@@ -152,12 +152,12 @@ describe("getIdgActionItems", () => {
     expect(view.items.map((i) => i.actionItemId)).toEqual([ITEM_1]);
   });
 
-  it("is refused 403 naming idg.read for a caller without it, before M14 is asked", async () => {
+  it("is refused 403 naming idg.act for a caller without it, before M14 is asked", async () => {
     const { svc, seams } = service();
     await expectCode(svc.getIdgActionItems(withoutIdgKey, ENCOUNTER), "FORBIDDEN", 403);
     expect(seams.idgFollowUpItems).not.toHaveBeenCalled();
     const error = await svc.getIdgActionItems(withoutIdgKey, ENCOUNTER).catch((e: unknown) => e);
-    expect((error as Error).message).toContain("idg.read");
+    expect((error as Error).message).toContain("idg.act");
   });
 
   it("is refused 422 for a visit that is not an IDG follow-up", async () => {
@@ -225,7 +225,7 @@ describe("setIdgActionItem", () => {
     expect(view.items.map((i) => i.linked)).toEqual([false, true]);
   });
 
-  it("clears the link with null, and clearing with nothing linked is a no-op that still answers the list", async () => {
+  it("clears the link with null, and clearing with nothing linked is a no-op; a clear asks M14 nothing and answers no items (the client re-reads the list)", async () => {
     const linked = service({ memory: { idgLinks: [liveLink(ITEM_1)] } });
     const view = await linked.svc.setIdgActionItem(
       caller,
@@ -234,7 +234,8 @@ describe("setIdgActionItem", () => {
       AUDIT,
     );
     expect(linked.idgLinks[0]).toMatchObject({ removedAt: NOW, removedByMembershipId: MEMBER });
-    expect(view.items.every((i) => !i.linked)).toBe(true);
+    expect(view).toEqual({ patientId: PATIENT_ID, items: [] });
+    expect(linked.seams.idgFollowUpItems).not.toHaveBeenCalled();
 
     const none = service();
     await none.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: null }, AUDIT);
@@ -255,6 +256,46 @@ describe("setIdgActionItem", () => {
     const { svc, idgLinks } = service({ items: [item(ITEM_SUD, { sudRelated: true })] });
     await svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_SUD }, AUDIT);
     expect(idgLinks[0]).toMatchObject({ actionItemId: ITEM_SUD, part2Derived: true });
+  });
+
+  it("a clear needs no idg.act and no M14: a clinician who lost the key, or whose M14 is down, can always clear a link they made (the row is raised to Part 2, fails closed)", async () => {
+    const lostKey = service({ memory: { idgLinks: [liveLink(ITEM_1)] } });
+    await lostKey.svc.setIdgActionItem(withoutIdgKey, ENCOUNTER, { actionItemId: null }, AUDIT);
+    expect(lostKey.idgLinks[0]).toMatchObject({ removedAt: NOW, part2Derived: true });
+    expect(lostKey.seams.idgFollowUpItems).not.toHaveBeenCalled();
+
+    const down = service({
+      failing: new Error("idg store down"),
+      memory: { idgLinks: [liveLink(ITEM_1)] },
+    });
+    await down.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: null }, AUDIT);
+    expect(down.idgLinks[0]).toMatchObject({ removedAt: NOW, removedByMembershipId: MEMBER });
+    expect(down.seams.idgFollowUpItems).not.toHaveBeenCalled();
+  });
+
+  it("a clear still takes the author's checks: the switch, the template and an editable note", async () => {
+    const off = service({ memory: { enabled: false, idgLinks: [liveLink(ITEM_1)] } });
+    await expectCode(
+      off.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: null }, AUDIT),
+      "NOT_FOUND",
+      404,
+    );
+    const routine = service({ memory: { ...ROUTINE_RN } });
+    await expectCode(
+      routine.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: null }, AUDIT),
+      "UNKNOWN_TEMPLATE_SECTION",
+      422,
+    );
+    const signed = service({
+      memory: {
+        encounter: draftEncounterRow({ ...IDG_RN, status: "signed" }),
+        idgLinks: [liveLink(ITEM_1)],
+      },
+    });
+    await expect(
+      signed.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: null }, AUDIT),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(signed.idgLinks[0]?.removedAt).toBeNull();
   });
 
   it("per viewer: an item M14 withholds (a flagged patient, a viewer without disclosure) is the same 404, and a link already made to it is cleared as Part 2 (fails closed)", async () => {
@@ -332,7 +373,7 @@ describe("the draft's own idg_followup section", () => {
     expect(seams.idgFollowUpItems).not.toHaveBeenCalled();
   });
 
-  it("VN-D66: a viewer without idg.read gets the section as not drafted and the REST of the draft as it was, with no 403 and no M14 read", async () => {
+  it("VN-D66: a viewer without idg.act gets the section as not drafted and the REST of the draft as it was, with no 403 and no M14 read", async () => {
     const { svc, seams } = service({ memory: { idgLinks: [liveLink(ITEM_1)] } });
     const withKey = await svc.getDraft(caller, ENCOUNTER);
     seams.idgFollowUpItems.mockClear();

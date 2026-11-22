@@ -1,6 +1,6 @@
 // ADR-0114 S5b (VN-D64 to VN-D67) - the IDG action item routes of an IDG follow-up visit through the FULL M1 middleware chain (Fastify `inject`), no live
 // infra: the REAL Authorization Contract (permission, caseload scope, the author's own rule) and the real error envelope; the service is faked, so this proves
-// the ROUTE layer: who may call, what the viewer is, what is validated, how errors read. The switch, the `idg.read` key, Part 2 and the writes are proven in
+// the ROUTE layer: who may call, what the viewer is, what is validated, how errors read. The switch, the `idg.act` key, Part 2 and the writes are proven in
 // encounter-draft-idg-action-items.test.ts and the live suite.
 import {
   M3_INTRINSIC_PREDICATES,
@@ -175,7 +175,7 @@ describe("GET /encounters/:encounterId/idg-action-items", () => {
     );
   });
 
-  it("lets a read-only reader open it (only the write is the author's act); the service asks the idg.read key itself", async () => {
+  it("lets a read-only reader open it (only the write is the author's act); the service asks the idg.act key itself", async () => {
     const { app, service } = makeServer();
     const res = await app.inject({ method: "GET", url: listUrl(), headers: VIEWER });
     expect(res.statusCode).toBe(200);
@@ -203,7 +203,7 @@ describe("GET /encounters/:encounterId/idg-action-items", () => {
     expect(service.getIdgActionItems).not.toHaveBeenCalled();
   });
 
-  it("carries a 422 UNKNOWN_TEMPLATE_SECTION and a 403 naming idg.read from the service in the standard error envelope", async () => {
+  it("carries a 422 UNKNOWN_TEMPLATE_SECTION and a 403 naming idg.act from the service in the standard error envelope", async () => {
     const { app, service } = makeServer();
     service.getIdgActionItems.mockRejectedValueOnce(
       new EncounterStateError(
@@ -216,7 +216,7 @@ describe("GET /encounters/:encounterId/idg-action-items", () => {
     expect(refused.json().error.code).toBe("UNKNOWN_TEMPLATE_SECTION");
 
     service.getIdgActionItems.mockRejectedValueOnce(
-      Object.assign(new Error("requires permission 'idg.read'"), {
+      Object.assign(new Error("requires permission 'idg.act'"), {
         code: "FORBIDDEN",
         statusCode: 403,
       }),

@@ -91,12 +91,12 @@ function mswHarness(broken: MswSource | null, how: () => Promise<never>) {
   return { seams, ...mem, svc };
 }
 
-// S5b: the IDG follow-up visit's own section reads this visit's live link (a store read) and M14's open action items (a seam read). A viewer holding `idg.read`
+// S5b: the IDG follow-up visit's own section reads this visit's live link (a store read) and M14's open action items (a seam read). A viewer holding `idg.act`
 // and a link makes both reads; either failing is the draft being unavailable, never a section quietly left out (the viewer without the key makes neither).
 const IDG_SOURCES = ["idgFollowUpItems", "linkedIdgActionItemId"] as const;
 type IdgSource = (typeof IDG_SOURCES)[number];
 const idgEncounter = draftEncounterRow({ encounterType: "idg_followup", discipline: "msw" });
-const IDG_PERMISSIONS = new Set(["discipline_plan.read", "idg.read"]);
+const IDG_PERMISSIONS = new Set(["discipline_plan.read", "idg.act"]);
 const IDG_READER = reader({ roles: ["msw"], permissions: IDG_PERMISSIONS });
 const idgCaller = { ...caller, roles: ["msw"], permissions: IDG_PERMISSIONS };
 const IDG_ITEM = "00000000-0000-4000-8000-0000000000e1";
@@ -384,7 +384,7 @@ describe("an IDG follow-up visit whose IDG source fails", () => {
     });
   }
 
-  it("a viewer without idg.read never makes either read, so a broken IDG source does not touch their draft (VN-D66)", async () => {
+  it("a viewer without idg.act never makes either read, so a broken IDG source does not touch their draft (VN-D66)", async () => {
     const keyless = { ...idgCaller, permissions: new Set(["discipline_plan.read"]) };
     for (const source of IDG_SOURCES) {
       const harness = idgHarness(source, outage);

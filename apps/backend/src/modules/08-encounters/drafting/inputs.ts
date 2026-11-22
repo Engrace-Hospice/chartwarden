@@ -794,7 +794,7 @@ export async function readDraftInputs(
     admission ? readAdvanceDirective(ports, encounter, asOf) : null,
     // S4: the social-work and chaplain visits read the discipline's own plan, and no other visit does.
     needs.disciplinePlan ? readDisciplinePlan(ports, encounter, viewer, asOf, part2Verdict) : null,
-    // S5b: the IDG follow-up visit's own section reads the one M14 action item the author linked it to (only for a viewer holding `idg.read`: M14's key,
+    // S5b: the IDG follow-up visit's own section reads the one M14 action item the author linked it to (only for a viewer holding `idg.act`: M14's key,
     // asked for this section alone), and no other visit does.
     needs.idgFollowUp ? readIdgFollowUp(ports, encounter, viewer, timeZone) : null,
   ]);

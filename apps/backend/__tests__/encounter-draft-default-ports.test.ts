@@ -63,7 +63,7 @@ describe("defaultDraftPorts", () => {
     );
   });
 
-  // S5b: the viewer's permissions are the draft's own business (it asks `idg.read` itself), so only the roles and membership cross to M14, which decides
+  // S5b: the viewer's permissions are the draft's own business (it asks `idg.act` itself), so only the roles and membership cross to M14, which decides
   // Part 2 per viewer; the patient is the draft's, handed as the patient id M14 keys on.
   it("S5b: delegates the IDG follow-up read to the registered IdgFollowUpReader, handing it the viewer's roles and membership and nothing else", async () => {
     const openFollowUpItems = vi.fn(async () => []);
@@ -71,7 +71,7 @@ describe("defaultDraftPorts", () => {
     await defaultDraftPorts().idgFollowUpItems(ORG_ID, PATIENT_ID, {
       roles: ["rn"],
       membershipId: "the-membership",
-      permissions: new Set(["idg.read"]),
+      permissions: new Set(["idg.act"]),
     });
     expect(openFollowUpItems).toHaveBeenCalledWith({
       organizationId: ORG_ID,

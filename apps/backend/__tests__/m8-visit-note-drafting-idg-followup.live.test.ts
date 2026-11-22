@@ -7,11 +7,11 @@
  *
  *   1. The candidates (GET .../idg-action-items): open and in-progress items assigned to the author, for the visit's patient, linked to an encounter, that name a
  *      decision; nothing else (a completed, cancelled or auto-closed item, another assignee's, another patient's, another artifact kind's, one with no decision);
- *      facts only (the organization's dates, the kind and its fixed label), never a title or a body; 403 naming `idg.read`; 422 for another template; 404 for a
+ *      facts only (the organization's dates, the kind and its fixed label), never a title or a body; 403 naming `idg.act`; 422 for another template; 404 for a
  *      tenant with the switch off; the read event lands.
  *   2. The link (PUT .../idg-action-item): link, idempotent, replace (one live row), clear; an item the viewer is not handed is the same 404; a malformed body is
  *      422; the note's author alone; a different member is refused.
- *   3. The draft's `idg_followup` section: one sentence from the linked item; VN-D66 - a viewer without `idg.read` gets that section as not drafted and the REST of
+ *   3. The draft's `idg_followup` section: one sentence from the linked item; VN-D66 - a viewer without `idg.act` gets that section as not drafted and the REST of
  *      the draft as it was (no 403, no M14 read); an item no longer open or no longer the viewer's is never drafted.
  *   4. Part 2 per viewer (W-SUD-01): a flagged patient, one with no packet and one whose decision marks a care-plan problem SUD related are handed to a viewer M39
  *      clears only; for anyone else the items are not listed, naming one is the same 404, and a link made earlier is not drafted; a Part 2 row files under the Part 2
@@ -99,7 +99,7 @@ const WRITE_KEYS = [
   "encounter.addendum_author",
   "encounter.addendum_sign",
 ];
-const IDG_KEY = "idg.read";
+const IDG_KEY = "idg.act";
 const KEYS_OF: Record<string, readonly string[]> = {
   np: [...BASE_KEYS, ...WRITE_KEYS, IDG_KEY],
   npNoIdg: [...BASE_KEYS, ...WRITE_KEYS],
@@ -117,9 +117,9 @@ interface OrgFixture {
   readonly orgId: string;
   readonly providerEntityId: string;
   readonly locationId: string;
-  /** Holds `idg.read`: the author of most visits. */
+  /** Holds `idg.act`: the author of most visits. */
   readonly np: Member;
-  /** An author who does NOT hold `idg.read` (VN-D66). */
+  /** An author who does NOT hold `idg.act` (VN-D66). */
   readonly npNoIdg: Member;
   /** Another nurse practitioner with the key, who is not the author of the visit. */
   readonly other: Member;
@@ -172,7 +172,7 @@ describe.skipIf(!DB_URL)(
     let counter = 0;
     /** Memberships M39 clears for Part 2 (a release covering the program): everyone else is redacted. */
     const part2Memberships = new Set<string>();
-    /** Every M14 read the draft made (what a refused draft, and a viewer without `idg.read`, must not have asked), and a switch to make M14 fail. */
+    /** Every M14 read the draft made (what a refused draft, and a viewer without `idg.act`, must not have asked), and a switch to make M14 fail. */
     const idgReads: { patientId: string; membershipId: string | null }[] = [];
     let idgFailing = false;
     const TEST_DEK = { version: "test-v1", key: Buffer.alloc(32, 9) };
@@ -782,14 +782,14 @@ describe.skipIf(!DB_URL)(
         }
       });
 
-      it("answers an empty list when the author has none, and 403 naming idg.read for a viewer without the key (M14 is not asked)", async () => {
+      it("answers an empty list when the author has none, and 403 naming idg.act for a viewer without the key (M14 is not asked)", async () => {
         const v = await seedVisit();
         expect((await listItems(v)).items).toEqual([]);
         idgReads.length = 0;
 
         const denied = await get(encounterUrl(v, "/idg-action-items"), as(v.org, v.org.npNoIdg));
         expect(denied.statusCode).toBe(403);
-        expect(denied.json().error.message).toContain("idg.read");
+        expect(denied.json().error.message).toContain("idg.act");
         expect(
           (await get(encounterUrl(v, "/idg-action-items"), as(v.org, v.org.readerNoIdg)))
             .statusCode,
@@ -797,7 +797,7 @@ describe.skipIf(!DB_URL)(
         expect(idgReads).toEqual([]);
       });
 
-      it("a reader who holds idg.read sees their OWN items, never the author's (the assignee is the viewer)", async () => {
+      it("a reader who holds idg.act sees their OWN items, never the author's (the assignee is the viewer)", async () => {
         const v = await seedVisit();
         await seedItem(v);
         const { res, items } = await listItems(v, as(v.org, v.org.reader));
@@ -927,7 +927,7 @@ describe.skipIf(!DB_URL)(
         expect((await linkItem(v, mine)).statusCode).toBe(200);
       });
 
-      it("is the author's act: a body that is not { actionItemId: uuid | null } is 422, another nurse practitioner and a reader are refused 403, and a viewer without idg.read is refused 403", async () => {
+      it("is the author's act: a body that is not { actionItemId: uuid | null } is 422, another nurse practitioner and a reader are refused 403, and a viewer without idg.act is refused 403", async () => {
         const v = await seedVisit();
         const a = await seedItem(v);
         for (const payload of [
@@ -947,7 +947,7 @@ describe.skipIf(!DB_URL)(
         const mine = await seedItem(keyless);
         const refused = await linkItem(keyless, mine);
         expect(refused.statusCode, refused.body).toBe(403);
-        expect(refused.json().error.message).toContain("idg.read");
+        expect(refused.json().error.message).toContain("idg.act");
         expect(await linksOf(v)).toEqual([]);
         expect(await linksOf(keyless)).toEqual([]);
       });
@@ -1025,7 +1025,7 @@ describe.skipIf(!DB_URL)(
         expect(idgReads).toEqual([]);
       });
 
-      it("VN-D66: an author without idg.read gets the section as not drafted and the REST of the draft as it was, with no 403 and no M14 read", async () => {
+      it("VN-D66: an author without idg.act gets the section as not drafted and the REST of the draft as it was, with no 403 and no M14 read", async () => {
         const v = await seedVisit({ author: orgs.A.npNoIdg });
         const a = await seedItem(v);
         await seedLink(v, a);

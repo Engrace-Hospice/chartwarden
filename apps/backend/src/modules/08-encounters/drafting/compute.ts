@@ -151,10 +151,10 @@ export async function snapshotStorePorts(
   encounter: DraftEncounter,
   now: Date,
   /**
-   * Whether the viewer holds `idg.read` (S5b, VN-D66): a viewer without it gets the IDG follow-up's own section as not drafted, so the link is not even
+   * Whether the viewer holds `idg.act` (S5b, VN-D66): a viewer without it gets the IDG follow-up's own section as not drafted, so the link is not even
    * read for them and nothing about this visit's link can fail their draft. The draft's read of the link (`readIdgFollowUp`) asks the same key.
    */
-  mayReadIdg = true,
+  mayActOnIdg: boolean,
 ): Promise<DraftStorePorts> {
   if (!templateHasDraftedSection(encounter.encounterType, encounter.discipline))
     return CLOSED_STORE;
@@ -187,7 +187,7 @@ export async function snapshotStorePorts(
             store.removedDisciplinePlanElementIds(encounter.id),
           )
         : Promise.resolve(new Set<string>()),
-      needs.idgFollowUp && mayReadIdg
+      needs.idgFollowUp && mayActOnIdg
         ? guarded("the linked IDG action item", () => store.linkedIdgActionItemId(encounter.id))
         : Promise.resolve(null),
       guarded("the stored selections", () => store.loadSelection(encounter)),
