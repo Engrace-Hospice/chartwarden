@@ -11,15 +11,23 @@ import type { VocabEntry } from "./types";
 
 const MSW_AND_CHAPLAIN: readonly EncounterDiscipline[] = ["msw", "chaplain"];
 const MSW_ONLY: readonly EncounterDiscipline[] = ["msw"];
-/** The four templates whose `plan` section is drafted from the goals of the discipline's plan. */
+/**
+ * The templates whose `plan` section is drafted from the goals of the discipline's plan: the four social-work and chaplain visits and (S5,
+ * VN-D52, `narrative-vocab@2026.12.4`) the IDG follow-up, which each of the two disciplines makes as its ordinary visit.
+ */
 const GOAL_TEMPLATES: readonly EncounterType[] = [
   "msw_assessment",
   "msw_followup",
   "chaplain_assessment",
   "chaplain_visit",
+  "idg_followup",
 ];
-/** The two templates that also have an `interventions` section: the chaplain's template has none. */
-const INTERVENTION_TEMPLATES: readonly EncounterType[] = ["msw_assessment", "msw_followup"];
+/** The templates that also have an `interventions` section: the social-work visits and IDG follow-up; the chaplain's template has none. */
+const INTERVENTION_TEMPLATES: readonly EncounterType[] = [
+  "msw_assessment",
+  "msw_followup",
+  "idg_followup",
+];
 
 /** The 6 discipline-plan draft entries, in corpus order (appended after the 5 of 2026.12.1). */
 export const DISCIPLINE_PLAN_VOCABULARY: readonly VocabEntry[] = [

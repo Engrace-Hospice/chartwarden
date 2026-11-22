@@ -70,8 +70,14 @@ describe("the sections the admission visit drafts (scope is read off the corpus 
     expect(section(admissionInputs(), "symptom_management").state).toBe("empty");
   });
 
-  it("the face-to-face visit's med_reconciliation stays undrafted, whatever the inputs carry", () => {
-    expect([...draftedSectionIds("face_to_face", "np")]).toEqual(["prognosis"]);
+  // S5 (VN-D52) reverses VN-D38: the face-to-face visit by a physician or nurse practitioner now drafts `med_reconciliation`, from the orders in
+  // effect and nothing else of the admission record (the caregivers and the advance directive are not sections of its template).
+  it("the face-to-face visit drafts the orders in effect as the admission visit does, and nothing else of the admission record", () => {
+    expect([...draftedSectionIds("face_to_face", "np")].sort()).toEqual([
+      "med_reconciliation",
+      "prognosis",
+      "vitals_review",
+    ]);
     const base = admissionInputs();
     const f2f: DraftInputs = {
       ...base,
@@ -84,7 +90,7 @@ describe("the sections the admission visit drafts (scope is read off the corpus 
         discipline: "np",
       },
     };
-    expect(section(f2f, "med_reconciliation").state).toBe("empty");
+    expect(textOf(f2f, "med_reconciliation")).toBe(textOf(base, "med_reconciliation"));
   });
 
   it("the routine and recertification visits ignore the admission sources", () => {

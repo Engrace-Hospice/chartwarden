@@ -3,8 +3,8 @@
 // ONE predicate, read off the corpus: a section is drafted for an (encounter type x discipline) pair when the pair's template has it, the
 // sources feed it (`draftSectionPhrases`, one map per template), and EVERY phrase it is built from is tagged for the pair in
 // `@chartwarden/narrative-vocab`. Today that is the RN routine, recertification and admission visits, the face-to-face visit by a
-// physician or nurse practitioner, the LPN visits and the aide visit; tagging phrases for another pair (a later slice) is what makes that pair draft, with no list of
-// templates to keep in step.
+// physician or nurse practitioner, the LPN visits, the aide visit, the social-work and chaplain visits and the IDG follow-up of all six disciplines;
+// tagging phrases for another pair (a later slice) is what makes that pair draft, with no list of templates to keep in step.
 //
 // The backend asks this BEFORE it reads any source: a template with no drafted section reads nothing, drafts nothing and asks the
 // clinician nothing, so finalize, sign, the gate and the draft routes behave as they do with the tenant's switch off. The compiler obeys
@@ -57,11 +57,19 @@ export function readsBenefitPeriod(encounterType: EncounterType): boolean {
 }
 
 /**
- * Whether a visit's draft reads the admission record (S2b): the orders in effect, the caregivers on record and the advance directive
- * acknowledgment. Today the RN admission visit alone; every other visit reads none of it.
+ * Whether a visit's draft reads the admission record (S2b): the caregivers on record and the advance directive acknowledgment. Today the RN
+ * admission visit alone; every other visit reads none of it.
  */
 export function readsAdmissionRecord(encounterType: EncounterType): boolean {
   return encounterType === "admission_visit";
+}
+
+/**
+ * Whether a visit's draft reads the orders in effect (S2b, S5): the RN admission visit and the face-to-face visit by a physician or nurse
+ * practitioner, whose `med_reconciliation` states them. Nothing else of the admission record is read for the face-to-face visit.
+ */
+export function readsActiveOrders(encounterType: EncounterType): boolean {
+  return encounterType === "admission_visit" || encounterType === "face_to_face";
 }
 
 /** Whether the pair's template has any drafted section. `false` for a pair with no template. */

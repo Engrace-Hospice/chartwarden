@@ -11,17 +11,18 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { computeDraftOverview } from "../src/modules/08-encounters/drafting/compute";
 import { createDraftService } from "../src/modules/08-encounters/drafting/draft-service";
+import { readDraftInputs } from "../src/modules/08-encounters/drafting/inputs";
 import { assertResolved, readNoteDraft } from "../src/modules/08-encounters/drafting/note-draft";
 import { createNoteDraftFlow } from "../src/modules/08-encounters/drafting/note-draft-flow";
-import { NOW, fakePorts, reader, viewer } from "./_encounter-draft-fixtures";
+import { AS_OF, NOW, encounter, fakePorts, reader, viewer } from "./_encounter-draft-fixtures";
 import { draftEncounterRow, memoryRunInOrg } from "./_encounter-draft-memory-store";
 
 type Pair = readonly [EncounterType, EncounterDiscipline];
 
 /**
  * The pairs that draft: S1's RN routine visit, S2's RN recertification visit and face-to-face visit (physician or nurse practitioner),
- * S2b's RN admission visit and S3's LPN visits and aide visit. Stated here, not derived, so widening the corpus is a deliberate edit of this
- * test.
+ * S2b's RN admission visit, S3's LPN visits and aide visit, S4's social-work and chaplain visits and S5's IDG follow-up of all six disciplines.
+ * Stated here, not derived, so widening the corpus is a deliberate edit of this test.
  */
 const DRAFTED_PAIRS: ReadonlySet<string> = new Set([
   "routine_visit:rn",
@@ -36,6 +37,12 @@ const DRAFTED_PAIRS: ReadonlySet<string> = new Set([
   "msw_followup:msw",
   "chaplain_assessment:chaplain",
   "chaplain_visit:chaplain",
+  "idg_followup:rn",
+  "idg_followup:lpn",
+  "idg_followup:msw",
+  "idg_followup:chaplain",
+  "idg_followup:md",
+  "idg_followup:np",
 ]);
 const UNDRAFTED_PAIRS: readonly Pair[] = (
   Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]
@@ -230,5 +237,27 @@ describe("the draft routes for a template the corpus does not draft", () => {
       NOW,
     ).catch((e: unknown) => e);
     expect(error).toMatchObject({ code: "INVALID_ENCOUNTER_DISCIPLINE_PAIR" });
+  });
+});
+
+/** The visits whose draft states the orders in effect: the RN admission visit and the face-to-face visit by a physician or nurse practitioner. */
+const ORDER_PAIRS: ReadonlySet<string> = new Set([
+  "admission_visit:rn",
+  "face_to_face:md",
+  "face_to_face:np",
+]);
+
+describe("the orders in effect are read by exactly the templates that state them", () => {
+  it.each([...DRAFTED_PAIRS])("%s", async (key) => {
+    const [type, discipline] = key.split(":") as [EncounterType, EncounterDiscipline];
+    const ports = fakePorts();
+    await readDraftInputs(
+      ports,
+      encounter({ encounterType: type, discipline }),
+      viewer({ roles: [discipline] }),
+      AS_OF,
+    );
+    if (ORDER_PAIRS.has(key)) expect(ports.activeMedicationsAsOf).toHaveBeenCalledTimes(1);
+    else expect(ports.activeMedicationsAsOf).not.toHaveBeenCalled();
   });
 });

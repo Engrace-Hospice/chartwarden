@@ -459,3 +459,26 @@ describe("whose draft it is", () => {
     });
   });
 });
+
+describe("a failing store read", () => {
+  it("is not answered while the store read beside it is still running (it would run on a connection the next request owns)", async () => {
+    const { store } = memoryDraftStore(withPrevious);
+    const state = { done: false };
+    const failing = {
+      ...store,
+      confirmations: async (): Promise<never> => {
+        throw new Error("synthetic store outage");
+      },
+      ownTextSectionIds: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        state.done = true;
+        return new Set<string>();
+      },
+    };
+
+    await expect(resolveSection(seams(), failing, input({ sectionId: "plan" }))).rejects.toThrow(
+      "synthetic store outage",
+    );
+    expect(state.done).toBe(true);
+  });
+});

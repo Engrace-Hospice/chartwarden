@@ -25,9 +25,15 @@
 //   advance_directive    the advance directive acknowledgment that was on file (the fact, never its content)   one source
 //   caregiver_overview   the caregivers on record on the service date (name and relationship, no contact)      primary first, then by name
 //   (`assessment` and `symptom_management` draft nothing here, for the reason the recertification's do not.)
-// The face-to-face visit (S2, `md` and `np`): prognosis from the PPS against the period's first reading, then the weight.
+// The face-to-face visit (`md` and `np`): prognosis (S2) from the PPS against the period's first reading, then the weight; and (S5)
+//   vitals_review        the visit's recorded vitals, as the routine visit states them
+//   med_reconciliation   the orders in effect at the visit, as the admission visit states them (by drug name, then id)
+//   Nothing the clinician judges is drafted for it: no reason for visit, assessment, plan, interventions or attestation (VN-D53).
 // The LPN visits (S3, `routine_visit` and `lpn_visit` by an LPN) are sourced like the routine visit; the corpus tags leave out the PPS and ESAS-r
 // phrases, so `assessment` and `symptom_management` are not drafted for them (VN-D39).
+// The IDG follow-up (S5, `idg_followup`) is sourced as the discipline's own visit is: an RN as the routine visit, an LPN as the LPN visit, a social
+//   worker and a chaplain as below, and a physician or nurse practitioner the recorded vitals only (VN-D52). Its own `idg_followup` section is
+//   never drafted: nothing links the visit to the decision that prompted it (VN-D54).
 // The aide visit (S3, `chha_visit` by a `chha`): adl     the care plan's active aide interventions, less those the author removed   by source id
 //   (the recorded ADLs are stated first in the section, by the compiler, as the recorded vitals' body measures are).
 // The social-work visits (S4, `msw_assessment` and `msw_followup`):
@@ -709,7 +715,14 @@ const admissionVisitMap: SourceMap = (inputs, asOfMs) => [
   [ADMISSION_SECTION.caregivers, caregiverGroups(inputs.caregivers)],
 ];
 
+/**
+ * The face-to-face visit by a physician or nurse practitioner: the S2 decline evidence in `prognosis`, and (S5, VN-D52) the recorded vitals in
+ * `vitals_review` and the orders in effect in `med_reconciliation`, worded as the routine and admission visits word them. Nothing of the care plan, the
+ * scales' own sections or the medication changes: those sections are the clinician's own (VN-D53).
+ */
 const faceToFaceVisitMap: SourceMap = (inputs, asOfMs) => [
+  [SECTION.vitals, vitalsGroups(inputs.vitals, asOfMs)],
+  [ADMISSION_SECTION.medications, medicationOrderGroups(inputs.activeMedications)],
   [
     RECERT_SECTION.prognosis,
     [...ppsBaselineGroups(inputs.scaleReadings, asOfMs), ...weightGroups(inputs.weight, asOfMs)],
@@ -738,7 +751,12 @@ const chaplainVisitMap: SourceMap = (inputs) => [
   [MSW_SECTION.plan, disciplinePlanGoalGroups(inputs.disciplinePlan)],
 ];
 
-/** The templates S2, S3 and S4 source differently from the routine visit. Every other template is sourced like the routine visit (S1's rule). */
+/**
+ * The templates S2, S3, S4 and S5 source differently from the routine visit. Every other template is sourced like the routine visit (S1's rule),
+ * and what it drafts is still decided by the corpus tags: the IDG follow-up of an RN, an LPN, a physician or a nurse practitioner reads as the
+ * routine visit and drafts only the sections whose every phrase is tagged for it (S5, VN-D52). The social worker's and the chaplain's IDG follow-up
+ * draw on the discipline's own plan, as their own visits do.
+ */
 const SOURCE_MAPS: ReadonlyMap<string, SourceMap> = new Map([
   [templateKey("recert_visit", "rn"), recertVisitMap],
   [templateKey("admission_visit", "rn"), admissionVisitMap],
@@ -747,8 +765,10 @@ const SOURCE_MAPS: ReadonlyMap<string, SourceMap> = new Map([
   [templateKey("chha_visit", "chha"), aideVisitMap],
   [templateKey("msw_assessment", "msw"), mswVisitMap],
   [templateKey("msw_followup", "msw"), mswVisitMap],
+  [templateKey("idg_followup", "msw"), mswVisitMap],
   [templateKey("chaplain_assessment", "chaplain"), chaplainVisitMap],
   [templateKey("chaplain_visit", "chaplain"), chaplainVisitMap],
+  [templateKey("idg_followup", "chaplain"), chaplainVisitMap],
 ]);
 
 const scaleCodesOf = (sectionId: string): readonly string[] =>
@@ -780,6 +800,22 @@ const prognosisEvidencePhrases: readonly string[] = [
 
 const recertScaleCodes = (scale: ScaleType): readonly string[] =>
   Object.values(SCALE_SPECS[scale]?.codes ?? {});
+
+/** The face-to-face visit (S5, VN-D52): the recorded vitals, the orders in effect, and the S2 decline evidence. Nothing else is drafted there. */
+const FACE_TO_FACE_SECTION_PHRASES: Readonly<Record<string, readonly string[]>> = {
+  [SECTION.vitals]: Object.values(VITAL_CODES),
+  [ADMISSION_SECTION.medications]: [ADMISSION_CODES.medication, ADMISSION_CODES.medicationAsNeeded],
+  [RECERT_SECTION.prognosis]: prognosisEvidencePhrases,
+};
+
+/** The social-work templates' two drafted sections and the chaplain templates' one (S4; the IDG follow-up of each discipline too, S5). */
+const MSW_SECTION_PHRASES: Readonly<Record<string, readonly string[]>> = {
+  [MSW_SECTION.interventions]: DISCIPLINE_INTERVENTION_PHRASES,
+  [MSW_SECTION.plan]: DISCIPLINE_GOAL_PHRASES,
+};
+const CHAPLAIN_SECTION_PHRASES: Readonly<Record<string, readonly string[]>> = {
+  [MSW_SECTION.plan]: DISCIPLINE_GOAL_PHRASES,
+};
 
 const ROUTINE_SECTION_PHRASES: Readonly<Record<string, readonly string[]>> = {
   ...baseSectionPhrases,
@@ -827,29 +863,20 @@ const SECTION_PHRASES: ReadonlyMap<string, Readonly<Record<string, readonly stri
       ],
     },
   ],
-  [templateKey("face_to_face", "md"), { [RECERT_SECTION.prognosis]: prognosisEvidencePhrases }],
-  [templateKey("face_to_face", "np"), { [RECERT_SECTION.prognosis]: prognosisEvidencePhrases }],
+  [templateKey("face_to_face", "md"), FACE_TO_FACE_SECTION_PHRASES],
+  [templateKey("face_to_face", "np"), FACE_TO_FACE_SECTION_PHRASES],
   [
     templateKey("chha_visit", "chha"),
     { [AIDE_SECTION.adl]: [CARE_PLAN_CODES.interventionPerformed] },
   ],
-  // S4: goals draft in the `plan` section of all four; interventions in the social-work templates' `interventions` section only.
-  [
-    templateKey("msw_assessment", "msw"),
-    {
-      [MSW_SECTION.interventions]: DISCIPLINE_INTERVENTION_PHRASES,
-      [MSW_SECTION.plan]: DISCIPLINE_GOAL_PHRASES,
-    },
-  ],
-  [
-    templateKey("msw_followup", "msw"),
-    {
-      [MSW_SECTION.interventions]: DISCIPLINE_INTERVENTION_PHRASES,
-      [MSW_SECTION.plan]: DISCIPLINE_GOAL_PHRASES,
-    },
-  ],
-  [templateKey("chaplain_assessment", "chaplain"), { [MSW_SECTION.plan]: DISCIPLINE_GOAL_PHRASES }],
-  [templateKey("chaplain_visit", "chaplain"), { [MSW_SECTION.plan]: DISCIPLINE_GOAL_PHRASES }],
+  // S4: goals draft in the `plan` section of all four; interventions in the social-work templates' `interventions` section only. S5: the IDG
+  // follow-up of each of the two disciplines drafts the same sections from the same phrases.
+  [templateKey("msw_assessment", "msw"), MSW_SECTION_PHRASES],
+  [templateKey("msw_followup", "msw"), MSW_SECTION_PHRASES],
+  [templateKey("idg_followup", "msw"), MSW_SECTION_PHRASES],
+  [templateKey("chaplain_assessment", "chaplain"), CHAPLAIN_SECTION_PHRASES],
+  [templateKey("chaplain_visit", "chaplain"), CHAPLAIN_SECTION_PHRASES],
+  [templateKey("idg_followup", "chaplain"), CHAPLAIN_SECTION_PHRASES],
 ]);
 
 /** The phrases each section of the template with this key is drafted from. */
@@ -904,8 +931,10 @@ const TEMPLATE_SECTION_SOURCES: ReadonlyMap<
 > = new Map([
   [templateKey("msw_assessment", "msw"), DISCIPLINE_PLAN_SECTION_SOURCES],
   [templateKey("msw_followup", "msw"), DISCIPLINE_PLAN_SECTION_SOURCES],
+  [templateKey("idg_followup", "msw"), DISCIPLINE_PLAN_SECTION_SOURCES],
   [templateKey("chaplain_assessment", "chaplain"), DISCIPLINE_PLAN_SECTION_SOURCES],
   [templateKey("chaplain_visit", "chaplain"), DISCIPLINE_PLAN_SECTION_SOURCES],
+  [templateKey("idg_followup", "chaplain"), DISCIPLINE_PLAN_SECTION_SOURCES],
 ]);
 
 /**

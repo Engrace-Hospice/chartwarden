@@ -19,6 +19,7 @@ import { isVisitNoteDraftEnabled } from "./policy-service";
 import type { DraftEncounter, DraftReader, DraftSeamPorts } from "./ports";
 import { serialSeams } from "./serial-seams";
 import { pinAndSealSignedNote, pinCarriesPart2 } from "./signed-sections";
+import { leaseTransaction } from "./transaction-lease";
 
 /** What the flow needs of an encounter row: the draft's projection and the siting the sealed rows copy. */
 export interface FlowEncounter extends DraftEncounter {
@@ -56,16 +57,23 @@ export interface NoteDraftFlow {
 
 export function createNoteDraftFlow(deps: NoteDraftFlowDeps): NoteDraftFlow {
   return {
-    read(tx, encounter, viewer) {
+    async read(tx, encounter, viewer) {
       const now = deps.clock();
-      const store = createDbDraftStore(tx, { now, freeTextCipher: deps.freeTextCipher });
-      return readNoteDraft(
-        { enabled: () => isVisitNoteDraftEnabled(tx, encounter.organizationId), store },
-        serialSeams(deps.seams()),
-        encounter,
-        viewer,
-        now,
-      );
+      // The draft is lent the transaction for the length of the read only: a store read `guarded` abandoned at its time bound is still running,
+      // and must not start its next query on the connection once the caller's transaction has ended (transaction-lease.ts).
+      const lease = leaseTransaction(tx);
+      try {
+        const store = createDbDraftStore(lease.db, { now, freeTextCipher: deps.freeTextCipher });
+        return await readNoteDraft(
+          { enabled: () => isVisitNoteDraftEnabled(lease.db, encounter.organizationId), store },
+          serialSeams(deps.seams()),
+          encounter,
+          viewer,
+          now,
+        );
+      } finally {
+        lease.close();
+      }
     },
 
     narrativeOf(draft) {

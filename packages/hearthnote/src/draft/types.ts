@@ -238,7 +238,7 @@ export interface DraftInputs {
   readonly weight?: WeightDraftInput | null;
   /** S2: the benefit period on the service date; absent or `null` for none. Read by the recertification template only. */
   readonly benefitPeriod?: BenefitPeriodDraftInput | null;
-  /** S2b: the orders in effect at the visit time; absent or empty for none. Read by the RN admission template only. */
+  /** S2b: the orders in effect at the visit time; absent or empty for none. Read by the RN admission template and (S5) the face-to-face template. */
   readonly activeMedications?: readonly MedicationOrderInput[];
   /** S2b: the caregivers on record on the service date; absent or empty for none. Read by the RN admission template only. */
   readonly caregivers?: readonly CaregiverInput[];

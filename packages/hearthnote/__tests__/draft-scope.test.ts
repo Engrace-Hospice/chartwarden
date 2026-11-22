@@ -60,7 +60,7 @@ const draftedIdsOf = (pair: Pair): readonly string[] =>
     .map((s) => s.sectionId);
 
 describe("the templates the corpus drafts", () => {
-  it("today that is the RN routine, admission and recertification visits, the face-to-face visit, the LPN visits, the aide visit, and the social-work and chaplain visits, and no other legal pair", () => {
+  it("today that is the RN routine, admission and recertification visits, the face-to-face visit, the LPN visits, the aide visit, the social-work and chaplain visits, and the IDG follow-up of all six disciplines, and no other legal pair", () => {
     const drafted = LEGAL_PAIRS.filter(([type, discipline]) =>
       templateHasDraftedSection(type, discipline),
     ).map(([type, discipline]) => templateKey(type, discipline));
@@ -77,7 +77,60 @@ describe("the templates the corpus drafts", () => {
       "msw_followup:msw",
       "chaplain_assessment:chaplain",
       "chaplain_visit:chaplain",
+      "idg_followup:rn",
+      "idg_followup:lpn",
+      "idg_followup:msw",
+      "idg_followup:chaplain",
+      "idg_followup:md",
+      "idg_followup:np",
     ]);
+  });
+
+  // S5 (VN-D52): each pair drafts exactly the sections its discipline's own visit drafts, and a physician or nurse practitioner only the recorded
+  // vitals (and, in the face-to-face visit, the orders in effect and the S2 decline evidence). Without an explicit set, a pair that falls back to the
+  // routine visit's sources could draft a section its discipline's rules forbid; this pins every set.
+  it("the IDG follow-up drafts as the discipline's own visit does, and the telephonic visit drafts nothing for any discipline (S5)", () => {
+    const sorted = (type: EncounterType, discipline: EncounterDiscipline) =>
+      [...draftedSectionIds(type, discipline)].sort();
+    expect(sorted("idg_followup", "rn")).toEqual(sorted("routine_visit", "rn"));
+    expect(sorted("idg_followup", "lpn")).toEqual(sorted("routine_visit", "lpn"));
+    expect(sorted("idg_followup", "msw")).toEqual(sorted("msw_followup", "msw"));
+    expect(sorted("idg_followup", "chaplain")).toEqual(sorted("chaplain_visit", "chaplain"));
+    for (const discipline of ["md", "np"] as const) {
+      expect(sorted("idg_followup", discipline), `idg_followup:${discipline}`).toEqual([
+        "vitals_review",
+      ]);
+      expect(sorted("face_to_face", discipline), `face_to_face:${discipline}`).toEqual([
+        "med_reconciliation",
+        "prognosis",
+        "vitals_review",
+      ]);
+    }
+    for (const discipline of ENCOUNTER_DISCIPLINE_RULES.telephonic) {
+      expect(sorted("telephonic", discipline), `telephonic:${discipline}`).toEqual([]);
+    }
+  });
+
+  // S5 (VN-D53): the sections a physician's or nurse practitioner's note leaves to the clinician's own words, and the IDG follow-up's own section (VN-D54).
+  it("never drafts a physician's or nurse practitioner's own judgement, an attestation, or the IDG decision follow-up section", () => {
+    for (const [type, discipline] of LEGAL_PAIRS) {
+      const drafted = draftedSectionIds(type, discipline);
+      expect(drafted.has("idg_followup"), `${type}:${discipline}`).toBe(false);
+      expect(drafted.has("f2f_attestation"), `${type}:${discipline}`).toBe(false);
+      if (discipline !== "md" && discipline !== "np") continue;
+      for (const id of [
+        "chief_concern",
+        "assessment",
+        "symptom_management",
+        "functional_status",
+        "nutrition",
+        "skin_wounds",
+        "interventions",
+        "plan",
+      ]) {
+        expect(drafted.has(id), `${type}:${discipline} ${id}`).toBe(false);
+      }
+    }
   });
 
   it("never drafts a psychosocial, spiritual, family-dynamics or reason-for-visit section for any pair (VN-D45)", () => {

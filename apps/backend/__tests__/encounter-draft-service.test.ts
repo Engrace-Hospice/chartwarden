@@ -3,6 +3,7 @@
 // proves the Drizzle unit.
 import { encounterType } from "@chartwarden/db/schema";
 import {
+  readsActiveOrders,
   readsAdmissionRecord,
   readsBenefitPeriod,
   templateHasDraftedSection,
@@ -424,9 +425,9 @@ describe("the admission's read keys a recertification or face-to-face draft need
     };
   }
 
-  it("names the keys by template: four for a recertification, the benefit period's for a face-to-face, none for any other", () => {
+  it("names the keys by template: four for a recertification, the benefit period's and the orders' for a face-to-face, none for any other", () => {
     expect(admissionReadsFor("recert_visit")).toEqual(RECERT_KEYS);
-    expect(admissionReadsFor("face_to_face")).toEqual(["election.read"]);
+    expect(admissionReadsFor("face_to_face")).toEqual(["election.read", "prescribing.read"]);
     expect(admissionReadsFor("routine_visit")).toEqual([]);
     expect(admissionReadsFor("constructor")).toEqual([]);
   });
@@ -449,9 +450,18 @@ describe("the admission's read keys a recertification or face-to-face draft need
 
   it("names at least one key for every visit type whose draft reads the admission's benefit period (the two lists cannot drift apart)", () => {
     const types = encounterType.enumValues as readonly EncounterType[];
-    const readers = types.filter((type) => readsBenefitPeriod(type) || readsAdmissionRecord(type));
+    const readers = types.filter(
+      (type) => readsBenefitPeriod(type) || readsAdmissionRecord(type) || readsActiveOrders(type),
+    );
     expect(readers.length).toBeGreaterThan(0);
     for (const type of readers) expect(admissionReadsFor(type), type).not.toEqual([]);
+  });
+
+  it("names `prescribing.read` for every visit type whose draft reads the orders in effect (a type added to that list cannot draft orders without the key)", () => {
+    const types = encounterType.enumValues as readonly EncounterType[];
+    const readers = types.filter((type) => readsActiveOrders(type));
+    expect(readers).toEqual(["admission_visit", "face_to_face"]);
+    for (const type of readers) expect(admissionReadsFor(type), type).toContain("prescribing.read");
   });
 
   it.each(RECERT_KEYS)(
@@ -492,16 +502,48 @@ describe("the admission's read keys a recertification or face-to-face draft need
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("needs only the benefit period's key for a face-to-face draft, and none of the other three", async () => {
+  it("needs the benefit period's key and the orders' key for a face-to-face draft, and none of M6's other three", async () => {
     const { svc } = serviceFor(faceToFace);
-    expect((await svc.getDraft(holding(["election.read"]), ID)).templateKey).toBe(
-      "face_to_face:md",
-    );
+    expect(
+      (await svc.getDraft(holding(["election.read", "prescribing.read"]), ID)).templateKey,
+    ).toBe("face_to_face:md");
     await expectCode(
-      svc.getDraft(holding(["cti.read", "f2f.read", "loc.read"]), ID),
+      svc.getDraft(holding(["cti.read", "f2f.read", "loc.read", "prescribing.read"]), ID),
       "FORBIDDEN",
       403,
     );
+  });
+
+  // S5 (VN-D52): the face-to-face draft states the orders in effect, so a caller without `prescribing.read` is refused naming it, before any source is
+  // read and whatever else it holds, and the section PUT is refused the same way.
+  it("refuses a face-to-face draft to a caller who lacks prescribing.read, naming it, before any source is read", async () => {
+    const { svc, seams, unit } = serviceFor(faceToFace);
+    const without = new Set(
+      [...SOURCE_KEYS, "election.read", "cti.read", "f2f.read", "loc.read"].filter(
+        (k) => k !== "prescribing.read",
+      ),
+    );
+    const error = await svc.getDraft({ ...caller, permissions: without }, ID).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    expect(error).toMatchObject({ statusCode: 403 });
+    expect((error as Error).message).toContain("prescribing.read");
+    expect(seams.electionPeriods).not.toHaveBeenCalled();
+    expect(seams.activeMedicationsAsOf).not.toHaveBeenCalled();
+    const spy = vi.spyOn(unit, "recordResolved");
+    await expectCode(
+      svc.resolveSection(
+        { ...caller, permissions: without },
+        ID,
+        "med_reconciliation",
+        { resolution: "confirmed", contentHash: "a".repeat(64), corpusVersion: "x" },
+        AUDIT,
+      ),
+      "FORBIDDEN",
+      403,
+    );
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it("asks a routine visit's draft for none of them", async () => {

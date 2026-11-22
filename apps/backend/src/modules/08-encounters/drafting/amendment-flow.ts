@@ -32,6 +32,7 @@ import type { FlowEncounter } from "./note-draft-flow";
 import { isVisitNoteDraftEnabled } from "./policy-service";
 import type { DraftReader, DraftSeamPorts, DraftViewer } from "./ports";
 import { serialSeams } from "./serial-seams";
+import { leaseTransaction } from "./transaction-lease";
 import { draftUnavailable, guarded } from "./unavailable";
 
 export interface AmendmentFlowDeps {
@@ -131,18 +132,26 @@ export function createAmendmentFlow(deps: AmendmentFlowDeps): AmendmentFlow {
         ),
     });
     const now = deps.clock();
-    const store = createAmendmentDraftStore(
-      tx,
-      createDbDraftStore(tx, { now, freeTextCipher: deps.freeTextCipher }),
-      addendumId,
-    );
-    const draft = await readNoteDraft(
-      { enabled: () => isVisitNoteDraftEnabled(tx, parent.organizationId), store },
-      serialSeams(deps.seams()),
-      parent,
-      viewer,
-      now,
-    );
+    // The draft is lent the transaction for the length of the read only (transaction-lease.ts): a store read abandoned at its time bound must not
+    // start its next query on the connection once the caller's transaction has ended.
+    const lease = leaseTransaction(tx);
+    let draft: NoteDraft | null;
+    try {
+      const store = createAmendmentDraftStore(
+        lease.db,
+        createDbDraftStore(lease.db, { now, freeTextCipher: deps.freeTextCipher }),
+        addendumId,
+      );
+      draft = await readNoteDraft(
+        { enabled: () => isVisitNoteDraftEnabled(lease.db, parent.organizationId), store },
+        serialSeams(deps.seams()),
+        parent,
+        viewer,
+        now,
+      );
+    } finally {
+      lease.close();
+    }
     return draft === null ? "off" : restrictToNamed(draft, named);
   };
 

@@ -340,13 +340,20 @@ describe("readNoteDraft: the admission's read keys of a recertification or face-
     expect(await recompute(recert, RECERT_KEYS).result).not.toBeNull();
   });
 
-  it("needs only the benefit period's key for a face-to-face visit", async () => {
-    expect(await recompute(faceToFace, ["election.read"]).result).not.toBeNull();
-    await expect(
-      recompute(faceToFace, ["cti.read", "f2f.read", "loc.read"]).result,
-    ).rejects.toMatchObject({
-      statusCode: 403,
-    });
+  // S5 (VN-D52): a face-to-face visit also states the orders in effect, so finalize, sign and an addendum's recompute ask `prescribing.read` too.
+  it("needs the benefit period's key and the orders' key for a face-to-face visit, and none of M6's other three", async () => {
+    expect(
+      await recompute(faceToFace, ["election.read", "prescribing.read"]).result,
+    ).not.toBeNull();
+    for (const keys of [
+      ["election.read"],
+      ["prescribing.read"],
+      ["cti.read", "f2f.read", "loc.read"],
+    ]) {
+      await expect(recompute(faceToFace, keys).result, keys.join()).rejects.toMatchObject({
+        statusCode: 403,
+      });
+    }
   });
 
   it("asks for no key when the tenant switch is off: the draft is off and finalize and sign are what they were", async () => {

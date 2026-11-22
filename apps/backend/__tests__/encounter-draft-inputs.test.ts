@@ -700,7 +700,8 @@ describe("readDraftInputs: only the sources the template drafts from are read (S
     expect(ports.previousSignedVisitAt).toHaveBeenCalled();
   });
 
-  it("the face-to-face visit reads the scales and the weights, and no longer the care plan, vitals or medication changes it never drafts from", async () => {
+  // S5 (VN-D52): the face-to-face visit also states the recorded vitals (and the orders in effect, proved in encounter-draft-md-np-idg-inputs).
+  it("the face-to-face visit reads the scales, the weights and the vitals, and not the care plan or the medication changes it never drafts from", async () => {
     const ports = fakePorts();
     await readDraftInputs(
       ports,
@@ -709,8 +710,8 @@ describe("readDraftInputs: only the sources the template drafts from are read (S
       AS_OF,
     );
     expect(ports.scaleSeries).toHaveBeenCalled();
+    expect(ports.latestVitals).toHaveBeenCalled();
     expect(ports.carePlanAsOf).not.toHaveBeenCalled();
-    expect(ports.latestVitals).not.toHaveBeenCalled();
     expect(ports.medicationChangesBetween).not.toHaveBeenCalled();
   });
 
