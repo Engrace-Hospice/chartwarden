@@ -1689,6 +1689,20 @@ describe("a social-work or chaplain visit's plan list (S4b)", () => {
     expect(await screen.findByText(/keep them again in the plan list/)).toBeVisible();
     expect(screen.queryByText(/nothing in the record to draft this section from/i)).toBeNull();
   });
+
+  it("keeps the record wording on a section the plan never feeds (the reason for the visit has no plan items to keep)", async () => {
+    world.draftSections = [
+      empty("chief_concern"),
+      drafted({ sectionId: "plan", origins: ["discipline_plan_goal"], text: "Plan text." }),
+    ];
+    mountComposer(planVisit("msw", "msw_followup"));
+    await ready();
+    // the composer opens at the chief concern, which no plan feeds
+    expect(
+      await screen.findByText(/nothing in the record to draft this section from/i),
+    ).toBeVisible();
+    expect(screen.queryByText(/keep them again in the plan list/)).toBeNull();
+  });
 });
 
 describe("accessibility", () => {

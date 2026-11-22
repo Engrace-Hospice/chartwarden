@@ -111,6 +111,16 @@ export const draftsFromDisciplinePlan = (draft: Pick<DraftView, "sections">): bo
 export const isDisciplinePlanVisit = (discipline: string): boolean =>
   discipline === "msw" || discipline === "chaplain";
 
+/**
+ * Whether a section of a social-work or chaplain template is the one the discipline's plan feeds (the server's source map, S4: a social worker's
+ * `interventions` and `plan`, a chaplain's `plan`). An empty one may be a section whose items were left out; any other (a chief concern, a psychosocial
+ * or spiritual assessment) has no plan items to keep, so it says the record holds nothing like every other section.
+ */
+export function isDisciplinePlanSection(discipline: string, sectionId: string): boolean {
+  if (discipline === "msw") return sectionId === "interventions" || sectionId === "plan";
+  return discipline === "chaplain" && sectionId === "plan";
+}
+
 /** What the panel of a discipline's own plan is called: not the care plan's "Care plan for this visit", which a social worker or chaplain also sees. */
 export const disciplinePlanTitle = (discipline: string): string =>
   discipline === "chaplain"

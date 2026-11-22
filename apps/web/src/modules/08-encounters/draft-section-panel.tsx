@@ -38,10 +38,10 @@ export interface DraftSectionPanelProps {
   /** The panel's heading and region name; default "Pre-drafted from the record". Each amended section names itself, so regions stay unique. */
   readonly label?: string;
   /**
-   * The visit is a social worker's or a chaplain's, whose sections are built from the discipline's own plan (S4b): a section with nothing to draft may
-   * be one whose items the clinician left out, so it points at the plan list instead of saying the record holds nothing.
+   * The section is one a social worker's or a chaplain's plan feeds (S4b, `isDisciplinePlanSection`): with nothing to draft it may be a section whose
+   * items the clinician left out, so it points at the plan list instead of saying the record holds nothing.
    */
-  readonly planVisit?: boolean;
+  readonly planSection?: boolean;
 }
 
 const STALE_EXPLANATION =
@@ -66,7 +66,7 @@ export function DraftSectionPanel({
   idPrefix = "draft",
   amending = false,
   label = "Pre-drafted from the record",
-  planVisit = false,
+  planSection = false,
 }: DraftSectionPanelProps): JSX.Element {
   // The heading of a drafted section, or the whole region of an empty one (a deselect can leave a section with nothing to draft).
   // Focus is moved after React has committed the new state: when a deselect leaves the section empty, the element that had the focus
@@ -98,7 +98,7 @@ export function DraftSectionPanel({
         <span className="wx-row-sub">
           {amending
             ? amendedSectionOutcome("not_drafted")
-            : planVisit
+            : planSection
               ? PLAN_ITEMS_LEFT_OUT_EMPTY
               : "There is nothing in the record to draft this section from. Document it below."}
         </span>

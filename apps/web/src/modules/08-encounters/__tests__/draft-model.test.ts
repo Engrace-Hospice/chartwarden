@@ -10,6 +10,7 @@ import {
   draftIssuesFrom,
   draftedStateOf,
   draftsFromDisciplinePlan,
+  isDisciplinePlanSection,
   isDraftSectionView,
   replaceSection,
   resolutionNote,
@@ -371,5 +372,18 @@ describe("draftedStateOf", () => {
     expect(draftedStateOf(draft, "plan")).toBeUndefined();
     expect(draftedStateOf(draft, "pain")).toBeUndefined();
     expect(draftedStateOf(null, "plan")).toBeUndefined();
+  });
+});
+
+describe("isDisciplinePlanSection", () => {
+  it("names the sections a social worker's and a chaplain's plan feed, and no other", () => {
+    expect(isDisciplinePlanSection("msw", "interventions")).toBe(true);
+    expect(isDisciplinePlanSection("msw", "plan")).toBe(true);
+    expect(isDisciplinePlanSection("chaplain", "plan")).toBe(true);
+    expect(isDisciplinePlanSection("msw", "psychosocial")).toBe(false);
+    expect(isDisciplinePlanSection("msw", "chief_concern")).toBe(false);
+    expect(isDisciplinePlanSection("chaplain", "spiritual")).toBe(false);
+    expect(isDisciplinePlanSection("chaplain", "interventions")).toBe(false);
+    expect(isDisciplinePlanSection("rn", "plan")).toBe(false);
   });
 });

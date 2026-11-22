@@ -35,7 +35,7 @@ import {
   STATE_LABEL,
   confirmedSectionIds,
   draftedStateOf,
-  isDisciplinePlanVisit,
+  isDisciplinePlanSection,
 } from "./draft-model";
 import { DraftSectionPanel } from "./draft-section-panel";
 import {
@@ -1260,7 +1260,10 @@ export function EncounterCompose(): JSX.Element {
                           busy={noteDraft.busySectionId === panelSection.sectionId}
                           blockedReason={blockedReason}
                           onResolve={(resolution) => resolveSection(panelSection, resolution)}
-                          planVisit={isDisciplinePlanVisit(encounter.discipline)}
+                          planSection={isDisciplinePlanSection(
+                            encounter.discipline,
+                            panelSection.sectionId,
+                          )}
                         />
                       </div>
                     ) : null}
