@@ -1100,7 +1100,7 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
         expect(row.retention_class).toBe("compliance_42cfr_part2");
         expect(row.before.action_item_id).toBe("<changed>");
       }
-      // and no audit row of the table, of any event, names an action item the suite seeded
+      // and no Part 2 audit row of the table, of any event, names an action item the suite seeded (a row filed plain is a plain-class image by design: its insert image names the id)
       expect(idgItemIds.length).toBeGreaterThan(0);
       const leaked = await admin.query(
         `SELECT 1 FROM audit_event WHERE resource_kind = 'encounter_idg_action_item_link'

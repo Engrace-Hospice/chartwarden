@@ -177,6 +177,8 @@ describe.skipIf(!DB_URL)(
     /** Every M14 read the draft made (what a refused draft, and a viewer without `idg.act`, must not have asked), and a switch to make M14 fail. */
     const idgReads: { patientId: string; membershipId: string | null }[] = [];
     let idgFailing = false;
+    /** Runs right after M14 answers the candidate read, as a change landing between that read and the row's insert would. */
+    let afterOpenRead: (() => Promise<void>) | null = null;
     const TEST_DEK = { version: "test-v1", key: Buffer.alloc(32, 9) };
     const CIPHERS = createHearthnoteCiphers({
       dekForOrg: async () => TEST_DEK,
@@ -409,6 +411,23 @@ describe.skipIf(!DB_URL)(
     }
     const setItem = (itemId: string, set: string, params: unknown[] = []) =>
       admin.query(`UPDATE idg_action_item SET ${set} WHERE id = $1`, [itemId, ...params]);
+    /** One more packet of the SAME meeting and patient as the item's, built at `builtAt` (a rebuild inserts a fresh row; the meeting's LATEST one decides). */
+    const addPacket = (v: Visit, itemId: string, activeSudFlag: boolean, builtAt: string) =>
+      admin.query(
+        `INSERT INTO idg_patient_packet (organization_id, provider_entity_id, location_id, idg_meeting_id, patient_id, admission_id,
+           built_at, since_cursor_iso, built_snapshot, discipline_views, cover_summary_layer1, frozen_at)
+         SELECT a.organization_id, $2, $3, a.idg_meeting_id, a.patient_id, $4, $5::timestamptz, '2026-01-01T00:00:00Z', $6::jsonb, '{}'::jsonb,
+           'summary', now()
+           FROM idg_action_item a WHERE a.id = $1`,
+        [
+          itemId,
+          v.org.providerEntityId,
+          v.org.locationId,
+          v.admissionId,
+          builtAt,
+          JSON.stringify({ patientCover: { activeSudFlag } }),
+        ],
+      );
 
     // ── HTTP helpers (the real routes) ──────────────────────────────────────────────────────────────
     function headerAuth(request: FastifyRequest): void {
@@ -570,6 +589,23 @@ describe.skipIf(!DB_URL)(
       );
     const open = (org: OrgFixture, cipher: string) => CIPHERS.narrative.open(org.orgId, cipher);
     const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
+    const finalCipherOf = async (v: Visit): Promise<string> =>
+      one(
+        await rows<{ final_cipher: string }>(
+          "SELECT final_cipher FROM hearthnote_assembled_output WHERE encounter_id = $1 AND kind = 'primary_finalize'",
+          [v.encounterId],
+        ),
+      ).final_cipher;
+    /** The sealed rows, in order and joined by a blank line, are exactly the plaintext of the pinned `final_cipher` (the invariant the per-viewer note view stands on). */
+    async function expectSealedEqualFinal(v: Visit): Promise<void> {
+      const sealed = await noteRowsOf(v);
+      expect(sealed.length).toBeGreaterThan(0);
+      expect(sealed.map((r) => r.position)).toEqual(sealed.map((_, i) => i));
+      const texts = await Promise.all(sealed.map((r) => open(v.org, r.text_cipher)));
+      expect(texts.join("\n\n")).toBe(await open(v.org, await finalCipherOf(v)));
+      for (const [i, row] of sealed.entries())
+        expect(row.content_hash).toBe(sha256(texts[i] ?? ""));
+    }
     const auditEvents = (orgId: string, eventType: string, resourceId: string) =>
       rows<{
         resource_kind: string;
@@ -632,7 +668,9 @@ describe.skipIf(!DB_URL)(
         openFollowUpItems: async (query: Parameters<typeof realFollowUp.openFollowUpItems>[0]) => {
           idgReads.push({ patientId: query.patientId, membershipId: query.viewer.membershipId });
           if (idgFailing) throw new Error(UPSTREAM_DETAIL);
-          return realFollowUp.openFollowUpItems(query);
+          const answered = await realFollowUp.openFollowUpItems(query);
+          await afterOpenRead?.();
+          return answered;
         },
         linkedFollowUpItem: async (
           query: Parameters<typeof realFollowUp.linkedFollowUpItem>[0],
@@ -758,6 +796,7 @@ describe.skipIf(!DB_URL)(
     afterEach(() => {
       part2Memberships.clear();
       idgFailing = false;
+      afterOpenRead = null;
       idgReads.length = 0;
     });
 
@@ -1216,7 +1255,7 @@ describe.skipIf(!DB_URL)(
         expect(events).toEqual([{ retention_class: "compliance" }]);
       });
 
-      it("clearing a link whose item is now withheld from the viewer raises the row to Part 2 first, so neither image of the removal carries the id", async () => {
+      it("clearing a link raises the row to Part 2 first, whatever M14 would say (a clear asks M14 nothing, so the row being left fails closed), so neither image of the removal carries the id", async () => {
         const v = await seedVisit();
         const item = await seedItem(v, FLAGGED);
         await seedLink(v, item, false); // filed while the patient was not flagged
@@ -1240,6 +1279,97 @@ describe.skipIf(!DB_URL)(
         // (the insert was filed by the superuser before the flag was raised: only the removal's own images are the application's to scrub)
         expect(JSON.stringify(images)).not.toContain(item);
       });
+
+      it("replacing the linked item judges the row being left by M14's verdict NOW: one M14 no longer hands this viewer is removed as Part 2, one it still hands clean is removed plain", async () => {
+        // the patient was flagged since the link was made: the old item is withheld from this (uncleared) viewer, so it is raised as it is left
+        const flaggedNow = await seedVisit();
+        const old = await seedItem(flaggedNow, FLAGGED);
+        const next = await seedItem(flaggedNow);
+        await seedLink(flaggedNow, old, false);
+        expect((await linkItem(flaggedNow, next)).statusCode).toBe(200);
+        const links = await linksOf(flaggedNow);
+        expect(links.find((l) => l.action_item_id === old)).toMatchObject({
+          removed: true,
+          part2_derived: true,
+        });
+        expect(links.find((l) => l.action_item_id === next)).toMatchObject({
+          removed: false,
+          part2_derived: false,
+        });
+
+        // an old item M14 still hands, clean: its row is left as it was filed
+        const clean = await seedVisit();
+        const was = await seedItem(clean);
+        const becomes = await seedItem(clean);
+        await seedLink(clean, was, false);
+        expect((await linkItem(clean, becomes)).statusCode).toBe(200);
+        expect((await linksOf(clean)).find((l) => l.action_item_id === was)).toMatchObject({
+          removed: true,
+          part2_derived: false,
+        });
+      });
+    });
+
+    // ===============================================================================================================
+    // 4b. the meeting's LATEST packet decides the Part 2 fact
+    // ===============================================================================================================
+    describe("4b. a meeting's LATEST packet decides the Part 2 fact (a rebuild inserts a fresh row, and the old one stays)", () => {
+      const OLDER = "2026-11-03T10:00:00Z";
+      const NEWER = "2026-11-03T11:00:00Z";
+
+      it.each([
+        [
+          "a clear packet, then a flagged one built later (the patient is flagged now)",
+          false,
+          true,
+        ],
+        ["a flagged packet, then a clear one built later (the patient is clear now)", true, false],
+      ] as const)(
+        "%s: the later one decides, for the list, the link and the linked item's draft",
+        async (_name, older, newer) => {
+          const v = await seedVisit();
+          const itemId = await seedItem(v, { packetFlag: null });
+          // the NEWER packet goes in first: neither the order of insertion nor "any packet reads clear" may decide
+          await addPacket(v, itemId, newer, NEWER);
+          await addPacket(v, itemId, older, OLDER);
+          const handed = newer === false;
+
+          expect((await listItems(v)).items.map((i) => i.actionItemId)).toEqual(
+            handed ? [itemId] : [],
+          );
+          if (handed) {
+            expect((await linkItem(v, itemId)).statusCode).toBe(200);
+          } else {
+            expect((await linkItem(v, itemId)).statusCode).toBe(404);
+            await seedLink(v, itemId); // a link an earlier state of the visit made: not drafted for this viewer
+          }
+          expect(sectionOf((await getDraft(v)).body, "idg_followup")).toMatchObject(
+            handed ? { state: "unresolved", text: SENTENCE } : { state: "not_drafted", text: null },
+          );
+        },
+      );
+
+      it("is decided per meeting in one list: a meeting's flagged decision, another's flagged latest packet and a clear one do not bleed into each other", async () => {
+        const v = await seedVisit();
+        const latestClear = await seedItem(v, { packetFlag: null });
+        await addPacket(v, latestClear, true, OLDER);
+        await addPacket(v, latestClear, false, NEWER);
+        const latestFlagged = await seedItem(v, { packetFlag: null });
+        await addPacket(v, latestFlagged, false, OLDER);
+        await addPacket(v, latestFlagged, true, NEWER);
+        const decisionFlagged = await seedItem(v, {
+          packetFlag: false,
+          payload: { mutations: [{ sudRelated: true }], rationaleText: PAYLOAD_SENTINEL },
+        });
+        const plain = await seedItem(v);
+        const noPacket = await seedItem(v, { packetFlag: null });
+
+        const listed = (await listItems(v)).items.map((i) => i.actionItemId).sort();
+        expect(listed).toEqual([latestClear, plain].sort());
+        expect(listed).not.toContain(latestFlagged);
+        expect(listed).not.toContain(decisionFlagged);
+        expect(listed).not.toContain(noPacket);
+      });
     });
 
     // ===============================================================================================================
@@ -1259,6 +1389,8 @@ describe.skipIf(!DB_URL)(
         expect(text).toBe(`IDG Decision Follow-Up\n${SENTENCE}`);
         expect(section.content_hash).toBe(sha256(text));
         expect(section.part2_derived).toBe(false);
+        // and the rows joined by a blank line are the pinned final text, byte for byte
+        await expectSealedEqualFinal(v);
         expect(section.source_refs).toEqual([{ kind: "idg_action_item", id: a }]);
 
         const view = await get(encounterUrl(v), v.headers);
@@ -1365,6 +1497,7 @@ describe.skipIf(!DB_URL)(
         const section = one((await noteRowsOf(v)).filter((r) => r.section_id === "idg_followup"));
         expect(await open(v.org, section.text_cipher)).toBe(`IDG Decision Follow-Up\n${SENTENCE}`);
         expect(section.source_refs).toEqual([{ kind: "idg_action_item", id: a }]);
+        await expectSealedEqualFinal(v);
       });
 
       it("B: finalize refuses a confirmed section whose item was reassigned, naming idg_followup and nothing of the item; the author clears the link and finalizes", async () => {
@@ -1562,6 +1695,37 @@ describe.skipIf(!DB_URL)(
         expect(JSON.stringify(updates)).not.toContain(a);
       });
 
+      it("L2: the verdict flips between M14's candidate read and the row's insert: the link is filed as plain, then raised to Part 2 in the SAME request (never every link)", async () => {
+        const v = await seedVisit();
+        const a = await seedItem(v);
+        part2Memberships.add(v.author.membershipId); // a cleared author: M14 hands the item flagged once the patient is flagged
+        afterOpenRead = async () => {
+          afterOpenRead = null;
+          await admin.query(
+            `UPDATE idg_patient_packet SET built_snapshot = jsonb_set(built_snapshot, '{patientCover,activeSudFlag}', 'true'::jsonb) WHERE patient_id = $1`,
+            [v.patientId],
+          );
+        };
+        expect((await linkItem(v, a)).statusCode).toBe(200);
+        expect(await linksOf(v)).toEqual([
+          expect.objectContaining({ action_item_id: a, part2_derived: true, removed: false }),
+        ]);
+        // the raise's own audit image is Part 2 and carries no id (the insert's image, written before M14 was asked again, is the narrow window that remains)
+        const raise = await rows<{ retention_class: string }>(
+          `SELECT retention_class::text FROM audit_event
+            WHERE organization_id = $1 AND event_type = 'encounter_idg_action_item_link.update' AND after->>'encounter_id' = $2`,
+          [v.org.orgId, v.encounterId],
+        );
+        expect(raise.length).toBeGreaterThan(0);
+        expect(raise.every((e) => e.retention_class === "compliance_42cfr_part2")).toBe(true);
+
+        // a link whose verdict does not change stays plain
+        const w = await seedVisit();
+        const b = await seedItem(w);
+        expect((await linkItem(w, b)).statusCode).toBe(200);
+        expect(await linksOf(w)).toEqual([expect.objectContaining({ part2_derived: false })]);
+      });
+
       it("a Part 2 item: confirm, finalize and sign (a cleared author); the signed note is the sentence for a reader with disclosure and withheld from one without", async () => {
         const v = await seedVisit();
         const flagged = await seedItem(v, { packetFlag: true });
@@ -1571,6 +1735,7 @@ describe.skipIf(!DB_URL)(
         const sealed = one((await noteRowsOf(v)).filter((r) => r.section_id === "idg_followup"));
         expect(sealed.part2_derived).toBe(true);
         expect(await open(v.org, sealed.text_cipher)).toContain(SENTENCE);
+        await expectSealedEqualFinal(v);
 
         const view = async () => {
           const res = await get(encounterUrl(v), v.headers);
