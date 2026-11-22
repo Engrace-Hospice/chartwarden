@@ -508,6 +508,108 @@ describe("a refused change that leaves nothing to show", () => {
   });
 });
 
+const GROUP = "Social work plan for this visit";
+const goneAnswer = (): { status: number; body: unknown } => ({
+  status: 404,
+  body: { error: { code: "NOT_FOUND", message: "x" } },
+});
+
+describe("the focus and the words when an answer replaces what the person was on", () => {
+  it("a refused change whose re-read fails too keeps the focus on the panel and still says the change was not saved", async () => {
+    let readsSoFar = 0;
+    let healthy = false;
+    const { user } = mount({
+      [`GET ${BASE}`]: () => {
+        readsSoFar += 1;
+        return readsSoFar === 1 || healthy
+          ? { body: view() }
+          : { status: 500, body: { error: {} } };
+      },
+      [`PUT ${BASE}/${GOAL_1}`]: goneAnswer,
+    });
+    await user.click(await screen.findByRole("checkbox", { name: /Name two ways to cope/ }));
+    expect(await screen.findByText(/could not be loaded/)).toBeInTheDocument();
+    // the refusal is on the page beside the failure, not hidden until a later read brings it back
+    expect(screen.getByText(/no longer in this visit's plan/)).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: GROUP })).toHaveFocus();
+    // a retry that fails again still says the change was not saved
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText(/Still could not load the plan items/)).toBeVisible();
+    expect(screen.getByText(/no longer in this visit's plan/)).toBeVisible();
+    healthy = true;
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await screen.findByRole("checkbox", { name: /Name two ways to cope/ });
+    expect(screen.queryByText(/no longer in this visit's plan/)).toBeNull();
+  });
+
+  it("a withdrawn item moves the focus to the panel while other items remain", async () => {
+    const { user } = mount({
+      [`PUT ${BASE}/${GOAL_1}`]: () => {
+        elements = elements.filter((e) => e.elementId !== GOAL_1);
+        return goneAnswer();
+      },
+    });
+    await user.click(await screen.findByRole("checkbox", { name: /Name two ways to cope/ }));
+    await waitFor(() =>
+      expect(screen.queryByRole("checkbox", { name: /Name two ways to cope/ })).toBeNull(),
+    );
+    expect(screen.getByRole("checkbox", { name: /Write a letter/ })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: GROUP })).toHaveFocus();
+  });
+
+  it("a refused change whose box is still there leaves the focus on that box", async () => {
+    const { user } = mount({
+      [`PUT ${BASE}/${GOAL_1}`]: () => ({ status: 500, body: { error: {} } }),
+    });
+    const goal = await screen.findByRole("checkbox", { name: /Name two ways to cope/ });
+    await user.click(goal);
+    await waitFor(() => expect(reads()).toHaveLength(2));
+    await settled();
+    expect(box(/Name two ways to cope/)).toHaveFocus();
+  });
+
+  it("a change that empties the plan says nothing is left, with the focus on the panel", async () => {
+    const { user } = mount({
+      [`PUT ${BASE}/${GOAL_1}`]: () => {
+        elements = [];
+        return { body: view() };
+      },
+    });
+    await user.click(await screen.findByRole("checkbox", { name: /Name two ways to cope/ }));
+    expect(await screen.findByText(/no plan items to show for this visit/i)).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: GROUP })).toHaveFocus();
+    expect(screen.getByRole("group", { name: GROUP })).toHaveAccessibleDescription(
+      /no plan items to show/i,
+    );
+  });
+
+  it("counts the attempts, so a retry that fails again changes the words every time", async () => {
+    const { user } = mount({ [`GET ${BASE}`]: () => ({ status: 500, body: { error: {} } }) });
+    await screen.findByText(/could not be loaded/);
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(
+      await screen.findByText(/Still could not load the plan items \(attempt 2\)/),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(
+      await screen.findByText(/Still could not load the plan items \(attempt 3\)/),
+    ).toBeVisible();
+  });
+
+  it("a read nobody asked for that ends the failure takes the focus from the retry button that is gone", async () => {
+    let healthy = false;
+    const { bump } = mount({
+      [`GET ${BASE}`]: () => (healthy ? { body: view() } : { status: 500, body: { error: {} } }),
+    });
+    const retry = await screen.findByRole("button", { name: "Try again" });
+    retry.focus();
+    healthy = true;
+    bump(1);
+    await screen.findByRole("checkbox", { name: /Name two ways to cope/ });
+    expect(screen.getByRole("group", { name: GROUP })).toHaveFocus();
+  });
+});
+
 describe("the layout under a saving box", () => {
   it("puts the reason for a waiting box after the lists, so no row moves under the pointer while it saves", async () => {
     const hold = gate();

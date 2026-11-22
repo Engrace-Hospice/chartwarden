@@ -46,7 +46,7 @@ function mount(
     ...over,
   };
   const client = createApiClient({ baseUrl: "http://localhost", fetch: makeFetch(routes, calls) });
-  return render(
+  const tree = (ready: boolean) => (
     <ApiClientProvider client={client}>
       <ComposerDraftRail
         encounter={{
@@ -59,12 +59,14 @@ function mount(
         }}
         editable
         drafted={draft}
-        draftReady={draftReady}
+        draftReady={ready}
         carePlanRevision={0}
         onLinksChanged={() => undefined}
       />
-    </ApiClientProvider>,
+    </ApiClientProvider>
   );
+  const rendered = render(tree(draftReady));
+  return { ...rendered, setDraftReady: (ready: boolean) => rendered.rerender(tree(ready)) };
 }
 
 describe("the composer rail", () => {
@@ -119,6 +121,13 @@ describe("the composer rail", () => {
       expect(calls).toEqual([]);
     },
   );
+
+  it("keeps a plan visit's picker mounted when a later read of the draft fails, so it does not vanish under the box that was pressed", async () => {
+    const { setDraftReady } = mount("msw", "msw_followup", {}, null);
+    expect(await screen.findByRole("checkbox", { name: /Name two ways to cope/ })).toBeVisible();
+    setDraftReady(false);
+    expect(screen.getByRole("checkbox", { name: /Name two ways to cope/ })).toBeVisible();
+  });
 
   it("shows a rail with no draft only to a social-work or chaplain visit", async () => {
     const { container } = mount("rn", "routine_visit", {}, null);

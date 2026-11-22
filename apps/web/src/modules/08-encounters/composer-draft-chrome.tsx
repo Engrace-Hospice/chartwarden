@@ -1,6 +1,7 @@
 // apps/web/src/modules/08-encounters — the composer's drafted-section chrome: the strip above the workspace (the draft could not be read, or
 // how many drafted sections are resolved) and the right rail (scores and care-plan links) (ADR-0114 VN-D7, VN-D15, S1 PR D).
 // Moved out of encounter-compose.tsx unchanged.
+import { useState } from "react";
 import type { JSX } from "react";
 import { ComposerCarePlanPicker } from "./composer-care-plan-picker";
 import { ComposerDisciplinePlanPicker } from "./composer-discipline-plan-picker";
@@ -79,7 +80,10 @@ export function ComposerDraftRail({
   onLinksChanged,
 }: ComposerDraftRailProps): JSX.Element | null {
   const planVisit = isDisciplinePlanVisit(encounter.discipline);
-  const planList = planVisit && draftReady;
+  // Once the draft was read, a later re-read that fails (after a change in the list) must not unmount the list under the box that was pressed.
+  const [readFor, setReadFor] = useState<string | null>(null);
+  if (draftReady && readFor !== encounter.id) setReadFor(encounter.id);
+  const planList = planVisit && (draftReady || readFor === encounter.id);
   if (drafted === null && !planList) return null;
   return (
     <div className="wx-draft-rail">

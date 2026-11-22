@@ -67,6 +67,8 @@ const REFUSAL_COPY: Readonly<Record<string, string>> = {
   ILLEGAL_TRANSITION:
     "This addendum is already signed or voided, so its sections can no longer be changed.",
   FORBIDDEN: "You do not have access to do that on this note.",
+  DISCIPLINE_PLAN_LINK_LIMIT:
+    "This visit has recorded as many changes to its plan items as it can hold, so nothing was changed. Tell your administrator if you need to change more.",
 };
 
 /** A refusal that means "the section you saw is not the section there is now": the caller re-reads the draft. */

@@ -55,7 +55,7 @@ const CARE_PLAN_DESELECT_HINT =
 const DISCIPLINE_PLAN_DESELECT_HINT =
   "Deselecting leaves this section's plan items out of this visit; you can keep them again in the plan list. The plan itself is never changed.";
 const PLAN_ITEMS_LEFT_OUT_EMPTY =
-  "Nothing is drafted for this section. If you left out its plan items, keep them again in the plan list. Otherwise document it below.";
+  "Nothing is drafted for this section. If its plan items are left out, keep them again in the plan list. If the plan has none, document it below.";
 
 export function DraftSectionPanel({
   section,

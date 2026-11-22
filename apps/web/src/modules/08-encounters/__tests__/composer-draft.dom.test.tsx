@@ -1687,6 +1687,8 @@ describe("a social-work or chaplain visit's plan list (S4b)", () => {
     await ready();
     await openSection(user, /^Plan and Next Visit/);
     expect(await screen.findByText(/keep them again in the plan list/)).toBeVisible();
+    // an empty plan has no list to keep anything in: the words cover that case too
+    expect(screen.getByText(/If the plan has none, document it below/)).toBeVisible();
     expect(screen.queryByText(/nothing in the record to draft this section from/i)).toBeNull();
   });
 

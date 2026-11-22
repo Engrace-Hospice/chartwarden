@@ -1,6 +1,6 @@
 // apps/web/src/modules/08-encounters — what the visit-note composer derives from the draft of the note it is open on (ADR-0114): which
 // draft the panel, rail and care-plan picker are built from, which drafted section the open section's panel shows, why that panel may
-// not act right now, and the care-plan picker's re-read trigger. The draft itself (loading, resolving, ordering) is `useNoteDraft`.
+// not act right now, and the re-read trigger of the care-plan and plan pickers. The draft itself (loading, resolving, ordering) is `useNoteDraft`.
 import { useCallback, useState } from "react";
 import type { DraftSectionView, DraftView, Resolution } from "./draft-api";
 import { draftIsActive, touchesCarePlan, touchesDisciplinePlan } from "./draft-model";
@@ -35,7 +35,7 @@ export interface ComposerDraft {
   readonly panelSection: DraftSectionView | undefined;
   /** Why the open section's panel cannot confirm or deselect now, else null. */
   readonly blockedReason: string | null;
-  /** Bumped when a resolve changed the visit's care-plan links, so the picker re-reads them. */
+  /** Bumped when a resolve changed the visit's care-plan links or the items its plan list keeps, so the pickers re-read them. */
   readonly carePlanRevision: number;
   /** The server's last refusal about drafted sections, in words (a finalize 422), else null. */
   readonly refusal: string | null;
