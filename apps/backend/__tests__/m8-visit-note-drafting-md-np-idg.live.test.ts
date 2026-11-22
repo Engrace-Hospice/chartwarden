@@ -50,7 +50,7 @@ import type {
 } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { STEP_UP_FLOOR_KEY, buildServer, stepUpFreshFor } from "../src/bootstrap/index";
 import { registerSeam } from "../src/bootstrap/seams/registry";
 import { createCareTeamProvider } from "../src/modules/05-patient/seams/care-team-provider";
@@ -1006,6 +1006,11 @@ describe.skipIf(!DB_URL)(
       await app.ready();
     }, 600_000);
 
+    // The Part 2 cases grant and clear disclosure by hand; a case that fails mid-way must not leave a grant for the next one.
+    afterEach(() => {
+      part2Memberships.clear();
+    });
+
     afterAll(async () => {
       await app?.close();
       resetAuthorizationContract();
@@ -1225,6 +1230,27 @@ describe.skipIf(!DB_URL)(
           "med_reconciliation",
         ]);
 
+        // The audit trail of confirming the Part 2 section: filed under the Part 2 retention class, no source ids, no drug (the audit read path
+        // is not Part 2 gated); the plain section beside it keeps the 7-year class and its ids.
+        const resolved = await rows<{
+          section: string;
+          retention: string;
+          after: Record<string, unknown>;
+        }>(
+          `SELECT after->>'sectionId' AS section, retention_class::text AS retention, after FROM audit_event
+           WHERE organization_id = $1 AND event_type = 'm8.encounter.draft_section_resolved' AND resource_id::text = $2`,
+          [ORG_A, v.encounterId],
+        );
+        const part2Event = resolved.find((r) => r.section === "med_reconciliation");
+        expect(part2Event?.retention).toBe("compliance_42cfr_part2");
+        expect(part2Event?.after).toMatchObject({ part2Derived: true });
+        expect(part2Event?.after).not.toHaveProperty("sourceRefs");
+        expect(JSON.stringify(part2Event)).not.toContain(BUPRENORPHINE_ID);
+        expect(JSON.stringify(part2Event)).not.toContain("Buprenorphine");
+        const plainEvent = resolved.find((r) => r.section === "vitals_review");
+        expect(plainEvent?.retention).toBe("compliance");
+        expect(plainEvent?.after).toMatchObject({ part2Derived: false });
+
         part2Memberships.clear();
         const res = await noteView(v, as(v.org, v.org.reader));
         const view = viewSections(res);
@@ -1378,6 +1404,7 @@ describe.skipIf(!DB_URL)(
           expect(draftedIds(body)).toEqual(["vitals_review"]);
           expect(sectionOf(body, "idg_followup").state).toBe("not_drafted");
           expect(v.scenario.reads.carePlan).toBe(0);
+          expect(v.scenario.reads.scale).toBe(0);
           expect(v.scenario.reads.orders).toBe(0);
           expect(v.scenario.reads.changes).toBe(0);
           expect(v.scenario.reads.plan).toBe(0);

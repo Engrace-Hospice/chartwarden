@@ -3,6 +3,7 @@
 // proves the Drizzle unit.
 import { encounterType } from "@chartwarden/db/schema";
 import {
+  readsActiveOrders,
   readsAdmissionRecord,
   readsBenefitPeriod,
   templateHasDraftedSection,
@@ -449,9 +450,18 @@ describe("the admission's read keys a recertification or face-to-face draft need
 
   it("names at least one key for every visit type whose draft reads the admission's benefit period (the two lists cannot drift apart)", () => {
     const types = encounterType.enumValues as readonly EncounterType[];
-    const readers = types.filter((type) => readsBenefitPeriod(type) || readsAdmissionRecord(type));
+    const readers = types.filter(
+      (type) => readsBenefitPeriod(type) || readsAdmissionRecord(type) || readsActiveOrders(type),
+    );
     expect(readers.length).toBeGreaterThan(0);
     for (const type of readers) expect(admissionReadsFor(type), type).not.toEqual([]);
+  });
+
+  it("names `prescribing.read` for every visit type whose draft reads the orders in effect (a type added to that list cannot draft orders without the key)", () => {
+    const types = encounterType.enumValues as readonly EncounterType[];
+    const readers = types.filter((type) => readsActiveOrders(type));
+    expect(readers).toEqual(["admission_visit", "face_to_face"]);
+    for (const type of readers) expect(admissionReadsFor(type), type).toContain("prescribing.read");
   });
 
   it.each(RECERT_KEYS)(

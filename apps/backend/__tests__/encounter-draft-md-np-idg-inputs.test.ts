@@ -1,7 +1,7 @@
 // S5 — `readDraftInputs` for the face-to-face visit by a physician or nurse practitioner and for the IDG follow-up of every discipline (design §3.7,
 // VN-D11, VN-D52 to VN-D54): the recorded vitals, the orders in effect, and for the social worker and the chaplain the discipline's own plan. A visit
 // reads only the sources its drafted sections are built from. Synthetic ids and values only.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readDraftInputs } from "../src/modules/08-encounters/drafting/inputs";
 import { AS_OF, encounter, fakePorts, order, viewer } from "./_encounter-draft-fixtures";
 
@@ -107,36 +107,57 @@ describe("what the face-to-face visit reads (S5, VN-D52)", () => {
     expect(disclosed.activeMedications?.map((m) => m.id).sort()).toEqual(["order-1", "order-sud"]);
   });
 
-  it("fails closed when the Part 2 verdict cannot be had: a SUD order is not drafted", async () => {
+  it("fails closed when the Part 2 verdict cannot be had: a SUD order is not drafted, and the answer names the read, not the cause", async () => {
     const orders = [activeOrder({ id: "order-sud", isSudTreatment: true })];
-    await expect(
-      readDraftInputs(
-        f2fPorts({
-          activeMedicationsAsOf: async () => orders,
-          part2DisclosureAllowed: async () => {
-            throw new Error("synthetic outage");
-          },
-        }),
-        F2F_NP,
-        viewer({ roles: ["np"] }),
-        AS_OF,
-      ),
-    ).rejects.toThrow();
+    const error = await readDraftInputs(
+      f2fPorts({
+        activeMedicationsAsOf: async () => orders,
+        part2DisclosureAllowed: async () => {
+          throw new Error("synthetic outage");
+        },
+      }),
+      F2F_NP,
+      viewer({ roles: ["np"] }),
+      AS_OF,
+    ).catch((e: unknown) => e);
+    expect(error).toMatchObject({ code: "DRAFT_UNAVAILABLE" });
+    expect((error as Error).message).not.toContain("synthetic outage");
   });
 
-  it("a source that cannot be read stops the draft instead of drafting short", async () => {
-    for (const port of ["activeMedicationsAsOf", "latestVitals"] as const) {
+  it("does not ask the Part 2 verdict when no order could be Part 2, so an outage of it does not stop that draft", async () => {
+    const part2DisclosureAllowed = vi.fn(async () => {
+      throw new Error("synthetic outage");
+    });
+    const inputs = await readDraftInputs(
+      f2fPorts({ part2DisclosureAllowed }),
+      F2F_NP,
+      viewer({ roles: ["np"] }),
+      AS_OF,
+    );
+    expect(part2DisclosureAllowed).not.toHaveBeenCalled();
+    expect(inputs.activeMedications?.map((m) => m.id)).toEqual(["order-1"]);
+  });
+
+  it.each([
+    "activeMedicationsAsOf",
+    "latestVitals",
+    "scaleSeries",
+    "organizationTimeZone",
+  ] as const)(
+    "a source that cannot be read (%s) stops the draft as DRAFT_UNAVAILABLE instead of drafting short, without the cause in the answer",
+    async (port) => {
       const ports = f2fPorts({
         [port]: async () => {
           throw new Error("synthetic outage");
         },
       });
-      await expect(
-        readDraftInputs(ports, F2F_NP, viewer({ roles: ["np"] }), AS_OF),
-        port,
-      ).rejects.toThrow();
-    }
-  });
+      const error = await readDraftInputs(ports, F2F_NP, viewer({ roles: ["np"] }), AS_OF).catch(
+        (e: unknown) => e,
+      );
+      expect(error).toMatchObject({ code: "DRAFT_UNAVAILABLE" });
+      expect((error as Error).message).not.toContain("synthetic outage");
+    },
+  );
 });
 
 describe("what the IDG follow-up reads (S5, VN-D52)", () => {
@@ -150,13 +171,16 @@ describe("what the IDG follow-up reads (S5, VN-D52)", () => {
         viewer({ roles: [discipline] }),
         AS_OF,
       );
-      expect(ports.latestVitals).toHaveBeenCalled();
+      const encounterRow = idg(discipline);
+      expect(ports.latestVitals).toHaveBeenCalledWith(encounterRow.id, AS_OF);
       expect(ports.carePlanAsOf).not.toHaveBeenCalled();
       expect(ports.medicationChangesBetween).not.toHaveBeenCalled();
       expect(ports.scaleSeries).not.toHaveBeenCalled();
       expect(ports.disciplinePlanAsOf).not.toHaveBeenCalled();
       expect(ports.activeMedicationsAsOf).not.toHaveBeenCalled();
       expect(ports.electionPeriods).not.toHaveBeenCalled();
+      expect(ports.weightReadings).not.toHaveBeenCalled();
+      expect(ports.previousSignedVisitAt).not.toHaveBeenCalled();
       expect(inputs).not.toHaveProperty("activeMedications");
     },
   );
@@ -227,6 +251,11 @@ describe("what the IDG follow-up reads (S5, VN-D52)", () => {
         "scaleSeries",
         "medicationChangesBetween",
         "disciplinePlanAsOf",
+        "weightReadings",
+        "previousSignedVisitAt",
+        "electionPeriods",
+        "caregiversOn",
+        "advanceDirectiveAcknowledgment",
       ] as const) {
         expect(ports[port], `${discipline} ${port}`).not.toHaveBeenCalled();
       }

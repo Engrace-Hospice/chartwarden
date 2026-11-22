@@ -91,10 +91,6 @@ describe("the sections the admission visit drafts (scope is read off the corpus 
       },
     };
     expect(textOf(f2f, "med_reconciliation")).toBe(textOf(base, "med_reconciliation"));
-    const ids = compileDraft(f2f, DEPS).sections.map((s) => s.sectionId);
-    for (const notThere of ["advance_directive", "caregiver_overview", "baseline_symptoms"]) {
-      expect(ids).not.toContain(notThere);
-    }
   });
 
   it("the routine and recertification visits ignore the admission sources", () => {

@@ -62,6 +62,20 @@ describe("sourceDomainReadsFor (the keys follow the sources a template reads)", 
     },
   );
 
+  it.each([
+    ["rn", ["care_plan.read", "prescribing.read", "assessment.read_trend"]],
+    ["lpn", ["care_plan.read", "prescribing.read"]],
+    ["msw", ["discipline_plan.read"]],
+    ["chaplain", ["discipline_plan.read"]],
+    ["md", []],
+    ["np", []],
+  ] as const)(
+    "the IDG follow-up by %s asks the keys of the sources its own visit reads (S5, stated, not derived)",
+    (discipline, keys) => {
+      expect(sourceDomainReadsFor("idg_followup", discipline)).toEqual(keys);
+    },
+  );
+
   it("a template that drafts nothing needs none", () => {
     expect(sourceDomainReadsFor("telephonic", "msw")).toEqual([]);
     expect(sourceDomainReadsFor("telephonic", "rn")).toEqual([]);

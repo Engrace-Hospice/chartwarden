@@ -508,12 +508,15 @@ describe("snapshotStorePorts: the store reads of a source the template does not 
     );
   });
 
-  it("takes the previous visit and no care-plan links for a face-to-face visit, which reads scores alone", async () => {
+  it("takes the previous visit and the recorded vitals and no care-plan links for a face-to-face visit, which reads scores and vitals", async () => {
     const f2f = encounter({ encounterType: "face_to_face", discipline: "md" });
-    const store = fakePorts();
+    const recorded = { id: "vitals-1", recordedAt: "2026-11-18T14:20:00.000Z", heartRate: 72 };
+    const store = fakePorts({ latestVitals: async () => recorded as never });
     const ports = await snapshotStorePorts(store, f2f, NOW);
     expect(store.previousSignedVisitAt).toHaveBeenCalledTimes(1);
+    expect(store.latestVitals).toHaveBeenCalledTimes(1);
     expect(store.removedCarePlanElementIds).not.toHaveBeenCalled();
+    await expect(ports.latestVitals(f2f.id, AS_OF)).resolves.toEqual(recorded);
     await expect(ports.previousSignedVisitAt(f2f)).resolves.toBeNull();
     await expect(ports.removedCarePlanElementIds(f2f.id)).rejects.toThrow(
       "a removed care-plan links read the snapshot did not take",

@@ -11,9 +11,10 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { computeDraftOverview } from "../src/modules/08-encounters/drafting/compute";
 import { createDraftService } from "../src/modules/08-encounters/drafting/draft-service";
+import { readDraftInputs } from "../src/modules/08-encounters/drafting/inputs";
 import { assertResolved, readNoteDraft } from "../src/modules/08-encounters/drafting/note-draft";
 import { createNoteDraftFlow } from "../src/modules/08-encounters/drafting/note-draft-flow";
-import { NOW, fakePorts, reader, viewer } from "./_encounter-draft-fixtures";
+import { AS_OF, NOW, encounter, fakePorts, reader, viewer } from "./_encounter-draft-fixtures";
 import { draftEncounterRow, memoryRunInOrg } from "./_encounter-draft-memory-store";
 
 type Pair = readonly [EncounterType, EncounterDiscipline];
@@ -236,5 +237,27 @@ describe("the draft routes for a template the corpus does not draft", () => {
       NOW,
     ).catch((e: unknown) => e);
     expect(error).toMatchObject({ code: "INVALID_ENCOUNTER_DISCIPLINE_PAIR" });
+  });
+});
+
+/** The visits whose draft states the orders in effect: the RN admission visit and the face-to-face visit by a physician or nurse practitioner. */
+const ORDER_PAIRS: ReadonlySet<string> = new Set([
+  "admission_visit:rn",
+  "face_to_face:md",
+  "face_to_face:np",
+]);
+
+describe("the orders in effect are read by exactly the templates that state them", () => {
+  it.each([...DRAFTED_PAIRS])("%s", async (key) => {
+    const [type, discipline] = key.split(":") as [EncounterType, EncounterDiscipline];
+    const ports = fakePorts();
+    await readDraftInputs(
+      ports,
+      encounter({ encounterType: type, discipline }),
+      viewer({ roles: [discipline] }),
+      AS_OF,
+    );
+    if (ORDER_PAIRS.has(key)) expect(ports.activeMedicationsAsOf).toHaveBeenCalledTimes(1);
+    else expect(ports.activeMedicationsAsOf).not.toHaveBeenCalled();
   });
 });

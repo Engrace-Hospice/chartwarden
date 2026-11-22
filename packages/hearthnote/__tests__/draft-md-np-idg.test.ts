@@ -1,3 +1,4 @@
+import { ENCOUNTER_DISCIPLINE_RULES } from "@chartwarden/types";
 // packages/hearthnote/__tests__/draft-md-np-idg.test.ts — S5: the physician's and nurse practitioner's face-to-face visit and the IDG follow-up
 // of every discipline (design §3.7, VN-D52 to VN-D56). Synthetic names and ids only: no SSN, MBI, or value copied from a real record.
 //
@@ -11,6 +12,7 @@ import {
   compileDraft,
   draftSourceNeeds,
   draftedSectionIds,
+  readsActiveOrders,
 } from "../src/index";
 import {
   DEPS,
@@ -117,7 +119,8 @@ describe("the face-to-face visit by a physician or nurse practitioner (VN-D52, V
     expect(sectionOf(none, "med_reconciliation").state).toBe("empty");
   });
 
-  it("reads the vitals, the scales (the decline evidence) and the orders, and not the care plan, the medication changes or a discipline plan", () => {
+  it("needs the vitals and the scales (the decline evidence) from the source reads, and not the care plan, the medication changes or a discipline plan; the orders are the admission record's, asked by `readsActiveOrders`", () => {
+    expect(readsActiveOrders("face_to_face")).toBe(true);
     expect(draftSourceNeeds("face_to_face", "md")).toEqual({
       carePlan: false,
       vitals: true,
@@ -145,6 +148,33 @@ describe("the face-to-face visit by a physician or nurse practitioner (VN-D52, V
     expect(part2(sud, "vitals_review")).toBe(false);
   });
 
+  it("treats an order with no Part 2 flag as Part 2 derived (fail closed), for the face-to-face visit as for the admission visit", () => {
+    for (const [type, discipline] of [
+      ["face_to_face", "md"],
+      ["face_to_face", "np"],
+      ["admission_visit", "rn"],
+    ] as const) {
+      const clean = inputsFor(type, discipline);
+      const unflagged: DraftInputs = {
+        ...clean,
+        activeMedications: (clean.activeMedications ?? []).map((m) => {
+          const { sudRelated: _flag, ...rest } = m;
+          return rest as never;
+        }),
+      };
+      const s = sectionOf(unflagged, "med_reconciliation");
+      if (s.state !== "drafted") throw new Error(`${type}:${discipline} is not drafted`);
+      expect(s.part2Derived, `${type}:${discipline}`).toBe(true);
+    }
+  });
+
+  it("only the admission visit and the face-to-face visit read the orders in effect", () => {
+    const readers = (Object.keys(ENCOUNTER_DISCIPLINE_RULES) as Type[]).filter((type) =>
+      readsActiveOrders(type),
+    );
+    expect(readers.sort()).toEqual(["admission_visit", "face_to_face"]);
+  });
+
   it("is deterministic and does not touch its inputs", () => {
     const inputs = deepFreeze(inputsFor("face_to_face", "md"));
     expect(compileDraft(inputs, DEPS)).toEqual(compileDraft(inputs, DEPS));
@@ -170,6 +200,7 @@ describe("the IDG follow-up drafts as the discipline's own visit does (VN-D52)",
   it("an RN drafts the five sections the routine visit does, with the routine visit's words", () => {
     const idg = inputsFor("idg_followup", "rn");
     const routine = inputsFor("routine_visit", "rn");
+    expect(draftedIds(routine)).toHaveLength(5);
     expect(draftedIds(idg)).toEqual(draftedIds(routine));
     for (const id of draftedIds(routine)) expect(textOf(idg, id), id).toBe(textOf(routine, id));
   });
