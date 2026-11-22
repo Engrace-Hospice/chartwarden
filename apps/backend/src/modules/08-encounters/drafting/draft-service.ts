@@ -16,6 +16,7 @@ import {
   snapshotStorePorts,
 } from "./compute";
 import { defaultDraftPorts } from "./default-ports";
+import { readDisciplinePlanElements } from "./discipline-plan-inputs";
 import {
   type DisciplinePlanElementsView,
   assertDraftsFromDisciplinePlan,
@@ -37,7 +38,6 @@ import {
   mayActOnIdgItems,
   readIdgFollowUpCandidates,
 } from "./idg-follow-up";
-import { readDisciplinePlanElements } from "./inputs";
 import type { DraftPorts, DraftSeamPorts, DraftViewer } from "./ports";
 import { resolveSection } from "./resolve-section";
 import { serialSeams } from "./serial-seams";
