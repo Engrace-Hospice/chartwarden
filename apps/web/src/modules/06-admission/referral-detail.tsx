@@ -4,6 +4,7 @@ import {
   CodeSearchInput,
   DetailPageLayout,
   EmptyState,
+  InlineAlert,
   LoadingSpinner,
   PageHeader,
   StatusPill,
@@ -12,7 +13,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 import type { CSSProperties, JSX } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ReferralDocumentsPanel } from "../../shell/document-workflows";
 import { PatientLookupField } from "../../shell/entity-lookups";
@@ -25,6 +26,7 @@ import {
   REFERRAL_TONE,
   stateLabel,
 } from "./admission-status";
+import type { IntakeStageAction, RegisterIntakeStageAction } from "./intake-workspace-actions";
 import type { IntakeStepId } from "./intake-workspace-stage";
 import { PatientIntakeDetails } from "./patient-intake-details";
 import { ReferralRecords } from "./referral-records";
@@ -51,6 +53,8 @@ export interface ReferralDetailProps {
   onActionComplete?: (action: string, referral: ReferralView) => void;
   /** Keep the guided footer aligned with validation inside the verification form. */
   onVerificationValidityChange?: (valid: boolean) => void;
+  /** Register the embedded stage's direct action with the persistent workspace footer. */
+  onStageActionChange?: RegisterIntakeStageAction;
 }
 
 export function ReferralDetail({
@@ -59,6 +63,7 @@ export function ReferralDetail({
   activeStage,
   onActionComplete,
   onVerificationValidityChange,
+  onStageActionChange,
 }: ReferralDetailProps = {}): JSX.Element {
   const client = useApiClient();
   const session = useSession();
@@ -148,33 +153,183 @@ export function ReferralDetail({
     onVerificationValidityChange?.(verificationValid);
   }, [onVerificationValidityChange, verificationValid]);
 
-  async function run(label: string, fn: () => Promise<void>): Promise<void> {
-    if (label === "convert" && conversionInFlight.current) return;
-    if (label === "convert") conversionInFlight.current = true;
-    setBusy(label);
-    setError(null);
-    setActionErrorStage(null);
-    try {
-      await fn();
-      const refreshed = await load();
-      if (refreshed) onActionComplete?.(label, refreshed);
-    } catch (err) {
-      if (errorCode(err) === "VERSION_MISMATCH") {
+  const run = useCallback(
+    async (label: string, fn: () => Promise<void>): Promise<void> => {
+      if (label === "convert" && conversionInFlight.current) return;
+      if (label === "convert") conversionInFlight.current = true;
+      setBusy(label);
+      setError(null);
+      setActionErrorStage(null);
+      try {
+        await fn();
         const refreshed = await load();
-        if (refreshed) {
-          setError(
-            "This referral changed while you were reviewing it. Review the updated information and try again.",
-          );
+        if (refreshed) onActionComplete?.(label, refreshed);
+      } catch (err) {
+        if (errorCode(err) === "VERSION_MISMATCH") {
+          const refreshed = await load();
+          if (refreshed) {
+            setError(
+              "This referral changed while you were reviewing it. Review the updated information and try again.",
+            );
+          }
+        } else {
+          setError(actionErrorMessage(label, err));
         }
-      } else {
-        setError(actionErrorMessage(label, err));
+        setActionErrorStage(activeStage ?? null);
+      } finally {
+        if (label === "convert") conversionInFlight.current = false;
+        setBusy(null);
       }
-      setActionErrorStage(activeStage ?? null);
-    } finally {
-      if (label === "convert") conversionInFlight.current = false;
-      setBusy(null);
+    },
+    [activeStage, load, onActionComplete],
+  );
+
+  const startReview = useCallback(() => {
+    if (!referral) return;
+    void run("start-review", async () => {
+      await referralCommand(client, referral.id, "review", { ifVersion: referral.version });
+    });
+  }, [client, referral, run]);
+
+  const returnToReview = useCallback(() => {
+    if (!referral) return;
+    void run("review", async () => {
+      await referralCommand(client, referral.id, "review", { ifVersion: referral.version });
+    });
+  }, [client, referral, run]);
+
+  const saveVerification = useCallback(() => {
+    if (!referral) return;
+    void run("save-info", async () => {
+      const { medicareNumberAtReceipt, medicaidNumberAtReceipt, ...otherEdits } = edit;
+      await patchReferral(client, referral.id, {
+        ...otherEdits,
+        ...(mbiChanged ? { medicareNumberAtReceipt } : {}),
+        ...(medicaidChanged ? { medicaidNumberAtReceipt } : {}),
+        patientDobAtReceipt: edit.patientDobAtReceipt || undefined,
+        ifVersion: referral.version,
+      });
+    });
+  }, [client, edit, mbiChanged, medicaidChanged, referral, run]);
+
+  const findPatientMatches = useCallback(() => {
+    if (!referral) return;
+    void run("matches", async () => {
+      const result = await referralCommand<{ candidates: ReferralCandidate[] }>(
+        client,
+        referral.id,
+        "patient-matches",
+        { ifVersion: referral.version },
+      );
+      setCandidates(result.candidates ?? []);
+      setSelectedPatientId("");
+      setSelectedPatientLabel("");
+    });
+  }, [client, referral, run]);
+
+  const qualifyReferral = useCallback(() => {
+    if (!referral) return;
+    void run("qualify", async () => {
+      await referralCommand(client, referral.id, "qualify", { ifVersion: referral.version });
+    });
+  }, [client, referral, run]);
+
+  const convertReferral = useCallback(() => {
+    if (!referral) return;
+    void run("convert", async () => {
+      const result = await referralCommand<{ admissionId: string }>(
+        client,
+        referral.id,
+        "convert",
+        {
+          primaryDiagnosisIcd10: primaryDiagnosisIcd10.trim(),
+          ifVersion: referral.version,
+        },
+      );
+      navigate(`/admissions/${result.admissionId}`);
+    });
+  }, [client, navigate, primaryDiagnosisIcd10, referral, run]);
+
+  const stageAction = useMemo<IntakeStageAction | null>(() => {
+    if (!embedded || !activeStage || !referral) return null;
+    if (activeStage === "receive" && canStartReview(referral)) {
+      return {
+        id: "start-review",
+        stageId: activeStage,
+        disabled: busy === "start-review",
+        run: startReview,
+      };
     }
-  }
+    if (activeStage === "verify") {
+      if (referral.status === "pending_information") {
+        return {
+          id: "return-to-review",
+          stageId: activeStage,
+          disabled: busy === "review",
+          run: returnToReview,
+        };
+      }
+      return {
+        id: "save-verification",
+        stageId: activeStage,
+        disabled:
+          !canEditReferralStatus(referral.status) || !verificationValid || busy === "save-info",
+        run: saveVerification,
+      };
+    }
+    if (activeStage === "match") {
+      return {
+        id: "find-patient-matches",
+        stageId: activeStage,
+        disabled:
+          busy === "matches" || !["under_review", "pending_information"].includes(referral.status),
+        run: findPatientMatches,
+      };
+    }
+    if (activeStage === "review") {
+      const hasBlockers = referral.qualificationBlockers.length > 0;
+      return {
+        id: hasBlockers ? "save-verification" : "qualify-referral",
+        stageId: activeStage,
+        disabled: hasBlockers
+          ? !canEditReferralStatus(referral.status) || !verificationValid || busy === "save-info"
+          : referral.status !== "under_review" || busy === "qualify",
+        run: hasBlockers ? saveVerification : qualifyReferral,
+      };
+    }
+    if (activeStage === "handoff") {
+      const resolved = ["matched", "created"].includes(referral.patientResolutionStatus);
+      return {
+        id: "convert-referral",
+        stageId: activeStage,
+        disabled:
+          referral.status !== "qualified" ||
+          !resolved ||
+          !primaryDiagnosisIcd10.trim() ||
+          busy === "convert",
+        run: convertReferral,
+      };
+    }
+    return null;
+  }, [
+    activeStage,
+    busy,
+    convertReferral,
+    embedded,
+    findPatientMatches,
+    primaryDiagnosisIcd10,
+    qualifyReferral,
+    referral,
+    returnToReview,
+    saveVerification,
+    startReview,
+    verificationValid,
+  ]);
+
+  useEffect(() => {
+    onStageActionChange?.(stageAction);
+    return () => onStageActionChange?.(null);
+  }, [onStageActionChange, stageAction]);
 
   if (loading) return <LoadingSpinner />;
   if (error && !referral) return <EmptyState title="Unavailable" description={error} />;
@@ -201,7 +356,8 @@ export function ReferralDetail({
   );
   const showAll = !embedded || !activeStage;
   const showOverview = showAll || activeStage === "receive";
-  const showRecords = embedded && activeStage === "receive";
+  const showRecords =
+    embedded && (activeStage === "receive" || activeStage === "verify" || activeStage === "review");
   const showPatientResolution = showAll || activeStage === "match";
   const showVerification = showAll || activeStage === "verify" || activeStage === "review";
   const showPatientInformation = showAll || activeStage === "review";
@@ -311,15 +467,8 @@ export function ReferralDetail({
                       <Button
                         size="sm"
                         tone="secondary"
-                        data-intake-primary-action="review"
                         disabled={busy === "start-review"}
-                        onClick={() =>
-                          void run("start-review", async () => {
-                            await referralCommand(client, r.id, "review", {
-                              ifVersion: r.version,
-                            });
-                          })
-                        }
+                        onClick={startReview}
                       >
                         {r.status === "received" ? "Start review" : "Return to review"}
                       </Button>
@@ -328,15 +477,8 @@ export function ReferralDetail({
                       <Button
                         size="sm"
                         tone="primary"
-                        data-intake-primary-action="qualify"
                         disabled={busy === "qualify"}
-                        onClick={() =>
-                          void run("qualify", async () => {
-                            await referralCommand(client, r.id, "qualify", {
-                              ifVersion: r.version,
-                            });
-                          })
-                        }
+                        onClick={qualifyReferral}
                       >
                         Ready to process
                       </Button>
@@ -422,7 +564,10 @@ export function ReferralDetail({
               <ReferralRecords
                 referralId={r.id}
                 patientId={r.patientId}
-                reviewReturnTo={intakeWorkspaceReturnTo(r.id, "receive")}
+                reviewReturnTo={intakeWorkspaceReturnTo(
+                  r.id,
+                  activeStage === "receive" || activeStage === "review" ? activeStage : "verify",
+                )}
                 embedded
               />
             ) : null}
@@ -452,28 +597,20 @@ export function ReferralDetail({
                   </div>
                 ) : (
                   <div style={stack}>
+                    <InlineAlert tone="warning" live={false}>
+                      Patient matching requires explicit confirmation. Selecting a result does not
+                      merge patient records or change the referral until you confirm it.
+                    </InlineAlert>
                     <p style={muted}>No canonical patient has been linked to this referral yet.</p>
                     <div style={actions}>
                       <Button
                         size="sm"
                         tone="secondary"
-                        data-intake-primary-action="match"
                         disabled={
                           busy === "matches" ||
                           !["under_review", "pending_information"].includes(r.status)
                         }
-                        onClick={() =>
-                          void run("matches", async () => {
-                            const result = await referralCommand<{
-                              candidates: ReferralCandidate[];
-                            }>(client, r.id, "patient-matches", {
-                              ifVersion: r.version,
-                            });
-                            setCandidates(result.candidates ?? []);
-                            setSelectedPatientId("");
-                            setSelectedPatientLabel("");
-                          })
-                        }
+                        onClick={findPatientMatches}
                       >
                         Find patient matches
                       </Button>
@@ -504,28 +641,27 @@ export function ReferralDetail({
                     />
                     {candidates.length ? (
                       <div style={candidateList}>
+                        <h3 style={subheading}>Matching candidates</h3>
                         {candidates.map((c) => {
                           const patientId = c.patientId ?? c.id ?? "";
                           return (
                             <div key={candidateKey(c)} style={candidate}>
-                              <strong>{c.displayName ?? c.name ?? "Patient"}</strong>
+                              <strong>{candidateLabel(c)}</strong>
                               <span style={muted}>
                                 {c.dob ? `DOB ${formatDateOnly(c.dob)}` : "DOB not shown"}
                                 {c.mrn ? ` · MRN ending ${String(c.mrn).slice(-4)}` : ""}
                                 {c.phoneLast4 ? ` · Phone ending ${c.phoneLast4}` : ""}
                               </span>
-                              <span style={muted}>
-                                {c.confidence ?? c.score ?? "Potential match"}
-                              </span>
+                              <span style={muted}>{matchBasis(c)}</span>
                               <Button
                                 size="sm"
                                 tone={selectedPatientId === patientId ? "primary" : "secondary"}
                                 disabled={!patientId}
                                 aria-pressed={selectedPatientId === patientId}
-                                aria-label={`Select ${c.displayName ?? c.name ?? "patient"}`}
+                                aria-label={`Select ${candidateLabel(c)}`}
                                 onClick={() => {
                                   setSelectedPatientId(patientId);
-                                  setSelectedPatientLabel(c.displayName ?? c.name ?? "Patient");
+                                  setSelectedPatientLabel(candidateLabel(c));
                                 }}
                               >
                                 Select patient
@@ -538,28 +674,12 @@ export function ReferralDetail({
                     {selectedPatientId ? (
                       <section aria-label="Selected patient" style={selectedPatientBox}>
                         <h3 style={subheading}>Selected patient</h3>
-                        {selectedCandidate ? (
-                          <>
-                            <strong>
-                              {selectedCandidate.displayName ?? selectedCandidate.name ?? "Patient"}
-                            </strong>
-                            <span style={muted}>
-                              {selectedCandidate.dob
-                                ? `DOB ${formatDateOnly(selectedCandidate.dob)}`
-                                : "DOB not shown"}
-                              {selectedCandidate.mrn
-                                ? ` · MRN ending ${String(selectedCandidate.mrn).slice(-4)}`
-                                : ""}
-                              {selectedCandidate.phoneLast4
-                                ? ` · Phone ending ${selectedCandidate.phoneLast4}`
-                                : ""}
-                            </span>
-                          </>
-                        ) : (
-                          <strong>
-                            {selectedPatientLabel || "Patient selected from chart search"}
-                          </strong>
-                        )}
+                        <p style={muted}>Compare the referral facts before confirming the link.</p>
+                        <PatientComparison
+                          referral={r}
+                          candidate={selectedCandidate}
+                          selectedLabel={selectedPatientLabel}
+                        />
                         <p style={muted}>
                           Confirm this selection to link the canonical patient to the referral.
                         </p>
@@ -587,7 +707,7 @@ export function ReferralDetail({
 
             {showPatientInformation ? (
               <section id="patient-information" style={section}>
-                <h2 style={heading}>Patient Information</h2>
+                <h2 style={heading}>Coverage and patient details</h2>
 
                 {r.patientId ? (
                   <PatientIntakeDetails
@@ -614,7 +734,11 @@ export function ReferralDetail({
 
             {showVerification ? (
               <section id="referral-information" style={section}>
-                <h2 style={heading}>Referral Information</h2>
+                <h2 style={heading}>
+                  {activeStage === "review"
+                    ? "Referral qualification details"
+                    : "Patient demographics and referral source"}
+                </h2>
                 <div style={formGrid}>
                   <ReadOnly label="Patient name at receipt" value={r.patientNameAtReceipt} />
                   <label style={label}>
@@ -756,7 +880,7 @@ export function ReferralDetail({
 
             {showVerification ? (
               <section id="clinical-information" style={section}>
-                <h2 style={heading}>Clinical Information</h2>
+                <h2 style={heading}>Clinical context</h2>
                 <label style={label}>
                   Referral reason or diagnosis
                   <textarea
@@ -772,21 +896,8 @@ export function ReferralDetail({
                 <Button
                   size="sm"
                   tone="secondary"
-                  data-intake-primary-action="save-info"
                   disabled={!canEditReferral || !verificationValid || busy === "save-info"}
-                  onClick={() =>
-                    void run("save-info", async () => {
-                      const { medicareNumberAtReceipt, medicaidNumberAtReceipt, ...otherEdits } =
-                        edit;
-                      await patchReferral(client, r.id, {
-                        ...otherEdits,
-                        ...(mbiChanged ? { medicareNumberAtReceipt } : {}),
-                        ...(medicaidChanged ? { medicaidNumberAtReceipt } : {}),
-                        patientDobAtReceipt: edit.patientDobAtReceipt || undefined,
-                        ifVersion: r.version,
-                      });
-                    })
-                  }
+                  onClick={saveVerification}
                 >
                   Save referral information
                 </Button>
@@ -794,15 +905,8 @@ export function ReferralDetail({
                   <Button
                     size="sm"
                     tone="secondary"
-                    data-intake-primary-action="qualify"
                     disabled={busy === "qualify"}
-                    onClick={() =>
-                      void run("qualify", async () => {
-                        await referralCommand(client, r.id, "qualify", {
-                          ifVersion: r.version,
-                        });
-                      })
-                    }
+                    onClick={qualifyReferral}
                   >
                     Ready to process
                   </Button>
@@ -829,7 +933,7 @@ export function ReferralDetail({
 
             {showStartAdmission ? (
               <section id="start-admission" style={section} tabIndex={-1}>
-                <h2 style={heading}>Start Admission</h2>
+                <h2 style={heading}>Start admission / handoff</h2>
                 {r.status === "converted" ? (
                   <Button
                     tone="primary"
@@ -880,6 +984,10 @@ export function ReferralDetail({
                         </ul>
                       ) : null}
                     </section>
+                    <InlineAlert tone="warning" live={false}>
+                      Starting admission creates the admission workflow. It does not automatically
+                      activate hospice services.
+                    </InlineAlert>
                     <CodeSearchInput
                       label="Primary ICD-10"
                       system="icd10cm"
@@ -889,19 +997,8 @@ export function ReferralDetail({
                     />
                     <Button
                       tone="primary"
-                      data-intake-primary-action="convert"
                       disabled={!canConvert || !primaryDiagnosisIcd10.trim() || busy === "convert"}
-                      onClick={() =>
-                        void run("convert", async () => {
-                          const result = await referralCommand<{
-                            admissionId: string;
-                          }>(client, r.id, "convert", {
-                            primaryDiagnosisIcd10: primaryDiagnosisIcd10.trim(),
-                            ifVersion: r.version,
-                          });
-                          navigate(`/admissions/${result.admissionId}`);
-                        })
-                      }
+                      onClick={convertReferral}
                     >
                       Start Admission
                     </Button>
@@ -917,20 +1014,13 @@ export function ReferralDetail({
 
             {showAll || activeStage === "verify" ? (
               <section id="missing-information" style={section} tabIndex={-1}>
-                <h2 style={heading}>Missing Information</h2>
+                <h2 style={heading}>Missing information</h2>
                 {embedded && activeStage === "verify" && canReview ? (
                   <Button
                     size="sm"
                     tone="secondary"
-                    data-intake-primary-action="review"
                     disabled={busy === "review"}
-                    onClick={() =>
-                      void run("review", async () => {
-                        await referralCommand(client, r.id, "review", {
-                          ifVersion: r.version,
-                        });
-                      })
-                    }
+                    onClick={returnToReview}
                   >
                     Return to review
                   </Button>
@@ -1084,6 +1174,90 @@ export function ReferralDetail({
   return <DetailPageLayout header={header}>{content}</DetailPageLayout>;
 }
 
+function PatientComparison({
+  referral,
+  candidate,
+  selectedLabel,
+}: {
+  referral: ReferralView;
+  candidate: ReferralCandidate | undefined;
+  selectedLabel: string;
+}): JSX.Element {
+  return (
+    <section
+      className="wx-intake-comparison-scroll"
+      aria-label="Patient comparison"
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: narrow screens scroll this comparison horizontally, so keyboard users need a focusable scroll region.
+      tabIndex={0}
+    >
+      <table className="wx-intake-comparison">
+        <caption>Patient comparison</caption>
+        <thead>
+          <tr>
+            <th scope="col">Field</th>
+            <th scope="col">Referral</th>
+            <th scope="col">Selected patient</th>
+          </tr>
+        </thead>
+        <tbody>
+          <ComparisonRow
+            label="Name"
+            referralValue={referral.patientNameAtReceipt}
+            patientValue={candidateLabel(candidate, selectedLabel)}
+          />
+          <ComparisonRow
+            label="Date of birth"
+            referralValue={
+              referral.patientDobAtReceipt
+                ? formatDateOnly(referral.patientDobAtReceipt)
+                : "Not provided"
+            }
+            patientValue={candidate?.dob ? formatDateOnly(candidate.dob) : "Not returned"}
+          />
+          <ComparisonRow
+            label="Chart identifier"
+            referralValue="Not part of referral"
+            patientValue={
+              candidate?.mrn ? `MRN ending ${String(candidate.mrn).slice(-4)}` : "Not returned"
+            }
+          />
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+function ComparisonRow({
+  label,
+  referralValue,
+  patientValue,
+}: {
+  label: string;
+  referralValue: string;
+  patientValue: string;
+}): JSX.Element {
+  return (
+    <tr>
+      <th scope="row">{label}</th>
+      <td>{referralValue}</td>
+      <td>{patientValue}</td>
+    </tr>
+  );
+}
+
+function candidateLabel(candidate?: ReferralCandidate, fallback = ""): string {
+  return candidate?.displayName ?? candidate?.name ?? (fallback || "Potential patient match");
+}
+
+function matchBasis(candidate: ReferralCandidate): string {
+  if (candidate.confidence === "deterministic") return "Deterministic identifier match";
+  if (candidate.confidence === "probable") return "Possible match — review required";
+  if (typeof candidate.confidence === "string" && candidate.confidence.trim()) {
+    return candidate.confidence;
+  }
+  return "Potential match — review required";
+}
+
 function Fact({ label, value }: { label: string; value: string }): JSX.Element {
   return (
     <div>
@@ -1168,6 +1342,14 @@ function errorMessage(err: unknown, fallback: string): string {
   return e.error?.details?.[0]?.message ?? e.error?.message ?? e.message ?? fallback;
 }
 
+function canStartReview(referral: ReferralView): boolean {
+  return referral.status === "received" || referral.status === "pending_information";
+}
+
+function canEditReferralStatus(status: ReferralView["status"]): boolean {
+  return ["received", "under_review", "pending_information"].includes(status);
+}
+
 function errorCode(err: unknown): string | null {
   const e = err as { error?: { code?: string }; code?: string };
   return e.error?.code ?? e.code ?? null;
@@ -1210,10 +1392,11 @@ const side: CSSProperties = {
   minWidth: 0,
 };
 const section: CSSProperties = {
-  border: "1px solid var(--color-outline-variant)",
-  borderRadius: "8px",
-  background: "var(--color-surface)",
-  padding: "1rem",
+  border: `1px solid ${t.cardBorder}`,
+  borderRadius: t.radiusLg,
+  background: t.surfaceLowest,
+  boxShadow: t.shadowSoft,
+  padding: t.space4,
   display: "grid",
   gap: "0.85rem",
 };

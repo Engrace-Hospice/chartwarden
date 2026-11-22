@@ -170,6 +170,9 @@ services:
       DATABASE_DESTRUCTION_URL: postgres://chartwarden_destruction_login:chartwarden-destruction-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       REDIS_URL: redis://redis:6379
       OBJECT_STORE_ENDPOINT: http://rustfs:9000
+      # Browser uploads PUT directly to a presigned URL, so the API must sign with the host-reachable endpoint.
+      # Keep the worker on the internal endpoint below: Docling consumes its presigned URLs inside Compose.
+      OBJECT_STORE_PUBLIC_ENDPOINT: http://localhost:9000
       OBJECT_STORE_ACCESS_KEY: chartwarden
       OBJECT_STORE_SECRET_KEY: chartwarden-object-store-dev-secret
       OBJECT_STORE_REGION: us-east-1

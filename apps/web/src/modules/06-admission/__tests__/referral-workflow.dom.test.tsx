@@ -380,6 +380,10 @@ describe("Referral Phase 2 workflow screens", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Select Robert J. Johnson" }));
     expect(screen.getByRole("heading", { name: "Selected patient" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Patient comparison" })).toHaveProperty(
+      "tabIndex",
+      0,
+    );
     expect(document.body.textContent).toContain("MRN ending 4812");
     expect(document.body.textContent).not.toContain("MRN-004812");
     expect(post.mock.calls.some(([path]) => String(path).endsWith("/confirm-patient"))).toBe(false);

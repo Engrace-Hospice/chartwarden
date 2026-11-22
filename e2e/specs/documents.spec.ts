@@ -1,4 +1,6 @@
 import { Buffer } from "node:buffer";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 // e2e/specs/documents.spec.ts — critical workflow 5/6: documents (TEST-001).
 // Live-stack coverage for Patient Documents + Referral Documents. Upload paths intentionally use the
 // real M22 verified upload UI: initiate -> presigned PUT -> complete -> signed URL view/open.
@@ -12,6 +14,36 @@ import type { Locator, Page } from "@playwright/test";
 import { ADMIN_ACCOUNT } from "../fixtures/credentials";
 import { expectNoAxeViolations, signInAs } from "../fixtures/helpers";
 import { openFirstPatientChart } from "../fixtures/patients";
+
+const INTAKE_VIEWPORTS = [
+  { name: "mobile", width: 375, height: 812 },
+  { name: "tablet", width: 768, height: 1024 },
+  { name: "desktop", width: 1440, height: 1000 },
+] as const;
+
+async function captureIntakeStage(page: Page, stage: string): Promise<void> {
+  const evidenceDir = process.env.INTAKE_EVIDENCE_DIR;
+  if (evidenceDir) mkdirSync(evidenceDir, { recursive: true });
+
+  for (const viewport of INTAKE_VIEWPORTS) {
+    await page.setViewportSize(viewport);
+    await page.getByRole("region", { name: "Current intake task" }).scrollIntoViewIfNeeded();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      `${stage} should not introduce document-level horizontal overflow at ${viewport.width}px`,
+    ).toBe(true);
+    await expectNoAxeViolations(page);
+    if (evidenceDir) {
+      await page.screenshot({
+        path: join(
+          evidenceDir,
+          `${stage}-${viewport.name}-${viewport.width}x${viewport.height}.png`,
+        ),
+        fullPage: true,
+      });
+    }
+  }
+}
 
 test.describe("Documents", () => {
   test("main path: a patient's document list renders from a real API call", async ({ page }) => {
@@ -124,9 +156,11 @@ test.describe("Documents", () => {
     await expect(
       page.getByRole("heading", { name: "Verify the referral information" }),
     ).toBeVisible();
+    await captureIntakeStage(page, "verify-information");
     await page.getByLabel("Date of birth").fill("1954-05-08");
     await page.getByRole("button", { name: "Save & continue to patient matching" }).click();
     await expect(page.getByRole("heading", { name: "Patient Resolution" })).toBeVisible();
+    await captureIntakeStage(page, "match-patient");
 
     await page.getByRole("button", { name: /Receive referral/ }).click();
     await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
@@ -138,6 +172,7 @@ test.describe("Documents", () => {
     await expect(
       page.getByRole("heading", { name: "Complete these required items" }),
     ).toBeVisible();
+    await captureIntakeStage(page, "review-requirements");
     await page
       .getByLabel("Referral reason or diagnosis")
       .fill("Metastatic lung cancer with rapid functional decline");
@@ -153,7 +188,7 @@ test.describe("Documents", () => {
     await expect(handoff).toBeVisible();
     await expect(handoff.getByText("New patient", { exact: true })).toBeVisible();
     await expect(handoff.getByText(/Referral qualification checks are complete/)).toBeVisible();
-    await expectNoAxeViolations(page);
+    await captureIntakeStage(page, "start-admission-handoff");
   });
 
   test("main path: a tag survives the reload that used to erase it (#153/#91)", async ({

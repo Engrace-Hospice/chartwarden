@@ -375,6 +375,65 @@ This map follows the plan's five-PR delivery sequence. Exact new filenames are p
 
 No application or backend files. Approval of this document is the prerequisite for PR 2.
 
+### Lantern UX V2 refinement addendum (2026-11-21)
+
+This addendum records the audit and implementation specification for
+`feat/intake-lantern-ux-v2`. It refines the unified workspace delivered after the original audit;
+it does not reopen the staged redesign or introduce another intake workflow.
+
+#### Verified current architecture
+
+| Concern | Current source of truth | V2 decision |
+| --- | --- | --- |
+| Workspace route and stage presentation | `apps/web/src/modules/06-admission/intake-workspace.tsx` and `intake-workspace-stage.ts` | Keep the single `/referrals/:id/intake` workspace and derive its active stage from the existing referral resource. |
+| Referral mutations and server contracts | `apps/web/src/modules/06-admission/referral-detail.tsx` and `referrals-api.ts` | Reuse the existing review, verification, match/create, qualification, and conversion handlers without payload or endpoint changes. |
+| Referral documents | `referral-records.tsx`, `referral-records-requests.tsx`, and `apps/web/src/shell/intake-upload-dialog.tsx` | Surface the existing records/upload experience in Receive, Verify, and Review; keep the original file and batch ownership unchanged. |
+| WardenLens review | `apps/web/src/modules/22-documents/doclens-review.tsx` and M22 routes | Link to the M22-owned reviewer with the existing safe return target. Do not embed or duplicate its review state in M6. |
+| Patient resolution | `referral-detail.tsx` and existing M5 patient lookup | Require an explicit selected-patient confirmation or deliberate new-patient action. Do not display invented confidence percentages. |
+| Admission conversion | Existing referral conversion action in `referral-detail.tsx` | Keep server validation, permission checks, transaction/idempotency behavior, and navigation to the created admission. Starting admission is not activation. |
+| Visual system | `packages/ui`, `apps/web/src/index.css`, shared `app-shell.css`, and Lantern tokens | Compose `PageHeader`, `Card`, `Panel`, `WorkflowStepper`, `StatusPill`, `InlineAlert`, and `StickyFooterActions`; add only token-backed responsive hooks. |
+
+The previous footer coordination was the only confirmed implementation defect in this refinement:
+`intake-workspace.tsx` queried a child button using `data-intake-primary-action` and invoked
+`.click()`. That made the parent action depend on rendered DOM shape and allowed child refactors to
+silently disconnect the primary workflow action. V2 replaces that selector contract with a typed
+stage-action registration (`stage id`, stable action id, disabled state, and callback). Existing
+mutations remain the action implementations.
+
+#### Screen and component specification
+
+Every stage uses the same shell: application navigation, compact referral identity, the existing
+six-stage stepper, task workspace, attention rail, and persistent footer.
+
+| Screen | Main workspace | Attention and action behavior |
+| --- | --- | --- |
+| Verify information | Existing referral fields plus received records, upload, WardenLens processing/review status, and existing validation summary | Server-returned blockers remain authoritative. Save/continue calls the existing verification mutation through the typed action controller. |
+| Match patient | Existing lookup and candidates, explicit duplicate warning, and a semantic comparison of receipt name/DOB/masked MRN against the selected candidate | A candidate selection never merges or confirms by itself. Match confirmation and new-patient creation remain separate existing actions. |
+| Review requirements | Clinical context, coverage/patient facts, referral qualification inputs, referral records/WardenLens status, and current blockers | The UI does not calculate eligibility or admission readiness. Qualification continues to call the existing server transition. |
+| Start admission / handoff | Referral/patient association, qualification summary, unresolved issues, and the existing conversion action | Copy explicitly distinguishes referral qualification, admission creation, and later activation readiness. Conversion remains server validated and idempotent. |
+
+Receive and Admission readiness retain their existing behavior while sharing the same shell and
+responsive presentation. At tablet/mobile widths the identity facts reflow, the stepper remains
+horizontally navigable, the task and attention panel stack, and the comparison table becomes a
+keyboard-focusable horizontal region when its columns cannot safely collapse.
+
+#### Mockup concepts intentionally not implemented
+
+The reference images contain useful hierarchy, but several displayed facts have no authoritative
+contract in the current referral resource. V2 therefore does **not** fabricate numeric patient-match
+confidence, servicing-MAC verification, hard-coded Medicare or document requirements, team
+assignment, patient location before a canonical patient is linked, or admission-activation
+readiness. The existing Lantern shell/navigation also takes precedence over the conceptual mockup
+navigation and colors.
+
+#### Validation and evidence contract
+
+`e2e/specs/documents.spec.ts` drives a synthetic referral through Verify, Match, Review, and Handoff
+using the real browser/API stack. Each stage is checked at 375 px, 768 px, and 1440 px for WCAG A/AA
+axe findings and document-level horizontal overflow, with optional screenshots written through
+`INTAKE_EVIDENCE_DIR`. Component regressions verify that the persistent footer invokes the typed
+stage action and that no `data-intake-primary-action` selector remains.
+
 ### PR 2 — Worklist and shared workspace shell (WP1 + WP2; frontend only)
 
 | File                                                                  | Proposed responsibility                                                                                                |

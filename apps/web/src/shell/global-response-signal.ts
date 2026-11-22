@@ -113,8 +113,14 @@ export async function isOrgNotSelectedResponse(response: Response): Promise<bool
  * ADR-0110 — the claims-billing gate's fail-closed 503 (`BILLING_ENTITLEMENT_UNAVAILABLE`) refuses one action; the rest
  * of the app works. It is not an outage, so it must not navigate to /maintenance and lose the form the user is on.
  * ADR-0113 — the visit-note gate's `NOTE_CLOSURE_UNAVAILABLE` is the same kind of refusal: one action, not an outage.
+ * WardenLens being disabled for one tenant likewise refuses only the extraction start; the verified document and intake
+ * batch are already preserved, and the upload dialog must be allowed to explain that outcome instead of losing context.
  */
-const NOT_AN_OUTAGE_ON_503 = ["BILLING_ENTITLEMENT_UNAVAILABLE", NOTE_CLOSURE_UNAVAILABLE_CODE];
+const NOT_AN_OUTAGE_ON_503 = [
+  "BILLING_ENTITLEMENT_UNAVAILABLE",
+  NOTE_CLOSURE_UNAVAILABLE_CODE,
+  "EXTRACTION_DISABLED",
+];
 
 /** The envelope's `error.code`, read from a clone; undefined for a non-JSON or unreadable body. */
 async function errorCodeOf(response: Response): Promise<string | undefined> {
