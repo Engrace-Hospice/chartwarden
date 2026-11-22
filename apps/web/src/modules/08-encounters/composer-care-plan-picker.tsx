@@ -42,6 +42,11 @@ export interface ComposerCarePlanPickerProps {
   readonly revision: number;
   /** A link was added or removed here: the draft is built from the links, so the caller re-reads it. */
   readonly onChanged: () => void;
+  /**
+   * Whether confirming a drafted section links its care-plan elements to this visit (the default). False for a draft built from the discipline's
+   * own plan (S4), which links nothing: the footnote that says it does is then left out.
+   */
+  readonly confirmationLinks?: boolean;
 }
 
 type ElementsLoad =
@@ -97,6 +102,7 @@ export function ComposerCarePlanPicker({
   editable,
   revision,
   onChanged,
+  confirmationLinks = true,
 }: ComposerCarePlanPickerProps): JSX.Element | null {
   const client = useApiClient();
   const mounted = useIsMounted();
@@ -288,10 +294,12 @@ export function ComposerCarePlanPicker({
       {load.elements.redacted ? (
         <p className="wx-row-sub">Some items are hidden by privacy or consent settings.</p>
       ) : null}
-      <p className="wx-row-sub">
-        Confirming a drafted section links its goals and interventions here. Deselecting it unlinks
-        them.
-      </p>
+      {confirmationLinks ? (
+        <p className="wx-row-sub">
+          Confirming a drafted section links its goals and interventions here. Deselecting it
+          unlinks them.
+        </p>
+      ) : null}
       {problem ? <InlineAlert tone="error">{problem}</InlineAlert> : null}
     </Panel>
   );

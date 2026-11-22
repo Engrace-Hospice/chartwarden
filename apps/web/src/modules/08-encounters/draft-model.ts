@@ -90,6 +90,20 @@ export function isDraftSectionView(value: unknown): value is DraftSectionView {
 export const touchesCarePlan = (section: Pick<DraftSectionView, "origins">): boolean =>
   section.origins.some((origin) => CARE_PLAN_ORIGINS.includes(origin));
 
+const DISCIPLINE_PLAN_ORIGINS: readonly DraftOrigin[] = [
+  "discipline_plan_goal",
+  "discipline_plan_intervention",
+];
+
+/**
+ * Whether a section of the draft is built from the discipline's own plan (S4: the social-work and chaplain visits). Confirming such a section
+ * links nothing to the visit, so the care-plan panel must not say that a confirmation does.
+ */
+export const draftsFromDisciplinePlan = (draft: Pick<DraftView, "sections">): boolean =>
+  draft.sections.some((section) =>
+    section.origins.some((origin) => DISCIPLINE_PLAN_ORIGINS.includes(origin)),
+  );
+
 export const isDrafted = (section: Pick<DraftSectionView, "state">): boolean =>
   section.state !== "not_drafted";
 

@@ -9,6 +9,7 @@ import {
   draftIsActive,
   draftIssuesFrom,
   draftedStateOf,
+  draftsFromDisciplinePlan,
   isDraftSectionView,
   replaceSection,
   resolutionNote,
@@ -102,6 +103,26 @@ describe("touchesCarePlan", () => {
         section({ origins: ["discipline_plan_goal", "discipline_plan_intervention"] }),
       ),
     ).toBe(false);
+  });
+});
+
+describe("draftsFromDisciplinePlan", () => {
+  it("is true when a section is built from the discipline's own plan, and false for every other draft", () => {
+    const draft = (...sections: ReturnType<typeof section>[]) => ({ sections });
+    expect(draftsFromDisciplinePlan(draft(section({ origins: ["discipline_plan_goal"] })))).toBe(
+      true,
+    );
+    expect(
+      draftsFromDisciplinePlan(
+        draft(
+          section({ origins: ["vitals"] }),
+          section({ origins: ["discipline_plan_intervention"] }),
+        ),
+      ),
+    ).toBe(true);
+    expect(draftsFromDisciplinePlan(draft(section({ origins: ["care_plan_goal"] })))).toBe(false);
+    expect(draftsFromDisciplinePlan(draft(section({ origins: [] })))).toBe(false);
+    expect(draftsFromDisciplinePlan(draft())).toBe(false);
   });
 });
 
