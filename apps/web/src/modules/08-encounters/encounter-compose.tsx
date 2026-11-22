@@ -1555,6 +1555,7 @@ export function EncounterCompose(): JSX.Element {
                   encounter={encounter}
                   editable={editable}
                   drafted={drafted}
+                  draftReady={noteDraft.load.status === "ready"}
                   carePlanRevision={carePlanRevision}
                   onLinksChanged={() => void noteDraft.reload()}
                 />

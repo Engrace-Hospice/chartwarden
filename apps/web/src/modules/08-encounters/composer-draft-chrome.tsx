@@ -61,6 +61,11 @@ export interface ComposerDraftRailProps {
    * any other visit shows no rail.
    */
   readonly drafted: DraftView | null;
+  /**
+   * The draft was read for this visit. A plan visit's list is mounted only then: with the tenant switch off (or no access) the draft answers 404 and so
+   * would the list, and the composer stays exactly as it was, without a request or an empty frame.
+   */
+  readonly draftReady: boolean;
   readonly carePlanRevision: number;
   readonly onLinksChanged: () => void;
 }
@@ -69,11 +74,13 @@ export function ComposerDraftRail({
   encounter,
   editable,
   drafted,
+  draftReady,
   carePlanRevision,
   onLinksChanged,
 }: ComposerDraftRailProps): JSX.Element | null {
   const planVisit = isDisciplinePlanVisit(encounter.discipline);
-  if (drafted === null && !planVisit) return null;
+  const planList = planVisit && draftReady;
+  if (drafted === null && !planList) return null;
   return (
     <div className="wx-draft-rail">
       {drafted ? (
@@ -83,7 +90,7 @@ export function ComposerDraftRail({
           visitTime={drafted.asOf}
         />
       ) : null}
-      {planVisit ? (
+      {planList ? (
         <ComposerDisciplinePlanPicker
           encounterId={encounter.id}
           discipline={encounter.discipline}

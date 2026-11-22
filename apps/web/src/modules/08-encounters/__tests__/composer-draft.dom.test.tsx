@@ -1690,6 +1690,18 @@ describe("a social-work or chaplain visit's plan list (S4b)", () => {
     expect(screen.queryByText(/nothing in the record to draft this section from/i)).toBeNull();
   });
 
+  it("adds nothing, and asks for nothing, when the tenant has the draft switched off", async () => {
+    mountComposer({
+      ...planVisit("msw", "msw_followup"),
+      [`GET ${BASE}/draft`]: () => errorBody(404, "NOT_FOUND"),
+    });
+    await ready();
+    await waitFor(() => expect(callsTo("GET", "/draft")).toHaveLength(1));
+    expect(callsTo("GET", "/discipline-plan-elements")).toHaveLength(0);
+    expect(screen.queryByRole("group", { name: /plan for this visit/ })).toBeNull();
+    expect(document.querySelector(".wx-draft-rail")).toBeNull();
+  });
+
   it("keeps the record wording on a section the plan never feeds (the reason for the visit has no plan items to keep)", async () => {
     world.draftSections = [
       empty("chief_concern"),

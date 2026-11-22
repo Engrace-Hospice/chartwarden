@@ -34,6 +34,7 @@ function mount(
   encounterType: string,
   over: Record<string, Responder> = {},
   draft: DraftView | null = DRAFT,
+  draftReady = true,
 ) {
   const routes: Record<string, Responder> = {
     [`GET ${PLAN_URL}`]: () => ({
@@ -58,6 +59,7 @@ function mount(
         }}
         editable
         drafted={draft}
+        draftReady={draftReady}
         carePlanRevision={0}
         onLinksChanged={() => undefined}
       />
@@ -103,6 +105,18 @@ describe("the composer rail", () => {
       expect(screen.queryByText("Care plan for this visit")).not.toBeInTheDocument();
       expect(calls.some((c) => c.path.includes("/scales/"))).toBe(false);
       expect(calls.some((c) => c.path.includes("relevant-elements"))).toBe(false);
+    },
+  );
+
+  it.each([
+    ["msw", "msw_followup"],
+    ["chaplain", "chaplain_visit"],
+  ])(
+    "asks a %s visit for no plan list, and shows no rail, until the draft was read (the tenant switch off answers it 404 too)",
+    async (discipline, type) => {
+      const { container } = mount(discipline, type, {}, null, false);
+      await waitFor(() => expect(container.querySelector(".wx-draft-rail")).toBeNull());
+      expect(calls).toEqual([]);
     },
   );
 
