@@ -185,6 +185,30 @@ describe("what the interventions section states (social work)", () => {
     expect(text).not.toMatch(/morphine/i);
   });
 
+  it.each([".", "...", " . "])(
+    "states an intervention whose frequency is only %j without a frequency, as it does for none",
+    (frequencyText) => {
+      const inputs = inputsFor(["msw_followup", "msw"]);
+      const bare: DraftInputs = {
+        ...inputs,
+        disciplinePlan: {
+          goals: inputs.disciplinePlan?.goals ?? [],
+          interventions: [
+            {
+              id: "iv-a",
+              interventionText: "Supportive counselling",
+              frequencyText,
+              sudRelated: false,
+            },
+          ],
+        },
+      };
+      expect(textOf(bare, "interventions")).toBe(
+        "Plan-of-care intervention: Supportive counselling.",
+      );
+    },
+  );
+
   it("is empty with no intervention", () => {
     const inputs = inputsFor(["msw_followup", "msw"]);
     expect(

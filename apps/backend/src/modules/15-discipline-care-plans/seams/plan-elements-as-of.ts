@@ -108,13 +108,28 @@ function parseAll<T>(list: unknown, parse: (raw: unknown) => T | null): T[] | nu
   return parsed.every((p): p is T => p !== null) ? (parsed as T[]) : null;
 }
 
+/**
+ * The most goals, and the most interventions, a snapshot may hold to be read (fail closed beyond it). A real plan holds a handful; M15's input
+ * schema bounds each text but not their number, so a count nobody wrote on purpose is not read.
+ */
+export const MAX_PLAN_ELEMENTS = 500;
+
 /** A frozen `state_snapshot` as goals and interventions, or null when it is not of the expected shape. */
 function parseSnapshot(snapshot: unknown): ParsedSnapshot | null {
   if (!isRecord(snapshot)) return null;
   const goals = parseAll(snapshot.goals, parseGoal);
   const interventions = parseAll(snapshot.interventions, parseIntervention);
-  return goals === null || interventions === null ? null : { goals, interventions };
+  if (goals === null || interventions === null) return null;
+  if (goals.length > MAX_PLAN_ELEMENTS || interventions.length > MAX_PLAN_ELEMENTS) return null;
+  return { goals, interventions };
 }
+
+/**
+ * Whether a text can be stated as a sentence: the draft drops its trailing periods and whitespace (`sentenceText` in `@chartwarden/hearthnote`) and
+ * refuses what is left empty. M15's schema only requires one character, so a goal of "." is a valid sealed goal; leaving it out here keeps one such
+ * goal from making every draft of the patient unavailable (and so every note unsignable) until a new version is signed.
+ */
+const statable = (value: string): boolean => value.trim().replace(/[.\s]+$/u, "").length > 0;
 
 /** Whether an intervention serves a goal in `goalIds` (lower-cased: a uuid is case-insensitive). */
 const anchoredTo = (i: ParsedIntervention, goalIds: ReadonlySet<string>): boolean =>
@@ -151,9 +166,9 @@ export async function planElementsFromVersion(
       }),
     )
     // A goal with no words cannot be stated.
-    .filter((g) => g.text.trim() !== "");
+    .filter((g) => statable(g.text));
   const interventions = parsed.interventions
-    .filter((i) => i.status === "active" && i.scopeText.trim() !== "")
+    .filter((i) => i.status === "active" && statable(i.scopeText))
     .filter((i) => allowed || !anchoredTo(i, sudGoalIds))
     .map(
       (i): DisciplineInterventionAsOf => ({

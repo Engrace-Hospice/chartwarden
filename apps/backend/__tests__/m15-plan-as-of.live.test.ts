@@ -426,6 +426,24 @@ describe.skipIf(!DB_URL)(
       expect(await ask(SIGNED_V2, adm.chain, { org: ORG_B })).toBeNull();
     });
 
+    it("reads nothing when the tenant it is asked for is not the session's, in either direction", async () => {
+      const asked = (sessionOrg: string, askedOrg: string) =>
+        runWithRequestContext({ organizationId: sessionOrg, userId: USER } as never, () =>
+          reader.planElementsAsOf(
+            askedOrg,
+            PATIENT as never,
+            adm.chain as never,
+            "msw_plan",
+            { roles: ["msw"], membershipId: "membership-1" },
+            SIGNED_V2 as never,
+          ),
+        );
+
+      expect(await asked(ORG_A, ORG_B)).toBeNull();
+      expect(await asked(ORG_B, ORG_A)).toBeNull();
+      expect(await asked(ORG_A, ORG_A)).not.toBeNull();
+    });
+
     it("rejects an asOf that is not an instant", async () => {
       await expect(ask("not-a-date", adm.chain)).rejects.toThrow(/asOf/);
     });

@@ -344,16 +344,15 @@ function disciplinePlanInterventionGroups(
       intervention.interventionText,
       `discipline-plan intervention '${intervention.id}' text`,
     );
-    const frequency = intervention.frequencyText?.trim() ?? "";
+    // A frequency that is nothing once its trailing periods are dropped is no frequency (as `sentenceText` would refuse it): the plan then states
+    // the intervention alone, rather than one sealed "." making the draft unavailable.
+    const frequency = intervention.frequencyText?.trim().replace(/[.\s]+$/u, "") ?? "";
     return group("discipline_plan_intervention", intervention, [
       frequency.length === 0
         ? sentence(DISCIPLINE_PLAN_CODES.intervention, { intervention_text: interventionText })
         : sentence(DISCIPLINE_PLAN_CODES.interventionFrequency, {
             intervention_text: interventionText,
-            frequency_text: sentenceText(
-              frequency,
-              `discipline-plan intervention '${intervention.id}' frequency`,
-            ),
+            frequency_text: frequency,
           }),
     ]);
   });

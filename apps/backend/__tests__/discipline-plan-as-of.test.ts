@@ -343,6 +343,76 @@ describe("DisciplinePlanReader.planElementsAsOf: what is handed over", () => {
   });
 });
 
+describe("DisciplinePlanReader.planElementsAsOf: what cannot be stated is left out, not fatal", () => {
+  // The draft states each element as a sentence and refuses a text that is nothing once its trailing periods are dropped. M15's input schema
+  // only requires one character, so a goal of "." is a valid sealed goal; it must not make every draft of the patient unavailable.
+  it.each([".", "...", " . ", ". ."])(
+    "leaves out a goal whose words are only %j",
+    async (words) => {
+      const sealed = version({
+        stateSnapshot: snapshot({
+          goals: [goal("goal-bad", { originalText: words }), goal("goal-ok")],
+        }),
+      });
+
+      const out = await ask(readerOver([sealed]), "2026-03-05T00:00:00.000Z");
+
+      expect(out?.goals.map((g) => g.goalId)).toEqual(["goal-ok"]);
+    },
+  );
+
+  it("leaves out a goal whose revision is only periods, and an intervention whose scope is", async () => {
+    const sealed = version({
+      stateSnapshot: snapshot({
+        goals: [goal("goal-bad", { revisedText: "..", status: "revised" }), goal("goal-ok")],
+        interventions: [intervention("iv-bad", { scopeText: "..." }), intervention("iv-ok")],
+      }),
+    });
+
+    const out = await ask(readerOver([sealed]), "2026-03-05T00:00:00.000Z");
+
+    expect(out?.goals.map((g) => g.goalId)).toEqual(["goal-ok"]);
+    expect(out?.interventions.map((i) => i.interventionId)).toEqual(["iv-ok"]);
+  });
+
+  it("answers null for a snapshot with an unreasonable number of elements (fail closed), and reads one at the cap", async () => {
+    const many = (n: number, make: (id: string) => unknown) =>
+      Array.from({ length: n }, (_, i) => make(`el-${i}`));
+    const asOf = "2026-03-05T00:00:00.000Z";
+
+    expect(
+      await ask(
+        readerOver([version({ stateSnapshot: snapshot({ goals: many(501, (id) => goal(id)) }) })]),
+        asOf,
+      ),
+    ).toBeNull();
+    expect(
+      await ask(
+        readerOver([
+          version({
+            stateSnapshot: snapshot({ interventions: many(501, (id) => intervention(id)) }),
+          }),
+        ]),
+        asOf,
+      ),
+    ).toBeNull();
+    const atTheCap = await ask(
+      readerOver([version({ stateSnapshot: snapshot({ goals: many(500, (id) => goal(id)) }) })]),
+      asOf,
+    );
+    expect(atTheCap?.goals).toHaveLength(500);
+  });
+});
+
+describe("DisciplinePlanReader.planElementsAsOf: the tenant it is asked for", () => {
+  it("reads only the asked tenant's versions when the store knows their tenant", async () => {
+    const asOf = "2026-03-05T00:00:00.000Z";
+
+    expect(await ask(readerOver([version({ organizationId: "org-other" })]), asOf)).toBeNull();
+    expect(await ask(readerOver([version({ organizationId: ORG })]), asOf)).not.toBeNull();
+  });
+});
+
 describe("DisciplinePlanReader.planElementsAsOf: 42 CFR Part 2 (per viewer, fail closed)", () => {
   it("withholds the SUD goal and the intervention anchored to it from a viewer without disclosure", async () => {
     const out = await ask(readerOver([V1], portOf(NO_RELEASE)), "2026-03-05T00:00:00.000Z");

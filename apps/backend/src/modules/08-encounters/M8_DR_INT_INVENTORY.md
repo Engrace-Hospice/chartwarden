@@ -112,8 +112,20 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
 - **Words, not outcomes.** The draft lists open goals and active interventions ("Plan-of-care goal: ...", "Plan-of-care intervention: ..."), attributing a goal
   to the patient, the family or the patient's agent only where the record says so and a clinician has not revised it. It never states a status, progress,
   outcome, a met or discontinued goal, a declination or an assessment. What happened at the visit is the clinician's own text.
+- **No plan-side audit, and the staff session class.** M15's plan read leaves no row in M15's own audit (its routes write `PLAN_READ`; the seam read writes
+  none, as M5's and M39's draft reads write none): the trail of who read a patient's plan through a note is `encounter_draft.viewed` on the encounter. The
+  seam asks M15's Part 2 rule with the session class `staff`, as the draft does for M7 and for M39's acknowledgment read: the draft's viewer carries roles and
+  membership only, and the routes are key-gated, so a portal or external session that held `encounter.read` and `discipline_plan.read` would get whatever M39
+  says rather than M15's restricted-session refusal.
+- **A signer learns that a plan exists.** Finalize, sign and an addendum's recompute do not ask `discipline_plan.read` (S1's rule: the signer's draft is the
+  same full draft), so a signer without it who is refused 422 or 409 for `interventions` or `plan` learns that open goals or interventions exist for the
+  patient. This extends S3's limit for the care-plan keys.
+- **No family-violence flag on a goal.** Only assessments carry `family_violence_flag`; a goal or intervention carries `sud_related` alone, so the draft never
+  consults M15's family-violence rule and S4 reads no assessment.
 - **Not proven live.** The live suites do not exercise an amendment of a signed social-work or chaplain note (S1's path, unchanged), nor an M39 outage
-  between M15's read and the draft's own verdict (unit-proven).
+  between M15's read and the draft's own verdict (unit-proven), and M39 is a fake in both (the real M39 on the new seam is not mounted by
+  `test:m7:consent-wiring:live`). The cross-check catches one direction only (M15 withheld, the draft's verdict clears: 503); a consent change between the
+  two calls that goes the other way is a race both calls share.
 - **Rollout.** The switch is tenant-wide: a tenant already switched on at deploy would get these drafts, their key requirement and the unreviewed 2026.12.3
   phrases at once. Enabling is refused (409 `CORPUS_REVIEW_PENDING`) while the review is pending, so none should be on; the operator confirms that before the deploy.
 

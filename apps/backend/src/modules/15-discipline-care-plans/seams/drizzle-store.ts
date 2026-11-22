@@ -393,7 +393,7 @@ export function createDrizzleDisciplinePlanSeamStore(
      * entry for a visit before a discharge still reads the plan that was in effect. A spiritual plan the patient had declined at or
      * before `asOf` answers null. The snapshot crosses RAW: the provider redacts and projects it.
      */
-    async planVersionAsOf(patientId, admissionId, kind, asOf) {
+    async planVersionAsOf(organizationId, patientId, admissionId, kind, asOf) {
       const at = new Date(asOf);
       if (Number.isNaN(at.getTime())) {
         throw new RangeError("planVersionAsOf: asOf is not an instant");
@@ -413,6 +413,9 @@ export function createDrizzleDisciplinePlanSeamStore(
             .innerJoin(P, eq(P.id, V.planId))
             .where(
               and(
+                // RLS pins the tenant from the request context; this is the explicit second wall, so a caller whose asked tenant is not the
+                // session's (the Part 2 verdict is asked for the asked one) reads nothing.
+                eq(P.organizationId, organizationId),
                 eq(P.patientId, patientId),
                 eq(P.admissionId, admissionId),
                 eq(P.kind, kind),

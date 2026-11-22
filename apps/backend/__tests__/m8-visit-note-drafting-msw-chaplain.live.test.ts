@@ -1168,6 +1168,110 @@ describe.skipIf(!DB_URL)(
     });
 
     // ===============================================================================================================
+    // 7. the audit trail
+    // ===============================================================================================================
+    describe("7. the audit trail of the social-work and chaplain drafts", () => {
+      const auditEvents = (eventType: string, resourceId: string) =>
+        rows<{
+          event_type: string;
+          resource_kind: string;
+          actor_user_id: string | null;
+          severity: string;
+          retention_class: string;
+          after: Record<string, unknown> | null;
+          context: { patientId?: string; fields?: string[] } | null;
+        }>(
+          `SELECT event_type, resource_kind, actor_user_id::text, severity::text, retention_class::text, after, context
+           FROM audit_event WHERE organization_id = $1 AND event_type = $2 AND resource_id::text = $3 ORDER BY created_at`,
+          [ORG_A, eventType, resourceId],
+        );
+
+      it.each(["msw", "chaplain"] as const)(
+        "%s: the read event of a draft GET lands, encounter_draft.viewed on the encounter, attributed to the patient, field names only",
+        async (kind) => {
+          const v = await seedVisit({ kind });
+          const { res, body } = await getDraft(v);
+          expect(res.statusCode).toBe(200);
+          const events = await auditEvents("encounter_draft.viewed", v.encounterId);
+          expect(events).toHaveLength(1);
+          expect(events[0]).toMatchObject({
+            resource_kind: "encounter_draft",
+            actor_user_id: v.author.userId,
+            context: { patientId: v.patientId },
+          });
+          expect(events[0]?.context?.fields).toEqual(
+            expect.arrayContaining(["text", "contentHash", "state", "origins"]),
+          );
+          // a trail of WHO read WHAT, never a second copy of the note
+          const trail = JSON.stringify(events[0]);
+          for (const section of body.sections) {
+            if (section.text !== null) expect(trail).not.toContain(section.text);
+          }
+        },
+      );
+
+      it("a read refused for the missing discipline_plan.read key writes no read event", async () => {
+        const member = await newMember(
+          ORG_A,
+          "audit-no-plan-key",
+          [...BASE_KEYS, "care_plan.read"],
+          "msw",
+        );
+        const v = await seedVisit({ kind: "msw", author: member });
+        expect((await getDraft(v)).res.statusCode).toBe(403);
+        expect(await auditEvents("encounter_draft.viewed", v.encounterId)).toEqual([]);
+      });
+
+      it("a confirmed plan records m8.encounter.draft_section_resolved with kinds, ids and counts, never the hash or the sentences, and links nothing", async () => {
+        const v = await seedVisit({ kind: "msw" });
+        const seen = sectionOf((await getDraft(v)).body, "plan");
+        expect((await putSection(v, "plan", "confirmed", seen)).statusCode).toBe(200);
+
+        const events = await auditEvents("m8.encounter.draft_section_resolved", v.encounterId);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          severity: "info",
+          retention_class: "compliance",
+          actor_user_id: v.author.userId,
+          after: {
+            sectionId: "plan",
+            resolution: "confirmed",
+            edited: false,
+            part2Derived: false,
+            sourceRefs: [
+              { kind: "discipline_plan_goal", id: GOAL_A },
+              { kind: "discipline_plan_goal", id: GOAL_B },
+            ],
+            carePlanElementsLinked: 0,
+            carePlanElementsRemoved: 0,
+          },
+        });
+        const trail = JSON.stringify(events);
+        expect(trail).not.toContain(String(seen.contentHash));
+        expect(trail).not.toMatch(/Name two ways|grandson|Plan-of-care/);
+      });
+
+      it("a confirmed Part 2 section is filed under the Part 2 retention class, with no goal or intervention wording in the trail", async () => {
+        const member = await newMember(ORG_A, "audit-part2", AUTHOR_KEYS, "msw");
+        part2Memberships.clear();
+        part2Memberships.add(member.membershipId);
+        const v = await seedVisit({ kind: "msw", author: member, snapshot: SUD_SNAPSHOT });
+        const seen = sectionOf((await getDraft(v)).body, "plan");
+        expect(seen.part2Derived).toBe(true);
+        expect((await putSection(v, "plan", "confirmed", seen)).statusCode).toBe(200);
+        part2Memberships.clear();
+
+        const events = await auditEvents("m8.encounter.draft_section_resolved", v.encounterId);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          retention_class: "compliance_42cfr_part2",
+          after: { sectionId: "plan", part2Derived: true },
+        });
+        expect(JSON.stringify(events)).not.toContain("SECRET-SUD");
+      });
+    });
+
+    // ===============================================================================================================
     // 6. tenancy and a source that cannot be read
     // ===============================================================================================================
     describe("6. another tenant's visits are 404, and a plan that cannot be read is 503", () => {

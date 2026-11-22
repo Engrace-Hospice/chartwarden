@@ -115,6 +115,7 @@ export interface DisciplinePlanSeamStore {
    * or before `asOf`. The snapshot crosses RAW.
    */
   planVersionAsOf(
+    organizationId: string,
     patientId: PatientId,
     admissionId: AdmissionId,
     kind: DisciplinePlanKind,
@@ -161,6 +162,8 @@ export interface DisciplinePlanSeamSeedPlan {
 
 /** One plan version row the in-memory slice serves the as-of read (S4) from. */
 export interface SeededDisciplinePlanVersion extends DisciplinePlanVersionAtRecord {
+  /** The version's tenant; when set, the slice serves it only to a read for that tenant (the Drizzle store's explicit second wall beside RLS). */
+  readonly organizationId?: string;
   readonly admissionId: AdmissionId;
   readonly kind: DisciplinePlanKind;
   readonly status: DisciplinePlanVersionStatus;
@@ -234,12 +237,13 @@ export function createInMemoryDisciplinePlanSeamStore(seed: DisciplinePlanSeamSe
       async planIdgDigest(planId) {
         return byPlanId.get(planId)?.idgDigest ?? null;
       },
-      async planVersionAsOf(patientId, admissionId, kind, asOf) {
+      async planVersionAsOf(organizationId, patientId, admissionId, kind, asOf) {
         const at = Date.parse(asOf);
         if (Number.isNaN(at)) throw new RangeError("planVersionAsOf: asOf is not an instant");
         const instant = (value: IsoInstant | null): number =>
           value === null ? Number.NaN : Date.parse(value);
         const inEffect = (v: SeededDisciplinePlanVersion): boolean => {
+          if (v.organizationId !== undefined && v.organizationId !== organizationId) return false;
           if (v.patientId !== patientId || v.admissionId !== admissionId || v.kind !== kind) {
             return false;
           }

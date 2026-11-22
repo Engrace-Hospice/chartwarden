@@ -104,7 +104,7 @@ export function createDisciplinePlanReader(
           `planElementsAsOf: asOf must be an ISO instant, got ${JSON.stringify(asOf)}`,
         );
       }
-      const version = await store.planVersionAsOf(patientId, admissionId, kind, asOf);
+      const version = await store.planVersionAsOf(orgId, patientId, admissionId, kind, asOf);
       if (version === null) return null;
       return planElementsFromVersion(version, () =>
         resolveSudAllowed(
