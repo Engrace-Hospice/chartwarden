@@ -18,6 +18,7 @@ import type { DraftSection, DraftedSection } from "@chartwarden/hearthnote";
 import { EncounterStateError } from "../lifecycle/errors";
 import { isCarePlanRef } from "./care-plan-refs";
 import { computeDraftOverview, sha256Hex } from "./compute";
+import { isDisciplinePlanRef } from "./discipline-plan-refs";
 import type { DraftEncounterRow, DraftResolvedEvent, DraftStore } from "./draft-store";
 import { type DraftSectionView, sectionView } from "./draft-view";
 import type { DraftPorts, DraftSeamPorts, DraftViewer } from "./ports";
@@ -106,13 +107,26 @@ export async function resolveSection(
 
   const edited = own.has(sectionId);
   const carePlanRefs = seen.sourceRefs.filter(isCarePlanRef);
+  const disciplineRefs = seen.sourceRefs.filter(isDisciplinePlanRef);
+  // S4b: the M15 elements of a section are kept or left out like the M7 ones (a section's sources are one or the other); the rows carry the
+  // section's Part 2 verdict, which fails closed. The audit event's two counters count both kinds.
   let linked = 0;
   let removed = 0;
   let bound: DraftedSection | null = seen;
   if (resolution === "confirmed") {
-    linked = await store.linkCarePlan(encounter, carePlanRefs);
+    linked =
+      (await store.linkCarePlan(encounter, carePlanRefs)) +
+      (await store.linkDisciplinePlan(encounter, disciplineRefs, seen.part2Derived));
   } else {
-    removed = await store.removeCarePlan(encounter, carePlanRefs, input.actorMembershipId, now);
+    removed =
+      (await store.removeCarePlan(encounter, carePlanRefs, input.actorMembershipId, now)) +
+      (await store.removeDisciplinePlan(
+        encounter,
+        disciplineRefs,
+        seen.part2Derived,
+        input.actorMembershipId,
+        now,
+      ));
     // The removal changed what the section says: bind the deselection to what REMAINS, recomputed inside the same transaction.
     const after =
       removed > 0

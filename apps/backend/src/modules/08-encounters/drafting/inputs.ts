@@ -137,20 +137,28 @@ function statedByOf(goal: DisciplineGoalAsOf): DisciplinePlanStatedBy | null {
   }
 }
 
-function disciplinePlanInput(plan: DisciplinePlanElementsAsOf): DisciplinePlanDraftInput {
+/** The plan's goals and interventions, less the ones this visit left out (S4b: a removed link and no live one). */
+function disciplinePlanInput(
+  plan: DisciplinePlanElementsAsOf,
+  removed: ReadonlySet<string>,
+): DisciplinePlanDraftInput {
   return {
-    goals: plan.goals.map((g) => ({
-      id: g.goalId,
-      goalText: g.text,
-      statedBy: statedByOf(g),
-      sudRelated: g.sudRelated,
-    })),
-    interventions: plan.interventions.map((i) => ({
-      id: i.interventionId,
-      interventionText: i.scopeText,
-      frequencyText: i.frequencyText,
-      sudRelated: i.sudRelated,
-    })),
+    goals: plan.goals
+      .filter((g) => !removed.has(g.goalId))
+      .map((g) => ({
+        id: g.goalId,
+        goalText: g.text,
+        statedBy: statedByOf(g),
+        sudRelated: g.sudRelated,
+      })),
+    interventions: plan.interventions
+      .filter((i) => !removed.has(i.interventionId))
+      .map((i) => ({
+        id: i.interventionId,
+        interventionText: i.scopeText,
+        frequencyText: i.frequencyText,
+        sudRelated: i.sudRelated,
+      })),
   };
 }
 
@@ -211,7 +219,8 @@ async function readCarePlan(
  * S4: the open goals and active interventions of the discipline's own plan (M15) in the signed version in effect at the visit time, for this
  * viewer. M15 redacts Part 2 per viewer in its own M39 call, so the cross-check of `readCarePlan` applies here as well: a plan it says it
  * withheld from a viewer this draft's own verdict clears was cut by an outage or a consent change in between, and is never passed off as complete.
- * No link is persisted (S4a): a confirmation applies to the section as a whole, so there is no removed-element set to apply either.
+ * S4b: the elements this visit LEFT OUT (a removed link and no live one, `encounter_discipline_plan_link`) are read beside the plan and dropped from it,
+ * as the care plan's removed links are; a viewer's Part 2 verdict does not change which elements are removed, only which the plan returned.
  */
 async function readDisciplinePlan(
   ports: DraftPorts,
@@ -221,23 +230,28 @@ async function readDisciplinePlan(
   part2Verdict: Part2Verdict,
 ): Promise<DisciplinePlanDraftInput | null> {
   const kind = disciplinePlanKindFor(encounter.discipline);
-  const plan = await guarded("the discipline plan", () =>
-    ports.disciplinePlanAsOf(
-      encounter.organizationId,
-      encounter.patientId,
-      encounter.admissionId,
-      kind,
-      { roles: viewer.roles, membershipId: viewer.membershipId },
-      asOf,
+  const [plan, removed] = await settleAll([
+    guarded("the discipline plan", () =>
+      ports.disciplinePlanAsOf(
+        encounter.organizationId,
+        encounter.patientId,
+        encounter.admissionId,
+        kind,
+        { roles: viewer.roles, membershipId: viewer.membershipId },
+        asOf,
+      ),
     ),
-  );
+    guarded("the removed discipline-plan links", () =>
+      ports.removedDisciplinePlanElementIds(encounter.id),
+    ),
+  ]);
   if (plan === null) return null;
   // A plan that is not this patient's must never reach a note, however the seam came to return it.
   if (plan.patientId !== encounter.patientId)
     throw draftUnavailable("the discipline plan (wrong patient)");
   if (plan.redacted && (await part2Verdict()))
     throw draftUnavailable("the discipline plan (withheld from a viewer entitled to it)");
-  return disciplinePlanInput(plan);
+  return disciplinePlanInput(plan, removed);
 }
 
 // ── scale readings ─────────────────────────────────────────────────────────────────────────────────

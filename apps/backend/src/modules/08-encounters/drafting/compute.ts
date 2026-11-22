@@ -125,6 +125,8 @@ const CLOSED_STORE: DraftStorePorts = {
   weightReadings: () => Promise.reject(new Error("a store read after its transaction closed")),
   removedCarePlanElementIds: () =>
     Promise.reject(new Error("a store read after its transaction closed")),
+  removedDisciplinePlanElementIds: () =>
+    Promise.reject(new Error("a store read after its transaction closed")),
   loadSelection: () => Promise.reject(new Error("a store read after its transaction closed")),
 };
 
@@ -160,7 +162,7 @@ export async function snapshotStorePorts(
   // S3: the store reads of a source the template does not draft from are not taken either (an aide's snapshot is the care-plan links and the
   // stored selections): `readDraftInputs` reads the same sources, by the same rule.
   const needs = draftSourceNeeds(encounter.encounterType, encounter.discipline);
-  const [previous, vitals, removed, stored, weights] = await settleAll([
+  const [previous, vitals, removed, removedDiscipline, stored, weights] = await settleAll([
     readsPreviousVisit(needs)
       ? guarded("the previous signed visit", () => store.previousSignedVisitAt(encounter))
       : Promise.resolve(null),
@@ -169,6 +171,11 @@ export async function snapshotStorePorts(
       : Promise.resolve(null),
     needs.carePlan
       ? guarded("the removed care-plan links", () => store.removedCarePlanElementIds(encounter.id))
+      : Promise.resolve(new Set<string>()),
+    needs.disciplinePlan
+      ? guarded("the removed discipline-plan links", () =>
+          store.removedDisciplinePlanElementIds(encounter.id),
+        )
       : Promise.resolve(new Set<string>()),
     guarded("the stored selections", () => store.loadSelection(encounter)),
     readsWeights
@@ -190,6 +197,9 @@ export async function snapshotStorePorts(
     removedCarePlanElementIds: needs.carePlan
       ? async () => removed
       : notTaken("removed care-plan links"),
+    removedDisciplinePlanElementIds: needs.disciplinePlan
+      ? async () => removedDiscipline
+      : notTaken("removed discipline-plan links"),
     loadSelection: async () => stored,
   };
 }

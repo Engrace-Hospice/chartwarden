@@ -217,3 +217,64 @@ describe("readDraftInputs: a discipline plan withheld from the viewer (`redacted
     expect(ports.part2DisclosureAllowed).not.toHaveBeenCalled();
   });
 });
+
+// S4b (VN-D59): the goals and interventions the visit LEFT OUT (a removed link and no live one) are not drafted again.
+describe("readDraftInputs: the plan elements a visit left out", () => {
+  const twoOfEach = plan({
+    goals: [goal(), goal({ goalId: "goal-2", text: "Write a letter to the family" })] as never,
+    interventions: [
+      intervention(),
+      intervention({ interventionId: "iv-2", scopeText: "Family meeting" }),
+    ] as never,
+  });
+
+  it("leaves out the removed goals and interventions and keeps the others in the plan's order", async () => {
+    const ports = fakePorts({
+      disciplinePlanAsOf: async () => twoOfEach,
+      removedDisciplinePlanElementIds: async () => new Set(["goal-1", "iv-2"]),
+    });
+    const inputs = await readDraftInputs(ports, MSW, viewer({ roles: ["msw"] }), AS_OF);
+    expect(inputs.disciplinePlan?.goals.map((g) => g.id)).toEqual(["goal-2"]);
+    expect(inputs.disciplinePlan?.interventions.map((i) => i.id)).toEqual(["iv-1"]);
+  });
+
+  it("an empty removed set changes nothing", async () => {
+    const inputs = await readDraftInputs(
+      fakePorts({ disciplinePlanAsOf: async () => twoOfEach }),
+      MSW,
+      viewer(),
+      AS_OF,
+    );
+    expect(inputs.disciplinePlan?.goals).toHaveLength(2);
+    expect(inputs.disciplinePlan?.interventions).toHaveLength(2);
+  });
+
+  it("asks for THIS encounter's removed elements, once, for a social-work or chaplain visit", async () => {
+    for (const visit of [MSW, CHAPLAIN]) {
+      const ports = portsWith();
+      await readDraftInputs(ports, visit, viewer(), AS_OF);
+      expect(ports.removedDisciplinePlanElementIds, visit.encounterType).toHaveBeenCalledOnce();
+      expect(ports.removedDisciplinePlanElementIds).toHaveBeenCalledWith(visit.id);
+    }
+  });
+
+  it("is not asked by a visit that does not draft from the discipline plan", async () => {
+    for (const other of [ROUTINE, AIDE]) {
+      const ports = portsWith();
+      await readDraftInputs(ports, other, viewer(), AS_OF);
+      expect(ports.removedDisciplinePlanElementIds, other.encounterType).not.toHaveBeenCalled();
+    }
+  });
+
+  it("is DRAFT_UNAVAILABLE when the removed-elements read fails, and the message does not carry the cause", async () => {
+    const ports = fakePorts({
+      disciplinePlanAsOf: async () => plan(),
+      removedDisciplinePlanElementIds: async () => {
+        throw new Error("synthetic store outage");
+      },
+    });
+    const error = await readDraftInputs(ports, MSW, viewer(), AS_OF).catch((e: unknown) => e);
+    expect(error).toMatchObject({ code: "DRAFT_UNAVAILABLE", statusCode: 503 });
+    expect((error as Error).message).not.toContain("synthetic store outage");
+  });
+});

@@ -1,0 +1,112 @@
+// apps/backend/src/modules/08-encounters/drafting/discipline-plan-links.ts — `encounter_discipline_plan_link` reads and writes for the social-work and
+// chaplain visit-note draft (ADR-0114 S4b, VN-D58, VN-D59). The rules (what to write) are the M7 care-plan planners in care-plan-refs.ts, which read goal
+// and intervention ids only; this loads the rows and executes the plan on the caller's transaction, as care-plan-links.ts does for M7. The application role
+// holds no DELETE on any M8 table, so a removal is a soft `removed_at`. A live row means "kept in this visit's statement of the plan", never "addressed".
+import { type DbClient, schema } from "@chartwarden/db";
+import { and, eq, inArray } from "drizzle-orm";
+import {
+  type CarePlanElement,
+  type LinkOp,
+  type LinkRowState,
+  planLinks,
+  planRemovals,
+  removedElementIdsOf,
+} from "./care-plan-refs";
+import type { DraftEncounterRow } from "./draft-store";
+
+const L = schema.encounterDisciplinePlanLinks;
+
+async function loadLinkRows(tx: DbClient, encounterId: string): Promise<LinkRowState[]> {
+  return tx
+    .select({
+      id: L.id,
+      goalId: L.goalId,
+      interventionId: L.interventionId,
+      removedAt: L.removedAt,
+    })
+    .from(L)
+    .where(eq(L.encounterId, encounterId));
+}
+
+/** M15 goal and intervention ids this encounter's draft leaves out (a removed link and no live one). */
+export async function removedDisciplinePlanElementIds(
+  tx: DbClient,
+  encounterId: string,
+): Promise<ReadonlySet<string>> {
+  return removedElementIdsOf(await loadLinkRows(tx, encounterId));
+}
+
+const elementColumns = (element: CarePlanElement) =>
+  element.kind === "goal" ? { goalId: element.id } : { interventionId: element.id };
+
+/**
+ * Executes a plan in at most three statements, however many elements it names (the encounter's row lock is held throughout, so a round trip per
+ * element would hold it for as long as the plan is long): one UPDATE for every soft-removal, one INSERT for the new live links and one for the
+ * already-removed tombstones. Every row states `part2_derived` (no default): the section's verdict, so an element of a Part 2 derived section is filed as
+ * Part 2 and its ids are withheld from the audit image.
+ */
+async function execute(
+  tx: DbClient,
+  encounter: DraftEncounterRow,
+  ops: readonly LinkOp[],
+  part2Derived: boolean,
+  removal: { readonly by: string; readonly at: Date } | null,
+): Promise<number> {
+  const rowIds = ops.flatMap((op) => (op.op === "remove_live" ? op.rowIds : []));
+  const link = (element: CarePlanElement) => ({
+    organizationId: encounter.organizationId,
+    providerEntityId: encounter.providerEntityId,
+    locationId: encounter.locationId,
+    encounterId: encounter.id,
+    part2Derived,
+    ...elementColumns(element),
+  });
+  const live = ops.flatMap((op) => (op.op === "insert_live" ? [link(op.element)] : []));
+  // An already-removed tombstone carries both removal columns or neither (the table's removal-consistent CHECK).
+  const tombstones = ops.flatMap((op) =>
+    op.op === "insert_removed"
+      ? [{ ...link(op.element), removedAt: removal?.at, removedByMembershipId: removal?.by }]
+      : [],
+  );
+  if (rowIds.length > 0) {
+    await tx
+      .update(L)
+      .set({ removedAt: removal?.at, removedByMembershipId: removal?.by })
+      .where(and(eq(L.encounterId, encounter.id), inArray(L.id, rowIds)));
+  }
+  if (live.length > 0) await tx.insert(L).values(live);
+  if (tombstones.length > 0) await tx.insert(L).values(tombstones);
+  return ops.length;
+}
+
+export async function linkDisciplineElements(
+  tx: DbClient,
+  encounter: DraftEncounterRow,
+  elements: readonly CarePlanElement[],
+  part2Derived: boolean,
+): Promise<number> {
+  return execute(
+    tx,
+    encounter,
+    planLinks(await loadLinkRows(tx, encounter.id), elements),
+    part2Derived,
+    null,
+  );
+}
+
+export async function removeDisciplineElements(
+  tx: DbClient,
+  encounter: DraftEncounterRow,
+  elements: readonly CarePlanElement[],
+  part2Derived: boolean,
+  removedBy: string,
+  now: Date,
+): Promise<number> {
+  return execute(
+    tx,
+    encounter,
+    planRemovals(await loadLinkRows(tx, encounter.id), elements),
+    part2Derived,
+    { by: removedBy, at: now },
+  );
+}

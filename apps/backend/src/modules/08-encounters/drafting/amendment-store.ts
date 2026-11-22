@@ -194,6 +194,9 @@ export function createAmendmentDraftStore(
     saveConfirmation: (write) => saveAmendmentResolution(tx, addendumId, write),
     linkCarePlan: async () => 0,
     removeCarePlan: async () => 0,
+    // S4b (VN-D62): an amendment never changes the visit's links, M15's included; it reads the note's removed set (`...base`) and writes none.
+    linkDisciplinePlan: async () => 0,
+    removeDisciplinePlan: async () => 0,
   };
 }
 
