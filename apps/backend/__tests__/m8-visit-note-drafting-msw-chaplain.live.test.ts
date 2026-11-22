@@ -1674,8 +1674,8 @@ describe.skipIf(!DB_URL)(
         it("a toggle answers the list's wording, so it leaves the same read event, actor and patient (and the row's own trigger event, attributed to the author)", async () => {
           const v = await seedVisit({ kind: "msw" });
           expect((await setElement(v, GOAL_A, false)).statusCode).toBe(200);
-          // a no-op toggle writes no row, and still answers the wording
-          expect((await setElement(v, GOAL_B, true)).statusCode).toBe(200);
+          // leaving out an element that is already left out writes no row, and still answers the wording
+          expect((await setElement(v, GOAL_A, false)).statusCode).toBe(200);
           const reads = await rows<{
             actor_user_id: string | null;
             context: { patientId?: string };
@@ -1803,9 +1803,26 @@ describe.skipIf(!DB_URL)(
               ...params,
             ]);
 
-          expect((await update("goal_id = $2", [GOAL_B]))?.code).toBe(RESTRICT_VIOLATION);
-          expect((await update("encounter_id = $2", [randomUUID()]))?.code).toBeDefined();
+          // the application role's column grant stops an identity column first (permission denied, before any trigger)...
+          const PERMISSION_DENIED = "42501";
+          expect((await update("goal_id = $2", [GOAL_B]))?.code).toBe(PERMISSION_DENIED);
+          expect((await update("encounter_id = $2", [randomUUID()]))?.code).toBe(PERMISSION_DENIED);
           expect((await update("created_at = now() + interval '1 day'"))?.code).toBe(
+            PERMISSION_DENIED,
+          );
+          // ...and the guard holds the same line for a role that does hold the column (the owner), so neither layer is the only one
+          const asOwner = (set: string, params: readonly unknown[] = []) =>
+            admin
+              .query(`UPDATE encounter_discipline_plan_link SET ${set} WHERE id = $1`, [
+                id,
+                ...params,
+              ])
+              .then(
+                () => undefined,
+                (error: unknown) => refusal(error),
+              );
+          expect((await asOwner("goal_id = $2", [GOAL_B]))?.code).toBe(RESTRICT_VIOLATION);
+          expect((await asOwner("created_at = now() + interval '1 day'"))?.code).toBe(
             RESTRICT_VIOLATION,
           );
 
