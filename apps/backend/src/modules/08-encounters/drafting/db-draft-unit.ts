@@ -15,6 +15,7 @@ import type {
   DraftResolvedEvent,
   DraftScope,
   DraftUnit,
+  IdgLinkRefusedEvent,
   RunInOrg,
 } from "./draft-store";
 import { isVisitNoteDraftEnabled } from "./policy-service";
@@ -22,6 +23,9 @@ import { leaseTransaction } from "./transaction-lease";
 
 /** The explicit audit event one resolution records (catalogued in `M8_ACTION_CATALOG`); the confirmation's row trigger records the row too. */
 export const DRAFT_SECTION_AUDIT_EVENT = "m8.encounter.draft_section_resolved";
+
+/** The explicit audit event of a refused IDG follow-up link (S5b; catalogued in `M8_ACTION_CATALOG`). */
+export const IDG_LINK_REFUSED_AUDIT_EVENT = "m8.encounter.idg_follow_up_link_refused";
 
 const E = schema.encounters;
 const ADDENDUM = schema.encounterAddenda;
@@ -88,6 +92,20 @@ function createUnit(
     store,
     amendment: (encounterId, addendumId) => loadAmendment(tx, encounterId, addendumId),
     amendmentStore: (addendumId) => createAmendmentDraftStore(tx, store, addendumId),
+    async recordIdgLinkRefused(event: IdgLinkRefusedEvent) {
+      if (scope.audit === undefined)
+        throw new Error("a draft write needs the request's audit context");
+      await audit(tx, scope.audit, {
+        eventType: IDG_LINK_REFUSED_AUDIT_EVENT,
+        resourceKind: "encounter",
+        resourceId: event.encounterId,
+        outcome: "denied",
+        severity: "warn",
+        retentionClass: "compliance",
+        // The reason is an enum. No action item id (it could be Part 2, and a refusal must not confirm one exists), no patient, no text.
+        context: { refusal: event.reason },
+      });
+    },
     async recordResolved(event: DraftResolvedEvent) {
       if (scope.audit === undefined)
         throw new Error("a draft write needs the request's audit context");

@@ -47,6 +47,8 @@ export function mountEncounterRoutes(
     readonly policyCache?: ClosurePolicyCache;
     /** Reports (error class only) a refused grant/revoke whose denial audit event could not be written; see closure-route-service.ts. */
     readonly onDenialAuditFailure?: (error: unknown) => void;
+    /** Reports (error class only) a refused IDG follow-up link whose audit event could not be written (ADR-0114 S5b); see draft-service.ts. */
+    readonly onRefusalAuditFailure?: (error: unknown) => void;
     /**
      * The per-actor limiter for the override grant and revoke routes (`createRouteRateLimit`, which the composition root builds over
      * its rate-limit store; note-closure-gate-wiring.test.ts pins that it does). Absent, the two routes are unlimited: a mount that
@@ -70,7 +72,12 @@ export function mountEncounterRoutes(
   });
   _registerM8DraftingRoutes(app, { service: createDbDraftRouteService({ db }) });
   _registerM8DraftSectionRoutes(app, {
-    service: createDraftService({ runInOrg: createDbRunInOrg(db, ciphers) }),
+    service: createDraftService({
+      runInOrg: createDbRunInOrg(db, ciphers),
+      ...(closure?.onRefusalAuditFailure
+        ? { onRefusalAuditFailure: closure.onRefusalAuditFailure }
+        : {}),
+    }),
   });
 }
 

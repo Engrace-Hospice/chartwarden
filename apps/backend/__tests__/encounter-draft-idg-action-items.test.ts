@@ -6,6 +6,7 @@
 import type { IdgFollowUpItem } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { createDraftService } from "../src/modules/08-encounters/drafting/draft-service";
+import { EncounterStateError } from "../src/modules/08-encounters/lifecycle/errors";
 import { NOW, PATIENT_ID, fakePorts, selectionFor } from "./_encounter-draft-fixtures";
 import { draftEncounterRow, memoryRunInOrg } from "./_encounter-draft-memory-store";
 
@@ -333,6 +334,80 @@ describe("setIdgActionItem", () => {
       removedAt: NOW,
       part2Derived: false,
     });
+  });
+
+  it("audits a REFUSED link on a new unit: an item not handed is `not_offered`, a full table is `link_limit`, with the encounter and no item id; a bad request, a missing key and a signed note leave none", async () => {
+    const hidden = service({ items: [] });
+    await expectCode(
+      hidden.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_SUD }, AUDIT),
+      "NOT_FOUND",
+      404,
+    );
+    expect(hidden.refusals).toEqual([{ encounterId: ENCOUNTER, reason: "not_offered" }]);
+    expect(JSON.stringify(hidden.refusals)).not.toContain(ITEM_SUD);
+    // the refusal was written on its OWN unit with the request's audit context (the refused unit rolled back)
+    expect(hidden.scopes.at(-1)).toMatchObject({ audit: AUDIT });
+
+    const mem = memoryRunInOrg({
+      encounter: IDG_RN,
+      selection: selectionFor("idg_followup", "rn"),
+    });
+    const full = createDraftService({
+      runInOrg: mem.runInOrg,
+      seams: () => fakePorts({ idgFollowUpItems: async () => [item(ITEM_1)] }),
+      now: () => NOW,
+    });
+    mem.store.setIdgActionItemLink.mockRejectedValueOnce(
+      new EncounterStateError("IDG_ACTION_ITEM_LINK_LIMIT", "nothing was changed"),
+    );
+    await expectCode(
+      full.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_1 }, AUDIT),
+      "IDG_ACTION_ITEM_LINK_LIMIT",
+      409,
+    );
+    expect(mem.refusals).toEqual([{ encounterId: ENCOUNTER, reason: "link_limit" }]);
+
+    const quiet = [
+      service({ memory: { enabled: false } }),
+      service({ memory: { encounter: null } }),
+      service({ memory: { encounter: draftEncounterRow({ ...IDG_RN, status: "signed" }) } }),
+      service({ memory: ROUTINE_RN }),
+      service(),
+    ];
+    await Promise.allSettled([
+      quiet[0]?.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_1 }, AUDIT),
+      quiet[1]?.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_1 }, AUDIT),
+      quiet[2]?.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_1 }, AUDIT),
+      quiet[3]?.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_1 }, AUDIT),
+      quiet[4]?.svc.setIdgActionItem(withoutIdgKey, ENCOUNTER, { actionItemId: ITEM_1 }, AUDIT),
+    ]);
+    expect(quiet.flatMap((q) => q.refusals)).toEqual([]);
+    // a success and a clear audit nothing of this kind either
+    const ok = service();
+    await ok.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_1 }, AUDIT);
+    await ok.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: null }, AUDIT);
+    expect(ok.refusals).toEqual([]);
+  });
+
+  it("a refusal whose audit event cannot be written is still the refusal, and is reported", async () => {
+    const reported: unknown[] = [];
+    const mem = memoryRunInOrg({
+      encounter: IDG_RN,
+      selection: selectionFor("idg_followup", "rn"),
+      refusalAuditFails: true,
+    });
+    const svc = createDraftService({
+      runInOrg: mem.runInOrg,
+      seams: () => fakePorts({ idgFollowUpItems: async () => [] }),
+      now: () => NOW,
+      onRefusalAuditFailure: (error) => reported.push(error),
+    });
+    await expectCode(
+      svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_SUD }, AUDIT),
+      "NOT_FOUND",
+      404,
+    );
+    expect(reported).toHaveLength(1);
   });
 
   it("a clear needs no idg.act and no M14: a clinician who lost the key, or whose M14 is down, can always clear a link they made (the row is raised to Part 2, fails closed)", async () => {

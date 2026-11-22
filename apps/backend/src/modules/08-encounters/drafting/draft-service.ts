@@ -16,13 +16,19 @@ import {
   snapshotStorePorts,
 } from "./compute";
 import { defaultDraftPorts } from "./default-ports";
-import { readDisciplinePlanElements } from "./discipline-plan-inputs";
 import {
   type DisciplinePlanElementsView,
   assertDraftsFromDisciplinePlan,
   disciplinePlanElementsView,
 } from "./discipline-plan-elements";
-import type { AmendmentRef, DraftEncounterRow, DraftUnit, RunInOrg } from "./draft-store";
+import { readDisciplinePlanElements } from "./discipline-plan-inputs";
+import type {
+  AmendmentRef,
+  DraftEncounterRow,
+  DraftScope,
+  DraftUnit,
+  RunInOrg,
+} from "./draft-store";
 import {
   type AmendmentDraftView,
   type DraftSectionView,
@@ -31,10 +37,12 @@ import {
   draftView,
 } from "./draft-view";
 import {
+  IdgActionItemNotOffered,
   type IdgFollowUpItemsView,
   assertDraftsFromIdgFollowUp,
   assertMayActOnIdgItems,
   idgFollowUpItemsView,
+  linkRefusalOf,
   mayActOnIdgItems,
   readIdgFollowUpCandidates,
 } from "./idg-follow-up";
@@ -143,6 +151,8 @@ export interface DraftServiceDeps {
   /** The seam-backed half of the draft ports (M7, M9, M12, M39); defaults to the M1-registry wiring. Injected by tests. */
   readonly seams?: () => DraftSeamPorts;
   readonly now?: () => Date;
+  /** Reports (the error class only is safe to log) a refused IDG follow-up link whose audit event could not be written; the refusal itself is still answered. */
+  readonly onRefusalAuditFailure?: (error: unknown) => void;
 }
 
 async function loadOr404(
@@ -214,6 +224,74 @@ async function visitTimeOf(
   return guarded("the visit time", async () =>
     visitAsOf({ serviceDate: encounter.serviceDate, orgTimeZone, now }),
   );
+}
+
+/**
+ * The IDG follow-up's link or clear in ONE unit (the encounter row locked first, a signed, cosigned or voided note refused). CLEARING asks the author's checks (the
+ * routes') and nothing of M14, key or seam: a clinician who lost `idg.act`, or whose M14 is down, can always clear a link they made. The row being left cannot
+ * then be judged without M14, so it is raised to Part 2 (fails closed: the flag only moves the audit class), and no candidate was read, so the answer lists
+ * nothing: the client re-reads the list (GET) when it wants one. LINKING needs `idg.act` and an item in the viewer's own candidate list.
+ */
+async function linkIdgActionItem(
+  unit: DraftUnit,
+  seamPorts: DraftSeamPorts,
+  caller: DraftCaller & { readonly membershipId: string },
+  encounterId: string,
+  actionItemId: string | null,
+  now: Date,
+): Promise<IdgFollowUpItemsView> {
+  const encounter = await loadOr404(unit, encounterId, true, caller);
+  checkMutableForEdit({ status: encounter.status });
+  assertDraftsFromIdgFollowUp(encounter);
+  const live = await guarded("the linked IDG action item", () =>
+    unit.store.linkedIdgActionItemId(encounter.id),
+  );
+  if (actionItemId === null) {
+    await unit.store.setIdgActionItemLink(encounter, null, live !== null, caller.membershipId, now);
+    return idgFollowUpItemsView(encounter, [], null);
+  }
+  assertMayActOnIdgItems(caller.permissions);
+  const timeZone = await guarded("the organization time zone", () =>
+    unit.store.organizationTimeZone(encounter.organizationId),
+  );
+  // The open candidates, and the item the visit is already linked to even if M14 has closed it since: naming it again is then the idempotent no-op it always
+  // was, and its own verdict (not a guess) judges the row being left.
+  const candidates = await readIdgFollowUpCandidates(
+    seamPorts,
+    encounter,
+    viewerOf(caller),
+    timeZone,
+    live,
+  );
+  // An item this viewer was not handed (absent, closed and not the linked one, reassigned, another patient's, or Part 2 without disclosure): one answer.
+  const target = candidates.find((c) => c.actionItemId === actionItemId);
+  if (target === undefined) throw new IdgActionItemNotOffered();
+  // The verdict for the item being left: its own when M14 still hands it over, else Part 2 (fails closed).
+  const leaving = live === null ? undefined : candidates.find((c) => c.actionItemId === live);
+  await unit.store.setIdgActionItemLink(
+    encounter,
+    { actionItemId: target.actionItemId, part2Derived: target.part2Derived },
+    live !== null && (leaving?.part2Derived ?? true),
+    caller.membershipId,
+    now,
+  );
+  return idgFollowUpItemsView(encounter, candidates, target.actionItemId);
+}
+
+/** Writes the audit event of a refused link on a NEW unit (best effort: a failure to write it is reported and never replaces the refusal). */
+async function recordLinkRefusal(
+  deps: DraftServiceDeps,
+  scope: DraftScope,
+  encounterId: string,
+  refusal: unknown,
+): Promise<void> {
+  const reason = linkRefusalOf(refusal);
+  if (reason === null) return;
+  try {
+    await deps.runInOrg(scope, (unit) => unit.recordIdgLinkRefused({ encounterId, reason }));
+  } catch (auditFailure) {
+    deps.onRefusalAuditFailure?.(auditFailure);
+  }
 }
 
 export function createDraftService(deps: DraftServiceDeps): DraftService {
@@ -366,62 +444,21 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
 
     async setIdgActionItem(caller, encounterId, body, audit) {
       const now = clock();
-      return deps.runInOrg(
-        { organizationId: caller.organizationId, userId: caller.userId, now, audit },
-        async (unit) => {
-          // Locked, and a signed, cosigned or voided note is edited only through an addendum, as a section's resolution is.
-          const encounter = await loadOr404(unit, encounterId, true, caller);
-          checkMutableForEdit({ status: encounter.status });
-          assertDraftsFromIdgFollowUp(encounter);
-          const { actionItemId } = body;
-          if (actionItemId === null) {
-            // CLEARING asks the author's checks (the routes') and nothing of M14, key or seam: a clinician who lost `idg.act`, or whose M14 is down, can always clear
-            // a link they made. The row being left cannot be judged without M14, so it is raised to Part 2 (fails closed: the flag only moves the audit class).
-            const live = await guarded("the linked IDG action item", () =>
-              unit.store.linkedIdgActionItemId(encounter.id),
-            );
-            await unit.store.setIdgActionItemLink(
-              encounter,
-              null,
-              live !== null,
-              caller.membershipId,
-              now,
-            );
-            // No candidate was read, so there is nothing to list: the client re-reads the list (GET) when it wants one.
-            return idgFollowUpItemsView(encounter, [], null);
-          }
-          assertMayActOnIdgItems(caller.permissions);
-          const timeZone = await guarded("the organization time zone", () =>
-            unit.store.organizationTimeZone(encounter.organizationId),
-          );
-          const live = await guarded("the linked IDG action item", () =>
-            unit.store.linkedIdgActionItemId(encounter.id),
-          );
-          // The open candidates, and the item the visit is already linked to even if M14 has closed it since: naming it again is then the idempotent no-op it
-          // always was, and its own verdict (not a guess) judges the row being left.
-          const candidates = await readIdgFollowUpCandidates(
-            seams(),
-            encounter,
-            viewerOf(caller),
-            timeZone,
-            live,
-          );
-          // An item this viewer was not handed (absent, closed and not the linked one, reassigned, another patient's, or Part 2 without disclosure) is not here: one answer.
-          const target = candidates.find((c) => c.actionItemId === actionItemId);
-          if (target === undefined) throw new NotFoundError("action item");
-          // The verdict for the item being left: its own when M14 still hands it over, else Part 2 (fails closed: the flag only moves the audit class).
-          const leaving =
-            live === null ? undefined : candidates.find((c) => c.actionItemId === live);
-          await unit.store.setIdgActionItemLink(
-            encounter,
-            { actionItemId: target.actionItemId, part2Derived: target.part2Derived },
-            live !== null && (leaving?.part2Derived ?? true),
-            caller.membershipId,
-            now,
-          );
-          return idgFollowUpItemsView(encounter, candidates, target.actionItemId);
-        },
-      );
+      const scope = {
+        organizationId: caller.organizationId,
+        userId: caller.userId,
+        now,
+        audit,
+      };
+      try {
+        return await deps.runInOrg(scope, (unit) =>
+          linkIdgActionItem(unit, seams(), caller, encounterId, body.actionItemId, now),
+        );
+      } catch (refusal) {
+        // A link the author named and was refused leaves a warn-severity audit event with no item id (the refused unit rolled back, so it is a new one).
+        await recordLinkRefusal(deps, scope, encounterId, refusal);
+        throw refusal;
+      }
     },
 
     async getAmendmentDraft(caller, encounterId, addendumId) {

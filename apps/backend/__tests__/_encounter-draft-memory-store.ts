@@ -18,6 +18,7 @@ import type {
   DraftResolvedEvent,
   DraftStore,
   DraftUnit,
+  IdgLinkRefusedEvent,
   RunInOrg,
 } from "../src/modules/08-encounters/drafting/draft-store";
 import {
@@ -200,6 +201,8 @@ export interface MemoryUnitOptions extends MemoryStoreOptions {
   /** The addendum the amendment routes find on the encounter (default: none). Its resolutions are kept apart from the note's. */
   readonly amendment?: AmendmentRef;
   readonly enabled?: boolean;
+  /** The refused-link audit write throws (the refusal must still be answered). */
+  readonly refusalAuditFails?: boolean;
   /** `null` is an absent encounter; undefined is the default draft encounter. */
   readonly encounter?: DraftEncounterRow | null;
 }
@@ -208,6 +211,7 @@ export interface MemoryUnitOptions extends MemoryStoreOptions {
 export function memoryRunInOrg(options: MemoryUnitOptions = {}) {
   const { store, links, disciplineLinks, idgLinks, saved } = memoryDraftStore(options);
   const events: DraftResolvedEvent[] = [];
+  const refusals: IdgLinkRefusedEvent[] = [];
   const encounterCalls: { id: string; forUpdate: boolean }[] = [];
   const found = options.encounter === undefined ? draftEncounterRow() : options.encounter;
   const amendmentSaved = new Map<string, ConfirmationWrite>();
@@ -242,6 +246,10 @@ export function memoryRunInOrg(options: MemoryUnitOptions = {}) {
     recordResolved: async (event) => {
       events.push(event);
     },
+    recordIdgLinkRefused: async (event) => {
+      if (options.refusalAuditFails === true) throw new Error("the audit write failed");
+      refusals.push(event);
+    },
   };
   const scopes: Parameters<RunInOrg>[0][] = [];
   const runInOrg: RunInOrg = async (scope, fn) => {
@@ -257,6 +265,7 @@ export function memoryRunInOrg(options: MemoryUnitOptions = {}) {
     saved,
     amendmentSaved,
     events,
+    refusals,
     encounterCalls,
     scopes,
     unit,

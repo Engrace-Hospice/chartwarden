@@ -106,6 +106,12 @@ export interface DraftResolvedEvent {
   readonly carePlanElementsRemoved: number;
 }
 
+/** One refused link of an IDG follow-up visit to an IDG action item (S5b): the reason is an enum, never an item id or a patient. */
+export interface IdgLinkRefusedEvent {
+  readonly encounterId: string;
+  readonly reason: "not_offered" | "link_limit";
+}
+
 /** An addendum of the encounter as the amendment routes load it: its state, its author and the sections it names (VN-D30). */
 export interface AmendmentRef {
   readonly id: string;
@@ -126,6 +132,11 @@ export interface DraftUnit {
   encounter(encounterId: string, forUpdate: boolean): Promise<DraftEncounterRow | null>;
   readonly store: DraftStore;
   recordResolved(event: DraftResolvedEvent): Promise<void>;
+  /**
+   * S5b: the explicit warn-severity audit event of a REFUSED link (`m8.encounter.idg_follow_up_link_refused`, outcome denied, ids and patient left out). The refused
+   * unit rolled back, so the service calls this on a NEW unit, best effort.
+   */
+  recordIdgLinkRefused(event: IdgLinkRefusedEvent): Promise<void>;
   /** The addendum of that encounter, or `null` (absent, another encounter's or another tenant's). */
   amendment(encounterId: string, addendumId: string): Promise<AmendmentRef | null>;
   /** `store` with the addendum's resolutions in place of the note's and no care-plan link changes (`createAmendmentDraftStore`). */

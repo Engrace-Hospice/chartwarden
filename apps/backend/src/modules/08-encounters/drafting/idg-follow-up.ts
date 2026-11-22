@@ -14,7 +14,7 @@ import type { Draft, DraftSourceRef, IdgFollowUpDraftInput } from "@chartwarden/
 import { draftSourceNeeds } from "@chartwarden/hearthnote";
 import { IDG_DECISION_KIND_LABELS } from "@chartwarden/narrative-vocab";
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
-import type { IdgActionItemStatus, IdgFollowUpItem } from "@chartwarden/types";
+import { type IdgActionItemStatus, type IdgFollowUpItem, NotFoundError } from "@chartwarden/types";
 import { EncounterStateError } from "../lifecycle/errors";
 import type { DraftStore } from "./draft-store";
 import type { DraftEncounter, DraftPorts, DraftViewer } from "./ports";
@@ -220,6 +220,26 @@ export function idgFollowUpItemsView(
       }),
     ),
   };
+}
+
+/**
+ * The 404 for an action item the viewer is not handed (absent, closed and not the linked one, reassigned, another patient's, or Part 2 without disclosure): ONE
+ * answer for all of them, the same `NotFoundError` as an absent id. A subclass only so the service can tell it from the encounter's own 404 and audit the refusal.
+ */
+export class IdgActionItemNotOffered extends NotFoundError {
+  constructor() {
+    super("action item");
+    this.name = "IdgActionItemNotOffered";
+  }
+}
+
+/** The audited reason of a refused link, or `null` for any other failure (the encounter's own 404, a signed note, M14 being down). */
+export function linkRefusalOf(error: unknown): "not_offered" | "link_limit" | null {
+  if (error instanceof IdgActionItemNotOffered) return "not_offered";
+  if (error instanceof EncounterStateError && error.code === "IDG_ACTION_ITEM_LINK_LIMIT") {
+    return "link_limit";
+  }
+  return null;
 }
 
 /** The id of the section the IDG follow-up's linked action item feeds. */

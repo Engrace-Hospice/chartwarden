@@ -6677,6 +6677,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   { errorClass: error instanceof Error ? error.name : typeof error },
                   "closure override denial audit event could not be written",
                 ),
+              // ADR-0114 S5b - a refused IDG follow-up link leaves a best-effort audit event; if THAT write fails, say so (error class only).
+              onRefusalAuditFailure: (error) =>
+                app.log.warn(
+                  { errorClass: error instanceof Error ? error.name : typeof error },
+                  "IDG follow-up link refusal audit event could not be written",
+                ),
               // ADR-0113 D7 - fail-open (an availability control): 10/min/user, 100/min/org on the override grant and revoke routes, which
               // bounds the immutable denied-attempt audit rows one supervisor can add (fresh Idempotency-Keys defeat the replay cache).
               overrideRateLimit: createRouteRateLimit({
