@@ -1,8 +1,10 @@
 const REFERRAL_ID =
   "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}";
-const INTAKE_RETURN = new RegExp(`^/referrals/(${REFERRAL_ID})/intake\\?step=(receive|verify)$`);
+const INTAKE_RETURN = new RegExp(
+  `^/referrals/(${REFERRAL_ID})/intake\\?step=(receive|verify|review)$`,
+);
 
-export type IntakeDocumentStep = "receive" | "verify";
+export type IntakeDocumentStep = "receive" | "verify" | "review";
 
 /** A PHI-free, same-origin return target for a referral's guided intake workspace. */
 export function intakeWorkspaceReturnTo(
@@ -20,7 +22,7 @@ export function withIntakeReturnTo(path: string, returnTo?: string | null): stri
 }
 
 /**
- * Accept only the two referral-workspace destinations this flow creates. This is intentionally
+ * Accept only the referral-workspace destinations that launch document review. This is intentionally
  * narrower than a generic same-origin guard: a document link must never become an open redirect.
  */
 export function safeIntakeReturnTo(value: string | null): string | null {

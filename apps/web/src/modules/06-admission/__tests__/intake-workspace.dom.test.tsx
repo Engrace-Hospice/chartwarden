@@ -159,7 +159,7 @@ describe("IntakeWorkspace", () => {
       expect(screen.getByRole("heading", { name: "Robert Johnson" })).toBeTruthy(),
     );
     expect(screen.getByText("Confirm or create the patient before qualification.")).toBeTruthy();
-    expect(screen.getByText(/Unassigned · Canonical status/)).toBeTruthy();
+    expect(screen.getByText("Unassigned")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Resolve patient match" })).toBeTruthy();
     expect(screen.getByRole("button", { name: /match patient/i })).toHaveProperty(
       "ariaCurrent",
@@ -168,6 +168,22 @@ describe("IntakeWorkspace", () => {
     expect(await screen.findByRole("heading", { name: "Patient Resolution" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Overview" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Referral Information" })).toBeNull();
+  });
+
+  it("coordinates the persistent footer through the typed stage action", async () => {
+    const client = renderWorkspace();
+
+    const action = await screen.findByRole("button", { name: "Resolve patient match" });
+    await waitFor(() => expect((action as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(action);
+
+    await waitFor(() =>
+      expect(client.POST).toHaveBeenCalledWith(
+        `/api/v1/referrals/${referral.id}/patient-matches`,
+        expect.objectContaining({ body: { ifVersion: referral.version } }),
+      ),
+    );
+    expect(document.querySelector("[data-intake-primary-action]")).toBeNull();
   });
 
   it("uses the returned admission id for a converted referral", async () => {

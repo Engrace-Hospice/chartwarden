@@ -2,8 +2,6 @@ import {
   Button,
   EmptyState,
   LoadingSpinner,
-  PageHeader,
-  StatusPill,
   StickyFooterActions,
   type WorkflowStep,
   WorkflowStepper,
@@ -13,8 +11,9 @@ import {
 import type { CSSProperties, JSX } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { REFERRAL_TONE, stateLabel } from "./admission-status";
 import { AdmissionsTabs } from "./admissions-chrome";
+import type { IntakeStageAction } from "./intake-workspace-actions";
+import { IntakeAttentionPanel, IntakeIdentityHeader } from "./intake-workspace-chrome";
 import { type IntakeStepId, deriveIntakeWorkspace } from "./intake-workspace-stage";
 import { ReferralDetail } from "./referral-detail";
 import { type ReferralView, getReferral } from "./referrals-api";
@@ -45,6 +44,7 @@ export function IntakeWorkspace(): JSX.Element {
   const [focusStepId, setFocusStepId] = useState<IntakeStepId | null>(null);
   const [advancingFromReview, setAdvancingFromReview] = useState(false);
   const [verificationValid, setVerificationValid] = useState(true);
+  const [stageAction, setStageAction] = useState<IntakeStageAction | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -97,6 +97,14 @@ export function IntakeWorkspace(): JSX.Element {
     setFocusStepId(null);
   }, [focusStepId]);
 
+  const handleActionComplete = useCallback(
+    (action: string): void => {
+      setAdvancingFromReview(action === "start-review");
+      setSearchParams(action === "start-review" ? { step: "verify" } : {});
+    },
+    [setSearchParams],
+  );
+
   if (loading) return <LoadingSpinner />;
   if (!referral || !presentation) {
     return (
@@ -111,9 +119,6 @@ export function IntakeWorkspace(): JSX.Element {
     );
   }
 
-  const owner = referral.assignedToUserId
-    ? referral.assignedToDisplayName || "Staff member"
-    : "Unassigned";
   const currentReferral = referral;
   const currentPresentation = presentation;
   const displayedCopy = stepCopy(displayedStepId, currentPresentation);
@@ -147,42 +152,15 @@ export function IntakeWorkspace(): JSX.Element {
     }
 
     if (
-      displayedStepId === "verify" &&
-      currentReferral.status === "pending_information" &&
-      !isReviewingEarlierStep
+      isReviewingEarlierStep &&
+      (displayedStepId === "verify" ||
+        (displayedStepId === "review" && currentPresentation.blockers.length > 0))
     ) {
-      const resume = workspaceRef.current?.querySelector<HTMLButtonElement>(
-        '[data-intake-primary-action="review"]',
-      );
-      if (resume && !resume.disabled) {
-        resume.click();
-        return;
+      if (stageAction?.stageId === displayedStepId && !stageAction.disabled) {
+        stageAction.run();
+      } else {
+        focusTask(displayedStepId);
       }
-      focusTask("verify");
-      return;
-    }
-
-    if (displayedStepId === "verify") {
-      const save = workspaceRef.current?.querySelector<HTMLButtonElement>(
-        '[data-intake-primary-action="save-info"]',
-      );
-      if (save && !save.disabled) {
-        save.click();
-        return;
-      }
-      focusTask("verify");
-      return;
-    }
-
-    if (displayedStepId === "review" && currentPresentation.blockers.length > 0) {
-      const save = workspaceRef.current?.querySelector<HTMLButtonElement>(
-        '[data-intake-primary-action="save-info"]',
-      );
-      if (save && !save.disabled) {
-        save.click();
-        return;
-      }
-      focusTask("review");
       return;
     }
 
@@ -202,11 +180,8 @@ export function IntakeWorkspace(): JSX.Element {
       return;
     }
 
-    const action = workspaceRef.current?.querySelector<HTMLButtonElement>(
-      `[data-intake-primary-action="${primaryActionName(displayedStepId)}"]`,
-    );
-    if (action && !action.disabled) {
-      action.click();
+    if (stageAction?.stageId === displayedStepId && !stageAction.disabled) {
+      stageAction.run();
       return;
     }
     focusTask(displayedStepId);
@@ -217,30 +192,9 @@ export function IntakeWorkspace(): JSX.Element {
     if (previous && stepIndex(previous.id) <= activeIndex) selectStep(previous.id);
   }
 
-  function handleActionComplete(action: string): void {
-    setAdvancingFromReview(action === "start-review");
-    setSearchParams(action === "start-review" ? { step: "verify" } : {});
-  }
-
   return (
     <div className="wx-admissions" style={page}>
-      <PageHeader
-        title={referral.patientNameAtReceipt}
-        actions={
-          <div style={headerActions}>
-            <StatusPill
-              label={presentation.queueLabel}
-              tone={REFERRAL_TONE[referral.status] ?? "neutral"}
-            />
-            {referral.priority === "urgent" ? <StatusPill label="Urgent" tone="error" /> : null}
-          </div>
-        }
-      >
-        <p style={meta}>
-          {referral.externalReferralId ? `Referral ${referral.externalReferralId} · ` : ""}
-          {owner} · Canonical status: {stateLabel(referral.status)}
-        </p>
-      </PageHeader>
+      <IntakeIdentityHeader referral={referral} presentation={presentation} />
 
       <AdmissionsTabs current="/referrals" />
 
@@ -275,29 +229,18 @@ export function IntakeWorkspace(): JSX.Element {
               onReferralLoaded={setReferral}
               onActionComplete={handleActionComplete}
               onVerificationValidityChange={setVerificationValid}
+              onStageActionChange={setStageAction}
             />
           </section>
 
-          <aside
-            className="wx-intake-context"
-            aria-labelledby="needs-attention-heading"
-            style={rail}
-          >
-            <section id="referral-readiness" style={panel} tabIndex={-1}>
-              <p style={railEyebrow}>Referral readiness</p>
-              <h2 id="needs-attention-heading" style={railTitle}>
-                Needs attention
-              </h2>
-              {presentation.blockers.length > 0 ? (
-                <ul style={blockerList}>
-                  {presentation.blockers.map((blocker) => (
-                    <li key={blocker}>{blocker}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p style={guidance}>No referral qualification blockers are currently reported.</p>
-              )}
-            </section>
+          <aside className="wx-intake-context" aria-label="Intake attention" style={rail}>
+            <div id="referral-readiness" tabIndex={-1}>
+              <IntakeAttentionPanel
+                presentation={presentation}
+                displayedStepId={displayedStepId}
+                referralStatus={referral.status}
+              />
+            </div>
           </aside>
         </div>
       </div>
@@ -311,7 +254,15 @@ export function IntakeWorkspace(): JSX.Element {
         <Button tone="secondary" onClick={() => navigate(`/referrals/${referral.id}`)}>
           View full referral
         </Button>
-        <Button tone="primary" onClick={runPrimaryAction}>
+        <Button
+          tone="primary"
+          onClick={runPrimaryAction}
+          disabled={
+            !isReviewingEarlierStep &&
+            !["declined", "duplicate", "withdrawn", "converted"].includes(currentReferral.status) &&
+            (stageAction?.stageId !== displayedStepId || stageAction.disabled)
+          }
+        >
           {displayedStepId === "verify" && !verificationValid
             ? "Fix highlighted fields"
             : isReviewingEarlierStep && displayedStepId === "verify"
@@ -385,14 +336,6 @@ function stepCopy(
   return copy[step];
 }
 
-function primaryActionName(step: IntakeStepId): string {
-  if (step === "receive") return "review";
-  if (step === "verify") return "save-info";
-  if (step === "review") return "qualify";
-  if (step === "handoff") return "convert";
-  return step;
-}
-
 function primaryLabel(
   step: IntakeStepId,
   presentation: ReturnType<typeof deriveIntakeWorkspace>,
@@ -427,19 +370,11 @@ const rail: CSSProperties = {
   padding: t.space5,
   background: t.surfaceLow,
 };
-const panel: CSSProperties = {
-  borderRadius: t.radiusLg,
-  padding: t.space5,
-  background: t.surfaceLowest,
-  boxShadow: t.shadowSoft,
-};
 const stageIntro: CSSProperties = {
   maxWidth: "56rem",
   marginBottom: t.space4,
   padding: `${t.space2} 0`,
 };
-const headerActions: CSSProperties = { display: "flex", flexWrap: "wrap", gap: t.space2 };
-const meta: CSSProperties = { margin: 0, color: t.onSurfaceVariant };
 const eyebrow: CSSProperties = {
   margin: `0 0 ${t.space2}`,
   color: t.primary,
@@ -447,12 +382,4 @@ const eyebrow: CSSProperties = {
   fontWeight: 700,
 };
 const title: CSSProperties = { margin: 0, color: t.onSurface, fontSize: "1.5rem" };
-const railTitle: CSSProperties = { margin: `0 0 ${t.space3}`, fontSize: "1rem" };
-const railEyebrow: CSSProperties = {
-  margin: `0 0 ${t.space1}`,
-  color: t.onSurfaceVariant,
-  fontSize: "0.75rem",
-  fontWeight: 650,
-};
 const guidance: CSSProperties = { color: t.onSurfaceVariant, lineHeight: 1.5 };
-const blockerList: CSSProperties = { margin: 0, paddingLeft: "1.25rem", lineHeight: 1.5 };

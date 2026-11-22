@@ -223,6 +223,154 @@
   .wx-intake-progress .wx-workflow-stepper > li {
     min-width: 0;
   }
+  .wx-intake-header-statuses {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .wx-intake-page-meta {
+    margin: 0;
+    color: var(--color-on-surface-variant);
+    font-size: 0.875rem;
+  }
+  .wx-intake-identity-shell {
+    margin: var(--space-2) var(--space-5) var(--space-4);
+  }
+  .wx-intake-identity-grid {
+    display: grid;
+    grid-template-columns: minmax(16rem, 1.45fr) repeat(4, minmax(9rem, 1fr));
+    align-items: center;
+    gap: var(--space-4);
+  }
+  .wx-intake-person {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+  }
+  .wx-intake-avatar {
+    display: grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    flex: 0 0 3rem;
+    border-radius: 9999px;
+    color: var(--color-primary);
+    background: var(--color-primary-tint);
+  }
+  .wx-intake-person > div {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+  .wx-intake-person h2 {
+    margin: 0;
+    color: var(--color-on-surface);
+    font-size: 1.125rem;
+  }
+  .wx-intake-person span,
+  .wx-intake-identity-fact dt {
+    color: var(--color-on-surface-variant);
+    font-size: 0.75rem;
+  }
+  .wx-intake-identity-fact {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+    margin: 0;
+    padding-left: var(--space-4);
+    border-left: 1px solid var(--color-outline-variant);
+  }
+  .wx-intake-identity-fact dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--color-on-surface);
+    font-size: 0.875rem;
+    font-weight: 650;
+  }
+  .wx-intake-blockers {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0 0 var(--space-4);
+    padding: 0;
+    list-style: none;
+  }
+  .wx-intake-blockers li,
+  .wx-intake-clear-state {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    color: var(--color-on-surface);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+  }
+  .wx-intake-blockers li svg {
+    flex: 0 0 auto;
+    color: var(--color-error);
+  }
+  .wx-intake-clear-state {
+    margin-bottom: var(--space-4);
+    color: var(--color-success-pill-fg);
+  }
+  .wx-intake-next-action {
+    display: grid;
+    gap: var(--space-1);
+    margin-top: var(--space-4);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--color-outline-variant);
+    font-size: 0.8125rem;
+  }
+  .wx-intake-next-action span {
+    color: var(--color-on-surface-variant);
+    line-height: 1.45;
+  }
+  .wx-intake-comparison-scroll {
+    overflow: hidden;
+    border: 1px solid var(--color-outline-variant);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-lowest);
+  }
+  .wx-intake-comparison {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 0.8125rem;
+  }
+  .wx-intake-comparison caption {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .wx-intake-comparison th,
+  .wx-intake-comparison td {
+    padding: var(--space-2) var(--space-3);
+    overflow-wrap: anywhere;
+    text-align: left;
+    vertical-align: top;
+  }
+  .wx-intake-comparison thead {
+    color: var(--color-on-surface-variant);
+    background: var(--color-surface-container);
+    font-weight: 650;
+  }
+  .wx-intake-comparison tbody tr + tr {
+    border-top: 1px solid var(--color-outline-variant);
+  }
+  .wx-intake-comparison td {
+    color: var(--color-on-surface-variant);
+  }
+
+  @media (max-width: 1280px) {
+    .wx-intake-identity-grid {
+      grid-template-columns: minmax(16rem, 1.5fr) repeat(2, minmax(10rem, 1fr));
+    }
+    .wx-intake-identity-fact:nth-of-type(3) {
+      border-left: none;
+    }
+  }
 
   @media (max-width: 768px) {
     .wx-data-col-tertiary {
@@ -271,6 +419,19 @@
       overflow-x: auto;
       padding: var(--space-3) var(--space-4) !important;
     }
+    .wx-intake-identity-shell {
+      margin: var(--space-2) var(--space-4) var(--space-4);
+    }
+    .wx-intake-identity-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+    .wx-intake-person {
+      grid-column: 1 / -1;
+    }
+    .wx-intake-identity-fact {
+      padding-left: 0;
+      border-left: none;
+    }
     .wx-intake-progress .wx-workflow-stepper {
       grid-template-columns: none;
       grid-auto-flow: column;
@@ -292,6 +453,15 @@
     }
   }
   @media (max-width: 480px) {
+    .wx-intake-identity-grid {
+      grid-template-columns: 1fr;
+    }
+    .wx-intake-comparison-scroll {
+      overflow-x: auto;
+    }
+    .wx-intake-comparison {
+      min-width: 36rem;
+    }
     .wx-data-col-secondary {
       display: none;
     }

@@ -13,6 +13,11 @@ describe("intake document return paths", () => {
     );
   });
 
+  it("allows document review to return to the review-requirements stage", () => {
+    const target = intakeWorkspaceReturnTo(REFERRAL, "review");
+    expect(safeIntakeReturnTo(target)).toBe(target);
+  });
+
   it.each([
     "https://attacker.example/referrals/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/intake?step=receive",
     "//attacker.example/path",
