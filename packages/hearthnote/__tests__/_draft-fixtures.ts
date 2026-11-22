@@ -239,6 +239,22 @@ export function disciplinePlanSources(): Pick<DraftInputs, "disciplinePlan"> {
   };
 }
 
+/**
+ * S5b: the IDG follow-up's source: the one action item the author linked the visit to (the meeting's org-local date, the decision KIND and the due date).
+ * Synthetic ids and dates. Fresh copy per call.
+ */
+export function idgFollowUpSource(): Pick<DraftInputs, "idgFollowUp"> {
+  return {
+    idgFollowUp: {
+      id: "idg-item-1",
+      meetingOn: "2026-11-02",
+      decisionKind: "referral",
+      dueOn: "2026-11-20",
+      sudRelated: false,
+    },
+  };
+}
+
 /** S2b: the admission visit's own sources (the orders in effect, the caregivers on record, the acknowledgment on file). Fresh copy per call. */
 export function admissionSources(): Pick<
   DraftInputs,

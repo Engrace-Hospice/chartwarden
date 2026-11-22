@@ -32,8 +32,10 @@
 // The LPN visits (S3, `routine_visit` and `lpn_visit` by an LPN) are sourced like the routine visit; the corpus tags leave out the PPS and ESAS-r
 // phrases, so `assessment` and `symptom_management` are not drafted for them (VN-D39).
 // The IDG follow-up (S5, `idg_followup`) is sourced as the discipline's own visit is: an RN as the routine visit, an LPN as the LPN visit, a social
-//   worker and a chaplain as below, and a physician or nurse practitioner the recorded vitals only (VN-D52). Its own `idg_followup` section is
-//   never drafted: nothing links the visit to the decision that prompted it (VN-D54).
+//   worker and a chaplain as below, and a physician or nurse practitioner the recorded vitals only (VN-D52). Its own `idg_followup` section (S5b, VN-D64
+//   to VN-D68) is drafted, for all six, from the ONE M14 action item the author linked the visit to, and from nothing else:
+//   idg_followup        the linked action item: the meeting's date, a fixed label for the decision KIND, and the due date when there is one   one source
+//   Nothing of the item's title or body or of the decision's payload is read, so none can be stated. With no link there is no section (VN-D54).
 // The aide visit (S3, `chha_visit` by a `chha`): adl     the care plan's active aide interventions, less those the author removed   by source id
 //   (the recorded ADLs are stated first in the section, by the compiler, as the recorded vitals' body measures are).
 // The social-work visits (S4, `msw_assessment` and `msw_followup`):
@@ -51,7 +53,7 @@
 // Every sentence is a corpus phrase from `@chartwarden/narrative-vocab`, interpolated with values taken from
 // structured fields (VN-D6): "changes since the last visit" are read off the reading's `previous` value and
 // date, never from prior note text.
-import { getVocabEntry } from "@chartwarden/narrative-vocab";
+import { IDG_DECISION_KIND_LABELS, getVocabEntry } from "@chartwarden/narrative-vocab";
 import type { ScaleType } from "@chartwarden/types";
 import { HearthnoteAssemblyError } from "../assembly/assemble";
 import { finishSentence, interpolate } from "../assembly/grammar";
@@ -69,6 +71,7 @@ import type {
   DraftSourceNeeds,
   DraftSourceRef,
   FaceToFaceDraftInput,
+  IdgFollowUpDraftInput,
   MedicationChangeInput,
   MedicationChangeKind,
   MedicationOrderInput,
@@ -362,6 +365,32 @@ function disciplinePlanInterventionGroups(
           }),
     ]);
   });
+}
+
+// ── the linked IDG action item (S5b) ───────────────────────────────────────────────────────────────
+const IDG_SECTION = { followUp: "idg_followup" } as const;
+
+const IDG_CODES = { withDue: "nv.idg.followup_due", withoutDue: "nv.idg.followup" } as const;
+
+/**
+ * The one sentence of the `idg_followup` section: when the team met, the KIND of decision as a fixed label of the corpus, and the due date when the
+ * item has one. A kind with no label, or a date that is not one, is a malformed input (the draft is then unavailable, never short a fact).
+ */
+function idgFollowUpGroups(item: IdgFollowUpDraftInput | null | undefined): readonly SourceGroup[] {
+  if (item === null || item === undefined) return [];
+  const where = `IDG action item '${item.id}'`;
+  const params: Record<string, SlotValue> = {
+    idg_meeting_date: isoDate(item.meetingOn, `${where} meeting date`),
+    idg_decision_label: tableValue(
+      IDG_DECISION_KIND_LABELS,
+      item.decisionKind,
+      `${where} decision kind`,
+    ),
+  };
+  if (item.dueOn === null)
+    return [group("idg_action_item", item, [sentence(IDG_CODES.withoutDue, params)])];
+  params.idg_due_date = isoDate(item.dueOn, `${where} due date`);
+  return [group("idg_action_item", item, [sentence(IDG_CODES.withDue, params)])];
 }
 
 // ── medication changes ─────────────────────────────────────────────────────────────────────────────
@@ -684,6 +713,7 @@ const routineVisitMap: SourceMap = (inputs, asOfMs) => [
   ...baseGroups(inputs, asOfMs),
   [SECTION.assessment, scaleGroups(inputs.scaleReadings, "pps", asOfMs)],
   [SECTION.symptoms, scaleGroups(inputs.scaleReadings, "esas_r", asOfMs)],
+  [IDG_SECTION.followUp, idgFollowUpGroups(inputs.idgFollowUp)],
 ];
 
 const recertVisitMap: SourceMap = (inputs, asOfMs) => {
@@ -740,15 +770,17 @@ const aideVisitMap: SourceMap = (inputs) => [
 /** S4: the social-work visits' two drafted sections, from the discipline's own plan. */
 const MSW_SECTION = { interventions: "interventions", plan: "plan" } as const;
 
-/** The social-work visits (S4): the plan's active interventions in `interventions` and its open goals in `plan`. No assessment section is drafted. */
+/** The social-work visits (S4): the plan's active interventions in `interventions` and its open goals in `plan`. No assessment section is drafted. S5b: and the linked IDG action item in the IDG follow-up's own section. */
 const mswVisitMap: SourceMap = (inputs) => [
   [MSW_SECTION.interventions, disciplinePlanInterventionGroups(inputs.disciplinePlan)],
   [MSW_SECTION.plan, disciplinePlanGoalGroups(inputs.disciplinePlan)],
+  [IDG_SECTION.followUp, idgFollowUpGroups(inputs.idgFollowUp)],
 ];
 
 /** The chaplain visits (S4): the plan's open goals in `plan`. The chaplain's template has no interventions section, and no assessment section is drafted. */
 const chaplainVisitMap: SourceMap = (inputs) => [
   [MSW_SECTION.plan, disciplinePlanGoalGroups(inputs.disciplinePlan)],
+  [IDG_SECTION.followUp, idgFollowUpGroups(inputs.idgFollowUp)],
 ];
 
 /**
@@ -809,18 +841,24 @@ const FACE_TO_FACE_SECTION_PHRASES: Readonly<Record<string, readonly string[]>> 
 };
 
 /** The social-work templates' two drafted sections and the chaplain templates' one (S4; the IDG follow-up of each discipline too, S5). */
+/** The IDG follow-up's own section (S5b): the two phrases of the linked action item's sentence. Read by the IDG follow-up templates alone (no other template has the section). */
+const IDG_FOLLOW_UP_PHRASES: readonly string[] = Object.values(IDG_CODES);
+
 const MSW_SECTION_PHRASES: Readonly<Record<string, readonly string[]>> = {
   [MSW_SECTION.interventions]: DISCIPLINE_INTERVENTION_PHRASES,
   [MSW_SECTION.plan]: DISCIPLINE_GOAL_PHRASES,
+  [IDG_SECTION.followUp]: IDG_FOLLOW_UP_PHRASES,
 };
 const CHAPLAIN_SECTION_PHRASES: Readonly<Record<string, readonly string[]>> = {
   [MSW_SECTION.plan]: DISCIPLINE_GOAL_PHRASES,
+  [IDG_SECTION.followUp]: IDG_FOLLOW_UP_PHRASES,
 };
 
 const ROUTINE_SECTION_PHRASES: Readonly<Record<string, readonly string[]>> = {
   ...baseSectionPhrases,
   [SECTION.assessment]: scaleCodesOf(SECTION.assessment),
   [SECTION.symptoms]: scaleCodesOf(SECTION.symptoms),
+  [IDG_SECTION.followUp]: IDG_FOLLOW_UP_PHRASES,
 };
 
 /**
@@ -890,6 +928,7 @@ const SOURCE_NAMES = [
   "medicationChanges",
   "scales",
   "disciplinePlan",
+  "idgFollowUp",
 ] as const;
 type SourceName = (typeof SOURCE_NAMES)[number];
 
@@ -914,6 +953,7 @@ const SECTION_SOURCES: Readonly<Record<string, readonly SourceName[]>> = {
   [ADMISSION_SECTION.medications]: [],
   [ADMISSION_SECTION.advanceDirective]: [],
   [ADMISSION_SECTION.caregivers]: [],
+  [IDG_SECTION.followUp]: ["idgFollowUp"],
 };
 
 /**
@@ -923,6 +963,7 @@ const SECTION_SOURCES: Readonly<Record<string, readonly SourceName[]>> = {
 const DISCIPLINE_PLAN_SECTION_SOURCES: Readonly<Record<string, readonly SourceName[]>> = {
   [MSW_SECTION.interventions]: ["disciplinePlan"],
   [MSW_SECTION.plan]: ["disciplinePlan"],
+  [IDG_SECTION.followUp]: ["idgFollowUp"],
 };
 
 const TEMPLATE_SECTION_SOURCES: ReadonlyMap<
@@ -955,6 +996,7 @@ export function sourceNeedsOf(key: string, sectionIds: Iterable<string>): DraftS
     medicationChanges: needed.has("medicationChanges"),
     scales: needed.has("scales"),
     disciplinePlan: needed.has("disciplinePlan"),
+    idgFollowUp: needed.has("idgFollowUp"),
   };
 }
 

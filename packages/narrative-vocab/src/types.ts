@@ -43,6 +43,8 @@ export type VocabCategory =
   | "admission_record" // the orders in effect, the caregivers on record, the advance directive acknowledgment on file; draft-only
   // ── social-work and chaplain draft category (S4, VN-D45 to VN-D50). DRAFT wording until its release is reviewed.
   | "discipline_plan" // the open goals and active interventions of the discipline's plan in effect at the visit; draft-only
+  // ── IDG follow-up draft category (S5b, VN-D68). DRAFT wording until its release is reviewed.
+  | "idg_followup" // the IDG decision (meeting date, kind label, due date) an IDG follow-up visit follows up; draft-only
   | "visit_reason"; // why the visit happened — one choice per note (the "Reason for Visit" select)
 
 /**

@@ -25,6 +25,7 @@ import {
   admissionSources,
   baseInputs,
   disciplinePlanSources,
+  idgFollowUpSource,
   recertSources,
 } from "./_draft-fixtures";
 
@@ -42,6 +43,7 @@ function maximalInputs([type, discipline]: Pair): DraftInputs {
     ...recertSources(),
     ...admissionSources(),
     ...disciplinePlanSources(),
+    ...idgFollowUpSource(),
     encounterType: type,
     discipline,
     selection: {
@@ -92,12 +94,17 @@ describe("the templates the corpus drafts", () => {
   it("the IDG follow-up drafts as the discipline's own visit does, and the telephonic visit drafts nothing for any discipline (S5)", () => {
     const sorted = (type: EncounterType, discipline: EncounterDiscipline) =>
       [...draftedSectionIds(type, discipline)].sort();
-    expect(sorted("idg_followup", "rn")).toEqual(sorted("routine_visit", "rn"));
-    expect(sorted("idg_followup", "lpn")).toEqual(sorted("routine_visit", "lpn"));
-    expect(sorted("idg_followup", "msw")).toEqual(sorted("msw_followup", "msw"));
-    expect(sorted("idg_followup", "chaplain")).toEqual(sorted("chaplain_visit", "chaplain"));
+    // S5b (VN-D64 to VN-D68): and each drafts the IDG follow-up's own section, from the action item the author linked the visit to.
+    const withIdg = (ids: readonly string[]) => [...ids, "idg_followup"].sort();
+    expect(sorted("idg_followup", "rn")).toEqual(withIdg(sorted("routine_visit", "rn")));
+    expect(sorted("idg_followup", "lpn")).toEqual(withIdg(sorted("routine_visit", "lpn")));
+    expect(sorted("idg_followup", "msw")).toEqual(withIdg(sorted("msw_followup", "msw")));
+    expect(sorted("idg_followup", "chaplain")).toEqual(
+      withIdg(sorted("chaplain_visit", "chaplain")),
+    );
     for (const discipline of ["md", "np"] as const) {
       expect(sorted("idg_followup", discipline), `idg_followup:${discipline}`).toEqual([
+        "idg_followup",
         "vitals_review",
       ]);
       expect(sorted("face_to_face", discipline), `face_to_face:${discipline}`).toEqual([
@@ -111,11 +118,12 @@ describe("the templates the corpus drafts", () => {
     }
   });
 
-  // S5 (VN-D53): the sections a physician's or nurse practitioner's note leaves to the clinician's own words, and the IDG follow-up's own section (VN-D54).
-  it("never drafts a physician's or nurse practitioner's own judgement, an attestation, or the IDG decision follow-up section", () => {
+  // S5 (VN-D53): the sections a physician's or nurse practitioner's note leaves to the clinician's own words. S5b: the IDG follow-up's own section is
+  // drafted for the six disciplines of the IDG follow-up template and for no other pair.
+  it("never drafts a physician's or nurse practitioner's own judgement or an attestation, and drafts the IDG decision follow-up section only in the IDG follow-up template", () => {
     for (const [type, discipline] of LEGAL_PAIRS) {
       const drafted = draftedSectionIds(type, discipline);
-      expect(drafted.has("idg_followup"), `${type}:${discipline}`).toBe(false);
+      expect(drafted.has("idg_followup"), `${type}:${discipline}`).toBe(type === "idg_followup");
       expect(drafted.has("f2f_attestation"), `${type}:${discipline}`).toBe(false);
       if (discipline !== "md" && discipline !== "np") continue;
       for (const id of [
@@ -259,6 +267,7 @@ describe("the sources a template needs read are the sources its drafted sections
     medicationChanges: { medicationChanges: [] },
     scales: { scaleReadings: [] },
     disciplinePlan: { disciplinePlan: null },
+    idgFollowUp: { idgFollowUp: null },
   } as const;
   const SOURCES = Object.keys(WITHOUT) as (keyof typeof WITHOUT)[];
   const DRAFTED_PAIRS = LEGAL_PAIRS.filter(([type, discipline]) =>

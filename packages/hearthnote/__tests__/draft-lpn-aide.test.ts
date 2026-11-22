@@ -236,6 +236,7 @@ describe("the sources a template needs read (draftSourceNeeds)", () => {
         medicationChanges: true,
         scales: false,
         disciplinePlan: false,
+        idgFollowUp: false,
       });
     }
   });
@@ -247,6 +248,7 @@ describe("the sources a template needs read (draftSourceNeeds)", () => {
       medicationChanges: false,
       scales: false,
       disciplinePlan: false,
+      idgFollowUp: false,
     });
   });
 
@@ -258,6 +260,7 @@ describe("the sources a template needs read (draftSourceNeeds)", () => {
         medicationChanges: true,
         scales: true,
         disciplinePlan: false,
+        idgFollowUp: false,
       });
     }
   });
@@ -270,6 +273,7 @@ describe("the sources a template needs read (draftSourceNeeds)", () => {
         medicationChanges: false,
         scales: true,
         disciplinePlan: false,
+        idgFollowUp: false,
       });
     }
   });
@@ -281,6 +285,7 @@ describe("the sources a template needs read (draftSourceNeeds)", () => {
       medicationChanges: false,
       scales: false,
       disciplinePlan: false,
+      idgFollowUp: false,
     });
   });
 });

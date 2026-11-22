@@ -8,6 +8,7 @@ import type { VocabEntry } from "./types";
 import { VOCABULARY } from "./vocabulary";
 
 export { DRAFT_VOCAB_CODES } from "./draft-entries";
+export { IDG_DECISION_KIND_LABELS } from "./idg-follow-up-entries";
 
 export type { SlotSpec, VocabBodySystem, VocabCategory, VocabEntry } from "./types";
 export {
