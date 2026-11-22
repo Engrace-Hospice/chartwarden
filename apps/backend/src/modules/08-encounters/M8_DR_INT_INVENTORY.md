@@ -393,22 +393,35 @@ preflight refuses the whole tenant while any hold is active, before any eraser r
 
 ### The IDG follow-up's own section from one linked M14 action item (ADR-0114 slice S5b, design §3.9): limits recorded
 
-- **One table, one seam read, two routes.** `encounter_idg_action_item_link` (migration 1545, an `expand`) holds the visit's one live link (the M14 action item id is a
-  logical reference: M14 depends on M8, so M8 never imports it). M8 reads M14 only through the registry (`getSeam("IdgFollowUpReader")` in `default-ports.ts`), which
-  hands over facts (the meeting's date, the decision kind, the due date, the status), never an item's title or body or a decision's payload. `GET .../idg-action-items`
-  and `PUT .../idg-action-item` list the viewer's candidates and link or clear one; both are on the note-closure allowlist and read-audited
+- **One table, one seam (two reads), two routes.** `encounter_idg_action_item_link` (migration 1545, an `expand`) holds the visit's one live link (the M14 action
+  item id is a logical reference: M14 depends on M8, so M8 never imports it; the guard trigger checks a NEW row's item against M14's table, one of the row's
+  organization and of the encounter's patient). M8 reads M14 only through the registry (`getSeam("IdgFollowUpReader")` in `default-ports.ts`), which hands over
+  facts (the meeting's date, the decision kind, the due date, the status), never an item's title or body or a decision's payload: `openFollowUpItems` (the
+  candidates) and `linkedFollowUpItem` (the linked item BY ID, in any status). `GET .../idg-action-items` and `PUT .../idg-action-item` list the viewer's
+  candidates (and the linked item, even if closed) and link or clear one; both are on the note-closure allowlist and read-audited
   (`encounter_idg_action_items.viewed`, field names only).
-- **`idg.read` is asked for the `idg_followup` section alone.** A viewer without it gets that section as not drafted and the rest of the draft as it was: no 403 at the
-  draft routes, finalize, sign or an addendum's recompute, no read of the link and no M14 read. The two new routes refuse 403 naming the key. No role template in
-  `packages/auth` grants `idg.read` to a visit's author, so a tenant grants it to the authoring roles of the six disciplines before the section drafts for them.
-- **The link does not close the item.** M14's auto-close is unchanged: it closes an encounter-kind item by the signer's membership when the assignee signs ANY encounter. After
-  that M14 no longer hands the item, so a recompute (an amending addendum's draft) does not draft the section; the sealed text stands.
-- **Part 2 is per viewer and M14's.** For a flagged patient, one no packet vouches for, or one whose decision marks a care-plan problem SUD related, M14 hands a viewer M39
-  does not clear no item; naming one is the same 404 as an absent one. A link row carries the verdict (fail closed), withholds the action item id from its audit image and
-  files under the Part 2 class; clearing a link whose item is no longer handed to the viewer raises the row to Part 2 first.
+- **`idg.act` is asked for the `idg_followup` section alone** (the owner changed it from `idg.read` after review: M14's key for one's own assigned items). A viewer
+  without it gets that section as not drafted and the rest of the draft as it was: no 403 at the draft routes, finalize, sign or an addendum's recompute, no read
+  of the link and no M14 read. The picker's list and a link refuse 403 `IDG_ACTION_PERMISSION_REQUIRED` (a stable code, the message names the key). **A clear needs
+  no key and no M14**: only the author's checks, and its answer lists no items. No role template in `packages/auth` grants `idg.act` to a visit's author, so a tenant
+  grants it to the authoring roles of the six disciplines before the section drafts for them.
+- **M14's auto-close is unchanged, and the draft does not depend on it.** It closes EVERY open encounter-kind item of the signer's membership when ANY encounter is
+  signed, so the item a draft states is usually closed by sign time. The draft reads the linked item by id in any status, so the confirmed sentence is sealed after the
+  close; the link does not close the item. A confirmed section whose item M14 hands the viewer nothing for any more (reassigned, Part 2 no longer cleared) is refused at
+  finalize (422) and sign (409) as `DRAFT_SECTION_STALE` naming `idg_followup` (no item detail) for a viewer holding the key; the author clears the link, writes the
+  section in their own words and signs. For a viewer WITHOUT the key nothing is refused (VN-D66): an author who loses `idg.act` between confirming and signing signs
+  a note without the sentence.
+- **Part 2 is per viewer and M14's.** For a flagged patient, one no packet vouches for, or one whose decision marks a care-plan problem SUD related, M14 hands a viewer
+  M39 does not clear no item; naming one is the same 404 as an absent one. The verdict comes from the item's own meeting packet snapshot, as M14's own minutes
+  rendering decides it (a patient flagged only after that packet was built is offered until M14 rebuilds it: not fixed here). A link row carries the verdict (fail
+  closed), withholds the action item id from its audit image and files under the Part 2 class; it is raised whenever a resolution, finalize or sign sees the section
+  Part 2 derived, and a clear raises the row being left (the item cannot be judged without M14).
+- **A refused link is audited.** A 404 (an item the viewer is not handed) or a 409 (the row cap) leaves a warn-severity, outcome-denied
+  `m8.encounter.idg_follow_up_link_refused` event carrying the encounter and an enum reason and NO item id, written on a new unit best effort (after
+  `m8.encounter.closure_override_denied`); the rows are bounded only by the platform's request rate limit.
 - **Bounds.** At most 50 candidates (newest meeting first) and 100 link rows per encounter; a re-link past the row cap is 409 `IDG_ACTION_ITEM_LINK_LIMIT` (a first row of an
   item and a clear are never refused). An item with no recorded decision is not offered, and a decision kind the corpus has no label for leaves its item out.
 - **Deploy.** `VOCAB_VERSION` moves to `narrative-vocab@2026.12.5`: a selection saved under `2026.12.4` and not yet finalized answers 409 `VOCAB_VERSION_MISMATCH` until the
   clinician saves it again. The clinical review stays pending, so a tenant's switch stays dark.
-- **Erasure and tenancy.** The encounter eraser deletes the table's rows (the destruction role holds SELECT and DELETE and an org-scoped policy); the application role holds
-  no DELETE, and a row cannot be filed under another tenant's encounter.
+- **Erasure and tenancy.** The encounter eraser deletes the table's rows (the destruction role holds SELECT and DELETE and an org-scoped policy), and every DELETE image is
+  filed as Part 2 with the id withheld; the application role holds no DELETE, and a row cannot be filed under another tenant's encounter.
