@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   type QueueLike,
   buildMetricsRegistry,
+  metricQueueNames,
   mountMetricsRoute,
   registerBullMQQueueMetrics,
   registerHttpMetrics,
@@ -18,6 +19,17 @@ describe("buildMetricsRegistry", () => {
     const text = await registry.metrics();
     expect(text).toContain("process_cpu_user_seconds_total");
     expect(text).toContain("nodejs_heap_size_total_bytes");
+  });
+});
+
+describe("metricQueueNames", () => {
+  it("includes and deduplicates a queue whose worker is constructed later", () => {
+    expect(
+      metricQueueNames(
+        [{ name: "existing" }, { name: "existing" }],
+        ["m22-doclens-intake", "existing"],
+      ),
+    ).toEqual(["existing", "m22-doclens-intake"]);
   });
 });
 

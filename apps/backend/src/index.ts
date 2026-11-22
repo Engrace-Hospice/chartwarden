@@ -194,6 +194,7 @@ import { buildMortalityReviewerResolver } from "./bootstrap/m30-mortality-review
 import { m34ActiveMembershipUserId } from "./bootstrap/m34-identity-shred-subjects";
 import {
   buildMetricsRegistry,
+  metricQueueNames,
   mountMetricsRoute,
   registerBullMQQueueMetrics,
   registerHttpMetrics,
@@ -1088,6 +1089,7 @@ import {
   type DocLensExtractorPort,
   type DocLensSudDetectorPort,
   type DocLensVisionVerifierPort,
+  M22_DOCLENS_INTAKE_QUEUE,
   M22_DOCUMENT_RENDERED_EVENT,
   M22_FORM_RENDER_PLATFORM_JOB_ID,
   M22_OUTBOX_EVENTS,
@@ -5797,6 +5799,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const auth = dbHandle
     ? createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0], {
         emailTransport,
+        authLogger: (level, message) => {
+          const fields = { component: "better-auth" };
+          if (level === "error") app.log.error(fields, message);
+          else if (level === "warn") app.log.warn(fields, message);
+          else if (level === "debug") app.log.debug(fields, message);
+          else app.log.info(fields, message);
+        },
         // GAP-002 — the password-reset leg of the M2 §8.1 authentication trail (the rest is the bridge's).
         auditSink: authAuditSink,
         onAuditError: authAuditErrorLogger,
@@ -14802,7 +14811,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       ...m14Workers,
       ...m29NppesWorkers,
     ];
-    const metricsQueueNames = [...new Set(allWorkers.map((w) => w.name))];
+    // The WardenLens worker is constructed immediately below this block, so it is absent from
+    // `allWorkers`. The same role/database/queue preconditions guarantee it will be wired.
+    const metricsQueueNames = metricQueueNames(allWorkers, [M22_DOCLENS_INTAKE_QUEUE]);
     const metricsQueues = metricsQueueNames.map(
       (name) => new Queue(name, { connection: queueConnection }),
     );

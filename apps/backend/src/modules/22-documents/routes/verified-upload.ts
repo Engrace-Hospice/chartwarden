@@ -167,6 +167,8 @@ async function mp4HeadOk(
 export function createVerifiedUploadService(deps: {
   readonly db: DbClient;
   readonly objects: ObjectStorePort | null;
+  /** Idempotently creates the tenant bucket before an upload row/presign is issued. */
+  readonly ensureTenantBucket?: (organizationId: string) => Promise<unknown>;
   /** Reads an upload's first bytes back (the mp4 `ftyp` check). Unbound => a video upload cannot complete (fail closed). */
   readonly reader?: ObjectReaderPort | null;
   readonly referralReader?: ReferralAccessReader;
@@ -273,6 +275,10 @@ export function createVerifiedUploadService(deps: {
           }
         });
       }
+
+      // Provision only after every request/target check passes, but before a database ledger row or
+      // presign can be created. A rejected version request must not mutate object-storage state.
+      await deps.ensureTenantBucket?.(organizationId);
 
       await inOrg(organizationId, userId, async (tx) => {
         await tx.insert(U).values({

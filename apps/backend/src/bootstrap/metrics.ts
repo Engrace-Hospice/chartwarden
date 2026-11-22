@@ -67,6 +67,14 @@ export interface QueueLike {
 
 const JOB_COUNT_STATES = ["waiting", "active", "completed", "failed", "delayed"] as const;
 
+/** Include queues whose workers are wired later in the composition root, without duplicate handles. */
+export function metricQueueNames(
+  workers: readonly Pick<QueueLike, "name">[],
+  lateBoundQueueNames: readonly string[] = [],
+): string[] {
+  return [...new Set([...workers.map((worker) => worker.name), ...lateBoundQueueNames])];
+}
+
 /**
  * Register a `(queue, state)`-labeled job-count gauge over every passed queue, using prom-client's
  * lazy `collect()` hook — the counts are read from Redis only WHEN `/metrics` is actually scraped

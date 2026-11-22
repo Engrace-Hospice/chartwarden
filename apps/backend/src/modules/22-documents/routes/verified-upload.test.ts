@@ -66,4 +66,71 @@ describe("createVerifiedUploadService.initiate", () => {
     ).rejects.not.toMatchObject({ code: "DOCUMENT_IMMUTABLE" });
     expect(touched.length).toBeGreaterThan(0);
   });
+
+  it("provisions the tenant bucket before creating an upload row or issuing a presign", async () => {
+    const touched: string[] = [];
+    const trap = (name: string) =>
+      new Proxy(
+        {},
+        {
+          get: (_target, property) => {
+            touched.push(`${name}.${String(property)}`);
+            throw new Error(`${name} was touched`);
+          },
+        },
+      );
+    const svc = createVerifiedUploadService({
+      db: trap("db") as unknown as DbClient,
+      objects: trap("objects") as never,
+      ensureTenantBucket: async (organizationId) => {
+        touched.push(`ensure:${organizationId}`);
+        throw new Error("provisioning unavailable");
+      },
+    });
+
+    await expect(
+      svc.initiate({
+        organizationId: ORG,
+        userId: USER,
+        membershipId: MEMBERSHIP,
+        input: { ...INPUT, aggregateType: "other" as never },
+      }),
+    ).rejects.toThrow("provisioning unavailable");
+    expect(touched).toEqual([`ensure:${ORG}`]);
+  });
+
+  it("validates a version target before provisioning object storage", async () => {
+    const touched: string[] = [];
+    const db = new Proxy(
+      {},
+      {
+        get: (_target, property) => {
+          touched.push(`db.${String(property)}`);
+          throw new Error(`db.${String(property)} was touched`);
+        },
+      },
+    );
+    const svc = createVerifiedUploadService({
+      db: db as unknown as DbClient,
+      objects: {} as never,
+      ensureTenantBucket: async () => {
+        touched.push("ensure");
+      },
+    });
+
+    await expect(
+      svc.initiate({
+        organizationId: ORG,
+        userId: USER,
+        membershipId: MEMBERSHIP,
+        input: {
+          ...INPUT,
+          mode: "new_version",
+          targetDocumentId: "44444444-4444-4444-8444-444444444444",
+          aggregateType: "other" as never,
+        },
+      }),
+    ).rejects.toThrow(/db\..* was touched/);
+    expect(touched).not.toContain("ensure");
+  });
 });

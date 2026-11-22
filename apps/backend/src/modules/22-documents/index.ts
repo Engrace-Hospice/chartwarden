@@ -58,6 +58,7 @@ import {
   createDocumentStorageProvider,
   createDrizzleStaffMintAccessLog,
   createS3ObjectStore,
+  createS3TenantStorageProvisioner,
   s3ObjectStoreConfigFromEnv,
 } from "./seams/index";
 
@@ -83,6 +84,9 @@ export function mountDocumentRoutes(
   const objects = objectStoreConfig ? createS3ObjectStore(objectStoreConfig) : null;
   const doclingObjects = objectStoreConfig
     ? createS3ObjectStore({ ...objectStoreConfig, publicEndpoint: objectStoreConfig.endpoint })
+    : null;
+  const tenantStorage = objectStoreConfig
+    ? createS3TenantStorageProvisioner(objectStoreConfig)
     : null;
   // GAP-068 — `POST /documents` + `/documents/:id/versions` store bytes through the SAME bound object store
   // as the presigned flow. No MINIO_* -> upload answers 503 (nothing stored). No malware scanner
@@ -172,6 +176,9 @@ export function mountDocumentRoutes(
     createVerifiedUploadService({
       db,
       objects,
+      ensureTenantBucket: tenantStorage
+        ? (organizationId) => tenantStorage.ensureTenantPrefixes({ organizationId, prefixes: [] })
+        : undefined,
       // ADR-0109 D10 (PR 3) — the grief-library video `ftyp` check reads the upload's first bytes back.
       reader: objects,
       referralReader: {

@@ -105,6 +105,14 @@
   top: 1rem;
   min-width: 0;
 }
+@media (max-width: 1100px) {
+  /* Once the workspace stacks, a sticky full-width source pane covers the field list when the
+     browser scrolls a decision into view. Keep the source in document flow so tablet/mobile pointer
+     users can reach every extracted field below it. This follows the base declaration intentionally. */
+  .wx-doclens-viewer {
+    position: static;
+  }
+}
 .wx-doclens-classification {
   display: flex;
   flex-wrap: wrap;

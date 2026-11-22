@@ -60,6 +60,8 @@ export type ResetPasswordSender = (data: {
 
 /** Optional injected behavior for the identity auth instance (delivery seams). */
 export interface IdentityAuthOptions {
+  /** Credential-safe host logger. Better Auth's additional arguments are deliberately discarded. */
+  readonly authLogger?: (level: "debug" | "info" | "warn" | "error", message: string) => void;
   /**
    * Token-capturing override for the password-reset link (the auth-live lane uses this to drive the
    * full reset). When omitted, the reset link is delivered through `emailTransport`.
@@ -308,6 +310,20 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
   return betterAuth({
     appName: "ChartWarden",
     secret: process.env.BETTER_AUTH_SECRET,
+    // Better Auth's default console logger prints every error argument. A Drizzle session-query error
+    // carries its bound session token in `params`, bypassing the host's Pino database-error serializer.
+    // Retain the library's level/string message for operations, but discard every additional argument
+    // before handing the event to the host's structured logger. Some Better Auth paths pass an Error
+    // object as the message itself; never forward that object because database errors can carry bound
+    // session tokens in `params`.
+    logger: {
+      level: "warn",
+      log: (level, message) =>
+        options.authLogger?.(
+          level,
+          typeof message === "string" ? message : "Better Auth emitted a non-string error",
+        ),
+    },
     // `baseURL` is the canonical origin of the auth server (this backend) — used for callbacks,
     // redirects, and cookie domains. Production MUST set BETTER_AUTH_URL (the deploy host); we keep it
     // fail-loud there (undefined → Better Auth warns) rather than silently pinning a wrong origin. Dev
