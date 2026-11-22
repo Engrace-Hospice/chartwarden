@@ -39,7 +39,9 @@ import type {
   VolunteerGateExpiryReader,
 } from "@chartwarden/types";
 import { evaluateSupervisoryCadence, hoursOverdue } from "../lifecycle/index";
+import { type DisclosurePort, resolveSudAllowed, seamDisclosurePort } from "../routes/disclosure";
 import { computeVolunteerHourRatio, daysUntilExpiry, effectiveStatusFor } from "../volunteer/index";
+import { planElementsFromVersion } from "./plan-elements-as-of";
 import type { DisciplinePlanSeamStore, RateCounts, SupervisoryClockRow } from "./store";
 
 /** The clock the providers derive "now" from — injected so every seam read is deterministic under test. */
@@ -76,7 +78,10 @@ export function rateOf(counts: RateCounts): number | null {
  * schema. Pure projection; RLS pins the tenant. The SUD / family-violence gated assessment bodies never cross
  * (§2.3 — the DTOs carry the flags, the store's projection drops the free text).
  */
-export function createDisciplinePlanReader(store: DisciplinePlanSeamStore): DisciplinePlanReader {
+export function createDisciplinePlanReader(
+  store: DisciplinePlanSeamStore,
+  disclosure: DisclosurePort = seamDisclosurePort,
+): DisciplinePlanReader {
   return {
     async activePlansForPatient(_orgId, patientId) {
       return [...(await store.activePlansForPatient(patientId))];
@@ -86,6 +91,34 @@ export function createDisciplinePlanReader(store: DisciplinePlanSeamStore): Disc
     },
     async planSummaryForIdg(_orgId, planId) {
       return store.planIdgDigest(planId);
+    },
+    /**
+     * ADR-0114 S4 — the plan of `kind` as it stood in the signed version in effect at `asOf`, for one viewer. The store picks the
+     * version and hands its sealed snapshot over RAW; the Part 2 verdict is M15's own (`resolveSudAllowed`, the rule every M15 read
+     * uses), asked as the viewer and only when the snapshot holds Part 2 content; `./plan-elements-as-of` redacts and projects.
+     */
+    async planElementsAsOf(orgId, patientId, admissionId, kind, viewer, asOf) {
+      // A malformed instant is a caller bug: fail loudly rather than read "no version" or a guessed one.
+      if (Number.isNaN(Date.parse(asOf))) {
+        throw new RangeError(
+          `planElementsAsOf: asOf must be an ISO instant, got ${JSON.stringify(asOf)}`,
+        );
+      }
+      const version = await store.planVersionAsOf(patientId, admissionId, kind, asOf);
+      if (version === null) return null;
+      return planElementsFromVersion(version, () =>
+        resolveSudAllowed(
+          {
+            organizationId: orgId,
+            // A draft is authored by a staff session; a portal or external session never holds the encounter keys it takes.
+            sessionClass: "staff",
+            roles: viewer.roles,
+            membershipId: viewer.membershipId,
+          },
+          patientId,
+          disclosure,
+        ),
+      );
     },
   };
 }

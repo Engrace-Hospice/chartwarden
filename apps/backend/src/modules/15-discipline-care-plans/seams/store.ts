@@ -28,6 +28,8 @@ import type {
   DisciplinePlanFull,
   DisciplinePlanId,
   DisciplinePlanIdgDigest,
+  DisciplinePlanKind,
+  DisciplinePlanVersionStatus,
   FiscalYear,
   IsoInstant,
   LocationId,
@@ -48,6 +50,18 @@ export interface SupervisoryClockRow extends SupervisoryClockFacts {
   readonly locationId: LocationId;
   readonly aideMembershipId: MembershipId | null;
   readonly supervisingRnMembershipId: MembershipId | null;
+}
+
+/**
+ * The plan version in effect at an instant (ADR-0114 S4, VN-D46), handed to the provider RAW: `stateSnapshot` is the jsonb the version was
+ * sealed into at `in_review` (never trusted to have the expected shape). The provider owns the Part 2 verdict, the redaction and the
+ * projection, so no store can hand back an unredacted result for a viewer without disclosure.
+ */
+export interface DisciplinePlanVersionAtRecord {
+  readonly versionId: string;
+  readonly planId: DisciplinePlanId;
+  readonly patientId: PatientId;
+  readonly stateSnapshot: unknown;
 }
 
 /** A numerator/denominator pair the §4.3 rate seams divide. Kept as counts so a zero denominator is visible to
@@ -93,6 +107,19 @@ export interface DisciplinePlanSeamStore {
    *  they reach the store's projection (§2.3) — the DTO carries the flags, never the free text. */
   planById(planId: DisciplinePlanId): Promise<DisciplinePlanFull | null>;
   planIdgDigest(planId: DisciplinePlanId): Promise<DisciplinePlanIdgDigest | null>;
+  /**
+   * ADR-0114 S4: the version of the patient's `kind` plan for `admissionId` in effect at `asOf`. Status `signed` or `superseded`,
+   * `signed_at <= asOf`, and either `superseded_at > asOf` or (`superseded_at` null and status `signed`); a `superseded` row with no
+   * instant is in effect at no instant (fail closed). M15 stamps `superseded_at` only at discharge, so several versions can qualify and
+   * the LATEST `signed_at` (then `sequence`) is the one in effect. Null when none is, and for a spiritual plan the patient had declined at
+   * or before `asOf`. The snapshot crosses RAW.
+   */
+  planVersionAsOf(
+    patientId: PatientId,
+    admissionId: AdmissionId,
+    kind: DisciplinePlanKind,
+    asOf: IsoInstant,
+  ): Promise<DisciplinePlanVersionAtRecord | null>;
 
   // ── MSW risk-factor reads (MswRiskFactorReader) ───────────────────────────────────────────────────────
   riskFactorsForAdmission(admissionId: AdmissionId): Promise<readonly MswRiskFactor[]>;
@@ -132,10 +159,23 @@ export interface DisciplinePlanSeamSeedPlan {
   readonly supervisingRnMembershipId?: MembershipId | null;
 }
 
+/** One plan version row the in-memory slice serves the as-of read (S4) from. */
+export interface SeededDisciplinePlanVersion extends DisciplinePlanVersionAtRecord {
+  readonly admissionId: AdmissionId;
+  readonly kind: DisciplinePlanKind;
+  readonly status: DisciplinePlanVersionStatus;
+  readonly signedAt: IsoInstant | null;
+  readonly supersededAt: IsoInstant | null;
+  /** `discipline_care_plan.spiritual_care_declined_at` of the version's plan. */
+  readonly spiritualCareDeclinedAt: IsoInstant | null;
+}
+
 /** The slice's seed. Everything is optional — an unseeded store answers empty/null, which is the honest
  *  "no visible rows under this tenant" answer, NOT a fail-open pass (the gate read seeds `gates` explicitly). */
 export interface DisciplinePlanSeamSeed {
   readonly plans?: readonly DisciplinePlanSeamSeedPlan[];
+  /** The plan versions the as-of read (S4) chooses among. */
+  readonly versions?: readonly SeededDisciplinePlanVersion[];
   readonly riskFactors?: readonly MswRiskFactor[];
   readonly gates?: readonly VolunteerGateFacts[];
   /** Set to true to simulate the §8.7 unreadable-gate-store path (`gatesForMembership` → null). */
@@ -193,6 +233,28 @@ export function createInMemoryDisciplinePlanSeamStore(seed: DisciplinePlanSeamSe
       },
       async planIdgDigest(planId) {
         return byPlanId.get(planId)?.idgDigest ?? null;
+      },
+      async planVersionAsOf(patientId, admissionId, kind, asOf) {
+        const at = Date.parse(asOf);
+        if (Number.isNaN(at)) throw new RangeError("planVersionAsOf: asOf is not an instant");
+        const instant = (value: IsoInstant | null): number =>
+          value === null ? Number.NaN : Date.parse(value);
+        const inEffect = (v: SeededDisciplinePlanVersion): boolean => {
+          if (v.patientId !== patientId || v.admissionId !== admissionId || v.kind !== kind) {
+            return false;
+          }
+          if (v.status !== "signed" && v.status !== "superseded") return false;
+          if (!(instant(v.signedAt) <= at)) return false;
+          return v.supersededAt === null ? v.status === "signed" : instant(v.supersededAt) > at;
+        };
+        const [latest] = (seed.versions ?? [])
+          .filter(inEffect)
+          .sort((a, b) => instant(b.signedAt) - instant(a.signedAt));
+        if (latest === undefined) return null;
+        const declinedAt = instant(latest.spiritualCareDeclinedAt);
+        if (kind === "spiritual_plan" && declinedAt <= at) return null;
+        const { versionId, planId, patientId: patient, stateSnapshot } = latest;
+        return { versionId, planId, patientId: patient, stateSnapshot };
       },
       async riskFactorsForAdmission(admissionId) {
         return (seed.riskFactors ?? []).filter((f) => f.admissionId === admissionId);

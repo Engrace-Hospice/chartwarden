@@ -594,7 +594,50 @@ export interface VolunteerHourRatio {
 
 // ── §4.3 seams this module publishes (impls injected at boot in M15-T05; type-checked at boot) ────────
 
-/** §4.3 — discipline-plan reads (consumed by M14's IDG packet builder, M22, M28, M31, M33). */
+/**
+ * Who a plan-as-of read is for (ADR-0114 S4): the SESSION identity, which M15 turns into its own per-viewer Part 2
+ * verdict. Both fields MUST come from the server-assembled session, never from request input.
+ */
+export interface DisciplinePlanViewer {
+  readonly roles: readonly string[];
+  /** The actor's active membership id, or `null` when the session carries none (fails closed against a release). */
+  readonly membershipId: string | null;
+}
+
+/** A goal of the plan version in effect at a past instant (S4). `text` is the revision when there is one, else the original. */
+export interface DisciplineGoalAsOf {
+  readonly goalId: DisciplineGoalId;
+  readonly text: string;
+  readonly source: DisciplineGoalSource;
+  /** True when `text` is a clinician's revision, so it is no longer the words of whoever `source` names. */
+  readonly revised: boolean;
+  /** FAIL CLOSED: true unless the sealed goal says the literal `false`. Only a viewer with Part 2 disclosure is ever handed a `true`. */
+  readonly sudRelated: boolean;
+}
+
+/** An active intervention of the plan version in effect at a past instant (S4). */
+export interface DisciplineInterventionAsOf {
+  readonly interventionId: DisciplineInterventionId;
+  readonly scopeText: string;
+  readonly frequencyText: string;
+  /** True when the intervention serves a Part 2 goal (it is Part 2 content by its anchor); only a viewer with disclosure sees one. */
+  readonly sudRelated: boolean;
+}
+
+/**
+ * The open goals and active interventions of one plan kind as they stood in the signed version in effect at an instant (S4, VN-D46).
+ * Goal status and progress are deliberately not carried: a visit note must not state them.
+ */
+export interface DisciplinePlanElementsAsOf {
+  readonly planId: DisciplinePlanId;
+  readonly patientId: PatientId;
+  readonly goals: readonly DisciplineGoalAsOf[];
+  readonly interventions: readonly DisciplineInterventionAsOf[];
+  /** True when Part 2 content was withheld from this viewer. */
+  readonly redacted: boolean;
+}
+
+/** §4.3 — discipline-plan reads (consumed by M14's IDG packet builder, M22, M28, M31, M33, and M8's visit-note draft). */
 export interface DisciplinePlanReader {
   activePlansForPatient(
     orgId: string,
@@ -605,6 +648,25 @@ export interface DisciplinePlanReader {
     orgId: string,
     planId: DisciplinePlanId,
   ): Promise<DisciplinePlanIdgDigest | null>;
+  /**
+   * ADR-0114 S4 (VN-D11, VN-D46): the patient's plan of `kind` for `admissionId` AS OF `asOf`, from the SEALED `state_snapshot` of the signed
+   * version in effect then (never today's rows). The version in effect is the latest signed one whose `signed_at` is at or before `asOf`
+   * and that was not superseded at or before it (M15 stamps `superseded_at` only at discharge, so the latest signed one is the answer).
+   * The same per-viewer Part 2 redaction as the plan reads: M15 resolves the verdict itself from `viewer`, and a viewer without disclosure
+   * never receives a Part 2 goal or an intervention anchored to one.
+   *
+   * Open goals only (`not_started`, `in_progress`, `revised`) and active interventions only. FAIL CLOSED: `null` when no signed version is
+   * in effect, when a spiritual-care declination was recorded at or before `asOf`, or when the snapshot is not of the expected shape.
+   * Throws when `asOf` is not an ISO instant.
+   */
+  planElementsAsOf(
+    orgId: string,
+    patientId: PatientId,
+    admissionId: AdmissionId,
+    kind: DisciplinePlanKind,
+    viewer: DisciplinePlanViewer,
+    asOf: IsoInstant,
+  ): Promise<DisciplinePlanElementsAsOf | null>;
 }
 
 /** §4.3 — MSW psychosocial risk-factor reads (consumed by M16's bereavement risk rubric). M15 exposes the
