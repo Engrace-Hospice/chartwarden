@@ -197,6 +197,8 @@ export function createAmendmentDraftStore(
     // S4b (VN-D62): an amendment never changes the visit's links, M15's included; it reads the note's removed set (`...base`) and writes none.
     linkDisciplinePlan: async () => 0,
     removeDisciplinePlan: async () => 0,
+    // S5b (VN-D64): and never the IDG follow-up's link; it reads the note's live link (`...base`) and writes none.
+    setIdgActionItemLink: async () => false,
   };
 }
 

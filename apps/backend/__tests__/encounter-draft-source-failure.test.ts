@@ -91,6 +91,38 @@ function mswHarness(broken: MswSource | null, how: () => Promise<never>) {
   return { seams, ...mem, svc };
 }
 
+// S5b: the IDG follow-up visit's own section reads this visit's live link (a store read) and M14's open action items (a seam read). A viewer holding `idg.read`
+// and a link makes both reads; either failing is the draft being unavailable, never a section quietly left out (the viewer without the key makes neither).
+const IDG_SOURCES = ["idgFollowUpItems", "linkedIdgActionItemId"] as const;
+type IdgSource = (typeof IDG_SOURCES)[number];
+const idgEncounter = draftEncounterRow({ encounterType: "idg_followup", discipline: "msw" });
+const IDG_PERMISSIONS = new Set(["discipline_plan.read", "idg.read"]);
+const IDG_READER = reader({ roles: ["msw"], permissions: IDG_PERMISSIONS });
+const idgCaller = { ...caller, roles: ["msw"], permissions: IDG_PERMISSIONS };
+const IDG_ITEM = "00000000-0000-4000-8000-0000000000e1";
+
+/** Healthy fakes for an IDG follow-up visit of a social worker, linked to an item; `broken` replaces one of the two IDG reads by `how`. */
+function idgHarness(broken: IdgSource | null, how: () => Promise<never>) {
+  const seams = fakePorts(broken === "idgFollowUpItems" ? { idgFollowUpItems: how } : {});
+  const mem = memoryRunInOrg({
+    encounter: idgEncounter,
+    selection: selectionFor("idg_followup", "msw"),
+    idgLinks: [
+      {
+        id: "idg-link-1",
+        actionItemId: IDG_ITEM,
+        removedAt: null,
+        removedByMembershipId: null,
+        part2Derived: false,
+        linkedByMembershipId: caller.membershipId,
+      },
+    ],
+  });
+  if (broken === "linkedIdgActionItemId") mem.store.linkedIdgActionItemId.mockImplementation(how);
+  const svc = createDraftService({ runInOrg: mem.runInOrg, seams: () => seams, now: () => NOW });
+  return { seams, ...mem, svc };
+}
+
 /** The read's outcome after `ms` of fake time: the error it failed with, `"resolved"`, or `"pending"` if it is still waiting. */
 async function outcomeAfter(read: Promise<unknown>, ms: number): Promise<unknown> {
   const settled = read.then(
@@ -322,6 +354,64 @@ describe("a social-work visit whose discipline-plan source never answers", () =>
         mswCaller,
         mswEncounter.id,
       );
+      expect(await outcomeAfter(list, DRAFT_SOURCE_READ_TIMEOUT_MS + 1)).toMatchObject({
+        code: "DRAFT_UNAVAILABLE",
+        statusCode: 503,
+      });
+    });
+  }
+});
+
+describe("an IDG follow-up visit whose IDG source fails", () => {
+  for (const source of IDG_SOURCES) {
+    it(`${source}: the gate and sign read is COMPLIANCE_GATE_UNAVAILABLE (503), the draft read and the picker list DRAFT_UNAVAILABLE (503)`, async () => {
+      const gate = idgHarness(source, outage);
+      const gateError = await gate
+        .runInOrg(scope, (unit) => readNoteDraft(unit, gate.seams, idgEncounter, IDG_READER, NOW))
+        .catch((e: unknown) => e);
+      expect(gateError).toMatchObject({ code: "COMPLIANCE_GATE_UNAVAILABLE", statusCode: 503 });
+      expect((gateError as Error).message).not.toContain("synthetic upstream outage");
+
+      const draftError = await idgHarness(source, outage)
+        .svc.getDraft(idgCaller, idgEncounter.id)
+        .catch((e: unknown) => e);
+      expect(draftError).toMatchObject({ code: "DRAFT_UNAVAILABLE", statusCode: 503 });
+
+      const listError = await idgHarness(source, outage)
+        .svc.getIdgActionItems(idgCaller, idgEncounter.id)
+        .catch((e: unknown) => e);
+      expect(listError).toMatchObject({ code: "DRAFT_UNAVAILABLE", statusCode: 503 });
+    });
+  }
+
+  it("a viewer without idg.read never makes either read, so a broken IDG source does not touch their draft (VN-D66)", async () => {
+    const keyless = { ...idgCaller, permissions: new Set(["discipline_plan.read"]) };
+    for (const source of IDG_SOURCES) {
+      const harness = idgHarness(source, outage);
+      const draft = await harness.svc.getDraft(keyless, idgEncounter.id);
+      expect(draft.sections.find((s) => s.sectionId === "idg_followup")).toMatchObject({
+        state: "not_drafted",
+      });
+    }
+  });
+});
+
+describe("an IDG follow-up visit whose IDG source never answers", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  for (const source of IDG_SOURCES) {
+    it(`${source}: the gate and sign read and the picker list give up after the bound`, async () => {
+      const gate = idgHarness(source, hang);
+      const gateRead = gate.runInOrg(scope, (unit) =>
+        readNoteDraft(unit, gate.seams, idgEncounter, IDG_READER, NOW),
+      );
+      expect(await outcomeAfter(gateRead, DRAFT_SOURCE_READ_TIMEOUT_MS + 1)).toMatchObject({
+        code: "COMPLIANCE_GATE_UNAVAILABLE",
+        statusCode: 503,
+      });
+
+      const list = idgHarness(source, hang).svc.getIdgActionItems(idgCaller, idgEncounter.id);
       expect(await outcomeAfter(list, DRAFT_SOURCE_READ_TIMEOUT_MS + 1)).toMatchObject({
         code: "DRAFT_UNAVAILABLE",
         statusCode: 503,

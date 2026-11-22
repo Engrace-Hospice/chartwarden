@@ -9,7 +9,12 @@ import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import { EncounterStateError } from "../lifecycle/errors";
 import { checkMutableForEdit } from "../lifecycle/validation";
 import { assertMayReadAdmissionFacts } from "./admission-reads";
-import { computeDraftOverview, snapshotDisciplinePlanPorts, snapshotStorePorts } from "./compute";
+import {
+  computeDraftOverview,
+  snapshotDisciplinePlanPorts,
+  snapshotIdgFollowUpPorts,
+  snapshotStorePorts,
+} from "./compute";
 import { defaultDraftPorts } from "./default-ports";
 import {
   type DisciplinePlanElementsView,
@@ -24,8 +29,16 @@ import {
   amendmentDraftView,
   draftView,
 } from "./draft-view";
+import {
+  type IdgFollowUpItemsView,
+  assertDraftsFromIdgFollowUp,
+  assertMayReadIdgItems,
+  idgFollowUpItemsView,
+  mayReadIdgItems,
+  readIdgFollowUpCandidates,
+} from "./idg-follow-up";
 import { readDisciplinePlanElements } from "./inputs";
-import type { DraftPorts, DraftSeamPorts } from "./ports";
+import type { DraftPorts, DraftSeamPorts, DraftViewer } from "./ports";
 import { resolveSection } from "./resolve-section";
 import { serialSeams } from "./serial-seams";
 import { assertMayReadSourceDomains } from "./source-reads";
@@ -82,6 +95,22 @@ export interface DraftService extends AmendmentDraftService {
     body: { readonly included: boolean },
     audit: AuditContext,
   ): Promise<DisciplinePlanElementsView>;
+  /**
+   * S5b (VN-D64 to VN-D67): the open IDG action items the calling viewer may link an IDG follow-up visit to (assigned to them, for the visit's patient,
+   * linked to an encounter), with the linked one marked. M14 decides Part 2 per viewer and hands a viewer it does not clear nothing for a flagged patient.
+   * Needs `idg.read` (403 naming it); only for an IDG follow-up visit (422 otherwise); 404 for a tenant with the draft off.
+   */
+  getIdgActionItems(caller: DraftCaller, encounterId: string): Promise<IdgFollowUpItemsView>;
+  /**
+   * S5b: links the visit to one action item (`actionItemId`) or clears the link (`null`). Idempotent; the encounter row is locked first. An item the viewer is
+   * not handed (absent, closed, another patient's, Part 2 without disclosure) is the same 404.
+   */
+  setIdgActionItem(
+    caller: DraftCaller & { readonly membershipId: string },
+    encounterId: string,
+    body: { readonly actionItemId: string | null },
+    audit: AuditContext,
+  ): Promise<IdgFollowUpItemsView>;
 }
 
 export interface AmendmentDraftService {
@@ -163,6 +192,16 @@ async function loadAuthoredAmendmentOr404(
   return amendment;
 }
 
+/**
+ * The viewer a draft is computed for: the session's roles and membership, and the permission keys it resolves to (the draft asks `idg.read` itself, for
+ * the IDG follow-up's own section alone: S5b, VN-D66).
+ */
+const viewerOf = (caller: DraftCaller): DraftViewer => ({
+  roles: caller.roles,
+  membershipId: caller.membershipId,
+  permissions: caller.permissions,
+});
+
 /** The visit time the draft is built as of (the end of the service date in the organization's zone, capped at now), by the same rule and the same failure code. */
 async function visitTimeOf(
   encounter: DraftEncounterRow,
@@ -191,9 +230,17 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
       const scope = { organizationId: caller.organizationId, userId: caller.userId, now };
       const { encounter, storePorts } = await deps.runInOrg(scope, async (unit) => {
         const row = await loadOr404(unit, encounterId, false, caller);
-        return { encounter: row, storePorts: await snapshotStorePorts(unit.store, row, now) };
+        return {
+          encounter: row,
+          storePorts: await snapshotStorePorts(
+            unit.store,
+            row,
+            now,
+            mayReadIdgItems(caller.permissions),
+          ),
+        };
       });
-      const viewer = { roles: caller.roles, membershipId: caller.membershipId };
+      const viewer = viewerOf(caller);
       const computed = await computeDraftOverview(
         { ...seams(), ...storePorts },
         encounter,
@@ -216,7 +263,7 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
           checkMutableForEdit({ status: encounter.status });
           const outcome = await resolveSection(seams(), unit.store, {
             encounter,
-            viewer: { roles: caller.roles, membershipId: caller.membershipId },
+            viewer: viewerOf(caller),
             actorMembershipId: caller.membershipId,
             addendumId: null,
             sectionId,
@@ -293,6 +340,76 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
       );
     },
 
+    async getIdgActionItems(caller, encounterId) {
+      const now = clock();
+      const scope = { organizationId: caller.organizationId, userId: caller.userId, now };
+      // As the plan element list: the store facts in one short transaction that closes before M14 (its own pooled transaction) is asked. Only the zone and
+      // the live link: the stored selections (the clinician's free text) are not loaded.
+      const { encounter, storePorts } = await deps.runInOrg(scope, async (unit) => {
+        const row = await loadOr404(unit, encounterId, false, caller);
+        assertDraftsFromIdgFollowUp(row);
+        assertMayReadIdgItems(caller.permissions);
+        return { encounter: row, storePorts: await snapshotIdgFollowUpPorts(unit.store, row) };
+      });
+      const timeZone = await storePorts.organizationTimeZone(encounter.organizationId);
+      const candidates = await readIdgFollowUpCandidates(
+        seams(),
+        encounter,
+        viewerOf(caller),
+        timeZone,
+      );
+      return idgFollowUpItemsView(
+        encounter,
+        candidates,
+        await storePorts.linkedIdgActionItemId(encounter.id),
+      );
+    },
+
+    async setIdgActionItem(caller, encounterId, body, audit) {
+      const now = clock();
+      return deps.runInOrg(
+        { organizationId: caller.organizationId, userId: caller.userId, now, audit },
+        async (unit) => {
+          // Locked, and a signed, cosigned or voided note is edited only through an addendum, as a section's resolution is.
+          const encounter = await loadOr404(unit, encounterId, true, caller);
+          checkMutableForEdit({ status: encounter.status });
+          assertDraftsFromIdgFollowUp(encounter);
+          assertMayReadIdgItems(caller.permissions);
+          const timeZone = await guarded("the organization time zone", () =>
+            unit.store.organizationTimeZone(encounter.organizationId),
+          );
+          const candidates = await readIdgFollowUpCandidates(
+            seams(),
+            encounter,
+            viewerOf(caller),
+            timeZone,
+          );
+          // An item this viewer was not handed (absent, closed, reassigned, another patient's, or Part 2 without disclosure) is not here: one answer.
+          const target =
+            body.actionItemId === null
+              ? null
+              : (candidates.find((c) => c.actionItemId === body.actionItemId) ?? undefined);
+          if (target === undefined) throw new NotFoundError("action item");
+          const live = await guarded("the linked IDG action item", () =>
+            unit.store.linkedIdgActionItemId(encounter.id),
+          );
+          // The verdict for the item being left: its own when M14 still hands it over, else Part 2 (fails closed: the flag only moves the audit class).
+          const leaving =
+            live === null ? undefined : candidates.find((c) => c.actionItemId === live);
+          await unit.store.setIdgActionItemLink(
+            encounter,
+            target === null
+              ? null
+              : { actionItemId: target.actionItemId, part2Derived: target.part2Derived },
+            live !== null && (leaving?.part2Derived ?? true),
+            caller.membershipId,
+            now,
+          );
+          return idgFollowUpItemsView(encounter, candidates, target?.actionItemId ?? null);
+        },
+      );
+    },
+
     async getAmendmentDraft(caller, encounterId, addendumId) {
       const now = clock();
       const scope = { organizationId: caller.organizationId, userId: caller.userId, now };
@@ -301,10 +418,15 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
         return {
           encounter: row,
           amendment: await loadAuthoredAmendmentOr404(unit, encounterId, addendumId, caller),
-          storePorts: await snapshotStorePorts(unit.store, row, now),
+          storePorts: await snapshotStorePorts(
+            unit.store,
+            row,
+            now,
+            mayReadIdgItems(caller.permissions),
+          ),
         };
       });
-      const viewer = { roles: caller.roles, membershipId: caller.membershipId };
+      const viewer = viewerOf(caller);
       const computed = await computeDraftOverview(
         { ...seams(), ...storePorts },
         encounter,
@@ -351,7 +473,7 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
           }
           const outcome = await resolveSection(seams(), unit.amendmentStore(addendumId), {
             encounter,
-            viewer: { roles: caller.roles, membershipId: caller.membershipId },
+            viewer: viewerOf(caller),
             actorMembershipId: caller.membershipId,
             addendumId,
             sectionId,

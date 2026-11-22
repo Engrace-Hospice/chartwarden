@@ -3,7 +3,11 @@
 import type { RecordedWound } from "@chartwarden/hearthnote";
 import { VOCAB_VERSION } from "@chartwarden/narrative-vocab";
 import { describe, expect, it } from "vitest";
-import { computeDraft, snapshotStorePorts } from "../src/modules/08-encounters/drafting/compute";
+import {
+  computeDraft,
+  snapshotIdgFollowUpPorts,
+  snapshotStorePorts,
+} from "../src/modules/08-encounters/drafting/compute";
 import {
   AS_OF,
   NOW,
@@ -537,6 +541,40 @@ describe("snapshotStorePorts: the store reads of a source the template does not 
     expect(aideStore.removedDisciplinePlanElementIds).not.toHaveBeenCalled();
     await expect(aidePorts.removedDisciplinePlanElementIds(aide.id)).rejects.toThrow(
       "a removed discipline-plan links read the snapshot did not take",
+    );
+  });
+
+  it("takes the IDG follow-up's live link for an IDG follow-up visit (S5b) only when the viewer holds idg.read, and for no other template", async () => {
+    const idg = encounter({ encounterType: "idg_followup", discipline: "rn" });
+    const store = fakePorts({ linkedIdgActionItemId: async () => "the-item" });
+    const ports = await snapshotStorePorts(store, idg, NOW);
+    expect(store.linkedIdgActionItemId).toHaveBeenCalledTimes(1);
+    await expect(ports.linkedIdgActionItemId(idg.id)).resolves.toBe("the-item");
+
+    // A viewer without the key gets the section as not drafted: the link is not even read for them.
+    const keylessStore = fakePorts({ linkedIdgActionItemId: async () => "the-item" });
+    const keyless = await snapshotStorePorts(keylessStore, idg, NOW, false);
+    expect(keylessStore.linkedIdgActionItemId).not.toHaveBeenCalled();
+    await expect(keyless.linkedIdgActionItemId(idg.id)).resolves.toBeNull();
+
+    const routine = encounter();
+    const routineStore = fakePorts();
+    const routinePorts = await snapshotStorePorts(routineStore, routine, NOW);
+    expect(routineStore.linkedIdgActionItemId).not.toHaveBeenCalled();
+    await expect(routinePorts.linkedIdgActionItemId(routine.id)).rejects.toThrow(
+      "a linked IDG action item read the snapshot did not take",
+    );
+  });
+
+  it("takes only the zone and the live link for the IDG action item routes, and a read of anything else is a bug", async () => {
+    const idg = encounter({ encounterType: "idg_followup", discipline: "msw" });
+    const store = fakePorts({ linkedIdgActionItemId: async () => "the-item" });
+    const ports = await snapshotIdgFollowUpPorts(store, idg);
+    expect(store.loadSelection).not.toHaveBeenCalled();
+    expect(store.removedDisciplinePlanElementIds).not.toHaveBeenCalled();
+    await expect(ports.linkedIdgActionItemId(idg.id)).resolves.toBe("the-item");
+    await expect(ports.loadSelection(idg)).rejects.toThrow(
+      "a stored selections read the snapshot did not take",
     );
   });
 });

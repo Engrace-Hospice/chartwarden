@@ -36,6 +36,12 @@ export const SetDisciplinePlanElementSchema = Type.Object(
   { additionalProperties: false },
 );
 
+/** S5b (VN-D64): link the IDG follow-up visit to one M14 action item, or clear the link (`null`). Nothing else is read from the body: the viewer is the session. */
+export const SetIdgActionItemSchema = Type.Object(
+  { actionItemId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]) },
+  { additionalProperties: false },
+);
+
 /** What the clinician saw: the server recomputes the draft for the same viewer and refuses (409 DRAFT_SECTION_STALE) unless both still match. */
 export const ResolveSectionSchema = Type.Object({
   resolution: Type.Union([Type.Literal("confirmed"), Type.Literal("deselected")]),
@@ -74,7 +80,44 @@ const Origin = Type.Union([
   // S4 (social-work and chaplain visits): the goals and interventions of the discipline's own plan (M15). Kinds only, never ids (VN-D7).
   Type.Literal("discipline_plan_goal"),
   Type.Literal("discipline_plan_intervention"),
+  // S5b (IDG follow-up visits): the one M14 IDG action item the author linked the visit to. Kind only, never an id (VN-D7).
+  Type.Literal("idg_action_item"),
 ]);
+
+/** The ten kinds of decision M14 records (`idg_decision_kind`): the kind is all the note states of a decision. */
+const IdgDecisionKind = Type.Union([
+  Type.Literal("care_plan_update"),
+  Type.Literal("order_request"),
+  Type.Literal("medication_recommendation"),
+  Type.Literal("level_of_care_consideration"),
+  Type.Literal("recertification_consideration"),
+  Type.Literal("family_meeting_needed"),
+  Type.Literal("bereavement_risk_flag"),
+  Type.Literal("referral"),
+  Type.Literal("team_note"),
+  Type.Literal("discipline_plan_update"),
+]);
+
+/** S5b: the open IDG action items the viewer may link an IDG follow-up visit to, the linked one marked. Facts only: never an item's title or body. */
+export const IdgActionItemsResponseSchema = Type.Object({
+  /** The encounter's patient: the audited read is accountable against it. */
+  patientId: Type.String({ format: "uuid" }),
+  items: Type.Array(
+    Type.Object({
+      actionItemId: Type.String({ format: "uuid" }),
+      /** The org-local date (`YYYY-MM-DD`) of the meeting the decision was made at. */
+      meetingDate: Type.String({ format: "date" }),
+      decisionKind: IdgDecisionKind,
+      /** The fixed label the note states for the kind. */
+      decisionLabel: Type.String(),
+      /** The org-local date (`YYYY-MM-DD`) the item is due; null when it has none. */
+      dueDate: Type.Union([Type.String({ format: "date" }), Type.Null()]),
+      status: Type.Union([Type.Literal("open"), Type.Literal("in_progress")]),
+      /** Whether this visit is linked to the item. */
+      linked: Type.Boolean(),
+    }),
+  ),
+});
 
 /** S4b: the goals and interventions of the discipline's plan in effect at the visit, as the calling viewer is handed them, and whether the visit keeps each. */
 export const DisciplinePlanElementsResponseSchema = Type.Object({

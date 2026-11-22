@@ -66,6 +66,7 @@ const EXPECTED_ALLOWLIST = [
   "GET /api/v1/encounters/:encounterId/discipline-plan-elements",
   "GET /api/v1/encounters/:encounterId/draft",
   "GET /api/v1/encounters/:encounterId/fall-incidents",
+  "GET /api/v1/encounters/:encounterId/idg-action-items",
   "GET /api/v1/encounters/:encounterId/mileage",
   "GET /api/v1/encounters/:encounterId/nutrition",
   "GET /api/v1/encounters/:encounterId/selections",
@@ -316,6 +317,7 @@ const EXPECTED_ALLOWLIST = [
   "PUT /api/v1/encounters/:encounterId/adl",
   "PUT /api/v1/encounters/:encounterId/discipline-plan-elements/:elementId",
   "PUT /api/v1/encounters/:encounterId/draft/sections/:sectionId",
+  "PUT /api/v1/encounters/:encounterId/idg-action-item",
   "PUT /api/v1/encounters/:encounterId/nutrition",
   "PUT /api/v1/medication-orders/:id/coverage-determination",
 ];

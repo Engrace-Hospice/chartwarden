@@ -4,6 +4,7 @@
 import type { AuditContext } from "@chartwarden/audit";
 import type { DraftSourceRef } from "@chartwarden/hearthnote";
 import type { EncounterStatus } from "@chartwarden/types";
+import type { IdgLinkTarget } from "./idg-action-item-links";
 import type { DraftEncounter, DraftStorePorts } from "./ports";
 import type { ConfirmationRecord } from "./section-state";
 
@@ -50,6 +51,17 @@ export interface DraftStore extends DraftStorePorts {
     refs: readonly DraftSourceRef[],
     part2Derived: boolean,
   ): Promise<number>;
+  /**
+   * S5b (VN-D64): links the IDG follow-up visit to ONE M14 action item (replacing any other) or clears the link (`null`). Idempotent. `currentPart2Derived`
+   * is the verdict for the live item being left, `true` when it cannot be told (fails closed); returns whether anything changed.
+   */
+  setIdgActionItemLink(
+    encounter: DraftEncounterRow,
+    target: IdgLinkTarget | null,
+    currentPart2Derived: boolean,
+    byMembershipId: string,
+    now: Date,
+  ): Promise<boolean>;
   /** S4b: leaves the M15 plan elements among `refs` out of the visit (soft-remove, or an already-removed tombstone); returns how many it changed. */
   removeDisciplinePlan(
     encounter: DraftEncounterRow,

@@ -6,6 +6,9 @@
 //                                                                   author sees it: only the sections the addendum names; the addendum's
 //                                                                   author alone (403 for anyone else, an absent addendum included)    encounter.read
 //   PUT /api/v1/encounters/:encounterId/addenda/:addendumId/draft/sections/:sectionId   the addendum's author confirms or deselects one   encounter.addendum_author
+//   GET /api/v1/encounters/:encounterId/idg-action-items            (S5b) the open IDG action items the viewer may link an IDG follow-up visit to   encounter.read + idg.read
+//   PUT /api/v1/encounters/:encounterId/idg-action-item             (S5b) link the visit to one action item, or clear the link                   encounter.author + idg.read
+//   (S4b: GET and PUT .../discipline-plan-elements keep or leave out single goals of a social-work or chaplain visit's drafted plan.)
 //
 // All four also need the read key of each SOURCE domain the template's draft is compiled from: the care plan (M7), the medication orders (M12)
 // and the scored scales (M9) reach the draft through seams that apply no permission check of their own, so without them a role holding only
@@ -49,6 +52,7 @@ import {
   DraftSectionParamsSchema,
   ResolveSectionSchema,
   SetDisciplinePlanElementSchema,
+  SetIdgActionItemSchema,
 } from "./draft-section-typebox";
 import { parse } from "./encounters-typebox";
 
@@ -121,6 +125,28 @@ const DISCIPLINE_PLAN_ELEMENTS_READ_AUDIT = {
   resourceIdParam: "encounterId",
   patientIdPayloadPath: "patientId",
   fields: ["elements", "elementId", "kind", "text", "kept"],
+} as const;
+const NO_AI_IDG = rejectAiActor(
+  "AI principals cannot link an IDG follow-up visit to an action item (D13)",
+) as PreHandler;
+/**
+ * The open IDG action items the viewer may link the visit to (S5b): accountable against the patient named in the response (§164.528). Field names only. The
+ * list read and the link change (which answers the same list) declare it.
+ */
+const IDG_ACTION_ITEMS_READ_AUDIT = {
+  resourceKind: "encounter_idg_action_items",
+  resourceIdParam: "encounterId",
+  patientIdPayloadPath: "patientId",
+  fields: [
+    "items",
+    "actionItemId",
+    "meetingDate",
+    "decisionKind",
+    "decisionLabel",
+    "dueDate",
+    "status",
+    "linked",
+  ],
 } as const;
 /** A malformed id is a 422 BEFORE the scope predicate casts it to a uuid (that cast would be a 500). */
 const PARAMS_VALID = (schema: TObject): PreHandler =>
@@ -222,6 +248,45 @@ export function registerDraftSectionRoutes(
         await callerOf(request, actor),
         encounterId,
         elementId,
+        body,
+        auditContextOf(request),
+      );
+    },
+  );
+  // ── S5b (VN-D64 to VN-D67): the one M14 IDG action item an IDG follow-up visit follows up ───────────────────────────────────────────────────
+  app.get(
+    "/api/v1/encounters/:encounterId/idg-action-items",
+    {
+      preHandler: [READ, PARAMS_VALID(DraftParamsSchema), SCOPE_FOR("encounter.read")],
+      config: { auditRead: IDG_ACTION_ITEMS_READ_AUDIT },
+    },
+    async (request) => {
+      const { encounterId } = parse(DraftParamsSchema, request.params);
+      const actor = actorOf(request);
+      return service.getIdgActionItems(await callerOf(request, actor), encounterId);
+    },
+  );
+
+  app.put(
+    "/api/v1/encounters/:encounterId/idg-action-item",
+    {
+      preHandler: [
+        AUTHOR,
+        NO_AI_IDG,
+        PARAMS_VALID(DraftParamsSchema),
+        SCOPE_FOR("encounter.author"),
+        IS_AUTHOR,
+      ],
+      // The answer is the same list, so the change is accountable as a read too (clearing a link that was never made writes no row event).
+      config: { auditRead: IDG_ACTION_ITEMS_READ_AUDIT },
+    },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { encounterId } = parse(DraftParamsSchema, request.params);
+      const body = parse(SetIdgActionItemSchema, request.body);
+      return service.setIdgActionItem(
+        await callerOf(request, actor),
+        encounterId,
         body,
         auditContextOf(request),
       );

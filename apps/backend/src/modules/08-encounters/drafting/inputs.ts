@@ -43,6 +43,7 @@ import type {
   ScaleType,
 } from "@chartwarden/types";
 import { disciplinePlanElementKinds } from "./discipline-plan-refs";
+import { readIdgFollowUp } from "./idg-follow-up";
 import type { DraftEncounter, DraftPorts, DraftViewer } from "./ports";
 import { readsPreviousVisit } from "./source-reads";
 import { draftUnavailable, guarded, settleAll } from "./unavailable";
@@ -774,6 +775,7 @@ export async function readDraftInputs(
     caregivers,
     advanceDirective,
     disciplinePlan,
+    idgFollowUp,
   ] = await settleAll([
     needs.carePlan ? readCarePlan(ports, encounter, viewer, asOf, part2Verdict) : null,
     needs.scales
@@ -792,6 +794,9 @@ export async function readDraftInputs(
     admission ? readAdvanceDirective(ports, encounter, asOf) : null,
     // S4: the social-work and chaplain visits read the discipline's own plan, and no other visit does.
     needs.disciplinePlan ? readDisciplinePlan(ports, encounter, viewer, asOf, part2Verdict) : null,
+    // S5b: the IDG follow-up visit's own section reads the one M14 action item the author linked it to (only for a viewer holding `idg.read`: M14's key,
+    // asked for this section alone), and no other visit does.
+    needs.idgFollowUp ? readIdgFollowUp(ports, encounter, viewer, timeZone) : null,
   ]);
   return {
     encounterType: encounter.encounterType,
@@ -806,6 +811,7 @@ export async function readDraftInputs(
     ...(readsOrders ? { activeMedications } : {}),
     ...(admission ? { caregivers, advanceDirective } : {}),
     ...(needs.disciplinePlan ? { disciplinePlan } : {}),
+    ...(needs.idgFollowUp ? { idgFollowUp } : {}),
   };
 }
 

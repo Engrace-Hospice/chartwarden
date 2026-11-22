@@ -74,6 +74,14 @@ export function defaultDraftPorts(): DraftSeamPorts {
         { roles: viewer.roles, membershipId: viewer.membershipId },
         asOf as IsoInstant,
       ),
+    // S5b (IDG follow-up visits): M14's open action items for the viewer. M14 resolves the per-viewer Part 2 verdict itself, from the session identity
+    // handed over here, and answers nothing for a flagged patient a viewer is not cleared for. Facts only: no title, no body, no payload.
+    idgFollowUpItems: (organizationId, patientId, viewer) =>
+      getSeam("IdgFollowUpReader").openFollowUpItems({
+        organizationId,
+        patientId: patientId as PatientId,
+        viewer: { roles: viewer.roles, membershipId: viewer.membershipId },
+      }),
     scaleSeries: (patientId, scaleType, from, to) =>
       getSeam("ScaleSeriesProvider").series(patientId as PatientId, scaleType, from, to),
     medicationChangesBetween: (organizationId, patientId, from, to) =>

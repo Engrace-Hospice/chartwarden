@@ -127,6 +127,8 @@ const CLOSED_STORE: DraftStorePorts = {
     Promise.reject(new Error("a store read after its transaction closed")),
   removedDisciplinePlanElementIds: () =>
     Promise.reject(new Error("a store read after its transaction closed")),
+  linkedIdgActionItemId: () =>
+    Promise.reject(new Error("a store read after its transaction closed")),
   loadSelection: () => Promise.reject(new Error("a store read after its transaction closed")),
 };
 
@@ -148,6 +150,11 @@ export async function snapshotStorePorts(
   store: DraftStorePorts,
   encounter: DraftEncounter,
   now: Date,
+  /**
+   * Whether the viewer holds `idg.read` (S5b, VN-D66): a viewer without it gets the IDG follow-up's own section as not drafted, so the link is not even
+   * read for them and nothing about this visit's link can fail their draft. The draft's read of the link (`readIdgFollowUp`) asks the same key.
+   */
+  mayReadIdg = true,
 ): Promise<DraftStorePorts> {
   if (!templateHasDraftedSection(encounter.encounterType, encounter.discipline))
     return CLOSED_STORE;
@@ -162,26 +169,32 @@ export async function snapshotStorePorts(
   // S3: the store reads of a source the template does not draft from are not taken either (an aide's snapshot is the care-plan links and the
   // stored selections): `readDraftInputs` reads the same sources, by the same rule.
   const needs = draftSourceNeeds(encounter.encounterType, encounter.discipline);
-  const [previous, vitals, removed, removedDiscipline, stored, weights] = await settleAll([
-    readsPreviousVisit(needs)
-      ? guarded("the previous signed visit", () => store.previousSignedVisitAt(encounter))
-      : Promise.resolve(null),
-    needs.vitals
-      ? guarded("the vitals", () => store.latestVitals(encounter.id, asOf))
-      : Promise.resolve(null),
-    needs.carePlan
-      ? guarded("the removed care-plan links", () => store.removedCarePlanElementIds(encounter.id))
-      : Promise.resolve(new Set<string>()),
-    needs.disciplinePlan
-      ? guarded("the removed discipline-plan links", () =>
-          store.removedDisciplinePlanElementIds(encounter.id),
-        )
-      : Promise.resolve(new Set<string>()),
-    guarded("the stored selections", () => store.loadSelection(encounter)),
-    readsWeights
-      ? guarded("the weights", () => store.weightReadings(encounter, WEIGHTS_FROM, asOf))
-      : Promise.resolve(null),
-  ]);
+  const [previous, vitals, removed, removedDiscipline, linkedIdg, stored, weights] =
+    await settleAll([
+      readsPreviousVisit(needs)
+        ? guarded("the previous signed visit", () => store.previousSignedVisitAt(encounter))
+        : Promise.resolve(null),
+      needs.vitals
+        ? guarded("the vitals", () => store.latestVitals(encounter.id, asOf))
+        : Promise.resolve(null),
+      needs.carePlan
+        ? guarded("the removed care-plan links", () =>
+            store.removedCarePlanElementIds(encounter.id),
+          )
+        : Promise.resolve(new Set<string>()),
+      needs.disciplinePlan
+        ? guarded("the removed discipline-plan links", () =>
+            store.removedDisciplinePlanElementIds(encounter.id),
+          )
+        : Promise.resolve(new Set<string>()),
+      needs.idgFollowUp && mayReadIdg
+        ? guarded("the linked IDG action item", () => store.linkedIdgActionItemId(encounter.id))
+        : Promise.resolve(null),
+      guarded("the stored selections", () => store.loadSelection(encounter)),
+      readsWeights
+        ? guarded("the weights", () => store.weightReadings(encounter, WEIGHTS_FROM, asOf))
+        : Promise.resolve(null),
+    ]);
   return {
     organizationTimeZone: async () => orgTimeZone,
     // A read of a source the snapshot did not take is a bug, not an empty answer (as the weights below, and `CLOSED_STORE`).
@@ -200,6 +213,9 @@ export async function snapshotStorePorts(
     removedDisciplinePlanElementIds: needs.disciplinePlan
       ? async () => removedDiscipline
       : notTaken("removed discipline-plan links"),
+    linkedIdgActionItemId: needs.idgFollowUp
+      ? async () => linkedIdg
+      : notTaken("linked IDG action item"),
     loadSelection: async () => stored,
   };
 }
@@ -227,6 +243,33 @@ export async function snapshotDisciplinePlanPorts(
     latestVitals: notTaken("vitals"),
     weightReadings: notTaken("weights"),
     removedCarePlanElementIds: notTaken("removed care-plan links"),
+    linkedIdgActionItemId: notTaken("linked IDG action item"),
+    loadSelection: notTaken("stored selections"),
+  };
+}
+
+/**
+ * The store reads of the IDG action item routes of an IDG follow-up visit (S5b): the zone and the live link, and nothing else. The response never shows the
+ * clinician's stored selections, so they are neither loaded nor decrypted; a read of any other port is a bug, refused loudly (as `snapshotStorePorts`).
+ */
+export async function snapshotIdgFollowUpPorts(
+  store: DraftStorePorts,
+  encounter: DraftEncounter,
+): Promise<DraftStorePorts> {
+  const [orgTimeZone, linked] = await settleAll([
+    guarded("the organization time zone", () =>
+      store.organizationTimeZone(encounter.organizationId),
+    ),
+    guarded("the linked IDG action item", () => store.linkedIdgActionItemId(encounter.id)),
+  ]);
+  return {
+    organizationTimeZone: async () => orgTimeZone,
+    linkedIdgActionItemId: async () => linked,
+    previousSignedVisitAt: notTaken("previous signed visit"),
+    latestVitals: notTaken("vitals"),
+    weightReadings: notTaken("weights"),
+    removedCarePlanElementIds: notTaken("removed care-plan links"),
+    removedDisciplinePlanElementIds: notTaken("removed discipline-plan links"),
     loadSelection: notTaken("stored selections"),
   };
 }

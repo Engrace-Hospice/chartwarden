@@ -58,6 +58,7 @@ const outage = async (): Promise<never> => {
 const SEAM_NAMES = [
   "carePlanAsOf",
   "disciplinePlanAsOf",
+  "idgFollowUpItems",
   "scaleSeries",
   "medicationChangesBetween",
   "part2DisclosureAllowed",
@@ -68,6 +69,7 @@ const SOURCE_STORE_NAMES = [
   "latestVitals",
   "removedCarePlanElementIds",
   "removedDisciplinePlanElementIds",
+  "linkedIdgActionItemId",
   "loadSelection",
 ] as const;
 
@@ -76,6 +78,7 @@ const brokenSeams = () =>
   fakePorts({
     carePlanAsOf: outage,
     disciplinePlanAsOf: outage,
+    idgFollowUpItems: outage,
     scaleSeries: outage,
     medicationChangesBetween: outage,
     part2DisclosureAllowed: outage,
