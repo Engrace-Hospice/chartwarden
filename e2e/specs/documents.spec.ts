@@ -143,6 +143,7 @@ test.describe("Documents", () => {
   test("accessibility: a created referral opens in the guided intake workspace", async ({
     page,
   }) => {
+    test.setTimeout(90_000);
     await signInAs(page, ADMIN_ACCOUNT());
     const referralId = await createReferral(page);
 
@@ -161,6 +162,13 @@ test.describe("Documents", () => {
     await page.getByRole("button", { name: "Save & continue to patient matching" }).click();
     await expect(page.getByRole("heading", { name: "Patient Resolution" })).toBeVisible();
     await captureIntakeStage(page, "match-patient");
+
+    // Recovery contract: a reload must not strand the last Match action underneath the sticky
+    // progress/footer chrome. This was clickable during the initial transition but pointer-blocked
+    // after refresh because the page restored at the top of the independently scrolling workspace.
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Patient Resolution" })).toBeVisible();
+    await page.getByRole("button", { name: "Create new patient" }).click({ trial: true });
 
     await page.getByRole("button", { name: /Receive referral/ }).click();
     await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();

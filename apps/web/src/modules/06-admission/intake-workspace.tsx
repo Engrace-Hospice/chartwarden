@@ -193,7 +193,7 @@ export function IntakeWorkspace(): JSX.Element {
   }
 
   return (
-    <div className="wx-admissions" style={page}>
+    <div className="wx-admissions wx-intake-page" style={page}>
       <IntakeIdentityHeader referral={referral} presentation={presentation} />
 
       <AdmissionsTabs current="/referrals" />
