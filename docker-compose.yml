@@ -89,7 +89,8 @@ services:
   # the first boot downloads it (a minute or two), during which the healthcheck is "starting". api/worker only wait for
   # the container to START, never for it to be healthy: until clamd answers, attachments simply stay `pending`
   # (nothing is delivered), and unrelated boot paths never fail on a signature download. Built from deploy/clamav
-  # (Wolfi, multi-arch so Apple Silicon works): production runs the digest-pinned publication of the same Dockerfile.
+  # (Wolfi, multi-arch so Apple Silicon works): production moves to the digest-pinned publication of the same Dockerfile
+  # once deploy/production/compose.yml pins it; until then it still runs upstream's Alpine image.
   clamav:
     image: chartwarden-clamav:dev
     build: ./deploy/clamav

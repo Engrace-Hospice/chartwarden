@@ -2,11 +2,12 @@
 #
 # Replaces upstream's clamav/clamav (Alpine; clamav-debian before it) so the scanner shares the Postgres image's
 # base, scan and signing chain. One multi-arch image for dev (Apple Silicon included) and production: dev compose
-# builds this folder, production runs the digest .github/workflows/clamav-image.yml publishes (compose.yml pins it).
+# builds this folder; production moves to the digest .github/workflows/clamav-image.yml publishes once compose.yml pins it
+# (until then it still runs upstream's Alpine image).
 #
 # Same contract as upstream's /init: the signature DB lives in the /var/lib/clamav volume (chowned to this image's
 # clamav uid on every start, so a volume an older image created still opens), freshclam fetches it on the first start
-# and then refreshes it in-container, and clamd runs in the foreground reading /etc/clamav/clamd.conf, which the
+# and then refreshes it in-container (a retrying loop, entrypoint.sh), and clamd runs in the foreground reading /etc/clamav/clamd.conf, which the
 # compose files bind-mount (deploy/clamav/clamd.conf). clamd drops to `clamav` (the mounted config sets no User).
 # Port 3310 is unauthenticated: compose-network only, on the `scan` network (see clamd.conf).
 #
