@@ -155,7 +155,7 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
 - **Keeping and leaving out single goals (S4b).** A confirmation or deselection still applies to the whole section, and since S4b one goal or intervention can
   be left out of it: `encounter_discipline_plan_link` (migration 1540) holds one row per M15 element the visit keeps or leaves out (soft-removed, no DELETE for
   the application role), by the care-plan rules. A live row means "kept in this visit's statement of the plan", never "addressed": no outbox event and no
-  consumer reads it, and nothing may. A deselected plan section is no longer drafted (S4a kept it drafted and deselected). The audit refs name M15 goal and
+  consumer reads it, and nothing may. The database freezes a row with the note (a signed, cosign-pending, cosigned or voided encounter takes no write), and an update may only stamp a removal or raise the Part 2 flag. A deselected plan section is no longer drafted (S4a kept it drafted and deselected). The audit refs name M15 goal and
   intervention ids (kinds `discipline_plan_goal`, `discipline_plan_intervention`); the response carries kinds only, and the list route returns ids and words to a
   holder of `discipline_plan.read` who may read the draft.
 - **The Part 2 flag of a link row.** The toggle writes the element's own flag (fail closed); a confirm or deselect writes the section's verdict, so a non-Part-2
