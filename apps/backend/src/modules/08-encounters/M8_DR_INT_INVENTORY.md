@@ -403,22 +403,28 @@ preflight refuses the whole tenant while any hold is active, before any eraser r
 - **`idg.act` is asked for the `idg_followup` section alone** (the owner changed it from `idg.read` after review: M14's key for one's own assigned items). A viewer
   without it gets that section as not drafted and the rest of the draft as it was: no 403 at the draft routes, finalize, sign or an addendum's recompute, no read
   of the link and no M14 read. The picker's list and a link refuse 403 `IDG_ACTION_PERMISSION_REQUIRED` (a stable code, the message names the key). **A clear needs
-  no key and no M14**: only the author's checks, and its answer lists no items. No role template in `packages/auth` grants `idg.act` to a visit's author, so a tenant
+  no key and no M14**: only the author's checks and the encounter's own (the tenant switch, the template's read keys), and its answer lists no items. No role template in `packages/auth` grants `idg.act` to a visit's author, so a tenant
   grants it to the authoring roles of the six disciplines before the section drafts for them.
 - **M14's auto-close is unchanged, and the draft does not depend on it.** It closes EVERY open encounter-kind item of the signer's membership when ANY encounter is
   signed, so the item a draft states is usually closed by sign time. The draft reads the linked item by id in any status, so the confirmed sentence is sealed after the
   close; the link does not close the item. A confirmed section whose item M14 hands the viewer nothing for any more (reassigned, Part 2 no longer cleared) is refused at
-  finalize (422) and sign (409) as `DRAFT_SECTION_STALE` naming `idg_followup` (no item detail) for a viewer holding the key; the author clears the link, writes the
+  finalize (422) and sign (409) as `DRAFT_SECTION_STALE` naming `idg_followup` (no item detail) for a viewer holding the key, and at an addendum's sign that names the
+  section; the author clears the link, writes the
   section in their own words and signs. For a viewer WITHOUT the key nothing is refused (VN-D66): an author who loses `idg.act` between confirming and signing signs
   a note without the sentence.
 - **Part 2 is per viewer and M14's.** For a flagged patient, one no packet vouches for, or one whose decision marks a care-plan problem SUD related, M14 hands a viewer
-  M39 does not clear no item; naming one is the same 404 as an absent one. The verdict comes from the item's own meeting packet snapshot, as M14's own minutes
-  rendering decides it (a patient flagged only after that packet was built is offered until M14 rebuilds it: not fixed here). A link row carries the verdict (fail
+  M39 does not clear no item; naming one is the same 404 as an absent one. The verdict comes from the item's own meeting's LATEST packet snapshot, as M14's own minutes
+  rendering decides it (a patient flagged only after that packet was built is offered until M14 rebuilds it: not fixed here). An M39 outage is a denial (VN-D67): an
+  item whose meeting needs a release is then handed to nobody, so the picker is empty and a signer holding `idg.act` with a confirmed section is refused
+  `DRAFT_SECTION_STALE` at finalize and sign until the outage ends (clearing the link drops the sentence). A link row carries the verdict (fail
   closed), withholds the action item id from its audit image and files under the Part 2 class; it is raised whenever a resolution, finalize or sign sees the section
-  Part 2 derived, and a clear raises the row being left (the item cannot be judged without M14).
+  Part 2 derived, and a clear raises the row being left (the item cannot be judged without M14). The link route asks M14 again by id after the insert and raises the
+  new row in the same unit when the item now needs a release; the window that remains is the few milliseconds between M14's candidate answer and the insert, where the
+  INSERT's own audit image files the id in the plain class (the raise's image is scrubbed; the next recompute raises a stale row).
 - **A refused link is audited.** A 404 (an item the viewer is not handed) or a 409 (the row cap) leaves a warn-severity, outcome-denied
   `m8.encounter.idg_follow_up_link_refused` event carrying the encounter and an enum reason and NO item id, written on a new unit best effort (after
-  `m8.encounter.closure_override_denied`); the rows are bounded only by the platform's request rate limit.
+  `m8.encounter.closure_override_denied`); the rows are bounded by the PUT's rate limit, `IDG_FOLLOW_UP_LINK_ROUTE_RATE_LIMIT`: 10 a minute per user, 100 a minute per
+  organization (429 `RATE_LIMITED`, fail-open, after the guards).
 - **Bounds.** At most 50 candidates (newest meeting first) and 100 link rows per encounter; a re-link past the row cap is 409 `IDG_ACTION_ITEM_LINK_LIMIT` (a first row of an
   item and a clear are never refused). An item with no recorded decision is not offered, and a decision kind the corpus has no label for leaves its item out.
 - **Deploy.** `VOCAB_VERSION` moves to `narrative-vocab@2026.12.5`: a selection saved under `2026.12.4` and not yet finalized answers 409 `VOCAB_VERSION_MISMATCH` until the
