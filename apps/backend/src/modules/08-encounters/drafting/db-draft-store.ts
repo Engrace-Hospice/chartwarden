@@ -17,7 +17,11 @@ import {
 } from "./discipline-plan-links";
 import { disciplinePlanElementsOf } from "./discipline-plan-refs";
 import type { DraftStore } from "./draft-store";
-import { liveIdgActionItemId, setIdgActionItemLink } from "./idg-action-item-links";
+import {
+  liveIdgActionItemId,
+  raiseIdgLinkPart2,
+  setIdgActionItemLink,
+} from "./idg-action-item-links";
 import type { DraftEncounter, WeightRow } from "./ports";
 import { previousVisitAsOf } from "./visit-time";
 import { vitalsDraftInput } from "./vitals-input";
@@ -207,6 +211,8 @@ export function createDbDraftStore(tx: DbClient, deps: DbDraftStoreDeps): DraftS
     linkCarePlan: (encounter, refs) => linkElements(tx, encounter, carePlanElementsOf(refs)),
     removeCarePlan: (encounter, refs, removedBy, now) =>
       removeElements(tx, encounter, carePlanElementsOf(refs), removedBy, now),
+    raiseIdgLinkPart2: (encounterId, actionItemId) =>
+      raiseIdgLinkPart2(tx, encounterId, actionItemId),
     setIdgActionItemLink: (encounter, target, currentPart2Derived, by, now) =>
       setIdgActionItemLink(tx, encounter, target, currentPart2Derived, by, now),
     linkDisciplinePlan: (encounter, refs, part2Derived) =>

@@ -21,6 +21,7 @@ import { computeDraftOverview, sha256Hex } from "./compute";
 import { isDisciplinePlanRef } from "./discipline-plan-refs";
 import type { DraftEncounterRow, DraftResolvedEvent, DraftStore } from "./draft-store";
 import { type DraftSectionView, sectionView } from "./draft-view";
+import { isIdgActionItemRef } from "./idg-follow-up";
 import type { DraftPorts, DraftSeamPorts, DraftViewer } from "./ports";
 import { type SectionStateName, sectionStates } from "./section-state";
 import { settleAll } from "./unavailable";
@@ -83,6 +84,12 @@ export async function resolveSection(
       "UNKNOWN_TEMPLATE_SECTION",
       `section '${sectionId}' is not part of template '${before.templateKey}'`,
     );
+  }
+  // S5b: a recompute that sees the IDG follow-up's section Part 2 derived raises its link row, as a plan section's resolution raises its plan links.
+  if (seen.state === "drafted" && seen.part2Derived) {
+    for (const ref of seen.sourceRefs.filter(isIdgActionItemRef)) {
+      await store.raiseIdgLinkPart2(encounter.id, ref.id);
+    }
   }
   const [confirmations, own] = await settleAll([
     store.confirmations(encounter.id),

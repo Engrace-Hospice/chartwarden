@@ -67,6 +67,12 @@ export interface DraftStore extends DraftStorePorts {
     byMembershipId: string,
     now: Date,
   ): Promise<boolean>;
+  /**
+   * S5b: raises to Part 2 the IDG follow-up link rows of this encounter that name `actionItemId` and were filed lower: a recompute (a section's resolution,
+   * finalize, sign) that sees the `idg_followup` section Part 2 derived raises its link row, as a plan section's resolution raises its plan links. Returns whether
+   * any row was raised.
+   */
+  raiseIdgLinkPart2(encounterId: string, actionItemId: string): Promise<boolean>;
   /** S4b: leaves the M15 plan elements among `refs` out of the visit (soft-remove, or an already-removed tombstone); returns how many it changed. */
   removeDisciplinePlan(
     encounter: DraftEncounterRow,

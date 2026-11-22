@@ -98,6 +98,30 @@ export async function liveIdgActionItemId(
 }
 
 /**
+ * Raises to Part 2 every row of this encounter that names `actionItemId` and was filed lower (the patient was flagged, or M14 judged the item Part 2, since): a
+ * flag only ever goes up, so no later write on the row (an update, or the eraser's delete) files the action item id in the plain audit class. One statement, and
+ * it matches no row (so fires no trigger) once the flag is up, which keeps a recompute on a note whose rows are already right free of writes.
+ */
+export async function raiseIdgLinkPart2(
+  tx: DbClient,
+  encounterId: string,
+  actionItemId: string,
+): Promise<boolean> {
+  const raised = await tx
+    .update(L)
+    .set({ part2Derived: true })
+    .where(
+      and(
+        eq(L.encounterId, encounterId),
+        eq(L.actionItemId, actionItemId),
+        eq(L.part2Derived, false),
+      ),
+    )
+    .returning({ id: L.id });
+  return raised.length > 0;
+}
+
+/**
  * Links the encounter to `target` (replacing any other live item) or clears the link (`null`), executing `planIdgLink` in at most three statements: the
  * Part 2 raises, the soft removal of the live row, then the insert of the new live row (in that order: the one-live-row index). Returns whether anything changed.
  * The author's membership stamps both the link and the removal.

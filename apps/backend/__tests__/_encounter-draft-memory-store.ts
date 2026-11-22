@@ -143,6 +143,16 @@ export function memoryDraftStore(options: MemoryStoreOptions = {}) {
         new Date(),
         { part2Derived },
       ),
+    raiseIdgLinkPart2: async (_encounterId, actionItemId) => {
+      let raised = false;
+      idgLinks.forEach((row, i) => {
+        if (row.actionItemId === actionItemId && !row.part2Derived) {
+          idgLinks[i] = { ...row, part2Derived: true };
+          raised = true;
+        }
+      });
+      return raised;
+    },
     // The SAME pure plan the Drizzle store executes (idg-action-item-links.ts); only the row storage is faked.
     setIdgActionItemLink: async (_encounter, target, currentPart2Derived, by, now) => {
       const plan = planIdgLink(idgLinks, target, currentPart2Derived);
@@ -213,6 +223,7 @@ export function memoryRunInOrg(options: MemoryUnitOptions = {}) {
     linkDisciplinePlan: async () => 0,
     removeDisciplinePlan: async () => 0,
     setIdgActionItemLink: async () => false,
+    raiseIdgLinkPart2: async () => false,
   };
   const unit: DraftUnit = {
     amendment: async (encounterId, addendumId) =>

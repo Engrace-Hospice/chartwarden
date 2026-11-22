@@ -10,13 +10,15 @@
 // FAIL CLOSED. An item the seam no longer hands this viewer (closed, completed, reassigned, Part 2 without disclosure, of another patient) is not drafted
 // and cannot be linked, never stale text; a fact the corpus cannot state (a decision kind with no label, an instant that is not one) leaves the item out
 // the same way. A seam that FAILS is a 503 `DRAFT_UNAVAILABLE`, as every other source's failure is.
-import type { IdgFollowUpDraftInput } from "@chartwarden/hearthnote";
+import type { Draft, DraftSourceRef, IdgFollowUpDraftInput } from "@chartwarden/hearthnote";
 import { draftSourceNeeds } from "@chartwarden/hearthnote";
 import { IDG_DECISION_KIND_LABELS } from "@chartwarden/narrative-vocab";
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
 import type { IdgActionItemStatus, IdgFollowUpItem } from "@chartwarden/types";
 import { EncounterStateError } from "../lifecycle/errors";
+import type { DraftStore } from "./draft-store";
 import type { DraftEncounter, DraftPorts, DraftViewer } from "./ports";
+import type { ConfirmationRecord, SectionAction, SectionState } from "./section-state";
 import { guarded } from "./unavailable";
 
 /** M14's key for working one's own assigned action items (`idg.act`, self-scoped to the assignee): the draft asks it for this section alone. */
@@ -218,4 +220,52 @@ export function idgFollowUpItemsView(
       }),
     ),
   };
+}
+
+/** The id of the section the IDG follow-up's linked action item feeds. */
+export const IDG_FOLLOW_UP_SECTION_ID = "idg_followup";
+
+/** Whether a draft source is the IDG follow-up's linked action item. */
+export const isIdgActionItemRef = (ref: DraftSourceRef): boolean => ref.kind === "idg_action_item";
+
+/**
+ * What an IDG follow-up recompute (a section's resolution, finalize, sign) does about its own section, against the stored confirmations (S5b):
+ *
+ *  - Raises the live link row to Part 2 when the section is drafted and Part 2 derived. The row's flag is otherwise written only by the link route, so a patient
+ *    flagged (or an item M14 judges Part 2) AFTER the author linked it would leave the action item id filed in the plain audit class on every later write on
+ *    the row, and in the eraser's delete image. A flag only goes up; a recompute that finds the rows already right writes nothing.
+ *  - Returns the section as STALE when the author confirmed it, the viewer holds `idg.act` and a link stands, yet the recompute does not draft it (the item
+ *    was reassigned, M14 no longer clears the viewer for a Part 2 item, M14 hands nothing for it): a confirmed section that drops out of the note without a word
+ *    is refused, so sign and finalize answer 409 / 422 `DRAFT_SECTION_STALE` naming `idg_followup` (no item detail), and the author clears the link and signs
+ *    again. A viewer without `idg.act` gets the section as not drafted, by design (VN-D66): nothing is refused for them.
+ */
+export async function settleIdgSection(
+  store: Pick<DraftStore, "linkedIdgActionItemId" | "raiseIdgLinkPart2">,
+  encounter: DraftEncounter,
+  viewer: DraftViewer,
+  draft: Draft,
+  states: readonly SectionState[],
+  confirmations: readonly ConfirmationRecord[],
+): Promise<readonly SectionAction[]> {
+  if (!draftSourceNeeds(encounter.encounterType, encounter.discipline).idgFollowUp) return [];
+  const section = draft.sections.find((s) => s.sectionId === IDG_FOLLOW_UP_SECTION_ID);
+  if (section?.state === "drafted") {
+    if (section.part2Derived) {
+      for (const ref of section.sourceRefs.filter(isIdgActionItemRef)) {
+        await store.raiseIdgLinkPart2(encounter.id, ref.id);
+      }
+    }
+    return [];
+  }
+  const confirmed = confirmations.some(
+    (c) => c.sectionId === IDG_FOLLOW_UP_SECTION_ID && c.resolution === "confirmed",
+  );
+  const notDrafted = states.some(
+    (s) => s.sectionId === IDG_FOLLOW_UP_SECTION_ID && s.state === "not_drafted",
+  );
+  if (!confirmed || !notDrafted || !mayActOnIdgItems(viewer.permissions)) return [];
+  const linked = await guarded("the linked IDG action item", () =>
+    store.linkedIdgActionItemId(encounter.id),
+  );
+  return linked === null ? [] : [{ sectionId: IDG_FOLLOW_UP_SECTION_ID, reason: "stale" }];
 }

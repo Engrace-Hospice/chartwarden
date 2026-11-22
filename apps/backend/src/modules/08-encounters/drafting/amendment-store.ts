@@ -199,6 +199,7 @@ export function createAmendmentDraftStore(
     removeDisciplinePlan: async () => 0,
     // S5b (VN-D64): and never the IDG follow-up's link; it reads the note's live link (`...base`) and writes none.
     setIdgActionItemLink: async () => false,
+    raiseIdgLinkPart2: async () => false,
   };
 }
 
