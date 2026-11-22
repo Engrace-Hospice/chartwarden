@@ -65,6 +65,8 @@ export interface ClaimLine {
   /** Integer cents, > 0. */
   readonly chargeCents: number;
   readonly units: number;
+  /** X12 SV2 unit qualifier. Defaults to the legacy `UN`; callers with qualified daily/hourly facts must set explicitly. */
+  readonly unitBasis?: "UN" | "DA" | "HR" | "MJ";
   /** First (or only) date of service. */
   readonly serviceDate: string;
   /** Last date of service. Absent or equal to `serviceDate` emits `DTP*472*D8`; later emits `RD8`. */
@@ -201,6 +203,10 @@ function lineSegments(
     );
     check(Number.isSafeInteger(l.chargeCents) && l.chargeCents > 0, "claim.lines");
     check(Number.isSafeInteger(l.units) && l.units > 0 && l.units <= 999_999, "claim.lines");
+    check(
+      l.unitBasis === undefined || ["UN", "DA", "HR", "MJ"].includes(l.unitBasis),
+      "claim.lines.unitBasis",
+    );
     const noncovered = l.noncoveredCents ?? 0;
     check(
       Number.isSafeInteger(noncovered) && noncovered >= 0 && noncovered <= l.chargeCents,
@@ -216,7 +222,7 @@ function lineSegments(
         l.revenueCode,
         l.hcpcs === undefined ? "" : ["HC", l.hcpcs, ...modifiers].join(":"),
         dollars(l.chargeCents),
-        "UN",
+        l.unitBasis ?? "UN",
         String(l.units),
         // SV206 (unit rate) is left empty so the non-covered charge lands in SV207.
         ...(noncovered > 0 ? ["", dollars(noncovered)] : []),

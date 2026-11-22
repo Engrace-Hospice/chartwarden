@@ -33,15 +33,20 @@ export interface Parties837i {
   };
   /** The beneficiary — the subscriber IS the patient on hospice 837Is. */
   readonly subscriber: X12PersonName & {
-    readonly mbi: string;
+    /** Generic payer-assigned subscriber/member identifier. Medicaid identifiers must use this field. */
+    readonly memberId?: string;
+    /** @deprecated Medicare compatibility alias. New callers should use `memberId`. */
+    readonly mbi?: string;
     readonly address: X12Address;
     readonly birthDate: string;
     readonly sex: "M" | "F";
   };
   readonly payer: { readonly name: string; readonly payerId: string };
+  /** Explicit filing indicator for non-commercial claims. Omission preserves M23's Medicare `MA` behavior. */
+  readonly claimFilingIndicator?: "MA" | "MC";
   /**
-   * M41 commercial primary payer (ADR-0100). Absent = the Medicare shape (SBR09 `MA`, `subscriber.mbi` is an MBI).
-   * Present: SBR09 is `claimFilingIndicator`, `subscriber.mbi` holds the plan MEMBER ID (not an MBI) and
+   * M41 commercial primary payer (ADR-0100). Absent = the legacy Medicare shape (`MA`) unless an explicit
+   * `claimFilingIndicator` is provided. Present: SBR09 is `claimFilingIndicator`, subscriber `memberId` is the plan ID and
    * `groupNumber` (optional) rides SBR03. Medicare, Medicaid and self-pay filing codes are refused: those are
    * Module 23 / 24 claims.
    */
@@ -87,18 +92,26 @@ const submitterOrReceiver = (
  */
 export function partySegments(p: Parties837i, onOrAfterBirth: string): string[][] {
   const s = p.subscriber;
-  if (typeof s.mbi !== "string") throw new X12BuildError("subscriber.mbi");
-  const mbi = s.mbi.trim().toUpperCase();
+  const memberId = s.memberId ?? s.mbi;
+  const memberIdField = s.memberId === undefined ? "subscriber.mbi" : "subscriber.memberId";
+  if (typeof memberId !== "string") throw new X12BuildError(memberIdField);
+  const normalizedMemberId = memberId.trim().toUpperCase();
   const commercial = p.commercial;
-  if (commercial === undefined) {
-    if (!MBI_PATTERN.test(mbi)) throw new X12BuildError("subscriber.mbi");
+  if (commercial !== undefined && p.claimFilingIndicator !== undefined) {
+    throw new X12BuildError("claimFilingIndicator");
+  }
+  const filingIndicator = commercial?.claimFilingIndicator ?? p.claimFilingIndicator ?? "MA";
+  if (commercial === undefined && filingIndicator === "MA") {
+    if (!MBI_PATTERN.test(normalizedMemberId)) throw new X12BuildError(memberIdField);
   } else {
-    if (!MEMBER_ID.test(mbi)) throw new X12BuildError("subscriber.memberId");
-    if (
-      !FILING_INDICATOR.test(commercial.claimFilingIndicator) ||
-      NON_COMMERCIAL_FILING_INDICATORS.includes(commercial.claimFilingIndicator)
-    ) {
-      throw new X12BuildError("commercial.claimFilingIndicator");
+    if (!MEMBER_ID.test(normalizedMemberId)) throw new X12BuildError("subscriber.memberId");
+    if (commercial !== undefined) {
+      if (
+        !FILING_INDICATOR.test(commercial.claimFilingIndicator) ||
+        NON_COMMERCIAL_FILING_INDICATORS.includes(commercial.claimFilingIndicator)
+      ) {
+        throw new X12BuildError("commercial.claimFilingIndicator");
+      }
     }
   }
   const group = optionalText(commercial?.groupNumber, "commercial.groupNumber", 50);
@@ -135,7 +148,7 @@ export function partySegments(p: Parties837i, onOrAfterBirth: string): string[][
     ...addressSegments(p.billingProvider.address, "billingProvider.address"),
     ["REF", "EI", p.billingProvider.taxId],
     ["HL", "2", "1", "22", "0"],
-    ["SBR", "P", "18", group, "", "", "", "", "", commercial?.claimFilingIndicator ?? "MA"],
+    ["SBR", "P", "18", group, "", "", "", "", "", filingIndicator],
     [
       "NM1",
       "IL",
@@ -146,7 +159,7 @@ export function partySegments(p: Parties837i, onOrAfterBirth: string): string[][
       "",
       "",
       "MI",
-      mbi,
+      normalizedMemberId,
     ],
     ...addressSegments(s.address, "subscriber.address"),
     ["DMG", "D8", dob, s.sex],

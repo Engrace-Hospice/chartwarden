@@ -5,10 +5,12 @@
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
   },
   "types": "./src/index.ts",
   "dependencies": {
-    "@chartwarden/billing": "workspace:*"
+    "@chartwarden/billing": "workspace:*",
+    "@chartwarden/x12-837-client": "workspace:*"
   }
 }

@@ -195,11 +195,17 @@ No wider questionnaire is needed before L1. Do not ask the customer for PHI; syn
   assembly paths in the L2B implementation report/PR; the prior migration changes were not applied to a
   shared or production database.
 
-### M24-1075-L3 — Qualified 837I transport and acknowledgments
+### M24-1075-L3 — Synthetic institutional 837I rendering and offline contracts
 
-- Reuse M23/X12 components where their contract matches; map M24 lines to institutional 5010 and vendor request shape; persist vendor and payer IDs against org/PE/claim.
-- Honor the verified tenant-selected vendor and payer identifier; implement idempotent attempts, retries, timeout/in-doubt recovery and acknowledgment correlation.
-- Acceptance: synthetic vendor sandbox through upload, TA1/999/277CA or documented actual response types, reject/retry/duplicate/timeout handling, exact claim-byte conformance; route gate remains false until sandbox and payer evidence exists.
+**Implementation status (2026-11-22):** Shared `@chartwarden/x12-837-client` remains the sole X12 builder. M24 now has a typed mapper that requires a package-private validated-facts capability; no production reader currently mints that capability, so caller-supplied “verified” flags cannot produce a production document. A separate explicitly marked synthetic fixture surface is exported from `@chartwarden/medicaid-adapters/testing`. The synthetic path builds deterministic institutional 837I documents, checks exact date/unit/charge evidence, and maps Stedi JSON, Stedi raw-X12 and Claim.MD multipart upload request shapes without importing vendor transports. It reuses the shared 999 parser, 277CA control/date reader and acknowledgment-stage router for in-memory synthetic correlation; raw 277CA parsing does not establish payer identity, so the raw inspection helper does not assign one.
+
+- Shared changes add generic subscriber `memberId`, explicit claim filing indicator and line unit basis while retaining M23's legacy `mbi` compatibility and Medicare default. M24 uses a Medicaid member identifier and `MC`; M23-specific validation remains in the shared serializer's existing default path.
+- Synthetic coverage is structural and contract-shape testing only. No request was sent to a clearinghouse or payer; there was no sandbox testing, payer certification, provider enrollment qualification, production route qualification, durable attempt, claim lifecycle transition, or 835/ERA processing.
+- Acknowledgment correlation is synthetic and in-memory. It distinguishes transport receipt, clearinghouse 999, and payer 277CA and refuses duplicate, stale, mismatched and unknown identities. It does not mutate production claims or imply adjudication/payment.
+- See [`M24_1075_L3_TECHNICAL_QUALIFICATION_20261122.md`](./M24_1075_L3_TECHNICAL_QUALIFICATION_20261122.md) for exact reuse boundaries, request shapes, test evidence and limitations.
+- Remaining blockers include current EOCCO institutional companion guide, payer/provider-specific coding and pricing evidence, confirmed route and vendor enrollment, sender certification, customer production authorization, and authoritative clinical quantities. Electronic submission remains disabled.
+
+L3 did not enable Medicaid submission, add a production submission route, or qualify an EOCCO claim as payer-compliant. Proceed to L4 only after the offline foundation is reviewed and remaining payer-specific contracts are explicitly scoped; a synthetic offline ERA foundation could be developed independently but would not qualify a live 835 delivery path.
 
 ### M24-1075-L4 — ERA, reconciliation and operator workflow
 
