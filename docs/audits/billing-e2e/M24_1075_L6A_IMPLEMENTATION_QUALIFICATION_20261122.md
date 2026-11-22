@@ -1,5 +1,7 @@
 # M24-1075-L6A Implementation Qualification — Payer Classification and Submission Evidence
 
+> **Renumbered on rebase (2026-11-22):** this report was written when the M40/M24 provenance migration was ordinal 1540. Main took 1540 for `1540_m8_encounter_discipline_plan_link`, so the migration is now `1541_m40_medicaid_payer_classification_and_m24_submission_provenance.sql`. Every "1540" below means that migration; the qualification ran on the pre-rebase chain and has not been re-run.
+
 Date: 2026-11-22  
 Branch: `audit/m24-1075-oregon-eocco-readiness`  
 Starting HEAD: `3c59c667462bf39d36189cba8e60adb327397b13`  

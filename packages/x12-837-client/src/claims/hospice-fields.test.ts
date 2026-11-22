@@ -154,9 +154,9 @@ describe("service line date ranges (DTP*472)", () => {
   it("uses RD8 when through differs from from, in both builders", () => {
     const input = withLine({ serviceThroughDate: "2026-01-09" });
     expect(lines(build837iClaim(input))).toContain("DTP*472*RD8*20260102-20260109");
-    expect(buildStediClaimJson(input).claimInformation.serviceLines[0]?.serviceDate).toBe(
-      "20260102-20260109",
-    );
+    const line = buildStediClaimJson(input).claimInformation.serviceLines[0];
+    expect(line?.serviceDate).toBe("20260102");
+    expect(line?.serviceDateEnd).toBe("20260109");
     expect(agree(input)).toEqual([]);
   });
 
@@ -218,7 +218,7 @@ describe("compareStediClaimJsonToX12 — guards the new fields", () => {
     [
       "claim.lines",
       (c) => {
-        svc(c).serviceDate = "20260102";
+        svc(c).serviceDateEnd = undefined;
       },
     ],
   ];
