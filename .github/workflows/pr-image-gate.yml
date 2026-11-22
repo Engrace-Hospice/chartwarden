@@ -18,6 +18,7 @@ on:
       - "Dockerfile"
       - "Dockerfile.web"
       - "deploy/production/**"
+      - "deploy/clamav/**"
       - ".trivyignore.yaml"
       - ".github/workflows/pr-image-gate.yml"
 
@@ -99,6 +100,31 @@ jobs:
           ignore-unfixed: true
           # The locked venv (#853) makes this a multi-GB image; Trivy's default 5m analysis timeout fails the scan.
           timeout: 20m
+          trivyignores: .trivyignore.yaml
+
+  # The attachment scanner (deploy/clamav): the image dev compose builds and clamav-image.yml publishes. No signature
+  # download here (a CDN fetch would make the gate flaky and the scan does not need it): it proves both daemons start
+  # their binaries, then scans with unfixed findings counted too (the publish does the same).
+  clamav-scan:
+    name: ClamAV image smoke and CVE scan
+    runs-on: [self-hosted, Linux, X64, ci]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and smoke-test
+        run: |
+          docker build -q -t "chartwarden-clamav:pr-${PR}" deploy/clamav >/dev/null
+          docker run --rm --entrypoint clamd "chartwarden-clamav:pr-${PR}" --version
+          docker run --rm --entrypoint freshclam "chartwarden-clamav:pr-${PR}" --version
+        env:
+          PR: ${{ github.event.pull_request.number }}
+      - name: Scan ClamAV image (HIGH/CRITICAL fail the PR)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: chartwarden-clamav:pr-${{ github.event.pull_request.number }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
           trivyignores: .trivyignore.yaml
 
   # Production's Postgres (deploy/production/postgres): the image dev, CI and the drills build, and postgres-image.yml

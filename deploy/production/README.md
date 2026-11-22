@@ -138,8 +138,12 @@ in place (it adds the `listen 443 ssl` block and the certificate paths), so **ne
   recreates it only when its image or service config changes). clamd's protocol is unauthenticated, so the sidecar sits
   on a dedicated `scan` network that only `clamav`, `api` and `worker` join (postgres, seaweedfs, docling and the rest
   cannot reach it), and it is capped (`mem_limit: 4g`, `cpus: 2`) so a scan flood or a bad signature reload cannot
-  starve the host. The image is upstream's Alpine `clamav/clamav:1.4`, pinned by digest (amd64 only; dev compose keeps
-  the multi-arch `clamav-debian` for Apple Silicon). Follow-up: alert on a stale signature database (for example `docker
+  starve the host. The image is upstream's Alpine `clamav/clamav:1.4`, pinned by digest. Dev compose already builds
+  `deploy/clamav/Dockerfile` (ClamAV 1.4 on Wolfi, multi-arch); production moves to it when `clamav-image.yml` (manual,
+  `main` only: builds, scans, signs and SBOM-attests it as `ghcr.io/engrace-hospice/chartwarden-clamav`) has published a
+  digest: verify it with `cosign verify` / `verify-attestation` as for the Postgres image, pin it in `compose.yml`, and
+  deploy (the swap is stateless: the signature DB stays in `clamav-data`, which the new image re-chowns to uid 100, the
+  uid the Alpine image used). Follow-up: alert on a stale signature database (for example `docker
   compose exec clamav clamscan --version` reporting a database older than 2 days, or freshclam errors in the log).
 - **Attachment upload size (defence in depth).** The presigned PUT signs `content-length` for exactly the declared
   `byteSize`, so the store refuses any other length and the quota (which counts `byteSize`) is real; `complete` also compares
@@ -766,7 +770,7 @@ arch:compose-policy` (part of `arch:fitness`) fails on any literal image without
 | seaweedfs | `chrislusf/seaweedfs:4.52` | SeaweedFS 4.52 (pinned 2026-11-05) |
 | fluent-bit | `fluent/fluent-bit:5.1.5` | Fluent Bit 5.1.5 (pinned 2026-11-05) |
 | minio (legacy profile, cutover only) | `cgr.dev/chainguard/minio:latest` | MinIO `RELEASE.2026-10-23T20-06-51Z` |
-| clamav | `clamav/clamav:1.4` (Alpine) | ClamAV 1.4.x |
+| clamav | `clamav/clamav:1.4` (Alpine) | ClamAV 1.4.x (to be replaced by the Wolfi `chartwarden-clamav` once published, see the `clamav` service above) |
 
 SeaweedFS: `test:object-store:conformance:live` and `test:object-store:resilience:live` (CI job
 `object-store-conformance-live`) run against the same image and the same `object-store/` files; re-run them on a bump.
