@@ -54,6 +54,7 @@ interface NppesSyncLogRow {
 const PH = schema.externalPhysicians;
 const FAC = schema.facilities;
 const PAY = schema.payers;
+const MEDICAID_PAYER_CLASS = schema.medicaidPayerProgramClassification;
 const OVERLAY = schema.externalPhysicianOverlay;
 const PROV = schema.mdmProvisional;
 const REL = schema.entityRelationships;
@@ -151,6 +152,44 @@ export function createDbMdmStore(db: DbClient): MdmStore {
       }
       const rows = await db.select().from(PAY).where(eq(PAY.id, id)).limit(1);
       return (rows[0] ? mapPayer(rows[0]) : null) as CanonicalFields<K> | null;
+    },
+
+    async medicaidPayerProgramClassifications(
+      canonicalPayerId,
+      stateCode,
+      _serviceFrom,
+      _serviceTo,
+    ) {
+      const rows = await db
+        .select()
+        .from(MEDICAID_PAYER_CLASS)
+        .where(
+          and(
+            eq(MEDICAID_PAYER_CLASS.canonicalPayerId, canonicalPayerId),
+            eq(MEDICAID_PAYER_CLASS.stateCode, stateCode),
+          ),
+        );
+      return rows.map((r) => ({
+        id: r.id,
+        canonicalPayerId: r.canonicalPayerId,
+        stateCode: r.stateCode,
+        classification: r.classification as
+          | "oregon_ffs"
+          | "medicaid_cco"
+          | "other_managed_care"
+          | "unsupported",
+        effectiveFrom: r.effectiveFrom,
+        effectiveTo: r.effectiveTo,
+        verificationStatus: r.verificationStatus as
+          | "unverified"
+          | "verified"
+          | "rejected"
+          | "revoked"
+          | "superseded",
+        sourceKind: r.sourceKind,
+        sourceReference: r.sourceReference,
+        supersedesId: r.supersedesId,
+      }));
     },
 
     async overlay<K extends MdmEntityKind>(kind: K, orgId: string, canonicalId: string) {

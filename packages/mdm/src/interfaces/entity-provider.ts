@@ -56,6 +56,19 @@ export interface CanonicalPayerFields extends CanonicalBaseFields {
   readonly stateCode: string | null;
 }
 
+export interface MedicaidPayerProgramClassification {
+  readonly id: string;
+  readonly canonicalPayerId: string;
+  readonly stateCode: string;
+  readonly classification: "oregon_ffs" | "medicaid_cco" | "other_managed_care" | "unsupported";
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+  readonly verificationStatus: "unverified" | "verified" | "rejected" | "revoked" | "superseded";
+  readonly sourceKind: string;
+  readonly sourceReference: string | null;
+  readonly supersedesId: string | null;
+}
+
 /** Per-kind canonical payload map. Phase 1 materializes physician/facility/payer concretely; the
  *  forward-declared kinds resolve to the base shape until their tables land (manifest §3.3–3.5). */
 export interface CanonicalFieldsByKind {
@@ -157,6 +170,14 @@ export interface MdmEntityProvider {
   resolvePharmacy(orgId: string, id: string): Promise<MdmResolved<"pharmacy"> | null>;
   resolveReferralSource(orgId: string, id: string): Promise<MdmResolved<"referral_source"> | null>;
   resolvePayer(orgId: string, id: string): Promise<MdmResolved<"payer"> | null>;
+  /** Source-backed, effective-dated classification records. Empty means unqualified, never FFS. */
+  medicaidPayerProgramClassifications(
+    orgId: string,
+    canonicalPayerId: string,
+    stateCode: string,
+    serviceFrom: string,
+    serviceTo: string,
+  ): Promise<readonly MedicaidPayerProgramClassification[]>;
   resolveDmeVendor(orgId: string, id: string): Promise<MdmResolved<"dme_vendor"> | null>;
   resolveFuneralHome(orgId: string, id: string): Promise<MdmResolved<"funeral_home"> | null>;
 

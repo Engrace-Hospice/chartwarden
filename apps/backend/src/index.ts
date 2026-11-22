@@ -5637,6 +5637,21 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           }
         : null;
     },
+    async medicaidProgramClassifications(
+      organizationId: string,
+      canonicalPayerId: string,
+      serviceState: string,
+      serviceFrom: string,
+      serviceTo: string,
+    ) {
+      return getMdmEntityProvider().medicaidPayerProgramClassifications(
+        organizationId,
+        canonicalPayerId,
+        serviceState,
+        serviceFrom,
+        serviceTo,
+      );
+    },
   };
   // M24 → M5 (place-of-service follow-up) — the LIVE `PatientAddressReader` seam (registered by M5 at
   // boot), resolved lazily per call (the `m24SignedEncounters`/`m24CoverageResolver` precedent) so

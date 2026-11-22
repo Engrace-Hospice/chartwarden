@@ -188,6 +188,7 @@ export * from "./mdm/external-physicians";
 export * from "./mdm/external-physicians-overlay";
 export * from "./mdm/facilities";
 export * from "./mdm/payers";
+export * from "./mdm/medicaid-payer-classifications";
 export * from "./mdm/entity-relationships";
 export * from "./mdm/merge-requests";
 export * from "./mdm/nppes-sync-log";

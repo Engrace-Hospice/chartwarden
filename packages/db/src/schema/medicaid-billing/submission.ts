@@ -4,6 +4,7 @@
 // CROSS-MODULE FK POLICY: organization_id / provider_entity_id (M1 core) get real FKs; medicaid_submission_id
 // → medicaid_submission (intra-M24, non-partitioned) is a real FK on the ack. medicaid_claim_id is LOGICAL
 // (medicaid_claim is partitioned). vendor_payload_cipher / raw_payload_cipher are KMS-wrapped (audit-denylisted §3.6).
+import { sql } from "drizzle-orm";
 import {
   index,
   integer,
@@ -11,6 +12,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -40,6 +42,20 @@ export const medicaidSubmission = pgTable(
     adapterVendor: varchar("adapter_vendor", { length: 64 }).notNull(),
     adapterVersion: varchar("adapter_version", { length: 16 }).notNull(),
 
+    // Future source provenance. Historical/local attempts remain unverified; this lot does not
+    // create a qualified sender account or permit electronic submission.
+    sourceAccountRef: varchar("source_account_ref", { length: 128 }),
+    sourceEnvironment: varchar("source_environment", { length: 16 }),
+    canonicalPayerIdSnapshot: uuid("canonical_payer_id_snapshot"), // logical M40 reference
+    payerClassificationIdSnapshot: uuid("payer_classification_id_snapshot"), // logical M40 evidence record
+    programKindSnapshot: varchar("program_kind_snapshot", { length: 32 }),
+    programAssignmentIdSnapshot: uuid("program_assignment_id_snapshot"), // logical M24 evidence reference
+    programAssignmentVersionSnapshot: integer("program_assignment_version_snapshot"),
+    submittedClaimVersion: integer("submitted_claim_version"),
+    sourceProvenanceStatus: varchar("source_provenance_status", { length: 16 })
+      .notNull()
+      .default("unverified"),
+
     result: m24SubmissionResult("result").notNull().default("pending"),
     vendorTransactionId: varchar("vendor_transaction_id", { length: 64 }),
     vendorPayloadCipher: text("vendor_payload_cipher"), // KMS-wrapped (denylisted)
@@ -65,6 +81,18 @@ export const medicaidSubmission = pgTable(
       t.createdAt,
     ),
     byNextPoll: index("medicaid_submission_by_next_poll").on(t.nextPollAt),
+    sourceTransactionUnique: uniqueIndex("medicaid_submission_source_transaction_uq")
+      .on(
+        t.organizationId,
+        t.providerEntityId,
+        t.adapterVendor,
+        t.sourceAccountRef,
+        t.sourceEnvironment,
+        t.vendorTransactionId,
+      )
+      .where(
+        sql`source_account_ref IS NOT NULL AND source_environment IS NOT NULL AND vendor_transaction_id IS NOT NULL`,
+      ),
   }),
 );
 

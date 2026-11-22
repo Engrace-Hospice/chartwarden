@@ -2,7 +2,7 @@
 // real-world payer, keyed by the X12 5010 payer id (UNIQUE where non-null). `kind` is the §3.3
 // payer subtype; `state_code` scopes Medicaid. Per-tenant negotiated contract terms are NOT
 // canonical — they live in the (Phase-2) payer overlay (§2.3); Phase 1 ships the canonical
-// table only (manifest owns 11 tables). A `merged` row redirects to its survivor via
+// table only (M40 ownership is declared in the module manifest). A `merged` row redirects to its survivor via
 // `merged_into_id` (§2.4.1, §7.2). Canonical → no organization_id (NON_ORG_SCOPED allowlist).
 // RLS/grants/audit triggers land in M40-T03 (§3.6). Not PHI.
 import { sql } from "drizzle-orm";
