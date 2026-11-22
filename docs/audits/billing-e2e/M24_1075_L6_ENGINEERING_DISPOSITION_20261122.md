@@ -62,11 +62,13 @@ bun test \
   apps/backend/src/modules/25-remittance/ingest/__tests__/claimmd-era-review.test.ts \
   apps/backend/src/modules/25-remittance/ingest/__tests__/claimmd-era-duplicate.test.ts \
   apps/backend/src/modules/25-remittance/routes/__tests__/claimmd-era-review.routes.test.ts \
-  apps/backend/src/modules/25-remittance/domain/__tests__/medicaid-era-observation.test.ts \
-  apps/backend/src/modules/25-remittance/domain/__tests__/medicaid-era-trusted-review.test.ts \
+  apps/backend/__tests__/m25-medicaid-era-observation.test.ts \
+  apps/backend/__tests__/m25-medicaid-era-trusted-review.test.ts \
   packages/medicaid-adapters/__tests__/m24-institutional-837i.synthetic.test.ts \
   packages/x12-837-client/src/claims/build-837i-claim.test.ts
 ```
+
+> The two Medicaid ERA tests moved on rebase (2026-11-22) from `apps/backend/src/modules/25-remittance/domain/__tests__/` to `apps/backend/__tests__/m25-medicaid-era-*.test.ts`: their cross-package fixture import fell outside the backend build's `rootDir`. The L4/L5 reports cite the old paths.
 
 Result: 9 files, 122 tests passed, 0 failed. These are focused unit/synthetic regressions, not one live end-to-end campaign and not vendor/payer qualification.
 
@@ -95,4 +97,4 @@ L6 made no code or database mutation. No vendor or payer API/SFTP request occurr
 
 L6A subsequently implemented the M40 source-backed, effective-dated Medicaid payer/program classification model and enforced compatibility during new M24 program-assignment verification and current service-window resolution. It also added nullable, unqualified submission provenance fields and the M24-owned tenant/provider-scoped claim/submission/acknowledgment read seam consumed through M25's existing Medicaid claim-facts boundary. Historical submissions remain unverified; no catalog classifications are seeded. The earlier L6 findings above describe the review at that point in time and are superseded on these two engineering gaps by the L6A implementation report.
 
-The L6A disposition is **`M24_1075_L6A_COMPLETE`**: migration 1540 and the focused M24/M40 NOBYPASSRLS suites passed on private disposable PostgreSQL after ensuring one test database at a time. Full backend typecheck remains incomplete after a bounded 3 GiB V8 heap OOM. No Medicaid ERA ingestion, durable review persistence, operator API/worklist, financial posting, or outbound submission was added. See [`M24_1075_L6A_IMPLEMENTATION_QUALIFICATION_20261122.md`](./M24_1075_L6A_IMPLEMENTATION_QUALIFICATION_20261122.md) for exact implementation and gate results.
+The L6A disposition is **`M24_1075_L6A_COMPLETE`**: migration 1540 (now 1541, see the L6A report) and the focused M24/M40 NOBYPASSRLS suites passed on private disposable PostgreSQL after ensuring one test database at a time. Full backend typecheck remains incomplete after a bounded 3 GiB V8 heap OOM. No Medicaid ERA ingestion, durable review persistence, operator API/worklist, financial posting, or outbound submission was added. See [`M24_1075_L6A_IMPLEMENTATION_QUALIFICATION_20261122.md`](./M24_1075_L6A_IMPLEMENTATION_QUALIFICATION_20261122.md) for exact implementation and gate results.
