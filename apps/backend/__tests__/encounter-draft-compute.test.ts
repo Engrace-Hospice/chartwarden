@@ -522,4 +522,21 @@ describe("snapshotStorePorts: the store reads of a source the template does not 
       "a removed care-plan links read the snapshot did not take",
     );
   });
+
+  it("takes the discipline-plan links alone for a social-work visit (S4b), and a read of them through any other template's snapshot is a bug, not an empty answer", async () => {
+    const msw = encounter({ encounterType: "msw_followup", discipline: "msw" });
+    const store = fakePorts();
+    const ports = await snapshotStorePorts(store, msw, NOW);
+    expect(store.removedDisciplinePlanElementIds).toHaveBeenCalledTimes(1);
+    expect(store.removedCarePlanElementIds).not.toHaveBeenCalled();
+    await expect(ports.removedDisciplinePlanElementIds(msw.id)).resolves.toEqual(new Set());
+
+    const aide = encounter({ encounterType: "chha_visit", discipline: "chha" });
+    const aideStore = fakePorts();
+    const aidePorts = await snapshotStorePorts(aideStore, aide, NOW);
+    expect(aideStore.removedDisciplinePlanElementIds).not.toHaveBeenCalled();
+    await expect(aidePorts.removedDisciplinePlanElementIds(aide.id)).rejects.toThrow(
+      "a removed discipline-plan links read the snapshot did not take",
+    );
+  });
 });
