@@ -4,6 +4,7 @@
 // a recompute sees the section Part 2 derived, as a plan section's resolution raises its plan links. Fake seams, in-memory store; no database.
 import type { IdgFollowUpItem } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
+import { restrictToNamed } from "../src/modules/08-encounters/drafting/amendment-note";
 import { createDraftService } from "../src/modules/08-encounters/drafting/draft-service";
 import { assertResolved, readNoteDraft } from "../src/modules/08-encounters/drafting/note-draft";
 import { NOW, fakePorts, reader, selectionFor } from "./_encounter-draft-fixtures";
@@ -111,6 +112,24 @@ describe("a confirmed idg_followup section that a recompute no longer drafts is 
     expect(shown).not.toContain("referral");
   });
 
+  it("an addendum that names the confirmed section is refused the same way (DRAFT_SECTION_STALE), and one that names other sections only is not", async () => {
+    const h = harness({});
+    await confirmed(h);
+    h.seams.linkedIdgFollowUpItem.mockImplementation(async () => null); // M14 reassigned the item since the author confirmed
+    const after = await recompute(h);
+    if (after === null) throw new Error("the draft is on");
+
+    const naming = restrictToNamed(after, ["idg_followup"]);
+    expect(naming.actions).toEqual([{ sectionId: "idg_followup", reason: "stale" }]);
+    expect(() => assertResolved(naming)).toThrow(
+      expect.objectContaining({ code: "DRAFT_SECTION_STALE" }),
+    );
+
+    const other = restrictToNamed(after, ["chief_concern"]);
+    expect(other.actions).toEqual([]);
+    expect(() => assertResolved(other)).not.toThrow();
+  });
+
   it("is no refusal for a viewer without idg.act (the section is not drafted for them by design, VN-D66)", async () => {
     const h = harness({});
     await confirmed(h);
@@ -169,15 +188,17 @@ describe("a confirmed idg_followup section that a recompute no longer drafts is 
 });
 
 describe("the link row's Part 2 flag follows the section's verdict at every recompute", () => {
-  it("finalize and sign raise a live row filed lower, when M14 now hands the item flagged", async () => {
+  it("finalize and sign raise a live row filed lower, when M14 now hands the item flagged; a second recompute finds it right and changes no row", async () => {
     const h = harness({ handed: item({ sudRelated: true }), part2Link: false });
     await recompute(h);
     expect(h.idgLinks[0]).toMatchObject({ part2Derived: true });
-    // a second recompute finds it right and writes nothing more
-    const again = h.store.raiseIdgLinkPart2.mock.calls.length;
+    // the second recompute asks the store again, which matches no row now (the flag is up): no row changes, none is added
+    const rowsBefore = JSON.stringify(h.idgLinks);
     await recompute(h);
-    expect(h.store.raiseIdgLinkPart2.mock.calls.length).toBe(again + 1);
+    expect(JSON.stringify(h.idgLinks)).toBe(rowsBefore);
     expect(h.idgLinks).toHaveLength(1);
+    const results = await Promise.all(h.store.raiseIdgLinkPart2.mock.results.map((r) => r.value));
+    expect(results).toEqual([true, false]);
   });
 
   it("a plain section raises nothing", async () => {

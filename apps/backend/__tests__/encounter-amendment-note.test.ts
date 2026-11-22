@@ -98,6 +98,16 @@ describe("restrictToNamed: only the sections the addendum names count", () => {
   });
 });
 
+describe("restrictToNamed keeps the draft's own actions for the named sections (S5b)", () => {
+  it("an action beyond what a section's state gives (a confirmed idg_followup the recompute no longer drafts) counts when the addendum names that section, and not otherwise", async () => {
+    const draft = await noteDraftOf((c) => [resolve(c, "plan", "confirmed")]);
+    const stale = { sectionId: "idg_followup", reason: "stale" } as const;
+    const withIdg: NoteDraft = { ...draft, actions: [...draft.actions, stale] };
+    expect(restrictToNamed(withIdg, ["plan", "idg_followup"]).actions).toEqual([stale]);
+    expect(restrictToNamed(withIdg, ["plan"]).actions).toEqual([]);
+  });
+});
+
 describe("amendedSectionsOf: only a confirmed named section is written", () => {
   it("returns the confirmed section's block exactly as the signed note carries it (heading, line break, body)", async () => {
     const draft = await noteDraftOf((c) => [
