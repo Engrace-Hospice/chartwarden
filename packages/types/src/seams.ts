@@ -68,12 +68,8 @@ import type {
   HopeTimepointProvider,
 } from "./hope";
 import type { NonCoveredItemsReader } from "./hospice-coverage";
-import type {
-  IdgDecisionProvider,
-  IdgFollowUpReader,
-  IdgPacketProvider,
-  IdgScheduleProvider,
-} from "./idg";
+import type { IdgDecisionProvider, IdgPacketProvider, IdgScheduleProvider } from "./idg";
+import type { IdgFollowUpReader } from "./idg-follow-up";
 import type {
   IpuAdmissionReader,
   IpuBedAssignmentProvider,
