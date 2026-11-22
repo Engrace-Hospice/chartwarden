@@ -54,9 +54,10 @@ export const FALL_FOLLOWUP_CODE = "nv.reason.fall_followup";
  * Semantic version of the shipped corpus; pinned onto a selection at first finalize (D11).
  * 2026.11.0 added the visit-note draft phrases (ADR-0114); 2026.11.1 added the `visit_reason` entries; 2026.12.0 added the recertification
  * and face-to-face draft phrases (ADR-0114 S2); 2026.12.1 adds the RN admission visit's draft phrases (ADR-0114 S2b); 2026.12.2 tags existing draft phrases for
- * the LPN visits and the aide visit (ADR-0114 S3), no new wording; 2026.12.3 adds the social-work and chaplain plan phrases (ADR-0114 S4).
+ * the LPN visits and the aide visit (ADR-0114 S3), no new wording; 2026.12.3 adds the social-work and chaplain plan phrases (ADR-0114 S4);
+ * 2026.12.4 tags existing draft phrases for the face-to-face visit's vitals and orders and for the IDG follow-up (ADR-0114 S5), no new wording.
  */
-export const VOCAB_VERSION = "narrative-vocab@2026.12.3";
+export const VOCAB_VERSION = "narrative-vocab@2026.12.4";
 
 /** Whether the named clinical reviewer has approved the corpus wording. */
 export type ClinicalReviewStatus = "pending" | "approved";

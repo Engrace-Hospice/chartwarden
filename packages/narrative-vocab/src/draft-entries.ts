@@ -293,6 +293,19 @@ const LPN_SHARED_CODES: ReadonlySet<string> = new Set(
 /** The one S1 phrase the aide visit also drafts from (S3, VN-D40): the care-plan intervention performed, in the aide's `adl` section. */
 const AIDE_SHARED_CODES: ReadonlySet<string> = new Set(["nv.cp.intervention_performed"]);
 
+/**
+ * Of those, the ones a physician or nurse practitioner also drafts from (S5, VN-D52, VN-D53): the six vitals phrases, in the face-to-face visit
+ * and the IDG follow-up. No care-plan, scale or medication-change phrase: the plan, the interventions and the assessment of a physician's note are
+ * the clinician's own, and the care plan is the team's. Wording untouched; `narrative-vocab@2026.12.4` only adds the `face_to_face`, `md` and `np` tags.
+ */
+const PHYSICIAN_SHARED_CODES: ReadonlySet<string> = new Set(
+  [...RECERT_SHARED_CODES].filter((code) => code.startsWith("nv.vit.")),
+);
+
+/**
+ * Every S1 entry the recertification visit draws on is also drafted in the IDG follow-up (S5, VN-D52), by each discipline's own tags: the visit
+ * is the discipline's ordinary visit, made because the IDG asked for it. Nothing of the IDG decision itself is drafted (VN-D54).
+ */
 const encounterTypesOf = (code: string): readonly EncounterType[] | undefined => {
   const base = ADMISSION_SHARED_CODES.has(code)
     ? ROUTINE_RECERT_AND_ADMISSION
@@ -304,6 +317,8 @@ const encounterTypesOf = (code: string): readonly EncounterType[] | undefined =>
     ...base,
     ...(LPN_SHARED_CODES.has(code) ? (["lpn_visit"] as const) : []),
     ...(AIDE_SHARED_CODES.has(code) ? (["chha_visit"] as const) : []),
+    ...(PHYSICIAN_SHARED_CODES.has(code) ? (["face_to_face"] as const) : []),
+    "idg_followup",
   ];
 };
 
@@ -311,6 +326,7 @@ const disciplinesOf = (code: string): readonly EncounterDiscipline[] => [
   ...RN_ONLY,
   ...(LPN_SHARED_CODES.has(code) ? (["lpn"] as const) : []),
   ...(AIDE_SHARED_CODES.has(code) ? (["chha"] as const) : []),
+  ...(PHYSICIAN_SHARED_CODES.has(code) ? (["md", "np"] as const) : []),
 ];
 
 /**

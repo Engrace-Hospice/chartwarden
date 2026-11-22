@@ -24,6 +24,7 @@ import {
   draftSourceNeeds,
   isCaregiverRelationship,
   isWeightUnit,
+  readsActiveOrders,
   readsAdmissionRecord,
   readsBenefitPeriod,
 } from "@chartwarden/hearthnote";
@@ -673,8 +674,10 @@ export async function readDraftInputs(
   const readsPeriod = readsBenefitPeriod(encounter.encounterType);
   const period = readsPeriod ? await readCoveringPeriod(ports, encounter) : null;
   const periodStart = period === null ? null : String(period.startDate);
-  // S2b: the RN admission visit reads the orders in effect, the caregivers on record and the acknowledgment on file; no other visit does.
+  // S2b: the RN admission visit reads the caregivers on record and the acknowledgment on file; no other visit does. The orders in effect are read by
+  // it and (S5) by the face-to-face visit, whose `med_reconciliation` states them and which has no other admission section.
   const admission = readsAdmissionRecord(encounter.encounterType);
+  const readsOrders = readsActiveOrders(encounter.encounterType);
   const [
     carePlan,
     scaleReadings,
@@ -699,7 +702,7 @@ export async function readDraftInputs(
       ? readWeight(ports, encounter, periodStart, asOf, asOfMs, timeZone)
       : Promise.resolve(null),
     recert && period !== null ? readBenefitPeriod(ports, encounter, period) : null,
-    admission ? readActiveMedications(ports, encounter, asOf, part2Verdict) : [],
+    readsOrders ? readActiveMedications(ports, encounter, asOf, part2Verdict) : [],
     admission ? readCaregivers(ports, encounter) : [],
     admission ? readAdvanceDirective(ports, encounter, asOf) : null,
     // S4: the social-work and chaplain visits read the discipline's own plan, and no other visit does.
@@ -715,7 +718,8 @@ export async function readDraftInputs(
     medicationChanges,
     ...(readsPeriod ? { weight } : {}),
     ...(recert ? { benefitPeriod } : {}),
-    ...(admission ? { activeMedications, caregivers, advanceDirective } : {}),
+    ...(readsOrders ? { activeMedications } : {}),
+    ...(admission ? { caregivers, advanceDirective } : {}),
     ...(needs.disciplinePlan ? { disciplinePlan } : {}),
   };
 }

@@ -61,10 +61,18 @@ const SHARED_WITH_AIDE = new Set(["nv.cp.intervention_performed"]);
 const SHARED_WITH_ADMISSION = new Set(
   [...SHARED_WITH_RECERT].filter((code) => !code.startsWith("nv.scale.pps_")),
 );
+/** S5 (VN-D52): the 20 an IDG follow-up visit drafts from too, by each discipline's own tags (the RN all 20, the LPN no scales, a physician or nurse practitioner only the vitals). */
+const SHARED_WITH_IDG = SHARED_WITH_RECERT;
+/** S5 (VN-D52, VN-D53): the six vitals phrases are the only S1 entries a physician or nurse practitioner drafts from (the face-to-face visit and the IDG follow-up). */
+const SHARED_WITH_PHYSICIANS = new Set(
+  ["bp", "hr", "rr", "temp", "spo2", "pain"].map((s) => `nv.vit.${s}`),
+);
+/** The two S2b order phrases the face-to-face visit drafts `med_reconciliation` from too (S5, VN-D52). */
+const ORDER_CODES = ["nv.adm.med_active", "nv.adm.med_active_prn"];
 
 describe("corpus release", () => {
   it("is a new release, registered with its own uuid and a date", () => {
-    expect(VOCAB_VERSION).toBe("narrative-vocab@2026.12.3");
+    expect(VOCAB_VERSION).toBe("narrative-vocab@2026.12.4");
     expect(NARRATIVE_VOCAB_RELEASES.map((r) => r.version)).toEqual([
       "narrative-vocab@2026.06.0",
       "narrative-vocab@2026.11.0",
@@ -73,12 +81,21 @@ describe("corpus release", () => {
       "narrative-vocab@2026.12.1",
       "narrative-vocab@2026.12.2",
       "narrative-vocab@2026.12.3",
+      "narrative-vocab@2026.12.4",
     ]);
     expect(activeNarrativeVocabRelease(VOCAB_VERSION).version).toBe(VOCAB_VERSION);
     expect(activeNarrativeVocabRelease(VOCAB_VERSION).releasedOn).toBe("2026-11-21");
     expect(new Set(NARRATIVE_VOCAB_RELEASES.map((r) => r.id)).size).toBe(
       NARRATIVE_VOCAB_RELEASES.length,
     );
+  });
+
+  it("keeps the 2026.12.3 release row untouched (a note signed under it pins that id)", () => {
+    expect(NARRATIVE_VOCAB_RELEASES[6]).toEqual({
+      version: "narrative-vocab@2026.12.3",
+      id: "a5470cbe-dd8b-40f8-b2e1-9020ac8418f7",
+      releasedOn: "2026-11-21",
+    });
   });
 
   it("keeps the 2026.12.2 release row untouched (a note signed under it pins that id)", () => {
@@ -195,12 +212,13 @@ describe("draft entries", () => {
     for (const e of NEW_ENTRIES) expect(LEGACY_CODES.has(e.code)).toBe(false);
   });
 
-  it("the 25 of 2026.11.0 are tagged for the RN routine visit, 20 of them also for the recertification visit, 16 also for the admission visit, 12 also for the LPN visits and 1 also for the aide visit", () => {
+  it("the 25 of 2026.11.0 are tagged for the RN routine visit, 20 of them also for the recertification visit and the IDG follow-up, 16 also for the admission visit, 12 also for the LPN visits, 1 also for the aide visit and 6 also for the physician's face-to-face visit", () => {
     for (const e of ROUTINE_ENTRIES) {
       expect(e.disciplines, e.code).toEqual([
         "rn",
         ...(SHARED_WITH_LPN.has(e.code) ? ["lpn"] : []),
         ...(SHARED_WITH_AIDE.has(e.code) ? ["chha"] : []),
+        ...(SHARED_WITH_PHYSICIANS.has(e.code) ? ["md", "np"] : []),
       ]);
       expect(e.encounterTypes, e.code).toEqual([
         ...(SHARED_WITH_ADMISSION.has(e.code)
@@ -210,8 +228,12 @@ describe("draft entries", () => {
             : ["routine_visit"]),
         ...(SHARED_WITH_LPN.has(e.code) ? ["lpn_visit"] : []),
         ...(SHARED_WITH_AIDE.has(e.code) ? ["chha_visit"] : []),
+        ...(SHARED_WITH_PHYSICIANS.has(e.code) ? ["face_to_face"] : []),
+        ...(SHARED_WITH_IDG.has(e.code) ? ["idg_followup"] : []),
       ]);
     }
+    expect(ROUTINE_ENTRIES.filter((e) => SHARED_WITH_IDG.has(e.code))).toHaveLength(20);
+    expect(ROUTINE_ENTRIES.filter((e) => SHARED_WITH_PHYSICIANS.has(e.code))).toHaveLength(6);
     expect(ROUTINE_ENTRIES.filter((e) => SHARED_WITH_RECERT.has(e.code))).toHaveLength(20);
     expect(ROUTINE_ENTRIES.filter((e) => SHARED_WITH_ADMISSION.has(e.code))).toHaveLength(16);
     expect(ROUTINE_ENTRIES.filter((e) => SHARED_WITH_LPN.has(e.code))).toHaveLength(12);
@@ -245,20 +267,24 @@ describe("draft entries", () => {
       expect(e.category, e.code).toBe("discipline_plan");
       expect(e.code.startsWith("nv.dp."), e.code).toBe(true);
     }
+    // S5 (VN-D52) tags them for the IDG follow-up too: the social worker's and the chaplain's own plan drafts there as in their own visits.
     for (const e of goals) {
       expect(e.disciplines, e.code).toEqual(["msw", "chaplain"]);
-      expect(e.encounterTypes, e.code).toEqual([...MSW_AND_CHAPLAIN_TYPES]);
+      expect(e.encounterTypes, e.code).toEqual([...MSW_AND_CHAPLAIN_TYPES, "idg_followup"]);
     }
     for (const e of interventions) {
       expect(e.disciplines, e.code).toEqual(["msw"]);
-      expect(e.encounterTypes, e.code).toEqual(["msw_assessment", "msw_followup"]);
+      expect(e.encounterTypes, e.code).toEqual(["msw_assessment", "msw_followup", "idg_followup"]);
     }
   });
 
-  it("the 5 of 2026.12.1 are tagged for the RN admission visit alone, in one draft-only category", () => {
+  it("the 5 of 2026.12.1 are tagged for the RN admission visit, the 2 order phrases also for the face-to-face visit, in one draft-only category", () => {
     for (const e of ADMISSION_ENTRIES) {
-      expect(e.disciplines, e.code).toEqual(["rn"]);
-      expect(e.encounterTypes, e.code).toEqual(["admission_visit"]);
+      const orders = ORDER_CODES.includes(e.code);
+      expect(e.disciplines, e.code).toEqual(orders ? ["rn", "md", "np"] : ["rn"]);
+      expect(e.encounterTypes, e.code).toEqual(
+        orders ? ["admission_visit", "face_to_face"] : ["admission_visit"],
+      );
       expect(e.category, e.code).toBe("admission_record");
       expect(e.code.startsWith("nv.adm."), e.code).toBe(true);
     }
@@ -299,6 +325,13 @@ describe("draft entries", () => {
       "msw_followup:msw",
       "chaplain_assessment:chaplain",
       "chaplain_visit:chaplain",
+      // S5 (VN-D52): the IDG follow-up drafts for each of its six disciplines. `telephonic` (every discipline) stays out.
+      "idg_followup:rn",
+      "idg_followup:lpn",
+      "idg_followup:msw",
+      "idg_followup:chaplain",
+      "idg_followup:md",
+      "idg_followup:np",
     ]);
     for (const type of Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]) {
       for (const discipline of ENCOUNTER_DISCIPLINE_RULES[type]) {
@@ -340,12 +373,45 @@ describe("draft entries", () => {
     expect(codes("admission_visit", "rn").sort()).toEqual(
       [...SHARED_WITH_ADMISSION, ...ADMISSION_ENTRIES.map((e) => e.code)].sort(),
     );
+    // S5 (VN-D52, VN-D53): a physician or nurse practitioner drafts from the S2 decline evidence, the six vitals phrases and the two order
+    // phrases, and from nothing else of the S1 care-plan, medication-change or scale phrases.
     for (const discipline of ["md", "np"] as const) {
       expect(codes("face_to_face", discipline).sort()).toEqual(
-        RECERT_ENTRIES.filter((e) => e.encounterTypes.includes("face_to_face"))
-          .map((e) => e.code)
-          .sort(),
+        [
+          ...RECERT_ENTRIES.filter((e) => e.encounterTypes.includes("face_to_face")).map(
+            (e) => e.code,
+          ),
+          ...SHARED_WITH_PHYSICIANS,
+          ...ORDER_CODES,
+        ].sort(),
       );
+      expect(codes("idg_followup", discipline).sort(), `idg_followup:${discipline}`).toEqual(
+        [...SHARED_WITH_PHYSICIANS].sort(),
+      );
+    }
+    // The IDG follow-up drafts as the discipline's own visit does: the RN as the routine visit, the LPN with no scale, the social worker and the
+    // chaplain from their own plan.
+    expect(codes("idg_followup", "rn").sort()).toEqual([...SHARED_WITH_IDG].sort());
+    expect(codes("idg_followup", "lpn").sort()).toEqual([...SHARED_WITH_LPN].sort());
+    expect(codes("idg_followup", "msw").sort()).toEqual(
+      [...goalCodes, ...interventionCodes].sort(),
+    );
+    expect(codes("idg_followup", "chaplain").sort()).toEqual([...goalCodes].sort());
+  });
+
+  // S5 (VN-D53): a physician's or nurse practitioner's note is the clinician's own judgement. No phrase of a plan, a care-plan intervention or goal, a
+  // scale or a medication change is tagged for them, and no phrase at all for their telephonic visit.
+  it("tags no care-plan, scale or medication-change phrase for a physician or nurse practitioner, and nothing for the telephonic visit of any discipline", () => {
+    for (const e of VOCABULARY.filter((x) => DRAFT_VOCAB_CODES.has(x.code))) {
+      if (e.disciplines.includes("md") || e.disciplines.includes("np")) {
+        expect(
+          e.category === "vitals_review" ||
+            e.category === "admission_record" ||
+            e.category === "decline_evidence",
+          e.code,
+        ).toBe(true);
+      }
+      expect(e.encounterTypes, e.code).not.toContain("telephonic");
     }
   });
 

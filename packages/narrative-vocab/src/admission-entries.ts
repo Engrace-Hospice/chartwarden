@@ -11,6 +11,12 @@ import type { VocabEntry } from "./types";
 
 const RN_ONLY: readonly EncounterDiscipline[] = ["rn"];
 const ADMISSION_ONLY: readonly EncounterType[] = ["admission_visit"];
+/**
+ * The two order phrases are also drafted in the face-to-face visit by a physician or nurse practitioner (S5, VN-D52, `narrative-vocab@2026.12.4`):
+ * its `med_reconciliation` states the orders in effect at the visit, as the admission visit's does. Wording untouched.
+ */
+const ORDER_DISCIPLINES: readonly EncounterDiscipline[] = ["rn", "md", "np"];
+const ORDER_ENCOUNTER_TYPES: readonly EncounterType[] = ["admission_visit", "face_to_face"];
 
 /** The 5 admission draft entries, in corpus order (appended after the 11 of 2026.12.0). */
 export const ADMISSION_VOCABULARY: readonly VocabEntry[] = [
@@ -20,16 +26,16 @@ export const ADMISSION_VOCABULARY: readonly VocabEntry[] = [
     label: "Admission — an order in effect at the visit",
     phrase: "Active order at the visit: ${drug_name} ${strength} ${dose_form}, ${route}",
     category: "admission_record",
-    disciplines: RN_ONLY,
-    encounterTypes: ADMISSION_ONLY,
+    disciplines: ORDER_DISCIPLINES,
+    encounterTypes: ORDER_ENCOUNTER_TYPES,
   },
   {
     code: "nv.adm.med_active_prn",
     label: "Admission — an as-needed order in effect at the visit",
     phrase: "Active order at the visit, as needed: ${drug_name} ${strength} ${dose_form}, ${route}",
     category: "admission_record",
-    disciplines: RN_ONLY,
-    encounterTypes: ADMISSION_ONLY,
+    disciplines: ORDER_DISCIPLINES,
+    encounterTypes: ORDER_ENCOUNTER_TYPES,
   },
 
   // ── the advance directive acknowledgment on file (the `advance_directive` section) ───────────────────────────

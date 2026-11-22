@@ -20,8 +20,8 @@ type Pair = readonly [EncounterType, EncounterDiscipline];
 
 /**
  * The pairs that draft: S1's RN routine visit, S2's RN recertification visit and face-to-face visit (physician or nurse practitioner),
- * S2b's RN admission visit and S3's LPN visits and aide visit. Stated here, not derived, so widening the corpus is a deliberate edit of this
- * test.
+ * S2b's RN admission visit, S3's LPN visits and aide visit, S4's social-work and chaplain visits and S5's IDG follow-up of all six disciplines.
+ * Stated here, not derived, so widening the corpus is a deliberate edit of this test.
  */
 const DRAFTED_PAIRS: ReadonlySet<string> = new Set([
   "routine_visit:rn",
@@ -36,6 +36,12 @@ const DRAFTED_PAIRS: ReadonlySet<string> = new Set([
   "msw_followup:msw",
   "chaplain_assessment:chaplain",
   "chaplain_visit:chaplain",
+  "idg_followup:rn",
+  "idg_followup:lpn",
+  "idg_followup:msw",
+  "idg_followup:chaplain",
+  "idg_followup:md",
+  "idg_followup:np",
 ]);
 const UNDRAFTED_PAIRS: readonly Pair[] = (
   Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]

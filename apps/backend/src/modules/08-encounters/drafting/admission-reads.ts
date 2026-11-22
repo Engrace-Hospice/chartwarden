@@ -3,7 +3,7 @@
 // The recertification draft states facts M6 owns: the benefit period (`election.read`), the level of care (`loc.read`), the attested face-to-face
 // (`f2f.read`) and the certification (`cti.read`). The seams that serve them apply no permission check of their own, so the draft refuses a
 // caller who could not read them through M6's own routes. The face-to-face visit's draft reads only the benefit period (it starts the weight
-// and PPS baseline window). The RN admission visit (S2b) states the caregivers on record (M5: `patient.read`) and the advance directive
+// and PPS baseline window) and, from S5, the orders in effect. The RN admission visit (S2b) states the caregivers on record (M5: `patient.read`) and the advance directive
 // acknowledgment on file (M39: `consent.read`) and the orders in effect (M12: `prescribing.read`), on the same terms. Every other template reads
 // none of it and needs none of these keys.
 import { ForbiddenError } from "@chartwarden/types";
@@ -28,7 +28,10 @@ export function readerOf(
 /** Encounter type -> the read keys its draft is compiled from (the keys of the owning modules' `GET` routes for the same facts). */
 const ADMISSION_FACT_READS: ReadonlyMap<string, readonly string[]> = new Map([
   ["recert_visit", ["election.read", "cti.read", "f2f.read", "loc.read"]],
-  ["face_to_face", ["election.read"]],
+  // S5: the face-to-face visit (a physician or nurse practitioner) also states the orders in effect in `med_reconciliation` (M12, `GET
+  // /medication-orders`: `prescribing.read`), on the same terms as the admission visit's: asked by template at the draft routes, finalize, sign and an
+  // addendum's recompute, so a stale-section answer never tells a caller without it that active orders exist.
+  ["face_to_face", ["election.read", "prescribing.read"]],
   // S2b: the admission visit states the caregivers on record (M5, `GET /patients/:id/caregivers`: `patient.read`), the advance directive
   // acknowledgment on file (M39, consent reads: `consent.read`) and the orders in effect (M12, `GET /medication-orders`: `prescribing.read`).
   // The draft routes guard on `prescribing.read` already, as on the other source domains' keys; finalize, sign and an addendum's recompute

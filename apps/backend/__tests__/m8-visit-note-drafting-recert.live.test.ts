@@ -675,7 +675,9 @@ describe.skipIf(!DB_URL)(
       );
     }
     /** What a recertification or face-to-face finalize and sign need of the caller: the route resolves these from the session. */
-    const ALL_M6_KEYS: ReadonlySet<string> = new Set(M6_READS);
+    // The service-level finalize and sign take the template's own keys: M6's four for a recertification, and for a face-to-face visit the benefit
+    // period's and (S5) the orders' `prescribing.read`.
+    const ALL_M6_KEYS: ReadonlySet<string> = new Set([...M6_READS, "prescribing.read"]);
     const finalize = (f: EncounterFixture, roles: readonly string[] = ["rn"]) =>
       svc.finalize(ORG_A, f.encounterId, SERVICE_DATE as never, {
         viewer: { roles, membershipId: orgs.A.author.membershipId, permissions: ALL_M6_KEYS },
@@ -837,6 +839,9 @@ describe.skipIf(!DB_URL)(
           s.sourceReads.medication += 1;
           return s.changes.filter((c) => c.at > from && c.at <= to);
         },
+        // S5 (VN-D52): the face-to-face visit also states the orders in effect, read as of the visit time. No order is on record in this suite; the
+        // read is not counted with the medication CHANGES, which a face-to-face draft still never reads. The M8 suite of S5 proves the orders.
+        getMedicationsAsOf: async () => [],
       } as never);
       registerSeam("CarePlanReader", {
         isReviewOverdue: async () => null,
@@ -1389,13 +1394,16 @@ describe.skipIf(!DB_URL)(
         expect(sectionOf(body, "pps").text).toBe("PPS 50%, no earlier reading recorded.");
       });
 
-      it("the face-to-face visit (np) drafts prognosis only, without the period, certification or face-to-face sentences", async () => {
+      // S5 (VN-D52): the face-to-face visit also drafts the recorded vitals (this encounter has a vitals row) and the orders in effect (none on record
+      // here, so `med_reconciliation` stays undrafted); the `prognosis` section is the S2 one, unchanged.
+      it("the face-to-face visit (np) drafts prognosis and the recorded vitals, without the period, certification or face-to-face sentences", async () => {
         const { f, scenario } = await seedRecert({ type: "face_to_face", discipline: "np" });
         const { res, body } = await getDraft(f);
         expect(res.statusCode).toBe(200);
+        expect(sectionOf(body, "vitals_review").origins).toEqual(["vitals"]);
         expect(stateOf(body)).toEqual([
           ["chief_concern", "not_drafted"],
-          ["vitals_review", "not_drafted"],
+          ["vitals_review", "unresolved"],
           ["assessment", "not_drafted"],
           ["functional_status", "not_drafted"],
           ["nutrition", "not_drafted"],

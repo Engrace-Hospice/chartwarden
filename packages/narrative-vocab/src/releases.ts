@@ -92,6 +92,12 @@ export const NARRATIVE_VOCAB_RELEASES: readonly NarrativeVocabRelease[] = [
     id: "a5470cbe-dd8b-40f8-b2e1-9020ac8418f7",
     releasedOn: "2026-11-21",
   },
+  // The face-to-face visit's vitals and orders and the IDG follow-up's drafts (ADR-0114 S5). Tags only: no phrase added or reworded.
+  {
+    version: "narrative-vocab@2026.12.4",
+    id: "6f1d7e52-3b8a-4c19-a0d4-9e27b5c3f8a1",
+    releasedOn: "2026-11-21",
+  },
 ];
 
 /** Raised when {@link VOCAB_VERSION} names a release this registry does not carry. */

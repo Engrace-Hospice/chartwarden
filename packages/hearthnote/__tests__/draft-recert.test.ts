@@ -80,9 +80,11 @@ describe("the sections each template drafts (scope is read off the corpus tags)"
     expect([...draftedSectionIds("recert_visit", "rn")].sort()).toEqual(RECERT_DRAFTED);
   });
 
-  it("the face-to-face visit drafts prognosis and nothing else, for a physician and a nurse practitioner alike", () => {
-    expect([...draftedSectionIds("face_to_face", "np")]).toEqual(["prognosis"]);
-    expect([...draftedSectionIds("face_to_face", "md")]).toEqual(["prognosis"]);
+  // S5 (VN-D52) adds the recorded vitals and the orders in effect to the face-to-face visit; the `prognosis` section is the S2 one, untouched.
+  it("the face-to-face visit drafts prognosis, the recorded vitals and the orders in effect, for a physician and a nurse practitioner alike", () => {
+    const expected = ["med_reconciliation", "prognosis", "vitals_review"];
+    expect([...draftedSectionIds("face_to_face", "np")].sort()).toEqual(expected);
+    expect([...draftedSectionIds("face_to_face", "md")].sort()).toEqual(expected);
     expect(templateHasDraftedSection("face_to_face", "np")).toBe(true);
   });
 
@@ -133,7 +135,8 @@ describe("the recertification sections' sentences", () => {
       "PPS 50%, down from 80% on 2026-10-16, the first reading of this benefit period. " +
         "Weight 118.5 lb on 2026-11-18, down 8.8% from 130 lb on 2026-10-16.",
     );
-    expect(draftedIds(f2fInputs())).toEqual(["prognosis"]);
+    // S5 adds the recorded vitals beside it (these inputs carry no orders); the prognosis wording above is the S2 wording, byte for byte.
+    expect(draftedIds(f2fInputs()).sort()).toEqual(["prognosis", "vitals_review"]);
   });
 
   it("never states a prognosis, an eligibility conclusion or a life expectancy", () => {

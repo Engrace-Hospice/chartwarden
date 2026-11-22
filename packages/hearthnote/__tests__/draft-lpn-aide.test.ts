@@ -262,11 +262,11 @@ describe("the sources a template needs read (draftSourceNeeds)", () => {
     }
   });
 
-  it("the face-to-face visit needs the scales (the PPS) and none of the S1 sources it never drafts from", () => {
+  it("the face-to-face visit needs the vitals and the scales (the PPS) and none of the S1 sources it never drafts from", () => {
     for (const discipline of ["md", "np"] as const) {
       expect(draftSourceNeeds("face_to_face", discipline), discipline).toEqual({
         carePlan: false,
-        vitals: false,
+        vitals: true,
         medicationChanges: false,
         scales: true,
         disciplinePlan: false,
