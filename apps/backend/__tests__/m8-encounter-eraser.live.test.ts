@@ -96,6 +96,7 @@ const OWNED_TABLES = {
   hearthnoteLlmModifications: "hearthnote_llm_modification",
   draftConfirmations: "encounter_draft_confirmation",
   disciplinePlanLinks: "encounter_discipline_plan_link",
+  idgActionItemLinks: "encounter_idg_action_item_link",
   signedSections: "hearthnote_signed_section",
   amendments: "encounter_amendment",
   addendumCosignatureRequests: "addendum_cosignature_request",
@@ -106,6 +107,7 @@ const OWNED_KEYS = Object.keys(OWNED_TABLES) as OwnedKey[];
 const VISIT_NOTE_KEYS = [
   "draftConfirmations",
   "disciplinePlanLinks",
+  "idgActionItemLinks",
   "signedSections",
   "amendments",
   "addendumCosignatureRequests",
@@ -132,6 +134,7 @@ const PER_ROOT: Record<OwnedKey, number> = {
   hearthnoteLlmModifications: 1,
   draftConfirmations: 2,
   disciplinePlanLinks: 2,
+  idgActionItemLinks: 2,
   signedSections: 4,
   amendments: 2,
   addendumCosignatureRequests: 1,
@@ -179,6 +182,7 @@ const OWNED_SCOPE: Record<OwnedKey, string> = {
   hearthnoteLlmModifications: `assembled_output_id IN (SELECT id FROM hearthnote_assembled_output WHERE ${HEARTHNOTE_SCOPE})`,
   draftConfirmations: `encounter_id IN (${ENCOUNTERS_OF})`,
   disciplinePlanLinks: `encounter_id IN (${ENCOUNTERS_OF})`,
+  idgActionItemLinks: `encounter_id IN (${ENCOUNTERS_OF})`,
   signedSections: `encounter_id IN (${ENCOUNTERS_OF})`,
   amendments: `encounter_id IN (${ENCOUNTERS_OF})`,
   addendumCosignatureRequests: `encounter_id IN (${ENCOUNTERS_OF})`,
@@ -491,6 +495,19 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       `INSERT INTO encounter_discipline_plan_link (organization_id, provider_entity_id, location_id, encounter_id, intervention_id, part2_derived,
          removed_at, removed_by_membership_id)
        VALUES ($1,$2,$3,$4,$5,true,now(),$6)`,
+      [...site, encounterId, randomUUID(), member],
+    );
+    // ADR-0114 S5b: one removed link to an M14 action item, and the live one that replaced it (one live row per encounter).
+    await admin.query(
+      `INSERT INTO encounter_idg_action_item_link (organization_id, provider_entity_id, location_id, encounter_id, action_item_id,
+         linked_by_membership_id, part2_derived, removed_at, removed_by_membership_id)
+       VALUES ($1,$2,$3,$4,$5,$6,true,now(),$6)`,
+      [...site, encounterId, randomUUID(), member],
+    );
+    await admin.query(
+      `INSERT INTO encounter_idg_action_item_link (organization_id, provider_entity_id, location_id, encounter_id, action_item_id,
+         linked_by_membership_id, part2_derived)
+       VALUES ($1,$2,$3,$4,$5,$6,false)`,
       [...site, encounterId, randomUUID(), member],
     );
     await admin.query(

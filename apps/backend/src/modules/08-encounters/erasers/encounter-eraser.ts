@@ -71,6 +71,8 @@ export interface EncounterEraseCounts {
   readonly draftConfirmations: number;
   /** ADR-0114 S4b: the M15 goals and interventions a social-work or chaplain visit kept in its drafted plan (live and removed rows alike). */
   readonly disciplinePlanLinks: number;
+  /** ADR-0114 S5b: the M14 action item an `idg_followup` visit followed up (live and removed rows alike). */
+  readonly idgActionItemLinks: number;
   /** ADR-0114: the sealed per-section rows written at sign (an amendment's rows, VN-D30, are among them: they carry the encounter id). */
   readonly signedSections: number;
   /** ADR-0114 VN-D30: the sections an addendum named and the author's resolution of each. */
@@ -162,6 +164,7 @@ export function createInMemoryEncounterEraseStore(
     hearthnoteLlmModifications: 0,
     draftConfirmations: 0,
     disciplinePlanLinks: 0,
+    idgActionItemLinks: 0,
     signedSections: 0,
     amendments: 0,
     addendumCosignatureRequests: 0,
@@ -228,6 +231,7 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
   const LLM = schema.hearthnoteLlmModifications;
   const CONFIRM = schema.encounterDraftConfirmations;
   const DP_LINK = schema.encounterDisciplinePlanLinks;
+  const IDG_LINK = schema.encounterIdgActionItemLinks;
   const SIGNED = schema.hearthnoteSignedSections;
   const AMEND = schema.encounterAmendments;
   const ADD_COSIGN = schema.addendumCosignatureRequests;
@@ -316,6 +320,7 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
           hearthnoteLlmModifications: 0,
           draftConfirmations: 0,
           disciplinePlanLinks: 0,
+          idgActionItemLinks: 0,
           signedSections: 0,
           amendments: 0,
           addendumCosignatureRequests: 0,
@@ -362,6 +367,12 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
             .delete(DP_LINK)
             .where(inArray(DP_LINK.encounterId, encounterIds))
             .returning({ id: DP_LINK.id }),
+        );
+        const idgActionItemLinks = await del(() =>
+          tx
+            .delete(IDG_LINK)
+            .where(inArray(IDG_LINK.encounterId, encounterIds))
+            .returning({ id: IDG_LINK.id }),
         );
         // ADR-0114 VN-D30: both reference the addendum (amendment CASCADE, cosignature request RESTRICT), so they go before `encounter_addendum`.
         const amendments = await del(() =>
@@ -433,6 +444,7 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
           hearthnoteLlmModifications,
           draftConfirmations,
           disciplinePlanLinks,
+          idgActionItemLinks,
           signedSections,
           amendments,
           addendumCosignatureRequests,
