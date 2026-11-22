@@ -14,7 +14,9 @@ import type {
   CarePlanId,
   DisciplineKey,
   DisciplineViewBlock,
+  IdgActionItemId,
   IdgDecisionDto,
+  IdgDecisionKind,
   IdgMeetingDigest,
   IdgMeetingId,
   IdgMeetingStatus,
@@ -37,6 +39,20 @@ export interface StoredIdgPacket {
   readonly coverSummaryLayer1: string;
   readonly coverSummaryLayer2: string | null;
   readonly frozenAt: IsoInstant | null;
+}
+
+/**
+ * One open action item as the follow-up read selects it (ADR-0114 S5b): facts only, never the item's title or body or the decision's payload.
+ * `needsRelease` is the W-SUD-01 fact for the item's own meeting: the meeting's packet for the patient does not vouch the patient clear of an active
+ * SUD flag (a flag, no packet, or a decision of that meeting that marks a care-plan problem SUD related), so a viewer needs a Part 2 release.
+ */
+export interface IdgFollowUpRow {
+  readonly actionItemId: IdgActionItemId;
+  readonly meetingAt: IsoInstant;
+  readonly decisionKind: IdgDecisionKind;
+  readonly dueAt: IsoInstant | null;
+  readonly status: "open" | "in_progress";
+  readonly needsRelease: boolean;
 }
 
 /** The 15-day-cadence-adherence rollup `IdgScheduleProvider.getCadenceAdherence` reads (M30 measure): the
@@ -93,6 +109,16 @@ export interface IdgSeamStore {
     organizationId: string,
     window: { from: string; to: string },
   ): Promise<{ numerator: number; denominator: number }>;
+  /**
+   * The patient's open or in-progress, encounter-linked action items assigned to `assigneeMembershipId` that name a decision, newest meeting first and at
+   * most `limit` of them, in the explicit org's tenant context (ADR-0114 S5b). Facts and the W-SUD-01 fact only; the Part 2 verdict is the provider's.
+   */
+  followUpRowsFor(
+    organizationId: string,
+    patientId: PatientId,
+    assigneeMembershipId: string,
+    limit: number,
+  ): Promise<ReadonlyArray<IdgFollowUpRow>>;
 }
 
 // ── in-memory slice store ─────────────────────────────────────────────────────────────────────────────────
@@ -122,6 +148,13 @@ export interface IdgSeamSeed {
     readonly status: IdgMeetingStatus;
     readonly scheduledStart: IsoInstant;
     readonly locationId: string;
+  }>;
+  /** Open follow-up items per (patient, assignee), as the follow-up read selects them (slice default: none). */
+  readonly followUps?: ReadonlyArray<{
+    readonly organizationId: string;
+    readonly patientId: PatientId;
+    readonly assigneeMembershipId: string;
+    readonly row: IdgFollowUpRow;
   }>;
   readonly lastMeetings?: ReadonlyArray<{
     readonly organizationId: string;
@@ -184,6 +217,25 @@ export function createInMemoryIdgSeamStore(seed: IdgSeamSeed = {}): { store: Idg
               locationId: m.locationId,
             }
           : null;
+      },
+      async followUpRowsFor(organizationId, patientId, assigneeMembershipId, limit) {
+        return (
+          (seed.followUps ?? [])
+            .filter(
+              (r) =>
+                r.organizationId === organizationId &&
+                r.patientId === patientId &&
+                r.assigneeMembershipId === assigneeMembershipId,
+            )
+            .map((r) => r.row)
+            // The Drizzle read's order: newest meeting first, then the greater id.
+            .sort((a, b) =>
+              a.meetingAt === b.meetingAt
+                ? b.actionItemId.localeCompare(a.actionItemId)
+                : b.meetingAt.localeCompare(a.meetingAt),
+            )
+            .slice(0, limit)
+        );
       },
       /** Slice default: 0/0 — M30's kernel SUPPRESSES rather than scoring perfect cadence. */
       async cadenceCountsForOrg() {

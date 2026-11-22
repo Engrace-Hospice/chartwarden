@@ -83,6 +83,7 @@ export type {
   HopeTimepointProvider,
   HospitalizationRiskProvider,
   IdgDecisionProvider,
+  IdgFollowUpReader,
   IdgPacketProvider,
   IdgScheduleProvider,
   LatestAssessmentProvider,

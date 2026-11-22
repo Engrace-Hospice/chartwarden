@@ -30,12 +30,14 @@ import type {
   PacketSnapshot,
 } from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, notInArray, sql } from "drizzle-orm";
-import type { IdgCadenceAdherence, IdgSeamStore, StoredIdgPacket } from "./store";
+import { patientsNeedingRelease } from "../minutes-render-context";
+import type { IdgCadenceAdherence, IdgFollowUpRow, IdgSeamStore, StoredIdgPacket } from "./store";
 
 const M = schema.idgMeeting;
 const ATT = schema.idgAttendance;
 const DEC = schema.idgDecision;
 const PKT = schema.idgPatientPacket;
+const ACT = schema.idgActionItem;
 
 /** The actor id the org-level read's withOrgContext envelope carries — an aggregate read has no acting user. */
 const IDG_READER_SYSTEM_USER_ID = "";
@@ -302,6 +304,71 @@ export function createDrizzleIdgSeamStore(db: DbClient): IdgSeamStore {
             scheduledStart: iso(row.scheduledStart),
             locationId: row.locationId,
           };
+        },
+      );
+    },
+
+    /**
+     * ADR-0114 S5b — the patient's open or in-progress, encounter-linked action items assigned to one membership that name a decision, newest meeting
+     * first. Selects the facts only (ids, the meeting instant, the decision KIND, the due date and the status): never `title`, `body_text` or the
+     * decision's `payload`. The W-SUD-01 fact is asked per distinct meeting (a handful), by the rule every M14 minutes read applies
+     * (`patientsNeedingRelease`: the meeting's packet vouches the patient clear, or a release is needed; a decision of the meeting that marks a care-plan
+     * problem SUD related needs it too). Explicit org (`withOrgContext`, RLS) with `organization_id` as the second wall, on every table read.
+     */
+    followUpRowsFor(organizationId, patientId, assigneeMembershipId, limit) {
+      return withOrgContext(
+        db,
+        { organizationId, userId: IDG_READER_SYSTEM_USER_ID },
+        async (tx) => {
+          const t = tx as unknown as DbClient;
+          const meetingAt = sql<Date>`coalesce(${M.actualStart}, ${M.scheduledStart})`;
+          const rows = await t
+            .select({
+              actionItemId: ACT.id,
+              meetingId: ACT.idgMeetingId,
+              meetingAt,
+              decisionKind: DEC.decisionKind,
+              dueAt: ACT.dueDate,
+              status: ACT.status,
+            })
+            .from(ACT)
+            .innerJoin(DEC, eq(DEC.id, ACT.idgDecisionId))
+            .innerJoin(M, eq(M.id, ACT.idgMeetingId))
+            .where(
+              and(
+                eq(ACT.organizationId, organizationId),
+                eq(DEC.organizationId, organizationId),
+                eq(M.organizationId, organizationId),
+                eq(ACT.patientId, patientId),
+                eq(ACT.assignedToMembershipId, assigneeMembershipId),
+                inArray(ACT.status, ["open", "in_progress"]),
+                eq(ACT.linkedArtifactKind, "encounter"),
+              ),
+            )
+            .orderBy(desc(meetingAt), desc(ACT.id))
+            .limit(limit);
+          const needing = new Map<string, boolean>();
+          for (const meetingId of new Set(rows.map((r) => r.meetingId))) {
+            needing.set(
+              meetingId,
+              (await patientsNeedingRelease(t, meetingId, [patientId])).has(patientId),
+            );
+          }
+          return rows.flatMap((r): IdgFollowUpRow[] =>
+            r.status === "open" || r.status === "in_progress"
+              ? [
+                  {
+                    actionItemId: r.actionItemId,
+                    meetingAt: iso(new Date(r.meetingAt)),
+                    decisionKind: r.decisionKind,
+                    dueAt: isoN(r.dueAt),
+                    status: r.status,
+                    // Fail closed: a meeting whose answer was not computed needs a release.
+                    needsRelease: needing.get(r.meetingId) ?? true,
+                  },
+                ]
+              : [],
+          );
         },
       );
     },
