@@ -500,13 +500,13 @@ describe.skipIf(!DB_URL)(
     }
 
     // ── what was stored ─────────────────────────────────────────────────────────────────────────────
-    interface LinkRow {
+    type LinkRow = {
       action_item_id: string;
       part2_derived: boolean;
       removed: boolean;
       removed_by: string | null;
       linked_by: string;
-    }
+    };
     const linksOf = (v: Visit) =>
       rows<LinkRow>(
         `SELECT action_item_id::text, part2_derived, (removed_at IS NOT NULL) AS removed, removed_by_membership_id::text AS removed_by,
