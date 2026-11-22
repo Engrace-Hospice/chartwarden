@@ -10,7 +10,8 @@
 --   REMOVAL. Soft, as the M7 table's: the application role holds DELETE on no M8 table, so a removal stamps `removed_at` and the member. A live
 --   row is unique per (encounter, element); any number of removed rows may remain.
 --   PART 2. `part2_derived` has no default: the writer states it. An element id of a Part 2 goal tied to a patient is withheld from the row's
---   audit image (a Part 2 row files under compliance_42cfr_part2), as the confirmation's source ids are.
+--   audit image (a Part 2 row files under compliance_42cfr_part2), as the confirmation's source ids are. A DELETE (the erasure) is always filed so,
+--   since a flag filed low is raised only when the store next writes the row.
 -- M15's goal and intervention ids are LOGICAL references (app-validated against the plan in effect at the visit, no cross-module FK), as M7's are.
 -- Roles are the post-1139 names (chartwarden_*).
 CREATE TABLE "encounter_discipline_plan_link" (
@@ -60,8 +61,11 @@ BEGIN
     THEN public.audit_scrub(to_jsonb(OLD), ARRAY[]::text[]) ELSE NULL END;
   v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE')
     THEN public.audit_scrub(to_jsonb(NEW), ARRAY[]::text[]) ELSE NULL END;
-  -- A Part 2 row (either image of an update) withholds its element ids and files under the Part 2 retention class.
-  v_part2 := COALESCE(OLD.part2_derived, false) OR COALESCE(NEW.part2_derived, false);
+  -- A Part 2 row (either image of an update) withholds its element ids and files under the Part 2 retention class. So does EVERY delete, whatever the
+  -- row's flag says: a row filed while its element was not Part 2 keeps a low flag when a later plan revision marks the element SUD related and nothing
+  -- writes the row again (the store raises a flag only on the rows it writes), and the only delete is the destruction role's erasure, whose image gains
+  -- nothing from naming an element id.
+  v_part2 := TG_OP = 'DELETE' OR COALESCE(OLD.part2_derived, false) OR COALESCE(NEW.part2_derived, false);
   IF v_part2 AND v_before IS NOT NULL THEN v_before := public.audit_scrub(v_before, ARRAY['goal_id', 'intervention_id']::text[]); END IF;
   IF v_part2 AND v_after IS NOT NULL THEN v_after := public.audit_scrub(v_after, ARRAY['goal_id', 'intervention_id']::text[]); END IF;
   INSERT INTO public.audit_event (

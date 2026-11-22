@@ -150,6 +150,12 @@ describe("encounter_discipline_plan_link", () => {
     ).toContain("part2_derived");
   });
 
+  it("files every DELETE as Part 2 whatever the row's flag says (a row filed low, whose element a plan revision later made Part 2, is erased with its id withheld)", () => {
+    expect(DISCIPLINE_LINK).toMatch(
+      /v_part2 := TG_OP = 'DELETE' OR COALESCE\(OLD\.part2_derived, false\) OR COALESCE\(NEW\.part2_derived, false\);/,
+    );
+  });
+
   it("holds a row to its encounter: the siting pair is the encounter's, and a signed, cosign-pending, cosigned or voided note takes no write except from the destruction role", () => {
     expect(DISCIPLINE_LINK).toMatch(
       /e\.provider_entity_id IS NOT DISTINCT FROM NEW\.provider_entity_id\s+AND e\.location_id IS NOT DISTINCT FROM NEW\.location_id/,

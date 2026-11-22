@@ -1601,6 +1601,30 @@ describe.skipIf(!DB_URL)(
             expect(events[0]?.retention_class).toBe("compliance_42cfr_part2");
             expect(JSON.stringify(events)).not.toContain(GOAL_SUD);
           });
+
+          it("erasing it (the destruction role's DELETE) is filed Part 2 whatever the row's flag says, so the image carries no element id, though nothing ever wrote the row again", async () => {
+            const v = await seedVisit({ kind: "msw" });
+            await seedStaleLiveLink(v);
+            expect(await disciplineLinksOf(v)).toMatchObject([
+              { goal_id: GOAL_SUD, removed: false, part2_derived: false },
+            ]);
+
+            // The audit trigger is SECURITY DEFINER and fires whoever deletes; the owner connection stands in for the destruction role here.
+            await admin.query(
+              "DELETE FROM encounter_discipline_plan_link WHERE encounter_id = $1",
+              [v.encounterId],
+            );
+
+            const events = await rows<{ retention_class: string; before: unknown; after: unknown }>(
+              `SELECT retention_class::text, before, after FROM audit_event
+                WHERE organization_id = $1 AND event_type = 'encounter_discipline_plan_link.delete' AND before->>'encounter_id' = $2`,
+              [ORG_A, v.encounterId],
+            );
+            expect(events).toHaveLength(1);
+            expect(events[0]?.retention_class).toBe("compliance_42cfr_part2");
+            expect(events[0]?.after).toBeNull();
+            expect(JSON.stringify(events)).not.toContain(GOAL_SUD);
+          });
         });
       });
 

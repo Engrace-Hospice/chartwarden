@@ -205,6 +205,33 @@ export async function snapshotStorePorts(
 }
 
 /**
+ * The store reads of the per-element routes of a social-work or chaplain visit (S4b): the zone and the removed links, and nothing else. The response never
+ * shows the clinician's stored selections, so they are neither loaded nor decrypted; a read of any other port is a bug, refused loudly (as `snapshotStorePorts`).
+ */
+export async function snapshotDisciplinePlanPorts(
+  store: DraftStorePorts,
+  encounter: DraftEncounter,
+): Promise<DraftStorePorts> {
+  const [orgTimeZone, removed] = await settleAll([
+    guarded("the organization time zone", () =>
+      store.organizationTimeZone(encounter.organizationId),
+    ),
+    guarded("the removed discipline-plan links", () =>
+      store.removedDisciplinePlanElementIds(encounter.id),
+    ),
+  ]);
+  return {
+    organizationTimeZone: async () => orgTimeZone,
+    removedDisciplinePlanElementIds: async () => removed,
+    previousSignedVisitAt: notTaken("previous signed visit"),
+    latestVitals: notTaken("vitals"),
+    weightReadings: notTaken("weights"),
+    removedCarePlanElementIds: notTaken("removed care-plan links"),
+    loadSelection: notTaken("stored selections"),
+  };
+}
+
+/**
  * The draft the routes show: `computeDraft` for a template the corpus drafts, otherwise every section empty (`not_drafted`) with no
  * source read, no stored selection read and no zone read. `asOf` is then `now`: nothing is described as of a visit time, and `now` is the
  * ceiling the visit time never passes. The same predicate (`templateHasDraftedSection`) keeps the gate and sign out of the draft entirely

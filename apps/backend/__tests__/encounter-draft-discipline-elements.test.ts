@@ -128,6 +128,17 @@ describe("getDisciplinePlanElements", () => {
     expect(seams.carePlanAsOf).not.toHaveBeenCalled();
   });
 
+  it("reads only the zone and the removed links from the store: the stored selections (the clinician's free text) are neither loaded nor decrypted", async () => {
+    const { svc, store } = service();
+    await svc.getDisciplinePlanElements(caller, ENCOUNTER);
+
+    expect(store.organizationTimeZone).toHaveBeenCalledOnce();
+    expect(store.removedDisciplinePlanElementIds).toHaveBeenCalledOnce();
+    expect(store.loadSelection).not.toHaveBeenCalled();
+    expect(store.latestVitals).not.toHaveBeenCalled();
+    expect(store.removedCarePlanElementIds).not.toHaveBeenCalled();
+  });
+
   it("lists a chaplain's goals only: the chaplain's note drafts no interventions, so one could be neither kept nor left out in any way the note shows", async () => {
     const { svc } = service({
       memory: {

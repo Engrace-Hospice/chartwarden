@@ -68,6 +68,29 @@ function harness(broken: Source | null, how: () => Promise<never>) {
   return { seams, ...mem };
 }
 
+// The RN routine visit above reads neither M15's discipline plan nor this visit's removed discipline-plan links (`draftSourceNeeds`), so those two sources
+// are exercised on the visit that does: a social worker's follow-up, by the gate and sign read, the draft read and the per-element list (S4b).
+const MSW_SOURCES = ["disciplinePlanAsOf", "removedDisciplinePlanElementIds"] as const;
+type MswSource = (typeof MSW_SOURCES)[number];
+const mswEncounter = draftEncounterRow({ encounterType: "msw_followup", discipline: "msw" });
+const MSW_PERMISSIONS = new Set(["discipline_plan.read"]);
+const MSW_READER = reader({ roles: ["msw"], permissions: MSW_PERMISSIONS });
+const mswCaller = { ...caller, roles: ["msw"], permissions: MSW_PERMISSIONS };
+
+/** Healthy fakes for a social-work visit; `broken` replaces one of the two discipline-plan reads by `how`. */
+function mswHarness(broken: MswSource | null, how: () => Promise<never>) {
+  const seams = fakePorts(broken === "disciplinePlanAsOf" ? { disciplinePlanAsOf: how } : {});
+  const mem = memoryRunInOrg({
+    encounter: mswEncounter,
+    selection: selectionFor("msw_followup", "msw"),
+  });
+  if (broken === "removedDisciplinePlanElementIds") {
+    mem.store.removedDisciplinePlanElementIds.mockImplementation(how);
+  }
+  const svc = createDraftService({ runInOrg: mem.runInOrg, seams: () => seams, now: () => NOW });
+  return { seams, ...mem, svc };
+}
+
 /** The read's outcome after `ms` of fake time: the error it failed with, `"resolved"`, or `"pending"` if it is still waiting. */
 async function outcomeAfter(read: Promise<unknown>, ms: number): Promise<unknown> {
   const settled = read.then(
@@ -251,6 +274,56 @@ describe("an RN recertification visit whose source never answers", () => {
       );
       expect(await outcomeAfter(read, DRAFT_SOURCE_READ_TIMEOUT_MS + 1)).toMatchObject({
         code: "COMPLIANCE_GATE_UNAVAILABLE",
+        statusCode: 503,
+      });
+    });
+  }
+});
+
+describe("a social-work visit whose discipline-plan source fails", () => {
+  for (const source of MSW_SOURCES) {
+    it(`${source}: the gate and sign read is COMPLIANCE_GATE_UNAVAILABLE (503), the draft read and the element list DRAFT_UNAVAILABLE (503)`, async () => {
+      const gate = mswHarness(source, outage);
+      const gateError = await gate
+        .runInOrg(scope, (unit) => readNoteDraft(unit, gate.seams, mswEncounter, MSW_READER, NOW))
+        .catch((e: unknown) => e);
+      expect(gateError).toMatchObject({ code: "COMPLIANCE_GATE_UNAVAILABLE", statusCode: 503 });
+      expect((gateError as Error).message).not.toContain("synthetic upstream outage");
+
+      const draftError = await mswHarness(source, outage)
+        .svc.getDraft(mswCaller, mswEncounter.id)
+        .catch((e: unknown) => e);
+      expect(draftError).toMatchObject({ code: "DRAFT_UNAVAILABLE", statusCode: 503 });
+
+      const listError = await mswHarness(source, outage)
+        .svc.getDisciplinePlanElements(mswCaller, mswEncounter.id)
+        .catch((e: unknown) => e);
+      expect(listError).toMatchObject({ code: "DRAFT_UNAVAILABLE", statusCode: 503 });
+    });
+  }
+});
+
+describe("a social-work visit whose discipline-plan source never answers", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  for (const source of MSW_SOURCES) {
+    it(`${source}: the gate and sign read and the element list give up after the bound`, async () => {
+      const gate = mswHarness(source, hang);
+      const gateRead = gate.runInOrg(scope, (unit) =>
+        readNoteDraft(unit, gate.seams, mswEncounter, MSW_READER, NOW),
+      );
+      expect(await outcomeAfter(gateRead, DRAFT_SOURCE_READ_TIMEOUT_MS + 1)).toMatchObject({
+        code: "COMPLIANCE_GATE_UNAVAILABLE",
+        statusCode: 503,
+      });
+
+      const list = mswHarness(source, hang).svc.getDisciplinePlanElements(
+        mswCaller,
+        mswEncounter.id,
+      );
+      expect(await outcomeAfter(list, DRAFT_SOURCE_READ_TIMEOUT_MS + 1)).toMatchObject({
+        code: "DRAFT_UNAVAILABLE",
         statusCode: 503,
       });
     });

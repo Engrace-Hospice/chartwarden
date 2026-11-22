@@ -9,7 +9,7 @@ import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import { EncounterStateError } from "../lifecycle/errors";
 import { checkMutableForEdit } from "../lifecycle/validation";
 import { assertMayReadAdmissionFacts } from "./admission-reads";
-import { computeDraftOverview, snapshotStorePorts } from "./compute";
+import { computeDraftOverview, snapshotDisciplinePlanPorts, snapshotStorePorts } from "./compute";
 import { defaultDraftPorts } from "./default-ports";
 import {
   type DisciplinePlanElementsView,
@@ -235,10 +235,11 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
       const now = clock();
       const scope = { organizationId: caller.organizationId, userId: caller.userId, now };
       // As the draft's own read: the store facts in one short transaction that closes before the plan (M15, its own pooled transaction) is asked.
+      // Only the two the response needs: the stored selections (the clinician's free text) are not loaded.
       const { encounter, storePorts } = await deps.runInOrg(scope, async (unit) => {
         const row = await loadOr404(unit, encounterId, false, caller);
         assertDraftsFromDisciplinePlan(row);
-        return { encounter: row, storePorts: await snapshotStorePorts(unit.store, row, now) };
+        return { encounter: row, storePorts: await snapshotDisciplinePlanPorts(unit.store, row) };
       });
       const asOf = await visitTimeOf(encounter, storePorts, now);
       const elements = await readDisciplinePlanElements(

@@ -67,6 +67,7 @@ const SOURCE_STORE_NAMES = [
   "previousSignedVisitAt",
   "latestVitals",
   "removedCarePlanElementIds",
+  "removedDisciplinePlanElementIds",
   "loadSelection",
 ] as const;
 
@@ -74,6 +75,7 @@ const SOURCE_STORE_NAMES = [
 const brokenSeams = () =>
   fakePorts({
     carePlanAsOf: outage,
+    disciplinePlanAsOf: outage,
     scaleSeries: outage,
     medicationChangesBetween: outage,
     part2DisclosureAllowed: outage,

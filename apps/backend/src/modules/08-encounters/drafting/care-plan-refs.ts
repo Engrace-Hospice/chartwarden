@@ -53,7 +53,7 @@ export function carePlanElementsOf(refs: readonly DraftSourceRef[]): CarePlanEle
   });
 }
 
-const rowsOf = (rows: readonly LinkRowState[], element: CarePlanElement): LinkRowState[] =>
+export const rowsOf = (rows: readonly LinkRowState[], element: CarePlanElement): LinkRowState[] =>
   rows.filter((r) => (element.kind === "goal" ? r.goalId : r.interventionId) === element.id);
 
 /** Goal and intervention ids whose links on this encounter were removed and not re-made: the ones a draft leaves out. */

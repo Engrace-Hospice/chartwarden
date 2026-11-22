@@ -4,6 +4,7 @@
 // holds no DELETE on any M8 table, so a removal is a soft `removed_at`. A live row means "kept in this visit's statement of the plan", never "addressed".
 import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, inArray, or } from "drizzle-orm";
+import { EncounterStateError } from "../lifecycle/errors";
 import {
   type CarePlanElement,
   type LinkOp,
@@ -11,10 +12,34 @@ import {
   planLinks,
   planRemovals,
   removedElementIdsOf,
+  rowsOf,
 } from "./care-plan-refs";
 import type { DraftEncounterRow } from "./draft-store";
 
 const L = schema.encounterDisciplinePlanLinks;
+
+/**
+ * The most link rows one encounter may hold, live and removed together. A removed row is never revived (keeping the element again is a new row), so an author
+ * who alternately keeps and leaves out one element adds a row per cycle, and every read of the draft and every write loads them all (a write inside the
+ * encounter's row lock). A real plan holds a few dozen goals and interventions and each is toggled a few times: ten times a generous fifty elements is out
+ * of any honest visit's reach, and a script is stopped at a bounded cost. The audit rows are bounded with it (an insert and at most two updates per row).
+ */
+export const MAX_DISCIPLINE_PLAN_LINK_ROWS = 500;
+
+/**
+ * Refuses a plan whose RE-KEEPS would take the table past the cap, naming no element. Only a re-keep (a new live row for an element that already has rows)
+ * grows the table without the plan's own size bounding it: a first row of an element, live or removed, is bounded by the plan, and a removal of a live row
+ * adds none. So the clinician can always leave an element out and a section can always be confirmed or deselected; the table stays under the cap plus the plan.
+ */
+function assertRoomFor(rows: readonly LinkRowState[], ops: readonly LinkOp[]): void {
+  const rekept = ops.filter((op) => op.op === "insert_live" && rowsOf(rows, op.element).length > 0);
+  if (rekept.length > 0 && rows.length + rekept.length > MAX_DISCIPLINE_PLAN_LINK_ROWS) {
+    throw new EncounterStateError(
+      "DISCIPLINE_PLAN_LINK_LIMIT",
+      "This visit has recorded as many plan keep and leave-out changes as it can hold, so nothing was changed.",
+    );
+  }
+}
 
 async function loadLinkRows(tx: DbClient, encounterId: string): Promise<LinkRowState[]> {
   return tx
@@ -40,18 +65,22 @@ const elementColumns = (element: CarePlanElement) =>
   element.kind === "goal" ? { goalId: element.id } : { interventionId: element.id };
 
 /**
- * Executes a plan in at most three statements, however many elements it names (the encounter's row lock is held throughout, so a round trip per
- * element would hold it for as long as the plan is long): one UPDATE for every soft-removal, one INSERT for the new live links and one for the
- * already-removed tombstones. Every row states `part2_derived` (no default): the section's verdict, so an element of a Part 2 derived section is filed as
- * Part 2 and its ids are withheld from the audit image.
+ * Loads the encounter's link rows, plans against them (refusing a plan the row cap cannot hold) and executes it in at most three further statements,
+ * however many elements it names (the encounter's row lock is held throughout, so a round trip per element would hold it for as long as the plan is
+ * long): one UPDATE for every soft-removal, one INSERT for the new live links and one for the already-removed tombstones. Every row states
+ * `part2_derived` (no default): the section's verdict, so an element of a Part 2 derived section is filed as Part 2 and its ids are withheld from the
+ * audit image.
  */
 async function execute(
   tx: DbClient,
   encounter: DraftEncounterRow,
-  ops: readonly LinkOp[],
+  planOps: (rows: readonly LinkRowState[]) => readonly LinkOp[],
   part2Derived: boolean,
   removal: { readonly by: string; readonly at: Date } | null,
 ): Promise<number> {
+  const rows = await loadLinkRows(tx, encounter.id);
+  const ops = planOps(rows);
+  assertRoomFor(rows, ops);
   const rowIds = ops.flatMap((op) => (op.op === "remove_live" ? op.rowIds : []));
   const link = (element: CarePlanElement) => ({
     organizationId: encounter.organizationId,
@@ -114,13 +143,7 @@ export async function linkDisciplineElements(
 ): Promise<number> {
   if (elements.length === 0) return 0; // a section with no M15 element (the other templates') costs no read
   await raisePart2Flag(tx, encounter.id, elements, part2Derived);
-  return execute(
-    tx,
-    encounter,
-    planLinks(await loadLinkRows(tx, encounter.id), elements),
-    part2Derived,
-    null,
-  );
+  return execute(tx, encounter, (rows) => planLinks(rows, elements), part2Derived, null);
 }
 
 export async function removeDisciplineElements(
@@ -133,11 +156,8 @@ export async function removeDisciplineElements(
 ): Promise<number> {
   if (elements.length === 0) return 0;
   await raisePart2Flag(tx, encounter.id, elements, part2Derived);
-  return execute(
-    tx,
-    encounter,
-    planRemovals(await loadLinkRows(tx, encounter.id), elements),
-    part2Derived,
-    { by: removedBy, at: now },
-  );
+  return execute(tx, encounter, (rows) => planRemovals(rows, elements), part2Derived, {
+    by: removedBy,
+    at: now,
+  });
 }
