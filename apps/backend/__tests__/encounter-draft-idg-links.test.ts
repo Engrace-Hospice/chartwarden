@@ -97,8 +97,10 @@ function fakeTx(rows: readonly IdgLinkRowState[]) {
     }),
     update: () => ({
       set: (values: Record<string, unknown>) => ({
-        where: async () => {
+        // awaited as a statement, or chained into `.returning()` by the Part 2 raise (which then reports no row changed)
+        where: () => {
           writes.push(`update ${Object.keys(values).sort().join("+")}`);
+          return Object.assign(Promise.resolve(undefined), { returning: async () => [] });
         },
       }),
     }),

@@ -43,6 +43,7 @@ import {
   assertMayActOnIdgItems,
   idgFollowUpItemsView,
   linkRefusalOf,
+  linkedItemNeedsPart2,
   mayActOnIdgItems,
   readIdgFollowUpCandidates,
 } from "./idg-follow-up";
@@ -228,7 +229,8 @@ async function visitTimeOf(
 
 /**
  * The IDG follow-up's link or clear in ONE unit (the encounter row locked first, a signed, cosigned or voided note refused). CLEARING asks the author's checks (the
- * routes') and nothing of M14, key or seam: a clinician who lost `idg.act`, or whose M14 is down, can always clear a link they made. The row being left cannot
+ * routes') and the encounter's own (`loadOr404`: the tenant switch and the template's read keys), and nothing of M14, `idg.act` or a seam: a clinician who lost
+ * `idg.act`, or whose M14 is down, can still clear a link they made. The row being left cannot
  * then be judged without M14, so it is raised to Part 2 (fails closed: the flag only moves the audit class), and no candidate was read, so the answer lists
  * nothing: the client re-reads the list (GET) when it wants one. LINKING needs `idg.act` and an item in the viewer's own candidate list.
  */
@@ -275,6 +277,15 @@ async function linkIdgActionItem(
     caller.membershipId,
     now,
   );
+  // The verdict on the row came from the candidate read, which M14 answered on its own transaction before this insert: ask once more now the row stands, and
+  // raise it in this unit if the item has turned Part 2 since (a flag only goes up). The narrow window left is between M14's answer and the insert statement,
+  // where the insert's own audit image is filed in the plain class; the raise's image is scrubbed, and every later recompute raises a row too.
+  if (
+    !target.part2Derived &&
+    (await linkedItemNeedsPart2(seamPorts, encounter, viewerOf(caller), target.actionItemId))
+  ) {
+    await unit.store.raiseIdgLinkPart2(encounter.id, target.actionItemId);
+  }
   return idgFollowUpItemsView(encounter, candidates, target.actionItemId);
 }
 

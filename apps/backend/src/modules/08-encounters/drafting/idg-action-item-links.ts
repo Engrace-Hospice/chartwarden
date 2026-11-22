@@ -63,8 +63,8 @@ export function planIdgLink(
 
 /**
  * Refuses a plan whose RE-LINK would take the table past the cap, naming no item. Only a re-link (a new live row for an item that already has rows) grows
- * the table without the candidates bounding it: a first row of an item is bounded by the candidate list, and a clear adds none. So the author can always
- * clear the link, and the first time an item is linked is never refused.
+ * the table without the candidates bounding it: a first row of an item is bounded by the candidate list, and a clear adds none. So a clear is never refused for the
+ * cap, and the first time an item is linked is never refused.
  */
 function assertRoomFor(rows: readonly IdgLinkRowState[], plan: IdgLinkPlan): void {
   const relinked =
@@ -138,16 +138,7 @@ export async function setIdgActionItemLink(
   const plan = planIdgLink(rows, target, currentPart2Derived);
   assertRoomFor(rows, plan);
   for (const actionItemId of plan.raisePart2OfItems) {
-    await tx
-      .update(L)
-      .set({ part2Derived: true })
-      .where(
-        and(
-          eq(L.encounterId, encounter.id),
-          eq(L.actionItemId, actionItemId),
-          eq(L.part2Derived, false),
-        ),
-      );
+    await raiseIdgLinkPart2(tx, encounter.id, actionItemId);
   }
   if (plan.removeRowId !== null) {
     await tx

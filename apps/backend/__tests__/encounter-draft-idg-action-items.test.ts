@@ -410,7 +410,7 @@ describe("setIdgActionItem", () => {
     expect(reported).toHaveLength(1);
   });
 
-  it("a clear needs no idg.act and no M14: a clinician who lost the key, or whose M14 is down, can always clear a link they made (the row is raised to Part 2, fails closed)", async () => {
+  it("a clear needs no idg.act and no M14: a clinician who lost the key, or whose M14 is down, can still clear a link they made (the row is raised to Part 2, fails closed)", async () => {
     const lostKey = service({ memory: { idgLinks: [liveLink(ITEM_1)] } });
     await lostKey.svc.setIdgActionItem(withoutIdgKey, ENCOUNTER, { actionItemId: null }, AUDIT);
     expect(lostKey.idgLinks[0]).toMatchObject({ removedAt: NOW, part2Derived: true });
@@ -450,7 +450,7 @@ describe("setIdgActionItem", () => {
     expect(signed.idgLinks[0]?.removedAt).toBeNull();
   });
 
-  it("per viewer: an item M14 withholds (a flagged patient, a viewer without disclosure) is the same 404, and a link already made to it is cleared as Part 2 (fails closed)", async () => {
+  it("per viewer: an item M14 withholds (a flagged patient, a viewer without disclosure) is the same 404, and nothing is written", async () => {
     const hidden = service({ items: [] });
     await expectCode(
       hidden.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_SUD }, AUDIT),
@@ -458,13 +458,105 @@ describe("setIdgActionItem", () => {
       404,
     );
     expect(hidden.idgLinks).toEqual([]);
+  });
 
-    const cleared = service({ items: [], memory: { idgLinks: [liveLink(ITEM_SUD, false)] } });
-    await cleared.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: null }, AUDIT);
-    expect(cleared.idgLinks[0]).toMatchObject({
+  it("replacing the linked item judges the row being left by M14's verdict now: one M14 no longer hands is removed as Part 2 (fails closed), one it still hands clean is not", async () => {
+    // ITEM_SUD is linked but M14 hands nothing for it any more (the patient was flagged, a viewer without disclosure, reassigned)
+    const withheld = service({
+      items: [item(ITEM_2)],
+      memory: { idgLinks: [liveLink(ITEM_SUD, false)] },
+    });
+    await withheld.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_2 }, AUDIT);
+    expect(withheld.idgLinks.find((l) => l.actionItemId === ITEM_SUD)).toMatchObject({
       removedAt: NOW,
       part2Derived: true,
     });
+    expect(withheld.idgLinks.find((l) => l.actionItemId === ITEM_2)).toMatchObject({
+      removedAt: null,
+      part2Derived: false,
+    });
+
+    // ITEM_1 is linked and M14 still hands it, clean: removed, and NOT raised
+    const handed = service({
+      items: [item(ITEM_1), item(ITEM_2)],
+      memory: { idgLinks: [liveLink(ITEM_1, false)] },
+    });
+    await handed.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_2 }, AUDIT);
+    expect(handed.idgLinks.find((l) => l.actionItemId === ITEM_1)).toMatchObject({
+      removedAt: NOW,
+      part2Derived: false,
+    });
+  });
+
+  it("closes a stale verdict: an item that turned Part 2 after M14's candidate read is raised in the SAME unit (also when the item is named again); one still plain is not raised; one M14 no longer hands fails closed", async () => {
+    const asked = (byId: IdgFollowUpItem | null, memory?: Parameters<typeof memoryRunInOrg>[0]) => {
+      const mem = memoryRunInOrg({
+        encounter: IDG_RN,
+        selection: selectionFor("idg_followup", "rn"),
+        ...memory,
+      });
+      const seams = fakePorts({
+        idgFollowUpItems: async () => [item(ITEM_1)], // the candidate read: plain
+        linkedIdgFollowUpItem: async () => byId, // the re-ask after the insert
+      });
+      return {
+        ...mem,
+        seams,
+        svc: createDraftService({ runInOrg: mem.runInOrg, seams: () => seams, now: () => NOW }),
+      };
+    };
+
+    const flipped = asked(item(ITEM_1, { sudRelated: true }));
+    await flipped.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_1 }, AUDIT);
+    expect(flipped.idgLinks).toHaveLength(1);
+    expect(flipped.idgLinks[0]).toMatchObject({ actionItemId: ITEM_1, part2Derived: true });
+    expect(flipped.seams.linkedIdgFollowUpItem).toHaveBeenCalledTimes(1);
+
+    const named = asked(item(ITEM_1, { sudRelated: true }), {
+      idgLinks: [liveLink(ITEM_1, false)],
+    });
+    await named.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_1 }, AUDIT);
+    expect(named.idgLinks).toHaveLength(1);
+    expect(named.idgLinks[0]).toMatchObject({ part2Derived: true, removedAt: null });
+
+    const gone = asked(null);
+    await gone.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_1 }, AUDIT);
+    expect(gone.idgLinks[0]).toMatchObject({ part2Derived: true });
+
+    // still plain: the row stays plain (not every link is Part 2), and nothing was raised
+    const plain = asked(item(ITEM_1));
+    await plain.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_1 }, AUDIT);
+    expect(plain.idgLinks[0]).toMatchObject({ part2Derived: false });
+    expect(plain.store.raiseIdgLinkPart2).not.toHaveBeenCalled();
+
+    // an item the candidate read already judged Part 2 is not asked again (a flag only goes up)
+    const already = service({ items: [item(ITEM_SUD, { sudRelated: true })] });
+    await already.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_SUD }, AUDIT);
+    expect(already.seams.linkedIdgFollowUpItem).not.toHaveBeenCalled();
+  });
+
+  it("a re-ask that fails is a 503 DRAFT_UNAVAILABLE for the whole link (the unit rolls back), not a row left unchecked", async () => {
+    const mem = memoryRunInOrg({
+      encounter: IDG_RN,
+      selection: selectionFor("idg_followup", "rn"),
+    });
+    const svc = createDraftService({
+      runInOrg: mem.runInOrg,
+      seams: () =>
+        fakePorts({
+          idgFollowUpItems: async () => [item(ITEM_1)],
+          linkedIdgFollowUpItem: async () => {
+            throw new Error("idg store down");
+          },
+        }),
+      now: () => NOW,
+    });
+    await expectCode(
+      svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_1 }, AUDIT),
+      "DRAFT_UNAVAILABLE",
+      503,
+    );
+    expect(mem.refusals).toEqual([]);
   });
 
   it("refuses a signed note's change (an addendum is the way) and writes nothing", async () => {

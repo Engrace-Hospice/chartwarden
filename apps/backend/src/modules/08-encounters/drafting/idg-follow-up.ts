@@ -4,13 +4,21 @@
 //
 // THE KEY (VN-D66). `idg.act` (M14's key for working one's OWN assigned action items, self-scoped to the assignee) is asked ONLY for this section: the draft
 // routes never refuse for want of it. A viewer without it gets the section as not drafted and the REST of the draft is as it was, so a tenant whose roles
-// lack the key sees no regression. The picker's list and link refuse 403 naming it; CLEARING the link needs no key, so a clinician who lost it can always
-// clear a link they made.
+// lack the key sees no regression. The picker's list and link refuse 403 naming it; CLEARING the link needs neither the key nor M14 (it still passes the
+// encounter's own checks: the tenant switch, the template's read keys, the routes' author checks), so a clinician who lost the key can still clear a link
+// they made.
 //
-// FAIL CLOSED. An item the seam no longer hands this viewer (closed, completed, reassigned, Part 2 without disclosure, of another patient) is not drafted
-// and cannot be linked, never stale text; a fact the corpus cannot state (a decision kind with no label, an instant that is not one) leaves the item out
-// the same way. A seam that FAILS is a 503 `DRAFT_UNAVAILABLE`, as every other source's failure is.
-import type { Draft, DraftSourceRef, IdgFollowUpDraftInput } from "@chartwarden/hearthnote";
+// FAIL CLOSED. An item the seam does not hand this viewer (reassigned, Part 2 without disclosure, of another patient) is not drafted and cannot be linked,
+// never stale text. A CLOSED item is the one difference between the two reads: it is never offered for a NEW link (the candidate list is the open items),
+// but the item a visit is already linked to is read by id in any status and still drafted, because M14's own auto-close closes an encounter-kind item
+// when the assignee signs ANY visit and the section the author confirmed must survive that. A fact the corpus cannot state (a decision kind with no label,
+// an instant that is not one) leaves the item out the same way. A seam that FAILS is a 503 `DRAFT_UNAVAILABLE`, as every other source's failure is.
+import type {
+  Draft,
+  DraftSection,
+  DraftSourceRef,
+  IdgFollowUpDraftInput,
+} from "@chartwarden/hearthnote";
 import { draftSourceNeeds } from "@chartwarden/hearthnote";
 import { IDG_DECISION_KIND_LABELS } from "@chartwarden/narrative-vocab";
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
@@ -155,6 +163,22 @@ export async function readIdgFollowUpCandidates(
 }
 
 /**
+ * Whether an item the link route has just filed still reads as Part 2 when M14 is asked about it again BY ID (and fails closed: an item M14 no longer hands this
+ * viewer, for whatever reason, counts as Part 2). The candidate list and its verdict are read on M14's own pooled transactions, beside the write transaction
+ * that holds the encounter's row lock, so the item can turn Part 2 (its packet rebuilt or flagged, the patient flagged, the item reassigned) between that read
+ * and the insert of its row; the route asks once more after the insert and raises the row in the same unit (the raise's own audit image is scrubbed).
+ */
+export async function linkedItemNeedsPart2(
+  ports: Pick<DraftPorts, "linkedIdgFollowUpItem">,
+  encounter: DraftEncounter,
+  viewer: DraftViewer,
+  actionItemId: string,
+): Promise<boolean> {
+  const item = await readLinkedItem(ports, encounter, viewer, actionItemId);
+  return item === null || item.sudRelated !== false;
+}
+
+/**
  * What the draft states of the linked action item: its facts, or `null` (the section is then not drafted) when the viewer lacks `idg.act`, nothing is
  * linked, or M14 hands this viewer nothing for the linked item (reassigned, Part 2 without disclosure, no recorded decision, no label for its kind). The link
  * is read from the store (a snapshot port), the facts from M14 BY ID in any status: the draft does not depend on the item staying open, so a section the
@@ -249,11 +273,27 @@ export const IDG_FOLLOW_UP_SECTION_ID = "idg_followup";
 export const isIdgActionItemRef = (ref: DraftSourceRef): boolean => ref.kind === "idg_action_item";
 
 /**
+ * Raises the live link row of a DRAFTED, Part 2 derived IDG follow-up section to Part 2 (a flag only goes up; the store's one statement matches no row once it
+ * is up). The row's flag is otherwise written only by the link route, so a patient flagged (or an item M14 judges Part 2) AFTER the author linked it would
+ * leave the action item id filed in the plain audit class on every later write on the row, and in the eraser's delete image. Used by every recompute that
+ * sees the section: a section's resolution and `settleIdgSection` (finalize, sign, an addendum's).
+ */
+export async function raiseIdgLinkPart2Of(
+  store: Pick<DraftStore, "raiseIdgLinkPart2">,
+  encounter: DraftEncounter,
+  section: DraftSection | undefined,
+): Promise<void> {
+  if (section?.state !== "drafted" || !section.part2Derived) return;
+  for (const ref of section.sourceRefs.filter(isIdgActionItemRef)) {
+    await store.raiseIdgLinkPart2(encounter.id, ref.id);
+  }
+}
+
+/**
  * What an IDG follow-up recompute (a section's resolution, finalize, sign) does about its own section, against the stored confirmations (S5b):
  *
- *  - Raises the live link row to Part 2 when the section is drafted and Part 2 derived. The row's flag is otherwise written only by the link route, so a patient
- *    flagged (or an item M14 judges Part 2) AFTER the author linked it would leave the action item id filed in the plain audit class on every later write on
- *    the row, and in the eraser's delete image. A flag only goes up; a recompute that finds the rows already right writes nothing.
+ *  - Raises the live link row to Part 2 when the section is drafted and Part 2 derived (`raiseIdgLinkPart2Of`); a recompute that finds the rows already right
+ *    writes nothing.
  *  - Returns the section as STALE when the author confirmed it, the viewer holds `idg.act` and a link stands, yet the recompute does not draft it (the item
  *    was reassigned, M14 no longer clears the viewer for a Part 2 item, M14 hands nothing for it): a confirmed section that drops out of the note without a word
  *    is refused, so sign and finalize answer 409 / 422 `DRAFT_SECTION_STALE` naming `idg_followup` (no item detail), and the author clears the link and signs
@@ -270,11 +310,7 @@ export async function settleIdgSection(
   if (!draftSourceNeeds(encounter.encounterType, encounter.discipline).idgFollowUp) return [];
   const section = draft.sections.find((s) => s.sectionId === IDG_FOLLOW_UP_SECTION_ID);
   if (section?.state === "drafted") {
-    if (section.part2Derived) {
-      for (const ref of section.sourceRefs.filter(isIdgActionItemRef)) {
-        await store.raiseIdgLinkPart2(encounter.id, ref.id);
-      }
-    }
+    await raiseIdgLinkPart2Of(store, encounter, section);
     return [];
   }
   const confirmed = confirmations.some(
