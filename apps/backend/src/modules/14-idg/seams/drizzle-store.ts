@@ -117,6 +117,7 @@ async function selectFollowUpRows(
     .limit(limit);
   const needing = await meetingsNeedingRelease(
     t,
+    organizationId,
     [...new Set(rows.map((r) => r.meetingId))],
     patientId,
   );
