@@ -46,8 +46,10 @@ CREATE POLICY "encounter_discipline_plan_link_org_isolation" ON "encounter_disci
   FOR ALL TO chartwarden_app
   USING ("organization_id" = nullif(current_setting('app.org_id', true), '')::uuid)
   WITH CHECK ("organization_id" = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
--- A removal is an UPDATE of the removal columns; the application role holds DELETE on no M8 table.
-GRANT SELECT, INSERT, UPDATE ON "encounter_discipline_plan_link" TO chartwarden_app;--> statement-breakpoint
+-- A removal is an UPDATE of the removal columns (and a Part 2 verdict raises the flag); the application role holds DELETE on no M8 table, and no
+-- UPDATE on the columns that name the encounter and the element.
+GRANT SELECT, INSERT ON "encounter_discipline_plan_link" TO chartwarden_app;--> statement-breakpoint
+GRANT UPDATE ("removed_at", "removed_by_membership_id", "part2_derived") ON "encounter_discipline_plan_link" TO chartwarden_app;--> statement-breakpoint
 CREATE OR REPLACE FUNCTION audit_phi_write_encounter_discipline_plan_link() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE v_before jsonb; v_after jsonb; v_part2 boolean;
@@ -84,15 +86,49 @@ ALTER FUNCTION audit_phi_write_encounter_discipline_plan_link() OWNER TO chartwa
 CREATE TRIGGER "trg_audit_encounter_discipline_plan_link"
   AFTER INSERT OR UPDATE OR DELETE ON encounter_discipline_plan_link
   FOR EACH ROW EXECUTE FUNCTION audit_phi_write_encounter_discipline_plan_link();--> statement-breakpoint
--- A foreign key check ignores RLS: the encounter and the removing member must belong to the row's own organization.
+-- A foreign key check ignores RLS: the encounter and the removing member must belong to the row's own organization, and the siting pair be the
+-- encounter's (the 1525 shape). The row is frozen with the note: a signed, cosign-pending, cosigned or voided encounter takes no write (a note is
+-- changed only through an addendum), except from the destruction role. An update may change only the removal columns and raise the Part 2 flag:
+-- the row's identity stays put, a removed row is not revived, and a flag that is up never comes down (a lowered flag would file the element id of a
+-- Part 2 row in the plain audit class on every later write).
 CREATE OR REPLACE FUNCTION encounter_discipline_plan_link_org_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
+DECLARE v_status text;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM encounter e WHERE e.id = NEW.encounter_id AND e.organization_id = NEW.organization_id)
+  SELECT e.status::text INTO v_status
+    FROM encounter e
+   WHERE e.id = NEW.encounter_id AND e.organization_id = NEW.organization_id
+     AND e.provider_entity_id IS NOT DISTINCT FROM NEW.provider_entity_id
+     AND e.location_id IS NOT DISTINCT FROM NEW.location_id;
+  IF NOT FOUND
      OR (NEW.removed_by_membership_id IS NOT NULL
          AND NOT EXISTS (SELECT 1 FROM membership m WHERE m.id = NEW.removed_by_membership_id AND m.organization_id = NEW.organization_id)) THEN
-    RAISE EXCEPTION 'encounter_discipline_plan_link: the encounter and the removing member must belong to the row''s organization'
+    RAISE EXCEPTION 'encounter_discipline_plan_link: the encounter and the removing member must belong to the row''s organization, and the siting pair be the encounter''s'
       USING ERRCODE = '23503';
+  END IF;
+  IF v_status IN ('signed', 'cosign_pending', 'cosigned', 'voided')
+     AND NOT (pg_has_role(current_user, 'chartwarden_destruction', 'MEMBER')
+              AND NOT (SELECT r.rolsuper FROM pg_catalog.pg_roles r WHERE r.rolname = current_user)) THEN
+    RAISE EXCEPTION 'encounter_discipline_plan_link: the plan items of a signed encounter are frozen (a note is changed only through an addendum)'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.id <> OLD.id OR NEW.organization_id <> OLD.organization_id OR NEW.encounter_id <> OLD.encounter_id
+       OR NEW.goal_id IS DISTINCT FROM OLD.goal_id OR NEW.intervention_id IS DISTINCT FROM OLD.intervention_id
+       OR NEW.provider_entity_id IS DISTINCT FROM OLD.provider_entity_id OR NEW.location_id IS DISTINCT FROM OLD.location_id
+       OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+      RAISE EXCEPTION 'encounter_discipline_plan_link: a link row names its encounter and element for good (only its removal and its Part 2 flag change)'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    IF OLD.removed_at IS NOT NULL
+       AND (NEW.removed_at IS DISTINCT FROM OLD.removed_at OR NEW.removed_by_membership_id IS DISTINCT FROM OLD.removed_by_membership_id) THEN
+      RAISE EXCEPTION 'encounter_discipline_plan_link: a removed link is not revived or re-stamped (keep the element again with a new row)'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    IF OLD.part2_derived AND NOT NEW.part2_derived THEN
+      RAISE EXCEPTION 'encounter_discipline_plan_link: the Part 2 flag of a row never comes down'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
   END IF;
   RETURN NEW;
 END $$;--> statement-breakpoint

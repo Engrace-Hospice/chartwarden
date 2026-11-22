@@ -20,7 +20,7 @@ const PART2_PIN = read("1522_m8_assembled_output_part2_derived.sql");
 const AMENDMENTS = read("1523_m8_note_amendments.sql");
 const COSIGN_KIND = read("1524_m8_addendum_cosignature_signature_kind.sql");
 const NOTE_GUARDS = read("1525_m8_note_guards_after_sign.sql");
-const DISCIPLINE_LINK = read("1535_m8_encounter_discipline_plan_link.sql");
+const DISCIPLINE_LINK = read("1540_m8_encounter_discipline_plan_link.sql");
 
 /** The privilege list of the `GRANT ... ON "<table>" TO chartwarden_app` statement. */
 function appGrant(source: string, table: string): readonly string[] {
@@ -33,7 +33,7 @@ describe.each([
   ["1517", CONFIRMATION, "encounter_draft_confirmation"],
   ["1518", SIGNED_SECTION, "hearthnote_signed_section"],
   ["1519", POLICY, "visit_note_draft_policy"],
-  ["1535", DISCIPLINE_LINK, "encounter_discipline_plan_link"],
+  ["1540", DISCIPLINE_LINK, "encounter_discipline_plan_link"],
 ])("migration %s", (_ordinal, source, table) => {
   it("stays an expand (arch:migration-compat reads this header)", () => {
     expect(source.startsWith("-- compat: expand")).toBe(true);
@@ -108,8 +108,11 @@ describe("encounter_draft_confirmation", () => {
 describe("encounter_discipline_plan_link", () => {
   const table = "encounter_discipline_plan_link";
 
-  it("is insert-and-soft-remove for the application role: SELECT, INSERT, UPDATE, never DELETE", () => {
-    expect(appGrant(DISCIPLINE_LINK, table)).toEqual(["SELECT", "INSERT", "UPDATE"]);
+  it("is insert-and-soft-remove for the application role: SELECT and INSERT, UPDATE of the removal columns and the Part 2 flag only, never DELETE", () => {
+    expect(appGrant(DISCIPLINE_LINK, table)).toEqual(["SELECT", "INSERT"]);
+    expect(DISCIPLINE_LINK).toContain(
+      'GRANT UPDATE ("removed_at", "removed_by_membership_id", "part2_derived") ON "encounter_discipline_plan_link" TO chartwarden_app',
+    );
   });
 
   it("gives the destruction role an org-scoped policy beside its grant (without one the eraser's DELETE matches no row)", () => {
@@ -145,6 +148,36 @@ describe("encounter_discipline_plan_link", () => {
     expect(
       getTableConfig(schema.encounterDisciplinePlanLinks).columns.map((c) => c.name),
     ).toContain("part2_derived");
+  });
+
+  it("holds a row to its encounter: the siting pair is the encounter's, and a signed, cosign-pending, cosigned or voided note takes no write except from the destruction role", () => {
+    expect(DISCIPLINE_LINK).toMatch(
+      /e\.provider_entity_id IS NOT DISTINCT FROM NEW\.provider_entity_id\s+AND e\.location_id IS NOT DISTINCT FROM NEW\.location_id/,
+    );
+    expect(DISCIPLINE_LINK).toContain(
+      "v_status IN ('signed', 'cosign_pending', 'cosigned', 'voided')",
+    );
+    expect(DISCIPLINE_LINK).toMatch(
+      /pg_has_role\(current_user, 'chartwarden_destruction', 'MEMBER'\)\s+AND NOT \(SELECT r\.rolsuper FROM pg_catalog\.pg_roles r WHERE r\.rolname = current_user\)/,
+    );
+    expect(DISCIPLINE_LINK).toMatch(/USING ERRCODE = 'restrict_violation'/);
+  });
+
+  it("lets an update change only the removal columns and raise the Part 2 flag: identity is frozen, a removal is final, a flag never comes down", () => {
+    for (const frozen of [
+      "NEW.encounter_id <> OLD.encounter_id",
+      "NEW.goal_id IS DISTINCT FROM OLD.goal_id",
+      "NEW.intervention_id IS DISTINCT FROM OLD.intervention_id",
+      "NEW.location_id IS DISTINCT FROM OLD.location_id",
+      "NEW.created_at IS DISTINCT FROM OLD.created_at",
+      "OLD.removed_at IS NOT NULL",
+      "OLD.part2_derived AND NOT NEW.part2_derived",
+    ]) {
+      expect(DISCIPLINE_LINK).toContain(frozen);
+    }
+    expect(DISCIPLINE_LINK).toMatch(
+      /BEFORE INSERT OR UPDATE ON "encounter_discipline_plan_link"\s+FOR EACH ROW EXECUTE FUNCTION encounter_discipline_plan_link_org_guard/,
+    );
   });
 
   it("matches its Drizzle mirror's constraint and index names", () => {

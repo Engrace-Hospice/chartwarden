@@ -153,7 +153,7 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
   `discipline_plan.read`. A goal's words can carry sensitive psychosocial or spiritual content that nothing flags (only Part 2 is flagged), and a Part 2 goal
   is withheld from a viewer without disclosure in the draft and in the sealed note's view (no cosigner is needed for these disciplines).
 - **Keeping and leaving out single goals (S4b).** A confirmation or deselection still applies to the whole section, and since S4b one goal or intervention can
-  be left out of it: `encounter_discipline_plan_link` (migration 1535) holds one row per M15 element the visit keeps or leaves out (soft-removed, no DELETE for
+  be left out of it: `encounter_discipline_plan_link` (migration 1540) holds one row per M15 element the visit keeps or leaves out (soft-removed, no DELETE for
   the application role), by the care-plan rules. A live row means "kept in this visit's statement of the plan", never "addressed": no outbox event and no
   consumer reads it, and nothing may. A deselected plan section is no longer drafted (S4a kept it drafted and deselected). The audit refs name M15 goal and
   intervention ids (kinds `discipline_plan_goal`, `discipline_plan_intervention`); the response carries kinds only, and the list route returns ids and words to a

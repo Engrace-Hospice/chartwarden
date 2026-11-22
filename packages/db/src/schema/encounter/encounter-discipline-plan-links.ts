@@ -1,4 +1,4 @@
-// @chartwarden/db — `encounter_discipline_plan_link` (ADR-0114 S4b, migration 1535). Joins an encounter to the M15 goals and interventions its
+// @chartwarden/db — `encounter_discipline_plan_link` (ADR-0114 S4b, migration 1540). Joins an encounter to the M15 goals and interventions its
 // drafted plan keeps: one element per row, soft-removed like `encounter_care_plan_link` (the application role holds DELETE on no M8 table).
 // A live row means "kept in this visit's statement of the plan", never "the visit addressed it". PHI-bearing → three-column tenancy rule
 // (denormalized from the parent encounter). The goal and intervention ids are M15 working-row ids (logical; app-validated, no cross-module FK).

@@ -210,7 +210,7 @@ const CONDITIONAL_REDACTIONS: ReadonlyArray<{
   // sensitive unless the element is Part 2).
   {
     key: "M8.encounter_discipline_plan_link",
-    migration: "packages/db/migrations/1535_m8_encounter_discipline_plan_link.sql",
+    migration: "packages/db/migrations/1540_m8_encounter_discipline_plan_link.sql",
     mustContain: [
       "v_part2",
       "part2_derived",

@@ -1740,6 +1740,80 @@ describe.skipIf(!DB_URL)(
           expect(filed?.code).toBe("23503");
           expect(await disciplineLinksOf(v)).toHaveLength(1);
         });
+
+        const RESTRICT_VIOLATION = "23001";
+        const attempt = (sql: string, params: readonly unknown[]) =>
+          asApp(ORG_A, (c) => c.query(sql, [...params])).then(
+            () => undefined,
+            (error: unknown) => refusal(error),
+          );
+        /** A link row filed straight into the table, the siting pair copied from the encounter unless `location` is given. */
+        const fileLink = (v: Visit, goalId: string, location: string | null = null) =>
+          attempt(
+            `INSERT INTO encounter_discipline_plan_link (organization_id, provider_entity_id, location_id, encounter_id, goal_id, part2_derived)
+             SELECT organization_id, provider_entity_id, coalesce($3::uuid, location_id), id, $2, false FROM encounter WHERE id = $1`,
+            [v.encounterId, goalId, location],
+          );
+        const linkIdOf = async (v: Visit, goalId: string) =>
+          one(
+            await rows<{ id: string }>(
+              "SELECT id::text FROM encounter_discipline_plan_link WHERE encounter_id = $1 AND goal_id = $2",
+              [v.encounterId, goalId],
+            ),
+          ).id;
+
+        it("the database holds a row to its encounter: the siting pair is the encounter's, a row names its element for good, a removal is final, and a Part 2 flag only goes up", async () => {
+          const v = await seedVisit({ kind: "msw" });
+          // another tenant's location is refused (and no more informative than a made-up one: both are a refusal of the pair)
+          expect((await fileLink(v, GOAL_A, orgs.B.locationId))?.code).toBe("23503");
+          expect(await disciplineLinksOf(v)).toEqual([]);
+
+          expect(await fileLink(v, GOAL_A)).toBeUndefined();
+          const id = await linkIdOf(v, GOAL_A);
+          const update = (set: string, params: readonly unknown[] = []) =>
+            attempt(`UPDATE encounter_discipline_plan_link SET ${set} WHERE id = $1`, [
+              id,
+              ...params,
+            ]);
+
+          expect((await update("goal_id = $2", [GOAL_B]))?.code).toBe(RESTRICT_VIOLATION);
+          expect((await update("encounter_id = $2", [randomUUID()]))?.code).toBeDefined();
+          expect((await update("created_at = now() + interval '1 day'"))?.code).toBe(
+            RESTRICT_VIOLATION,
+          );
+
+          // the flag goes up, and not down again
+          expect(await update("part2_derived = true")).toBeUndefined();
+          expect((await update("part2_derived = false"))?.code).toBe(RESTRICT_VIOLATION);
+
+          // a removal is stamped once and never undone or re-stamped
+          const stamp = "removed_at = now(), removed_by_membership_id = $2";
+          expect(await update(stamp, [v.author.membershipId])).toBeUndefined();
+          expect((await update("removed_at = NULL, removed_by_membership_id = NULL"))?.code).toBe(
+            RESTRICT_VIOLATION,
+          );
+          expect((await update("removed_at = now() + interval '1 day'"))?.code).toBe(
+            RESTRICT_VIOLATION,
+          );
+          expect(await disciplineLinksOf(v)).toMatchObject([
+            { removed: true, part2_derived: true },
+          ]);
+        });
+
+        it("a signed note's link rows are frozen in the database: no new row, no removal (the service refuses first; an addendum is the way)", async () => {
+          const v = await seedVisit({ kind: "msw" });
+          await signed(v);
+          const live = (await disciplineLinksOf(v)).filter((l) => !l.removed);
+          expect(live.length).toBeGreaterThan(0);
+
+          const removed = await attempt(
+            "UPDATE encounter_discipline_plan_link SET removed_at = now(), removed_by_membership_id = $2 WHERE encounter_id = $1",
+            [v.encounterId, v.author.membershipId],
+          );
+          expect(removed?.code).toBe(RESTRICT_VIOLATION);
+          expect((await fileLink(v, randomUUID()))?.code).toBe(RESTRICT_VIOLATION);
+          expect((await disciplineLinksOf(v)).filter((l) => !l.removed)).toHaveLength(live.length);
+        });
       });
     });
 
