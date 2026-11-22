@@ -5,6 +5,7 @@ import type { JSX } from "react";
 import { ComposerCarePlanPicker } from "./composer-care-plan-picker";
 import { ComposerScoreTrend } from "./composer-score-trend";
 import type { DraftView, PickerEncounter } from "./draft-api";
+import { draftsFromDisciplinePlan } from "./draft-model";
 import { DraftStrip, DraftSummary, DraftUnavailable } from "./draft-summary";
 import { useDraftRetry } from "./use-draft-retry";
 import type { NoteDraft } from "./use-note-draft";
@@ -78,6 +79,7 @@ export function ComposerDraftRail({
         editable={editable}
         revision={carePlanRevision}
         onChanged={onLinksChanged}
+        confirmationLinks={!draftsFromDisciplinePlan(drafted)}
       />
     </div>
   );

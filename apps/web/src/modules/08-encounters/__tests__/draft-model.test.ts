@@ -9,6 +9,7 @@ import {
   draftIsActive,
   draftIssuesFrom,
   draftedStateOf,
+  draftsFromDisciplinePlan,
   isDraftSectionView,
   replaceSection,
   resolutionNote,
@@ -93,6 +94,36 @@ describe("touchesCarePlan", () => {
     expect(touchesCarePlan(section({ origins: ["vitals", "care_plan_intervention"] }))).toBe(true);
     expect(touchesCarePlan(section({ origins: ["vitals"] }))).toBe(false);
   });
+
+  // S4: the discipline's own plan is not the care plan's elements, and no link is made for it, so a confirmation must not read as one.
+  it("is false for a section built from the discipline's own plan: confirming it links nothing", () => {
+    expect(touchesCarePlan(section({ origins: ["discipline_plan_goal"] }))).toBe(false);
+    expect(
+      touchesCarePlan(
+        section({ origins: ["discipline_plan_goal", "discipline_plan_intervention"] }),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("draftsFromDisciplinePlan", () => {
+  it("is true when a section is built from the discipline's own plan, and false for every other draft", () => {
+    const draft = (...sections: ReturnType<typeof section>[]) => ({ sections });
+    expect(draftsFromDisciplinePlan(draft(section({ origins: ["discipline_plan_goal"] })))).toBe(
+      true,
+    );
+    expect(
+      draftsFromDisciplinePlan(
+        draft(
+          section({ origins: ["vitals"] }),
+          section({ origins: ["discipline_plan_intervention"] }),
+        ),
+      ),
+    ).toBe(true);
+    expect(draftsFromDisciplinePlan(draft(section({ origins: ["care_plan_goal"] })))).toBe(false);
+    expect(draftsFromDisciplinePlan(draft(section({ origins: [] })))).toBe(false);
+    expect(draftsFromDisciplinePlan(draft())).toBe(false);
+  });
 });
 
 describe("draftIssuesFrom", () => {
@@ -136,6 +167,8 @@ describe("isDraftSectionView", () => {
       "caregiver",
       "advance_directive_acknowledgment",
       "recorded_adl",
+      "discipline_plan_goal",
+      "discipline_plan_intervention",
     ] as const;
     for (const kind of kinds)
       expect(isDraftSectionView(section({ origins: [kind] })), kind).toBe(true);

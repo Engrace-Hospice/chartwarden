@@ -3,10 +3,11 @@
 // Appended to the corpus by `vocabulary.ts`: the 25 entries of `narrative-vocab@2026.11.0` below (S1), then the 11 of
 // `narrative-vocab@2026.12.0` (S2, `recert-entries.ts`), then the 5 of `narrative-vocab@2026.12.1` (S2b, `admission-entries.ts`); the
 // 23 earlier entries are untouched. `narrative-vocab@2026.12.2` (S3) adds no entry: it tags 12 of the S1 entries for the LPN visits and one
-// for the aide visit. DRAFT WORDING until the review of the running release is "approved" (see
-// `CORPUS_CLINICAL_REVIEW` in vocabulary.ts).
+// for the aide visit. `narrative-vocab@2026.12.3` (S4) adds the 6 of `discipline-plan-entries.ts` (the social-work and chaplain plans). DRAFT
+// WORDING until the review of the running release is "approved" (see `CORPUS_CLINICAL_REVIEW` in vocabulary.ts).
 import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
 import { ADMISSION_VOCABULARY } from "./admission-entries";
+import { DISCIPLINE_PLAN_VOCABULARY } from "./discipline-plan-entries";
 import { RECERT_VOCABULARY } from "./recert-entries";
 import type { VocabEntry } from "./types";
 
@@ -314,7 +315,7 @@ const disciplinesOf = (code: string): readonly EncounterDiscipline[] => [
 
 /**
  * Every draft entry, in corpus order: the 25 of 2026.11.0 (the shared ones also tagged for the recertification, and the admission
- * visit's), then the 11 of 2026.12.0, then the 5 of 2026.12.1.
+ * visit's), then the 11 of 2026.12.0, then the 5 of 2026.12.1, then the 6 of 2026.12.3.
  */
 export const DRAFT_VOCABULARY: readonly VocabEntry[] = [
   ...ROUTINE_DRAFT_VOCABULARY.map((entry): VocabEntry => {
@@ -325,6 +326,7 @@ export const DRAFT_VOCABULARY: readonly VocabEntry[] = [
   }),
   ...RECERT_VOCABULARY,
   ...ADMISSION_VOCABULARY,
+  ...DISCIPLINE_PLAN_VOCABULARY,
 ];
 
 /**

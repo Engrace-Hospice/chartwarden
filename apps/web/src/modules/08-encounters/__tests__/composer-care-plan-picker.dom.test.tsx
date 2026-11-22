@@ -51,7 +51,10 @@ function gate() {
 const linkReads = (): number =>
   calls.filter((c) => c.method === "GET" && c.path === `${BASE}/care-plan-links`).length;
 
-function mountPicker(over: Record<string, Responder> = {}) {
+function mountPicker(
+  over: Record<string, Responder> = {},
+  props: { readonly confirmationLinks?: boolean } = {},
+) {
   const routes: Record<string, Responder> = {
     "GET /api/v1/internal/care-plan/relevant-elements": () => ({
       body: {
@@ -94,12 +97,31 @@ function mountPicker(over: Record<string, Responder> = {}) {
         editable
         revision={revision}
         onChanged={() => undefined}
+        {...props}
       />
     </ApiClientProvider>
   );
   const view = render(ui(0));
   return { user: userEvent.setup(), bump: (revision: number) => view.rerender(ui(revision)) };
 }
+
+// S4: a social-work or chaplain draft is built from the discipline's own plan, and confirming it links nothing, so the panel must not say it does.
+describe("the footnote about what a confirmation does", () => {
+  const FOOTNOTE = /Confirming a drafted section links its goals and interventions/;
+
+  it("says a confirmation links the section's goals and interventions, as before", async () => {
+    mountPicker();
+    await screen.findByRole("checkbox", { name: GOAL_LABEL });
+    expect(screen.getByText(FOOTNOTE)).toBeInTheDocument();
+  });
+
+  it("is left out when the draft's sections are built from the discipline's own plan, which a confirmation does not link", async () => {
+    mountPicker({}, { confirmationLinks: false });
+    await screen.findByRole("checkbox", { name: GOAL_LABEL });
+    expect(screen.queryByText(FOOTNOTE)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Deselecting it unlinks/)).not.toBeInTheDocument();
+  });
+});
 
 describe("a link in flight", () => {
   it("leaves the pressed box focusable and focused, saying why it will not act yet", async () => {

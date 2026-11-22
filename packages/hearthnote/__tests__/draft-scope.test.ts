@@ -19,7 +19,14 @@ import {
   templateHasDraftedSection,
   templateKey,
 } from "../src/index";
-import { AS_OF, DEPS, admissionSources, baseInputs, recertSources } from "./_draft-fixtures";
+import {
+  AS_OF,
+  DEPS,
+  admissionSources,
+  baseInputs,
+  disciplinePlanSources,
+  recertSources,
+} from "./_draft-fixtures";
 
 type Pair = readonly [EncounterType, EncounterDiscipline];
 
@@ -34,6 +41,7 @@ function maximalInputs([type, discipline]: Pair): DraftInputs {
     ...base,
     ...recertSources(),
     ...admissionSources(),
+    ...disciplinePlanSources(),
     encounterType: type,
     discipline,
     selection: {
@@ -52,7 +60,7 @@ const draftedIdsOf = (pair: Pair): readonly string[] =>
     .map((s) => s.sectionId);
 
 describe("the templates the corpus drafts", () => {
-  it("today that is the RN routine, admission and recertification visits, the face-to-face visit, the LPN visits and the aide visit, and no other legal pair", () => {
+  it("today that is the RN routine, admission and recertification visits, the face-to-face visit, the LPN visits, the aide visit, and the social-work and chaplain visits, and no other legal pair", () => {
     const drafted = LEGAL_PAIRS.filter(([type, discipline]) =>
       templateHasDraftedSection(type, discipline),
     ).map(([type, discipline]) => templateKey(type, discipline));
@@ -65,7 +73,23 @@ describe("the templates the corpus drafts", () => {
       "face_to_face:np",
       "lpn_visit:lpn",
       "chha_visit:chha",
+      "msw_assessment:msw",
+      "msw_followup:msw",
+      "chaplain_assessment:chaplain",
+      "chaplain_visit:chaplain",
     ]);
+  });
+
+  it("never drafts a psychosocial, spiritual, family-dynamics or reason-for-visit section for any pair (VN-D45)", () => {
+    for (const [type, discipline] of LEGAL_PAIRS) {
+      const drafted = draftedSectionIds(type, discipline);
+      for (const id of ["psychosocial", "spiritual", "family_dynamics"]) {
+        expect(drafted.has(id), `${type}:${discipline} ${id}`).toBe(false);
+      }
+      if (discipline === "msw" || discipline === "chaplain") {
+        expect(drafted.has("chief_concern"), `${type}:${discipline}`).toBe(false);
+      }
+    }
   });
 
   it("names the five sections the sources feed in the RN routine visit, and never chief_concern", () => {
@@ -90,25 +114,46 @@ describe("the templates the corpus drafts", () => {
   });
 
   it("leaves every section of an undrafted template empty even with every source supplied", () => {
-    const draft = compileDraft(maximalInputs(["msw_followup", "msw"]), DEPS);
+    const draft = compileDraft(maximalInputs(["telephonic", "msw"]), DEPS);
     expect(draft.sections.map((s) => s.state)).toEqual(draft.sections.map(() => "empty"));
   });
 
   it("a section is drafted only when every phrase it is built from is tagged for the pair", () => {
-    // Retag the RN routine visit's entries for the MSW follow-up: its `interventions` and `plan` (the care plan) become draftable, its other
-    // sections do not exist in that template.
+    // Retag the RN routine visit's entries for a social-work telephonic note, which has no map of its own and so reads as the routine visit:
+    // its `interventions` and `plan` (the care plan) become draftable, its other sections do not exist in that template.
     const retagged = entriesFor("routine_visit", "rn").map((entry) => ({
       ...entry,
       disciplines: ["msw"] as const,
-      encounterTypes: ["msw_followup"] as const,
+      encounterTypes: ["telephonic"] as const,
     }));
-    expect([...draftedSectionIds("msw_followup", "msw", retagged)].sort()).toEqual([
+    expect([...draftedSectionIds("telephonic", "msw", retagged)].sort()).toEqual([
       "interventions",
       "plan",
     ]);
     // Drop one of the goal phrases: `plan` is no longer fully covered, so it is not drafted.
     const withoutGoal = retagged.filter((entry) => entry.code !== "nv.cp.goal_progress");
-    expect([...draftedSectionIds("msw_followup", "msw", withoutGoal)]).toEqual(["interventions"]);
+    expect([...draftedSectionIds("telephonic", "msw", withoutGoal)]).toEqual(["interventions"]);
+  });
+
+  it("the social-work and chaplain templates follow their own phrases (S4), not the routine visit's", () => {
+    // Every phrase the social-work follow-up is drafted from is tagged for it: both sections draft.
+    expect([...draftedSectionIds("msw_followup", "msw")].sort()).toEqual(["interventions", "plan"]);
+    // Drop one goal phrase: `plan` is not fully covered, so it stops drafting; the interventions stay.
+    const real = entriesFor("msw_followup", "msw");
+    const withoutAgentGoal = real.filter((entry) => entry.code !== "nv.dp.goal_agent");
+    expect([...draftedSectionIds("msw_followup", "msw", withoutAgentGoal)]).toEqual([
+      "interventions",
+    ]);
+    // Drop one intervention phrase: the other way round.
+    const withoutFrequency = real.filter((entry) => entry.code !== "nv.dp.intervention_frequency");
+    expect([...draftedSectionIds("msw_followup", "msw", withoutFrequency)]).toEqual(["plan"]);
+    // The routine visit's phrases tagged for the pair draft nothing there: the care plan is not this template's source.
+    const routine = entriesFor("routine_visit", "rn").map((entry) => ({
+      ...entry,
+      disciplines: ["msw"] as const,
+      encounterTypes: ["msw_followup"] as const,
+    }));
+    expect([...draftedSectionIds("msw_followup", "msw", routine)]).toEqual([]);
   });
 
   it("is false for a pair that has no template", () => {
@@ -160,6 +205,7 @@ describe("the sources a template needs read are the sources its drafted sections
     vitals: { vitals: null },
     medicationChanges: { medicationChanges: [] },
     scales: { scaleReadings: [] },
+    disciplinePlan: { disciplinePlan: null },
   } as const;
   const SOURCES = Object.keys(WITHOUT) as (keyof typeof WITHOUT)[];
   const DRAFTED_PAIRS = LEGAL_PAIRS.filter(([type, discipline]) =>

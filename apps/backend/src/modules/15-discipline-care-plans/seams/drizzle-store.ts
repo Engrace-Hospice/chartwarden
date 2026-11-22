@@ -47,12 +47,14 @@ import {
   type AnyColumn,
   and,
   asc,
+  desc,
   eq,
   inArray,
   isNotNull,
   isNull,
   lte,
   ne,
+  or,
   sql,
 } from "drizzle-orm";
 import {
@@ -65,6 +67,7 @@ import { type VolunteerGateFacts, effectiveStatusFor } from "../volunteer/index"
 import type {
   DisciplineComplianceCounts,
   DisciplinePlanSeamStore,
+  DisciplinePlanVersionAtRecord,
   RateCounts,
   SupervisoryClockRow,
   VolunteerHourTotals,
@@ -379,6 +382,65 @@ export function createDrizzleDisciplinePlanSeamStore(
             (goalCounts?.sud ?? 0) > 0 || (confidentialAssessments?.n ?? 0) > 0,
         };
       });
+    },
+
+    /**
+     * ADR-0114 S4 (VN-D11): the version the clinicians had signed as of `asOf`. Unlike M7's rule (`07-care-plan/seams/drizzle-store.ts`), it
+     * does not read `superseded_at` to place a version in time: M15 stamps it only when a discharge supersedes the signed chain, never when
+     * a later version is signed, so more than one signed version can qualify and `ORDER BY signed_at DESC, sequence DESC` is what picks the
+     * one in effect. The `discharge` version is excluded: the discharge consumer builds it from every current goal and intervention row (unsigned
+     * edits and closed goals included) and stamps it signed itself, so a visit on or after the discharge reads the last version the clinicians
+     * signed. A `superseded` row with no instant cannot be placed in time and is never read (fail closed). Deliberately NOT filtered on the
+     * plan's status: a late entry for a visit before or after a discharge still reads the plan that was in effect. A spiritual plan the patient
+     * had declined at or before `asOf` answers null. The snapshot crosses RAW: the provider redacts and projects it.
+     */
+    async planVersionAsOf(organizationId, patientId, admissionId, kind, asOf) {
+      const at = new Date(asOf);
+      if (Number.isNaN(at.getTime())) {
+        throw new RangeError("planVersionAsOf: asOf is not an instant");
+      }
+      return withOrgContextFromRequest(
+        db,
+        async (tx): Promise<DisciplinePlanVersionAtRecord | null> => {
+          const [row] = await tx
+            .select({
+              versionId: V.id,
+              planId: V.planId,
+              patientId: P.patientId,
+              stateSnapshot: V.stateSnapshot,
+              declinedAt: P.spiritualCareDeclinedAt,
+            })
+            .from(V)
+            .innerJoin(P, eq(P.id, V.planId))
+            .where(
+              and(
+                // RLS pins the tenant from the request context; this is the explicit second wall, so a caller whose asked tenant is not the
+                // session's (the Part 2 verdict is asked for the asked one) reads nothing.
+                eq(P.organizationId, organizationId),
+                eq(P.patientId, patientId),
+                eq(P.admissionId, admissionId),
+                eq(P.kind, kind),
+                // The system-built discharge version is never read: it is made from every current working row, not from a signature.
+                ne(V.kind, "discharge"),
+                inArray(V.status, ["signed", "superseded"]),
+                lte(V.signedAt, at),
+                // A superseded version must say when, or it cannot be placed in time (fail closed).
+                or(eq(V.status, "signed"), isNotNull(V.supersededAt)),
+              ),
+            )
+            .orderBy(desc(V.signedAt), desc(V.sequence))
+            .limit(1);
+          if (!row) return null;
+          if (kind === "spiritual_plan" && row.declinedAt !== null && row.declinedAt <= at)
+            return null;
+          return {
+            versionId: row.versionId,
+            planId: row.planId,
+            patientId: row.patientId,
+            stateSnapshot: row.stateSnapshot,
+          };
+        },
+      );
     },
 
     // ── MSW risk-factor reads (MswRiskFactorReader) ───────────────────────────────────────────────────

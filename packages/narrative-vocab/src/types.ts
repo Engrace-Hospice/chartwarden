@@ -41,6 +41,8 @@ export type VocabCategory =
   | "benefit_period" // the benefit period, the level of care on the visit date, the signed certification; draft-only
   // ── RN admission visit draft category (S2b, VN-D35 to VN-D38). DRAFT wording until its release is reviewed.
   | "admission_record" // the orders in effect, the caregivers on record, the advance directive acknowledgment on file; draft-only
+  // ── social-work and chaplain draft category (S4, VN-D45 to VN-D50). DRAFT wording until its release is reviewed.
+  | "discipline_plan" // the open goals and active interventions of the discipline's plan in effect at the visit; draft-only
   | "visit_reason"; // why the visit happened — one choice per note (the "Reason for Visit" select)
 
 /**

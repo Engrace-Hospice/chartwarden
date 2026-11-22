@@ -132,6 +132,59 @@ export const seamDisclosurePort: DisclosurePort = {
   },
 };
 
+/** The fail-CLOSED posture is enforced HERE, not only inside the default port: an injected or future
+ *  port that throws must still REDACT, never 500 the read and never fall through to "allowed" (§8.7). */
+const probe = async <T>(run: () => Promise<T>, onError: T): Promise<T> => {
+  try {
+    return await run();
+  } catch {
+    return onError;
+  }
+};
+
+/**
+ * Who a Part 2 verdict is for: the four facts of the actor the rule reads. A route passes its whole {@link M15ReadActor}; the
+ * visit-note draft's plan read (ADR-0114 S4) has only the session's roles and membership, so it passes exactly these.
+ */
+export type DisclosureSubject = Pick<
+  M15ReadActor,
+  "organizationId" | "sessionClass" | "roles" | "membershipId"
+>;
+
+/**
+ * May this subject read the patient's Part 2 (SUD) discipline content? The ONE home of the §7.6 / M7 rule, so a route read and the
+ * draft's as-of read can never disagree: a release M39 clears for THIS actor, or the RN Case Manager's treatment carve-out where no
+ * release names other workforce members. FAIL CLOSED: a restricted session class, an erroring or unbound M39 is `false`.
+ */
+export async function resolveSudAllowed(
+  subject: DisclosureSubject,
+  patientId: string,
+  port: DisclosurePort = seamDisclosurePort,
+): Promise<boolean> {
+  const restrictedSession = NON_DISCLOSURE_SESSION_CLASSES.includes(subject.sessionClass as never);
+  if (restrictedSession) return false;
+
+  // M39 is consulted BEFORE the RN-Case-Manager path, not after: the role path is a treatment
+  // carve-out (an intra-program read is not a §2.31 disclosure) and it still applies when no release
+  // is on file, but it may not override a release the patient restricted to NAMED workforce members.
+  // That restriction exists precisely to exclude other staff, and a role key cannot outrank it.
+  const part2 = await probe(
+    () =>
+      port.part2ReleaseActive({
+        organizationId: subject.organizationId,
+        patientId,
+        sessionClass: subject.sessionClass,
+        membershipId: subject.membershipId,
+      }),
+    // no consent verdict → not disclosable, and not readable as "unrestricted" either
+    { allowed: false, restrictedToNamedWorkforce: true },
+  );
+  return (
+    part2.allowed ||
+    (!part2.restrictedToNamedWorkforce && subject.roles.includes(RN_CASE_MANAGER_ROLE))
+  );
+}
+
 /**
  * Resolve the §7.8 / §7.9 disclosure posture for one actor reading one patient's discipline content.
  * Called ONCE per read request; the verdict then drives the SQL predicates (`sud_related = false`,
@@ -144,37 +197,7 @@ export async function resolveDisclosure(
   port: DisclosurePort = seamDisclosurePort,
 ): Promise<DisclosureDecision> {
   const restrictedSession = NON_DISCLOSURE_SESSION_CLASSES.includes(actor.sessionClass as never);
-  const isRnCaseManager = actor.roles.includes(RN_CASE_MANAGER_ROLE);
-
-  // The fail-CLOSED posture is enforced HERE, not only inside the default port: an injected or future
-  // port that throws must still REDACT, never 500 the read and never fall through to "allowed" (§8.7).
-  const probe = async <T>(run: () => Promise<T>, onError: T): Promise<T> => {
-    try {
-      return await run();
-    } catch {
-      return onError;
-    }
-  };
-
-  // M39 is consulted BEFORE the RN-Case-Manager path, not after: the role path is a treatment
-  // carve-out (an intra-program read is not a §2.31 disclosure) and it still applies when no release
-  // is on file, but it may not override a release the patient restricted to NAMED workforce members.
-  // That restriction exists precisely to exclude other staff, and a role key cannot outrank it.
-  const part2 = restrictedSession
-    ? { allowed: false, restrictedToNamedWorkforce: true }
-    : await probe(
-        () =>
-          port.part2ReleaseActive({
-            organizationId: actor.organizationId,
-            patientId,
-            sessionClass: actor.sessionClass,
-            membershipId: actor.membershipId,
-          }),
-        // no consent verdict → not disclosable, and not readable as "unrestricted" either
-        { allowed: false, restrictedToNamedWorkforce: true },
-      );
-  const sudAllowed =
-    !restrictedSession && (part2.allowed || (!part2.restrictedToNamedWorkforce && isRnCaseManager));
+  const sudAllowed = await resolveSudAllowed(actor, patientId, port);
 
   const familyViolenceRoleDefault = FAMILY_VIOLENCE_DEFAULT_ROLES.some((r) =>
     actor.roles.includes(r),

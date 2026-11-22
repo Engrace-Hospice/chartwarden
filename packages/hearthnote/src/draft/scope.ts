@@ -38,14 +38,17 @@ export function draftedSectionIds(
 }
 
 /**
- * The S1 sources (care plan, vitals, medication changes, scales) the pair's draft is built from: the union over the sections it drafts. A
- * template that drafts nothing needs none. The backend reads, and asks the read keys of, only these (S3, VN-D42).
+ * The sources (care plan, vitals, medication changes, scales, and the discipline's own plan) the pair's draft is built from: the union over the
+ * sections it drafts. A template that drafts nothing needs none. The backend reads, and asks the read keys of, only these (S3, VN-D42; S4).
  */
 export function draftSourceNeeds(
   encounterType: EncounterType,
   discipline: EncounterDiscipline,
 ): DraftSourceNeeds {
-  return sourceNeedsOf(draftedSectionIds(encounterType, discipline));
+  return sourceNeedsOf(
+    templateKey(encounterType, discipline),
+    draftedSectionIds(encounterType, discipline),
+  );
 }
 
 /** Whether a visit's draft reads the benefit period it falls in (S2): the recertification and the face-to-face visit (`md`, `np`). */

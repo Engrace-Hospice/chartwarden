@@ -14,16 +14,23 @@ import { type DraftSourceNeeds, draftSourceNeeds } from "@chartwarden/hearthnote
 import { ForbiddenError } from "@chartwarden/types";
 import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
 
-/** The sibling routes' read keys: M7 `GET /care-plan/...`, M12 `GET /medication-orders`, M9 `GET /patients/:id/scales/:type/series`. */
+/**
+ * The sibling routes' read keys: M7 `GET /care-plan/...`, M12 `GET /medication-orders`, M9 `GET /patients/:id/scales/:type/series`, and (S4) M15
+ * `GET /discipline-plans/...`. `discipline_plan.read` is not scoped by plan kind (M15's own routes ask it for every kind), so a role that holds it
+ * can read the social-work and the spiritual plan alike; it is not granted to a social-work or chaplain role by default (`discipline-plan-grants.ts`
+ * gives it to `rn` and `rn_case_manager` only), so a tenant grants it to those roles before it enables the switch (S4 deploy note).
+ */
 export const SOURCE_DOMAIN_KEYS = {
   carePlan: "care_plan.read",
   medicationChanges: "prescribing.read",
   scales: "assessment.read_trend",
+  disciplinePlan: "discipline_plan.read",
 } as const;
 
 /**
  * The source-domain read keys the draft of the pair needs: one per source its drafted sections are built from, in the order the draft routes
- * always asked them (care plan, medication orders, scales). A template that drafts nothing needs none. The vitals are M8's own record: `encounter.read`.
+ * always asked them (care plan, medication orders, scales, then the discipline plan). A template that drafts nothing needs none. The vitals are
+ * M8's own record: `encounter.read`.
  */
 export function sourceDomainReadsFor(
   encounterType: EncounterType,
@@ -34,6 +41,7 @@ export function sourceDomainReadsFor(
     ...(needs.carePlan ? [SOURCE_DOMAIN_KEYS.carePlan] : []),
     ...(needs.medicationChanges ? [SOURCE_DOMAIN_KEYS.medicationChanges] : []),
     ...(needs.scales ? [SOURCE_DOMAIN_KEYS.scales] : []),
+    ...(needs.disciplinePlan ? [SOURCE_DOMAIN_KEYS.disciplinePlan] : []),
   ];
 }
 

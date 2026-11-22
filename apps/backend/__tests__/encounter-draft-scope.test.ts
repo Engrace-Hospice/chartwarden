@@ -32,6 +32,10 @@ const DRAFTED_PAIRS: ReadonlySet<string> = new Set([
   "face_to_face:np",
   "lpn_visit:lpn",
   "chha_visit:chha",
+  "msw_assessment:msw",
+  "msw_followup:msw",
+  "chaplain_assessment:chaplain",
+  "chaplain_visit:chaplain",
 ]);
 const UNDRAFTED_PAIRS: readonly Pair[] = (
   Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]
@@ -46,6 +50,7 @@ const outage = async (): Promise<never> => {
 };
 const SEAM_NAMES = [
   "carePlanAsOf",
+  "disciplinePlanAsOf",
   "scaleSeries",
   "medicationChangesBetween",
   "part2DisclosureAllowed",
@@ -116,7 +121,7 @@ describe("the gate and sign read nothing for a template the corpus does not draf
       },
     });
     const encounter = {
-      ...draftEncounterRow({ encounterType: "msw_followup", discipline: "msw" }),
+      ...draftEncounterRow({ encounterType: "telephonic", discipline: "msw" }),
       providerEntityId: null,
       locationId: null,
     };
@@ -187,7 +192,7 @@ describe("the draft routes for a template the corpus does not draft", () => {
   }
 
   it("PUT a section is stale (nothing is drafted to confirm), writes nothing and reads no source", async () => {
-    const { svc, seams, store, events } = service(["msw_followup", "msw"]);
+    const { svc, seams, store, events } = service(["telephonic", "msw"]);
     const error = await svc
       .resolveSection(
         caller,
@@ -204,7 +209,7 @@ describe("the draft routes for a template the corpus does not draft", () => {
   });
 
   it("PUT a section the template lacks is still a 422", async () => {
-    const { svc } = service(["msw_followup", "msw"]);
+    const { svc } = service(["telephonic", "msw"]);
     const error = await svc
       .resolveSection(
         caller,

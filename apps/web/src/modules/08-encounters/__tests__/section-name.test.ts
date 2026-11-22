@@ -56,6 +56,20 @@ describe("ORIGIN_LABEL", () => {
     );
   });
 
+  // S4: the social-work and chaplain sections are built from the discipline's own plan as signed at the visit, never from the care plan.
+  it("says the social-work and chaplain sections are built from the discipline's plan of care at the visit", () => {
+    expect(originsText(["discipline_plan_goal"])).toBe(
+      "the goals of the discipline's plan of care at the visit",
+    );
+    expect(originsText(["discipline_plan_intervention"])).toBe(
+      "the interventions of the discipline's plan of care at the visit",
+    );
+    for (const kind of ["discipline_plan_goal", "discipline_plan_intervention"] as const) {
+      expect(ORIGIN_LABEL[kind]).toContain("at the visit");
+      expect(ORIGIN_LABEL[kind]).not.toMatch(/care plan/i);
+    }
+  });
+
   it("does not claim a level of care the benefit-period sentence may leave out", () => {
     expect(ORIGIN_LABEL.benefit_period).toContain("when one applies");
   });

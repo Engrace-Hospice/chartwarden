@@ -1424,6 +1424,9 @@ export const disciplinePlanReaderDenyStub: DisciplinePlanReader = {
   planSummaryForIdg() {
     throw new NotImplementedError("DisciplinePlanReader");
   },
+  planElementsAsOf() {
+    throw new NotImplementedError("DisciplinePlanReader");
+  },
 };
 
 /** M15 — the MSW psychosocial risk factors M16's bereavement rubric scores (§4.3; M15 never scores, §1.2). */

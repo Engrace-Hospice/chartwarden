@@ -40,6 +40,29 @@ describe("defaultDraftPorts", () => {
     );
   });
 
+  // S4: both ids are plain strings in the port, so a swap would compile; this pins the order each is handed to M15 in, and that only the viewer's
+  // roles and membership (never anything else the viewer carries) cross to the seam.
+  it("S4: delegates the discipline plan read to the registered DisciplinePlanReader, each argument where M15 expects it", async () => {
+    const planElementsAsOf = vi.fn(async () => null);
+    register("DisciplinePlanReader", { planElementsAsOf });
+    await defaultDraftPorts().disciplinePlanAsOf(
+      ORG_ID,
+      PATIENT_ID,
+      "the-admission",
+      "spiritual_plan",
+      { roles: ["chaplain"], membershipId: "the-membership", extra: "never forwarded" } as never,
+      AS_OF,
+    );
+    expect(planElementsAsOf).toHaveBeenCalledWith(
+      ORG_ID,
+      PATIENT_ID,
+      "the-admission",
+      "spiritual_plan",
+      { roles: ["chaplain"], membershipId: "the-membership" },
+      AS_OF,
+    );
+  });
+
   it("delegates the scale series to the registered ScaleSeriesProvider", async () => {
     const series = vi.fn(async () => ({ points: [] }));
     register("ScaleSeriesProvider", { series });

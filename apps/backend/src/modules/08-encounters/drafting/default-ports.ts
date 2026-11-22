@@ -4,7 +4,13 @@
 //
 // The store-backed half (`DraftStorePorts`: time zone, previous visit, vitals, removed links, stored selections)
 // is supplied by PR C2b over the M8 tables: `{ ...defaultDraftPorts(), ...storePorts }`.
-import type { AdmissionId, ElectionPeriodId, LocalDate, PatientId } from "@chartwarden/types";
+import type {
+  AdmissionId,
+  ElectionPeriodId,
+  IsoInstant,
+  LocalDate,
+  PatientId,
+} from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 // M8 `dependsOn` M7: the SAME per-actor Part 2 decision the care-plan reader store applies to its `{ actor }`
 // audience (M39 `evaluateForInternalAccess`, then the §7.6 RN-case-manager carve-out where no release names
@@ -56,6 +62,17 @@ export function defaultDraftPorts(): DraftSeamPorts {
         admissionId,
         viewer,
         asOf,
+      ),
+    // S4 (social-work and chaplain visits): M15's own plan as of the visit instant. M15 resolves the per-viewer Part 2 verdict itself, from the
+    // session identity handed over here (roles and membership), and answers `redacted` when it withheld anything (`readDisciplinePlan`).
+    disciplinePlanAsOf: (organizationId, patientId, admissionId, kind, viewer, asOf) =>
+      getSeam("DisciplinePlanReader").planElementsAsOf(
+        organizationId,
+        patientId as PatientId,
+        admissionId as AdmissionId,
+        kind,
+        { roles: viewer.roles, membershipId: viewer.membershipId },
+        asOf as IsoInstant,
       ),
     scaleSeries: (patientId, scaleType, from, to) =>
       getSeam("ScaleSeriesProvider").series(patientId as PatientId, scaleType, from, to),

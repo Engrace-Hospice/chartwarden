@@ -19,16 +19,30 @@ const LEGACY_ENTRY_COUNT = 23;
 const ROUTINE_ENTRY_COUNT = 25; // narrative-vocab@2026.11.0 (S1)
 const RECERT_ENTRY_COUNT = 11; // narrative-vocab@2026.12.0 (S2)
 const ADMISSION_ENTRY_COUNT = 5; // narrative-vocab@2026.12.1 (S2b)
-const DRAFT_ENTRY_COUNT = ROUTINE_ENTRY_COUNT + RECERT_ENTRY_COUNT + ADMISSION_ENTRY_COUNT;
+const DISCIPLINE_PLAN_ENTRY_COUNT = 6; // narrative-vocab@2026.12.3 (S4)
+const DRAFT_ENTRY_COUNT =
+  ROUTINE_ENTRY_COUNT + RECERT_ENTRY_COUNT + ADMISSION_ENTRY_COUNT + DISCIPLINE_PLAN_ENTRY_COUNT;
 const LEGACY_CODES = new Set(VOCABULARY.slice(0, LEGACY_ENTRY_COUNT).map((e) => e.code));
-/** Every draft-wording entry: the 25 of 2026.11.0, the 11 of 2026.12.0 and the 5 of 2026.12.1. The `visit_reason` entries of 2026.11.1 sit after them. */
+/** Every draft-wording entry: the 25 of 2026.11.0, the 11 of 2026.12.0, the 5 of 2026.12.1 and the 6 of 2026.12.3. The `visit_reason` entries of 2026.11.1 sit after them. */
 const NEW_ENTRIES = VOCABULARY.slice(LEGACY_ENTRY_COUNT, LEGACY_ENTRY_COUNT + DRAFT_ENTRY_COUNT);
 const ROUTINE_ENTRIES = NEW_ENTRIES.slice(0, ROUTINE_ENTRY_COUNT);
 const RECERT_ENTRIES = NEW_ENTRIES.slice(
   ROUTINE_ENTRY_COUNT,
   ROUTINE_ENTRY_COUNT + RECERT_ENTRY_COUNT,
 );
-const ADMISSION_ENTRIES = NEW_ENTRIES.slice(ROUTINE_ENTRY_COUNT + RECERT_ENTRY_COUNT);
+const ADMISSION_ENTRIES = NEW_ENTRIES.slice(
+  ROUTINE_ENTRY_COUNT + RECERT_ENTRY_COUNT,
+  ROUTINE_ENTRY_COUNT + RECERT_ENTRY_COUNT + ADMISSION_ENTRY_COUNT,
+);
+const DISCIPLINE_PLAN_ENTRIES = NEW_ENTRIES.slice(
+  ROUTINE_ENTRY_COUNT + RECERT_ENTRY_COUNT + ADMISSION_ENTRY_COUNT,
+);
+const MSW_AND_CHAPLAIN_TYPES = [
+  "msw_assessment",
+  "msw_followup",
+  "chaplain_assessment",
+  "chaplain_visit",
+] as const;
 /** The S1 entries the recertification visit drafts from too (S2 tags them for it; their wording is pinned below). */
 const SHARED_WITH_RECERT = new Set([
   ...["pps_first", "pps_down", "pps_up", "pps_same"].map((s) => `nv.scale.${s}`),
@@ -50,7 +64,7 @@ const SHARED_WITH_ADMISSION = new Set(
 
 describe("corpus release", () => {
   it("is a new release, registered with its own uuid and a date", () => {
-    expect(VOCAB_VERSION).toBe("narrative-vocab@2026.12.2");
+    expect(VOCAB_VERSION).toBe("narrative-vocab@2026.12.3");
     expect(NARRATIVE_VOCAB_RELEASES.map((r) => r.version)).toEqual([
       "narrative-vocab@2026.06.0",
       "narrative-vocab@2026.11.0",
@@ -58,9 +72,21 @@ describe("corpus release", () => {
       "narrative-vocab@2026.12.0",
       "narrative-vocab@2026.12.1",
       "narrative-vocab@2026.12.2",
+      "narrative-vocab@2026.12.3",
     ]);
     expect(activeNarrativeVocabRelease(VOCAB_VERSION).version).toBe(VOCAB_VERSION);
     expect(activeNarrativeVocabRelease(VOCAB_VERSION).releasedOn).toBe("2026-11-21");
+    expect(new Set(NARRATIVE_VOCAB_RELEASES.map((r) => r.id)).size).toBe(
+      NARRATIVE_VOCAB_RELEASES.length,
+    );
+  });
+
+  it("keeps the 2026.12.2 release row untouched (a note signed under it pins that id)", () => {
+    expect(NARRATIVE_VOCAB_RELEASES[5]).toEqual({
+      version: "narrative-vocab@2026.12.2",
+      id: "5d40c87a-2544-4b85-a46f-cc37f0786e11",
+      releasedOn: "2026-11-21",
+    });
   });
 
   it("keeps the 2026.12.1 release row untouched (a note signed under it pins that id)", () => {
@@ -153,17 +179,18 @@ describe("effectiveReviewStatus", () => {
 });
 
 describe("DRAFT_VOCAB_CODES", () => {
-  it("is exactly the codes added in 2026.11.0, 2026.12.0 and 2026.12.1, none of the 23 earlier ones", () => {
+  it("is exactly the codes added in 2026.11.0, 2026.12.0, 2026.12.1 and 2026.12.3, none of the 23 earlier ones", () => {
     expect([...DRAFT_VOCAB_CODES].sort()).toEqual(NEW_ENTRIES.map((e) => e.code).sort());
     for (const code of LEGACY_CODES) expect(DRAFT_VOCAB_CODES.has(code)).toBe(false);
   });
 });
 
 describe("draft entries", () => {
-  it("adds 25 entries (2026.11.0), then 11 (2026.12.0), then 5 (2026.12.1) after the 23 legacy ones, with unique codes", () => {
+  it("adds 25 entries (2026.11.0), then 11 (2026.12.0), then 5 (2026.12.1), then 6 (2026.12.3) after the 23 legacy ones, with unique codes", () => {
     expect(ROUTINE_ENTRIES).toHaveLength(ROUTINE_ENTRY_COUNT);
     expect(RECERT_ENTRIES).toHaveLength(RECERT_ENTRY_COUNT);
     expect(ADMISSION_ENTRIES).toHaveLength(ADMISSION_ENTRY_COUNT);
+    expect(DISCIPLINE_PLAN_ENTRIES).toHaveLength(DISCIPLINE_PLAN_ENTRY_COUNT);
     expect(new Set(VOCABULARY.map((e) => e.code)).size).toBe(VOCABULARY.length);
     for (const e of NEW_ENTRIES) expect(LEGACY_CODES.has(e.code)).toBe(false);
   });
@@ -203,6 +230,29 @@ describe("draft entries", () => {
     expect(getVocabEntry("nv.cp.intervention_performed")?.phrase).toBe(
       "Care-plan intervention performed: ${intervention_text}",
     );
+  });
+
+  // S4 (VN-D45, VN-D50): the social-work and chaplain plans. Goals draft in the `plan` section of all four templates, interventions in the
+  // MSW templates' `interventions` section only; nothing here is a psychosocial or spiritual finding, so no assessment section drafts.
+  it("the 6 of 2026.12.3 are one draft-only category: 4 goal phrases for the four social-work and chaplain templates, 2 intervention phrases for the social-work templates", () => {
+    const goals = DISCIPLINE_PLAN_ENTRIES.filter((e) => e.code.startsWith("nv.dp.goal_"));
+    const interventions = DISCIPLINE_PLAN_ENTRIES.filter((e) =>
+      e.code.startsWith("nv.dp.intervention"),
+    );
+    expect(goals).toHaveLength(4);
+    expect(interventions).toHaveLength(2);
+    for (const e of DISCIPLINE_PLAN_ENTRIES) {
+      expect(e.category, e.code).toBe("discipline_plan");
+      expect(e.code.startsWith("nv.dp."), e.code).toBe(true);
+    }
+    for (const e of goals) {
+      expect(e.disciplines, e.code).toEqual(["msw", "chaplain"]);
+      expect(e.encounterTypes, e.code).toEqual([...MSW_AND_CHAPLAIN_TYPES]);
+    }
+    for (const e of interventions) {
+      expect(e.disciplines, e.code).toEqual(["msw"]);
+      expect(e.encounterTypes, e.code).toEqual(["msw_assessment", "msw_followup"]);
+    }
   });
 
   it("the 5 of 2026.12.1 are tagged for the RN admission visit alone, in one draft-only category", () => {
@@ -245,6 +295,10 @@ describe("draft entries", () => {
       "face_to_face:np",
       "lpn_visit:lpn",
       "chha_visit:chha",
+      "msw_assessment:msw",
+      "msw_followup:msw",
+      "chaplain_assessment:chaplain",
+      "chaplain_visit:chaplain",
     ]);
     for (const type of Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]) {
       for (const discipline of ENCOUNTER_DISCIPLINE_RULES[type]) {
@@ -258,11 +312,23 @@ describe("draft entries", () => {
   it("surface in the menus of the templates that draft, and only the entries tagged for each", () => {
     const codes = (
       type: EncounterType,
-      discipline: "rn" | "md" | "np" | "lpn" | "chha",
+      discipline: "rn" | "md" | "np" | "lpn" | "chha" | "msw" | "chaplain",
     ): string[] =>
       entriesFor(type, discipline)
         .filter((e) => DRAFT_VOCAB_CODES.has(e.code))
         .map((e) => e.code);
+    const goalCodes = DISCIPLINE_PLAN_ENTRIES.filter((e) => e.code.startsWith("nv.dp.goal_")).map(
+      (e) => e.code,
+    );
+    const interventionCodes = DISCIPLINE_PLAN_ENTRIES.filter((e) =>
+      e.code.startsWith("nv.dp.intervention"),
+    ).map((e) => e.code);
+    for (const type of ["msw_assessment", "msw_followup"] as const) {
+      expect(codes(type, "msw").sort(), type).toEqual([...goalCodes, ...interventionCodes].sort());
+    }
+    for (const type of ["chaplain_assessment", "chaplain_visit"] as const) {
+      expect(codes(type, "chaplain").sort(), type).toEqual([...goalCodes].sort());
+    }
     expect(codes("routine_visit", "rn").sort()).toEqual(ROUTINE_ENTRIES.map((e) => e.code).sort());
     for (const type of ["routine_visit", "lpn_visit"] as const) {
       expect(codes(type, "lpn").sort(), type).toEqual([...SHARED_WITH_LPN].sort());
@@ -291,6 +357,7 @@ describe("draft entries", () => {
       "care_plan_element",
       "chief_concern",
       "decline_evidence",
+      "discipline_plan",
       "medication_change",
       "plan",
       "scale_reading",
@@ -438,6 +505,51 @@ describe("draft wording (neutral, factual, numbers only)", () => {
     expect(admissionWording).toHaveLength(ADMISSION_ENTRY_COUNT);
     for (const [code, phrase] of admissionWording) {
       expect(getVocabEntry(code)?.phrase, code).toBe(phrase);
+    }
+  });
+
+  // S4 (VN-D48): what the plan states, and who stated a goal as the record says so. Never that anything was done, met or achieved,
+  // never a status or progress, never an assessment: a plan lists what is intended; the clinician says what happened.
+  const disciplinePlanWording: ReadonlyArray<readonly [string, string]> = [
+    ["nv.dp.goal_listed", "Plan-of-care goal: ${goal_text}"],
+    ["nv.dp.goal_patient", "Plan-of-care goal, stated by the patient: ${goal_text}"],
+    ["nv.dp.goal_family", "Plan-of-care goal, stated by the family: ${goal_text}"],
+    ["nv.dp.goal_agent", "Plan-of-care goal, stated by the patient's agent: ${goal_text}"],
+    ["nv.dp.intervention", "Plan-of-care intervention: ${intervention_text}"],
+    [
+      "nv.dp.intervention_frequency",
+      "Plan-of-care intervention: ${intervention_text}; frequency: ${frequency_text}",
+    ],
+  ];
+
+  it("pins every 2026.12.3 phrase byte for byte", () => {
+    expect(disciplinePlanWording).toHaveLength(DISCIPLINE_PLAN_ENTRY_COUNT);
+    for (const [code, phrase] of disciplinePlanWording) {
+      expect(getVocabEntry(code)?.phrase, code).toBe(phrase);
+    }
+  });
+
+  it("no 2026.12.3 phrase says anything was done, met or improved, states a status, or assesses", () => {
+    for (const [code, phrase] of disciplinePlanWording) {
+      const text = phrase.toLowerCase();
+      for (const word of [
+        "perform",
+        "complet",
+        "achiev",
+        "met",
+        "progress",
+        "improv",
+        "status",
+        "outcome",
+        "declin",
+        "risk",
+        "assess",
+        "addressed",
+        "discussed",
+        "provided",
+      ]) {
+        expect(text, code).not.toContain(word);
+      }
     }
   });
 

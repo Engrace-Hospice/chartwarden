@@ -28,6 +28,9 @@ import type {
   DisciplinePlanFull,
   DisciplinePlanId,
   DisciplinePlanIdgDigest,
+  DisciplinePlanKind,
+  DisciplinePlanVersionKind,
+  DisciplinePlanVersionStatus,
   FiscalYear,
   IsoInstant,
   LocationId,
@@ -48,6 +51,18 @@ export interface SupervisoryClockRow extends SupervisoryClockFacts {
   readonly locationId: LocationId;
   readonly aideMembershipId: MembershipId | null;
   readonly supervisingRnMembershipId: MembershipId | null;
+}
+
+/**
+ * The plan version in effect at an instant (ADR-0114 S4, VN-D46), handed to the provider RAW: `stateSnapshot` is the jsonb the version was
+ * sealed into at `in_review` (never trusted to have the expected shape). The provider owns the Part 2 verdict, the redaction and the
+ * projection, so no store can hand back an unredacted result for a viewer without disclosure.
+ */
+export interface DisciplinePlanVersionAtRecord {
+  readonly versionId: string;
+  readonly planId: DisciplinePlanId;
+  readonly patientId: PatientId;
+  readonly stateSnapshot: unknown;
 }
 
 /** A numerator/denominator pair the §4.3 rate seams divide. Kept as counts so a zero denominator is visible to
@@ -93,6 +108,22 @@ export interface DisciplinePlanSeamStore {
    *  they reach the store's projection (§2.3) — the DTO carries the flags, never the free text. */
   planById(planId: DisciplinePlanId): Promise<DisciplinePlanFull | null>;
   planIdgDigest(planId: DisciplinePlanId): Promise<DisciplinePlanIdgDigest | null>;
+  /**
+   * ADR-0114 S4: the version of the patient's `kind` plan for `admissionId` the clinicians had signed as of `asOf`: status `signed` or
+   * `superseded`, `signed_at <= asOf`, the LATEST `signed_at` (then `sequence`) of those. A `superseded` row with no `superseded_at` cannot be
+   * placed in time and is never read (fail closed). M15 stamps `superseded_at` only at discharge, never when a later version is signed, so several
+   * versions can qualify at once and the newest signature is the one in effect. The system-built `discharge` version is NEVER read: the discharge
+   * consumer builds it from every current goal and intervention row of the plan (unsigned edits and closed goals included) and stamps it signed
+   * itself, so it is not what the clinicians signed; a visit after the discharge reads the last version they signed. Null when none qualifies, and
+   * for a spiritual plan the patient had declined at or before `asOf`. The snapshot crosses RAW.
+   */
+  planVersionAsOf(
+    organizationId: string,
+    patientId: PatientId,
+    admissionId: AdmissionId,
+    kind: DisciplinePlanKind,
+    asOf: IsoInstant,
+  ): Promise<DisciplinePlanVersionAtRecord | null>;
 
   // ── MSW risk-factor reads (MswRiskFactorReader) ───────────────────────────────────────────────────────
   riskFactorsForAdmission(admissionId: AdmissionId): Promise<readonly MswRiskFactor[]>;
@@ -132,10 +163,29 @@ export interface DisciplinePlanSeamSeedPlan {
   readonly supervisingRnMembershipId?: MembershipId | null;
 }
 
+/** One plan version row the in-memory slice serves the as-of read (S4) from. */
+export interface SeededDisciplinePlanVersion extends DisciplinePlanVersionAtRecord {
+  /** The version's tenant; when set, the slice serves it only to a read for that tenant (the Drizzle store's explicit second wall beside RLS). */
+  readonly organizationId?: string;
+  readonly admissionId: AdmissionId;
+  readonly kind: DisciplinePlanKind;
+  /** The version's own kind (`discharge` is never read); defaults to a signed `initial` version. */
+  readonly versionKind?: DisciplinePlanVersionKind;
+  /** The version's sequence, which settles two versions signed at the same instant; defaults to 0. */
+  readonly sequence?: number;
+  readonly status: DisciplinePlanVersionStatus;
+  readonly signedAt: IsoInstant | null;
+  readonly supersededAt: IsoInstant | null;
+  /** `discipline_care_plan.spiritual_care_declined_at` of the version's plan. */
+  readonly spiritualCareDeclinedAt: IsoInstant | null;
+}
+
 /** The slice's seed. Everything is optional — an unseeded store answers empty/null, which is the honest
  *  "no visible rows under this tenant" answer, NOT a fail-open pass (the gate read seeds `gates` explicitly). */
 export interface DisciplinePlanSeamSeed {
   readonly plans?: readonly DisciplinePlanSeamSeedPlan[];
+  /** The plan versions the as-of read (S4) chooses among. */
+  readonly versions?: readonly SeededDisciplinePlanVersion[];
   readonly riskFactors?: readonly MswRiskFactor[];
   readonly gates?: readonly VolunteerGateFacts[];
   /** Set to true to simulate the §8.7 unreadable-gate-store path (`gatesForMembership` → null). */
@@ -193,6 +243,35 @@ export function createInMemoryDisciplinePlanSeamStore(seed: DisciplinePlanSeamSe
       },
       async planIdgDigest(planId) {
         return byPlanId.get(planId)?.idgDigest ?? null;
+      },
+      async planVersionAsOf(organizationId, patientId, admissionId, kind, asOf) {
+        const at = Date.parse(asOf);
+        if (Number.isNaN(at)) throw new RangeError("planVersionAsOf: asOf is not an instant");
+        const instant = (value: IsoInstant | null): number =>
+          value === null ? Number.NaN : Date.parse(value);
+        const inEffect = (v: SeededDisciplinePlanVersion): boolean => {
+          if (v.organizationId !== undefined && v.organizationId !== organizationId) return false;
+          if (v.patientId !== patientId || v.admissionId !== admissionId || v.kind !== kind) {
+            return false;
+          }
+          // The system-built `discharge` version is never read (see the port).
+          if (v.versionKind === "discharge") return false;
+          if (v.status !== "signed" && v.status !== "superseded") return false;
+          if (!(instant(v.signedAt) <= at)) return false;
+          // A superseded version must say when, or it cannot be placed in time (fail closed).
+          return v.status === "signed" || v.supersededAt !== null;
+        };
+        const [latest] = (seed.versions ?? [])
+          .filter(inEffect)
+          .sort(
+            (a, b) =>
+              instant(b.signedAt) - instant(a.signedAt) || (b.sequence ?? 0) - (a.sequence ?? 0),
+          );
+        if (latest === undefined) return null;
+        const declinedAt = instant(latest.spiritualCareDeclinedAt);
+        if (kind === "spiritual_plan" && declinedAt <= at) return null;
+        const { versionId, planId, patientId: patient, stateSnapshot } = latest;
+        return { versionId, planId, patientId: patient, stateSnapshot };
       },
       async riskFactorsForAdmission(admissionId) {
         return (seed.riskFactors ?? []).filter((f) => f.admissionId === admissionId);

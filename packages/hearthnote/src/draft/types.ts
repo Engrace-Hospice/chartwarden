@@ -24,7 +24,10 @@ export type DraftSourceKind =
   | "caregiver"
   | "advance_directive_acknowledgment"
   // S3 (aide visit): the visit's own recorded ADLs, which lead the drafted `adl` section (one record per visit, so the ref id is the kind):
-  | "recorded_adl";
+  | "recorded_adl"
+  // S4 (social-work and chaplain visits): the goals and interventions of the discipline's own plan (M15), which are not M7 care-plan elements:
+  | "discipline_plan_goal"
+  | "discipline_plan_intervention";
 
 // A `type`, not an `interface`: the canonical serializer takes plain data, and only an alias is
 // assignable to its index-signature shape.
@@ -52,16 +55,39 @@ export interface CarePlanInterventionInput extends DraftSourceBase {
   readonly interventionText: string;
 }
 
+/** Who stated a goal, where the plan's record says it was the patient, the family or the patient's agent; `null` for a clinician's goal. */
+export type DisciplinePlanStatedBy = "patient" | "family" | "agent";
+
+/** A goal of the discipline's plan (S4). `statedBy` is `null` for a clinician's goal and for one a clinician revised: those are not anyone else's words. */
+export interface DisciplinePlanGoalInput extends DraftSourceBase {
+  readonly goalText: string;
+  readonly statedBy: DisciplinePlanStatedBy | null;
+}
+
+/** An intervention of the discipline's plan (S4), with the frequency the plan states for it (`null` or blank for none). */
+export interface DisciplinePlanInterventionInput extends DraftSourceBase {
+  readonly interventionText: string;
+  readonly frequencyText: string | null;
+}
+
+/** The open goals and active interventions of the discipline's own plan (M15) in the signed version in effect at `asOf` (S4). */
+export interface DisciplinePlanDraftInput {
+  readonly goals: readonly DisciplinePlanGoalInput[];
+  readonly interventions: readonly DisciplinePlanInterventionInput[];
+}
+
 /**
- * Which of the four S1 sources a template's draft is built from (S3). A source no drafted section uses is never read, so a note's author
- * needs the read key of only the domains behind what is drafted for them. The S2 and S2b records (benefit period, weight, orders in effect,
- * caregivers, acknowledgment) are decided separately, by encounter type.
+ * Which of the five sources a template's draft is built from (S3, S4): the four S1 sources and the discipline's own plan. A source no drafted
+ * section uses is never read, so a note's author needs the read key of only the domains behind what is drafted for them. The S2 and S2b records
+ * (benefit period, weight, orders in effect, caregivers, acknowledgment) are decided separately, by encounter type.
  */
 export interface DraftSourceNeeds {
   readonly carePlan: boolean;
   readonly vitals: boolean;
   readonly medicationChanges: boolean;
   readonly scales: boolean;
+  /** S4: the social-work and chaplain templates' plan sections are drafted from the discipline's own plan, not the M7 care plan. */
+  readonly disciplinePlan: boolean;
 }
 
 /** The care-plan goals and interventions relevant to this visit (those the author has not removed), in the plan version in effect at `asOf`. */
@@ -218,6 +244,8 @@ export interface DraftInputs {
   readonly caregivers?: readonly CaregiverInput[];
   /** S2b: the advance directive acknowledgment on file at the visit time; absent or `null` for none. Read by the RN admission template only. */
   readonly advanceDirective?: AdvanceDirectiveAcknowledgmentInput | null;
+  /** S4: the discipline's own plan in effect at the visit time; absent or `null` for none. Read by the social-work and chaplain templates only. */
+  readonly disciplinePlan?: DisciplinePlanDraftInput | null;
 }
 
 export interface DraftDeps {

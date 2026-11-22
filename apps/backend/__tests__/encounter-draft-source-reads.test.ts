@@ -49,8 +49,21 @@ describe("sourceDomainReadsFor (the keys follow the sources a template reads)", 
     },
   );
 
+  // S4 (VN-D49): the social-work and chaplain drafts read M15's plan, so they ask M15's read key and none of the S1 sources' keys.
+  it.each([
+    ["msw_assessment", "msw"],
+    ["msw_followup", "msw"],
+    ["chaplain_assessment", "chaplain"],
+    ["chaplain_visit", "chaplain"],
+  ] as const)(
+    "%s by a %s needs the discipline plan's key alone, never the care plan's",
+    (type, discipline) => {
+      expect(sourceDomainReadsFor(type, discipline)).toEqual(["discipline_plan.read"]);
+    },
+  );
+
   it("a template that drafts nothing needs none", () => {
-    expect(sourceDomainReadsFor("msw_followup", "msw")).toEqual([]);
+    expect(sourceDomainReadsFor("telephonic", "msw")).toEqual([]);
     expect(sourceDomainReadsFor("telephonic", "rn")).toEqual([]);
   });
 
@@ -62,17 +75,19 @@ describe("sourceDomainReadsFor (the keys follow the sources a template reads)", 
           ...(needs.carePlan ? [SOURCE_DOMAIN_KEYS.carePlan] : []),
           ...(needs.medicationChanges ? [SOURCE_DOMAIN_KEYS.medicationChanges] : []),
           ...(needs.scales ? [SOURCE_DOMAIN_KEYS.scales] : []),
+          ...(needs.disciplinePlan ? [SOURCE_DOMAIN_KEYS.disciplinePlan] : []),
         ];
         expect(sourceDomainReadsFor(type, discipline), `${type}:${discipline}`).toEqual(expected);
       }
     }
   });
 
-  it("names the keys of the sibling routes: M7 care plan, M12 medication orders, M9 scale series", () => {
+  it("names the keys of the sibling routes: M7 care plan, M12 medication orders, M9 scale series, M15 discipline plans", () => {
     expect(SOURCE_DOMAIN_KEYS).toEqual({
       carePlan: "care_plan.read",
       medicationChanges: "prescribing.read",
       scales: "assessment.read_trend",
+      disciplinePlan: "discipline_plan.read",
     });
   });
 });
@@ -115,7 +130,22 @@ describe("assertMayReadSourceDomains", () => {
     ).toThrow(/care_plan\.read/);
   });
 
+  it("asks a social worker and a chaplain for the discipline plan's key, 403 naming it, and nothing else", () => {
+    expect(() =>
+      assertMayReadSourceDomains("msw_followup", "msw", new Set(["discipline_plan.read"])),
+    ).not.toThrow();
+    for (const [type, discipline] of [
+      ["msw_assessment", "msw"],
+      ["chaplain_visit", "chaplain"],
+    ] as const) {
+      // The care plan's key is not the discipline plan's: holding it does not read M15's plan.
+      expect(() =>
+        assertMayReadSourceDomains(type, discipline, new Set(["care_plan.read", "encounter.read"])),
+      ).toThrow(/discipline_plan\.read/);
+    }
+  });
+
   it("asks nothing for a template that drafts nothing", () => {
-    expect(() => assertMayReadSourceDomains("msw_followup", "msw", new Set())).not.toThrow();
+    expect(() => assertMayReadSourceDomains("telephonic", "msw", new Set())).not.toThrow();
   });
 });

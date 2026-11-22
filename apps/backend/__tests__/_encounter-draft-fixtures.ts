@@ -159,6 +159,7 @@ type Spied = { readonly [K in keyof DraftPorts]: Mock<DraftPorts[K]> };
 export function fakePorts(over: Partial<DraftPorts> = {}): Spied {
   const defaults: DraftPorts = {
     carePlanAsOf: async () => null,
+    disciplinePlanAsOf: async () => null,
     scaleSeries: honestSeries({}),
     medicationChangesBetween: async () => [],
     electionPeriods: async () => [],

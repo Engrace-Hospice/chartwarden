@@ -136,6 +136,7 @@ describe("the release that added them", () => {
       "narrative-vocab@2026.12.0",
       "narrative-vocab@2026.12.1",
       "narrative-vocab@2026.12.2",
+      "narrative-vocab@2026.12.3",
     ]);
     expect(narrativeVocabReleaseById("81dcb265-d2ef-456b-b029-1bcce25105e7")?.version).toBe(
       "narrative-vocab@2026.06.0",

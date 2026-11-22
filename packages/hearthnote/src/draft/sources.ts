@@ -30,6 +30,11 @@
 // phrases, so `assessment` and `symptom_management` are not drafted for them (VN-D39).
 // The aide visit (S3, `chha_visit` by a `chha`): adl     the care plan's active aide interventions, less those the author removed   by source id
 //   (the recorded ADLs are stated first in the section, by the compiler, as the recorded vitals' body measures are).
+// The social-work visits (S4, `msw_assessment` and `msw_followup`):
+//   interventions        the discipline plan's active interventions (scope, and frequency when stated)       by source id
+//   plan                 the discipline plan's open goals (words, and who stated them where the record says) by source id
+// The chaplain visits (S4, `chaplain_assessment` and `chaplain_visit`): plan, as above. No psychosocial, spiritual, family or reason-for-visit
+// section is drafted for any of the four (VN-D45), and nothing of a goal's status, progress or outcome is ever stated (VN-D48).
 // Every other template is sourced like the routine visit; the corpus tags decide whether it drafts at all (`scope.ts`).
 //
 // Sources are ordered by id (or the key above), never by the order they arrived in: a database that returns
@@ -51,6 +56,8 @@ import type {
   BenefitPeriodDraftInput,
   CarePlanDraftInput,
   CaregiverInput,
+  DisciplinePlanDraftInput,
+  DisciplinePlanStatedBy,
   DraftInputs,
   DraftSourceBase,
   DraftSourceNeeds,
@@ -295,6 +302,60 @@ function interventionGroups(carePlan: CarePlanDraftInput | null): readonly Sourc
       }),
     ]),
   );
+}
+
+// ── the social-work and chaplain plan (S4) ─────────────────────────────────────────────────────────
+const DISCIPLINE_PLAN_CODES = {
+  goal: {
+    clinician: "nv.dp.goal_listed",
+    patient: "nv.dp.goal_patient",
+    family: "nv.dp.goal_family",
+    agent: "nv.dp.goal_agent",
+  } satisfies Readonly<Record<"clinician" | DisciplinePlanStatedBy, string>>,
+  intervention: "nv.dp.intervention",
+  interventionFrequency: "nv.dp.intervention_frequency",
+} as const;
+
+/** The phrase of a goal: who stated it where the record says it was not the clinician (`null` is the clinician's, or a revised one's). */
+const goalCodeOf = (statedBy: DisciplinePlanStatedBy | null): string =>
+  statedBy === null
+    ? DISCIPLINE_PLAN_CODES.goal.clinician
+    : tableValue(DISCIPLINE_PLAN_CODES.goal, statedBy, "discipline-plan goal statedBy");
+
+/** One sentence per open goal of the discipline's plan, by goal id: its words, and who stated them where the record says so. Never a status or progress. */
+function disciplinePlanGoalGroups(
+  plan: DisciplinePlanDraftInput | null | undefined,
+): readonly SourceGroup[] {
+  return sortedBy(plan?.goals ?? [], (g) => [g.id]).map((goal) =>
+    group("discipline_plan_goal", goal, [
+      sentence(goalCodeOf(goal.statedBy), {
+        goal_text: sentenceText(goal.goalText, `discipline-plan goal '${goal.id}' text`),
+      }),
+    ]),
+  );
+}
+
+/** One sentence per active intervention of the discipline's plan, by id: its scope, and its frequency when the plan states one. */
+function disciplinePlanInterventionGroups(
+  plan: DisciplinePlanDraftInput | null | undefined,
+): readonly SourceGroup[] {
+  return sortedBy(plan?.interventions ?? [], (i) => [i.id]).map((intervention) => {
+    const interventionText = sentenceText(
+      intervention.interventionText,
+      `discipline-plan intervention '${intervention.id}' text`,
+    );
+    // A frequency that is nothing once its trailing periods are dropped is no frequency (as `sentenceText` would refuse it): the plan then states
+    // the intervention alone, rather than one sealed "." making the draft unavailable.
+    const frequency = intervention.frequencyText?.trim().replace(/[.\s]+$/u, "") ?? "";
+    return group("discipline_plan_intervention", intervention, [
+      frequency.length === 0
+        ? sentence(DISCIPLINE_PLAN_CODES.intervention, { intervention_text: interventionText })
+        : sentence(DISCIPLINE_PLAN_CODES.interventionFrequency, {
+            intervention_text: interventionText,
+            frequency_text: frequency,
+          }),
+    ]);
+  });
 }
 
 // ── medication changes ─────────────────────────────────────────────────────────────────────────────
@@ -663,13 +724,31 @@ const aideVisitMap: SourceMap = (inputs) => [
   [AIDE_SECTION.adl, interventionGroups(inputs.carePlan)],
 ];
 
-/** The templates S2 and S3 source differently from the routine visit. Every other template is sourced like the routine visit (S1's rule). */
+/** S4: the social-work visits' two drafted sections, from the discipline's own plan. */
+const MSW_SECTION = { interventions: "interventions", plan: "plan" } as const;
+
+/** The social-work visits (S4): the plan's active interventions in `interventions` and its open goals in `plan`. No assessment section is drafted. */
+const mswVisitMap: SourceMap = (inputs) => [
+  [MSW_SECTION.interventions, disciplinePlanInterventionGroups(inputs.disciplinePlan)],
+  [MSW_SECTION.plan, disciplinePlanGoalGroups(inputs.disciplinePlan)],
+];
+
+/** The chaplain visits (S4): the plan's open goals in `plan`. The chaplain's template has no interventions section, and no assessment section is drafted. */
+const chaplainVisitMap: SourceMap = (inputs) => [
+  [MSW_SECTION.plan, disciplinePlanGoalGroups(inputs.disciplinePlan)],
+];
+
+/** The templates S2, S3 and S4 source differently from the routine visit. Every other template is sourced like the routine visit (S1's rule). */
 const SOURCE_MAPS: ReadonlyMap<string, SourceMap> = new Map([
   [templateKey("recert_visit", "rn"), recertVisitMap],
   [templateKey("admission_visit", "rn"), admissionVisitMap],
   [templateKey("face_to_face", "md"), faceToFaceVisitMap],
   [templateKey("face_to_face", "np"), faceToFaceVisitMap],
   [templateKey("chha_visit", "chha"), aideVisitMap],
+  [templateKey("msw_assessment", "msw"), mswVisitMap],
+  [templateKey("msw_followup", "msw"), mswVisitMap],
+  [templateKey("chaplain_assessment", "chaplain"), chaplainVisitMap],
+  [templateKey("chaplain_visit", "chaplain"), chaplainVisitMap],
 ]);
 
 const scaleCodesOf = (sectionId: string): readonly string[] =>
@@ -685,6 +764,14 @@ const baseSectionPhrases: Readonly<Record<string, readonly string[]>> = {
   ],
   [SECTION.plan]: [CARE_PLAN_CODES.goalListed, CARE_PLAN_CODES.goalProgress],
 };
+
+/** The goal phrases (S4): the plain one and the three that say who stated the goal. */
+const DISCIPLINE_GOAL_PHRASES: readonly string[] = Object.values(DISCIPLINE_PLAN_CODES.goal);
+/** The intervention phrases (S4): with and without the plan's stated frequency. */
+const DISCIPLINE_INTERVENTION_PHRASES: readonly string[] = [
+  DISCIPLINE_PLAN_CODES.intervention,
+  DISCIPLINE_PLAN_CODES.interventionFrequency,
+];
 
 const prognosisEvidencePhrases: readonly string[] = [
   ...Object.values(RECERT_CODES.ppsBaseline),
@@ -746,6 +833,23 @@ const SECTION_PHRASES: ReadonlyMap<string, Readonly<Record<string, readonly stri
     templateKey("chha_visit", "chha"),
     { [AIDE_SECTION.adl]: [CARE_PLAN_CODES.interventionPerformed] },
   ],
+  // S4: goals draft in the `plan` section of all four; interventions in the social-work templates' `interventions` section only.
+  [
+    templateKey("msw_assessment", "msw"),
+    {
+      [MSW_SECTION.interventions]: DISCIPLINE_INTERVENTION_PHRASES,
+      [MSW_SECTION.plan]: DISCIPLINE_GOAL_PHRASES,
+    },
+  ],
+  [
+    templateKey("msw_followup", "msw"),
+    {
+      [MSW_SECTION.interventions]: DISCIPLINE_INTERVENTION_PHRASES,
+      [MSW_SECTION.plan]: DISCIPLINE_GOAL_PHRASES,
+    },
+  ],
+  [templateKey("chaplain_assessment", "chaplain"), { [MSW_SECTION.plan]: DISCIPLINE_GOAL_PHRASES }],
+  [templateKey("chaplain_visit", "chaplain"), { [MSW_SECTION.plan]: DISCIPLINE_GOAL_PHRASES }],
 ]);
 
 /** The phrases each section of the template with this key is drafted from. */
@@ -753,14 +857,22 @@ export function draftSectionPhrases(key: string): Readonly<Record<string, readon
   return SECTION_PHRASES.get(key) ?? ROUTINE_SECTION_PHRASES;
 }
 
-const SOURCE_NAMES = ["carePlan", "vitals", "medicationChanges", "scales"] as const;
+const SOURCE_NAMES = [
+  "carePlan",
+  "vitals",
+  "medicationChanges",
+  "scales",
+  "disciplinePlan",
+] as const;
+type SourceName = (typeof SOURCE_NAMES)[number];
 
 /**
  * The S1 sources each drafted section is built from (S3). One row per section id any template drafts; a template reads the union over the
  * sections it drafts (`draftSourceNeeds` in scope.ts), and the S2 and S2b records are decided by encounter type, so those rows are empty.
  * `prognosis` is the PPS against the period's first reading, then the weight (the weight is the S2 record).
+ * A template with a row of its own in `TEMPLATE_SECTION_SOURCES` is read from that row alone.
  */
-const SECTION_SOURCES: Readonly<Record<string, readonly (typeof SOURCE_NAMES)[number][]>> = {
+const SECTION_SOURCES: Readonly<Record<string, readonly SourceName[]>> = {
   [SECTION.vitals]: ["vitals"],
   [SECTION.assessment]: ["scales"],
   [SECTION.symptoms]: ["scales"],
@@ -778,13 +890,33 @@ const SECTION_SOURCES: Readonly<Record<string, readonly (typeof SOURCE_NAMES)[nu
 };
 
 /**
- * The S1 sources the given drafted sections need read. Throws for a section with no row above: a section the corpus can draft must say which
- * sources feed it, or the backend would read none of them (a draft silently short of its sources).
+ * S4: `interventions` and `plan` are section ids many templates share, but the social-work and chaplain templates draft them from the
+ * discipline's own plan, not the M7 care plan, so a section id alone cannot say what feeds it: these templates carry their own rows.
  */
-export function sourceNeedsOf(sectionIds: Iterable<string>): DraftSourceNeeds {
+const DISCIPLINE_PLAN_SECTION_SOURCES: Readonly<Record<string, readonly SourceName[]>> = {
+  [MSW_SECTION.interventions]: ["disciplinePlan"],
+  [MSW_SECTION.plan]: ["disciplinePlan"],
+};
+
+const TEMPLATE_SECTION_SOURCES: ReadonlyMap<
+  string,
+  Readonly<Record<string, readonly SourceName[]>>
+> = new Map([
+  [templateKey("msw_assessment", "msw"), DISCIPLINE_PLAN_SECTION_SOURCES],
+  [templateKey("msw_followup", "msw"), DISCIPLINE_PLAN_SECTION_SOURCES],
+  [templateKey("chaplain_assessment", "chaplain"), DISCIPLINE_PLAN_SECTION_SOURCES],
+  [templateKey("chaplain_visit", "chaplain"), DISCIPLINE_PLAN_SECTION_SOURCES],
+]);
+
+/**
+ * The sources the given drafted sections of the template with this key need read. Throws for a section with no row: a section the corpus can
+ * draft must say which sources feed it, or the backend would read none of them (a draft silently short of its sources).
+ */
+export function sourceNeedsOf(key: string, sectionIds: Iterable<string>): DraftSourceNeeds {
+  const rows = TEMPLATE_SECTION_SOURCES.get(key) ?? SECTION_SOURCES;
   const needed = new Set<string>();
   for (const id of sectionIds) {
-    const sources = SECTION_SOURCES[id];
+    const sources = rows[id];
     if (sources === undefined) throw new Error(`draft section '${id}' declares no sources`);
     for (const source of sources) needed.add(source);
   }
@@ -793,6 +925,7 @@ export function sourceNeedsOf(sectionIds: Iterable<string>): DraftSourceNeeds {
     vitals: needed.has("vitals"),
     medicationChanges: needed.has("medicationChanges"),
     scales: needed.has("scales"),
+    disciplinePlan: needed.has("disciplinePlan"),
   };
 }
 

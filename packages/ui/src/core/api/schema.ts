@@ -68097,7 +68097,7 @@ export interface operations {
                             contentHash: string | null;
                             corpusVersion: string | null;
                             part2Derived: boolean | null;
-                            origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change" | "weight_reading" | "benefit_period" | "face_to_face" | "certification" | "medication_order" | "caregiver" | "advance_directive_acknowledgment" | "recorded_adl")[];
+                            origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change" | "weight_reading" | "benefit_period" | "face_to_face" | "certification" | "medication_order" | "caregiver" | "advance_directive_acknowledgment" | "recorded_adl" | "discipline_plan_goal" | "discipline_plan_intervention")[];
                         }[];
                     };
                 };
@@ -68140,7 +68140,7 @@ export interface operations {
                         contentHash: string | null;
                         corpusVersion: string | null;
                         part2Derived: boolean | null;
-                        origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change" | "weight_reading" | "benefit_period" | "face_to_face" | "certification" | "medication_order" | "caregiver" | "advance_directive_acknowledgment" | "recorded_adl")[];
+                        origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change" | "weight_reading" | "benefit_period" | "face_to_face" | "certification" | "medication_order" | "caregiver" | "advance_directive_acknowledgment" | "recorded_adl" | "discipline_plan_goal" | "discipline_plan_intervention")[];
                     };
                 };
             };
@@ -68778,7 +68778,7 @@ export interface operations {
                             contentHash: string | null;
                             corpusVersion: string | null;
                             part2Derived: boolean | null;
-                            origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change" | "weight_reading" | "benefit_period" | "face_to_face" | "certification" | "medication_order" | "caregiver" | "advance_directive_acknowledgment" | "recorded_adl")[];
+                            origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change" | "weight_reading" | "benefit_period" | "face_to_face" | "certification" | "medication_order" | "caregiver" | "advance_directive_acknowledgment" | "recorded_adl" | "discipline_plan_goal" | "discipline_plan_intervention")[];
                         }[];
                     };
                 };
@@ -68820,7 +68820,7 @@ export interface operations {
                         contentHash: string | null;
                         corpusVersion: string | null;
                         part2Derived: boolean | null;
-                        origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change" | "weight_reading" | "benefit_period" | "face_to_face" | "certification" | "medication_order" | "caregiver" | "advance_directive_acknowledgment" | "recorded_adl")[];
+                        origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change" | "weight_reading" | "benefit_period" | "face_to_face" | "certification" | "medication_order" | "caregiver" | "advance_directive_acknowledgment" | "recorded_adl" | "discipline_plan_goal" | "discipline_plan_intervention")[];
                     };
                 };
             };

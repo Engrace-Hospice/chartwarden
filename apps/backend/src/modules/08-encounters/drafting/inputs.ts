@@ -10,6 +10,8 @@ import type {
   BenefitPeriodDraftInput,
   CarePlanDraftInput,
   CaregiverInput,
+  DisciplinePlanDraftInput,
+  DisciplinePlanStatedBy,
   DraftInputs,
   MedicationChangeInput,
   MedicationChangeKind,
@@ -27,6 +29,9 @@ import {
 } from "@chartwarden/hearthnote";
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
 import type {
+  DisciplineGoalAsOf,
+  DisciplinePlanElementsAsOf,
+  DisciplinePlanKind,
   ElectionPeriodSummary,
   EncounterDiscipline,
   InterventionDiscipline,
@@ -100,6 +105,54 @@ function carePlanInput(
   };
 }
 
+// ── the discipline's own plan (S4) ─────────────────────────────────────────────────────────────────
+/** The plan kind a social-work or chaplain note is drafted from. Any other discipline has none: its draft never reads this source. */
+function disciplinePlanKindFor(discipline: EncounterDiscipline): DisciplinePlanKind {
+  switch (discipline) {
+    case "msw":
+      return "msw_plan";
+    case "chaplain":
+      return "spiritual_plan";
+    default:
+      throw draftUnavailable("the discipline plan (this discipline has none)");
+  }
+}
+
+/**
+ * Who stated a goal, where the plan's record says it was not the clinician. A goal a clinician revised is the clinician's words now, so it is
+ * listed without the attribution (never as the patient's, family's or agent's).
+ */
+function statedByOf(goal: DisciplineGoalAsOf): DisciplinePlanStatedBy | null {
+  if (goal.revised) return null;
+  switch (goal.source) {
+    case "patient_stated":
+      return "patient";
+    case "family_stated":
+      return "family";
+    case "agent_stated":
+      return "agent";
+    default:
+      return null;
+  }
+}
+
+function disciplinePlanInput(plan: DisciplinePlanElementsAsOf): DisciplinePlanDraftInput {
+  return {
+    goals: plan.goals.map((g) => ({
+      id: g.goalId,
+      goalText: g.text,
+      statedBy: statedByOf(g),
+      sudRelated: g.sudRelated,
+    })),
+    interventions: plan.interventions.map((i) => ({
+      id: i.interventionId,
+      interventionText: i.scopeText,
+      frequencyText: i.frequencyText,
+      sudRelated: i.sudRelated,
+    })),
+  };
+}
+
 /** The viewer's Part 2 verdict, asked at most once per draft and only by a source that needs it. */
 type Part2Verdict = () => Promise<boolean>;
 
@@ -151,6 +204,39 @@ async function readCarePlan(
   if (plan.redacted && (await part2Verdict()))
     throw draftUnavailable("the care plan (withheld from a viewer entitled to it)");
   return carePlanInput(plan, removed);
+}
+
+/**
+ * S4: the open goals and active interventions of the discipline's own plan (M15) in the signed version in effect at the visit time, for this
+ * viewer. M15 redacts Part 2 per viewer in its own M39 call, so the cross-check of `readCarePlan` applies here as well: a plan it says it
+ * withheld from a viewer this draft's own verdict clears was cut by an outage or a consent change in between, and is never passed off as complete.
+ * No link is persisted (S4a): a confirmation applies to the section as a whole, so there is no removed-element set to apply either.
+ */
+async function readDisciplinePlan(
+  ports: DraftPorts,
+  encounter: DraftEncounter,
+  viewer: DraftViewer,
+  asOf: string,
+  part2Verdict: Part2Verdict,
+): Promise<DisciplinePlanDraftInput | null> {
+  const kind = disciplinePlanKindFor(encounter.discipline);
+  const plan = await guarded("the discipline plan", () =>
+    ports.disciplinePlanAsOf(
+      encounter.organizationId,
+      encounter.patientId,
+      encounter.admissionId,
+      kind,
+      { roles: viewer.roles, membershipId: viewer.membershipId },
+      asOf,
+    ),
+  );
+  if (plan === null) return null;
+  // A plan that is not this patient's must never reach a note, however the seam came to return it.
+  if (plan.patientId !== encounter.patientId)
+    throw draftUnavailable("the discipline plan (wrong patient)");
+  if (plan.redacted && (await part2Verdict()))
+    throw draftUnavailable("the discipline plan (withheld from a viewer entitled to it)");
+  return disciplinePlanInput(plan);
 }
 
 // ── scale readings ─────────────────────────────────────────────────────────────────────────────────
@@ -599,6 +685,7 @@ export async function readDraftInputs(
     activeMedications,
     caregivers,
     advanceDirective,
+    disciplinePlan,
   ] = await Promise.all([
     needs.carePlan ? readCarePlan(ports, encounter, viewer, asOf, part2Verdict) : null,
     needs.scales
@@ -615,6 +702,8 @@ export async function readDraftInputs(
     admission ? readActiveMedications(ports, encounter, asOf, part2Verdict) : [],
     admission ? readCaregivers(ports, encounter) : [],
     admission ? readAdvanceDirective(ports, encounter, asOf) : null,
+    // S4: the social-work and chaplain visits read the discipline's own plan, and no other visit does.
+    needs.disciplinePlan ? readDisciplinePlan(ports, encounter, viewer, asOf, part2Verdict) : null,
   ]);
   return {
     encounterType: encounter.encounterType,
@@ -627,6 +716,7 @@ export async function readDraftInputs(
     ...(readsPeriod ? { weight } : {}),
     ...(recert ? { benefitPeriod } : {}),
     ...(admission ? { activeMedications, caregivers, advanceDirective } : {}),
+    ...(needs.disciplinePlan ? { disciplinePlan } : {}),
   };
 }
 
