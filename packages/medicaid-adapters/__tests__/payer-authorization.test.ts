@@ -19,7 +19,7 @@ const event = (
     | "authorization_revoked"
     | "unknown_unverified",
   createdAt: string,
-  id = eventKind,
+  id: string = eventKind,
   overrides: Partial<{
     canonicalPayerId: string;
     serviceFrom: string;

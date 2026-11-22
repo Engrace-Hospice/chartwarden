@@ -21,19 +21,26 @@ export interface PayerAuthorizationEventFact {
   readonly supersedesId?: string | null;
 }
 
-export type EvidenceLifecycleStatus =
+export type ClinicalDocumentEvidenceStatus = "missing" | "unverified" | "available";
+export type NotificationEvidenceStatus =
   | "missing"
   | "unverified"
-  | "available"
   | "prepared"
   | "sent"
-  | "acknowledged"
+  | "acknowledged";
+export type AuthorizationEvidenceStatus =
+  | "missing"
+  | "unverified"
   | "pending"
   | "approved"
   | "denied"
   | "expired"
   | "revoked"
   | "ambiguous";
+export type EvidenceLifecycleStatus =
+  | ClinicalDocumentEvidenceStatus
+  | NotificationEvidenceStatus
+  | AuthorizationEvidenceStatus;
 
 /**
  * Project event evidence without equating a local document, notification, receipt or authorization.
@@ -45,9 +52,9 @@ export function resolvePayerAuthorizationEvidence(input: {
   readonly serviceTo: string;
   readonly events: readonly PayerAuthorizationEventFact[];
 }): {
-  readonly clinicalDocuments: EvidenceLifecycleStatus;
-  readonly notification: EvidenceLifecycleStatus;
-  readonly authorization: EvidenceLifecycleStatus;
+  readonly clinicalDocuments: ClinicalDocumentEvidenceStatus;
+  readonly notification: NotificationEvidenceStatus;
+  readonly authorization: AuthorizationEvidenceStatus;
   readonly authorizationSatisfied: false;
   readonly reasonCodes: readonly string[];
 } {
@@ -69,7 +76,9 @@ export function resolvePayerAuthorizationEvidence(input: {
   );
   const latest = (...kinds: PayerAuthorizationEventKind[]) =>
     newestFirst.find((event) => kinds.includes(event.eventKind));
-  const lifecycle = (event: PayerAuthorizationEventFact | undefined): EvidenceLifecycleStatus => {
+  const notificationLifecycle = (
+    event: PayerAuthorizationEventFact | undefined,
+  ): NotificationEvidenceStatus => {
     if (!event) return "missing";
     if (event.evidenceStatus !== "verified") return "unverified";
     switch (event.eventKind) {
@@ -79,6 +88,16 @@ export function resolvePayerAuthorizationEvidence(input: {
         return "sent";
       case "receipt_acknowledged":
         return "acknowledged";
+      default:
+        return "unverified";
+    }
+  };
+  const authorizationLifecycle = (
+    event: PayerAuthorizationEventFact | undefined,
+  ): AuthorizationEvidenceStatus => {
+    if (!event) return "missing";
+    if (event.evidenceStatus !== "verified") return "unverified";
+    switch (event.eventKind) {
       case "authorization_pending":
         return "pending";
       case "authorization_approved":
@@ -114,13 +133,13 @@ export function resolvePayerAuthorizationEvidence(input: {
     ? authorizationEvents.filter((event) => event.createdAt === topAuth.createdAt)
     : [];
   const ambiguous = new Set(sameTime.map((event) => event.eventKind)).size > 1;
-  const authorization = ambiguous ? "ambiguous" : lifecycle(topAuth);
+  const authorization = ambiguous ? "ambiguous" : authorizationLifecycle(topAuth);
   const clinicalDocuments = documentEvent
     ? documentEvent.evidenceStatus === "verified"
       ? "available"
       : "unverified"
     : "missing";
-  const notification = lifecycle(notificationEvent);
+  const notification = notificationLifecycle(notificationEvent);
   const reasons: string[] = [];
   if (clinicalDocuments !== "available") reasons.push("CLINICAL_DOCUMENT_EVIDENCE_UNVERIFIED");
   if (notification !== "acknowledged") reasons.push("PAYER_NOTIFICATION_RECEIPT_UNVERIFIED");

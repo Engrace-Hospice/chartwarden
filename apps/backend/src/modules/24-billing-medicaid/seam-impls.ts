@@ -599,8 +599,8 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
               base.assignmentState === base.serviceState &&
               s.assignmentVersionSnapshot === base.assignmentVersion &&
               s.programKindSnapshot === base.programKind &&
-              !!s.programAssignmentIdSnapshot &&
-              s.programAssignmentIdSnapshot === base.programAssignmentId &&
+              !!s.assignmentId &&
+              s.assignmentId === base.programAssignmentId &&
               s.submittedClaimVersion === base.claimVersion &&
               !!s.submittedAt &&
               !!s.vendorTransactionId &&
