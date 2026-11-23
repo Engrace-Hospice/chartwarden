@@ -180,6 +180,28 @@ export interface MedicaidEraMatchDecision {
   readonly claimVersion: number | null;
 }
 
+/**
+ * M24 claim states (`m24_claim_state`) in which an ERA can legitimately refer to the claim: it was sent (SUBMITTED, POLLING,
+ * ACK_*) or the first remittance already moved it (PAID, DENIED). A reversal, recoupment or second ERA only ever arrives
+ * after PAID/DENIED, so excluding them would make `reversal_or_recoupment_review` unreachable for its main scenario.
+ * The read seam (`submissionEvidenceForLine`) is looser by design: it calls every state but REPLACED/VOIDED/ABANDONED
+ * active; this layer additionally refuses the states below as "never submitted".
+ */
+const SUBMITTED_CLAIM_STATES: ReadonlySet<string> = new Set([
+  "SUBMITTED",
+  "POLLING",
+  "ACK_PENDING",
+  "ACK_TIMEOUT",
+  "ACK_ACCEPTED",
+  "ACK_REJECTED",
+  "ACK_PARTIAL",
+  "PAID",
+  "DENIED",
+]);
+
+/** Claim versions that are no longer the live one (the seam's `activeClaim` excludes the same three). */
+const INACTIVE_CLAIM_STATES: ReadonlySet<string> = new Set(["VOIDED", "REPLACED", "ABANDONED"]);
+
 /** Exact control identity is only a candidate. Scope, payer, period, lineage and persisted send evidence are mandatory. */
 export function matchMedicaidEraClaim(input: {
   readonly attribution: MedicaidEraAttribution;
@@ -269,35 +291,26 @@ export function matchMedicaidEraClaim(input: {
       claimVersion: null,
     };
   const candidate = payer[0]!;
-  const result = (
-    status: MedicaidEraMatchStatus,
-    reasonCode: string,
-  ): MedicaidEraMatchDecision => ({
-    status,
-    reasonCode,
-    claimId: candidate.claimId,
-    submissionId: candidate.submission.submissionId,
-    claimVersion: candidate.claimVersion,
-  });
+  // Only a complete match may name the claim or submission: every refusal would otherwise confirm to the caller that a
+  // claim with this control number exists in the tenant, and for which submission.
+  const result = (status: MedicaidEraMatchStatus, reasonCode: string): MedicaidEraMatchDecision =>
+    status === "MATCHED"
+      ? {
+          status,
+          reasonCode,
+          claimId: candidate.claimId,
+          submissionId: candidate.submission.submissionId,
+          claimVersion: candidate.claimVersion,
+        }
+      : { status, reasonCode, claimId: null, submissionId: null, claimVersion: null };
   if (candidate.replacementLineage === "unresolved")
     return result("CORRECTION_LINEAGE_UNRESOLVED", "CLAIM_REPLACEMENT_LINEAGE_UNRESOLVED");
-  if (
-    candidate.replacementLineage === "void" ||
-    candidate.claimState === "VOIDED" ||
-    candidate.claimState === "REPLACED"
-  )
-    return result("CLAIM_VERSION_CONFLICT", "CLAIM_VERSION_NOT_ACTIVE");
-  if (
-    !new Set([
-      "SUBMITTED",
-      "POLLING",
-      "ACK_PENDING",
-      "ACK_TIMEOUT",
-      "ACK_ACCEPTED",
-      "ACK_REJECTED",
-      "ACK_PARTIAL",
-    ]).has(candidate.claimState)
-  )
+  if (candidate.replacementLineage === "void" || INACTIVE_CLAIM_STATES.has(candidate.claimState))
+    return result(
+      "CLAIM_VERSION_CONFLICT",
+      candidate.claimState === "ABANDONED" ? "CLAIM_ABANDONED" : "CLAIM_VERSION_NOT_ACTIVE",
+    );
+  if (!SUBMITTED_CLAIM_STATES.has(candidate.claimState))
     return result("SUBMISSION_UNVERIFIED", "CLAIM_HAS_NO_SUBMITTED_STATE");
   if (
     candidate.submission.status !== "verified_submitted" ||
