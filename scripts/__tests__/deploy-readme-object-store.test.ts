@@ -103,6 +103,27 @@ describe("deploy/production/README.md documents the object-store contract", () =
     expect(runbook).not.toContain("no longer look at a `minio-data` volume");
   });
 
+  it("compliance/controls.yaml points at README sections that exist and records the retained plaintext volume and the alias window", () => {
+    const controls = read("compliance/controls.yaml");
+    // The pointer used to read "(README, cutover)": a section that no longer exists.
+    expect(controls).not.toContain("(README, cutover)");
+    // (a plain YAML scalar cannot hold ": ", so the register names the section without its "Object store: " prefix)
+    expect(readme).toContain("## Object store: removing the retired MinIO data");
+    expect(controls).toContain("the section on removing the retired MinIO data");
+    expect(controls).toContain("in plaintext, outside the backups");
+    // The temporary alias window for the digest-pinned backup image (CW-CP-01).
+    expect(controls).toContain("TEMPORARY ALIAS");
+    expect(controls).toContain("CHARTWARDEN_BACKUP_IMAGE is repinned");
+    // CW-AC-05 names the retained volume; CW-AU-01 cites the receiver test and states its known limit.
+    expect(controls).toContain(
+      "a plaintext copy of every document remains in the retired MinIO volume",
+    );
+    expect(controls).toContain(
+      "apps/backend/src/modules/22-documents/access-log/minio-access-log.test.ts",
+    );
+    expect(controls).toContain("no live test drives a real Fluent Bit");
+  });
+
   it("the historical infra-rename runbook carries the superseded note for its MinIO steps", () => {
     expect(read("deploy/production/INFRA_RENAME_RUNBOOK.md")).toContain(
       "**Superseded for the object store (historical runbook).**",
