@@ -2479,6 +2479,14 @@ controls:
       # extraction job and evidence rather than silently completing or changing schemas.
       - script: test:f236:doclens-intake:live
       - file: apps/backend/src/modules/22-documents/extraction/intake-job.ts
+      # Stage-5 vision re-read (changed): a diagnosis description agrees with the page reading only when one
+      # sentence of it holds the whole value as a phrase (no more specific disease around it) and nothing in
+      # that sentence negates, doubts or reassigns it; a value not on the crop never agrees. List fields are
+      # sent to the model without their index so it returns every entry. A diagnosis role, a normalised enum
+      # with no verbatim form, is no longer re-read; medications, allergies and identity values keep the
+      # strict length rule. The classifier prompt moved to classify.v2.md (new hash-pinned version, v1 deprecated).
+      - file: apps/backend/__tests__/f237-doclens-stage5-sud.test.ts
+      - file: packages/ai-platform/prompts/doclens/classify.v2.md
 
   - id: CW-DD-01
     title: Death notifications — external disclosure gated on a BAA (service check, delivery-boundary check, link redemption, and every funeral-home session read), explicit selection, caseload check (refusal audit is best-effort), atomic single-send claim with fenced stranded-send reconciliation, audit events for invite attempts and best-effort revocations, a keyed recipient digest and database-enforced disclosure-record integrity (not a BAA gate); internal notices fixed-text and explicitly acknowledged
