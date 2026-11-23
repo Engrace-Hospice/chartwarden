@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { classifyIntraArtifactDuplicates } from "../src/modules/25-remittance/domain/medicaid-era-duplicate-scan";
 import {
   type MedicaidEraReviewReaders,
   createMedicaidEraReviewService,
@@ -184,15 +185,121 @@ describe("replay inside one artifact", () => {
     ]);
   });
 
-  it("holds a later set as a possible duplicate when it repeats a nonzero payment amount under another trace", async () => {
+  it("holds a later set as a possible duplicate when it repeats a nonzero payment for the same patient control number under another trace and ICN", async () => {
     const { raw } = twoSets(
       setBody("1000.00", paidClaim("PCN-0001", "ICN-A1", "1000.00"), "EFT-A"),
-      setBody("1000.00", paidClaim("PCN-0002", "ICN-A2", "1000.00"), "EFT-B"),
+      setBody("1000.00", paidClaim("PCN-0001", "ICN-A2", "1000.00"), "EFT-B"),
     );
     expect(await decisions(raw)).toEqual([
       "full_payment_indicated_review_required",
       "possible_duplicate",
     ]);
+  });
+
+  it("does not hold distinct claims that are paid the same flat per-diem amount", async () => {
+    const { raw } = twoSets(
+      setBody("2480.00", paidClaim("PCN-0001", "ICN-A1", "2480.00"), "EFT-A"),
+      setBody("2480.00", paidClaim("PCN-0002", "ICN-A2", "2480.00"), "EFT-B"),
+    );
+    expect(await decisions(raw)).toEqual([
+      "full_payment_indicated_review_required",
+      "full_payment_indicated_review_required",
+    ]);
+  });
+
+  describe("a payer reversal that shares the original's claim control number", () => {
+    const reversalSet = (icn: string, trace: string) =>
+      [
+        "BPR*H*0.00*C*NON************20260615",
+        ...header(trace),
+        `CLP*PCN-0001*22*1000.00*0.00*0.00*MC*${icn}`,
+        "DTM*232*20260501",
+        "DTM*233*20260531",
+        "CAS*CO*45*1000.00",
+      ] as const;
+
+    it("stays a reversal review instead of a possible duplicate of the payment it reverses", async () => {
+      const { raw } = twoSets(
+        setBody("1000.00", paidClaim("PCN-0001", "ICN-A1", "1000.00"), "EFT-A"),
+        reversalSet("ICN-A1", "EFT-B"),
+      );
+      expect(await decisions(raw)).toEqual([
+        "full_payment_indicated_review_required",
+        "reversal_or_recoupment_review",
+      ]);
+    });
+
+    it("stays a reversal review when the reversal is listed before the payment", async () => {
+      const { raw } = twoSets(
+        reversalSet("ICN-A1", "EFT-B"),
+        setBody("1000.00", paidClaim("PCN-0001", "ICN-A1", "1000.00"), "EFT-A"),
+      );
+      expect(await decisions(raw)).toEqual([
+        "reversal_or_recoupment_review",
+        "full_payment_indicated_review_required",
+      ]);
+    });
+
+    it("still holds a second reversal of the same ICN under another trace", async () => {
+      const { raw } = twoSets(reversalSet("ICN-A1", "EFT-A"), reversalSet("ICN-A1", "EFT-B"));
+      expect(await decisions(raw)).toEqual(["reversal_or_recoupment_review", "possible_duplicate"]);
+    });
+  });
+
+  describe("a reused trace number", () => {
+    const plb = (reason: string) => `PLB*1512345678*20261231*${reason}:REF2*10.00`;
+    const withPlb = (reason: string) =>
+      setBody("990.00", [...paidClaim("PCN-0001", "ICN-A1", "1000.00"), plb(reason)], "EFT-A");
+
+    it("holds the second set as an exact duplicate when the provider adjustments are identical too", async () => {
+      const { raw } = twoSets(withPlb("L6"), withPlb("L6"));
+      expect(await decisions(raw)).toEqual(["provider_adjustment_review", "exact_duplicate"]);
+    });
+
+    it("holds both sets as an identity conflict when only the provider adjustment reason differs", async () => {
+      const { raw } = twoSets(withPlb("L6"), withPlb("72"));
+      expect(await decisions(raw)).toEqual([
+        "source_identity_conflict",
+        "source_identity_conflict",
+      ]);
+    });
+
+    it("holds both sets as an identity conflict when only a claim-level adjustment differs", async () => {
+      const claimWithCas = (reason: string) =>
+        setBody(
+          "1000.00",
+          [...paidClaim("PCN-0001", "ICN-A1", "1000.00"), `CAS*PR*${reason}*0.00`],
+          "EFT-A",
+        );
+      const { raw } = twoSets(claimWithCas("1"), claimWithCas("2"));
+      expect(await decisions(raw)).toEqual([
+        "source_identity_conflict",
+        "source_identity_conflict",
+      ]);
+    });
+  });
+
+  it("indexes the sets once instead of re-reading every earlier set for every later one", () => {
+    const reads = new Map<number, number>();
+    const { observations } = multiSet(
+      Array.from({ length: 40 }, (_, index) => [
+        String(index + 1).padStart(4, "0"),
+        setBody(
+          `${100 + index}.00`,
+          paidClaim(`PCN-${index}`, `ICN-${index}`, `${100 + index}.00`),
+          `EFT-${index}`,
+        ),
+      ]),
+    );
+    const counted = observations.map((observation, index) => ({
+      ...observation,
+      get claims() {
+        reads.set(index, (reads.get(index) ?? 0) + 1);
+        return observation.claims;
+      },
+    }));
+    expect(classifyIntraArtifactDuplicates(counted)).toEqual(counted.map(() => "none"));
+    expect(Math.max(...reads.values())).toBeLessThanOrEqual(4);
   });
 
   it("does not flag distinct payments", async () => {
