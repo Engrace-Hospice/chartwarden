@@ -504,9 +504,34 @@ describe("tenant isolation of account evidence", () => {
       });
     });
 
-    it("still holds a payee that matches nobody as a payee conflict", async () => {
+    const unavailable = { status: "unavailable", reasonCode: "SOURCE_ARTIFACT_UNAVAILABLE" };
+
+    it("answers a payee that matches nobody exactly like a payee that matches the hidden sibling", async () => {
+      for (const npi of ["1888888888", "1777777777"]) {
+        const service = serviceFor(eraFor(npi), { accounts: [productionAccount, entityB] });
+        expect(await service.inspect(narrowActor, "synthetic:artifact-prod-1")).toEqual(
+          unavailable,
+        );
+      }
+    });
+
+    it("treats a hidden sibling of another organization or with a lapsed enrollment as a hidden sibling too", async () => {
+      for (const sibling of [
+        { ...entityB, organizationId: "org-synthetic-other" },
+        { ...entityB, enrollment: "revoked" as const },
+      ]) {
+        const service = serviceFor(eraFor("1777777777"), {
+          accounts: [productionAccount, sibling],
+        });
+        expect(await service.inspect(narrowActor, "synthetic:artifact-prod-1")).toEqual(
+          unavailable,
+        );
+      }
+    });
+
+    it("still holds a payee that matches nobody as a payee conflict when the account has no hidden sibling", async () => {
       const result = await reviewOnly(
-        serviceFor(eraFor("1777777777"), { accounts: [productionAccount, entityB] }),
+        serviceFor(eraFor("1777777777"), { accounts: [productionAccount] }),
         narrowActor,
       );
       expect(result.claims[0]).toMatchObject({
@@ -515,11 +540,15 @@ describe("tenant isolation of account evidence", () => {
       });
     });
 
-    it("does not treat a payee identified by tax id as matching a sibling with no billing NPI", async () => {
-      const result = await reviewOnly(
-        serviceFor(raw.replace("XX*1999999999", "FI*123456789"), {
+    it("reads a payee identified by tax id as unavailable beside a hidden sibling, and as a payee conflict without one", async () => {
+      const taxIdEra = raw.replace("XX*1999999999", "FI*123456789");
+      expect(
+        await serviceFor(taxIdEra, {
           accounts: [productionAccount, { ...entityB, billingNpi: "" }],
-        }),
+        }).inspect(narrowActor, "synthetic:artifact-prod-1"),
+      ).toEqual(unavailable);
+      const result = await reviewOnly(
+        serviceFor(taxIdEra, { accounts: [productionAccount] }),
         narrowActor,
       );
       expect(result.claims[0]).toMatchObject({

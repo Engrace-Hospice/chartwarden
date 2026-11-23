@@ -15,7 +15,7 @@ import {
   type MedicaidEraReviewAssessment,
   assessMedicaidEraReview,
   matchMedicaidEraClaim,
-  payeeOnlyMatchesHiddenAccounts,
+  payeeUnmatchedBesideHiddenAccounts,
   resolveMedicaidEraAttribution,
 } from "./medicaid-era-trusted-review";
 
@@ -203,12 +203,13 @@ export function createMedicaidEraReviewService(
       const accounts = sourceAccounts.filter((account) => inActorScope(actor, account));
       if (sourceAccounts.length > 0 && accounts.length === 0) return UNAVAILABLE;
       const observations = parsed.value.map(observeParsedMedicaidEra);
-      // An ERA addressed to a sibling entity (or another tenant) on the same account is not this actor's to learn about:
-      // holding it as a payee conflict would confirm that the sibling exists, so the whole artifact reads as unavailable.
+      // An ERA whose payee is none of this actor's entities, on an account that has entities this actor may not see, reads
+      // as unavailable whether it names a hidden sibling or nobody: a payee conflict only for the unknown NPI would tell
+      // the caller which NPIs belong to a hidden sibling.
       const hiddenAccounts = sourceAccounts.filter((account) => !inActorScope(actor, account));
       if (
         observations.some((observation) =>
-          payeeOnlyMatchesHiddenAccounts(observation, accounts, hiddenAccounts),
+          payeeUnmatchedBesideHiddenAccounts(observation, accounts, hiddenAccounts),
         )
       )
         return UNAVAILABLE;
