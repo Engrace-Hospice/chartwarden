@@ -197,7 +197,9 @@ function dateColumns(page: SplitterPage): DateColumns | null {
   const closeRun = (to: number): DateColumns | null => {
     if (dates.length < MIN_DATE_COLUMNS) return null;
     if (
-      head.slice(Math.max(0, from - PERIOD_LOOKBACK), from).some((b) => PERIOD_LABEL.test(b.text))
+      head
+        .slice(Math.max(0, from - PERIOD_LOOKBACK), from)
+        .some((b) => b.label === "table_cell" && PERIOD_LABEL.test(b.text))
     )
       return null;
     const sorted = [...dates].sort(); // ISO dates sort lexicographically

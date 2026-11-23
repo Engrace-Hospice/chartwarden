@@ -357,6 +357,20 @@ const FINDING_QUALIFIERS: ReadonlySet<string> = new Set([
   "fhx",
   // A bare "N" in a yes/no column.
   "n",
+  // "n't" contractions with the apostrophe dropped, as OCR often reads them.
+  "dont",
+  "doesnt",
+  "didnt",
+  "isnt",
+  "wasnt",
+  "arent",
+  "werent",
+  "hasnt",
+  "hadnt",
+  "havent",
+  "cant",
+  "cannot",
+  "wont",
 ]);
 /**
  * Negates only what FOLLOWS it. "Presented without COPD" denies it, but "Alzheimer's disease with late onset,
@@ -450,11 +464,22 @@ function scanSentences(text: string, valueWords: number): ScannedSentence[] {
   const parts = text.split(SENTENCE_END).map((part) => ({ part, tokens: tokenize(part) }));
   const qualified = ({ part, tokens }: (typeof parts)[number]): boolean =>
     UNCERTAIN_MARK.test(part) || tokens.some((t) => FINDING_QUALIFIERS.has(t));
+  // The nearest qualified sentence on one side, reached across short unqualified list items ("Denies the following
+  // symptoms. Chest pain. COPD."); a sentence that states something of its own ends the reach.
+  const reach = (at: number, step: 1 | -1): (typeof parts)[number] | undefined => {
+    for (let n = at + step; n >= 0 && n < parts.length; n += step) {
+      const next = parts[n] as (typeof parts)[number];
+      if (qualified(next)) return next;
+      if (next.tokens.length > FRAGMENT_TOKENS) return undefined;
+    }
+    return undefined;
+  };
   return parts.map((sentence, at) => {
     const bare = sentence.tokens.filter(isWord).length <= valueWords + BARE_EXTRA_WORDS;
-    const governed = [parts[at - 1], parts[at + 1]].some(
-      (n) => n !== undefined && qualified(n) && (bare || n.tokens.length <= FRAGMENT_TOKENS),
-    );
+    const governed = ([-1, 1] as const).some((step) => {
+      const governor = reach(at, step);
+      return governor !== undefined && (bare || governor.tokens.length <= FRAGMENT_TOKENS);
+    });
     return { tokens: sentence.tokens, blocked: qualified(sentence) || governed };
   });
 }
@@ -1118,6 +1143,8 @@ async function runDocLensIntakeWhileProcessable(
     const dxWording: GroundedDiagnosis[] = [];
     const dxRoles = new Map<number, string>();
     const dxQuotes = new Map<number, string>();
+    // A description printed with two codes is emitted twice under a new index; it shares its page and wording.
+    const dxQuotesByText = new Map<string, string>();
     for (const [fieldPath, f] of Object.entries(result.fields)) {
       const spec = findExtractionField(docType, fieldPath);
       if (!spec) {
@@ -1150,6 +1177,7 @@ async function runDocLensIntakeWhileProcessable(
       }
       if (dx) {
         dxQuotes.set(Number(dx[1]), f.sourceQuote.text);
+        dxQuotesByText.set(`${g.page} ${f.value}`, f.sourceQuote.text);
         dxWording.push({
           index: Number(dx[1]),
           description: f.value,
@@ -1177,7 +1205,9 @@ async function runDocLensIntakeWhileProcessable(
       })) {
         const spec = findExtractionField(docType, d.fieldPath);
         if (!spec) continue;
-        const quote = dxQuotes.get(Number(/^diagnoses\[(\d+)\]/.exec(d.fieldPath)?.[1]));
+        const quote =
+          dxQuotes.get(Number(/^diagnoses\[(\d+)\]/.exec(d.fieldPath)?.[1])) ??
+          dxQuotesByText.get(`${d.page} ${d.value}`);
         accepted.push({
           fieldPath: d.fieldPath,
           riskLevel: spec.riskLevel,
@@ -1457,7 +1487,11 @@ async function runDocLensIntakeWhileProcessable(
       : {
           kind: "disagreed",
           invocationId: r.invocationId,
-          observedValue: closestReading(a.value, readings),
+          observedValue:
+            a.quote &&
+            readings.some((o) => visionReadingAgrees(a.value, o, visionComparisonFor(a.fieldPath)))
+              ? a.quote // a reading agreed, so only the page quote denied it
+              : closestReading(a.value, readings),
         };
   }
 }

@@ -25,13 +25,15 @@ RUN uv sync --frozen --no-dev --no-install-project --extra docling \
 # Bake the layout / table / OCR models into the image: a worker must not download models from the
 # internet at request time (and must not need egress at all in production).
 RUN docling-tools models download -o /opt/models/docling layout tableformer easyocr rapidocr
-# The RapidOCR files are pinned by SHA-256 (AI Governance 9.7.7: checksums verified on pull): a changed upstream
+# The RapidOCR files are pinned by SHA-256 (AI Governance 9.7.7: checksums verified on pull): a changed or added upstream
 # file fails the build instead of shipping unreviewed model weights. When a docling bump moves them, rebuild, review,
 # then regenerate with `cd /opt/models/docling/RapidOcr && find . -type f | sort | xargs sha256sum`.
 COPY rapidocr-models.sha256 /tmp/rapidocr-models.sha256
 # The worker runs RapidOCR on onnxruntime, so the PyTorch checkpoints (.pth, pickle) next to the .onnx files are
 # dropped once verified: nothing can load them.
-RUN cd /opt/models/docling/RapidOcr && sha256sum -c /tmp/rapidocr-models.sha256 && find . -name '*.pth' -delete
+RUN cd /opt/models/docling/RapidOcr && sha256sum -c /tmp/rapidocr-models.sha256 \
+ && test "$(find . -type f | sort)" = "$(awk '{print $2}' /tmp/rapidocr-models.sha256 | sort)" \
+ && find . -name '*.pth' -delete
 
 FROM ${WOLFI_BASE}
 # python-3.12 at the same path the venv was built against (/usr/bin/python3.12); tesseract + English and OSD data for

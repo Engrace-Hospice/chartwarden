@@ -258,6 +258,17 @@ describe("splitter rules", () => {
       expect(headerDate(page(1, ...cells("Test", "09/17/2026", "09/24/2026", "09/30/2026")))).toBe(
         "2026-09-30",
       );
+      // A banner or fax header that says "From:" or "period" is not a table header cell.
+      expect(
+        headerDate(
+          page(
+            1,
+            ["text", "From: Mercy Clinic"],
+            ["text", "Reporting period: Q3"],
+            ...cells("Test", "09/17/2026", "09/24/2026", "09/30/2026"),
+          ),
+        ),
+      ).toBe("2026-09-30");
     });
 
     it("skips a day that is not on the calendar instead of letting it roll over", () => {

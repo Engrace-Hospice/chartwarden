@@ -157,6 +157,12 @@ describe("F-237 — stage 5 diagnosis descriptions and roles", () => {
     ["Lung cancer", "Lung cancer. The patient does not have this condition.", false],
     ["COPD", "Patient denies the following. COPD", false],
     ["COPD", "Negative for the following. COPD", false],
+    // ...also across short list items between them, and with the apostrophe OCR often drops.
+    ["COPD", "Denies the following symptoms. Chest pain. COPD.", false],
+    ["COPD", "Patient denies chest pain. Fever. COPD.", false],
+    ["COPD", "Patient doesnt have COPD", false],
+    ["COPD", "Patient cant have COPD", false],
+    ["COPD", "Hospice diagnosis. Alzheimer's dementia. COPD.", true], // list items with nothing qualified
     ["COPD", "Patient has severe COPD. Denies chest pain at rest today.", true], // a fuller sentence stands alone
   ])("prose: %s in %s → %s", (extracted, observed, agrees) => {
     expect(visionReadingAgrees(extracted, observed, "prose")).toBe(agrees);
