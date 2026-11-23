@@ -9,7 +9,17 @@
 -- application role may UPDATE only the columns those two paths write, a row's identity never changes, and a status
 -- only moves forward (verify from an open status, a verified row only to revoked/superseded/expired, a closed row is
 -- final, and the verification evidence is frozen once the row leaves its open status). A provider entity must belong
--- to the row's organization (a foreign key alone would accept, and so reveal the existence of, another tenant's).
+-- to the row's organization (a foreign key alone would accept, and so reveal the existence of, another tenant's). The
+-- application role also records a row only as candidate or pending: it cannot INSERT an already verified or closed row.
+--
+-- ERASURE (open constraint, owner decision; medicaid_program_assignment only, the enrollment table is provider-keyed and holds
+-- no patient identifier): the assignment is patient-keyed (patient_id, patient_payer_id, admission_id) and carries
+-- evidence_reference and a payer_snapshot, but it has no destruction-role grant, the identity guard below refuses a change to
+-- any of those keys for every role, and the per-patient eraser (medicaid-eraser.ts) does not know this table, so a patient's
+-- assignments cannot be erased or de-identified by the existing erasure path. Unlike 1538 a writer exists today (the write
+-- service records and verifies assignments), so rows accumulate. Whoever owns the erasure path must decide it (a destruction
+-- grant plus a guard that admits only that role's DELETE, or column-level crypto-shredding of the references) before the
+-- first patient-erasure request touches M24.
 CREATE TYPE m24_medicaid_program_kind AS ENUM (
   'ffs_open_card', 'managed_care', 'other_managed_care', 'unsupported', 'unresolved', 'ambiguous'
 );--> statement-breakpoint
@@ -172,6 +182,28 @@ CREATE TRIGGER trg_medicaid_program_assignment_provider_entity
 CREATE TRIGGER trg_medicaid_enrollment_evidence_provider_entity
   BEFORE INSERT ON medicaid_enrollment_evidence
   FOR EACH ROW EXECUTE FUNCTION guard_m24_readiness_provider_entity_org();--> statement-breakpoint
+
+-- The application role records a row as candidate or pending and nothing else (a pending row is what the write service
+-- inserts; candidate exists on the assignment only, hence the text comparison, which the other table's enum would refuse
+-- to cast). Without this it could INSERT an already verified, rejected, revoked, superseded or expired row: the four-eyes
+-- CHECK compares two values the same caller supplies, so a forged verified row passes every CHECK and bypasses the verify
+-- path (the M40 classification, the source allow-list, step-up). 1538 and 1539 refuse the same insert by the same role.
+-- Verification is an UPDATE from an open status, which the update guards below admit.
+CREATE OR REPLACE FUNCTION guard_m24_readiness_insert_status() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
+BEGIN
+  IF current_user = 'chartwarden_app' AND NEW.status::text NOT IN ('candidate', 'pending') THEN
+    RAISE EXCEPTION '% must be recorded as an open row: verification requires a separate reviewer path', TG_TABLE_NAME
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+CREATE TRIGGER trg_medicaid_program_assignment_insert_status
+  BEFORE INSERT ON medicaid_program_assignment
+  FOR EACH ROW EXECUTE FUNCTION guard_m24_readiness_insert_status();--> statement-breakpoint
+CREATE TRIGGER trg_medicaid_enrollment_evidence_insert_status
+  BEFORE INSERT ON medicaid_enrollment_evidence
+  FOR EACH ROW EXECUTE FUNCTION guard_m24_readiness_insert_status();--> statement-breakpoint
 
 -- UPDATE guards, for every role (the column grants above already keep the application role off the identity columns).
 --   1. Identity never changes: what the row IS (organization, patient, coverage, admission, provider entity, siting, state,

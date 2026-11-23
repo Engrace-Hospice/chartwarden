@@ -941,6 +941,36 @@ describe.skipIf(!DB_URL)(
         }
       });
 
+      it("insert: the application role records only an open row, so a forged verified or closed row is refused and the verify path still works", async () => {
+        // The forged rows satisfy every CHECK (the four-eyes CHECK compares two values the same caller supplies), so
+        // only the BEFORE INSERT status guard can refuse them. The control is the identical row written outside the
+        // application role.
+        const forgedStatuses = ["verified", ...cfg.terminal];
+        for (const status of forgedStatuses) {
+          const forged = cfg.row({
+            status,
+            ...(status === "verified" ? cfg.verification : {}),
+            ...(status === "revoked" ? { revocation_reason: "other" } : {}),
+          });
+          expect(
+            await insertRow(table, forged),
+            `control: ${status} outside the app role`,
+          ).toBeTruthy();
+          await expect(
+            withOrg(ORG_A, () => insertRow(table, forged)),
+            status,
+          ).rejects.toThrow(/requires a separate reviewer path/);
+        }
+        // The legitimate path: an open row is recorded by the application role and verified by another member.
+        for (const status of cfg.open) {
+          const id = await withOrg(ORG_A, () => insertRow(table, cfg.row({ status })));
+          const verified = await withOrg(ORG_A, () =>
+            db.query(`UPDATE ${table} SET ${cfg.verifySet} WHERE id=$1`, [id, REVIEWER]),
+          );
+          expect(verified.rowCount, `verify a row recorded as ${status}`).toBe(1);
+        }
+      });
+
       it("evidence: once a row leaves its open status the verification evidence cannot be rewritten", async () => {
         for (const [column, value] of Object.entries(cfg.frozenEvidence)) {
           const id = await rowAt("verified");
