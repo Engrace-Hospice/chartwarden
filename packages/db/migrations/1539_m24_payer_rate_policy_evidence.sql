@@ -30,9 +30,13 @@ CREATE TABLE medicaid_payer_rate_policy (
   CONSTRAINT medicaid_payer_rate_policy_supersedes_org_fk
     FOREIGN KEY (organization_id, supersedes_id)
     REFERENCES medicaid_payer_rate_policy (organization_id, id) ON DELETE RESTRICT,
+  -- One row per identity and effective date PER CHAIN POSITION: supersedes_id is part of the key, so a correcting row
+  -- (which names the row it replaces) may repeat the identity and the effective date of a wrong or rejected one, while
+  -- two heads (both NULL) or two corrections of the same row (a fork) are still refused. The table is append-only, so a
+  -- key that excluded supersedes_id would hold a wrong rate's identity forever.
   CONSTRAINT medicaid_payer_rate_policy_identity_uq UNIQUE NULLS NOT DISTINCT
     (organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
-     locality_code, service_category, unit_basis, bucket_from, bucket_to, effective_from),
+     locality_code, service_category, unit_basis, bucket_from, bucket_to, effective_from, supersedes_id),
   CONSTRAINT medicaid_payer_rate_policy_program_valid
     CHECK (program_kind IN ('oregon_ffs', 'managed_care')),
   CONSTRAINT medicaid_payer_rate_policy_state_valid CHECK (length(service_state) = 2),
