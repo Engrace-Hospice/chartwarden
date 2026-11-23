@@ -165,7 +165,7 @@ describe.skipIf(!DB_URL)("F-225 portal document access log — LIVE Postgres", (
     const version = async (num: number) =>
       (
         await admin.query(
-          `INSERT INTO document_version (organization_id, document_id, version_number, minio_object_key,
+          `INSERT INTO document_version (organization_id, document_id, version_number, object_key,
              mime_type, byte_size, sha256_hex, uploaded_by_kind)
            VALUES ($1,$2,$3,$4,'application/pdf','1024','abc123','system') RETURNING id`,
           [a.org, doc, String(num), `rendered/f225-${n}-v${num}.pdf`],

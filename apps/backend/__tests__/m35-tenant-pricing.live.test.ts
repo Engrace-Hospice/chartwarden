@@ -355,7 +355,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
     await admin.query(
       `INSERT INTO remittance_advice (organization_id, provider_entity_id, payer_id, payer_kind, interchange_control_number,
          transaction_set_control_number, payment_method, total_payment_amount, production_date, payment_effective_date,
-         minio_object_key, file_sha256, parse_status)
+         object_key, file_sha256, parse_status)
        VALUES ($1,$2,$3,$4::m25_payer_kind,$5,$6,$7::m25_payment_method_kind,$8,$9,$10,$11,$12,$13::m25_parse_status)`,
       [
         org,

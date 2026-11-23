@@ -194,7 +194,7 @@ export interface TenantExportWorkerPorts {
    *  presigned-URL MINTING + `bundle_downloaded_*` capture live in the download ROUTE, not here. */
   markFulfilled(input: {
     jobId: string;
-    bundleMinioObjectKey: string;
+    bundleObjectKey: string;
     bundleSha256: string;
     bundleSizeBytes: number;
     bundleModuleInventory: TenantExportManifest;
@@ -206,7 +206,7 @@ export interface TenantExportWorkerPorts {
    *  (ledger row + M36 alert to platform-ops); it does NOT flip to `fulfilled`. */
   holdForOversizedApproval(input: {
     jobId: string;
-    bundleMinioObjectKey: string;
+    bundleObjectKey: string;
     bundleSha256: string;
     bundleSizeBytes: number;
     recordCount: number;
@@ -223,7 +223,7 @@ export interface TenantExportWorkerResult {
   readonly totalRowCount: number;
   readonly bundleSha256: string;
   readonly bundleSizeBytes: number;
-  readonly bundleMinioObjectKey: string;
+  readonly bundleObjectKey: string;
   /** The per-module manifest receipts (the §7.6 acceptance: manifest validates against per-file sha256). */
   readonly modules: readonly TenantExportModuleManifestEntry[];
 }
@@ -300,7 +300,7 @@ export async function runTenantExportJob(
   if (oversized) {
     await ports.holdForOversizedApproval({
       jobId,
-      bundleMinioObjectKey: uploaded.objectKey,
+      bundleObjectKey: uploaded.objectKey,
       bundleSha256: uploaded.archiveSha256,
       bundleSizeBytes: uploaded.sizeBytes,
       recordCount: totalRowCount,
@@ -313,7 +313,7 @@ export async function runTenantExportJob(
       totalRowCount,
       bundleSha256: uploaded.archiveSha256,
       bundleSizeBytes: uploaded.sizeBytes,
-      bundleMinioObjectKey: uploaded.objectKey,
+      bundleObjectKey: uploaded.objectKey,
       modules: moduleEntries,
     };
   }
@@ -325,7 +325,7 @@ export async function runTenantExportJob(
   const objectExpiresAt = new Date(ports.now().getTime() + TENANT_EXPORT_OBJECT_TTL_MS);
   await ports.markFulfilled({
     jobId,
-    bundleMinioObjectKey: uploaded.objectKey,
+    bundleObjectKey: uploaded.objectKey,
     bundleSha256: uploaded.archiveSha256,
     bundleSizeBytes: uploaded.sizeBytes,
     bundleModuleInventory: manifest,
@@ -340,7 +340,7 @@ export async function runTenantExportJob(
     totalRowCount,
     bundleSha256: uploaded.archiveSha256,
     bundleSizeBytes: uploaded.sizeBytes,
-    bundleMinioObjectKey: uploaded.objectKey,
+    bundleObjectKey: uploaded.objectKey,
     modules: moduleEntries,
   };
 }
@@ -421,7 +421,7 @@ export interface InMemoryTenantExportCapture {
   coverLetterRequests: { jobId: string; orgId: string; bundleSha256: string }[];
   fulfilled: {
     jobId: string;
-    bundleMinioObjectKey: string;
+    bundleObjectKey: string;
     bundleSha256: string;
     bundleSizeBytes: number;
     bundlePresignedUrlExpiresAt: Date;
@@ -472,7 +472,7 @@ export function createInMemoryTenantExportPorts(input: {
     async markFulfilled(args): Promise<void> {
       capture.fulfilled.push({
         jobId: args.jobId,
-        bundleMinioObjectKey: args.bundleMinioObjectKey,
+        bundleObjectKey: args.bundleObjectKey,
         bundleSha256: args.bundleSha256,
         bundleSizeBytes: args.bundleSizeBytes,
         bundlePresignedUrlExpiresAt: args.bundlePresignedUrlExpiresAt,

@@ -94,7 +94,7 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
         `INSERT INTO remittance_advice (
           organization_id, provider_entity_id, payer_id, payer_kind,
           interchange_control_number, transaction_set_control_number, payment_method,
-          total_payment_amount, plb_total_amount, production_date, minio_object_key, file_sha256
+          total_payment_amount, plb_total_amount, production_date, object_key, file_sha256
         ) VALUES ($1, $2, $3, 'medicare', '700000001', '700000001', 'check', 12.34, 0.01,
           '2025-02-03T00:00:00Z', 'synthetic/historical-835', repeat('a', 64))`,
         [organizationId, providerEntityId, payerId],
@@ -141,7 +141,7 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
             organization_id, provider_entity_id, payer_id, payer_kind, interchange_control_number,
             interchange_sender_code, interchange_receiver_code, functional_group_control_number,
             transaction_set_control_number, payment_method, total_payment_amount, production_date,
-            minio_object_key, file_sha256
+            object_key, file_sha256
           ) VALUES ($1,$2,$3,'medicare','700000002','SYNTH-PAYER','SYNTH-PROVIDER',$4,'700000001',
             'check',12.34,'2025-02-03T00:00:00Z',$5,repeat('b',64))`,
           [organizationId, providerEntityId, payerId, group, `synthetic/group-${group}`],
@@ -158,7 +158,7 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
           `INSERT INTO remittance_advice (
           organization_id, provider_entity_id, payer_id, payer_kind, interchange_control_number,
           transaction_set_control_number, payment_method, total_payment_amount, production_date,
-          minio_object_key, file_sha256
+          object_key, file_sha256
         ) VALUES ($1,$2,$3,'medicare','700000003','700000001','check',12.34,'2025-02-03T00:00:00Z',
           'synthetic/old-writer',repeat('c',64))
         ON CONFLICT (interchange_control_number, transaction_set_control_number, provider_entity_id) DO NOTHING`,

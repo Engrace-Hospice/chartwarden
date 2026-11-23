@@ -29,7 +29,7 @@ describe("mapParsed277ca", () => {
 describe("createX12835Client (277CA sidecar port, fail-closed default)", () => {
   it("returns a retryable transport degrade for 277CA when no sidecar is wired", async () => {
     const r = await createX12835Client({ port: NO_X12_835_PORT }).parse277ca({
-      minioObjectKey: "era/x.277",
+      objectKey: "era/x.277",
     });
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -39,7 +39,7 @@ describe("createX12835Client (277CA sidecar port, fail-closed default)", () => {
 
   it("treats a 5xx as a retryable transport degrade", async () => {
     const port: X12835HttpPort = { request: () => Promise.resolve({ status: 503, body: null }) };
-    const r = await createX12835Client({ port }).parse277ca({ minioObjectKey: "k" });
+    const r = await createX12835Client({ port }).parse277ca({ objectKey: "k" });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.degraded.retryable).toBe(true);

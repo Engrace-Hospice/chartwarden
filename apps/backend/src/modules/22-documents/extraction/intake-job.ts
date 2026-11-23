@@ -370,7 +370,7 @@ async function runDocLensIntakeWhileProcessable(
       return { kind: "done" as const, status: b.status };
     }
     const [d] = await tx
-      .select({ objectKey: DV.minioObjectKey })
+      .select({ objectKey: DV.objectKey })
       .from(DOC)
       .innerJoin(DV, eq(DV.id, DOC.activeVersionId))
       .where(eq(DOC.id, b.documentId))

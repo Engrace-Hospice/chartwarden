@@ -577,7 +577,7 @@ export function createVerifiedUploadService(deps: {
             documentId,
             versionNumber: String(versionNumber),
             replacesVersionId,
-            minioObjectKey: current.objectKey,
+            objectKey: current.objectKey,
             mimeType: current.mimeType,
             byteSize: current.expectedByteSize,
             sha256Hex: current.expectedSha256Hex,

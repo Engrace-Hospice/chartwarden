@@ -35,7 +35,7 @@ export interface X12835HttpPort {
 /** Request to parse a raw 835 file already staged in MinIO (the worker reads it by key). */
 export interface Parse835Request {
   /** The MinIO object key of the raw 835 file. */
-  readonly minioObjectKey: string;
+  readonly objectKey: string;
   /** The program the M25 puller pulled this 835 over (echoed onto the parsed envelope). */
   readonly payerProgram: PayerProgram;
   /** The raw 835 text, when the caller already holds it (receive path). Otherwise read via `readRaw`. */
@@ -47,7 +47,7 @@ export interface Parse835Request {
 }
 
 /** Reads the staged raw 835 by object key (injected: this package holds no storage code). */
-export type X12RawReader = (minioObjectKey: string) => Promise<string>;
+export type X12RawReader = (objectKey: string) => Promise<string>;
 
 export interface X12835ClientOptions {
   /** Sidecar transport — used ONLY by `parse277ca`. 835 parsing is in-process TypeScript (ADR-0037). */
@@ -60,7 +60,7 @@ export interface X12835ClientOptions {
 
 /** Request to parse a raw 277CA file staged in MinIO. */
 export interface Parse277caRequest {
-  readonly minioObjectKey: string;
+  readonly objectKey: string;
 }
 
 /** The M25-owned X12 client surface: in-process 835 parsing plus the 277CA sidecar mapper. */
@@ -101,7 +101,7 @@ export function createX12835Client(opts: X12835ClientOptions = {}): X12835Worker
       );
     }
     try {
-      return await opts.readRaw(input.minioObjectKey);
+      return await opts.readRaw(input.objectKey);
     } catch {
       // Fixed text: a storage error message can carry bucket/endpoint detail and lands in parse_summary.
       return degraded835(
@@ -138,7 +138,8 @@ export function createX12835Client(opts: X12835ClientOptions = {}): X12835Worker
         res = await port.request({
           method: "POST",
           path: "/parse277ca",
-          body: { minioObjectKey: input.minioObjectKey },
+          // Wire name kept: the sidecar's request body contract.
+          body: { minioObjectKey: input.objectKey },
         });
       } catch (err) {
         const reason = err instanceof Error ? err.message : "transport rejected";

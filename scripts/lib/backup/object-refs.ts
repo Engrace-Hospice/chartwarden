@@ -26,7 +26,7 @@ export const OBJECT_REF_SOURCES: readonly ObjectRefSource[] = [
   },
   {
     table: "document_version",
-    keyColumn: "minio_object_key",
+    keyColumn: "object_key",
     shaColumn: "sha256_hex",
     liveWhere:
       "NOT EXISTS (SELECT 1 FROM document d WHERE d.id = t.document_id AND d.status = 'destroyed_tombstone')",
@@ -39,25 +39,25 @@ export const OBJECT_REF_SOURCES: readonly ObjectRefSource[] = [
   },
   {
     table: "dsar_export_job",
-    keyColumn: "bundle_minio_object_key",
+    keyColumn: "bundle_object_key",
     shaColumn: "bundle_sha256",
-    liveWhere: "t.bundle_minio_object_key IS NOT NULL AND t.status = 'fulfilled'",
+    liveWhere: "t.bundle_object_key IS NOT NULL AND t.status = 'fulfilled'",
   },
   {
     table: "tenant_export_job",
-    keyColumn: "bundle_minio_object_key",
+    keyColumn: "bundle_object_key",
     shaColumn: "bundle_sha256",
-    liveWhere: "t.bundle_minio_object_key IS NOT NULL AND t.status = 'fulfilled'",
+    liveWhere: "t.bundle_object_key IS NOT NULL AND t.status = 'fulfilled'",
   },
   {
     table: "fhir_bulk_export_artifact",
-    keyColumn: "minio_object_key",
+    keyColumn: "object_key",
     shaColumn: "checksum_sha256",
     liveWhere: "TRUE",
   },
   {
     table: "remittance_advice",
-    keyColumn: "minio_object_key",
+    keyColumn: "object_key",
     shaColumn: "file_sha256",
     liveWhere: "TRUE",
   },

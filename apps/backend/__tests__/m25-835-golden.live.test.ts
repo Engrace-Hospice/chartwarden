@@ -156,7 +156,7 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
       providerEntityId,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: key,
+      objectKey: key,
       fileSha256: sha256Hex(raw),
       rawEdi: raw,
     });

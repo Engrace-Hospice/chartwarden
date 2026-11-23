@@ -1099,7 +1099,7 @@ export function buildDrizzleM25IngestService(
         productionDate: parsed.paymentEffectiveDate
           ? productionDay(parsed.paymentEffectiveDate)
           : null,
-        minioObjectKey: input.minioObjectKey,
+        objectKey: input.objectKey,
         fileSha256: input.fileSha256,
         parseStatus: state,
         parseSummary: summary,
@@ -1305,7 +1305,7 @@ export function buildDrizzleM25IngestService(
         providerEntityId: input.providerEntityId,
         payerId: input.payerId,
         payerProgram: input.payerKind,
-        minioObjectKey: input.minioObjectKey,
+        minioObjectKey: input.objectKey, // wire name kept (event catalog)
         fileSha256: input.fileSha256,
       },
     });
@@ -1521,7 +1521,7 @@ export function buildDrizzleM25IngestService(
       }[] = [];
       const st02s = parseX12TransactionSetControlNumbers(input.rawEdi);
       const request = {
-        minioObjectKey: input.minioObjectKey,
+        objectKey: input.objectKey,
         payerProgram: input.payerKind,
         rawEdi: input.rawEdi,
       };
@@ -1639,7 +1639,7 @@ export function buildDrizzleM25IngestService(
               payerId: RA.payerId,
               checkOrEftTraceNumber: RA.checkOrEftTraceNumber,
               contentDigest: RA.contentDigest,
-              minioObjectKey: RA.minioObjectKey,
+              objectKey: RA.objectKey,
               parseStatus: RA.parseStatus,
               parseSummary: RA.parseSummary,
               receivedAt: RA.receivedAt,
@@ -1680,7 +1680,7 @@ export function buildDrizzleM25IngestService(
           return null;
         });
       const parsed = await client.parse835({
-        minioObjectKey: advice.minioObjectKey,
+        objectKey: advice.objectKey,
         payerProgram: advice.payerKind,
         transactionSetControlNumber: advice.transactionSetControlNumber,
         ...(advice.functionalGroupControlNumber
