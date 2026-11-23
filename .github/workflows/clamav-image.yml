@@ -42,7 +42,7 @@ jobs:
           tags: ${{ env.IMAGE }}:1.5-sha-${{ github.sha }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
       # Not just a version check: the image downloads real signatures, answers PING and flags EICAR over TCP before it is
-      # scanned, signed or pinned (the engine and libc differ from the Alpine image production still runs).
+      # scanned, signed or pinned (a new ClamAV line or libc can break signature loading or detection).
       - name: Smoke test (signatures load, EICAR is detected)
         run: sh deploy/clamav/smoke.sh "${IMAGE}@${{ steps.build.outputs.digest }}"
       - name: Scan (HIGH/CRITICAL fail the publish)
