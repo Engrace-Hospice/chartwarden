@@ -63,7 +63,14 @@ export function enrollmentRequirementStatus(
   const relevant = rows.filter((row) => {
     if (row.evidenceKind !== kind) return false;
     if (!enrollmentTransactionMatches(row.transactionType, requiredTransactionType)) return false;
+    // Only state provider enrollment is payer-independent. Every other kind is bound to the claim's payer: a
+    // payer-less row never stands in for "any payer" (and verification refuses to create one). The ids compare
+    // as recorded, not through M40 merges: after a payer merge a row keyed to the retired id stops matching, which
+    // fails closed (readiness reads "missing" until the evidence is re-recorded against the surviving payer).
+    if (kind !== "state_medicaid_provider_enrollment" && row.canonicalPayerId !== canonicalPayerId)
+      return false;
     if (row.canonicalPayerId && row.canonicalPayerId !== canonicalPayerId) return false;
+    if (row.programKind && programKind && row.programKind !== programKind) return false;
     if (
       (kind === "clearinghouse_payer_route" ||
         kind === "institutional_format_qualification" ||
@@ -74,26 +81,33 @@ export function enrollmentRequirementStatus(
       return false;
     return day(row.effectiveFrom) <= to && (!row.effectiveTo || day(row.effectiveTo) >= from);
   });
-  if (relevant.length > 1)
+  // Only verified rows can make the requirement ambiguous or satisfied; revoked, rejected, superseded and
+  // pending rows are history (a revocation or a pending renewal must not poison the readiness forever).
+  const verified = relevant.filter((row) => row.status === "verified");
+  if (verified.length > 1)
     return { kind, status: "ambiguous", reasonCode: "ENROLLMENT_EVIDENCE_AMBIGUOUS" };
-  const row = relevant[0];
-  if (!row) return { kind, status: "missing", reasonCode: "ENROLLMENT_EVIDENCE_MISSING" };
-  if (row.status === "revoked")
-    return { kind, status: "revoked", reasonCode: "ENROLLMENT_EVIDENCE_REVOKED" };
-  if (row.status === "expired" || (row.effectiveTo && day(row.effectiveTo) < to))
+  const row = verified[0];
+  if (!row) return unverifiedEvidenceStatus(kind, relevant);
+  if (day(row.effectiveFrom) > from)
+    return { kind, status: "missing", reasonCode: "ENROLLMENT_EVIDENCE_NOT_CURRENT" };
+  if (row.effectiveTo && day(row.effectiveTo) < to)
     return { kind, status: "expired", reasonCode: "ENROLLMENT_EVIDENCE_EXPIRED_OR_PARTIAL" };
-  if (row.status === "pending")
-    return { kind, status: "pending", reasonCode: "ENROLLMENT_EVIDENCE_PENDING" };
-  if (row.status === "rejected")
+  return { kind, status: "verified", reasonCode: "ENROLLMENT_EVIDENCE_VERIFIED" };
+}
+
+/** No verified row overlaps the window: report the most informative recorded state (in-flight beats history). */
+function unverifiedEvidenceStatus(
+  kind: EnrollmentRequirementKind,
+  relevant: ReadonlyArray<EnrollmentEvidenceFacts>,
+): AssemblyPreviewView["enrollmentReadiness"][number] {
+  const has = (status: string): boolean => relevant.some((row) => row.status === status);
+  if (has("pending")) return { kind, status: "pending", reasonCode: "ENROLLMENT_EVIDENCE_PENDING" };
+  if (has("revoked")) return { kind, status: "revoked", reasonCode: "ENROLLMENT_EVIDENCE_REVOKED" };
+  if (has("rejected"))
     return { kind, status: "missing", reasonCode: "ENROLLMENT_EVIDENCE_REJECTED" };
-  if (
-    row.status === "verified" &&
-    day(row.effectiveFrom) <= from &&
-    (!row.effectiveTo || day(row.effectiveTo) >= to)
-  ) {
-    return { kind, status: "verified", reasonCode: "ENROLLMENT_EVIDENCE_VERIFIED" };
-  }
-  return { kind, status: "missing", reasonCode: "ENROLLMENT_EVIDENCE_NOT_CURRENT" };
+  if (has("expired"))
+    return { kind, status: "expired", reasonCode: "ENROLLMENT_EVIDENCE_EXPIRED_OR_PARTIAL" };
+  return { kind, status: "missing", reasonCode: "ENROLLMENT_EVIDENCE_MISSING" };
 }
 
 export function tradingPartnerCredentialStatus(

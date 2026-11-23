@@ -163,4 +163,90 @@ describe("enrollmentRequirementStatus payer binding", () => {
       status: "missing",
     });
   });
+
+  it("never lets a payer-less verified row satisfy a payer-bound kind", () => {
+    for (const [kind, transactionType, requiredTransactionType] of [
+      ["mco_participation", null, null],
+      ["837i_enrollment", "837I", "837I"],
+      ["835_era_enrollment", "835", "835"],
+    ] as const) {
+      expect(
+        status([evidence({ evidenceKind: kind, transactionType, canonicalPayerId: null })], kind, {
+          requiredTransactionType,
+        }),
+      ).toMatchObject({ status: "missing" });
+    }
+  });
+
+  it("keeps state provider enrollment payer-independent", () => {
+    expect(
+      status(
+        [
+          evidence({
+            evidenceKind: "state_medicaid_provider_enrollment",
+            transactionType: null,
+            canonicalPayerId: null,
+            programKind: null,
+          }),
+        ],
+        "state_medicaid_provider_enrollment",
+        { requiredTransactionType: null },
+      ),
+    ).toMatchObject({ status: "verified" });
+  });
+
+  it("does not match a row recorded for a different program kind", () => {
+    expect(
+      status([evidence({ programKind: "other_managed_care" })], "837i_enrollment", {
+        programKind: "managed_care",
+      }),
+    ).toMatchObject({ status: "missing" });
+    expect(
+      status([evidence({ programKind: null })], "837i_enrollment", { programKind: "managed_care" }),
+    ).toMatchObject({ status: "verified" });
+  });
+});
+
+describe("enrollmentRequirementStatus counts only verified rows toward ambiguity", () => {
+  it("stays verified beside a revoked earlier row", () => {
+    expect(
+      status([evidence({ status: "revoked" }), evidence({ effectiveFrom: utc("2026-01-15") })]),
+    ).toMatchObject({ status: "verified" });
+  });
+
+  it("stays verified beside a pending renewal", () => {
+    expect(
+      status([evidence(), evidence({ status: "pending", effectiveFrom: utc("2026-02-10") })]),
+    ).toMatchObject({ status: "verified" });
+  });
+
+  it("ignores rejected and superseded rows once a verified row covers the window", () => {
+    expect(
+      status([evidence({ status: "rejected" }), evidence({ status: "superseded" }), evidence()]),
+    ).toMatchObject({ status: "verified" });
+  });
+
+  it("reports the most informative non-verified state when nothing is verified", () => {
+    expect(status([evidence({ status: "revoked" })])).toMatchObject({ status: "revoked" });
+    expect(
+      status([evidence({ status: "revoked" }), evidence({ status: "pending" })]),
+    ).toMatchObject({
+      status: "pending",
+    });
+    expect(status([evidence({ status: "rejected" })])).toMatchObject({
+      status: "missing",
+      reasonCode: "ENROLLMENT_EVIDENCE_REJECTED",
+    });
+    expect(status([evidence({ status: "superseded" })])).toMatchObject({ status: "missing" });
+  });
+
+  it("is still ambiguous when two verified rows overlap the window", () => {
+    expect(
+      status([
+        evidence(),
+        evidence({ status: "revoked" }),
+        evidence({ effectiveFrom: utc("2026-02-15") }),
+      ]),
+    ).toMatchObject({ status: "ambiguous" });
+  });
 });
