@@ -14,6 +14,7 @@
  *   - Local: `CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:rls:live` (SUPERUSER to a THROWAWAY db;
  *     for a local PG without pgvector, set CHARTWARDEN_TEST_NO_PGVECTOR=1).
  */
+import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "pg";
@@ -24,6 +25,10 @@ const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
+const PATIENT = "44444444-4444-4444-4444-444444444444";
+/** Membership sentinels: the recorder of every row, and a second person who may verify it (four-eyes). */
+const RECORDER = "00000000-0000-0000-0000-000000000000";
+const REVIEWER = "00000000-0000-0000-0000-0000000000aa";
 
 type SeedIds = {
   pe: string;
@@ -68,6 +73,56 @@ const COVERED: { table: string; key: keyof SeedIds; idCol?: string }[] = [
   { table: "medicaid_payer_rate_policy", key: "payerRatePolicy" },
 ];
 
+/**
+ * The four tables 1535/1538/1539 add, each with ONE valid INSERT ($1 org, $2 provider entity, $3 patient,
+ * $4 recorder) and the name of its BEFORE INSERT provider-entity guard. The statement satisfies every CHECK,
+ * so the only things that can refuse it are the grant, RLS and that guard trigger.
+ */
+const NEW_TABLES = [
+  {
+    table: "medicaid_program_assignment",
+    guard: "trg_medicaid_program_assignment_provider_entity",
+    insert: `INSERT INTO medicaid_program_assignment
+      (organization_id, provider_entity_id, recorded_by_membership_id, patient_id, patient_payer_id, admission_id,
+       service_state, program_kind, canonical_payer_id, status, effective_from, source_kind)
+      VALUES ($1,$2,$3,$4,gen_random_uuid(),gen_random_uuid(),'OR','managed_care',gen_random_uuid(),
+              'pending','2026-01-01','manual_candidate')`,
+  },
+  {
+    table: "medicaid_enrollment_evidence",
+    guard: "trg_medicaid_enrollment_evidence_provider_entity",
+    insert: `INSERT INTO medicaid_enrollment_evidence
+      (organization_id, provider_entity_id, recorded_by_membership_id, service_state, transaction_type,
+       evidence_kind, status, effective_from)
+      VALUES ($1,$2,$3,'OR','837I','837i_enrollment','pending','2026-01-01')`,
+  },
+  {
+    table: "medicaid_payer_authorization_event",
+    guard: "trg_medicaid_payer_authorization_evidence_status",
+    insert: `INSERT INTO medicaid_payer_authorization_event
+      (organization_id, provider_entity_id, recorded_by_membership_id, patient_id, patient_payer_id, admission_id,
+       canonical_payer_id, service_state, service_from, service_to, event_kind, evidence_status, evidence_source)
+      VALUES ($1,$2,$3,$4,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),'OR','2026-01-01','2026-01-31',
+              'authorization_pending','unverified','operator_record')`,
+  },
+  {
+    table: "medicaid_payer_rate_policy",
+    guard: "trg_medicaid_payer_rate_policy_status",
+    insert: `INSERT INTO medicaid_payer_rate_policy
+      (organization_id, provider_entity_id, recorded_by_membership_id, canonical_payer_id, program_kind,
+       service_state, locality_code, service_category, unit_basis, rate_cents, source_kind, effective_from)
+      VALUES ($1,$2,$3,gen_random_uuid(),'managed_care','OR','CBSA-TEST','RHC','per_day',10000,'cco_contract',
+              '2026-01-01')`,
+  },
+] as const;
+
+/** Bind exactly the parameters a statement mentions (pg refuses a bound parameter it never sees). */
+const bindsFor = (insert: string, org: string, pe: string): string[] =>
+  [org, pe, RECORDER, PATIENT].slice(
+    0,
+    Math.max(...[...insert.matchAll(/\$(\d)/g)].map((m) => Number(m[1]))),
+  );
+
 describe.skipIf(!DB_URL)(
   "M24 Billing — Medicaid — RLS cross-tenant denial — LIVE Postgres (§3.5)",
   () => {
@@ -84,6 +139,68 @@ describe.skipIf(!DB_URL)(
         await db.query("RESET ROLE");
       }
     }
+
+    /** Run `fn` with one trigger switched off (superuser connection), then switch it back on. */
+    async function withTriggerOff<T>(
+      table: string,
+      trigger: string,
+      fn: () => Promise<T>,
+    ): Promise<T> {
+      await db.query(`ALTER TABLE ${table} DISABLE TRIGGER ${trigger}`);
+      try {
+        return await fn();
+      } finally {
+        await db.query(`ALTER TABLE ${table} ENABLE TRIGGER ${trigger}`);
+      }
+    }
+
+    /** INSERT one row from a column->value map on the superuser connection (grants, RLS and CHECK-only guards). */
+    async function insertRow(table: string, row: Record<string, unknown>): Promise<string> {
+      const cols = Object.keys(row);
+      const { rows } = await db.query<{ id: string }>(
+        `INSERT INTO ${table} (${cols.join(",")}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(",")}) RETURNING id`,
+        Object.values(row),
+      );
+      return rows[0].id;
+    }
+
+    const assignmentRow = (over: Record<string, unknown> = {}) => ({
+      organization_id: ORG_A,
+      provider_entity_id: a.pe,
+      patient_id: PATIENT,
+      patient_payer_id: randomUUID(),
+      admission_id: randomUUID(),
+      service_state: "OR",
+      program_kind: "managed_care",
+      canonical_payer_id: randomUUID(),
+      status: "pending",
+      effective_from: "2026-01-01",
+      source_kind: "manual_candidate",
+      recorded_by_membership_id: RECORDER,
+      ...over,
+    });
+    const assignmentVerification = {
+      verified_at: "2026-02-01T00:00:00Z",
+      verified_by_membership_id: REVIEWER,
+      evidence_reference: "doc:synthetic-assignment-evidence",
+    };
+    const evidenceRow = (over: Record<string, unknown> = {}) => ({
+      organization_id: ORG_A,
+      provider_entity_id: a.pe,
+      service_state: "OR",
+      transaction_type: "837I",
+      evidence_kind: "837i_enrollment",
+      status: "pending",
+      effective_from: "2026-01-01",
+      recorded_by_membership_id: RECORDER,
+      ...over,
+    });
+    const evidenceVerification = {
+      verified_at: "2026-02-01T00:00:00Z",
+      verified_by_membership_id: REVIEWER,
+      verification_source: "state_registry",
+      evidence_reference: "doc:synthetic-enrollment-evidence",
+    };
 
     async function resetSchema() {
       await db.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -340,19 +457,51 @@ describe.skipIf(!DB_URL)(
         expect(block).not.toMatch(/pg_has_role/i);
         expect(block).not.toMatch(/IS NULL/i);
       }
-      const readiness = readFileSync(
-        join(MIGRATIONS_DIR, "1535_m24_payer_program_readiness.sql"),
-        "utf8",
-      );
-      const readinessPolicies = readiness.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? [];
-      expect(readinessPolicies).toHaveLength(2);
-      for (const block of readinessPolicies) {
-        const vars = [...block.matchAll(/current_setting\(\s*'([^']+)'/g)].map((mm) => mm[1]);
-        expect(new Set(vars)).toEqual(new Set(["app.org_id"]));
-        expect(block).not.toMatch(/pg_has_role/i);
-        expect(block).not.toMatch(/IS NULL/i);
+      // The later migrations that add tenant tables: 1535 (two), 1538 and 1539 (one each).
+      const laterMigrations = [
+        ["1535_m24_payer_program_readiness.sql", 2],
+        ["1538_m24_payer_authorization_evidence.sql", 1],
+        ["1539_m24_payer_rate_policy_evidence.sql", 1],
+      ] as const;
+      for (const [file, expected] of laterMigrations) {
+        const sql = readFileSync(join(MIGRATIONS_DIR, file), "utf8");
+        const policies = sql.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? [];
+        expect(policies, file).toHaveLength(expected);
+        for (const block of policies) {
+          const vars = [...block.matchAll(/current_setting\(\s*'([^']+)'/g)].map((mm) => mm[1]);
+          expect(new Set(vars), file).toEqual(new Set(["app.org_id"]));
+          expect(block, file).not.toMatch(/pg_has_role/i);
+          expect(block, file).not.toMatch(/IS NULL/i);
+        }
       }
     });
+
+    it.each(NEW_TABLES)(
+      "$table: the live catalog holds exactly one org-keyed policy, RLS enabled and FORCEd",
+      async ({ table }) => {
+        const { rows: flags } = await db.query(
+          "SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE oid = $1::regclass",
+          [table],
+        );
+        expect(flags[0]).toEqual({ relrowsecurity: true, relforcerowsecurity: true });
+        const { rows: policies } = await db.query<{
+          cmd: string;
+          roles: string;
+          qual: string;
+          with_check: string;
+        }>(
+          "SELECT cmd, roles::text AS roles, qual, with_check FROM pg_policies WHERE schemaname='public' AND tablename=$1",
+          [table],
+        );
+        expect(policies).toHaveLength(1);
+        expect(policies[0].cmd).toBe("ALL");
+        expect(policies[0].roles).toBe("{chartwarden_app}");
+        for (const expression of [policies[0].qual, policies[0].with_check]) {
+          expect(expression).toContain("app.org_id");
+          expect(expression).not.toMatch(/select|pg_has_role|is null/i);
+        }
+      },
+    );
 
     it.each(COVERED)(
       "$table: org A sees its row, org B cannot (cross-tenant denial)",
@@ -379,93 +528,97 @@ describe.skipIf(!DB_URL)(
             [ORG_A], // B tries to write a row scoped to A
           ),
         ),
-      ).rejects.toThrow();
-      await expect(
-        withOrg(ORG_B, () =>
-          db.query(
-            `INSERT INTO medicaid_enrollment_evidence
-             (organization_id, provider_entity_id, service_state, evidence_kind, effective_from, recorded_by_membership_id)
-             VALUES ($1,$2,'OR','state_medicaid_provider_enrollment','2026-01-01','00000000-0000-0000-0000-000000000000')`,
-            [ORG_A, a.pe],
-          ),
-        ),
-      ).rejects.toThrow();
-      await expect(
-        withOrg(ORG_B, () =>
-          db.query(
-            `INSERT INTO medicaid_payer_authorization_event
-             (organization_id, provider_entity_id, patient_id, patient_payer_id, admission_id,
-              canonical_payer_id, service_state, service_from, service_to, event_kind,
-              evidence_status, evidence_source, recorded_by_membership_id)
-             VALUES ($1,$2,$3,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),'OR','2026-01-01','2026-01-31',
-                     'authorization_approved','unverified','operator_record','00000000-0000-0000-0000-000000000000')`,
-            [ORG_A, a.pe, "44444444-4444-4444-4444-444444444444"],
-          ),
-        ),
-      ).rejects.toThrow();
+      ).rejects.toThrow(/new row violates row-level security policy/);
     });
 
-    it("new rate and authorization evidence reject a provider entity from another organization", async () => {
-      await expect(
-        withOrg(ORG_A, () =>
-          db.query(
-            `INSERT INTO medicaid_payer_authorization_event
-               (organization_id, provider_entity_id, patient_id, patient_payer_id, admission_id,
-                canonical_payer_id, service_state, service_from, service_to, event_kind,
-                evidence_status, evidence_source, recorded_by_membership_id)
-             VALUES ($1,$2,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),
-                     'OR','2026-01-01','2026-01-31','authorization_pending','unverified',
-                     'operator_record','00000000-0000-0000-0000-000000000000')`,
-            [ORG_A, b.pe],
-          ),
-        ),
-      ).rejects.toThrow(/provider entity must belong/);
-      await expect(
-        withOrg(ORG_A, () =>
-          db.query(
-            `INSERT INTO medicaid_payer_rate_policy
-               (organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
-                locality_code, service_category, unit_basis, rate_cents, source_kind, effective_from,
-                recorded_by_membership_id)
-             VALUES ($1,$2,gen_random_uuid(),'managed_care','OR','CBSA-TEST','RHC','per_day',
-                     10000,'cco_contract','2026-01-01','00000000-0000-0000-0000-000000000000')`,
-            [ORG_A, b.pe],
-          ),
-        ),
-      ).rejects.toThrow(/provider entity must belong/);
+    it.each(NEW_TABLES)(
+      "$table: org A can write its own row, and the WITH CHECK alone refuses org B writing into org A's scope",
+      async ({ table, guard, insert }) => {
+        // Control: the identical statement is valid for the owning tenant, so the refusal below cannot be a
+        // CHECK, a missing grant or a typo.
+        const own = await withOrg(ORG_A, () => db.query(insert, bindsFor(insert, ORG_A, a.pe)));
+        expect(own.rowCount).toBe(1);
+        // The provider-entity guard refuses a cross-tenant row first (the writer cannot see org A's provider
+        // entity, and org B's would not match the row's organization), so only that guard is switched off:
+        // what stands between org B and the insert is then the policy, and nothing else.
+        await withTriggerOff(table, guard, async () => {
+          await expect(
+            withOrg(ORG_B, () => db.query(insert, bindsFor(insert, ORG_A, a.pe))),
+          ).rejects.toThrow(/new row violates row-level security policy/);
+        });
+      },
+    );
+
+    it.each(
+      COVERED.filter((t) =>
+        ["medicaid_program_assignment", "medicaid_enrollment_evidence"].includes(t.table),
+      ),
+    )("$table: org B cannot UPDATE org A's row (USING covers writes)", async ({ table, key }) => {
+      const res = await withOrg(ORG_B, () =>
+        db.query(`UPDATE ${table} SET version = version + 1 WHERE id=$1`, [a[key]]),
+      );
+      expect(res.rowCount).toBe(0);
+      const own = await withOrg(ORG_A, () =>
+        db.query(`UPDATE ${table} SET version = version WHERE id=$1`, [a[key]]),
+      );
+      expect(own.rowCount).toBe(1);
     });
 
-    it("authorization evidence is append-only for the application role", async () => {
-      await expect(
-        withOrg(ORG_A, () =>
-          db.query(
-            "UPDATE medicaid_payer_authorization_event SET evidence_status='verified' WHERE id=$1",
-            [a.payerAuthorizationEvent],
+    it.each(NEW_TABLES)(
+      "$table: a provider entity from another organization is refused by the guard (the row itself is valid for its tenant)",
+      async ({ insert }) => {
+        await expect(
+          withOrg(ORG_A, () => db.query(insert, bindsFor(insert, ORG_A, b.pe))),
+        ).rejects.toThrow(/provider entity must belong/);
+      },
+    );
+
+    const APPEND_ONLY = [
+      { table: "medicaid_payer_authorization_event", key: "payerAuthorizationEvent" },
+      { table: "medicaid_payer_rate_policy", key: "payerRatePolicy" },
+    ] as const;
+
+    it.each(APPEND_ONLY)(
+      "$table: the append-only trigger refuses UPDATE and DELETE even on a superuser connection",
+      async ({ table, key }) => {
+        // A superuser holds every grant and skips RLS, so only the trigger can answer here.
+        await expect(
+          db.query(`UPDATE ${table} SET created_at = created_at WHERE id=$1`, [a[key]]),
+        ).rejects.toThrow(/append-only/);
+        await expect(db.query(`DELETE FROM ${table} WHERE id=$1`, [a[key]])).rejects.toThrow(
+          /append-only/,
+        );
+      },
+    );
+
+    it.each(APPEND_ONLY)(
+      "$table: the application role holds no UPDATE or DELETE grant",
+      async ({ table, key }) => {
+        await expect(
+          withOrg(ORG_A, () =>
+            db.query(`UPDATE ${table} SET created_at = created_at WHERE id=$1`, [a[key]]),
           ),
-        ),
-      ).rejects.toThrow();
-      await expect(
-        withOrg(ORG_A, () =>
-          db.query("DELETE FROM medicaid_payer_authorization_event WHERE id=$1", [
-            a.payerAuthorizationEvent,
-          ]),
-        ),
-      ).rejects.toThrow();
-      await expect(
-        withOrg(ORG_A, () =>
-          db.query(
-            `INSERT INTO medicaid_payer_authorization_event
+        ).rejects.toThrow(/permission denied for table/);
+        await expect(
+          withOrg(ORG_A, () => db.query(`DELETE FROM ${table} WHERE id=$1`, [a[key]])),
+        ).rejects.toThrow(/permission denied for table/);
+      },
+    );
+
+    it("authorization evidence cannot be inserted as verified by the application role", async () => {
+      const verified = `INSERT INTO medicaid_payer_authorization_event
                (organization_id, provider_entity_id, patient_id, patient_payer_id, admission_id,
                 canonical_payer_id, service_state, service_from, service_to, event_kind,
                 evidence_status, evidence_source, evidence_reference, verified_at,
                 verified_by_membership_id, recorded_by_membership_id)
-             VALUES ($1,$2,'44444444-4444-4444-4444-444444444444',gen_random_uuid(),gen_random_uuid(),
+             VALUES ($1,$2,$3,gen_random_uuid(),gen_random_uuid(),
                      gen_random_uuid(),'OR','2026-01-01','2026-01-31','authorization_approved',
                      'verified','payer_response','payer-response:test-review',now(),
-                     gen_random_uuid(),gen_random_uuid())`,
-            [ORG_A, a.pe],
-          ),
-        ),
+                     gen_random_uuid(),gen_random_uuid())`;
+      // Control: the same row is valid (every CHECK, RLS, grants); only a non-application role may write it.
+      expect((await db.query(verified, [ORG_A, a.pe, PATIENT])).rowCount).toBe(1);
+      await expect(
+        withOrg(ORG_A, () => db.query(verified, [ORG_A, a.pe, PATIENT])),
       ).rejects.toThrow(/separate reviewer path/);
     });
 
@@ -482,20 +635,7 @@ describe.skipIf(!DB_URL)(
       expect(payload).not.toContain("payer-response:synthetic-test");
     });
 
-    it("payer rate policy is append-only and application inserts cannot assert verification", async () => {
-      await expect(
-        withOrg(ORG_A, () =>
-          db.query(
-            "UPDATE medicaid_payer_rate_policy SET verification_status='verified' WHERE id=$1",
-            [a.payerRatePolicy],
-          ),
-        ),
-      ).rejects.toThrow();
-      await expect(
-        withOrg(ORG_A, () =>
-          db.query("DELETE FROM medicaid_payer_rate_policy WHERE id=$1", [a.payerRatePolicy]),
-        ),
-      ).rejects.toThrow();
+    it("payer rate policy: application inserts cannot assert verification, and the locality CHECK holds", async () => {
       await expect(
         withOrg(ORG_A, () =>
           db.query(
@@ -509,21 +649,19 @@ describe.skipIf(!DB_URL)(
           ),
         ),
       ).rejects.toThrow(/medicaid_payer_rate_policy_locality_valid/);
-      await expect(
-        withOrg(ORG_A, () =>
-          db.query(
-            `INSERT INTO medicaid_payer_rate_policy
+      const verified = `INSERT INTO medicaid_payer_rate_policy
                (organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
                 locality_code, service_category, unit_basis, bucket_from, bucket_to, rate_cents,
                 source_kind, verification_status, effective_from, source_document_ref, verified_at,
                 verified_by_membership_id, recorded_by_membership_id)
              VALUES ($1,$2,gen_random_uuid(),'managed_care','OR','CBSA-TEST','RHC','per_day',1,60,
                      10000,'cco_contract','verified','2026-01-01','doc:synthetic',now(),
-                     gen_random_uuid(),gen_random_uuid())`,
-            [ORG_A, a.pe],
-          ),
-        ),
-      ).rejects.toThrow(/separate reviewer path/);
+                     gen_random_uuid(),gen_random_uuid())`;
+      // Control: the same row satisfies every CHECK, so the refusal is the verification guard.
+      expect((await db.query(verified, [ORG_A, a.pe])).rowCount).toBe(1);
+      await expect(withOrg(ORG_A, () => db.query(verified, [ORG_A, a.pe]))).rejects.toThrow(
+        /separate reviewer path/,
+      );
     });
 
     it("payer rate policy audit omits source document references", async () => {
@@ -536,6 +674,319 @@ describe.skipIf(!DB_URL)(
       expect(audit.rows).toHaveLength(1);
       const payload = JSON.stringify(audit.rows[0].after);
       expect(payload).not.toContain("doc:synthetic");
+    });
+
+    // ── A2 — siting: the patient-keyed 1535/1538 tables carry the same nullable location_id as every older M24
+    // patient table (a location FK is RESTRICT-on-delete, like the rest of M24).
+    describe.each([
+      {
+        table: "medicaid_program_assignment",
+        insertWith: (location_id: string) =>
+          insertRow("medicaid_program_assignment", assignmentRow({ location_id })),
+      },
+      {
+        table: "medicaid_payer_authorization_event",
+        insertWith: (location_id: string) =>
+          insertRow("medicaid_payer_authorization_event", {
+            organization_id: ORG_A,
+            provider_entity_id: a.pe,
+            patient_id: PATIENT,
+            patient_payer_id: randomUUID(),
+            admission_id: randomUUID(),
+            canonical_payer_id: randomUUID(),
+            service_state: "OR",
+            service_from: "2026-01-01",
+            service_to: "2026-01-31",
+            event_kind: "authorization_pending",
+            evidence_source: "operator_record",
+            recorded_by_membership_id: RECORDER,
+            location_id,
+          }),
+      },
+    ])("$table siting", ({ table, insertWith }) => {
+      it("has a nullable location_id referencing location(id) ON DELETE RESTRICT", async () => {
+        const col = await db.query(
+          "SELECT is_nullable, data_type FROM information_schema.columns WHERE table_schema='public' AND table_name=$1 AND column_name='location_id'",
+          [table],
+        );
+        expect(col.rows).toEqual([{ is_nullable: "YES", data_type: "uuid" }]);
+        const fk = await db.query(
+          `SELECT confrelid::regclass::text AS parent, confdeltype FROM pg_constraint
+           WHERE conrelid = $1::regclass AND contype = 'f'
+             AND conkey = ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid = $1::regclass AND attname = 'location_id')]`,
+          [table],
+        );
+        expect(fk.rows).toEqual([{ parent: "location", confdeltype: "r" }]);
+      });
+
+      it("stores a real location and refuses an unknown one", async () => {
+        const location = (
+          await db.query(
+            `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
+             VALUES ($1,'Loc A','1 St','Town','OR','97000','America/Los_Angeles') RETURNING id`,
+            [a.pe],
+          )
+        ).rows[0].id as string;
+        expect(await insertWith(location)).toBeTruthy();
+        await expect(insertWith(randomUUID())).rejects.toThrow(/violates foreign key constraint/);
+      });
+    });
+
+    // ── A3 — the 1535 mutable evidence tables: four-eyes CHECK, column-limited UPDATE, identity guard and a
+    // status-transition guard (the 1532 / WF09 precedent), each reachable only by the control under test.
+    const VERIFY_COLUMNS =
+      "status='verified', verification_source='state_registry', evidence_reference='doc:synthetic-evidence', verified_at=now(), verified_by_membership_id=$2, version=version+1, updated_at=now()";
+    const MUTABLE = [
+      {
+        table: "medicaid_program_assignment",
+        seedKey: "programAssignment" as const,
+        row: assignmentRow,
+        verification: assignmentVerification,
+        fourEyes: "medicaid_program_assignment_four_eyes",
+        updatable: [
+          "canonical_payer_classification_id",
+          "evidence_reference",
+          "revocation_reason",
+          "status",
+          "updated_at",
+          "verification_source",
+          "verified_at",
+          "verified_by_membership_id",
+          "version",
+        ],
+        verifySet: `${VERIFY_COLUMNS}, canonical_payer_classification_id=gen_random_uuid()`,
+        identityChanges: () => ({
+          organization_id: ORG_B,
+          patient_id: randomUUID(),
+          patient_payer_id: randomUUID(),
+          admission_id: randomUUID(),
+          provider_entity_id: randomUUID(),
+          location_id: randomUUID(),
+          service_state: "WA",
+          program_kind: "unsupported",
+          canonical_payer_id: randomUUID(),
+          payer_snapshot: JSON.stringify({ label: "changed" }),
+          effective_from: "2026-03-01",
+          effective_to: "2026-12-31",
+          source_kind: "other",
+          recorded_by_membership_id: REVIEWER,
+          supersedes_id: randomUUID(),
+          created_at: "2020-01-01T00:00:00Z",
+        }),
+        terminal: ["rejected", "revoked", "superseded"],
+        afterVerified: ["revoked", "superseded"],
+        open: ["candidate", "pending"],
+        frozenEvidence: {
+          canonical_payer_classification_id: () => randomUUID(),
+          evidence_reference: () => "doc:rewritten",
+          verification_source: () => "payer_confirmation",
+          verified_at: () => "2026-03-01T00:00:00Z",
+          verified_by_membership_id: () => "00000000-0000-0000-0000-0000000000bb",
+        },
+      },
+      {
+        table: "medicaid_enrollment_evidence",
+        seedKey: "enrollmentEvidence" as const,
+        row: evidenceRow,
+        verification: evidenceVerification,
+        fourEyes: "medicaid_enrollment_evidence_four_eyes",
+        updatable: [
+          "evidence_reference",
+          "revocation_reason",
+          "status",
+          "updated_at",
+          "verification_source",
+          "verified_at",
+          "verified_by_membership_id",
+          "version",
+        ],
+        verifySet: VERIFY_COLUMNS,
+        identityChanges: () => ({
+          organization_id: ORG_B,
+          provider_entity_id: randomUUID(),
+          service_state: "WA",
+          program_kind: "unsupported",
+          canonical_payer_id: randomUUID(),
+          clearinghouse: "other-house",
+          vendor_payer_id: "OTHER-VENDOR",
+          transaction_type: "835",
+          evidence_kind: "835_era_enrollment",
+          effective_from: "2026-03-01",
+          effective_to: "2026-12-31",
+          recorded_by_membership_id: REVIEWER,
+          supersedes_id: randomUUID(),
+          created_at: "2020-01-01T00:00:00Z",
+        }),
+        terminal: ["rejected", "expired", "revoked", "superseded"],
+        afterVerified: ["revoked", "expired", "superseded"],
+        open: ["pending"],
+        frozenEvidence: {
+          evidence_reference: () => "doc:rewritten",
+          verification_source: () => "payer_confirmation",
+          verified_at: () => "2026-03-01T00:00:00Z",
+          verified_by_membership_id: () => "00000000-0000-0000-0000-0000000000bb",
+        },
+      },
+    ];
+
+    describe.each(MUTABLE)("$table mutation guards", (cfg) => {
+      const { table } = cfg;
+      /** A fresh row at `status` (inserted on the superuser connection, which bypasses grants, RLS and the update guard). */
+      const rowAt = (status: string) =>
+        insertRow(
+          table,
+          cfg.row({
+            status,
+            ...(status === "verified" ? cfg.verification : {}),
+            ...(status === "revoked" ? { revocation_reason: "other" } : {}),
+          }),
+        );
+
+      it("four-eyes: the verifier cannot be the person who recorded the row", async () => {
+        await expect(
+          insertRow(
+            table,
+            cfg.row({
+              status: "verified",
+              ...cfg.verification,
+              verified_by_membership_id: RECORDER,
+            }),
+          ),
+        ).rejects.toThrow(new RegExp(cfg.fourEyes));
+        // Control: the same row with a different verifier is valid.
+        expect(await rowAt("verified")).toBeTruthy();
+      });
+
+      it("the application role may update exactly the columns the verify and revoke paths write", async () => {
+        const granted = await db.query<{ attname: string }>(
+          `SELECT attname FROM pg_attribute
+           WHERE attrelid = $1::regclass AND attnum > 0 AND NOT attisdropped
+             AND has_column_privilege('chartwarden_app', attrelid, attnum, 'UPDATE')
+           ORDER BY attname`,
+          [table],
+        );
+        expect(granted.rows.map((r) => r.attname).sort()).toEqual([...cfg.updatable].sort());
+        const all = await db.query<{ attname: string }>(
+          "SELECT attname FROM pg_attribute WHERE attrelid = $1::regclass AND attnum > 0 AND NOT attisdropped",
+          [table],
+        );
+        for (const { attname } of all.rows.filter((r) => !cfg.updatable.includes(r.attname))) {
+          await expect(
+            withOrg(ORG_A, () =>
+              db.query(`UPDATE ${table} SET ${attname} = ${attname} WHERE id=$1`, [a[cfg.seedKey]]),
+            ),
+          ).rejects.toThrow(/permission denied for table/);
+        }
+      });
+
+      it("the application role can record, verify and revoke a row (the paths the service uses)", async () => {
+        const entry = NEW_TABLES.find((t) => t.table === table);
+        if (!entry) throw new Error(`${table} missing from NEW_TABLES`);
+        const id = (
+          await withOrg(ORG_A, () =>
+            db.query<{ id: string }>(
+              `${entry.insert} RETURNING id`,
+              bindsFor(entry.insert, ORG_A, a.pe),
+            ),
+          )
+        ).rows[0].id;
+        const verified = await withOrg(ORG_A, () =>
+          db.query(`UPDATE ${table} SET ${cfg.verifySet} WHERE id=$1`, [id, REVIEWER]),
+        );
+        expect(verified.rowCount).toBe(1);
+        const revoked = await withOrg(ORG_A, () =>
+          db.query(
+            `UPDATE ${table} SET status='revoked', revocation_reason='other', version=version+1, updated_at=now() WHERE id=$1`,
+            [id],
+          ),
+        );
+        expect(revoked.rowCount).toBe(1);
+      });
+
+      it("identity: no column that says what the row IS can change, for any role", async () => {
+        // The superuser holds every grant and skips RLS, so only the guard trigger can answer.
+        const changes = Object.entries(cfg.identityChanges());
+        expect(changes.length).toBeGreaterThan(10);
+        for (const [column, value] of changes) {
+          const id = await rowAt("pending");
+          await expect(
+            db.query(`UPDATE ${table} SET ${column} = $2 WHERE id=$1`, [id, value]),
+            column,
+          ).rejects.toThrow(/cannot be changed/);
+        }
+        // Control: a value column still updates.
+        const id = await rowAt("pending");
+        expect(
+          (await db.query(`UPDATE ${table} SET version = version + 1 WHERE id=$1`, [id])).rowCount,
+        ).toBe(1);
+      });
+
+      it("status: a row verifies only from an open status, a verified row can only be revoked or superseded, a closed row is final", async () => {
+        const everyStatus = [...cfg.open, "verified", ...cfg.terminal];
+        const legal = (from: string, to: string) =>
+          cfg.open.includes(from) || (from === "verified" && cfg.afterVerified.includes(to));
+        for (const from of everyStatus) {
+          for (const to of everyStatus.filter((s) => s !== from)) {
+            const id = await rowAt(from);
+            const attempt =
+              to === "verified"
+                ? db.query(`UPDATE ${table} SET ${cfg.verifySet} WHERE id=$1`, [id, REVIEWER])
+                : db.query(`UPDATE ${table} SET status=$2 WHERE id=$1`, [id, to]);
+            if (legal(from, to)) {
+              expect((await attempt).rowCount, `${from} -> ${to}`).toBe(1);
+            } else {
+              await expect(attempt, `${from} -> ${to}`).rejects.toThrow(/is final|can only be/);
+            }
+          }
+        }
+      });
+
+      it("evidence: once a row leaves its open status the verification evidence cannot be rewritten", async () => {
+        for (const [column, value] of Object.entries(cfg.frozenEvidence)) {
+          const id = await rowAt("verified");
+          await expect(
+            db.query(`UPDATE ${table} SET ${column} = $2 WHERE id=$1`, [id, value()]),
+            column,
+          ).rejects.toThrow(/verification evidence cannot change/);
+        }
+        // Control: the same columns are written freely while the row is still open (that is the verify step).
+        const id = await rowAt(cfg.open[cfg.open.length - 1]);
+        expect(
+          (
+            await db.query(
+              `UPDATE ${table} SET evidence_reference='doc:first', verification_source='state_registry' WHERE id=$1`,
+              [id],
+            )
+          ).rowCount,
+        ).toBe(1);
+      });
+    });
+
+    // ── A4 — the 1539 identity key is per chain head: a correction names its predecessor and may reuse the
+    // effective date; a second correction of the same predecessor (a fork) and a second head are still refused.
+    it("payer rate policy: a correcting row may repeat the identity and effective date, once per predecessor", async () => {
+      const correction = (supersedes: string | null) =>
+        withOrg(ORG_A, () =>
+          db.query(
+            `INSERT INTO medicaid_payer_rate_policy
+               (organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
+                locality_code, service_category, unit_basis, bucket_from, bucket_to, rate_cents,
+                source_kind, effective_from, recorded_by_membership_id, supersedes_id)
+             SELECT organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
+                locality_code, service_category, unit_basis, bucket_from, bucket_to, 9000,
+                source_kind, effective_from, recorded_by_membership_id, $2::uuid
+             FROM medicaid_payer_rate_policy WHERE id = $1`,
+            [a.payerRatePolicy, supersedes],
+          ),
+        );
+      // A second head with the same identity (no predecessor) is a duplicate.
+      await expect(correction(null)).rejects.toThrow(/medicaid_payer_rate_policy_identity_uq/);
+      // The correction names the row it replaces.
+      expect((await correction(a.payerRatePolicy)).rowCount).toBe(1);
+      // Two corrections of the same predecessor would fork the chain.
+      await expect(correction(a.payerRatePolicy)).rejects.toThrow(
+        /medicaid_payer_rate_policy_identity_uq/,
+      );
     });
 
     // ── WX-PR-011 — `medicaid_state_plan_code` is PLATFORM-SHARED (no organization_id), unlike the
