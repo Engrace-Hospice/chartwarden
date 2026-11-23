@@ -1,4 +1,5 @@
-import { rejectAiActor, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
+import { Uuid, rejectAiActor, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
+import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { m24ActorOf } from "./actor";
 import { ABAC_BODY_PATIENT, ABAC_BODY_PE, P, STEP_UP } from "./guards";
@@ -9,14 +10,25 @@ import {
   RevokeProgramAssignmentBody,
   VerifyEnrollmentEvidenceBody,
   VerifyProgramAssignmentBody,
+  assertEffectiveRange,
   parse,
 } from "./m24-typebox";
 import type { M24WriteService } from "./write-service";
 
 const AI = rejectAiActor("AI principals cannot record or verify Medicaid payer evidence (D12)");
 const IDEMPOTENT = requireIdempotencyKey();
-const idParam = (request: { params: unknown }): string =>
-  (request.params as Record<string, string>).id ?? "";
+const IdParams = Type.Object({ id: Uuid() });
+/** The `:id` path param, validated as a uuid so a malformed id is a 422, not a database cast error. */
+const idParam = (request: { params: unknown }): string => parse(IdParams, request.params).id;
+
+/** A record body whose `effectiveTo` may not precede `effectiveFrom`. */
+function parseDatedRecord<
+  T extends typeof RecordProgramAssignmentBody | typeof RecordEnrollmentEvidenceBody,
+>(schema: T, raw: unknown) {
+  const body = parse(schema, raw);
+  assertEffectiveRange(body);
+  return body;
+}
 
 export function registerPayerReadinessRoutes(
   app: FastifyInstance,
@@ -42,7 +54,7 @@ export function registerPayerReadinessRoutes(
         .send(
           await writeService.recordProgramAssignment(
             m24ActorOf(request),
-            parse(RecordProgramAssignmentBody, request.body),
+            parseDatedRecord(RecordProgramAssignmentBody, request.body),
           ),
         ),
   );
@@ -64,7 +76,7 @@ export function registerPayerReadinessRoutes(
         .send(
           await writeService.recordEnrollmentEvidence(
             m24ActorOf(request),
-            parse(RecordEnrollmentEvidenceBody, request.body),
+            parseDatedRecord(RecordEnrollmentEvidenceBody, request.body),
           ),
         ),
   );

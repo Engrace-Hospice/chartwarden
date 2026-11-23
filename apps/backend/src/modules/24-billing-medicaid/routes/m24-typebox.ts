@@ -52,6 +52,25 @@ export function parseQuery<T extends TSchema>(schema: T, raw: unknown): Static<T
   return check(schema, Value.Convert(schema, raw ?? {}));
 }
 
+/**
+ * Cross-field check for a dated record body: `effectiveTo`, when present, must not precede `effectiveFrom`
+ * (ISO dates compare as strings). Without it the database CHECK rejects the row and the caller sees a 500.
+ */
+export function assertEffectiveRange(body: {
+  readonly effectiveFrom: string;
+  readonly effectiveTo?: string | undefined;
+}): void {
+  if (body.effectiveTo !== undefined && body.effectiveTo < body.effectiveFrom) {
+    throw new ValidationError("request validation failed", [
+      {
+        field: "effectiveTo",
+        code: "INVALID",
+        message: "effectiveTo must not be earlier than effectiveFrom",
+      },
+    ]);
+  }
+}
+
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 const uuid = () => Type.String({ format: "uuid" });
 const isoInstant = () => Type.String({ format: "date-time" });
