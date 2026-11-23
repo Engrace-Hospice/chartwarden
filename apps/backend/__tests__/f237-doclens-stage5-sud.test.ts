@@ -19,6 +19,9 @@ import { restrictionOf } from "../src/modules/05-patient/admission-clearance-rea
 import { decideSudFlag } from "../src/modules/05-patient/index";
 import {
   closestReading,
+  requiresVisionCheck,
+  unindexedFieldPath,
+  visionComparisonFor,
   visionReadingAgrees,
 } from "../src/modules/22-documents/extraction/intake-job";
 import { visionStatusOf } from "../src/modules/22-documents/extraction/review-workspace";
@@ -41,6 +44,120 @@ const out = (text: string) => ({
   modelVersionPin: "p",
   inputTokens: 1,
   outputTokens: 1,
+});
+
+// A diagnosis description is prose: the crop is the whole paragraph the diagnosis sits in, so the model's
+// reading is a sentence, not a list entry. The extracted value must still appear in it, as whole words and
+// not as a negated or family finding. A normalised enum (the role) has no verbatim form, so it is not re-read.
+describe("F-237 — stage 5 diagnosis descriptions and roles", () => {
+  it.each([
+    [
+      "Non-ischemic dilated cardiomyopathy",
+      "Non-ischemic dilated cardiomyopathy diagnosed 2017. Progressive symptoms over two years; four heart failure admissions since April 2026.",
+      true,
+    ],
+    ["End-stage heart failure", "End-stage heart failure is the primary terminal diagnosis.", true],
+    ["Former tobacco use", "Former tobacco use, 60 pack-years", true],
+    ["COPD", "Severe COPD GOLD 4, on home oxygen", true],
+    ["COPD", "Hypertension. COPD with chronic hypoxemic respiratory failure and CKD stage 4", true],
+    [
+      "type 2 diabetes",
+      "Other conditions: COPD on home oxygen; chronic kidney disease stage 4, Alzheimer's dementia; type 2 diabetes; atrial fibrillation; pressure injury sacrum.",
+      true,
+    ],
+    ["Heart failure, congestive", "Heart failure, congestive (HFrEF)", true], // a value with its own comma
+    ["Stage 3.5 CKD", "Stage 3.5 CKD with anemia", true], // a decimal point is not a sentence end
+    ["COPD", "COPD", true],
+    ["Alzheimer's dementia", "pressure injury sacrum", false], // not on the crop at all
+    ["Heart failure", "Heart, failure of the valve was ruled out", false], // words split by a clause break
+    ["", "Severe COPD", false],
+    // Negated, someone else's, or uncertain — before the value, after it, or in an earlier clause of the sentence.
+    ["COPD", "No evidence of COPD on this admission", false],
+    ["COPD", "COPD ruled out", false],
+    ["COPD", "COPD: negative", false],
+    ["COPD", "Never had COPD", false],
+    ["COPD", "Neg for COPD", false],
+    ["COPD", "Exclusion of COPD", false],
+    ["COPD", "Non-COPD", false],
+    ["COPD", "Denies COPD", false],
+    ["COPD", "Denies the following: chest pain, COPD", false],
+    ["COPD", "Mother has asthma; COPD", false],
+    ["COPD", "Family history of COPD in mother", false],
+    ["Breast cancer", "Family history: breast cancer in mother", false],
+    ["COPD", "Possible COPD", false],
+    ["COPD", "Suspected COPD", false],
+    ["COPD", "Rule out COPD", false],
+    ["COPD", "r/o COPD", false],
+    ["COPD", "?COPD", false],
+    ["Pneumonia", "Pneumonia versus atelectasis", false],
+    // The length-ratio shortcut must not let a short negated reading through.
+    ["Heart failure", "No heart failure", false],
+    ["CHF", "No CHF", false],
+    ["COPD", "No COPD", false],
+    // A value that is only part of a more specific disease is not that disease.
+    ["Diabetes", "Diabetes insipidus", false],
+    ["Dementia", "Vascular dementia", false],
+    ["Cancer", "Breast cancer", false],
+    ["Stroke", "Stroke-like episode", false],
+  ])("prose: %s in %s → %s", (extracted, observed, agrees) => {
+    expect(visionReadingAgrees(extracted, observed, "prose")).toBe(agrees);
+  });
+
+  it("asks the model for every entry of a list, whatever the entry's index", () => {
+    // Given "diagnoses[1].description" the model returns the 2nd entry of the CROP (the index counts entries
+    // across the whole document), so entries sharing one paragraph were checked against the wrong one.
+    expect(unindexedFieldPath("diagnoses[1].description")).toBe("diagnoses[].description");
+    expect(unindexedFieldPath("diagnoses[12].description")).toBe("diagnoses[].description");
+    expect(unindexedFieldPath("medications[0].name")).toBe("medications[].name");
+    expect(unindexedFieldPath("patient.dateOfBirth")).toBe("patient.dateOfBirth");
+  });
+
+  it("keeps the strict comparison for list entries and identity fields", () => {
+    expect(visionReadingAgrees("Penicillin", "Penicillin - anaphylaxis to IV dose")).toBe(false);
+    expect(visionReadingAgrees("Penicillin", "Penicillin - anaphylaxis to IV dose", "entry")).toBe(
+      false,
+    );
+    expect(visionReadingAgrees("Smith", "Smith, John", "entry")).toBe(false);
+  });
+
+  it("uses the prose comparison for diagnosis descriptions only", () => {
+    expect(visionComparisonFor("diagnoses[0].description")).toBe("prose");
+    expect(visionComparisonFor("diagnoses[12].description")).toBe("prose");
+    expect(visionComparisonFor("medications[0].name")).toBe("entry");
+    expect(visionComparisonFor("allergies[1].substance")).toBe("entry");
+    expect(visionComparisonFor("patient.legalLastName")).toBe("entry");
+  });
+
+  it("re-reads medium/high fields from the page except a diagnosis role", () => {
+    expect(requiresVisionCheck("high", "diagnoses[2].description")).toBe(true);
+    expect(requiresVisionCheck("medium", "patient.dateOfBirth")).toBe(true);
+    expect(requiresVisionCheck("medium", "diagnoses[0].role")).toBe(false);
+    expect(requiresVisionCheck("medium", "diagnoses[14].role")).toBe(false);
+    expect(requiresVisionCheck("low", "patient.phoneMobile")).toBe(false);
+  });
+
+  it("shows a diagnosis role as not requiring a page re-read", () => {
+    const base = { visionVerified: false, visionDisagreement: null } as const;
+    expect(visionStatusOf({ ...base, riskLevel: "medium", fieldPath: "diagnoses[0].role" })).toBe(
+      "not_required",
+    );
+    expect(visionStatusOf({ ...base, riskLevel: "medium", fieldPath: "patient.dateOfBirth" })).toBe(
+      "unverified",
+    );
+  });
+
+  it("keeps asking for a reason when a role row already carries a stored disagreement", () => {
+    // Batches extracted before roles stopped being re-read still hold a disagreement; the server demands a
+    // reason to accept it, so the screen must still show the reason box rather than dead-end.
+    expect(
+      visionStatusOf({
+        riskLevel: "medium",
+        fieldPath: "diagnoses[0].role",
+        visionVerified: false,
+        visionDisagreement: "v1.x",
+      }),
+    ).toBe("disagreed");
+  });
 });
 
 describe("F-237 — stage 5 reading comparison", () => {

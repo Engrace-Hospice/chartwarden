@@ -35,23 +35,29 @@ const OFF = process.env.DOCLENS_AI === "off";
 const TEMPLATES = [
   {
     capability: "doclens_classify",
-    file: "packages/ai-platform/prompts/doclens/classify.v1.md",
+    // v2: the consult / transfer_record definitions name the allied-health notes and nursing functional
+    // assessments that v1 left to the model's guess (wound and nutrition notes read as transfer records).
+    file: "packages/ai-platform/prompts/doclens/classify.v2.md",
+    version: 2,
     backend: LOCAL_BACKEND,
   },
   {
     capability: "doclens_extract",
     file: "packages/ai-platform/prompts/doclens/extract.v1.md",
+    version: 1,
     backend: LOCAL_BACKEND,
   },
   // F-237 — stage 5 (vision double-check) and the model pass of SUD detection.
   {
     capability: "doclens_vision_verify",
     file: "packages/ai-platform/prompts/doclens/vision_verify.v1.md",
+    version: 1,
     backend: LOCAL_VISION_BACKEND,
   },
   {
     capability: "doclens_sud_detect",
     file: "packages/ai-platform/prompts/doclens/sud_detect.v1.md",
+    version: 1,
     backend: LOCAL_BACKEND,
   },
 ] as const;
@@ -98,13 +104,13 @@ async function main(): Promise<void> {
       // 2. the reviewed template, pinned by hash
       const body = readFileSync(join(process.cwd(), t.file), "utf8");
       const hash = createHash("sha256").update(body, "utf8").digest("hex");
-      const key = `${t.capability}/v1`;
+      const key = `${t.capability}/v${t.version}`;
       await db.query(
         `INSERT INTO ai_prompt_template (template_key, capability_key, version, template_filesystem_ref,
            template_content_hash, compatible_backend_keys, input_schema_ref, output_schema_ref,
            output_entity_target_prefix, output_type_prefix, status, created_by_membership_id,
            approved_by_membership_id, approved_at)
-         VALUES ($1,$2,1,$3,$4,$5::jsonb,$6,$7,'extraction_candidate',$8,'active',$9,$9,now())
+         VALUES ($1,$2,$10,$3,$4,$5::jsonb,$6,$7,'extraction_candidate',$8,'active',$9,$9,now())
          ON CONFLICT (template_key) DO UPDATE SET template_content_hash=EXCLUDED.template_content_hash,
            template_filesystem_ref=EXCLUDED.template_filesystem_ref, status='active'`,
         [
@@ -117,7 +123,14 @@ async function main(): Promise<void> {
           `m32:${t.capability}:output:v1`,
           `doclens_${t.capability.slice("doclens_".length)}`,
           admin.id,
+          t.version,
         ],
+      );
+      // An earlier version of this capability's prompt stays on record, no longer the active one.
+      await db.query(
+        `UPDATE ai_prompt_template SET status='deprecated', superseded_at=now(), deprecated_at=now()
+          WHERE capability_key=$1 AND template_key<>$2 AND status='active'`,
+        [t.capability, key],
       );
       // 3. PILOT + local fallback chain (DEV-ONLY transition — see header)
       await db.query(

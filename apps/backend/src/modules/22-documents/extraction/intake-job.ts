@@ -254,10 +254,160 @@ export function closestReading(extracted: string, readings: readonly string[]): 
   return best;
 }
 
-export function visionReadingAgrees(extracted: string, observed: string): boolean {
+/**
+ * How a reading is compared. `entry` (default): a list entry or identity value — the reading must be about
+ * as long as the value, so a truncated "Penicillin" never agrees with "Penicillin — anaphylaxis".
+ * `prose`: a diagnosis description. The crop is the whole paragraph the diagnosis sits in, so the reading is a
+ * sentence and the value is a part of it; it agrees when the sentence contains the whole value.
+ */
+export type VisionComparison = "entry" | "prose";
+
+const PROSE_DESCRIPTION = /^diagnoses\[\d+\]\.description$/;
+/** A normalised enum (the document's label for a diagnosis) has no verbatim form on the page to re-read. */
+const NORMALISED_ENUM = /^diagnoses\[\d+\]\.role$/;
+
+export const visionComparisonFor = (fieldPath: string): VisionComparison =>
+  PROSE_DESCRIPTION.test(fieldPath) ? "prose" : "entry";
+
+/** Does stage 5 re-read this field from the page? High/medium risk, except a normalised enum. */
+export const requiresVisionCheck = (riskLevel: string, fieldPath: string): boolean =>
+  VISION_VERIFIED_RISK_LEVELS.has(riskLevel) && !NORMALISED_ENUM.test(fieldPath);
+
+/**
+ * The model is asked for EVERY entry of a list visible in the crop. Given "diagnoses[1].description" it
+ * instead returns the 2nd entry of the crop — the index counts entries across the whole document, not within
+ * the image — so entries sharing one paragraph were each checked against the wrong neighbour. Without the
+ * number it returns them all, and the comparison picks the one it needs.
+ */
+export const unindexedFieldPath = (fieldPath: string): string =>
+  fieldPath.replace(/\[\d+\]/g, "[]");
+
+/**
+ * Any of these anywhere in the sentence means the page does not state the extracted finding as the
+ * patient's: negated, ruled out, uncertain, or someone else's. Scanned across the WHOLE sentence — a
+ * "Denies the following: chest pain, COPD" list and "COPD ruled out" are both caught. ("non" is not here:
+ * "Non-ischemic cardiomyopathy" is a diagnosis; "Non-COPD" fails on the adjacent-word rule below.)
+ */
+const FINDING_QUALIFIERS: ReadonlySet<string> = new Set([
+  "no",
+  "not",
+  "never",
+  "neg",
+  "negative",
+  "without",
+  "deny",
+  "denies",
+  "denied",
+  "absent",
+  "absence",
+  "ruled",
+  "rule",
+  "exclude",
+  "excluded",
+  "exclusion",
+  "possible",
+  "possibly",
+  "probable",
+  "probably",
+  "suspect",
+  "suspected",
+  "questionable",
+  "versus",
+  "vs",
+  "family",
+  "maternal",
+  "paternal",
+  "mother",
+  "father",
+  "sister",
+  "brother",
+  "sibling",
+  "parent",
+]);
+/** "?COPD" and "r/o COPD". */
+const UNCERTAIN_MARK = /\?|\br\s*\/\s*o\b/i;
+
+/**
+ * The only words that may touch the value without changing which disease it names. Anything else adjacent
+ * ("Diabetes insipidus", "Vascular dementia", "Breast cancer") makes the extracted value a less specific
+ * name for a different diagnosis, which changes its code.
+ */
+const MODIFIER_BEFORE: ReadonlySet<string> = new Set([
+  "severe",
+  "moderate",
+  "mild",
+  "advanced",
+  "chronic",
+  "acute",
+  "end",
+  "stage",
+  "permanent",
+  "persistent",
+  "known",
+]);
+const CONNECTOR_AFTER: ReadonlySet<string> = new Set([
+  "with",
+  "on",
+  "in",
+  "and",
+  "due",
+  "is",
+  "was",
+  "are",
+  "were",
+  "has",
+  "had",
+  "diagnosed",
+  "since",
+  "stage",
+  "grade",
+  "class",
+  "gold",
+]);
+const PHRASE_BREAK: ReadonlySet<string> = new Set([",", ":", ";", "(", ")", "[", "]"]);
+
+/** Words and phrase-break marks, lower-cased. Hyphens and apostrophes split words; a decimal point does not end a sentence. */
+const tokenize = (s: string): string[] => s.toLowerCase().match(/[0-9a-z]+|[,:;()[\]]/g) ?? [];
+const SENTENCE_END = /\.(?!\d)/;
+
+/**
+ * Prose comparison for a diagnosis description. True when a sentence of the reading holds every token of
+ * the value in order, as a whole phrase (the words either side are a phrase break or a plain modifier or
+ * connector), and nothing in that sentence negates, doubts or reassigns it. Fails safe: anything doubtful is
+ * a disagreement, which sends the reviewer to the page.
+ */
+function proseContains(extracted: string, observed: string): boolean {
+  const value = tokenize(extracted);
+  if (!value.some((t) => !PHRASE_BREAK.has(t))) return false;
+  for (const sentence of observed.split(SENTENCE_END)) {
+    if (UNCERTAIN_MARK.test(sentence)) continue;
+    const tokens = tokenize(sentence);
+    if (tokens.some((t) => FINDING_QUALIFIERS.has(t))) continue;
+    for (let i = 0; i + value.length <= tokens.length; i++) {
+      if (!value.every((t, k) => tokens[i + k] === t)) continue;
+      const before = tokens[i - 1];
+      const after = tokens[i + value.length];
+      if (before !== undefined && !PHRASE_BREAK.has(before) && !MODIFIER_BEFORE.has(before))
+        continue;
+      if (after !== undefined && !PHRASE_BREAK.has(after) && !CONNECTOR_AFTER.has(after)) continue;
+      return true;
+    }
+  }
+  return false;
+}
+
+export function visionReadingAgrees(
+  extracted: string,
+  observed: string,
+  mode: VisionComparison = "entry",
+): boolean {
   const a = alnum(extracted);
   const b = alnum(observed);
   if (a.length === 0 || b.length === 0) return false;
+  // Prose has its own rule; the length-ratio shortcut below would let "No heart failure" through. Letters
+  // and digits alone equal ("COPD" / "COPD." / "type2 diabetes") agrees unless the page marks it uncertain.
+  if (mode === "prose")
+    return a === b ? !UNCERTAIN_MARK.test(observed) : proseContains(extracted, observed);
   if (a === b) return true;
   const [short, long] = a.length <= b.length ? [a, b] : [b, a];
   return short.length >= 3 && long.includes(short) && short.length / long.length >= 0.6;
@@ -909,7 +1059,8 @@ async function runDocLensIntakeWhileProcessable(
     // ── 5. stage 5: re-read each high/medium-risk value from a crop of its page (F-237) ─────────────
     const checks = await Promise.all(
       accepted.map(async (a) => {
-        if (!VISION_VERIFIED_RISK_LEVELS.has(a.riskLevel)) return { kind: "not_required" as const };
+        if (!requiresVisionCheck(a.riskLevel, a.fieldPath))
+          return { kind: "not_required" as const };
         if (!deps.visionVerifier) return { kind: "unverified" as const };
         return verifyByVision(a, docType);
       }),
@@ -1151,7 +1302,7 @@ async function runDocLensIntakeWhileProcessable(
           dataBase64: Buffer.from(png).toString("base64"),
         },
       ],
-      field: { fieldPath: a.fieldPath, description: spec.description },
+      field: { fieldPath: unindexedFieldPath(a.fieldPath), description: spec.description },
     });
     if (!r.available) {
       refusals.push(`vision ${a.fieldPath}: ${r.detail ?? "refused"}`);
@@ -1165,7 +1316,8 @@ async function runDocLensIntakeWhileProcessable(
     if (r.verdict !== "pass" || readings.length === 0) {
       return { kind: "unverified", invocationId: r.invocationId };
     }
-    return readings.some((o) => visionReadingAgrees(a.value, o))
+    const comparison = visionComparisonFor(a.fieldPath);
+    return readings.some((o) => visionReadingAgrees(a.value, o, comparison))
       ? { kind: "verified", invocationId: r.invocationId }
       : {
           kind: "disagreed",

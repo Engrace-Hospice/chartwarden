@@ -141,14 +141,78 @@ const DATE_LABELS: readonly RegExp[] = [
 const iso = (y: string | number, m: number, d: number) =>
   `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 
+/** How far into the page a table's header row may start and still count (page header + patient banner first). */
+const TABLE_HEADER_BLOCKS = 12;
+const BARE_DATE = /^\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})\s*$/;
+/** Columns of one table cover days or weeks; a spread wider than this is a misread year, not a table. */
+const MAX_COLUMN_SPAN_DAYS = 366;
+const DAY_MS = 86_400_000;
+
+interface DateColumns {
+  /** Block indices of the run, inclusive. */
+  readonly from: number;
+  readonly to: number;
+  readonly latest: string;
+}
+
+/** A `table_cell` holding nothing but a full mm/dd/yyyy date, as ISO; null for any other block. */
+function bareDateCell(b: SplitterBlock): string | null {
+  const m = b.label === "table_cell" ? BARE_DATE.exec(b.text) : null;
+  if (!m) return null;
+  const month = Number(m[1]);
+  const day = Number(m[2]);
+  return month >= 1 && month <= 12 && day >= 1 && day <= 31
+    ? iso(m[3] as string, month, day)
+    : null;
+}
+
 /**
- * The document's date from its header area: a labelled date by {@link DATE_LABELS} priority, else the first
- * unlabelled one; never a date labelled as a birth date. mm/dd/yyyy (OCR-tolerant spacing) or a spelled
- * date ("March 10, 2025" — OCR may split the day, "March 1 0 ,", and float the year before the month).
+ * A cumulative lab and other column-per-date tables carry no single document date: every date is a column
+ * ("Test | 09/17/2026 | 09/24/2026 | 09/30/2026 | Ref range"). The document is current as of its LATEST
+ * column, not the leftmost one. Only a run of ADJACENT `table_cell` blocks holding two or more full dates
+ * counts (a lone collection date, or "Follow-up | 10/05 | Cardiology | 10/12", is not a date row), and only
+ * when the columns lie within {@link MAX_COLUMN_SPAN_DAYS} of each other.
+ */
+function dateColumns(page: SplitterPage): DateColumns | null {
+  const head = page.blocks.slice(0, TABLE_HEADER_BLOCKS);
+  let from = -1;
+  let dates: string[] = [];
+  const closeRun = (to: number): DateColumns | null => {
+    if (dates.length < 2) return null;
+    const sorted = [...dates].sort(); // ISO dates sort lexicographically
+    const first = Date.parse(sorted[0] as string);
+    const last = Date.parse(sorted[sorted.length - 1] as string);
+    if (Number.isNaN(first) || Number.isNaN(last) || (last - first) / DAY_MS > MAX_COLUMN_SPAN_DAYS)
+      return null;
+    return { from, to, latest: sorted[sorted.length - 1] as string };
+  };
+  for (let i = 0; i < head.length; i++) {
+    const d = bareDateCell(head[i] as SplitterBlock);
+    if (d) {
+      if (dates.length === 0) from = i;
+      dates = [...dates, d];
+      continue;
+    }
+    const closed = closeRun(i - 1);
+    if (closed) return closed;
+    dates = [];
+  }
+  return closeRun(head.length - 1);
+}
+
+/**
+ * The document's date from its header area: a labelled date by {@link DATE_LABELS} priority, else the
+ * latest column of a table's date row ({@link dateColumns}), else the first unlabelled one; never a date
+ * labelled as a birth date. The date row's own cells are not read as labelled dates (a "Collection Date"
+ * column label in front of the first column must not make the leftmost date win). mm/dd/yyyy
+ * (OCR-tolerant spacing) or a spelled date ("March 10, 2025" — OCR may split the day, "March 1 0 ,", and
+ * float the year before the month).
  */
 export function headerDate(page: SplitterPage, blocks = 6): string | null {
+  const columns = dateColumns(page);
   const text = page.blocks
     .slice(0, blocks)
+    .filter((_, i) => !columns || i < columns.from || i > columns.to)
     .map((b) => b.text)
     .join(" ");
   const found: { date: string; rank: number; at: number }[] = [];
@@ -165,8 +229,10 @@ export function headerDate(page: SplitterPage, blocks = 6): string | null {
       at: n.index ?? 0,
     });
   }
-  if (found.length)
-    return (found.sort((a, b) => a.rank - b.rank || a.at - b.at)[0] as { date: string }).date;
+  const best = [...found].sort((a, b) => a.rank - b.rank || a.at - b.at)[0];
+  if (best && best.rank < DATE_LABELS.length) return best.date;
+  if (columns) return columns.latest;
+  if (best) return best.date;
 
   const spelled = new RegExp(
     `\\b(${MONTHS.join("|")})\\s+(\\d)\\s?(\\d)?\\b(?:\\s*,?\\s*((?:19|20)\\d{2})\\b)?`,
