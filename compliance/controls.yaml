@@ -1165,7 +1165,7 @@ controls:
       # ADR-0114 S5b: the IDG follow-up's linked action item is handed by M14's IdgFollowUpReader, which decides W-SUD-01 per viewer. A meeting
       # needs a release unless its latest packet for the patient reads activeSudFlag false and no decision of it marks a care-plan problem SUD
       # related (no packet is undeterminable, so it needs one), and then M39 is asked per actor through sudDisclosureAllowedForPacket (an outage
-      # denies). A viewer M39 does not clear is handed no item and no count, naming one by id is the same 404 as an absent id, and a link made
+      # denies). A viewer the helper does not clear is handed no item and no count (M14's helper also clears an RN case manager whom M39 refuses, unless the release restricts disclosure to a named workforce or the actor is unidentified, as it does for the minutes; M14's own policy, reused here, not narrowed), naming one by id is the same 404 as an absent id, and a link made
       # earlier is not drafted for that viewer. The linked item is read by id in any status with the same verdict. The link row carries the
       # verdict (raised whenever a section resolution, finalize or sign sees it, and by a clear; never lowered) and its audit trigger never copies the action item id into an audit image
       # (CW-AC-49). Not covered, stated rather than implied: M39 is a fake in the live suite (it is reached through the real packet disclosure
