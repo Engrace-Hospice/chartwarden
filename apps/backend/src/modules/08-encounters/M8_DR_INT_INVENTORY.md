@@ -409,18 +409,20 @@ preflight refuses the whole tenant while any hold is active, before any eraser r
   signed, so the item a draft states is usually closed by sign time. The draft reads the linked item by id in any status, so the confirmed sentence is sealed after the
   close; the link does not close the item. A confirmed section whose item M14 hands the viewer nothing for any more (reassigned, Part 2 no longer cleared) is refused at
   finalize (422) and sign (409) as `DRAFT_SECTION_STALE` naming `idg_followup` (no item detail) for a viewer holding the key, and at an addendum's sign that names the
-  section; the author clears the link, writes the
+  section; the author deselects the section (a deselect of a confirmed section that no longer drafts withdraws the confirmation, for a note and an addendum alike, and is
+  the only way out for a signed note's addendum: its link row is frozen and an addendum has no void) or, on an unsigned note, clears the link, writes the
   section in their own words and signs. For a viewer WITHOUT the key nothing is refused (VN-D66): an author who loses `idg.act` between confirming and signing signs
   a note without the sentence.
 - **Part 2 is per viewer and M14's.** For a flagged patient, one no packet vouches for, or one whose decision marks a care-plan problem SUD related, M14 hands a viewer
   M39 does not clear no item; naming one is the same 404 as an absent one. The verdict comes from the item's own meeting's LATEST packet snapshot, as M14's own minutes
   rendering decides it (a patient flagged only after that packet was built is offered until M14 rebuilds it: not fixed here). An M39 outage is a denial (VN-D67): an
   item whose meeting needs a release is then handed to nobody, so the picker is empty and a signer holding `idg.act` with a confirmed section is refused
-  `DRAFT_SECTION_STALE` at finalize and sign until the outage ends (clearing the link drops the sentence). A link row carries the verdict (fail
-  closed), withholds the action item id from its audit image and files under the Part 2 class; it is raised whenever a resolution, finalize or sign sees the section
-  Part 2 derived, and a clear raises the row being left (the item cannot be judged without M14). The link route asks M14 again by id after the insert and raises the
-  new row in the same unit when the item now needs a release; the window that remains is the few milliseconds between M14's candidate answer and the insert, where the
-  INSERT's own audit image files the id in the plain class (the raise's image is scrubbed; the next recompute raises a stale row).
+  `DRAFT_SECTION_STALE` at finalize and sign until the outage ends (deselecting the section, or clearing the link, drops the sentence). A link row carries the verdict (fail
+  closed) and files under the Part 2 class; it is raised whenever a resolution, finalize or sign sees the section Part 2 derived, and a clear raises the row being
+  left (the item cannot be judged without M14). The link route asks M14 again by id after the insert and raises the new row in the same unit when the item now
+  needs a release. **No audit image of the row names the action item, for any row**: the trigger scrubs it from the insert, both images of an update and the delete
+  (a verdict can be stale at the insert, and a replaced row is removed without being asked about again), so the trail names the encounter and the row id and the
+  item stays on the row, under RLS.
 - **A refused link is audited.** A 404 (an item the viewer is not handed) or a 409 (the row cap) leaves a warn-severity, outcome-denied
   `m8.encounter.idg_follow_up_link_refused` event carrying the encounter and an enum reason and NO item id, written on a new unit best effort (after
   `m8.encounter.closure_override_denied`); the rows are bounded by the PUT's rate limit, `IDG_FOLLOW_UP_LINK_ROUTE_RATE_LIMIT`: 10 a minute per user, 100 a minute per
@@ -430,4 +432,4 @@ preflight refuses the whole tenant while any hold is active, before any eraser r
 - **Deploy.** `VOCAB_VERSION` moves to `narrative-vocab@2026.12.5`: a selection saved under `2026.12.4` and not yet finalized answers 409 `VOCAB_VERSION_MISMATCH` until the
   clinician saves it again. The clinical review stays pending, so a tenant's switch stays dark.
 - **Erasure and tenancy.** The encounter eraser deletes the table's rows (the destruction role holds SELECT and DELETE and an org-scoped policy), and every DELETE image is
-  filed as Part 2 with the id withheld; the application role holds no DELETE, and a row cannot be filed under another tenant's encounter.
+  filed as Part 2 (no image of the table names an item); the application role holds no DELETE, and a row cannot be filed under another tenant's encounter.
