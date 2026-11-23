@@ -136,4 +136,59 @@ describe("M40 payer program classification qualification", () => {
       ),
     ).toEqual({ qualified: false, reasonCode: "MEDICAID_PROGRAM_CLASSIFICATION_MISMATCH" });
   });
+
+  it("rejects a window that a contradictory verified row starts inside", () => {
+    // A covers the whole window, but B (verified CCO) takes over on 2026-02-15: the window straddles two programs.
+    const ffs = classification({ id: "class-ffs" });
+    const cco = classification({
+      id: "class-cco",
+      classification: "medicaid_cco",
+      effectiveFrom: "2026-02-15",
+    });
+    expect(
+      qualifyMedicaidProgramClassification(
+        [ffs, cco],
+        "ffs_open_card",
+        "payer-1",
+        "OR",
+        "2026-02-01",
+        "2026-02-28",
+      ),
+    ).toEqual({ qualified: false, reasonCode: "MEDICAID_PROGRAM_CLASSIFICATION_AMBIGUOUS" });
+    // A window that ends before the second row starts is still clean.
+    expect(
+      qualifyMedicaidProgramClassification(
+        [ffs, cco],
+        "ffs_open_card",
+        "payer-1",
+        "OR",
+        "2026-02-01",
+        "2026-02-14",
+      ).qualified,
+    ).toBe(true);
+  });
+
+  it("ignores overlapping rows that are not verified evidence", () => {
+    const ffs = classification({ id: "class-ffs" });
+    for (const verificationStatus of ["unverified", "rejected", "revoked", "superseded"] as const) {
+      expect(
+        qualifyMedicaidProgramClassification(
+          [
+            ffs,
+            classification({
+              id: "class-other",
+              classification: "medicaid_cco",
+              effectiveFrom: "2026-02-15",
+              verificationStatus,
+            }),
+          ],
+          "ffs_open_card",
+          "payer-1",
+          "OR",
+          "2026-02-01",
+          "2026-02-28",
+        ).qualified,
+      ).toBe(true);
+    }
+  });
 });

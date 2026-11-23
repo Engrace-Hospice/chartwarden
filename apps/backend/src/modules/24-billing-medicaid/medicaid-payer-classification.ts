@@ -11,7 +11,10 @@ export type MedicaidProgramClassificationDecision =
   | { readonly qualified: true; readonly classification: MedicaidPayerProgramClassification }
   | { readonly qualified: false; readonly reasonCode: MedicaidProgramClassificationReason };
 
-/** Only one source-verified M40 classification covering the entire service window can qualify. */
+/**
+ * Only one source-verified M40 classification covering the entire service window can qualify, and no other
+ * verified classification may contradict it anywhere inside that window.
+ */
 export function qualifyMedicaidProgramClassification(
   rows: readonly MedicaidPayerProgramClassification[],
   requestedKind: string,
@@ -47,6 +50,20 @@ export function qualifyMedicaidProgramClassification(
     };
   }
   const classification = covering[0]!;
+  // A verified record that starts or ends inside the window and says something different means the window
+  // straddles two programs; the covering row alone must not speak for the days the other one governs.
+  const contradicted = currentRows.some(
+    (r) =>
+      r !== classification &&
+      r.verificationStatus === "verified" &&
+      r.effectiveFrom <= serviceTo &&
+      (r.effectiveTo === null || r.effectiveTo >= serviceFrom) &&
+      (r.classification !== classification.classification ||
+        r.canonicalPayerId !== classification.canonicalPayerId ||
+        r.stateCode !== classification.stateCode),
+  );
+  if (contradicted)
+    return { qualified: false, reasonCode: "MEDICAID_PROGRAM_CLASSIFICATION_AMBIGUOUS" };
   if (
     classification.canonicalPayerId !== canonicalPayerId ||
     classification.stateCode !== stateCode ||
