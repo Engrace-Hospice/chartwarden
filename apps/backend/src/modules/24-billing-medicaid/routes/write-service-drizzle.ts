@@ -3903,11 +3903,23 @@ export function buildDrizzleM24WriteService(
             "STALE_VERSION",
             "the program assignment changed; reload it before verification",
           );
+        // Only an unverified record can be verified: a revoked, rejected or superseded row must never flip back
+        // (and re-verifying a verified row would overwrite who verified it and against what).
+        if (row.status !== "candidate" && row.status !== "pending")
+          throw new ConflictError(
+            "MEDICAID_ASSIGNMENT_NOT_PENDING",
+            "only a pending program assignment can be verified",
+          );
         if (row.recordedByMembershipId === membershipId)
           throw new ForbiddenError("the person who recorded an assignment cannot verify it");
+        if (!row.canonicalPayerId)
+          throw new ConflictError(
+            "MEDICAID_CANONICAL_PAYER_REQUIRED",
+            "this assignment names no M40 payer; record a new assignment with the payer identity",
+          );
         const payer = await canonicalPayerReader.resolvePayer(
           actor.organizationId,
-          row.canonicalPayerId ?? "",
+          row.canonicalPayerId,
         );
         if (
           !payer ||
@@ -3991,12 +4003,25 @@ export function buildDrizzleM24WriteService(
             "STALE_VERSION",
             "the enrollment evidence changed; reload it before verification",
           );
+        if (row.status !== "pending")
+          throw new ConflictError(
+            "MEDICAID_ENROLLMENT_NOT_PENDING",
+            "only pending enrollment evidence can be verified",
+          );
         if (row.recordedByMembershipId === membershipId)
           throw new ForbiddenError("the person who recorded evidence cannot verify it");
         if (!verificationSourceAllowed(row.evidenceKind, input.verificationSource)) {
           throw new ConflictError(
             "MEDICAID_EVIDENCE_VERIFICATION_SOURCE_INVALID",
             "the verification source is not acceptable for this evidence type",
+          );
+        }
+        // Only state provider enrollment is payer-independent; any other kind verified without a payer would
+        // otherwise read as evidence for every payer.
+        if (row.evidenceKind !== "state_medicaid_provider_enrollment" && !row.canonicalPayerId) {
+          throw new ConflictError(
+            "MEDICAID_EVIDENCE_PAYER_REQUIRED",
+            "this evidence type must name the M40 payer it applies to",
           );
         }
         if (row.canonicalPayerId) {
@@ -4246,6 +4271,12 @@ export function buildDrizzleM24WriteService(
           statePlanCodeSnapshot: original.statePlanCodeSnapshot,
           mcoId: original.mcoId ?? null,
           mcoSnapshot: original.mcoSnapshot ?? null,
+          // The successor bills the same dated program responsibility as the claim it replaces or voids; without
+          // these a verified original would produce a successor with no program kind that can never qualify.
+          medicaidProgramKind: original.medicaidProgramKind ?? null,
+          canonicalPayerId: original.canonicalPayerId ?? null,
+          programAssignmentId: original.programAssignmentId ?? null,
+          programResolutionSnapshot: original.programResolutionSnapshot ?? null,
           medicareClaimId: original.medicareClaimId ?? null,
           medicareSecondaryContextSnapshot: original.medicareSecondaryContextSnapshot ?? null,
           rbArrangementId: original.rbArrangementId ?? null,
