@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
+import { verifyLocalDockerDaemon } from "./intake-docker-safety";
 
 export const INTAKE_OPERATIONAL_LIVE_SUITES = [
   "apps/backend/__tests__/f235-doclens-m5-writeback.live.test.ts",
@@ -130,6 +131,7 @@ export async function main(): Promise<void> {
   if (unsupported.length)
     throw new Error(`unsupported intake live suite: ${unsupported.join(", ")}`);
 
+  verifyLocalDockerDaemon(process.env);
   run("docker", ["build", "-q", "-t", IMAGE, "deploy/production/postgres"], { quiet: true });
   for (const suite of suites) await runSuite(suite);
 }

@@ -1439,7 +1439,7 @@ controls:
       - script: test:m3:auditor-engagement:live
 
   - id: CW-IA-01
-    title: Person/entity authentication — MFA, step-up for sensitive actions (signing a HOPE assessment included), credential throttling
+    title: Person/entity authentication — MFA, step-up for sensitive actions (signing a HOPE assessment included), credential throttling, and credential-safe authentication logging
     hipaa: ["164.312(d)", "164.308(a)(5)(ii)(D)"]
     soc2: ["CC6.1", "CC6.2"]
     status: implemented
@@ -1451,6 +1451,11 @@ controls:
       - script: test:m10:sfv-sign-binding:live
       - script: test:rate-limit-store:live
       - file: packages/auth/src/identity/credential-throttle.ts
+      # Better Auth's logger boundary retains only the severity and a string message. It deliberately
+      # drops additional error arguments and replaces an object-first message, because Drizzle errors
+      # can carry the bound session token in `params`.
+      - file: packages/auth/src/identity/auth.ts
+      - file: packages/auth/__tests__/identity-auth-config.test.ts
 
   - id: CW-TX-01
     title: Transmission security — TLS/HSTS at the edge, certificate pinning to external interfaces

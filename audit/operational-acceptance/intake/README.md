@@ -2,7 +2,7 @@
 
 ## Decision
 
-**GO (96/100)** for the WardenLens/Lantern intake release, subject to the normal reviewed release
+**GO (97/100)** for the WardenLens/Lantern intake release, subject to the normal reviewed release
 process. This is not authorization to merge or deploy.
 
 The 2026-11-22 follow-up closed the three prior operational blockers. A rebuilt production worker image
@@ -21,6 +21,7 @@ repository fixture. No real PHI, credentials, environment values, or raw provide
 | Repository | `Engrace-Hospice/chartwarden` |
 | Source | `origin/main` at `e6826c545` |
 | Branch | `test/intake-operational-acceptance` |
+| Tested branch head before final evidence commits | `c05f1f818f07b0d023c514eecded5764d0e77309` plus the corrections listed below; the exact pushed PR head is recorded in PR #1100 |
 | Date/time zone | 2026-11-22, America/Los_Angeles |
 | Isolation | Compose projects `cw-intake-oa-20261122` and `cw-intake-oa-20261122-clamd`; loopback-only high ports; unique volumes |
 | Data | Generated synthetic referral, patient, and two-page hospital-document fixture |
@@ -33,7 +34,7 @@ repository fixture. No real PHI, credentials, environment values, or raw provide
 | Migration / role provisioning | Real | PASS | Production migrator and provisioner completed in the isolated cluster. |
 | Valkey | Real | PASS | `PING` succeeded; stopping it made both readiness and queue access fail closed; readiness recovered after restart. |
 | BullMQ | Real | PASS | A disposable queue failed once, retried, and completed on attempt 2. WardenLens outage recovery used the real `m22-doclens-intake` queue. |
-| Object storage | Real RustFS/S3 API | PASS | Tenant bucket provisioning, presign, upload verification, and filing succeeded. With storage stopped, initiate returned a standard 500 envelope and created no upload row. |
+| Object storage | Real RustFS/S3 API | PASS | Tenant bucket provisioning, presign, upload verification, filing, and the API's signed `/ready` probe succeeded. With storage stopped, initiate returned a standard 500 envelope and created no upload row. |
 | Malware scanner | Real ClamAV 1.4, production code/config path | PASS | The architecture-equivalent development image used the production clamd configuration and protocol. The checksum-verified presigned upload streamed the exact stored bytes through clamd INSTREAM. Synthetic EICAR was rejected and destroyed; the clean synthetic PDF filed and entered Docling. |
 | Docling | Real 2.143.1 service | PASS | Parsed the synthetic two-page PDF in 6.12 s. During outage the batch remained `uploaded`; after restore it reached `ready_for_review` in 121 s. |
 | API | Real | PASS | `/health` and `/ready` passed with DB, Valkey, object storage and outbox checks. Valkey outage produced 503, then recovered to 200. |
@@ -64,7 +65,9 @@ bun run test:intake:operational-live
 
 bun run test:intake:production-smoke
   PASS: rebuilt API/worker image health; WardenLens queue metrics; clean/EICAR clamd verdicts;
-  M35 KEK ring configured; isolated stack and volumes removed on completion
+  signed object-storage readiness; M35 KEK ring configured
+  Project: cw-intake-oa-smoke-1447b55e4c05
+  Completed: 2026-11-23T03:00:12.931Z; project resources removed on completion
 
 E2E_BASE_URL=http://127.0.0.1:<isolated-web-port> \
 INTAKE_ACCEPTANCE_STACK_ID=<unique-server-side-cw-intake-oa-marker> \
@@ -72,12 +75,15 @@ INTAKE_SYNTHETIC_DOCUMENT=<synthetic-pdf-path> \
 INTAKE_ADMIN_EMAIL=<synthetic-admin> INTAKE_ADMIN_PASSWORD=<secret> \
 INTAKE_REVIEWER_EMAIL=<synthetic-reviewer> INTAKE_REVIEWER_PASSWORD=<secret> \
 bun run test:e2e:intake-operational
-  PASS: 1 Playwright scenario (53.4 s), including production-path EICAR rejection
+  PASS: 1 Playwright scenario (1.3 min), including production-path EICAR rejection
 
-bunx vitest run apps/backend/src/bootstrap/__tests__/metrics.test.ts \
-  scripts/__tests__/test-intake-operational-runner.test.ts \
-  scripts/__tests__/dockerignore-runtime-context.test.ts
-  PASS: 13 tests
+bunx vitest run packages/auth/__tests__/identity-auth-config.test.ts \
+  scripts/__tests__/test-intake-production-smoke.test.ts \
+  scripts/__tests__/test-intake-operational-runner.test.ts
+  PASS: 24 tests
+
+bun run lint
+  PASS: Biome checked 10,908 files
 
 bun run typecheck
   PASS
@@ -85,25 +91,49 @@ bun run typecheck
 bun run arch:fitness
   PASS: all 50 architecture gates
 
-bun run check:boot:platform
-  PASS: backend health 200; outbox relay polling
+bun run arch:compliance
+  PASS: control evidence resolves and the agent harness is intact
 
 bun run test
-  PASS: 2,998 files; 60,381 tests; 9,605 skipped; 16 todo
+  First run: FAIL — one pre-existing assertion searched the complete response, and a random
+  correlation UUID contained `867`; no patient value was disclosed
+  Corrected regression: the assertion now inspects only message/details and still forbids the
+  sensitive fragments; focused rerun PASS
+  Final full-suite rerun: see the final PR evidence comment
 ```
 
-The live-suite runner builds `deploy/production/postgres`, sets
+The live-suite runner first resolves both `DOCKER_HOST` and the effective Docker context and refuses
+any non-local daemon before an image, container, database or volume write. It then builds
+`deploy/production/postgres`, sets
 `max_locks_per_transaction=1024`, binds only to loopback, uses random per-run credentials, and removes
 each container and volume after the suite. It refuses any test path outside its fixed F235–F238 list.
+
+The production-like smoke gives Docker a reduced allowlist environment plus `/dev/null` as its compose
+env-file, generates a strict random `cw-intake-oa-smoke-<12 hex>` project, publishes random loopback
+ports, and mounts only the repository's clamd configuration read-only. Cleanup is in `finally`, runs
+after partial starts, includes orphaned services and volumes, and is scoped to that validated project.
+No Docker socket, credential directory, home directory or writable host data path is mounted. Remote
+contexts are refused before cleanup could affect them. Two containers created by separate concurrent
+local work later reused the fixed exploratory browser project label; they were identified and left
+untouched. The committed smoke harness does not use that fixed label.
 
 ## Governed-provider evidence
 
 - Registered healthy backends: local `llama3.1:8b-instruct-q8_0` and `qwen2.5vl:7b`.
-- Real workflow batch: `aedc75ef-dcf9-41fd-bde5-e91858a6fbfa`.
+- Real workflow batch: `5139394b-bd00-4a9d-b79b-ebe3b0798d2c`.
+- Correlation ID: `5bb116d3-7f78-4b55-9e76-2f7b45a8d15d`; final status
+  `writeback_complete`.
 - The reviewer workspace exposed all persisted candidates with page and bounding-box source references.
-- Candidate values were sealed (`value_cipher`); no plaintext candidate values were persisted.
+- All 13 candidate values were sealed (`value_cipher`), all 13 carried page and bounding-box sources,
+  and no plaintext candidate values were persisted.
 - Provider calls were recorded by the M32 invocation ledger for classification, extraction, SUD
-  detection and vision verification.
+  detection and vision verification. All 13 invocations completed through the registered Llama 3.1
+  and Qwen 2.5 VL backends; observed latency ranged from 1,128 ms to 25,813 ms.
+
+`gemma4:e4b-mlx` was also present locally and returned the expected JSON from a non-gating synthetic
+sanity prompt in 5.38 s. It is not an M32 catalog backend and therefore was not relabelled as Llama or
+counted as governed-provider evidence. Adding it to governed acceptance requires a truthful Gemma
+vendor/model-family inventory entry and approval through the normal AI-governance process.
 
 ## Failure-injection evidence
 
@@ -140,7 +170,9 @@ Screenshots are in [`screenshots/`](./screenshots/). They contain synthetic data
    tenant bucket before creating the upload ledger/presign. Ownership remains M22.
 2. **Authentication library error logging could include database parameters.** Better Auth's internal
    logger now drops bound argument objects and replaces an object-first message with fixed safe text,
-   preventing error `params` from carrying session tokens into the structured log.
+   preventing error `params` from carrying session tokens into the structured log. CW-IA-01 now cites
+   both `packages/auth/src/identity/auth.ts` and its regression test in
+   `packages/auth/__tests__/identity-auth-config.test.ts`.
 3. **WardenLens review footer occluded decision controls at constrained heights.** The intake page now
    uses the targeted task clearance and short-viewport footer behavior merged on main; this branch does
    not broaden that correction. Browser acceptance verifies actual hit targeting.
@@ -172,6 +204,24 @@ Screenshots are in [`screenshots/`](./screenshots/). They contain synthetic data
 - HIE remained disabled and out of scope.
 - Screenshots retain only the fictional fixture content needed as visual evidence; raw provider
   responses, credentials, environment values, and real PHI are absent.
+- The Better Auth regression proves that string-first logs retain only severity plus the static string,
+  object-first logs become fixed safe text, and additional argument objects are discarded. The
+  compliance evidence is attached to CW-IA-01 and `arch:compliance` passes.
+
+## Limitations and non-passing attempts
+
+- The first provider attempt observed capability health as `unknown` during startup. Processing waited
+  and did not use an ungoverned fallback. This attempt is recorded as a fail-closed observation, not a
+  provider PASS.
+- A second disposable attempt used seed data wrapped under `kek-1` while the isolated containers were
+  configured for `kek-local`; the worker refused the unknown KEK and persisted no candidate/writeback.
+  The final run reseeded the disposable tenant under the configured local KEK and passed.
+- The broad `db:seed:all` helper is not required by intake and did not complete: one invocation lacked
+  the isolated Better Auth URL, and a retry later stopped in unrelated field-operations EVV seed data.
+  The final acceptance used the minimum synthetic base, organization and staff seeds needed by intake.
+- Production's approved secret store, network policy and model registration remain deployment-time
+  operator evidence; this local run proves the application contracts and fail-closed behavior, not a
+  production deployment.
 
 ## Closed GO gates and residual operations
 
@@ -182,6 +232,10 @@ and follow the ordinary reviewed release process. Production also refuses verifi
 current 25 MiB clamd contract before reading their bytes; large grief-library video needs a separately
 reviewed streaming/quarantine design before it can be enabled with mandatory scanning. No merge or
 deployment was performed by this work.
+
+The remaining three points in the 97/100 score cover the deployment-time secret-store/network-policy
+evidence, the ungoverned status of the optional local Gemma artifact, and the existing greater-than-25
+MiB mandatory-scanning limitation. None permits bypassing a clinical, authorization or readiness gate.
 
 Recovery procedures are in
 [`docs/runbooks/wardenlens-intake-recovery.md`](../../../docs/runbooks/wardenlens-intake-recovery.md).

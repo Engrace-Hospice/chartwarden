@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { assertLocalDockerEndpoint } from "../intake-docker-safety";
 import { INTAKE_OPERATIONAL_LIVE_SUITES } from "../test-intake-operational-live";
 
 describe("intake operational live-suite runner", () => {
@@ -15,5 +16,10 @@ describe("intake operational live-suite runner", () => {
     expect(INTAKE_OPERATIONAL_LIVE_SUITES.every((suite) => suite.endsWith(".live.test.ts"))).toBe(
       true,
     );
+  });
+
+  it("shares the remote-daemon refusal used by the production-like smoke", () => {
+    expect(() => assertLocalDockerEndpoint("unix:///var/run/docker.sock")).not.toThrow();
+    expect(() => assertLocalDockerEndpoint("ssh://shared.example.test")).toThrow(/non-local/);
   });
 });

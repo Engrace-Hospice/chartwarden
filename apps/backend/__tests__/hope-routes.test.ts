@@ -2730,12 +2730,12 @@ describe("the CMS result-row tokens: a format in the schema, patient identifiers
   );
 
   it.each([
-    ["a non-uuid assessmentId", { assessmentId: SYNTHETIC_SSN }, "assessmentId"],
-    ["a calendar date in a code", { code: "1950-03-12" }, "code"],
-    ["a phone number in a record id", { iqiesRecordId: "555-867-5309" }, "iqiesRecordId"],
+    ["a non-uuid assessmentId", { assessmentId: SYNTHETIC_SSN }, "assessmentId", SYNTHETIC_SSN],
+    ["a calendar date in a code", { code: "1950-03-12" }, "code", "1950"],
+    ["a phone number in a record id", { iqiesRecordId: "555-867-5309" }, "iqiesRecordId", "867"],
   ])(
     "%s is refused as a patient identifier (422, field named, value not echoed)",
-    async (_label, token, key) => {
+    async (_label, token, key, forbiddenFragment) => {
       const ctx = makeServer({ packagedSubmission: true });
 
       const res = await importRows(ctx, [row(token)]);
@@ -2745,8 +2745,12 @@ describe("the CMS result-row tokens: a format in the schema, patient identifiers
       expect(res.json().error.details).toEqual([
         expect.objectContaining({ field: `results.0.${key}` }),
       ]);
-      expect(res.body).not.toContain("1950");
-      expect(res.body).not.toContain("867");
+      const { correlationId, ...stableErrorEnvelope } = res.json().error;
+      expect(correlationId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      );
+      const errorText = JSON.stringify(stableErrorEnvelope);
+      expect(errorText).not.toContain(forbiddenFragment);
       await ctx.app.close();
     },
   );
