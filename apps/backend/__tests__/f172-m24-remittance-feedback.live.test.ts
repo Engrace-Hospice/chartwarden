@@ -526,6 +526,8 @@ describe.skipIf(!DB_URL)(
             {
               submissionId: null,
               assignmentId: null,
+              vendorTransactionId: null,
+              payerClassificationId: null,
               sourceAccountRef: null,
               environment: null,
               provenanceStatus: "unverified",
@@ -551,20 +553,49 @@ describe.skipIf(!DB_URL)(
       const REVIEWER = "33333333-3333-3333-3333-3333333333aa";
       let scenarioSeq = 0;
 
+      /** One attempt: every field defaults to the fully qualified value, and a key breaks exactly that value. */
+      type AttemptOptions = {
+        readonly environment?: string;
+        readonly submittedClaimVersion?: number;
+        readonly provenance?: "verified" | "unverified";
+        readonly result?: string;
+        readonly sourceAccountRef?: string | null;
+        readonly payerSnapshot?: string | null;
+        readonly classificationSnapshot?: string | null;
+        readonly programKindSnapshot?: string;
+        readonly assignmentIdSnapshot?: string | null;
+        readonly assignmentVersionSnapshot?: number;
+        readonly submittedAt?: Date | null;
+        readonly vendorTransactionId?: string | null;
+      };
+
       type ScenarioOptions = {
         readonly orgId?: string;
         readonly providerEntityId?: string;
         readonly controlNumber?: string;
         readonly claimState?: string;
         readonly claimReplacedBy?: string | null;
-        readonly attempts?: readonly {
-          readonly environment?: string;
-          readonly submittedClaimVersion?: number;
-          readonly provenance?: "verified" | "unverified";
-        }[];
+        readonly claimPayer?: string | null;
+        /** Default true: each attempt gets one acknowledgment. False leaves the attempts free to be re-keyed. */
+        readonly acknowledged?: boolean;
+        readonly assignment?: {
+          readonly status?: string;
+          readonly payer?: string | null;
+          readonly classification?: string | null;
+          readonly state?: string;
+          readonly version?: number;
+        };
+        readonly attempts?: readonly AttemptOptions[];
       };
 
-      /** A verified program assignment, a claim naming it, and one submission attempt per entry of `attempts`. */
+      /** `value` unless it was left undefined (an explicit null is a value: it breaks the field on purpose). */
+      const orDefault = <T>(value: T | undefined, fallback: T): T =>
+        value === undefined ? fallback : value;
+
+      /**
+       * A verified program assignment, a claim naming it, and one submission attempt (with one acknowledgment that
+       * carries a payer claim control number) per entry of `attempts`.
+       */
       async function seedScenario(options: ScenarioOptions = {}) {
         scenarioSeq += 1;
         const orgId = options.orgId ?? ORG_A;
@@ -572,14 +603,15 @@ describe.skipIf(!DB_URL)(
         const controlNumber = options.controlNumber ?? `CN-SEAM-${scenarioSeq}`;
         const claimId = randomUUID();
         const assignmentId = randomUUID();
+        const assignment = options.assignment ?? {};
         await admin.query(
           `INSERT INTO medicaid_program_assignment
              (id, organization_id, patient_id, patient_payer_id, admission_id, provider_entity_id, service_state,
               program_kind, canonical_payer_id, canonical_payer_classification_id, status, effective_from,
               source_kind, verification_source, evidence_reference, verified_at, verified_by_membership_id,
-              recorded_by_membership_id)
-           VALUES ($1,$2,$3,$4,$5,$6,'OR','managed_care',$7,$8,'verified','2026-01-01','manual_candidate',
-                   'state_registry','doc:synthetic-assignment',now(),$9,$10)`,
+              recorded_by_membership_id, version)
+           VALUES ($1,$2,$3,$4,$5,$6,$11,'managed_care',$7,$8,$12,'2026-01-01','manual_candidate',
+                   'state_registry','doc:synthetic-assignment',now(),$9,$10,$13)`,
           [
             assignmentId,
             orgId,
@@ -587,10 +619,13 @@ describe.skipIf(!DB_URL)(
             randomUUID(),
             randomUUID(),
             providerEntityId,
-            PAYER,
-            CLASSIFICATION,
+            orDefault(assignment.payer, PAYER),
+            orDefault(assignment.classification, CLASSIFICATION),
             REVIEWER,
             MEMBER,
+            assignment.state ?? "OR",
+            assignment.status ?? "verified",
+            assignment.version ?? 1,
           ],
         );
         await seedMedicaidClaim({
@@ -600,12 +635,21 @@ describe.skipIf(!DB_URL)(
           state: options.claimState ?? "ACK_ACCEPTED",
           controlNumber,
         });
+        // The claim replaces an earlier one (a TOB 817 names its predecessor), so an unproven result that leaked the
+        // lineage would show it.
+        const replacesClaimId = randomUUID();
         await admin.query(
           `UPDATE medicaid_claim
            SET canonical_payer_id=$2, program_assignment_id=$3, medicaid_program_kind='managed_care',
-               replaced_by_claim_id=$4
+               replaced_by_claim_id=$4, tob='817', replaces_claim_id=$5
            WHERE id=$1`,
-          [claimId, PAYER, assignmentId, options.claimReplacedBy ?? null],
+          [
+            claimId,
+            orDefault(options.claimPayer, PAYER),
+            assignmentId,
+            options.claimReplacedBy ?? null,
+            replacesClaimId,
+          ],
         );
         const submissionIds: string[] = [];
         const attempts = options.attempts ?? [{}];
@@ -620,7 +664,7 @@ describe.skipIf(!DB_URL)(
                 program_assignment_version_snapshot, submitted_claim_version, source_provenance_status,
                 result, vendor_transaction_id, submitted_at)
              VALUES ($1,$2,$3,$4,'OR','cco_clearinghouse',$5,$6,'synthetic-vendor','test',
-                     'synthetic-account-1',$7,$8,$9,'managed_care',$10,1,$11,$12,'accepted_sync',$13,now())`,
+                     $14,$7,$8,$9,$15,$10,$16,$11,$12,$17,$13,$18)`,
             [
               submissionId,
               orgId,
@@ -629,17 +673,67 @@ describe.skipIf(!DB_URL)(
               controlNumber,
               attemptIndex,
               attempt.environment ?? "production",
-              PAYER,
-              CLASSIFICATION,
-              assignmentId,
+              orDefault(attempt.payerSnapshot, PAYER),
+              orDefault(attempt.classificationSnapshot, CLASSIFICATION),
+              orDefault(attempt.assignmentIdSnapshot, assignmentId),
               attempt.submittedClaimVersion ?? 1,
               attempt.provenance ?? "verified",
-              `synthetic-tx-${scenarioSeq}-${attemptIndex}`,
+              orDefault(attempt.vendorTransactionId, `synthetic-tx-${scenarioSeq}-${attemptIndex}`),
+              orDefault(attempt.sourceAccountRef, "synthetic-account-1"),
+              attempt.programKindSnapshot ?? "managed_care",
+              attempt.assignmentVersionSnapshot ?? 1,
+              attempt.result ?? "accepted_sync",
+              orDefault(attempt.submittedAt, new Date()),
             ],
           );
+          if (options.acknowledged !== false) {
+            await admin.query(
+              `INSERT INTO medicaid_acknowledgment
+                 (organization_id, medicaid_claim_id, medicaid_submission_id, kind, outcome, payer_claim_control_number)
+               VALUES ($1,$2,$3,'sync_277ca','accepted',$4)`,
+              [orgId, claimId, submissionId, `PCCN-${scenarioSeq}-${attemptIndex}`],
+            );
+          }
           submissionIds.push(submissionId);
         }
-        return { orgId, providerEntityId, controlNumber, claimId, assignmentId, submissionIds };
+        return {
+          orgId,
+          providerEntityId,
+          controlNumber,
+          claimId,
+          assignmentId,
+          replacesClaimId,
+          scenarioNumber: scenarioSeq,
+          submissionIds,
+        };
+      }
+
+      /**
+       * The verified CHECK keeps a NULL account, payer, classification, assignment, time or vendor transaction out of a
+       * verified row, so the seam's own test for each is reachable only without it. This drops the CHECK for the case,
+       * removes the rows the case wrote that the CHECK would refuse (their acknowledgments first), and puts the
+       * constraint back exactly as the catalog defined it.
+       */
+      async function withVerifiedCheckDropped<T>(run: () => Promise<T>): Promise<T> {
+        const name = "medicaid_submission_verified_provenance_ck";
+        const { rows } = await admin.query<{ definition: string }>(
+          "SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conname = $1",
+          [name],
+        );
+        const definition = rows[0]?.definition;
+        if (!definition) throw new Error(`${name} is not defined`);
+        const expression = definition.replace(/^CHECK /, "");
+        await admin.query(`ALTER TABLE medicaid_submission DROP CONSTRAINT ${name}`);
+        try {
+          return await run();
+        } finally {
+          await admin.query(
+            `DELETE FROM medicaid_acknowledgment WHERE medicaid_submission_id IN
+               (SELECT id FROM medicaid_submission WHERE NOT ${expression})`,
+          );
+          await admin.query(`DELETE FROM medicaid_submission WHERE NOT ${expression}`);
+          await admin.query(`ALTER TABLE medicaid_submission ADD CONSTRAINT ${name} ${definition}`);
+        }
       }
 
       /** The message of a refusal, with the driver's wrapped cause (drizzle puts the Postgres text in `cause`). */
@@ -673,7 +767,8 @@ describe.skipIf(!DB_URL)(
         const [result] = evidence;
         expect(result?.disposition, why).toBe("SUBMISSION_UNVERIFIED");
         // An unproven result carries no identity a caller could follow (slice B contract): not the claim, its
-        // lineage, the submission or the assignment.
+        // lineage, the submission, the assignment, the vendor transaction, the payer classification or the payer
+        // claim control number of an acknowledgment. Every scenario seeds each of them, so a null is a hidden value.
         expect(result?.claimId, why).toBeNull();
         expect(result?.replacesClaimId, why).toBeNull();
         expect(result?.replacedByClaimId, why).toBeNull();
@@ -681,6 +776,12 @@ describe.skipIf(!DB_URL)(
         for (const attempt of result?.attempts ?? []) {
           expect(attempt.submissionId, why).toBeNull();
           expect(attempt.assignmentId, why).toBeNull();
+          expect(attempt.vendorTransactionId, why).toBeNull();
+          expect(attempt.payerClassificationId, why).toBeNull();
+          expect(attempt.acknowledgments.length, why).toBeGreaterThan(0);
+          for (const acknowledgment of attempt.acknowledgments) {
+            expect(acknowledgment.payerClaimControlNumber, why).toBeNull();
+          }
         }
       }
 
@@ -735,7 +836,7 @@ describe.skipIf(!DB_URL)(
       // keep the row verified while changing what it proves (the seam joins an attempt to its claim by
       // medicaid_claim_id). The values are otherwise valid for the row (another claim of the same organization and
       // provider entity, another provider entity of the organization, a free attempt index...), and each case runs
-      // the identical statement as the superuser first-hand, so a refusal can only be the guard.
+      // the identical statement as the superuser right after, so a refusal can only be the guard.
       it("the application role cannot rewrite any identity or provenance column of a verified attempt", async () => {
         const otherClaim = await seedScenario({ attempts: [] });
         const otherProviderEntity = (
@@ -799,7 +900,7 @@ describe.skipIf(!DB_URL)(
           { column: "vendor_transaction_id", key: "vendorTransactionId", value: "another-tx" },
         ];
         for (const { column, key, value } of frozen) {
-          const { submissionIds } = await seedScenario({ attempts: [{}] });
+          const { submissionIds } = await seedScenario({ attempts: [{}], acknowledged: false });
           const submissionId = submissionIds[0] as string;
           const refusal = await refusalOf(
             () =>
@@ -877,7 +978,7 @@ describe.skipIf(!DB_URL)(
         expect(evidence[0]).toMatchObject({
           disposition: "SUBMISSION_EVIDENCE",
           claimId: scenario.claimId,
-          replacesClaimId: null,
+          replacesClaimId: scenario.replacesClaimId,
           replacedByClaimId: null,
           organizationId: ORG_A,
           providerEntityId: peA,
@@ -888,39 +989,165 @@ describe.skipIf(!DB_URL)(
             {
               submissionId: scenario.submissionIds[0],
               assignmentId: scenario.assignmentId,
+              vendorTransactionId: `synthetic-tx-${scenario.scenarioNumber}-0`,
+              payerClassificationId: CLASSIFICATION,
               environment: "production",
               provenanceStatus: "verified",
               sourceAccountRef: "synthetic-account-1",
+              acknowledgments: [{ payerClaimControlNumber: `PCCN-${scenario.scenarioNumber}-0` }],
             },
           ],
         });
       });
 
-      it.each([
-        { why: "a test-environment attempt", options: { attempts: [{ environment: "test" }] } },
+      // ── One refusal per qualification predicate of the seam ─────────────────────────────────────────────────
+      // Each case builds the fully qualified scenario (the test above proves it is SUBMISSION_EVIDENCE) and breaks
+      // exactly one thing. The predicates, in the order of the seam's `qualified` filter and then its claim tests:
+      //   attempt: provenance verified, production environment, source account, result accepted or pending_async,
+      //     submitted time, vendor transaction id, submitted at the claim version, assignment snapshot present and
+      //     equal to the claim's assignment, assignment version equal to the assignment's, program kind snapshot
+      //     equal to the claim's, payer snapshot equal to the claim's payer, classification snapshot present and
+      //     equal to the assignment's
+      //   assignment: verified, payer equal to the claim's, state equal to the claim's service state
+      //   claim: names a payer, state not REPLACED / VOIDED / ABANDONED, no successor
+      //   result: exactly one attempt qualifies
+      // The cases marked `dropsVerifiedCheck` break a column the verified CHECK would not let a verified row hold
+      // NULL, so the CHECK is out of the way for that case only. "names a payer", "assignment snapshot present" and
+      // "classification snapshot present" are each also implied by the equality test beside them unless both sides
+      // are NULL, which is how those cases isolate them.
+      const OTHER_PAYER = "00000000-0000-0000-0000-0000000fa702";
+      const OTHER_CLASSIFICATION = "00000000-0000-0000-0000-0000000fc702";
+      const OTHER_ASSIGNMENT = "00000000-0000-0000-0000-0000000fb702";
+      const SUCCESSOR_CLAIM = "00000000-0000-0000-0000-0000000c7fff";
+      type RefusalCase = {
+        readonly predicate: string;
+        readonly options: ScenarioOptions;
+        readonly dropsVerifiedCheck?: true;
+      };
+      const REFUSALS: readonly RefusalCase[] = [
         {
-          why: "an attempt submitted at another claim version",
+          predicate: "attempt provenance is verified",
+          options: { attempts: [{ provenance: "unverified" }] },
+        },
+        {
+          predicate: "attempt environment is production",
+          options: { attempts: [{ environment: "test" }] },
+        },
+        {
+          predicate: "attempt names a source account",
+          options: { attempts: [{ sourceAccountRef: null }] },
+          dropsVerifiedCheck: true,
+        },
+        {
+          predicate: "attempt result: pending",
+          options: { attempts: [{ result: "pending" }] },
+        },
+        {
+          predicate: "attempt result: rejected_sync",
+          options: { attempts: [{ result: "rejected_sync" }] },
+        },
+        {
+          predicate: "attempt result: transport_failure",
+          options: { attempts: [{ result: "transport_failure" }] },
+        },
+        {
+          predicate: "attempt result: timeout",
+          options: { attempts: [{ result: "timeout" }] },
+        },
+        {
+          predicate: "attempt result: cancelled",
+          options: { attempts: [{ result: "cancelled" }] },
+        },
+        {
+          predicate: "attempt carries a submitted time",
+          options: { attempts: [{ submittedAt: null }] },
+          dropsVerifiedCheck: true,
+        },
+        {
+          predicate: "attempt carries a vendor tx id",
+          options: { attempts: [{ vendorTransactionId: null }] },
+          dropsVerifiedCheck: true,
+        },
+        {
+          predicate: "attempt was submitted at claim version",
           options: { attempts: [{ submittedClaimVersion: 2 }] },
         },
-        { why: "two qualified attempts", options: { attempts: [{}, {}] } },
         {
-          why: "a REPLACED claim",
+          predicate: "attempt names an assignment",
+          options: { attempts: [{ assignmentIdSnapshot: null }] },
+          dropsVerifiedCheck: true,
+        },
+        {
+          predicate: "attempt assignment is the claim's",
+          options: { attempts: [{ assignmentIdSnapshot: OTHER_ASSIGNMENT }] },
+        },
+        {
+          predicate: "attempt assignment version is current",
+          options: { assignment: { version: 2 } },
+        },
+        {
+          predicate: "attempt program kind is the claim's",
+          options: { attempts: [{ programKindSnapshot: "ffs_open_card" }] },
+        },
+        {
+          predicate: "attempt payer is the claim's payer",
+          options: { attempts: [{ payerSnapshot: OTHER_PAYER }] },
+        },
+        {
+          predicate: "attempt names a payer classification",
           options: {
-            claimState: "REPLACED",
-            claimReplacedBy: "00000000-0000-0000-0000-0000000c7fff",
+            assignment: { classification: null },
+            attempts: [{ classificationSnapshot: null }],
           },
+          dropsVerifiedCheck: true,
         },
         {
-          why: "an unverified attempt",
-          options: { attempts: [{ provenance: "unverified" as const }] },
+          predicate: "attempt classification is assignment's",
+          options: { attempts: [{ classificationSnapshot: OTHER_CLASSIFICATION }] },
         },
-      ])("$why is SUBMISSION_UNVERIFIED and exposes no identity", async ({ why, options }) => {
-        const scenario = await seedScenario(options);
-        const evidence = await m24Seams!.claimMatch.submissionEvidenceForLine(ORG_A, peA, {
-          claimControlNumber: scenario.controlNumber,
-        });
-        expectUnproven(evidence, why);
-      });
+        { predicate: "assignment is verified", options: { assignment: { status: "revoked" } } },
+        {
+          predicate: "assignment payer is the claim's payer",
+          options: { assignment: { payer: OTHER_PAYER } },
+        },
+        {
+          predicate: "assignment state is the claim's state",
+          options: { assignment: { state: "WA" } },
+        },
+        {
+          predicate: "claim names a payer",
+          options: {
+            claimPayer: null,
+            assignment: { payer: null },
+            attempts: [{ payerSnapshot: null }],
+          },
+          dropsVerifiedCheck: true,
+        },
+        {
+          predicate: "claim is not REPLACED",
+          options: { claimState: "REPLACED" },
+        },
+        { predicate: "claim is not VOIDED", options: { claimState: "VOIDED" } },
+        { predicate: "claim is not ABANDONED", options: { claimState: "ABANDONED" } },
+        { predicate: "claim has no successor", options: { claimReplacedBy: SUCCESSOR_CLAIM } },
+        { predicate: "exactly one attempt qualifies", options: { attempts: [{}, {}] } },
+      ];
+
+      it.each(REFUSALS)(
+        "breaking only $predicate is SUBMISSION_UNVERIFIED and exposes no identity",
+        async ({ predicate, options, dropsVerifiedCheck }) => {
+          const evidenceFor = async () => {
+            const scenario = await seedScenario(options);
+            return m24Seams!.claimMatch.submissionEvidenceForLine(ORG_A, peA, {
+              claimControlNumber: scenario.controlNumber,
+            });
+          };
+          const evidence = dropsVerifiedCheck
+            ? await withVerifiedCheckDropped(evidenceFor)
+            : await evidenceFor();
+          expectUnproven(evidence, predicate);
+        },
+      );
 
       it("evidence is scoped to the provider entity: the same control number under another provider entity of the same org is a different claim", async () => {
         const peA2 = (
