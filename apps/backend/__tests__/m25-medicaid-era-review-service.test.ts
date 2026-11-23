@@ -420,6 +420,92 @@ describe("tenant isolation of account evidence", () => {
     });
   });
 
+  describe("sibling provider entities on one vendor account", () => {
+    const entityB: MedicaidEraAccountEvidence = {
+      ...productionAccount,
+      providerEntityId: "provider-synthetic-2",
+      billingNpi: "1888888888",
+      evidenceReference: "synthetic:evidence-2",
+    };
+    const narrowActor = { ...productionActor, providerEntityScope: ["provider-synthetic-1"] };
+    const eraFor = (npi: string) =>
+      raw.replace("N1*PE*SYNTH HOSPICE*XX*1999999999", `N1*PE*SYNTH HOSPICE*XX*${npi}`);
+
+    it("reads as unavailable, not as a payee conflict, when the ERA is addressed to an out-of-scope sibling", async () => {
+      let candidateReads = 0;
+      const service = serviceFor(eraFor("1888888888"), {
+        accounts: [productionAccount, entityB],
+        onCandidateRead: () => candidateReads++,
+      });
+      expect(await service.inspect(narrowActor, "synthetic:artifact-prod-1")).toEqual({
+        status: "unavailable",
+        reasonCode: "SOURCE_ARTIFACT_UNAVAILABLE",
+      });
+      expect(candidateReads).toBe(0);
+    });
+
+    it("answers the same way for an out-of-scope sibling of another organization", async () => {
+      const service = serviceFor(eraFor("1888888888"), {
+        accounts: [productionAccount, { ...entityB, organizationId: "org-synthetic-other" }],
+      });
+      expect(await service.inspect(narrowActor, "synthetic:artifact-prod-1")).toEqual({
+        status: "unavailable",
+        reasonCode: "SOURCE_ARTIFACT_UNAVAILABLE",
+      });
+    });
+
+    it("still holds a payee that matches nobody as a payee conflict", async () => {
+      const result = await reviewOnly(
+        serviceFor(eraFor("1777777777"), { accounts: [productionAccount, entityB] }),
+        narrowActor,
+      );
+      expect(result.claims[0]).toMatchObject({
+        decision: "source_unverified",
+        reasonCode: "PAYEE_IDENTITY_CONFLICT",
+      });
+    });
+
+    it("does not treat a payee identified by tax id as matching a sibling with no billing NPI", async () => {
+      const result = await reviewOnly(
+        serviceFor(raw.replace("XX*1999999999", "FI*123456789"), {
+          accounts: [productionAccount, { ...entityB, billingNpi: "" }],
+        }),
+        narrowActor,
+      );
+      expect(result.claims[0]).toMatchObject({
+        decision: "source_unverified",
+        reasonCode: "PAYEE_IDENTITY_CONFLICT",
+      });
+    });
+
+    it("reviews the actor's own entity even when a sibling shares the billing NPI", async () => {
+      const result = await reviewOnly(
+        serviceFor(raw, {
+          accounts: [productionAccount, { ...entityB, billingNpi: "1999999999" }],
+        }),
+        narrowActor,
+      );
+      expect(result.claims[0]).toMatchObject({
+        attributionStatus: "verified",
+        attribution: { providerEntityId: "provider-synthetic-1" },
+      });
+    });
+
+    it("lets an actor whose scope covers the sibling review the ERA addressed to it", async () => {
+      const result = await reviewOnly(
+        serviceFor(eraFor("1888888888"), { accounts: [productionAccount, entityB] }),
+        {
+          ...productionActor,
+          providerEntityScope: ["provider-synthetic-1", "provider-synthetic-2"],
+        },
+      );
+      expect(result.claims[0]).toMatchObject({
+        attributionStatus: "verified",
+        attribution: { providerEntityId: "provider-synthetic-2" },
+      });
+    });
+  });
+
   it("still holds an in-tenant account that is not registered at all", async () => {
     const result = await reviewOnly(serviceFor(raw, { accounts: [] }));
     expect(result.claims[0]).toMatchObject({
