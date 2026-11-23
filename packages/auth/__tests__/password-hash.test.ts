@@ -16,6 +16,18 @@ describe("argon2id password hashing (AUTH-T04)", () => {
     expect(await argon2idVerify(hash, "wrong-password")).toBe(false);
   });
 
+  it("answers an empty password like a wrong one: hash-wasm refuses it, and sign-in answered 500", async () => {
+    const hash = await argon2idHash("s3cret-passphrase-123456");
+    expect(await argon2idVerify(hash, "")).toBe(false);
+  });
+
+  it("hashes an empty password (Better Auth's timing hash for an unknown account) to a hash nothing can match", async () => {
+    const hash = await argon2idHash("");
+    expect(hash.startsWith("$argon2id$")).toBe(true);
+    expect(await argon2idVerify(hash, "")).toBe(false);
+    expect(await argon2idVerify(hash, "anything-at-all-123456")).toBe(false);
+  });
+
   it("uses a unique salt per hash (same password → different encoded hash)", async () => {
     const a = await argon2idHash("same-password-aaaaaa");
     const b = await argon2idHash("same-password-aaaaaa");

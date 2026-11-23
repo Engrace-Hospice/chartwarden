@@ -8,8 +8,10 @@ import type {
 // orchestration over an injected AdmissionReaderStore; these cover the projection + the derived facts
 // (active-period containment, LOC-day counting, signed/attested booleans, current-LOC selection) and
 // the boot wiring (registerAdmissionSeams replaces the deny-stubs; validateSeams passes).
+import Fastify from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, getSeam, validateSeams } from "../src/bootstrap/index";
+import { applyErrorHandler } from "../src/bootstrap/plugins/error-handler";
 import {
   AdmissionNotFoundError,
   type AdmissionReaderSeed,
@@ -130,6 +132,21 @@ describe("AdmissionStatusReader (§4.7)", () => {
     await expect(reader.getAdmissionSummary("org-2", ADM)).rejects.toBeInstanceOf(
       AdmissionNotFoundError,
     );
+  });
+
+  it("is answered 404 NOT_FOUND by the error handler, so a route that reads an unknown admission is not a 500", async () => {
+    const reader = createAdmissionStatusReader(store());
+    const app = Fastify();
+    applyErrorHandler(app);
+    app.get("/admission", async () => reader.getAdmissionSummary(ORG, "nope"));
+    const res = await app.inject({ method: "GET", url: "/admission" });
+    await app.close();
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe("NOT_FOUND");
+    // M10's ABAC predicate recognises the error by name; the name stays.
+    await expect(reader.getAdmissionSummary(ORG, "nope")).rejects.toMatchObject({
+      name: "AdmissionNotFoundError",
+    });
   });
 
   it("throws AdmissionNotFoundError for an unknown admission", async () => {
