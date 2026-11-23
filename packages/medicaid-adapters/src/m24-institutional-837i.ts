@@ -175,13 +175,13 @@ function serviceDayCount(from: string, through: string): number | null {
  * Index of the first line that bills the same revenue + procedure code + modifier set for a day an earlier line already
  * covers (a double bill of the same service), or null. Lines for different codes, or for the same code under different
  * modifiers (e.g. a professional/technical split), may legitimately share days. Modifiers compare as a set, so a
- * reordering does not make a double bill look distinct.
+ * reordering or a repeated modifier does not make a double bill look distinct.
  * Dates are compared as ISO strings; a line without a through date covers its own day only.
  */
 function firstOverlappingLine(lines: Claim837iInput["claim"]["lines"]): number | null {
   const covered = new Map<string, { from: string; through: string }[]>();
   for (const [index, line] of lines.entries()) {
-    const key = `${line.revenueCode}\u0000${line.hcpcs ?? ""}\u0000${[...(line.modifiers ?? [])].sort().join(",")}`;
+    const key = `${line.revenueCode}\u0000${line.hcpcs ?? ""}\u0000${[...new Set(line.modifiers ?? [])].sort().join(",")}`;
     const span = { from: line.serviceDate, through: line.serviceThroughDate ?? line.serviceDate };
     const earlier = covered.get(key) ?? [];
     if (earlier.some((other) => span.from <= other.through && other.from <= span.through)) {

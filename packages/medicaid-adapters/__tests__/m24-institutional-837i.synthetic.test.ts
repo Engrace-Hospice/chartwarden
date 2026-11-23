@@ -527,6 +527,8 @@ describe("overlapping service days of the same code", () => {
       { modifiers: ["GT", "PM"] },
       { modifiers: ["PM", "GT"] },
     ],
+    ["a repeated modifier on one line", { modifiers: ["PM", "PM"] }, { modifiers: ["PM"] }],
+    ["a repeated modifier on the earlier line", { modifiers: ["PM"] }, { modifiers: ["PM", "PM"] }],
   ])(
     "still refuses the same code and modifiers on overlapping days (%s)",
     (_name, patch, firstPatch) => {
