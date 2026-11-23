@@ -78,6 +78,17 @@ existing=$(docker volume ls -q --filter 'name=_seaweedfs-data$' </dev/null 2>/de
 if [ -n "$existing" ] && ! printf '%s\n' "$existing" | grep -qx "$object_store_volume"; then
   fail "configured object-store volume '$object_store_volume' does not exist but these do: $(echo $existing). The volume copy is incomplete (Runbook, Window 2); do not deploy"
 fi
+# The retired MinIO volume. deploy.sh no longer runs the one-time MinIO -> SeaweedFS copy, so a host that has a *_minio-data
+# volume and NO *_seaweedfs-data volume never completed that cutover: 'up' would start an EMPTY SeaweedFS and every uploaded
+# document would look lost. Refuse. A migrated host that still holds the old volume is only warned: it is a plaintext copy of
+# every document that sits outside the backups and is no longer visible to the stack.
+minio_volumes=$(docker volume ls -q --filter 'name=_minio-data$' </dev/null 2>/dev/null) || fail "docker volume ls failed"
+if [ -n "$minio_volumes" ] && [ -z "$existing" ]; then
+  fail "the retired MinIO volume exists ($(echo $minio_volumes)) but no *_seaweedfs-data volume does: this host never completed the SeaweedFS cutover, and 'up' would start an EMPTY object store, so every uploaded document would look lost. Do not deploy: the cutover is no longer automated (deploy/production/README.md, 'Object store: removing the retired MinIO data')"
+fi
+if [ -n "$minio_volumes" ]; then
+  echo "preflight WARNING: the retired MinIO volume still exists ($(echo $minio_volumes)) next to the SeaweedFS one: it is a plaintext copy of every document, outside the backups and no longer visible to the stack. Remove it after a successful SeaweedFS backup snapshot (README, 'Object store: removing the retired MinIO data')" >&2
+fi
 
 # 3. Compose project: a differently named project already holds postgres, so 'up' would start a second stack.
 if [ -n "$pg_projects" ] && ! printf '%s\n' "$pg_projects" | grep -qx "$project"; then

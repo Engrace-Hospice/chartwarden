@@ -242,11 +242,20 @@ MinIO with stale data.
 ## Object store: removing the retired MinIO data (operator, once)
 
 The one-time MinIO -> SeaweedFS cutover has run and its machinery is gone from `deploy.sh`. A host that went through it
-still has the `<prefix>_minio-data` volume, the pre-cutover copy of every object, and nothing mounts it. Remove it once a
-backup snapshot of the SeaweedFS store has succeeded and the access-log, upload and download paths are confirmed:
-`docker volume rm <prefix>_minio-data`. That is irreversible and ends any way back to a pre-SeaweedFS release; `preflight.sh`
-and `volumes-copy.sh` do not look at it. Always include `-f compose.backup.yml` when re-running `object-store-provision`
-by hand on a host with backups configured, or the backup sidecar's reader is dropped at SeaweedFS's next restart.
+still has the `<prefix>_minio-data` volume: the pre-cutover copy of every object, **in plaintext, outside the backups, and
+no longer visible to the stack** (nothing mounts it; `compose.yml` does not declare it). Dispose of it:
+
+1. Confirm a backup snapshot of the SeaweedFS store has succeeded, and that the access-log, upload and download paths work.
+2. `docker volume rm <prefix>_minio-data`. **This is irreversible** and ends any way back to a pre-SeaweedFS release.
+
+The deadline for step 2 is the owner's decision; this document sets none. Until it is done, `preflight.sh` prints a WARNING on
+every deploy that names the volume. `preflight.sh` also **refuses** (exit 67) a host that has a `*_minio-data` volume and no
+`*_seaweedfs-data` volume: the cutover is no longer automated, so a deploy there would start an EMPTY object store and every
+document would look lost. Such a host must be migrated by hand (`scripts/object-store-copy.ts`, which keeps each object's
+SHA-256) before it is deployed. `volumes-copy.sh` does not copy the retired volume.
+
+Always include `-f compose.backup.yml` when re-running `object-store-provision` by hand on a host with backups configured,
+or the backup sidecar's reader is dropped at SeaweedFS's next restart.
 
 ## Object store: second copy (`compose.object-copy.yml`, `replica/`)
 

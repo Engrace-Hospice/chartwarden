@@ -56,6 +56,27 @@ describe("deploy/production/README.md documents the object-store contract", () =
     }
   });
 
+  it("makes the disposal of the retired plaintext volume explicit, irreversible, owner-dated and enforced by preflight", () => {
+    const section = readme.slice(
+      readme.indexOf("## Object store: removing the retired MinIO data"),
+    );
+    for (const needle of [
+      "in plaintext, outside the backups",
+      "docker volume rm <prefix>_minio-data",
+      "This is irreversible",
+      "The deadline for step 2 is the owner's decision",
+      "WARNING",
+      "refuses",
+      "EMPTY object store",
+    ]) {
+      expect(section, needle).toContain(needle);
+    }
+    // No invented date: the section names no deadline of its own.
+    expect(section.slice(0, section.indexOf("## Object store: second copy"))).not.toMatch(
+      /20\d\d-\d\d-\d\d/,
+    );
+  });
+
   it("no longer documents the removed pieces as live: no pair table, no cutover steps, no compatibility path", () => {
     expect(readme).not.toContain("Fail closed on a mismatch");
     expect(readme).not.toContain("The SeaweedFS cutover");

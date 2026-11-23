@@ -186,14 +186,59 @@ describe("preflight.sh across the infra-rename windows", () => {
     expect(r.out).toContain("chartwarden_seaweedfs-data");
   });
 
-  it("does not look at the retired MinIO volume: a leftover wardenx_minio-data never blocks a deploy", () => {
-    const r = run({
-      env: ["CHARTWARDEN_VOLUME_PREFIX=chartwarden", "CHARTWARDEN_DB_NAME=wardenx", ...SMOKE],
-      volumes: [...NEW_VOLUMES, "wardenx_minio-data"],
-      pgProjects: ["chartwarden"],
+  // The MinIO -> SeaweedFS cutover machinery is gone from deploy.sh, so nothing starts the copy any more: a host that still
+  // has a *_minio-data volume and NO *_seaweedfs-data volume would get an EMPTY SeaweedFS (every document looks lost).
+  describe("the retired MinIO volume", () => {
+    const env = ["CHARTWARDEN_VOLUME_PREFIX=chartwarden", "CHARTWARDEN_DB_NAME=wardenx", ...SMOKE];
+
+    it("refuses a host that has *_minio-data but no *_seaweedfs-data volume (the cutover never ran)", () => {
+      for (const minio of ["chartwarden_minio-data", "wardenx_minio-data"]) {
+        const r = run({
+          env,
+          volumes: ["chartwarden_postgres-data", minio],
+          pgProjects: ["chartwarden"],
+        });
+        expect(r.code, `${minio}\n${r.out}`).toBe(67);
+        expect(r.out).toContain(minio);
+        expect(r.out).toContain("EMPTY");
+        expect(r.out).toMatch(/do not deploy/i);
+      }
     });
-    expect(r.code, r.out).toBe(0);
-    expect(r.out).not.toContain("minio-data");
+
+    it("refuses it on the legacy prefix too (the copy of postgres done, SeaweedFS never created)", () => {
+      const r = run({
+        env: ["CHARTWARDEN_VOLUME_PREFIX=wardenx", "CHARTWARDEN_DB_NAME=wardenx", ...SMOKE],
+        volumes: ["wardenx_postgres-data", "wardenx_minio-data"],
+        pgProjects: ["chartwarden"],
+      });
+      expect(r.code, r.out).toBe(67);
+      expect(r.out).toContain("wardenx_minio-data");
+    });
+
+    it("a migrated host (SeaweedFS volume present) with a leftover minio-data volume deploys, with a WARNING", () => {
+      const r = run({
+        env,
+        volumes: [...NEW_VOLUMES, "wardenx_minio-data"],
+        pgProjects: ["chartwarden"],
+      });
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toContain("preflight WARNING");
+      expect(r.out).toContain("wardenx_minio-data");
+      expect(r.out).toContain("plaintext");
+      expect(r.out).toContain("backups");
+    });
+
+    it("a migrated host without any minio-data volume prints no MinIO warning", () => {
+      const r = run({ env, volumes: NEW_VOLUMES, pgProjects: ["chartwarden"] });
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).not.toContain("minio-data");
+    });
+
+    it("a fresh host (no volumes at all) is untouched by the check", () => {
+      const r = run({ env: [] });
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).not.toContain("minio-data");
+    });
   });
 
   it("refuses when the key says chartwarden but the cluster still holds wardenx (rename not run)", () => {
