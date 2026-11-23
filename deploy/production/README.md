@@ -138,13 +138,15 @@ in place (it adds the `listen 443 ssl` block and the certificate paths), so **ne
   recreates it only when its image or service config changes). clamd's protocol is unauthenticated, so the sidecar sits
   on a dedicated `scan` network that only `clamav`, `api` and `worker` join (postgres, seaweedfs, docling and the rest
   cannot reach it), and it is capped (`mem_limit: 4g`, `cpus: 2`) so a scan flood or a bad signature reload cannot
-  starve the host. The image is upstream's Alpine `clamav/clamav:1.4`, pinned by digest. Dev compose already builds
-  `deploy/clamav/Dockerfile` (ClamAV 1.5 on Wolfi, multi-arch; the Alpine pin is 1.4.6 and Wolfi has no 1.4 past 1.4.3);
-  production moves to it when `clamav-image.yml` (manual, `main` only: builds, scans, signs and SBOM-attests it as `ghcr.io/engrace-hospice/chartwarden-clamav`) has published a
-  digest: verify it with `cosign verify` / `verify-attestation` as for the Postgres image, pin it in `compose.yml`, and
-  deploy (the swap is stateless: the signature DB stays in `clamav-data`, which the new image re-chowns to uid 100, the
-  uid the Alpine image used). Follow-up: alert on a stale signature database (for example `docker
-  compose exec clamav clamscan --version` reporting a database older than 2 days, or freshclam errors in the log).
+  starve the host. The image is `ghcr.io/engrace-hospice/chartwarden-clamav` (`deploy/clamav/Dockerfile`: ClamAV 1.5
+  on Wolfi), pinned by digest. It is published by `clamav-image.yml` (manual, `main` only: builds, smoke-tests EICAR
+  detection, scans, signs and SBOM-attests it). To move to a newer build: run that workflow, verify its digest with
+  `cosign verify` / `verify-attestation` as for the Postgres image (identity
+  `.../workflows/clamav-image.yml@refs/heads/main`), pin it in `compose.yml`, and deploy. The swap is stateless: the
+  signature DB stays in `clamav-data`, which the image re-chowns to uid 100 (the uid the previous Alpine image used).
+  Wolfi's `clamav-1.5` is a feature line, so freshclam logs `OUTDATED` once the pin falls behind: re-publish then.
+  Follow-up: alert on a stale signature database (for example `docker compose exec clamav clamscan --version`
+  reporting a database older than 2 days, or freshclam errors in the log).
 - **Attachment upload size (defence in depth).** The presigned PUT signs `content-length` for exactly the declared
   `byteSize`, so the store refuses any other length and the quota (which counts `byteSize`) is real; `complete` also compares
   the stored size and destroys a mismatching object at once. The independent backstop is on the storage origin:
@@ -770,7 +772,7 @@ arch:compose-policy` (part of `arch:fitness`) fails on any literal image without
 | seaweedfs | `chrislusf/seaweedfs:4.52` | SeaweedFS 4.52 (pinned 2026-11-05) |
 | fluent-bit | `fluent/fluent-bit:5.1.5` | Fluent Bit 5.1.5 (pinned 2026-11-05) |
 | minio (legacy profile, cutover only) | `cgr.dev/chainguard/minio:latest` | MinIO `RELEASE.2026-10-23T20-06-51Z` |
-| clamav | `clamav/clamav:1.4` (Alpine) | ClamAV 1.4.6 (to be replaced by the Wolfi `chartwarden-clamav`, ClamAV 1.5.x, once published; see the `clamav` service above) |
+| clamav | `ghcr.io/engrace-hospice/chartwarden-clamav` | ClamAV 1.5.2, Wolfi (pinned 2026-11-23; built by `clamav-image.yml`; replaces `clamav/clamav:1.4`, Alpine, ClamAV 1.4.6) |
 
 SeaweedFS: `test:object-store:conformance:live` and `test:object-store:resilience:live` (CI job
 `object-store-conformance-live`) run against the same image and the same `object-store/` files; re-run them on a bump.

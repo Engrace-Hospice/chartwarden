@@ -336,13 +336,14 @@ services:
   # M36 WP 1.5 — the attachment malware scanner (clamd over TCP INSTREAM). Compose-network only: NO published port.
   # deploy/clamav/clamd.conf (mounted read-only; deploy.sh ships it next to this file) alerts on encrypted/over-limit
   # content and sets StreamMaxLength >= the 25 MB upload cap. The signature DB persists in `clamav-data` and
-  # freshclam refreshes it in-container (CLAMAV_NO_FRESHCLAMD unset). api/worker do NOT `depends_on` it: a down or
+  # freshclam refreshes it in-container (deploy/clamav/entrypoint.sh). api/worker do NOT `depends_on` it: a down or
   # still-updating scanner leaves attachments `pending` (nothing is delivered), it must never block the EHR.
   # Alert on a stuck scanner: old `pending` rows / `deferred` scans (docs/architecture/CHARTWARDEN_OPS_RUNBOOK_v0.1.md).
-  # Upstream's Alpine image (amd64 only, like this host), not clamav-debian: the Debian base carried ~60 HIGH CVEs.
-  # Same /init entrypoint; it chowns /var/lib/clamav to its own clamav uid (100, Debian's was 1000) on every start.
+  # Our Wolfi image (deploy/clamav/Dockerfile, ClamAV 1.5; built, scanned, cosign-signed and SBOM-attested by
+  # clamav-image.yml; verify a new digest with cosign before pinning it). Its entrypoint chowns /var/lib/clamav to the
+  # clamav uid (100, what the previous Alpine image used, so the `clamav-data` volume carries over) on every start.
   clamav:
-    image: clamav/clamav:1.4@sha256:8ad6197396974726c35d017e50aaaaf4b91745726a04faec8480c203edd98052
+    image: ghcr.io/engrace-hospice/chartwarden-clamav:1.5-sha-26805c6d085a22711c9acb9c05ed8fc244892726@sha256:139e4517b75b556a21aefaba8631314febf773965f876bc9fc84efb2d7207843
     restart: unless-stopped
     # clamd loads the whole signature set (a reload briefly doubles it): bound it so a scan flood or a bad update
     # cannot starve postgres/seaweedfs/api on the same host.
@@ -354,8 +355,8 @@ services:
       - clamav-data:/var/lib/clamav
       - ./clamav/clamd.conf:/etc/clamav/clamd.conf:ro
     healthcheck:
-      # Not upstream's clamdcheck.sh: it pings `localhost`, which resolves to ::1 on Alpine while clamd binds
-      # 0.0.0.0 (IPv4) only, so it never reports healthy.
+      # 127.0.0.1, not `localhost`: clamd binds 0.0.0.0 (IPv4) only and `localhost` can resolve to ::1, so a
+      # check against it would never report healthy.
       test: ["CMD-SHELL", "echo PING | nc 127.0.0.1 3310 | grep -q PONG"]
       interval: 30s
       timeout: 5s
