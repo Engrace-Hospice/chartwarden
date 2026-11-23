@@ -8,7 +8,7 @@ No deployment is authorized by this document.
 
 | Ordinal | Class | What the SQL does | Why that class |
 | --- | --- | --- | --- |
-| `1535_m24_payer_program_readiness` | expand | Four nullable columns on `medicaid_claim`; new tables `medicaid_program_assignment` and `medicaid_enrollment_evidence` (RLS enabled and FORCEd, column-limited UPDATE grant for `chartwarden_app`, four-eyes CHECK, provider-entity, identity and status-transition guard triggers, audit triggers). | Additive: new nullable columns and new tables nothing reads. |
+| `1535_m24_payer_program_readiness` | expand | Four nullable columns on `medicaid_claim`; new tables `medicaid_program_assignment` and `medicaid_enrollment_evidence` (RLS enabled and FORCEd, column-limited UPDATE grant for `chartwarden_app`, four-eyes CHECK, provider-entity, insert-status, identity and status-transition guard triggers, audit triggers). | Additive: new nullable columns and new tables nothing reads. |
 | `1536_m24_hospice_line_span_rate_qualification` | contract | `medicaid_claim_line.service_date_to` plus a CHECK; on `medicaid_state_rate_schedule` three new columns (`canonical_payer_id`, `rate_source_kind` default `legacy_unqualified`, `verification_status` default `unverified`), three CHECKs, the unique constraint `medicaid_state_rate_schedule_uq` dropped and re-added with `canonical_payer_id` in the key, one partial index; the claim-line date guard function replaced. | `ADD CONSTRAINT` on two existing tables and `DROP`/`ADD` of a unique constraint. See "Why the previous release must be drained". |
 | `1537_m24_rate_schedule_null_identity` | contract | A guard that aborts if two `medicaid_state_rate_schedule` rows share an identity; then `medicaid_state_rate_schedule_uq` dropped and re-added as `UNIQUE NULLS NOT DISTINCT`. | `DROP`/`ADD` of a unique constraint; rejects new duplicate rows the old key admitted. |
 | `1538_m24_payer_authorization_evidence` | expand | New append-only table `medicaid_payer_authorization_event` (RLS FORCEd, INSERT-only grant, provider-entity guard, append-only trigger, audit trigger). | A new table. |
@@ -97,10 +97,12 @@ Do not restart an old application image against the migrated schema.
     WHERE relname IN ('medicaid_program_assignment', 'medicaid_enrollment_evidence', 'medicaid_payer_authorization_event',
                       'medicaid_payer_rate_policy', 'mdm_medicaid_payer_program_classification') ORDER BY relname;
 
-   -- Guards installed and enabled (tgenabled = 'O'): 9 rows.
+   -- Guards installed and enabled (tgenabled = 'O'): 11 rows.
    SELECT tgrelid::regclass AS tbl, tgname, tgenabled FROM pg_trigger
-    WHERE tgname IN ('trg_medicaid_program_assignment_provider_entity', 'trg_medicaid_program_assignment_update_guard',
-                     'trg_medicaid_enrollment_evidence_provider_entity', 'trg_medicaid_enrollment_evidence_update_guard',
+    WHERE tgname IN ('trg_medicaid_program_assignment_provider_entity', 'trg_medicaid_program_assignment_insert_status',
+                     'trg_medicaid_program_assignment_update_guard',
+                     'trg_medicaid_enrollment_evidence_provider_entity', 'trg_medicaid_enrollment_evidence_insert_status',
+                     'trg_medicaid_enrollment_evidence_update_guard',
                      'trg_medicaid_payer_authorization_evidence_status', 'trg_medicaid_payer_authorization_event_append_only',
                      'trg_medicaid_payer_rate_policy_status', 'trg_medicaid_payer_rate_policy_append_only',
                      'trg_medicaid_submission_provenance') ORDER BY tgname;
@@ -130,6 +132,10 @@ Do not restart an old application image against the migrated schema.
 
    Do NOT test a guard by inserting into a real tenant's table: the 1538 and 1539 tables are append-only for every role (UPDATE and DELETE are refused by trigger), so a test row would be permanent. The guards are proven by the live suites (`test:rls:live:m24`, `test:rls:live:m40`, `test:m24:remittance-feedback:live`), not on production.
 6. Verify service health and the M24 routes on the new release. A migration succeeding does not prove the application works against it.
+
+## Recording program assignments (operators)
+
+A claim records ONE program assignment, and submission evidence is qualified against that single id, so a claim whose service window is covered only by two or more contiguous verified assignment records of the same payer resolves `ambiguous` (`PROGRAM_ASSIGNMENT_SPANS_MULTIPLE_RECORDS`) and cannot qualify: record ONE assignment that covers the whole service window, or split the claim at the assignment boundary. The application role records an assignment (and enrollment evidence) only as `candidate` or `pending`; it verifies through the verify route, by a member other than the recorder, and a verified or closed row cannot be inserted directly.
 
 ## Recovery boundary
 
