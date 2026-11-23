@@ -941,10 +941,11 @@ describe.skipIf(!DB_URL)(
         }
       });
 
-      it("insert: the application role records only an open row, so a forged verified or closed row is refused and the verify path still works", async () => {
-        // The forged rows satisfy every CHECK (the four-eyes CHECK compares two values the same caller supplies), so
-        // only the BEFORE INSERT status guard can refuse them. The control is the identical row written outside the
-        // application role.
+      it("insert: the application role records only an open row, so a one-statement verified or closed insert is refused and a later UPDATE to verified still works", async () => {
+        // The verified and closed rows satisfy every CHECK (the four-eyes CHECK compares two values the same caller
+        // supplies), so only the BEFORE INSERT status guard can refuse them. The control is the identical row written
+        // outside the application role. This refuses a ONE-statement insert only; the known-limit test below pins
+        // what it does not stop.
         const forgedStatuses = ["verified", ...cfg.terminal];
         for (const status of forgedStatuses) {
           const forged = cfg.row({
@@ -969,6 +970,33 @@ describe.skipIf(!DB_URL)(
           );
           expect(verified.rowCount, `verify a row recorded as ${status}`).toBe(1);
         }
+      });
+
+      // PINS A KNOWN LIMIT so nobody re-claims more than the database does. The database cannot tell the verify route
+      // from other application SQL (a trigger has no caller-bound identity), so the insert guard above does not make
+      // verification route-only: the application role can insert an open row and verify it in a second statement,
+      // naming any verifier. Verification itself (the M40 classification match, the source allow-list, step-up) is
+      // enforced by the verify service. What the database does guarantee is the four-eyes arithmetic (the verifier
+      // column differs from the recorder column), the identity and evidence freeze after verification and the
+      // transition table (all proved by the tests above), not WHO the verifier is.
+      it("known limit: the application role can insert an open row and then verify it, naming any verifier, except the recorder", async () => {
+        const id = await withOrg(ORG_A, () => insertRow(table, cfg.row({ status: "pending" })));
+        const asRecorder = withOrg(ORG_A, () =>
+          db.query(`UPDATE ${table} SET ${cfg.verifySet} WHERE id=$1`, [id, RECORDER]),
+        );
+        await expect(asRecorder, "the recorder as verifier").rejects.toThrow(
+          new RegExp(cfg.fourEyes),
+        );
+        const chosenVerifier = randomUUID();
+        const verified = await withOrg(ORG_A, () =>
+          db.query(`UPDATE ${table} SET ${cfg.verifySet} WHERE id=$1`, [id, chosenVerifier]),
+        );
+        expect(verified.rowCount).toBe(1);
+        const { rows } = await db.query<{ status: string; verified_by_membership_id: string }>(
+          `SELECT status, verified_by_membership_id FROM ${table} WHERE id=$1`,
+          [id],
+        );
+        expect(rows[0]).toEqual({ status: "verified", verified_by_membership_id: chosenVerifier });
       });
 
       it("evidence: once a row leaves its open status the verification evidence cannot be rewritten", async () => {
