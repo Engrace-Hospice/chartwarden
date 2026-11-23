@@ -19,9 +19,11 @@ import { restrictionOf } from "../src/modules/05-patient/admission-clearance-rea
 import { decideSudFlag } from "../src/modules/05-patient/index";
 import {
   closestReading,
+  quoteDeniesValue,
   requiresVisionCheck,
   unindexedFieldPath,
   visionComparisonFor,
+  visionConfirms,
   visionReadingAgrees,
 } from "../src/modules/22-documents/extraction/intake-job";
 import { visionStatusOf } from "../src/modules/22-documents/extraction/review-workspace";
@@ -69,7 +71,7 @@ describe("F-237 — stage 5 diagnosis descriptions and roles", () => {
     ["Stage 3.5 CKD", "Stage 3.5 CKD with anemia", true], // a decimal point is not a sentence end
     ["COPD", "COPD", true],
     ["Alzheimer's dementia", "pressure injury sacrum", false], // not on the crop at all
-    ["Heart failure", "Heart, failure of the valve was ruled out", false], // words split by a clause break
+    ["Heart failure", "Heart, failure of the valve", false], // words split by a clause break
     ["", "Severe COPD", false],
     // Negated, someone else's, or uncertain — before the value, after it, or in an earlier clause of the sentence.
     ["COPD", "No evidence of COPD on this admission", false],
@@ -145,8 +147,56 @@ describe("F-237 — stage 5 diagnosis descriptions and roles", () => {
     ["malnutrition", "Alzheimer's dementia (moderate) and malnutrition", true],
     ["COPD", "Hypertension and COPD", true],
     ["COPD", "Denies fever and COPD", false],
+    // A contraction of "not" negates like "not".
+    ["COPD", "Patient doesn't have severe COPD", false],
+    ["COPD", "Patient doesn’t have chronic COPD", false],
+    ["COPD", "Patient isn't known COPD", false],
+    // A qualified sentence beside a sentence that is only the diagnosis name governs it, however long it is.
+    ["Pneumonia", "Pneumonia. Ruled out per CXR.", false],
+    ["Pneumonia", "Pneumonia. Not confirmed on imaging.", false],
+    ["Lung cancer", "Lung cancer. The patient does not have this condition.", false],
+    ["COPD", "Patient denies the following. COPD", false],
+    ["COPD", "Negative for the following. COPD", false],
+    ["COPD", "Patient has severe COPD. Denies chest pain at rest today.", true], // a fuller sentence stands alone
   ])("prose: %s in %s → %s", (extracted, observed, agrees) => {
     expect(visionReadingAgrees(extracted, observed, "prose")).toBe(agrees);
+  });
+
+  // A bare reading ("COPD") cannot show the "Denies:" in front of it, so the value's own page quote is checked too.
+  it.each([
+    ["COPD", "Denies: chest pain, COPD", true],
+    ["COPD", "Family history: COPD", true],
+    ["COPD", "Presented without COPD", true],
+    ["Pneumonia", "Pneumonia. Ruled out per CXR.", true],
+    ["COPD", "COPD", false],
+    ["COPD", "Hospice diagnosis: COPD, severe", false],
+    ["COPD", "Denies fever and chills today. Patient has COPD, severe.", false],
+    ["Congestive heart failure", "Diagnoses on file", false], // the quote does not hold the value: it cannot judge
+  ])("quote: %s in %s → denied %s", (value, quote, denied) => {
+    expect(quoteDeniesValue(value, quote)).toBe(denied);
+  });
+
+  it("verifies a diagnosis only when a reading agrees and its quote does not deny it", () => {
+    const base = { fieldPath: "diagnoses[3].description", value: "COPD" };
+    expect(visionConfirms({ ...base, readings: ["COPD"] })).toBe(true);
+    expect(visionConfirms({ ...base, quote: "Hospice diagnosis: COPD", readings: ["COPD"] })).toBe(
+      true,
+    );
+    expect(visionConfirms({ ...base, quote: "Denies: chest pain, COPD", readings: ["COPD"] })).toBe(
+      false,
+    );
+    expect(
+      visionConfirms({ ...base, quote: "Hospice diagnosis: COPD", readings: ["Asthma"] }),
+    ).toBe(false);
+    // A medication is compared as an entry; a quote never changes that.
+    expect(
+      visionConfirms({
+        fieldPath: "medications[0].name",
+        value: "Lasix",
+        quote: "Denies Lasix",
+        readings: ["Lasix"],
+      }),
+    ).toBe(true);
   });
 
   it("asks the model for every entry of a list, whatever the entry's index", () => {

@@ -156,6 +156,14 @@ const BARE_DATE = /^\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})\s*$/;
 const MAX_COLUMN_SPAN_DAYS = 366;
 /** A start/end pair ("Benefit period | 11/01/2026 | 01/29/2027") is not a results table: its end date is in the future. */
 const MIN_DATE_COLUMNS = 3;
+/**
+ * Header cells naming a period's bounds ("Cert start | Cert end | Election"): the dates under them are bounds, not
+ * one column per date, so a certification table is never read as "current as of its latest date".
+ */
+const PERIOD_LABEL =
+  /\b(?:start|end|begin|from|through|thru|expires?|expiration|period|effective)\b/i;
+/** How many cells before a run of dates are read as its header. */
+const PERIOD_LOOKBACK = 4;
 const DAY_MS = 86_400_000;
 
 interface DateColumns {
@@ -188,6 +196,10 @@ function dateColumns(page: SplitterPage): DateColumns | null {
   let dates: string[] = [];
   const closeRun = (to: number): DateColumns | null => {
     if (dates.length < MIN_DATE_COLUMNS) return null;
+    if (
+      head.slice(Math.max(0, from - PERIOD_LOOKBACK), from).some((b) => PERIOD_LABEL.test(b.text))
+    )
+      return null;
     const sorted = [...dates].sort(); // ISO dates sort lexicographically
     const first = Date.parse(sorted[0] as string);
     const last = Date.parse(sorted[sorted.length - 1] as string);

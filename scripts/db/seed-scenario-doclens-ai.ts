@@ -131,7 +131,7 @@ async function main(): Promise<void> {
       // An earlier version of this capability's prompt stays on record, no longer the active one.
       await db.query(
         `UPDATE ai_prompt_template SET status='deprecated', superseded_at=now(), deprecated_at=now()
-          WHERE capability_key=$1 AND template_key<>$2 AND status='active'`,
+          WHERE capability_key=$1 AND template_key<>$2 AND status='active' AND template_key LIKE $1 || '/v%'`,
         [t.capability, key],
       );
       // 3. PILOT + local fallback chain (DEV-ONLY transition — see header)

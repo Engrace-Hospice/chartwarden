@@ -248,6 +248,18 @@ describe("splitter rules", () => {
       expect(headerDate(p)).toBe("2026-11-01"); // the first unlabelled date, as before
     });
 
+    it("does not read a three-date certification table as columns", () => {
+      const p = page(
+        1,
+        ...cells("Election", "Cert start", "Cert end", "11/01/2026", "11/01/2026", "01/29/2027"),
+      );
+      expect(headerDate(p)).toBe("2026-11-01"); // not the future end date
+      // A real column-per-date table still wins its latest column.
+      expect(headerDate(page(1, ...cells("Test", "09/17/2026", "09/24/2026", "09/30/2026")))).toBe(
+        "2026-09-30",
+      );
+    });
+
     it("skips a day that is not on the calendar instead of letting it roll over", () => {
       const p = page(1, ...cells("Test", "09/17/2026", "09/31/2026", "09/30/2026"));
       // 09/31 is not a date, so only two real columns remain: no column rule, first real date wins.

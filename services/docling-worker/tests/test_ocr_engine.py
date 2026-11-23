@@ -78,3 +78,29 @@ def test_an_unknown_engine_is_refused(monkeypatch, name):
     _fake_converters(monkeypatch)
     with pytest.raises(ValueError, match=name):
         main._docling_converter()
+
+
+@pytest.mark.parametrize("name", ["DOCLING_OCR_ENGINE", "DOCLING_OCR_BACKUP"])
+def test_an_empty_value_means_the_default_for_both(monkeypatch, name):
+    monkeypatch.setenv(name, "  ")
+    _, calls = _fake_converters(monkeypatch, failing=("tesseract",))
+    assert main._docling_converter()("x.pdf") == "doc-from-rapidocr"  # the backup is still on
+    assert calls == ["tesseract", "rapidocr"]
+
+
+def test_none_is_only_for_the_backup(monkeypatch):
+    monkeypatch.setenv("DOCLING_OCR_ENGINE", "none")
+    _fake_converters(monkeypatch)
+    with pytest.raises(ValueError, match="DOCLING_OCR_ENGINE"):
+        main._docling_converter()
+
+
+def test_the_fallback_warning_carries_the_request_ids(monkeypatch, caplog):
+    _fake_converters(monkeypatch, failing=("tesseract",))
+    token = main._request_ids.set("job=j-1 corr=c-1")
+    try:
+        with caplog.at_level("WARNING", logger="docling-worker"):
+            main._docling_converter()("x.pdf")
+    finally:
+        main._request_ids.reset(token)
+    assert "job=j-1 corr=c-1" in caplog.text
