@@ -368,6 +368,21 @@ describe("route-kit schemas and formats", () => {
     expect(Value.Check(dateTime, "9999-12-31T23:59:59Z")).toBe(true);
     expect(Value.Check(dateTime, "not a date-time")).toBe(false);
   });
+
+  it("refuses what Date.parse rolls over or reads loosely, and an instant past year 9999", () => {
+    const dateTime = Type.String({ format: "date-time" });
+    // V8 rolls an impossible calendar day over (Feb 30 -> Mar 2); the date format already refuses these.
+    expect(Value.Check(dateTime, "2026-02-30T10:00:00Z")).toBe(false);
+    expect(Value.Check(dateTime, "2026-02-29T00:00:00Z")).toBe(false);
+    expect(Value.Check(dateTime, "2026-04-31T10:00:00Z")).toBe(false);
+    expect(Value.Check(dateTime, "2028-02-29T00:00:00Z")).toBe(true);
+    // Year 9999 with a negative offset is an instant in year 10000, which Postgres cannot store.
+    expect(Value.Check(dateTime, "9999-12-31T23:59:59-05:00")).toBe(false);
+    expect(Value.Check(dateTime, "9999-12-31T23:59:59+05:00")).toBe(true);
+    // Legacy non-ISO shapes that Date.parse accepts (and "12/31/0000" sorts as if it were a valid year).
+    expect(Value.Check(dateTime, "12/31/0000")).toBe(false);
+    expect(Value.Check(dateTime, "12/31/2026")).toBe(false);
+  });
 });
 
 describe("route-kit parse", () => {
