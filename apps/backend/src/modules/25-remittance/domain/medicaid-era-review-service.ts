@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import { parseX12835AllSets } from "@chartwarden/x12-835-client";
 import type { M25ReadActor } from "../routes/actor";
+import {
+  type MedicaidEraDuplicateDecision,
+  classifyIntraArtifactDuplicates,
+  strictestDuplicate,
+} from "./medicaid-era-duplicate-scan";
 import { observeParsedMedicaidEra } from "./medicaid-era-observation";
 import type { MedicaidEraObservation } from "./medicaid-era-observation";
 import {
@@ -30,7 +35,7 @@ export interface MedicaidEraReviewReaders {
     readonly actor: M25ReadActor;
     readonly source: AuthenticatedMedicaidEraSource;
     readonly observation: MedicaidEraObservation;
-  }): Promise<"none" | "exact" | "possible" | "conflict">;
+  }): Promise<MedicaidEraDuplicateDecision>;
   claimCandidates(input: {
     readonly actor: M25ReadActor;
     readonly organizationId: string;
@@ -54,6 +59,107 @@ export interface MedicaidEraReviewService {
   >;
 }
 
+const UNAVAILABLE = { status: "unavailable", reasonCode: "SOURCE_ARTIFACT_UNAVAILABLE" } as const;
+
+/** The account evidence one actor may reason about: their own organization, inside their provider-entity scope. */
+function inActorScope(actor: M25ReadActor, account: MedicaidEraAccountEvidence): boolean {
+  return (
+    account.organizationId === actor.organizationId &&
+    (actor.providerEntityScope === undefined ||
+      actor.providerEntityScope.includes(account.providerEntityId))
+  );
+}
+
+/** Assess every claim of one transaction set, or the set itself when it carries no claim loops. */
+async function assessTransactionSet(input: {
+  readonly readers: MedicaidEraReviewReaders;
+  readonly actor: M25ReadActor;
+  readonly source: AuthenticatedMedicaidEraSource;
+  readonly observation: MedicaidEraObservation;
+  readonly accounts: readonly MedicaidEraAccountEvidence[];
+  readonly artifactDuplicate: MedicaidEraDuplicateDecision;
+}): Promise<readonly MedicaidEraReviewAssessment[]> {
+  const { readers, actor, source, observation } = input;
+  const attribution = resolveMedicaidEraAttribution({
+    source,
+    observation,
+    accounts: input.accounts,
+  });
+  const claims = observation.claims;
+  // A claimless set is assessed once, with no claim to match.
+  const claimIndexes = claims.length === 0 ? [undefined] : claims.map((_, index) => index);
+  if (attribution.status !== "verified") {
+    return claimIndexes.map((claimIndex) => {
+      const claim = claimIndex === undefined ? undefined : claims[claimIndex];
+      return assessMedicaidEraReview({
+        observation,
+        attribution,
+        match: matchMedicaidEraClaim({
+          attribution,
+          patientControlNumber: claim?.patientControlNumber ?? null,
+          payerClaimControlNumber: claim?.payerClaimControlNumber ?? null,
+          serviceFrom: claim?.serviceFrom ?? null,
+          serviceTo: claim?.serviceTo ?? null,
+          candidates: [],
+        }),
+        duplicate: "none",
+        ...(claimIndex === undefined ? {} : { claimIndex }),
+      });
+    });
+  }
+  const duplicate = strictestDuplicate(
+    await readers.duplicateDecision({ actor, source, observation }),
+    input.artifactDuplicate,
+  );
+  const reviews: MedicaidEraReviewAssessment[] = [];
+  for (const claimIndex of claimIndexes) {
+    const claim = claimIndex === undefined ? undefined : claims[claimIndex];
+    if (!claim) {
+      reviews.push(
+        assessMedicaidEraReview({
+          observation,
+          attribution,
+          match: {
+            status: "NEEDS_REVIEW",
+            reasonCode: "ERA_SET_HAS_NO_CLAIMS",
+            claimId: null,
+            submissionId: null,
+            claimVersion: null,
+          },
+          duplicate,
+        }),
+      );
+      continue;
+    }
+    const candidates =
+      attribution.usage === "production" && claim.patientControlNumber
+        ? await readers.claimCandidates({
+            actor,
+            organizationId: attribution.organizationId,
+            providerEntityId: attribution.providerEntityId,
+            claimControlNumber: claim.patientControlNumber,
+          })
+        : [];
+    reviews.push(
+      assessMedicaidEraReview({
+        observation,
+        attribution,
+        match: matchMedicaidEraClaim({
+          attribution,
+          patientControlNumber: claim.patientControlNumber,
+          payerClaimControlNumber: claim.payerClaimControlNumber,
+          serviceFrom: claim.serviceFrom,
+          serviceTo: claim.serviceTo,
+          candidates,
+        }),
+        duplicate,
+        claimIndex,
+      }),
+    );
+  }
+  return reviews;
+}
+
 /**
  * Production-code assessment boundary. Only opaque server-side staged artifacts are accepted; source attribution,
  * payer account facts, duplicate identity and M24 claims are re-read through server-owned ports on every request.
@@ -65,7 +171,7 @@ export function createMedicaidEraReviewService(
   return {
     async inspect(actor, reference) {
       const staged = await readers.readAuthenticatedArtifact(actor, reference);
-      if (!staged) return { status: "unavailable", reasonCode: "SOURCE_ARTIFACT_UNAVAILABLE" };
+      if (!staged) return UNAVAILABLE;
       if (staged.source.artifactReference !== reference)
         return {
           status: "held",
@@ -84,82 +190,33 @@ export function createMedicaidEraReviewService(
       });
       if (!parsed.ok || parsed.value.length === 0)
         return { status: "held", reasonCode: "ERA_PARSE_INVALID", postingAuthorized: false };
-      const accounts = await readers.accountEvidence(actor, staged.source);
+      // Defense in depth for an over-broad evidence port: only this actor's own organization and provider scope are
+      // ever resolved. Evidence that matches the source account but belongs to someone else is indistinguishable from
+      // an unreadable artifact, so no foreign hold reason (enrollment, payer, payee) can leak.
+      const sourceAccounts = (await readers.accountEvidence(actor, staged.source)).filter(
+        (account) =>
+          account.vendor === staged.source.vendor &&
+          account.accountReference === staged.source.accountReference &&
+          account.usage === staged.source.usage,
+      );
+      const accounts = sourceAccounts.filter((account) => inActorScope(actor, account));
+      if (sourceAccounts.length > 0 && accounts.length === 0) return UNAVAILABLE;
+      const observations = parsed.value.map(observeParsedMedicaidEra);
+      const artifactDuplicates = classifyIntraArtifactDuplicates(observations);
       const reviews: MedicaidEraReviewAssessment[] = [];
-      for (const advice of parsed.value) {
-        const observation = observeParsedMedicaidEra(advice);
-        const attribution = resolveMedicaidEraAttribution({
-          source: staged.source,
-          observation,
-          accounts,
-        });
-        if (
-          attribution.status === "verified" &&
-          (attribution.organizationId !== actor.organizationId ||
-            (actor.providerEntityScope !== undefined &&
-              !actor.providerEntityScope.includes(attribution.providerEntityId)))
-        )
-          return { status: "unavailable", reasonCode: "SOURCE_ARTIFACT_UNAVAILABLE" };
-        if (attribution.status !== "verified") {
-          for (let claimIndex = 0; claimIndex < observation.claims.length; claimIndex++) {
-            const match = matchMedicaidEraClaim({
-              attribution,
-              patientControlNumber: observation.claims[claimIndex]?.patientControlNumber ?? null,
-              payerClaimControlNumber:
-                observation.claims[claimIndex]?.payerClaimControlNumber ?? null,
-              serviceFrom: observation.claims[claimIndex]?.serviceFrom ?? null,
-              serviceTo: observation.claims[claimIndex]?.serviceTo ?? null,
-              candidates: [],
-            });
-            reviews.push(
-              assessMedicaidEraReview({
-                observation,
-                attribution,
-                match,
-                duplicate: "none",
-                claimIndex,
-              }),
-            );
-          }
-          continue;
-        }
-        const duplicate = await readers.duplicateDecision({
-          actor,
-          source: staged.source,
-          observation,
-        });
-        for (const claim of observation.claims) {
-          const candidates =
-            attribution.status === "verified" &&
-            attribution.usage === "production" &&
-            claim.patientControlNumber
-              ? await readers.claimCandidates({
-                  actor,
-                  organizationId: attribution.organizationId,
-                  providerEntityId: attribution.providerEntityId,
-                  claimControlNumber: claim.patientControlNumber,
-                })
-              : [];
-          const match = matchMedicaidEraClaim({
-            attribution,
-            patientControlNumber: claim.patientControlNumber,
-            payerClaimControlNumber: claim.payerClaimControlNumber,
-            serviceFrom: claim.serviceFrom,
-            serviceTo: claim.serviceTo,
-            candidates,
-          });
-          reviews.push(
-            assessMedicaidEraReview({
-              observation,
-              attribution,
-              match,
-              duplicate,
-              claimIndex: observation.claims.indexOf(claim),
-            }),
-          );
-        }
+      for (const [index, observation] of observations.entries()) {
+        reviews.push(
+          ...(await assessTransactionSet({
+            readers,
+            actor,
+            source: staged.source,
+            observation,
+            accounts,
+            artifactDuplicate: artifactDuplicates[index] ?? "none",
+          })),
+        );
       }
-      return { status: "review_only", transactionSetCount: parsed.value.length, claims: reviews };
+      return { status: "review_only", transactionSetCount: observations.length, claims: reviews };
     },
   };
 }
