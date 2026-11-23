@@ -1,3 +1,4 @@
+import type { MedicaidEraDuplicateDecision } from "./medicaid-era-duplicate-scan";
 import type { MedicaidEraObservation } from "./medicaid-era-observation";
 
 /** Server-owned source account facts. This must be loaded from authenticated account configuration. */
@@ -47,21 +48,45 @@ export type MedicaidEraAttribution =
       readonly artifactReference: string;
       readonly artifactDigest: string;
     }
-  | {
-      readonly status: "held";
-      readonly reason:
-        | "SOURCE_ACCOUNT_UNREGISTERED"
-        | "SOURCE_ACCOUNT_AMBIGUOUS"
-        | "SOURCE_ACCOUNT_CONFLICT"
-        | "PAYER_IDENTITY_UNVERIFIED"
-        | "PAYEE_IDENTITY_CONFLICT"
-        | "ENROLLMENT_NOT_ACTIVE"
-        | "SOURCE_EVIDENCE_STALE";
-    };
+  | { readonly status: "held"; readonly reason: HeldAttributionReason };
+
+type HeldAttributionReason =
+  | "SOURCE_ACCOUNT_UNREGISTERED"
+  | "SOURCE_ACCOUNT_AMBIGUOUS"
+  | "SOURCE_ACCOUNT_CONFLICT"
+  | "PAYER_IDENTITY_UNVERIFIED"
+  | "PAYEE_IDENTITY_CONFLICT"
+  | "ENROLLMENT_NOT_ACTIVE"
+  | "SOURCE_EVIDENCE_STALE";
 
 const digits = (value: string | null | undefined): string => (value ?? "").replace(/\D/g, "");
 
-/** Resolve attribution from authenticated account context plus effective, verified enrollment evidence. */
+/**
+ * One vendor account can serve several provider entities. The payee NPI the ERA names (against each entity's billing
+ * NPI) is the only X12 fact that tells them apart; without it, or when several entities share the NPI, the account stays
+ * ambiguous.
+ */
+function selectSourceAccount(
+  candidates: readonly MedicaidEraAccountEvidence[],
+  payeeNpi: string,
+): { readonly account: MedicaidEraAccountEvidence } | { readonly reason: HeldAttributionReason } {
+  if (candidates.length === 1) return { account: candidates[0]! };
+  if (!payeeNpi) return { reason: "SOURCE_ACCOUNT_AMBIGUOUS" };
+  const byPayee = candidates.filter((candidate) => digits(candidate.billingNpi) === payeeNpi);
+  if (byPayee.length === 0) return { reason: "PAYEE_IDENTITY_CONFLICT" };
+  if (byPayee.length !== 1) return { reason: "SOURCE_ACCOUNT_AMBIGUOUS" };
+  return { account: byPayee[0]! };
+}
+
+/**
+ * Resolve attribution from authenticated account context plus effective, verified enrollment evidence.
+ *
+ * Attribution is point-in-time: every date and freshness test compares against the artifact's authenticated `receivedAt`,
+ * not against now. An ERA belongs to whoever held the account, with fresh evidence, when it was received, so re-inspecting
+ * it after the evidence has since lapsed still attributes it (a late recoupment stays reviewable). The guard against an
+ * account that was re-pointed afterwards is `verifiedAt <= receivedAt`: evidence first verified after receipt cannot
+ * speak for the artifact. `enrollment` is the account's current status, so a since-revoked enrollment still holds.
+ */
 export function resolveMedicaidEraAttribution(input: {
   readonly source: AuthenticatedMedicaidEraSource;
   readonly observation: MedicaidEraObservation;
@@ -74,12 +99,21 @@ export function resolveMedicaidEraAttribution(input: {
       account.usage === input.source.usage,
   );
   if (candidates.length === 0) return { status: "held", reason: "SOURCE_ACCOUNT_UNREGISTERED" };
-  if (candidates.length !== 1) return { status: "held", reason: "SOURCE_ACCOUNT_AMBIGUOUS" };
-  const account = candidates[0]!;
+  const payeeNpi =
+    input.observation.source.payee.identifierQualifier === "XX"
+      ? digits(input.observation.source.payee.identifier)
+      : "";
+  const selected = selectSourceAccount(candidates, payeeNpi);
+  if ("reason" in selected) return { status: "held", reason: selected.reason };
+  const account = selected.account;
   if (!Number.isFinite(Date.parse(input.source.receivedAt)))
     return { status: "held", reason: "SOURCE_EVIDENCE_STALE" };
   const date = input.source.receivedAt.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{4}-\d{2}-\d{2}$/.test(account.effectiveFrom))
+  if (
+    !isIsoCalendarDate(date) ||
+    !isIsoCalendarDate(account.effectiveFrom) ||
+    (account.effectiveTo !== null && !isIsoCalendarDate(account.effectiveTo))
+  )
     return { status: "held", reason: "SOURCE_EVIDENCE_STALE" };
   if (
     account.enrollment !== "verified_active" ||
@@ -104,10 +138,6 @@ export function resolveMedicaidEraAttribution(input: {
     return { status: "held", reason: "PAYER_IDENTITY_UNVERIFIED" };
   if (!/^[0-9a-f]{64}$/i.test(input.source.artifactDigest))
     return { status: "held", reason: "SOURCE_EVIDENCE_STALE" };
-  const payeeNpi =
-    input.observation.source.payee.identifierQualifier === "XX"
-      ? digits(input.observation.source.payee.identifier)
-      : "";
   const payeeTin =
     input.observation.source.payee.identifierQualifier === "FI"
       ? digits(input.observation.source.payee.identifier)
@@ -329,24 +359,39 @@ export function matchMedicaidEraClaim(input: {
     candidate.submission.accountReference !== input.attribution.accountReference
   )
     return result("SOURCE_ACCOUNT_MISMATCH", "SUBMISSION_SOURCE_ACCOUNT_MISMATCH");
-  if (
-    !validServiceDate(input.serviceFrom) ||
-    !validServiceDate(input.serviceTo) ||
-    !validServiceDate(candidate.serviceFrom) ||
-    !validServiceDate(candidate.serviceTo) ||
-    input.serviceFrom > input.serviceTo ||
-    candidate.serviceFrom > candidate.serviceTo ||
-    input.serviceFrom < candidate.serviceFrom ||
-    input.serviceTo > candidate.serviceTo
-  )
-    return result("SERVICE_RANGE_CONFLICT", "CLAIM_SERVICE_RANGE_MISMATCH");
+  const dateRefusal = serviceRangeRefusal(input, candidate);
+  if (dateRefusal) return result("SERVICE_RANGE_CONFLICT", dateRefusal);
   return result("MATCHED", "EXACT_SCOPED_SUBMISSION_EVIDENCE");
 }
 
-function validServiceDate(value: string | null): value is string {
+function isIsoCalendarDate(value: string | null): value is string {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00.000Z`);
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+/**
+ * Why the ERA's claim-level service range cannot be contained in the claim's, or null when it can. Missing and
+ * malformed dates fail closed like a mismatch does, but are reported as what they are so a reviewer knows whether to
+ * look at the ERA or at the claim (a claim-level DTM*232/233 is optional in an 835; line-level dates are not read).
+ */
+function serviceRangeRefusal(
+  era: { readonly serviceFrom: string | null; readonly serviceTo: string | null },
+  claim: { readonly serviceFrom: string | null; readonly serviceTo: string | null },
+): string | null {
+  if (!era.serviceFrom || !era.serviceTo) return "ERA_SERVICE_DATES_MISSING";
+  if (
+    !isIsoCalendarDate(era.serviceFrom) ||
+    !isIsoCalendarDate(era.serviceTo) ||
+    !isIsoCalendarDate(claim.serviceFrom) ||
+    !isIsoCalendarDate(claim.serviceTo) ||
+    era.serviceFrom > era.serviceTo ||
+    claim.serviceFrom > claim.serviceTo
+  )
+    return "SERVICE_DATES_INVALID";
+  return era.serviceFrom < claim.serviceFrom || era.serviceTo > claim.serviceTo
+    ? "CLAIM_SERVICE_RANGE_MISMATCH"
+    : null;
 }
 
 function sumSafeCents(values: readonly (number | null)[]): number | null {
@@ -389,6 +434,11 @@ export interface MedicaidEraReviewAssessment {
     readonly programId: string | null;
   };
   readonly matchStatus: MedicaidEraMatchStatus;
+  /**
+   * The payer's claim status code (CLP02), exposed only for an attributed claim. The decision may be a set-level one (a
+   * provider adjustment outranks a claim denial), so this keeps the claim-level outcome visible to the reviewer.
+   */
+  readonly claimStatusCode: number | null;
   /** Exposed only after the complete trusted submission match succeeds. */
   readonly matchedClaim: {
     readonly claimId: string;
@@ -434,12 +484,16 @@ export function assessMedicaidEraReview(input: {
   readonly observation: MedicaidEraObservation;
   readonly attribution: MedicaidEraAttribution;
   readonly match: MedicaidEraMatchDecision;
-  readonly duplicate: "none" | "exact" | "possible" | "conflict";
+  readonly duplicate: MedicaidEraDuplicateDecision;
   readonly claimIndex?: number;
 }): MedicaidEraReviewAssessment {
   const claim = input.observation.claims[input.claimIndex ?? 0];
   const attributed = input.attribution.status === "verified";
   const unmatched = input.match.status !== "MATCHED";
+  // A parseable 835 with no CLP loops (e.g. PLB-only) is assessed once at transaction-set level: there is no claim to
+  // match, so a provider-level adjustment is the finding; without one the set simply has nothing to match.
+  const hasProviderAdjustments = input.observation.providerAdjustments.length > 0;
+  const claimlessWithAdjustments = input.observation.claims.length === 0 && hasProviderAdjustments;
   let decision: MedicaidEraReviewDecision = "payment_reported";
   let reasonCode = "PAYMENT_REPORTED_REQUIRES_REVIEW";
   if (input.attribution.status !== "verified") {
@@ -458,13 +512,13 @@ export function assessMedicaidEraReview(input: {
         : input.duplicate === "conflict"
           ? "SOURCE_IDENTITY_CONFLICT_HOLD"
           : "POSSIBLE_DUPLICATE_HOLD";
-  } else if (unmatched) {
+  } else if (unmatched && !claimlessWithAdjustments) {
     decision = "unmatched_or_ambiguous";
     reasonCode = input.match.reasonCode;
   } else if (claim && claim.statusCode === 22) {
     decision = "reversal_or_recoupment_review";
     reasonCode = "PAYER_REPORTED_REVERSAL_STATUS";
-  } else if (input.observation.providerAdjustments.length > 0) {
+  } else if (hasProviderAdjustments) {
     decision = "provider_adjustment_review";
     reasonCode = "PROVIDER_LEVEL_ADJUSTMENT_REQUIRES_ALLOCATION_REVIEW";
   } else if (claim && claim.statusCode === 4) {
@@ -528,6 +582,7 @@ export function assessMedicaidEraReview(input: {
             programId: null,
           },
     matchStatus: input.match.status,
+    claimStatusCode: attributed ? (claim?.statusCode ?? null) : null,
     matchedClaim:
       attributed &&
       input.match.status === "MATCHED" &&
@@ -566,11 +621,14 @@ export function assessMedicaidEraReview(input: {
         })),
       ) ?? [],
     remarks: attributed ? (claim?.remarks ?? []) : [],
+    // An unverified party learns only why the ERA is held, never its structure (claim count, PLB, service lines).
     unresolvedRequirements: [
       ...(unmatched ? [input.match.reasonCode] : []),
-      ...(input.observation.claims.length > 1 ? ["MULTI_CLAIM_REVIEW_REQUIRED"] : []),
-      ...(input.observation.providerAdjustments.length ? ["PLB_ALLOCATION_POLICY_REQUIRED"] : []),
-      ...(claim?.serviceLines.length ? ["PAYER_LINE_OUTCOME_POLICY_UNQUALIFIED"] : []),
+      ...(attributed && input.observation.claims.length > 1 ? ["MULTI_CLAIM_REVIEW_REQUIRED"] : []),
+      ...(attributed && hasProviderAdjustments ? ["PLB_ALLOCATION_POLICY_REQUIRED"] : []),
+      ...(attributed && claim?.serviceLines.length
+        ? ["PAYER_LINE_OUTCOME_POLICY_UNQUALIFIED"]
+        : []),
       "PAYER_SPECIFIC_ADJUDICATION_POLICY_UNQUALIFIED",
     ],
     evidenceReferences:
