@@ -33,6 +33,9 @@ export function m24RouteClasses(isVoidClaim?: IsVoidClaim): readonly RouteClassR
     { cls: "open", method: "*", path: "/api/v1/rb-arrangements/*" },
     { cls: "open", method: "*", path: "/api/v1/rb-days/*" },
     { cls: "open", method: "*", path: "/api/v1/state-medicaid-trading-partner-credentials/*" },
+    // Payer-readiness evidence is configuration, not new claims work (ADR-0110 D5).
+    { cls: "open", method: "*", path: "/api/v1/medicaid-program-assignments/*" },
+    { cls: "open", method: "*", path: "/api/v1/medicaid-enrollment-evidence/*" },
     { cls: "open", method: "*", path: "/api/v1/admin/platform-medicaid-rules/*" },
     { cls: "open", method: "*", path: "/api/v1/admin/state-rate-schedule-load/*" },
   ];
