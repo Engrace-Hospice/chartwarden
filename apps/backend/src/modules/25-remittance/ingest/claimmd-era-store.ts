@@ -3,7 +3,20 @@ import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import type { ClaimMdEraListPage } from "@chartwarden/x12-837-client";
-import { and, asc, count, eq, inArray, isNull, lt, min, notExists, or, sql } from "drizzle-orm";
+import {
+  and,
+  arrayContains,
+  asc,
+  count,
+  eq,
+  inArray,
+  isNull,
+  lt,
+  min,
+  notExists,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { ClaimMdPayloadKeyRing } from "../../../bootstrap/claimmd-payload-cipher";
 import { createClaimMdProtectedPayloadCipher } from "../../../bootstrap/claimmd-payload-cipher";
 import type {
@@ -70,6 +83,44 @@ export function createClaimMdEraStore(input: {
       sql`${S.leaseUntil} > now()`,
     );
   return {
+    /**
+     * Resolve duplicate state for one already tenant-authorized stage through the central,
+     * audited source store. Tenant application SQL must not read claimmd_era_delivery directly.
+     */
+    async duplicateStateForReviewStage(inputStage: {
+      readonly stageId: string;
+      readonly organizationId: string;
+      readonly providerEntityId: string;
+      readonly accountReference: string;
+      readonly usage: "test" | "production";
+    }): Promise<"exact_duplicate" | "possible_duplicate" | "none" | "conflict"> {
+      return run(
+        "Claim.MD ERA duplicate state for authorized Medicaid review stage",
+        async (tx) => {
+          const rows = await tx
+            .select({ state: D.state })
+            .from(D)
+            .where(
+              and(
+                eq(D.vendor, "claimmd"),
+                eq(D.organizationId, inputStage.organizationId),
+                eq(D.providerEntityId, inputStage.providerEntityId),
+                eq(D.accountReference, inputStage.accountReference),
+                eq(D.usage, inputStage.usage),
+                arrayContains(D.stageIds, [inputStage.stageId]),
+              ),
+            )
+            .limit(2);
+          if (rows.length > 1) return "conflict";
+          if (rows[0]?.state === "exact_duplicate") return "exact_duplicate";
+          if (rows[0]?.state === "possible_duplicate") return "possible_duplicate";
+          if (rows[0]?.state === "delivered") return "none";
+          return rows.length === 0 ? "none" : "conflict";
+        },
+        CLAIMMD_ERA_RESOLUTION_JOB_ID,
+        { isolation: "repeatable read" },
+      );
+    },
     /**
      * Tenant history is projected only after the M25 stage has been authorized and loaded. The exact
      * stage ownership, source digest and resolution version are revalidated against the central

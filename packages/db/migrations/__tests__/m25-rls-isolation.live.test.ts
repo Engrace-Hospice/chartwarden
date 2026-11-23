@@ -14,14 +14,28 @@
  *   - Local: `CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:rls:live` (SUPERUSER to a THROWAWAY db;
  *     for a local PG without pgvector, set CHARTWARDEN_TEST_NO_PGVECTOR=1).
  */
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { auditPlatformEvent } from "@chartwarden/audit";
+import { type PlatformBypassAuditor, registerPlatformJob } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createClaimMdProtectedPayloadCipher } from "../../../../apps/backend/src/bootstrap/claimmd-payload-cipher";
+import { registerM24PublishedSeams } from "../../../../apps/backend/src/modules/24-billing-medicaid/wiring";
 import { createMedicaidEraReviewService } from "../../../../apps/backend/src/modules/25-remittance/domain/medicaid-era-trusted-review";
+import {
+  CLAIMMD_ERA_RESOLUTION_JOB_ID,
+  createClaimMdEraStore,
+} from "../../../../apps/backend/src/modules/25-remittance/ingest/claimmd-era-store";
 import { buildDrizzleMedicaidEraReviewReaders } from "../../../../apps/backend/src/modules/25-remittance/ingest/medicaid-era-review-readers";
-import { buildDrizzleMedicaidEraReviewWorkflow } from "../../../../apps/backend/src/modules/25-remittance/ingest/medicaid-era-review-service";
+import {
+  M25_MEDICAID_ERA_REVIEW_WRITE_JOB_ID,
+  buildDrizzleMedicaidEraReviewWorkflow,
+} from "../../../../apps/backend/src/modules/25-remittance/ingest/medicaid-era-review-service";
+import { createDbMdmStore } from "../../../../apps/backend/src/modules/40-mdm/mdm-store-db";
+import { registerMdmSeams } from "../../../../apps/backend/src/modules/40-mdm/seams";
+import type { DbClient } from "../../src/client";
 import { createDbClient } from "../../src/client";
 import { dropLiveRoles } from "./_live-roles";
 
@@ -264,7 +278,18 @@ describe.skipIf(!DB_URL)(
       db = new Client({ connectionString: DB_URL });
       await db.connect();
       await resetSchema();
+      // The production platform carrier is created by the runtime role provisioner. Create the same
+      // isolated login before migrations so conditional platform grants in migrations are exercised.
+      await db.query("CREATE ROLE chartwarden_platform NOLOGIN");
+      await db.query(
+        "CREATE ROLE chartwarden_platform_login LOGIN PASSWORD 'synthetic-platform-l6b'",
+      );
+      await db.query("GRANT chartwarden_platform TO chartwarden_platform_login");
+      await db.query("ALTER ROLE chartwarden_platform_login BYPASSRLS");
       await applyMigrations();
+      await db.query(
+        "GRANT EXECUTE ON FUNCTION audit_writer_insert_platform_event(text,text,uuid,text,text,text,jsonb,text) TO chartwarden_platform",
+      );
       await db.query(
         "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
         [ORG_A, ORG_B],
@@ -545,6 +570,278 @@ describe.skipIf(!DB_URL)(
         await handle.close();
       }
     });
+
+    it("persists a real synthetic Claim.MD 835 review through production readers and the audited writer", async () => {
+      const providerEntityId = "33333333-3333-4333-8333-333333333390";
+      const payerId = "44444444-4444-4444-8444-444444444490";
+      const actorMembershipId = "66666666-6666-4666-8666-666666666690";
+      const reviewerMembershipId = "66666666-6666-4666-8666-666666666691";
+      const accountReference = "synthetic-l6b-integration";
+      const eraId = "76001";
+      const rawX12 = readFileSync(
+        join(
+          __dirname,
+          "../../../../packages/x12-835-client/samples/01-clean-routine-home-care.835",
+        ),
+        "utf8",
+      )
+        .trim()
+        .replace("N1*PR*SYNTHETIC MAC*XV*99999", "N1*PR*SYNTHETIC MAC*PI*99999")
+        .replaceAll("1999999999", "1234567893")
+        .replaceAll("1AA1AA1AA11", "1EG4TE5MK73");
+      const capturedFiles = [rawX12];
+      const rawFileDigest = createHash("sha256").update(rawX12, "utf8").digest("hex");
+      const captureDigest = createHash("sha256")
+        .update(JSON.stringify(capturedFiles), "utf8")
+        .digest("hex");
+      const sourceKey = Buffer.alloc(32, 0x31);
+      const sourceKeyRing = {
+        activeId: "synthetic-l6b",
+        byId: new Map([["synthetic-l6b", sourceKey]]),
+      };
+      const sourceCipher = createClaimMdProtectedPayloadCipher(sourceKeyRing, "claimmd-era:v1");
+      const detailsCipher = createClaimMdProtectedPayloadCipher(sourceKeyRing, "claimmd-era:v1");
+
+      await db.query(
+        `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+         VALUES ($1,$2,'0000390','Synthetic Review Provider','1234567893','synthetic-cipher','0930')`,
+        [providerEntityId, ORG_A],
+      );
+      await db.query(
+        `INSERT INTO payer (id,kind,state_code,payer_id,name,status)
+         VALUES ($1,'medicaid','OR','99999','Synthetic Oregon Medicaid','active')`,
+        [payerId],
+      );
+      const classificationId = (
+        await db.query<{ id: string }>(
+          `INSERT INTO mdm_medicaid_payer_program_classification
+           (canonical_payer_id,state_code,classification,effective_from,effective_to,verification_status,
+            source_kind,source_reference,verified_at,verified_by)
+         VALUES ($1,'OR','oregon_ffs','2026-01-01','2026-12-31','verified','state_registry',
+            'registry:synthetic-l6b-ffs',now(),'synthetic-reviewer') RETURNING id`,
+          [payerId],
+        )
+      ).rows[0]!.id;
+      await db.query(
+        `INSERT INTO medicaid_enrollment_evidence
+           (organization_id,provider_entity_id,service_state,program_kind,canonical_payer_id,clearinghouse,
+            vendor_account_ref,source_environment,vendor_payer_id,transaction_type,evidence_kind,status,
+            effective_from,effective_to,evidence_fresh_until,verification_source,evidence_reference,verified_at,
+            verified_by_membership_id,recorded_by_membership_id)
+         VALUES ($1,$2,'OR','ffs_open_card',$3,'claimmd',$4,'test','99999','835','835_era_enrollment','verified',
+            '2026-01-01','2026-12-31','2026-12-31','payer_confirmation','approval:synthetic-l6b-era',
+            '2026-01-02T00:00:00Z',$5,$6)`,
+        [
+          ORG_A,
+          providerEntityId,
+          payerId,
+          accountReference,
+          reviewerMembershipId,
+          actorMembershipId,
+        ],
+      );
+
+      const streamId = randomUUID();
+      const inboxId = randomUUID();
+      const stageId = randomUUID();
+      const sourceMetadata = "{}";
+      const sourceMetadataDigest = createHash("sha256").update(sourceMetadata).digest("hex");
+      const encryptedFiles = sourceCipher.seal(
+        streamId,
+        `${eraId}:835`,
+        JSON.stringify(capturedFiles),
+      );
+      const encryptedDetails = detailsCipher.seal(streamId, `${eraId}:details`, "{}");
+      await db.query(
+        `INSERT INTO claimmd_era_stream (id,account_reference,usage,cursor)
+         VALUES ($1,$2,'test','0')`,
+        [streamId, accountReference],
+      );
+      await db.query(
+        `INSERT INTO claimmd_era_inbox
+           (id,stream_id,account_reference,usage,era_id,source_metadata_cipher,source_metadata_key_id,
+            source_metadata_digest,capture_state,original_835_cipher,original_835_key_id,original_835_digest,
+            original_835_file_count,structured_details_cipher,structured_details_key_id,structured_details_digest,
+            discovery_page_digest,captured_at)
+         VALUES ($1,$2,$3,'test',$4,'synthetic-metadata','synthetic-l6b',$5,'captured',$6,'synthetic-l6b',$7,1,
+            $8,'synthetic-l6b',$9,repeat('a',64),'2026-06-16T12:00:00Z')`,
+        [
+          inboxId,
+          streamId,
+          accountReference,
+          eraId,
+          sourceMetadataDigest,
+          encryptedFiles.toString("base64"),
+          captureDigest,
+          encryptedDetails.toString("base64"),
+          createHash("sha256").update("{}").digest("hex"),
+        ],
+      );
+      const resolutionId = randomUUID();
+      await db.query(
+        `INSERT INTO claimmd_era_resolution
+           (id,inbox_id,vendor,account_reference,usage,original_835_digest,status,organization_id,
+            provider_entity_id,algorithm_version,decision_cipher,decision_key_id,decision_digest)
+         VALUES ($1,$2,'claimmd',$3,'test',$4,'verified',$5,$6,'BIL141A_V1','synthetic-resolution',
+            'synthetic-l6b',repeat('b',64))`,
+        [resolutionId, inboxId, accountReference, captureDigest, ORG_A, providerEntityId],
+      );
+      await db.query(
+        `INSERT INTO claimmd_era_m25_stage
+           (id,organization_id,provider_entity_id,source_inbox_id,account_reference,usage,era_id,file_index,
+            interchange_control_number,transaction_set_control_number,original_835_digest,source_file_digest,
+            resolution_id,resolution_version,source_evidence,state)
+         VALUES ($1,$2,$3,$4,$5,'test',$6,0,'100000001','0001',$7,$8,$9,1,
+            '{"codes":["SYNTHETIC_TEST_FIXTURE"]}'::jsonb,'staged')`,
+        [
+          stageId,
+          ORG_A,
+          providerEntityId,
+          inboxId,
+          accountReference,
+          eraId,
+          captureDigest,
+          rawFileDigest,
+          resolutionId,
+        ],
+      );
+      await db.query(
+        `INSERT INTO claimmd_era_delivery
+           (inbox_id,resolution_id,resolution_version,account_reference,usage,era_id,original_835_digest,
+            organization_id,provider_entity_id,idempotency_key,state,tenant_finalized,stage_ids)
+         VALUES ($1,$2,1,$3,'test',$4,$5,$6,$7,repeat('1',64),'delivered',true,ARRAY[$8::uuid])`,
+        [
+          inboxId,
+          resolutionId,
+          accountReference,
+          eraId,
+          captureDigest,
+          ORG_A,
+          providerEntityId,
+          stageId,
+        ],
+      );
+
+      const appUrl = new URL(DB_URL as string);
+      appUrl.username = "chartwarden_app";
+      appUrl.password = "chartwarden_app_live_test";
+      await db.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'chartwarden_app_live_test'");
+      const appHandle = createDbClient({ connectionString: appUrl.toString(), max: 5 });
+      const platformUrl = new URL(DB_URL as string);
+      platformUrl.username = "chartwarden_platform_login";
+      platformUrl.password = "synthetic-platform-l6b";
+      const platformHandle = createDbClient({ connectionString: platformUrl.toString(), max: 1 });
+      type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+      const platformAudit: PlatformBypassAuditor<Tx> = async (tx, event) => {
+        await auditPlatformEvent(tx, {
+          eventType: "platform.bypass_invoked",
+          resourceKind: "tenant",
+          outcome: "success",
+          severity: event.severity,
+          correlationId: `platform-bypass:${event.jobId}:${randomUUID()}`,
+          context: { jobId: event.jobId, reason: event.reason },
+        });
+      };
+      try {
+        registerMdmSeams({ store: createDbMdmStore(appHandle.db) });
+        registerM24PublishedSeams(appHandle.db);
+        registerPlatformJob(CLAIMMD_ERA_RESOLUTION_JOB_ID);
+        registerPlatformJob(M25_MEDICAID_ERA_REVIEW_WRITE_JOB_ID);
+        const store = createClaimMdEraStore({
+          platformDb: platformHandle.db,
+          auditBypass: platformAudit,
+          keyRing: sourceKeyRing,
+        });
+        const actor = {
+          organizationId: ORG_A,
+          userId: "55555555-5555-4555-8555-555555555590",
+          roles: ["billing_specialist"],
+          providerEntityScope: [providerEntityId],
+          membershipId: actorMembershipId,
+          stepUpRecent: true,
+        } as const;
+        const readers = buildDrizzleMedicaidEraReviewReaders(appHandle.db, store);
+        const workflow = buildDrizzleMedicaidEraReviewWorkflow(
+          appHandle.db,
+          createMedicaidEraReviewService(readers),
+          { platformDb: platformHandle.db, auditBypass: platformAudit },
+        );
+        const first = await workflow.evaluate(actor, stageId, "synthetic-l6b-eval-0001");
+        expect(first.status, first.status === "held" ? first.reasonCode : undefined).toBe(
+          "review_saved",
+        );
+        if (first.status !== "review_saved") throw new Error("synthetic review was not persisted");
+        const firstDetail = await workflow.detail(actor, first.reviewId);
+        expect(firstDetail).toMatchObject({
+          organizationId: ORG_A,
+          providerEntityId,
+          stageId,
+          vendor: "claimmd",
+          accountReference,
+          sourceEnvironment: "test",
+          canonicalPayerId: payerId,
+          programId: classificationId,
+          sourceDigest: rawFileDigest,
+          version: 1,
+          decisionStatus: "review_required",
+        });
+        expect(firstDetail.safeSummary).toMatchObject({
+          transactionSetCount: 1,
+          claims: [{ postingAuthorized: false }],
+        });
+        const initialHistory = await workflow.history(actor, first.reviewId);
+        expect(initialHistory).toHaveLength(1);
+        expect(initialHistory[0]).toMatchObject({ version: 1, action: "assessed" });
+
+        const replay = await workflow.evaluate(actor, stageId, "synthetic-l6b-eval-0001");
+        expect(replay).toMatchObject({
+          status: "review_saved",
+          reviewId: first.reviewId,
+          version: 1,
+          replay: true,
+        });
+        expect(await workflow.history(actor, first.reviewId)).toHaveLength(1);
+
+        const note = await workflow.addNote(
+          actor,
+          first.reviewId,
+          1,
+          "SYNTHETIC_REVIEW_NOTE",
+          "synthetic-l6b-note-0001",
+        );
+        expect(note).toMatchObject({ version: 2, replay: false });
+        const disposition = await workflow.transition(
+          actor,
+          first.reviewId,
+          2,
+          "investigating",
+          "SYNTHETIC_INVESTIGATION",
+          "synthetic-l6b-state-0001",
+        );
+        expect(disposition).toMatchObject({ version: 3, workflowState: "investigating" });
+        await expect(
+          workflow.transition(
+            actor,
+            first.reviewId,
+            2,
+            "follow_up_required",
+            "STALE_SYNTHETIC_REVIEW",
+            "synthetic-l6b-state-stale",
+          ),
+        ).rejects.toThrow(/reload the review/);
+        expect(await workflow.history(actor, first.reviewId)).toHaveLength(3);
+        const bypassAuditRows = await db.query<{ n: number }>(
+          `SELECT count(*)::int AS n FROM audit_event
+             WHERE event_type='platform.bypass_invoked'
+               AND context->>'jobId' IN ($1,$2)`,
+          [CLAIMMD_ERA_RESOLUTION_JOB_ID, M25_MEDICAID_ERA_REVIEW_WRITE_JOB_ID],
+        );
+        expect(bypassAuditRows.rows[0]?.n).toBeGreaterThanOrEqual(4);
+      } finally {
+        await platformHandle.close();
+        await appHandle.close();
+      }
+    }, 30_000);
 
     it("does not treat a test-account digest as a production duplicate", async () => {
       await db.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'chartwarden_app_live_test'");
