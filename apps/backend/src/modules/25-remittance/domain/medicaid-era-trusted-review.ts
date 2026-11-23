@@ -68,19 +68,21 @@ const payeeNpiOf = (observation: MedicaidEraObservation): string =>
     : "";
 
 /**
- * True when the ERA names a payee NPI that is the billing NPI of some `hidden` account (one the caller may not see) and
- * of none of the `visible` ones. Such an ERA is addressed to someone else, so the caller must not be told anything about
- * it, not even a hold reason: a payee conflict for a sibling entity's ERA would confirm that the sibling exists.
+ * True when the ERA's payee matches none of the `visible` accounts (by payee NPI) while the source account also has
+ * `hidden` ones (rows the caller may not see, any status, any organization). Whether the payee names one of those hidden
+ * entities or nobody, the caller must be told the same thing and nothing about it: a payee conflict for a sibling
+ * entity's ERA, against `unavailable` for an unknown payee, would confirm which NPIs belong to a hidden sibling. With no
+ * hidden row there is nothing to protect, so the conflict hold stands.
  */
-export function payeeOnlyMatchesHiddenAccounts(
+export function payeeUnmatchedBesideHiddenAccounts(
   observation: MedicaidEraObservation,
   visible: readonly MedicaidEraAccountEvidence[],
   hidden: readonly MedicaidEraAccountEvidence[],
 ): boolean {
   const payeeNpi = payeeNpiOf(observation);
-  const matches = (accounts: readonly MedicaidEraAccountEvidence[]) =>
-    accounts.some((account) => digits(account.billingNpi) === payeeNpi);
-  return payeeNpi !== "" && !matches(visible) && matches(hidden);
+  const matchesVisible =
+    payeeNpi !== "" && visible.some((account) => digits(account.billingNpi) === payeeNpi);
+  return !matchesVisible && hidden.length > 0;
 }
 
 /** True only when the row's effective window demonstrably contains the date; a malformed window covers nothing. */
