@@ -68,6 +68,7 @@ export const medicaidPayerRatePolicy = pgTable(
         t.bucketFrom,
         t.bucketTo,
         t.effectiveFrom,
+        t.supersedesId, // per chain position: a correction may repeat the identity and date of the row it replaces
       )
       .nullsNotDistinct(),
     lookup: index("medicaid_payer_rate_policy_lookup_ix").on(
