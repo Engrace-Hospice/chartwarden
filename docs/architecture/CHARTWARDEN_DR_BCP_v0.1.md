@@ -24,7 +24,7 @@ It is also the source-of-truth document for the obligations ChartWarden makes to
 ### 1.2 Scope — In
 
 - ChartWarden production infrastructure (initial: Proxmox cluster; future: cloud)
-- All ChartWarden-operated services: backend, workers, PostgreSQL, Valkey, MinIO, MLflow, observability
+- All ChartWarden-operated services: backend, workers, PostgreSQL, Valkey, the object store (SeaweedFS), MLflow, observability
 - Backups, replication, restoration procedures
 - Vendor outages (Anthropic, DoseSpot, Twilio, Postmark, Stripe, MAC portals, Medicaid portals, Xero, Gusto) where they impact ChartWarden customer operations
 - Business continuity guidance to customer hospice agencies during ChartWarden outage
@@ -101,7 +101,7 @@ Incidents are classified at declaration and may be reclassified as conditions ch
 > ## ⚠️ STATUS: TARGET — NOT BUILT (AD-08, 2026-08-14)
 >
 > **The infrastructure this document operates on does not exist yet.** There is no Proxmox VM fleet,
-> no Pangolin edge, no PgBouncer, no Proxmox Backup Server, no MinIO cluster, and no PagerDuty /
+> no Pangolin edge, no PgBouncer, no Proxmox Backup Server, no replicated object-store cluster, and no PagerDuty /
 > Grafana / Sentry. No streaming replica and no WAL archiving are running.
 > `ops/pgbackrest/pgbackrest.conf.template` is a placeholder whose own header states it is "NOT
 > wired to any real host/credentials".
@@ -121,6 +121,17 @@ Incidents are classified at declaration and may be reclassified as conditions ch
 > The repo uses this idiom already (`ops/pgbackrest/*.template`, `Dockerfile`,
 > `docker-compose.yml`, `deploy.yml` all carry "SCAFFOLD, NOT VALIDATED" headers); this document
 > simply never carried one.
+>
+> **Object-store status (reconciliation 2026-11-22, no version bump).** The sections below used to name MinIO as
+> the target multi-VM object store; they now say "the object store" and name a product only where it is the
+> environment being described. Production's primary is
+> **SeaweedFS**: single-node all-in-one `weed server -s3`, one volume per bucket, no in-store replication
+> (ADR-0050 D6 amendment, 2026-11-05; `deploy/production/README.md`). Local development, CI and the optional
+> second copy are **RustFS**. The restore drill and `restore.sh` stand up a throwaway **MinIO** container as their
+> isolated stand-in (drill stand-in, today; §4.8.6). The only object backup built is the off-site, Object-Locked
+> mirror of §4.8; the second copy (`compose.object-copy.yml`) is built but not enabled in production. Store-side
+> replication, per-prefix Object Lock and per-bucket versioning (§4.2, §5.2, §6.3) are TARGET. Failover (§6.3) is a
+> rebuild from the second copy, not a promotion.
 
 ## 3. Recovery Objectives
 
@@ -198,7 +209,7 @@ repo2-cipher-pass=<different sealed key>
 
 # Off-site repository (encrypted S3-compatible target)
 repo3-type=s3
-repo3-s3-endpoint=<off-site MinIO>
+repo3-s3-endpoint=<off-site S3-compatible endpoint>
 repo3-s3-bucket=chartwarden-pg-backup
 repo3-s3-region=us-west
 repo3-path=/chartwarden
@@ -242,11 +253,17 @@ Every backup is verified within 1 hour of completion:
 - A cron-driven test job runs `pgbackrest --stanza=chartwarden info` and parses output; any backup not present or marked invalid → SEV-3 alert
 - Monthly: full restore-to-sandbox drill (§9.1)
 
-### 4.2 MinIO Backups
+### 4.2 Object Store Backups
 
-#### 4.2.1 Per-Bucket Strategy
+> **TARGET, with a TODAY line per subsection.** §4.2.1-§4.2.3 are the multi-VM design. Today the repo ships two
+> object-store protections and neither is what the table below describes: (1) the off-site, Object-Locked, SSE-C
+> mirror written by `cw-backup.sh` (§4.8, the archive); (2) an optional one-way sync, hourly by default, to a RustFS
+> on another host (`compose.object-copy.yml`, `scripts/object-store-copy.ts --every`), not enabled in production.
+> Production's primary is a single-node SeaweedFS with one volume per bucket and no in-store replication.
 
-| Bucket prefix                   | Versioning           | Object Lock         | Replication target                                    |
+#### 4.2.1 Per-Bucket Strategy (TARGET)
+
+| Bucket prefix                   | Versioning (TARGET)  | Object Lock (TARGET) | Replication target (TARGET)                           |
 | ------------------------------- | -------------------- | ------------------- | ----------------------------------------------------- |
 | `tenants/<org>/documents/`    | Enabled              | None                | chartwarden-backup-01 (real-time async) + off-site weekly |
 | `tenants/<org>/generated/`    | Enabled              | None                | chartwarden-backup-01 weekly                              |
@@ -258,28 +275,42 @@ Every backup is verified within 1 hour of completion:
 | `platform/form-templates/`    | Enabled              | None                | chartwarden-backup-01 daily + off-site weekly             |
 | `platform/ml-models/`         | Enabled              | None                | chartwarden-backup-01 daily + off-site monthly            |
 
-#### 4.2.2 MinIO Replication Configuration
+**TODAY.** A tenant's real bucket is `tenant-<orgId>` (created by the `tenant-buckets` backfill and on demand by the
+upload path), next to the `chartwarden-*` platform buckets; the `tenants/<org>/...` and `platform/...` prefixes above
+are the design's logical layout. Store-side Object Lock is not provided on the primary or the second copy, so the
+"Compliance, 7 years" rows are a requirement, not a control: retention comes from partition rotation plus the
+off-site locked backup (§4.8.3). The application credential has no bucket delete and no versioning or policy change
+(`object-store/app-policy.json`), and the repo has no production procedure that enables bucket versioning on the primary. The
+only lifecycle rule the code applies is M25's `m25-835/` expiry; the 30-day intake expiry and the other expiry rows
+are design intent.
 
-Site replication (active-active for redundancy) between primary and backup MinIO:
+#### 4.2.2 Second Copy (TODAY) and Store-Side Replication (TARGET)
 
-```bash
-# Configure replication from primary to backup
-mc replicate add chartwarden-primary/tenants \
-  --remote-bucket chartwarden-backup/tenants \
-  --priority 1 \
-  --replicate "delete,delete-marker,replica-metadata-sync"
+**TODAY: the second copy.** A RustFS on another host holds a copy of every `tenant-*` and `chartwarden-*` object,
+synced by the `object-copy` service (`scripts/object-store-copy.ts --every`, hourly by default; compose overlay
+`deploy/production/compose.object-copy.yml`, replica host kit `deploy/production/replica/`). It is a one-way sync of
+current versions, not an archive and not active-active: an erasure on the primary reaches the copy on the next run,
+a bucket whose source is empty, or a run that would delete more than max(10, 10%) of a bucket, is refused and
+paged, and every object is re-put with its SHA-256 and verified on the target. The copy target must be `https://`
+(the copy carries PHI between hosts). A failed run posts `object_copy.failed` to `OPS_ALERT_WEBHOOK_URL`, and the
+container turns unhealthy when no run has been clean for three intervals. **Not enabled in production**: the replica
+host needs a BAA (CW-BA-01), disk encryption on both hosts (CW-AC-05) and a D12 shred that reaches the copy (CW-DS-01)
+first (`deploy/production/README.md`, "Object store: second copy").
 
-# Verify replication health daily
-mc replicate status chartwarden-primary/tenants
-```
+**TARGET: store-side replication** (active-active site replication between a primary and a backup store, managed with
+`mc replicate`, with a daily replication-status check). Not available in the repo today: SeaweedFS runs as one node,
+the repo carries no replication configuration for it, and the repo has no production `mc` alias or equivalent
+operator command for the primary.
 
-#### 4.2.3 Off-Site Replication
+#### 4.2.3 Off-Site Copy (TODAY: §4.8; the tiered schedule is TARGET)
 
-Off-site target (initially TBD per ADR-002) receives:
+TARGET: an off-site target (initially TBD per ADR-002) receives a daily incremental copy of `claims/` and
+`cost-reports/` (compliance-critical, low volume), a weekly full copy of `documents/` and a monthly full copy of
+`platform/`.
 
-- Daily incremental replication of `claims/` and `cost-reports/` (compliance-critical, low volume)
-- Weekly full replication of `documents/`
-- Monthly full replication of `platform/`
+TODAY (§4.8.2-§4.8.3): every coordinated snapshot (default every 15 minutes) mirrors every bucket to an off-site
+S3-compatible bucket with Object Lock in COMPLIANCE mode (default retention at least 100 days), SSE-C encrypted, and
+records a sha256 manifest. There is no per-prefix schedule. The repo names no off-site vendor.
 
 ### 4.3 Valkey Backups
 
@@ -326,18 +357,18 @@ Weekly full VM backups to chartwarden-backup-01 via Proxmox Backup Server (PBS):
 | --------------------------- | --------------------------------------------- | ---------------------------------------------- |
 | All app/worker VMs          | Weekly                                        | 4 weeks                                        |
 | Database VMs (db-01, db-02) | Daily VM snapshot (in addition to pgBackRest) | 7 daily, 4 weekly                              |
-| MinIO VM (storage-01)       | Weekly                                        | 4 weeks (data is bucket-replicated separately) |
+| Object-store VM (storage-01) | Weekly                                       | 4 weeks (data is bucket-replicated separately) |
 | Backup VM (backup-01)       | Snapshot mirrored to off-site monthly         | 3 months                                       |
 | Edge, Obs VMs               | Weekly                                        | 4 weeks                                        |
 
-**VM-level backups exist for fast bare-metal recovery; PostgreSQL pgBackRest and MinIO replication are the authoritative data backups.**
+**VM-level backups exist for fast bare-metal recovery; PostgreSQL pgBackRest and the object store's replication are the authoritative data backups (TARGET; TODAY the object archive is the off-site Object-Locked mirror of §4.8).**
 
 ### 4.6 Backup Encryption
 
 All backups are encrypted at rest:
 
 - pgBackRest: AES-256-CBC with stanza-specific keys
-- MinIO replication: TLS in transit; objects encrypted server-side with KMS-managed keys (or AES-256 with locally-managed keys initially)
+- Object-store replication and second copy: TLS in transit (the copy job refuses a plain `http://` target). Objects at rest: TARGET server-side encryption with KMS-managed keys (or AES-256 with locally-managed keys initially). TODAY the objects on the primary and on the RustFS copy are plaintext at rest and rely on host disk encryption, which no gate checks (compliance/controls.yaml CW-AC-05, partial); only the off-site mirror is encrypted (SSE-C, §4.8.4)
 - Proxmox PBS: native encryption with site key
 - Off-site: separate key not held on production hosts
 
@@ -356,8 +387,8 @@ Each backup type has a verification procedure run on schedule:
 | -------------------- | ---------------------------- | ------------------------------------------------------------------------- |
 | pgBackRest backup    | Daily (automated)            | Backup integrity, retention policy applied, repo healthy                  |
 | pgBackRest restore   | Monthly (manual + automated) | Full restore to sandbox VM; checksum compare; smoke queries run           |
-| MinIO replication    | Continuous (MinIO status)    | Replication lag < 1 min; object count matches                             |
-| MinIO object restore | Monthly                      | Random sample of 100 objects pulled from backup; bit-identical to primary |
+| Object-store second copy | Continuous, once enabled (not enabled in production today) | TARGET: replication lag < 1 min; object count matches. TODAY: the copy is hourly by default; each failed run posts `object_copy.failed`, and the `object-copy` container turns unhealthy after three intervals with no clean run |
+| Object restore       | Monthly                      | TARGET: random sample of 100 objects pulled from backup; bit-identical to primary. TODAY: `restore.sh` + `bun run backup:verify-restore` check that every live row's object is present, retrievable through the app's S3 adapter, with sha256 equal to the snapshot and to the row (§4.8.6) |
 | Proxmox VM backup    | Monthly                      | Random VM restored to alternate Proxmox node; boots cleanly               |
 | Off-site restore     | Quarterly                    | Full PG restore from off-site repo to sandbox; full procedure timed       |
 | Secret decryption    | Quarterly                    | Verify off-site age keys still decrypt SOPS-encrypted secrets             |
@@ -366,7 +397,7 @@ Each backup type has a verification procedure run on schedule:
 
 §4.1-§4.7 describe the multi-VM target. What the repository actually ships for the Docker Compose host in
 `deploy/production/` is below. It reuses this section's choices (pgBackRest, AES-256 repository encryption, an
-off-site S3-compatible target) and drops what has no host to run on (repo2 backup VM, PBS, MinIO site replication).
+off-site S3-compatible target) and drops what has no host to run on (repo2 backup VM, PBS, store-side object replication).
 
 #### 4.8.1 Components
 
@@ -393,7 +424,7 @@ and WAL expiry handled together, multi-repository archiving (local fast-restore 
 2. capture `pg_current_wal_lsn()`, the schema fingerprint (`backup/schema-fingerprint.sql`) and the migrations ledger
    in one read-only transaction;
 3. `pgbackrest check`: forces a WAL switch and waits until the segment holding that LSN is in every repository;
-4. list every MinIO object (sha256 + content type per object, cached across runs by bucket/key/etag/size);
+4. list every object in the object store (sha256 + content type per object, cached across runs by bucket/key/etag/size);
 5. `mc mirror` each bucket to `objects/<bucket>/` off-site (never `--remove`: the off-site copy is the history),
    SSE-C encrypted, then confirm every listed object is there with the same size;
 6. upload `snapshots/<id>/manifest.ndjson.gz`, then `snapshots/<id>/marker.json` LAST (the commit point).
@@ -439,7 +470,7 @@ key ids and settings are environment variables. (`<NAME>` env values still work,
 | `BACKUP_OFFSITE_S3_URI_STYLE` | env | `path` (default) or `host` |
 | `secrets/backup_pg_local_cipher_pass`, `secrets/backup_pg_offsite_cipher_pass` | file | pgBackRest repo1 / repo2 AES-256 passphrases, >= 32 chars, different |
 | `secrets/backup_object_sse_c_key` | file | base64 of 32 random bytes: the SSE-C key for every off-site object, manifest and marker (sidecar only) |
-| `BACKUP_SOURCE_MINIO_ACCESS_KEY` + `secrets/backup_source_minio_secret_key` | env + file | the read-only object-store reader `object-store-provision` renders into SeaweedFS's s3.json (with the overlay) |
+| `BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY` + `BACKUP_SOURCE_OBJECT_STORE_SECRET_KEY` (a Docker secret file under `./secrets/`, given as `..._SECRET_KEY_FILE`) | env + file | the read-only object-store reader `object-store-provision` renders into SeaweedFS's s3.json (with the overlay). Formerly `BACKUP_SOURCE_MINIO_*` and `secrets/backup_source_minio_secret_key`; the restore-side variables were `RESTORE_MINIO_*` and are now `RESTORE_OBJECT_STORE_*` |
 | `OPS_ALERT_WEBHOOK_URL` | env | **mandatory, https only** (the sidecar refuses to start without it; curl `--proto =https`): POSTs `backup.snapshot_failed` / `backup.snapshot_timeout` / `backup.stale` / `backup.wal_archive_failing` / `backup.pg_wal_large` |
 | `BACKUP_OFFSITE_MIN_LOCK_DAYS`, `BACKUP_PG_WAL_ALERT_BYTES` | env | 100 days / 8 GiB defaults (above) |
 | `BACKUP_HEARTBEAT_URL` | env | optional dead-man's switch pinged after each successful snapshot (alerts when the host itself is gone) |
@@ -511,8 +542,12 @@ no unknown or drifted file; schema fingerprint equals the marker; as the real NO
 over every tenant table, no tenant context reads nothing and tenant A reads none of tenant B's rows (and the reverse);
 every live row that references an object (registry in `scripts/lib/backup/object-refs.ts`, a ratchet over every
 column that looks like one) has it, retrievable through the app's own S3 adapter, sha256 equal to the snapshot and to
-the row; M4 audit seals link and every sealed month recomputes. For a real recovery (not a drill), promote the
-verified restore by pointing a fresh stack at the restored volume and MinIO data, then re-take a full backup.
+the row; M4 audit seals link and every sealed month recomputes. `restore.sh` writes the restored objects into a throwaway MinIO container (drill stand-in, today: it reads the snapshot
+from the off-site mirror and never touches the production SeaweedFS). For a real recovery (not a drill) the
+database side is to point a fresh stack at the restored volume and then re-take a full backup. Loading the
+restored objects into a new production SeaweedFS is not scripted in the repo today: the only repo tool that writes
+objects into a SeaweedFS primary is `scripts/object-store-copy.ts --restore`, whose documented source is the RustFS
+second copy (§6.3).
 A snapshot taken on the Debian image (before the Wolfi switch, glibc 2.36) carries text indexes in that glibc's order:
 after restoring one onto the current image, run `cw-refresh-collation` (deploy/production/README.md, "Postgres image")
 before anything reads the restored database.
@@ -560,12 +595,18 @@ restore_command = 'pgbackrest --stanza=chartwarden archive-get %f %p'
 - Prometheus alerts: replication lag > 60 sec (SEV-3), > 5 min (SEV-2), > 30 min (SEV-1 — replication broken)
 - Replication slot age monitored — slots not consumed will fill WAL and crash primary if left unattended
 
-### 5.2 MinIO Active-Active Replication
+### 5.2 Object Store Replication
 
-Bucket-level replication between primary MinIO (chartwarden-storage-01) and backup MinIO (chartwarden-backup-01) using MinIO's built-in async replication:
+**TARGET:** bucket-level active-active replication between the primary object store (chartwarden-storage-01) and a backup store (chartwarden-backup-01) using the store's built-in async replication:
 
-- **RPO from MinIO replication:** typically < 30 sec; worst-case minutes during heavy upload
-- **Recovery path:** if primary MinIO is down, applications can be reconfigured to read from backup (write-through behavior validated in DR drill)
+- **RPO from store replication:** typically < 30 sec; worst-case minutes during heavy upload
+- **Recovery path:** if the primary is down, applications can be reconfigured to read from the backup (write-through behavior validated in DR drill)
+
+**TODAY: not available in the repo.** Production's primary is a single-node SeaweedFS with no in-store replication, and
+nothing in the repo reconfigures the application to read from a second store or validates write-through behaviour in
+a drill. What exists is the one-way second copy of §4.2.2 (RustFS on another host, hourly by default, not enabled in
+production), so once it is enabled the RPO for a failover is the copy interval (hourly by default), not 30 seconds.
+The recovery path is §6.3.
 
 ### 5.3 What Is NOT Replicated
 
@@ -707,43 +748,36 @@ done
 
 **Future improvement (post-Phase 1):** Valkey Sentinel or Redis Cluster for HA. Current setup accepts single Valkey instance risk because Valkey state is ephemeral by design.
 
-### 6.3 MinIO Failover
+### 6.3 Object Store Loss and Recovery
 
-**Symptoms:** Object upload/download failures from backend; document UI shows errors; PDF generation queues backing up.
+This section used to fail over to a live replica. There is none, and the repo has no procedure that promotes the
+second copy to serve production traffic, so that procedure is withdrawn. Recovery is a rebuild from the copy.
 
-**Procedure** (target time: 20 minutes):
+**Symptoms:** Object upload/download failures from backend; document UI shows errors; PDF generation queues backing
+up; the api `/ready` reports the object store unreachable; `GET /healthz` on `seaweedfs` fails.
 
-```bash
-# Step 1: Verify primary MinIO is down
-mc admin info chartwarden-primary
-# If unreachable, proceed to failover
+**Procedure (TODAY; applies once the second copy is enabled, `deploy/production/README.md` "Object store: second copy"):**
 
-# Step 2: Check backup MinIO health and replication lag
-mc admin info chartwarden-backup
-mc replicate status chartwarden-primary/tenants  # Check lag at last successful sync
+1. Provision a new SeaweedFS from `deploy/production/compose.yml`: `object-store-provision` renders the identities
+   (admin, app, readers) and `seaweedfs` starts as a single node on the same service name, so the applications'
+   `OBJECT_STORE_ENDPOINT` (`http://seaweedfs:8333`) does not change. If the host itself is lost, this is the stack
+   rebuild of §7.4.
+2. Load the copy into the new primary with `scripts/object-store-copy.ts --restore`: `SOURCE_S3_*` = the RustFS
+   second copy, `TARGET_S3_*` = the new primary with the SeaweedFS admin key. `--restore` never deletes, and every
+   object is re-put with its SHA-256 and verified on the target (a generic `mc mirror` or `rclone` copy would leave
+   uploads unverifiable, so it is not a substitute).
+3. Run the `tenant-buckets` backfill (`scripts/backfill-tenant-buckets.ts`, which `deploy.sh` also runs each deploy):
+   the copy carries objects, not bucket creation, versioning or expiry rules.
+4. Verify: api `/ready` is green and one upload plus download succeeds per tenant (§7.5).
 
-# Step 3: Decide on data loss tolerance
-# If replication was lagging significantly (>5 min), document RPO impact
+**Data loss expectation (RPO):** everything written after the last clean copy run, that is up to the copy interval
+(hourly by default; `OBJECT_COPY_INTERVAL_S`). The off-site Object-Locked mirror (§4.8) holds objects as of its last
+snapshot (default 15 minutes), but loading it into a new SeaweedFS is not scripted (§4.8.6). **Time:** no target is
+set for this path; it scales with the size of the store.
 
-# Step 4: Reconfigure applications to point to backup MinIO
-# Update Vault/SOPS secrets with new endpoint
-# Rolling restart of backend instances and workers
-for service in chartwarden-backend chartwarden-worker-billing chartwarden-worker-intake; do
-  for vm in $(get_vms_for $service); do
-    ssh $vm "sudo systemctl restart $service"
-    sleep 30
-  done
-done
-
-# Step 5: Verify backend can read/write to backup MinIO
-curl -sf https://chartwarden-app-01:3000/api/v1/admin/storage/health
-
-# Step 6: Plan recovery of primary MinIO
-# If hardware failure, replace and restore from backup
-# Replication will resync once primary returns
-```
-
-**Data loss expectation:** Up to 1 hour for documents (Tier 2); near-zero for claims/cost-reports due to real-time replication.
+**Not available in the repo today:** promoting the second copy to serve traffic (and the application reconfiguration
+that would require); a live replica and replication-lag check; a measured restore time for step 2. If the second
+copy is not enabled, step 2 has no source and recovery is whatever §4.8 can supply.
 
 ### 6.4 Backend Instance Loss
 
@@ -846,25 +880,23 @@ psql -U postgres -c "SELECT MAX(created_at) FROM audit_event;"
 
 Used when: object accidentally deleted, bucket corruption, ransomware encryption.
 
-**Object versioning** (enabled on all PHI buckets) is the first line of defense — deleted objects retrievable via:
+**TARGET: object versioning** on all PHI buckets as the first line of defense, with a deleted object retrievable by
+version id. **TODAY: not available in the repo.** The repo has no production procedure that enables bucket
+versioning on the primary, the application credential cannot change it (`object-store/app-policy.json`), and there is
+no operator command for a version-level read on the primary (no production `mc` alias).
 
-```bash
-mc cp --version-id <version> chartwarden-primary/tenants/<org>/documents/<key> /tmp/recovered.pdf
-```
+**A delete on the primary reaches the second copy on its next run** (a sync, not an archive; §4.2.2), so once that run
+has happened the copy is not a source for the deleted object. The archive is the off-site mirror (§4.8): versioned,
+Object-Locked, SSE-C encrypted, an `objects/<bucket>/` tree plus a manifest per snapshot. The repo restores it only
+as a whole snapshot: `restore.sh` + `bun run backup:verify-restore` write it into the isolated drill stand-in (§4.8.6).
+There is no single-object restore command, and loading a restored snapshot into a production SeaweedFS is not
+scripted in the repo today.
 
-If versioning insufficient (whole bucket lost):
+If the whole primary is lost (disk loss, ransomware encryption of the host): §6.3, a rebuild from the second copy.
 
-```bash
-# Restore from backup MinIO
-mc mirror chartwarden-backup/tenants/<org>/documents/ chartwarden-primary/tenants/<org>/documents/
-```
-
-If both primary and backup affected (e.g., ransomware encrypted both, which shouldn't happen with proper segmentation):
-
-```bash
-# Restore from off-site target
-# Procedure varies by off-site provider
-```
+If both the primary and the copy are affected (e.g., ransomware encrypted both, which shouldn't happen with proper
+segmentation): restore from the off-site mirror as above; the provider-specific part (access to the off-site bucket)
+varies by off-site provider.
 
 ### 7.3 Full Bare-Metal Recovery (Proxmox VM)
 
@@ -896,10 +928,10 @@ If all VMs lost but data backups intact:
 1. Reprovision Proxmox cluster (or alternate hypervisor)
 2. Restore VM images from PBS or rebuild from Ansible/Terraform (if used)
 3. Restore PostgreSQL from pgBackRest (§7.1 procedure)
-4. Restore MinIO buckets from backup target
+4. Restore the object-store buckets into a new SeaweedFS (§6.3: from the second copy; loading the off-site mirror is not scripted, §4.8.6)
 5. Pull latest container images from GHCR (or backup mirror if GHCR unreachable)
 6. Decrypt secrets from SOPS using off-site age keys
-7. Bring services up in dependency order: PG → Valkey → MinIO → Backend → Workers → Edge
+7. Bring services up in dependency order: PG → Valkey → object store → Backend → Workers → Edge
 8. Run full smoke test suite
 9. Restore customer traffic via DNS
 
@@ -916,7 +948,7 @@ After any recovery, before resuming customer traffic:
 - [ ] Outbox dispatcher running, queue depth normal
 - [ ] BullMQ workers connected, no stuck jobs
 - [ ] Socket.IO accepts connections, can join rooms
-- [ ] MinIO upload + download succeed for a test object per tenant
+- [ ] Object-store upload + download succeed for a test object per tenant
 - [ ] DoseSpot health endpoint reachable
 - [ ] Anthropic test call succeeds
 - [ ] Twilio test SMS to Fabrice succeeds
@@ -937,7 +969,7 @@ After any recovery, before resuming customer traffic:
 | --------------------------- | ------------ | -------------------------------------- | --------------------------------------------- |
 | pgBackRest backup completes | Daily        | pgBackRest exit code +`info` command | SEV-3 alert; investigate same day             |
 | WAL archiving keeping up    | Continuous   | Prometheus metric of WAL backlog       | SEV-2 alert if backlog > 5 min                |
-| MinIO replication lag       | Continuous   | MinIO replication metrics              | SEV-3 alert if lag > 5 min, SEV-2 if > 30 min |
+| Object-store copy health    | Continuous   | TARGET: replication-lag metrics. TODAY (second copy enabled): `object_copy.failed` alert, `object-copy` container health | TARGET: SEV-3 alert if lag > 5 min, SEV-2 if > 30 min. TODAY: the alert posts to `OPS_ALERT_WEBHOOK_URL` |
 | Valkey snapshot to backup   | Every 15 min | File freshness check on backup VM      | SEV-3 alert if no snapshot in 30 min          |
 | PBS VM backup completes     | Weekly       | PBS job status                         | SEV-3 alert                                   |
 
@@ -1027,7 +1059,7 @@ psql -d wardenx -c "SELECT COUNT(*) FROM audit_event WHERE created_at > NOW() - 
 **Procedure** (planned annually, executed in test environment):
 
 1. Spin up alternate hardware (cloud VM cluster or alternate hosting)
-2. Restore from off-site pgBackRest, MinIO, and PBS
+2. Restore from off-site pgBackRest, the off-site object mirror (§4.8), and PBS
 3. Bring full stack up
 4. Run regression test suite
 5. Document total time, identify bottlenecks
@@ -1229,7 +1261,7 @@ Maintained as a separate doc (`docs/architecture/vendor-escalation.md` — **NOT
 **Phase 2 — Restore (2-12 hours):**
 
 1. Restore PostgreSQL from off-site pgBackRest to alternate site
-2. Restore MinIO from off-site replica
+2. Restore the object store (TARGET: from an off-site replica; TODAY: the off-site mirror of §4.8, whose load into a new SeaweedFS is not scripted, §4.8.6, or the second copy, §6.3)
 3. Deploy containers from GHCR
 4. Restore secrets from SOPS using off-site age keys (held in fire safe + with trusted secondary holder)
 5. Bring services up in dependency order
@@ -1300,7 +1332,7 @@ The off-site DR target is flagged in Architecture v0.9 as ADR-002. Options under
 
 - pgBackRest backups encrypted with keys not on primary infrastructure
 - Off-site backups not accessible from primary network
-- MinIO object lock on compliance buckets (claims, cost reports) — cannot be overwritten or deleted for 7 years
+- Object Lock on compliance buckets (claims, cost reports) — cannot be overwritten or deleted for 7 years (TARGET). TODAY: store-side Object Lock is not provided on the primary or the second copy; only the off-site backup bucket is locked (COMPLIANCE, at least 100 days, §4.8.3), so an encrypted or deleted primary can be recovered from the locked mirror but is not itself immutable
 - RLS prevents one tenant's compromised account from accessing another tenant's data
 - Audit log is INSERT-only via chartwarden_app role — UPDATE/DELETE require chartwarden_admin (separate credential)
 - Separate backup VM with its own credentials
@@ -1544,7 +1576,7 @@ The `tenant.shred` worker executes a four-phase sequence (module spec §3.5 / §
 | ----------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | **Phase 1** | one receipt row per eraseFn (rows-erased + sha256,**or** `refused_part_two_retention`) | every M4-registered eraseFn called                                                                                            | Yes — nothing destroyed yet                                                                               |
 | **Gate**    | `dek_destruction_aborted_part_two_retention` (only if any refusal)                           | abort before Phase 3; re-defer tenant`destruction_pending → retained`                                                      | Yes — DEK preserved                                                                                       |
-| **Phase 2** | `minio_scope_destroyed`                                                                      | per-tenant MinIO scope destroyed (M1 helper)                                                                                  | Objects gone; ciphertext still sealed under the DEK — recoverable only from the MinIO backup tier (§4.2) |
+| **Phase 2** | `minio_scope_destroyed`                                                                      | per-tenant object-store scope destroyed (M1 helper; the receipt name keeps its historical `minio_` prefix)                    | Objects gone; ciphertext still sealed under the DEK — recoverable only from the object backup tier (§4.2, §4.8) |
 | **Phase 3** | `dek_destroyed`                                                                              | DEK zeroed via`m34_destroy_tenant_key_ring` (`current_dek_kek_wrapped_ciphertext = NULL`, `prior_dek_versions` cleared) | **NO — irreversible boundary**                                                                      |
 | **Phase 4** | `certificate_finalized`                                                                      | M4 certificate finalized;`tenant_account.status → destroyed`; `m34.tenant.destroyed` outbox                              | Yes — idempotent certificate filing                                                                       |
 

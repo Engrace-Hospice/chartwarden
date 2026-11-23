@@ -490,7 +490,7 @@ Four Accepted ADRs change what this guide describes and were not reflected in it
 |Edge → Backend                                |mTLS 1.3                                                      |Private CA         |
 |Backend → DB                                  |TLS 1.3 with cert verification                                |Private CA         |
 |Backend → Valkey                              |TLS with `requirepass`                                        |Private CA         |
-|Backend → MinIO                               |TLS 1.3                                                       |Private CA         |
+|Backend → object store (S3 gateway)           |TARGET: TLS 1.3. TODAY: HTTP over the Compose network (`http://seaweedfs:8333`); TLS ends at the host Nginx storage vhost that fronts presigned URLs (`deploy/production/README.md`)|Private CA (TARGET)|
 |Backend → Workers                             |mTLS 1.3                                                      |Private CA         |
 |Backend → External (Anthropic, DoseSpot, etc.)|TLS 1.3; certificate pinning where vendor supports stable cert|Public CA + pinning|
 |Replication PG primary → replica              |TLS 1.3                                                       |Private CA         |
@@ -529,7 +529,7 @@ Root keys (offline, sealed):
 
 Operational keys (online, in secret stores):
   ├── Database encryption keys (LUKS keyslots)
-  ├── Per-tenant MinIO access keys
+  ├── Object-store keys (TODAY: one app key scoped to tenant-* by app-policy.json, read-only reader keys, one admin key; per-tenant keys are TARGET)
   ├── Per-service mTLS certs and keys
   ├── Session signing secret (Better Auth)
   ├── JWT signing keys (if used for service tokens)
@@ -818,7 +818,7 @@ All privileged operations:
 |**Public**         |Internet                      |n/a                           |n/a                                            |
 |**DMZ (VLAN 10)**  |Edge (Pangolin)               |443/TCP from Internet         |TLS to App zone                                |
 |**App (VLAN 20)**  |Backend, Workers              |mTLS from DMZ; mTLS from peers|TLS to Data; TLS to Internet (external vendors)|
-|**Data (VLAN 30)** |DB, Valkey, MinIO             |TLS from App only             |No Internet egress                             |
+|**Data (VLAN 30)** |DB, Valkey, object store      |TLS from App only             |No Internet egress                             |
 |**Admin (VLAN 40)**|Observability, Backups, MLflow|mTLS from App                 |No Internet egress                             |
 |**Mgmt (VLAN 99)** |VM management interfaces      |SSH/Proxmox admin only        |No Internet egress                             |
 
@@ -996,10 +996,10 @@ For any bulk export (>10 records):
 1. Approving authority recorded (per type above)
 1. Export operation rate-limited (1 per hour per user)
 1. Export size limit (default 10,000 records; exceeding requires elevated approval)
-1. Generated file encrypted at rest in MinIO (`tenants/<org>/exports/`)
+1. Generated file kept in the object store (design path `tenants/<org>/exports/`; the real bucket is `tenant-<orgId>`). TARGET: encrypted at rest. TODAY: plaintext at rest, host disk encryption only (compliance/controls.yaml CW-AC-05)
 1. Download tracked: who downloaded, when, from where (IP)
 1. Time-limited download URL (24 hours)
-1. File auto-deleted from MinIO after 7 days
+1. File auto-deleted from the object store after 7 days. TARGET: a 7-day expiry rule on the exports prefix. TODAY: the only lifecycle rule the code applies is M25's `m25-835/` rule, so the 7-day expiry is design intent with no rule behind it
 1. Audit entry with severity=warn for moderate exports, severity=critical for >1000 records
 
 ### 8.6 Cross-Tenant Data Isolation
@@ -1792,7 +1792,7 @@ Use of credentials or access patterns reserved for emergency:
 
 - `postgres` superuser role
 - `chartwarden_admin` outside of normal migration runner context
-- MinIO root credentials
+- Object-store admin credentials (SeaweedFS `SEAWEEDFS_ADMIN_ACCESS_KEY` / `SEAWEEDFS_ADMIN_SECRET_KEY`; not an application credential)
 - SSH directly to production VM bypassing bastion
 - Off-site age key for SOPS decryption
 - pgBackRest off-site repo credentials
@@ -1803,7 +1803,7 @@ Use of credentials or access patterns reserved for emergency:
 |---------------------------------|-----------------------------------------------------|------------------------------------------|
 |`postgres` superuser             |Security Owner + Incident Commander (during incident)|Reason; expected duration; planned actions|
 |`chartwarden_admin` for non-migration|Security Owner                                       |Same                                      |
-|MinIO root                       |Security Owner                                       |Same                                      |
+|Object-store admin (SeaweedFS)   |Security Owner                                       |Same                                      |
 |SSH bypassing bastion            |Security Owner (during incident only)                |Same                                      |
 |Off-site age key                 |Security Owner + secondary holder                    |Reason; sealed envelope inventory check   |
 

@@ -3,7 +3,14 @@
 Phase 1 gate: *a restore drill proves DB + object-store consistency within the recorded RPO/RTO.* This runbook is
 what the drill does, how to run it, what production backs up today (not much), and how to read the numbers.
 
-Run it: `bun run m36:restore-drill` (needs Docker; it builds `chartwarden-postgres:drill` from `deploy/production/postgres` and needs a MinIO image;
+> **Object store in this drill: a MinIO stand-in, today.** Production's object store is SeaweedFS (ADR-0050 D6
+> amendment, 2026-11-05). This drill still starts a throwaway MinIO container as its source and scratch store
+> (`scripts/lib/restore-drill/docker.ts`), as do `deploy/production/backup/restore.sh` and the coordinated backup
+> drill. The object checks below therefore prove the verification logic and the application's S3 adapter against
+> MinIO, not SeaweedFS restore behaviour. The repo's SeaweedFS-side restore path is `scripts/object-store-copy.ts
+> --restore` from the RustFS second copy (DR/BCP §6.3); this drill does not exercise it.
+
+Run it: `bun run m36:restore-drill` (needs Docker; it builds `chartwarden-postgres:drill` from `deploy/production/postgres` and needs a MinIO image (the stand-in);
 `WX_DRILL_MINIO_IMAGE` overrides the default `cgr.dev/chainguard/minio:latest`). Reports are written to
 `audit/restore-drill/m36-restore-drill.{json,md}`. Detection proof: `bun run m36:restore-drill:detect`.
 It starts and removes only containers it labels itself (`wx-m36-restore-drill=<runId>`); it never touches the shared
@@ -19,7 +26,7 @@ document's own banner says the same: every backup topology in it is a target, no
 | Asset | What exists today | What does not |
 |---|---|---|
 | Postgres | `pg_dump -U postgres -d chartwarden \| gzip` into `backups/pre-reseed-<ts>.sql.gz` on the VPS, **only** when an operator runs `reseed-demo.sh reseed` (`deploy/production/reseed-demo.sh`) | No scheduled backup, no WAL archiving, no PITR, no off-host copy, no retention, no restore script. pgBackRest is `ops/pgbackrest/pgbackrest.conf.template` ("NOT wired to any real host/credentials"). `deploy.sh` backs up only `.env.production` |
-| Object store (MinIO) | Data lives in the `minio-data` Docker volume on the same host | **No backup of any kind**: no `mc mirror`, no site replication, no snapshot. DR/BCP section 4.2 (replication to a backup VM, Object Lock) is unbuilt |
+| Object store (SeaweedFS) | Data lives in the `seaweedfs-data` Docker volume on the same host (single node, one volume per tenant bucket, no in-store replication). The backup overlay (`compose.backup.yml`, DR/BCP §4.8) and the second-copy overlay (`compose.object-copy.yml`) exist but are not enabled | **No backup running**: no off-site mirror, no second copy, no snapshot is enabled on the VPS. DR/BCP section 4.2 (store-side replication to a backup VM, per-prefix Object Lock) is unbuilt. Before the 2026-11-05 cutover this row described MinIO and its `minio-data` volume; an old `*_minio-data` volume can remain on a host until a backup snapshot of the SeaweedFS store has succeeded (`deploy/production/README.md`) |
 | Cross-store coordination | none | Nothing relates a DB backup to an object-store backup. A DB restore with no matching object restore leaves attachment rows pointing at missing objects |
 | Secrets | `.env.production` copy beside each deploy | `MESSAGING_ENCRYPTION_KEY` (and `M34_TENANT_KEK`) are not in any backup; a DB restored without the same key cannot decrypt a single message body, and `messaging.hash_verify` reports every row as a mismatch |
 | Roles | Created by migrations and `provision-runtime-roles.ts` | `pg_dump` of one database carries **no roles**. See section 3: a naive restore fails |
@@ -27,7 +34,7 @@ document's own banner says the same: every backup topology in it is a target, no
 Consequence: the only RPO that can be stated for production today is "everything since the last manual pre-reseed dump
 (possibly never)", and the only RTO is "a person improvising". The DR/BCP targets below are not met by anything that runs.
 The drill therefore exercises the closest real mechanisms: the production `pg_dump | gzip` command for the DB, and a copy
-of the MinIO data volume for the object store (flagged as an assumption, not as production behaviour).
+of the stand-in MinIO's data volume for the object store (flagged as an assumption, not as production behaviour: production runs SeaweedFS).
 
 Recorded targets (DR/BCP section 3, all marked TARGET): Tier 1 (real-time alerts, API) 1 h RTO / 5 min RPO; Tier 2
 (documents, care plan) 4 h / 15 min. Which tier M36 messaging belongs to is not stated anywhere; a person has to decide it.
