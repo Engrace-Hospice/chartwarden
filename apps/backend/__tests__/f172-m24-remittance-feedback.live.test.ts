@@ -507,7 +507,7 @@ describe.skipIf(!DB_URL)(
         );
       });
 
-      it("projects stored attempts as unverified and blocks app-side provenance promotion", async () => {
+      it("projects a stored attempt with no provenance as unverified and hides its identities", async () => {
         const projected = await m24Seams!.claimMatch.submissionEvidenceForLine(ORG_A, peA, {
           claimControlNumber: SHARED_CCN,
         });
@@ -515,13 +515,17 @@ describe.skipIf(!DB_URL)(
         expect(projected[0]).toMatchObject({
           disposition: "SUBMISSION_UNVERIFIED",
           claimId: null,
+          replacesClaimId: null,
+          replacedByClaimId: null,
           organizationId: ORG_A,
           providerEntityId: peA,
           claimVersion: 1,
           claimState: "ACK_ACCEPTED",
+          // an unproven result hides the submission and assignment identities too (slice B contract)
           attempts: [
             {
-              submissionId: MEDICAID_SUBMISSION_ID,
+              submissionId: null,
+              assignmentId: null,
               sourceAccountRef: null,
               environment: null,
               provenanceStatus: "unverified",
@@ -533,15 +537,335 @@ describe.skipIf(!DB_URL)(
             claimControlNumber: SHARED_CCN,
           }),
         ).toEqual([]);
-        await expect(
-          withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+        // The promotion guard is proven below on rows that satisfy every CHECK, where only the trigger can refuse.
+        expect((await loadMedicaidClaim(MEDICAID_CLAIM_ID))?.state).toBe("ACK_ACCEPTED");
+      });
+
+      // ── M24 submission provenance (1541): the guard, and the seam's SUBMISSION_EVIDENCE path ───────────────
+      // Every row below satisfies every CHECK the verified status asks for (account, environment, payer and
+      // classification snapshots, program kind, assignment id and version, claim version, submitted_at and the
+      // vendor transaction id). A refusal can therefore only be the guard trigger, and the controls prove each
+      // statement is otherwise valid by running it as the superuser, which the guard lets through.
+      const PAYER = "00000000-0000-0000-0000-0000000fa701";
+      const CLASSIFICATION = "00000000-0000-0000-0000-0000000fc701";
+      const REVIEWER = "33333333-3333-3333-3333-3333333333aa";
+      let scenarioSeq = 0;
+
+      type ScenarioOptions = {
+        readonly orgId?: string;
+        readonly providerEntityId?: string;
+        readonly controlNumber?: string;
+        readonly claimState?: string;
+        readonly claimReplacedBy?: string | null;
+        readonly attempts?: readonly {
+          readonly environment?: string;
+          readonly submittedClaimVersion?: number;
+          readonly provenance?: "verified" | "unverified";
+        }[];
+      };
+
+      /** A verified program assignment, a claim naming it, and one submission attempt per entry of `attempts`. */
+      async function seedScenario(options: ScenarioOptions = {}) {
+        scenarioSeq += 1;
+        const orgId = options.orgId ?? ORG_A;
+        const providerEntityId = options.providerEntityId ?? peA;
+        const controlNumber = options.controlNumber ?? `CN-SEAM-${scenarioSeq}`;
+        const claimId = randomUUID();
+        const assignmentId = randomUUID();
+        await admin.query(
+          `INSERT INTO medicaid_program_assignment
+             (id, organization_id, patient_id, patient_payer_id, admission_id, provider_entity_id, service_state,
+              program_kind, canonical_payer_id, canonical_payer_classification_id, status, effective_from,
+              source_kind, verification_source, evidence_reference, verified_at, verified_by_membership_id,
+              recorded_by_membership_id)
+           VALUES ($1,$2,$3,$4,$5,$6,'OR','managed_care',$7,$8,'verified','2026-01-01','manual_candidate',
+                   'state_registry','doc:synthetic-assignment',now(),$9,$10)`,
+          [
+            assignmentId,
+            orgId,
+            randomUUID(),
+            randomUUID(),
+            randomUUID(),
+            providerEntityId,
+            PAYER,
+            CLASSIFICATION,
+            REVIEWER,
+            MEMBER,
+          ],
+        );
+        await seedMedicaidClaim({
+          id: claimId,
+          orgId,
+          providerEntityId,
+          state: options.claimState ?? "ACK_ACCEPTED",
+          controlNumber,
+        });
+        await admin.query(
+          `UPDATE medicaid_claim
+           SET canonical_payer_id=$2, program_assignment_id=$3, medicaid_program_kind='managed_care',
+               replaced_by_claim_id=$4
+           WHERE id=$1`,
+          [claimId, PAYER, assignmentId, options.claimReplacedBy ?? null],
+        );
+        const submissionIds: string[] = [];
+        const attempts = options.attempts ?? [{}];
+        for (const [attemptIndex, attempt] of attempts.entries()) {
+          const submissionId = randomUUID();
+          await admin.query(
+            `INSERT INTO medicaid_submission
+               (id, organization_id, medicaid_claim_id, provider_entity_id, service_state, channel,
+                medicaid_claim_control_number, attempt_index, adapter_vendor, adapter_version,
+                source_account_ref, source_environment, canonical_payer_id_snapshot,
+                payer_classification_id_snapshot, program_kind_snapshot, program_assignment_id_snapshot,
+                program_assignment_version_snapshot, submitted_claim_version, source_provenance_status,
+                result, vendor_transaction_id, submitted_at)
+             VALUES ($1,$2,$3,$4,'OR','cco_clearinghouse',$5,$6,'synthetic-vendor','test',
+                     'synthetic-account-1',$7,$8,$9,'managed_care',$10,1,$11,$12,'accepted_sync',$13,now())`,
+            [
+              submissionId,
+              orgId,
+              claimId,
+              providerEntityId,
+              controlNumber,
+              attemptIndex,
+              attempt.environment ?? "production",
+              PAYER,
+              CLASSIFICATION,
+              assignmentId,
+              attempt.submittedClaimVersion ?? 1,
+              attempt.provenance ?? "verified",
+              `synthetic-tx-${scenarioSeq}-${attemptIndex}`,
+            ],
+          );
+          submissionIds.push(submissionId);
+        }
+        return { orgId, providerEntityId, controlNumber, claimId, assignmentId, submissionIds };
+      }
+
+      /** The message of a refusal, with the driver's wrapped cause (drizzle puts the Postgres text in `cause`). */
+      async function refusalOf(run: () => Promise<unknown>): Promise<string> {
+        try {
+          await run();
+        } catch (error) {
+          const parts: string[] = [];
+          let current: unknown = error;
+          while (current instanceof Error) {
+            parts.push(current.message);
+            current = (current as Error & { cause?: unknown }).cause;
+          }
+          return parts.join(" | ");
+        }
+        throw new Error("the statement was expected to be refused but it succeeded");
+      }
+
+      type AppTx = Parameters<Parameters<typeof handle.db.transaction>[0]>[0];
+      const asApp = <T>(run: (tx: AppTx) => Promise<T>) =>
+        withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, run);
+
+      type SeamEvidence = Awaited<
+        ReturnType<NonNullable<typeof m24Seams>["claimMatch"]["submissionEvidenceForLine"]>
+      >;
+      function expectUnproven(evidence: SeamEvidence, why: string): void {
+        expect(evidence, why).toHaveLength(1);
+        const [result] = evidence;
+        expect(result?.disposition, why).toBe("SUBMISSION_UNVERIFIED");
+        // An unproven result carries no identity a caller could follow (slice B contract): not the claim, its
+        // lineage, the submission or the assignment.
+        expect(result?.claimId, why).toBeNull();
+        expect(result?.replacesClaimId, why).toBeNull();
+        expect(result?.replacedByClaimId, why).toBeNull();
+        expect(result?.attempts.length, why).toBeGreaterThan(0);
+        for (const attempt of result?.attempts ?? []) {
+          expect(attempt.submissionId, why).toBeNull();
+          expect(attempt.assignmentId, why).toBeNull();
+        }
+      }
+
+      it("the application role cannot promote a fully populated attempt to verified, and an update of a verified attempt keeps working", async () => {
+        const { submissionIds } = await seedScenario({
+          attempts: [{ provenance: "unverified" }],
+        });
+        const submissionId = submissionIds[0] as string;
+        const promote = () =>
+          asApp((tx) =>
             tx
               .update(schema.medicaidSubmission)
               .set({ sourceProvenanceStatus: "verified" })
-              .where(eq(schema.medicaidSubmission.id, MEDICAID_SUBMISSION_ID)),
+              .where(eq(schema.medicaidSubmission.id, submissionId)),
+          );
+        expect(await refusalOf(promote)).toMatch(/qualified server-owned path/);
+
+        // Control: the same promotion is valid for a server-owned (non-application) path, so the refusal above was
+        // the guard and not a CHECK.
+        await admin.query(
+          "UPDATE medicaid_submission SET source_provenance_status='verified' WHERE id=$1",
+          [submissionId],
+        );
+
+        // A6: once an attempt is verified the application keeps updating it (result, polling, terminal time).
+        const updated = await asApp((tx) =>
+          tx
+            .update(schema.medicaidSubmission)
+            .set({ result: "pending_async", errorCode: "SYNTHETIC", terminalAt: new Date() })
+            .where(eq(schema.medicaidSubmission.id, submissionId))
+            .returning({ id: schema.medicaidSubmission.id }),
+        );
+        expect(updated).toHaveLength(1);
+
+        // ...but it cannot rewrite what was verified, nor demote the row.
+        for (const change of [
+          { sourceAccountRef: "another-account" },
+          { sourceEnvironment: "test" },
+          { programAssignmentIdSnapshot: randomUUID() },
+          { submittedClaimVersion: 9 },
+          { sourceProvenanceStatus: "unverified" },
+        ] as const) {
+          const refusal = await refusalOf(() =>
+            asApp((tx) =>
+              tx
+                .update(schema.medicaidSubmission)
+                .set(change)
+                .where(eq(schema.medicaidSubmission.id, submissionId)),
+            ),
+          );
+          expect(refusal, JSON.stringify(change)).toMatch(/qualified server-owned path/);
+        }
+      });
+
+      it("the application role cannot insert a verified attempt", async () => {
+        const { claimId, assignmentId, controlNumber } = await seedScenario({ attempts: [] });
+        const verifiedAttempt = (vendorTransactionId: string) => ({
+          organizationId: ORG_A,
+          medicaidClaimId: claimId,
+          providerEntityId: peA,
+          serviceState: "OR",
+          channel: "cco_clearinghouse",
+          medicaidClaimControlNumber: controlNumber,
+          adapterVendor: "synthetic-vendor",
+          adapterVersion: "test",
+          sourceAccountRef: "synthetic-account-1",
+          sourceEnvironment: "production",
+          canonicalPayerIdSnapshot: PAYER,
+          payerClassificationIdSnapshot: CLASSIFICATION,
+          programKindSnapshot: "managed_care",
+          programAssignmentIdSnapshot: assignmentId,
+          programAssignmentVersionSnapshot: 1,
+          submittedClaimVersion: 1,
+          sourceProvenanceStatus: "verified",
+          result: "accepted_sync" as const,
+          vendorTransactionId,
+          submittedAt: new Date(),
+        });
+        expect(
+          await refusalOf(() =>
+            asApp((tx) =>
+              tx.insert(schema.medicaidSubmission).values(verifiedAttempt("synthetic-app-insert")),
+            ),
           ),
-        ).rejects.toThrow();
-        expect((await loadMedicaidClaim(MEDICAID_CLAIM_ID))?.state).toBe("ACK_ACCEPTED");
+        ).toMatch(/qualified server-owned path/);
+        // Control: the identical row is valid when written outside the application role.
+        const { rows } = await admin.query(
+          `INSERT INTO medicaid_submission
+             (organization_id, medicaid_claim_id, provider_entity_id, service_state, channel,
+              medicaid_claim_control_number, adapter_vendor, adapter_version, source_account_ref,
+              source_environment, canonical_payer_id_snapshot, payer_classification_id_snapshot,
+              program_kind_snapshot, program_assignment_id_snapshot, program_assignment_version_snapshot,
+              submitted_claim_version, source_provenance_status, result, vendor_transaction_id, submitted_at)
+           VALUES ($1,$2,$3,'OR','cco_clearinghouse',$4,'synthetic-vendor','test','synthetic-account-1',
+                   'production',$5,$6,'managed_care',$7,1,1,'verified','accepted_sync','synthetic-super-insert',now())
+           RETURNING id`,
+          [ORG_A, claimId, peA, controlNumber, PAYER, CLASSIFICATION, assignmentId],
+        );
+        expect(rows).toHaveLength(1);
+      });
+
+      it("a fully verified production attempt on the exact claim version is SUBMISSION_EVIDENCE with its identities", async () => {
+        const scenario = await seedScenario();
+        const evidence = await m24Seams!.claimMatch.submissionEvidenceForLine(ORG_A, peA, {
+          claimControlNumber: scenario.controlNumber,
+        });
+        expect(evidence).toHaveLength(1);
+        expect(evidence[0]).toMatchObject({
+          disposition: "SUBMISSION_EVIDENCE",
+          claimId: scenario.claimId,
+          replacesClaimId: null,
+          replacedByClaimId: null,
+          organizationId: ORG_A,
+          providerEntityId: peA,
+          canonicalPayerId: PAYER,
+          programKind: "managed_care",
+          claimVersion: 1,
+          attempts: [
+            {
+              submissionId: scenario.submissionIds[0],
+              assignmentId: scenario.assignmentId,
+              environment: "production",
+              provenanceStatus: "verified",
+              sourceAccountRef: "synthetic-account-1",
+            },
+          ],
+        });
+      });
+
+      it.each([
+        { why: "a test-environment attempt", options: { attempts: [{ environment: "test" }] } },
+        {
+          why: "an attempt submitted at another claim version",
+          options: { attempts: [{ submittedClaimVersion: 2 }] },
+        },
+        { why: "two qualified attempts", options: { attempts: [{}, {}] } },
+        {
+          why: "a REPLACED claim",
+          options: {
+            claimState: "REPLACED",
+            claimReplacedBy: "00000000-0000-0000-0000-0000000c7fff",
+          },
+        },
+        {
+          why: "an unverified attempt",
+          options: { attempts: [{ provenance: "unverified" as const }] },
+        },
+      ])("$why is SUBMISSION_UNVERIFIED and exposes no identity", async ({ why, options }) => {
+        const scenario = await seedScenario(options);
+        const evidence = await m24Seams!.claimMatch.submissionEvidenceForLine(ORG_A, peA, {
+          claimControlNumber: scenario.controlNumber,
+        });
+        expectUnproven(evidence, why);
+      });
+
+      it("evidence is scoped to the provider entity: the same control number under another provider entity of the same org is a different claim", async () => {
+        const peA2 = (
+          await admin.query(
+            `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+             VALUES ($1,'711112','PE two','7111111129','enc','0930') RETURNING id`,
+            [ORG_A],
+          )
+        ).rows[0].id as string;
+        const shared = "CN-SEAM-CROSS-PE";
+        const first = await seedScenario({ controlNumber: shared });
+        const second = await seedScenario({
+          controlNumber: shared,
+          providerEntityId: peA2,
+          attempts: [{ environment: "test" }],
+        });
+        const forFirst = await m24Seams!.claimMatch.submissionEvidenceForLine(ORG_A, peA, {
+          claimControlNumber: shared,
+        });
+        expect(forFirst).toHaveLength(1);
+        expect(forFirst[0]).toMatchObject({
+          disposition: "SUBMISSION_EVIDENCE",
+          claimId: first.claimId,
+          providerEntityId: peA,
+        });
+        const forSecond = await m24Seams!.claimMatch.submissionEvidenceForLine(ORG_A, peA2, {
+          claimControlNumber: shared,
+        });
+        expectUnproven(
+          forSecond,
+          "the other provider entity's claim has only a test-environment attempt",
+        );
+        expect(forSecond[0]?.providerEntityId).toBe(peA2);
+        expect(second.claimId).not.toBe(first.claimId);
       });
 
       function buildIngestService() {
