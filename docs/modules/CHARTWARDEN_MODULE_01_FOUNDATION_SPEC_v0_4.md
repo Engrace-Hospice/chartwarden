@@ -76,7 +76,7 @@ retention, queues, CI) is corrected. Remaining MINORs are implementation-time it
 Module 1 establishes the runtime foundation on which every other ChartWarden module is built. It is the only module with no upstream dependencies and is consumed by all 39 others. It delivers:
 
 - **Monorepo bootstrap** — Turborepo + Bun workspaces, all `apps/*` and `packages/*` skeletons compiling and building
-- **Local development environment** — Docker Compose with PostgreSQL 18 + pgvector + pgcrypto, Valkey 8, MinIO, Mailpit, MLflow, and the six Python sidecar containers running on the documented ports (4180-4189 for apps, 5432/6379/9000 for infra)
+- **Local development environment** — Docker Compose with PostgreSQL 18 + pgvector + pgcrypto, Valkey 8, RustFS (the local S3-compatible object store), Mailpit, MLflow, and the six Python sidecar containers running on the documented ports (4180-4189 for apps, 5432/6379/9000 for infra)
 - **Foundation database schema** — `organization`, `provider_entity`, `location`, `user`, `membership`, `session`, `account`, `verification`, `audit_event` (partitioned), `system_status`, `feature_flag`, `idempotency_key`, `outbox_event` tables with Drizzle TypeScript schema, indexes, foreign keys, and RLS policies
 - **RLS policy generator** — utility that emits standard row-level-security policies for any PHI-bearing table given its `organization_id` column
 - **Audit log architecture** — append-only partitioned audit log with helper API, retention policy, and partition rotation worker
@@ -2165,7 +2165,7 @@ Module 1 owns a minimal set of foundation routes. Authentication routes belong t
 | Method | Path | Auth | Roles | Purpose |
 |---|---|---|---|---|
 | GET | `/health` | none | — | Liveness probe — returns 200 if process is alive |
-| GET | `/ready` | none | — | Readiness probe — returns 200 only if DB+Valkey+MinIO reachable |
+| GET | `/ready` | none | — | Readiness probe — returns 200 only if DB+Valkey+object store reachable |
 | GET | `/version` | none | — | Returns build version, git SHA, build time |
 | GET | `/api/v1/system/status` | session | any authenticated | Returns system status banner for client UI |
 | GET | `/api/v1/system/feature-flags` | session | any authenticated | Returns active feature flags for current org |
@@ -2213,6 +2213,8 @@ fastify.get('/ready', async (_req, reply) => {
   reply.code(allOk ? 200 : 503).send({ status: allOk ? 'ready' : 'not_ready', checks: status })
 })
 ```
+
+The block above is the proposal's shape. As built (`apps/backend/src/bootstrap/routes/health.ts`) the probe also checks the outbox, and the object-store check key is `objectStore` (formerly `minio`); `fastify.minio.bucketExists` does not exist in code.
 
 #### GET /version
 
@@ -2528,7 +2530,7 @@ Module 1 creates and consumes:
 
 | Queue | Job | Purpose | Trigger |
 |---|---|---|---|
-| `audit.archive` | `archive_partition` | Detach old audit partitions per retention class, archive to MinIO cold storage, drop | Monthly cron |
+| `audit.archive` | `archive_partition` | Detach old audit partitions per retention class, archive to object-store cold storage, drop (as built the job archives and never drops, see the note below) | Monthly cron |
 | `partition.rotate` | `create_next_partitions` | Create audit_event partitions 2-3 months ahead | Weekly cron |
 | `outbox.dispatch` | `dispatch_event` | Send outbox events to consumers | Every 5 seconds |
 | `idempotency.cleanup` | `purge_expired` | Delete expired idempotency keys from PG (Valkey TTL handles its own) | Hourly cron |
@@ -2544,7 +2546,7 @@ Module 1 creates and consumes:
 > destruction stays M4's certificate-driven act (§4.8.1: never drop a partition whose archive failed holds
 > trivially). Detaching an archived partition from the hot table is a separate opt-in (`AUDIT_ARCHIVE_DETACH=true`,
 > off by default) because a detached range is no longer searched through `audit_event` until M4's retention policy
-> for archived ranges is agreed. Unconfigured (no bucket / no `MINIO_*` credentials) the job logs a skip and the hot
+> for archived ranges is agreed. Unconfigured (no bucket / no `OBJECT_STORE_*` credentials; formerly `MINIO_*`) the job logs a skip and the hot
 > tier keeps everything.
 
 #### 4.8.1 Queue parameters (M01-F09 / SD-059 / OPS-035)
@@ -2683,7 +2685,7 @@ Module 1 routes have a minimal permission model — auth + RBAC for the system s
 - Audit records contain: actor, action type, target resource, before/after snapshots (PHI-redacted), correlation ID, source IP, timestamp
 - Audit records survive a deliberate `DELETE FROM audit_event` attempt by the application role (permission denied)
 - Partitions for the current and next 3 months always exist; new partitions created automatically by the partition rotation job
-- Audit data older than the retention class limit (1y operational, 7y compliance — HIPAA floor 6, ADR-0004; indefinite legal_hold) is moved to MinIO cold storage and the partition dropped
+- Audit data older than the retention class limit (1y operational, 7y compliance — HIPAA floor 6, ADR-0004; indefinite legal_hold) is moved to object-store cold storage and the partition dropped (as built the archive job copies and never drops, §4.8)
 
 ### 7.4 User Story: Idempotent Mutations
 
@@ -2783,7 +2785,7 @@ Module 1 routes have a minimal permission model — auth + RBAC for the system s
 | `system_status.changed` | platform_ops | system_status | warn (if degraded/outage) | compliance | Status updated |
 | `platform.bypass_invoked` | system | platform | warn | compliance | Platform admin context used |
 | `audit.partition_created` | system | audit_event | info | operational | Partition rotation job |
-| `audit.partition_archived` | system | audit_event | info | operational | Old partition archived to MinIO |
+| `audit.partition_archived` | system | audit_event | info | operational | Old partition archived to the object store |
 
 ### 8.2 Audit Helper API
 
@@ -2953,7 +2955,7 @@ Additional unit tests covering the organization-settings and outbox-catalog foun
 
 ### 9.2 Integration Tests (Testcontainers)
 
-Tests spin up real PostgreSQL + Valkey + MinIO containers.
+Tests spin up real PostgreSQL + Valkey + object-store (RustFS) containers.
 
 | Suite | Tests |
 |---|---|
@@ -3165,11 +3167,11 @@ Module 1 carries eight binding decisions. D1–D5 resolve the foundation questio
 
 | # | Question | Resolution | Status |
 |---|---|---|---|
-| **D1** | Should `tax_id_encrypted` use pgcrypto symmetric or app-layer envelope? | **App-layer envelope encryption via `packages/foundation/src/crypto/envelope.ts` (AES-256-GCM with KMS DEK rotation per Security Hardening v0.2 §4).** pgcrypto-symmetric was rejected because key rotation requires a full table rewrite, vs. envelope encryption where DEK rotation is a per-row re-wrap. The same envelope pattern is now used by M2 (passkey-private-blob), M5 (`patient_identifier.value_encrypted`), M22 (document storage at rest), M29 (HL7 inbound `parsed_segments_cipher`), and M40 (BAA metadata). | **Decided** |
+| **D1** | Should `tax_id_encrypted` use pgcrypto symmetric or app-layer envelope? | **App-layer envelope encryption via `packages/foundation/src/crypto/envelope.ts` (AES-256-GCM with KMS DEK rotation per Security Hardening v0.2 §4).** pgcrypto-symmetric was rejected because key rotation requires a full table rewrite, vs. envelope encryption where DEK rotation is a per-row re-wrap. The same envelope pattern is now used by M2 (passkey-private-blob), M5 (`patient_identifier.value_encrypted`), M22 (document storage at rest: TARGET; TODAY document objects are plaintext in the object store with host disk encryption only, `compliance/controls.yaml` CW-AC-05, partial), M29 (HL7 inbound `parsed_segments_cipher`), and M40 (BAA metadata). | **Decided** |
 | **D2** | Sessions in Postgres (Better Auth default) or Valkey (faster, ephemeral)? | **Postgres for the canonical session row; Valkey for the per-request session lookup cache with 60s TTL and event-driven invalidation on logout / session termination / step-up (per M2 v0.3 D8).** Postgres-only is too slow at the per-request authorize layer (each request hitting the session table would queue at the PG row lock; M3 v0.3's auth pipeline expects p95 < 3ms). Pure-Valkey is too volatile (session data must survive Valkey restarts for surveys-readiness audit replay). Two-tier with the right invalidation is the correct tradeoff. | **Decided** |
 | **D3** | Feature flags: read-time evaluation or pre-computed on org load? | **Read-time evaluation with Valkey caching of the flag's resolved value per `(orgId, flagKey, contextHash)` tuple, 5-minute TTL, kill-switch event-driven invalidation.** Pre-computed-on-org-load was rejected because (a) per-user targeting rules vary per request (the `contextHash` includes role, location, discipline), and (b) kill-switch activation must propagate in <60s globally — pre-computed snapshots stored against session creation would miss recent kill switches. | **Decided** |
 | **D4** | Outbox dispatcher: separate worker container or in-process with backend? | **Separate worker container** (`apps/dispatcher`) for production/staging; in-process opt-in for development/CI. Separate-process gives independent scaling (the dispatcher can be horizontally scaled to keep up with outbox throughput without scaling the entire backend), independent failure isolation (a dispatcher crash doesn't take down the backend's API serving), and clearer resource budgeting (the dispatcher's Valkey + DB connection pool is sized independently). | **Decided** |
-| **D5** | Cold-storage format for archived audit partitions in MinIO — Parquet, CSV, JSON Lines? | **Apache Parquet** with Snappy compression and a schema pinned in `packages/foundation/src/audit/parquet-schema.ts`. Compresses ~6× better than JSON Lines for typical audit payloads; queryable via DuckDB or Athena without full restore. Per-partition manifests reference the source partition's PostgreSQL OID range for cross-reference during quarterly backup verification (per M4 v0.2 D2 "audit-of-audit"). | **Decided** |
+| **D5** | Cold-storage format for archived audit partitions in the object store — Parquet, CSV, JSON Lines? | **Apache Parquet** with Snappy compression and a schema pinned in `packages/foundation/src/audit/parquet-schema.ts`. Compresses ~6× better than JSON Lines for typical audit payloads; queryable via DuckDB or Athena without full restore. Per-partition manifests reference the source partition's PostgreSQL OID range for cross-reference during quarterly backup verification (per M4 v0.2 D2 "audit-of-audit"). | **Decided** |
 
 ### 11.2 D6–D8: Governance Decisions
 
@@ -3203,7 +3205,7 @@ Module 1 is **DONE** when every box is checked:
 - [ ] Better Auth schema present (tables exist; full flows are Module 2's responsibility)
 - [ ] Dev seed script creates Engrace fixture + 2 users
 - [ ] Unit test coverage ≥ 90% for Module 1 packages
-- [ ] Integration test suite passes with real Postgres + Valkey + MinIO
+- [ ] Integration test suite passes with real Postgres + Valkey + object store (RustFS)
 - [ ] RLS isolation test suite passes including cross-tenant denial cases
 - [ ] CI pipeline runs all stages and produces signed container images
 - [ ] Lefthook pre-commit hook blocks commits failing lint or typecheck
