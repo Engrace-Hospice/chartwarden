@@ -8,7 +8,7 @@ import {
   type CanonicalPayerIdentityReader,
   buildDrizzleM24WriteService,
 } from "../src/modules/24-billing-medicaid/routes/write-service-drizzle";
-import { createFakeDb } from "./_fake-drizzle-db";
+import { type RecordedStatement, createFakeDb } from "./_fake-drizzle-db";
 
 const ORG = "a1000000-0000-4000-8000-000000000001";
 const RECORDER = "a2000000-0000-4000-8000-000000000001";
@@ -302,27 +302,27 @@ describe("successor claims (TOB 817 / 818)", () => {
     }),
   };
 
-  it.each([
-    ["replaceClaim", "817"],
-    ["voidClaim", "818"],
-  ] as const)("%s carries the verified program identity onto the %s successor", async (method) => {
-    const fake = createFakeDb({
-      select: [[originalClaim()]],
-      insert: [
-        (s) => [
-          { ...(s.values as object), version: 1, createdAt: new Date(), updatedAt: new Date() },
+  it.each(["replaceClaim", "voidClaim"] as const)(
+    "%s carries the verified program identity onto the successor",
+    async (method) => {
+      const fake = createFakeDb({
+        select: [[originalClaim()]],
+        insert: [
+          (s: RecordedStatement) => [
+            { ...(s.values as object), version: 1, createdAt: new Date(), updatedAt: new Date() },
+          ],
+          [],
         ],
-        [],
-      ],
-    });
-    const service = serviceOver(fake, undefined, adapters);
-    await service[method](actor, ORIGINAL, { expectedVersion: 3, reason: "x".repeat(40) });
-    expect(fake.of("insert", C)[0]?.values).toMatchObject({
-      replacesClaimId: ORIGINAL,
-      medicaidProgramKind: "ffs_open_card",
-      canonicalPayerId: PAYER,
-      programAssignmentId: ASSIGNMENT,
-      programResolutionSnapshot: snapshot,
-    });
-  });
+      });
+      const service = serviceOver(fake, undefined, adapters);
+      await service[method](actor, ORIGINAL, { expectedVersion: 3, reason: "x".repeat(40) });
+      expect(fake.of("insert", C)[0]?.values).toMatchObject({
+        replacesClaimId: ORIGINAL,
+        medicaidProgramKind: "ffs_open_card",
+        canonicalPayerId: PAYER,
+        programAssignmentId: ASSIGNMENT,
+        programResolutionSnapshot: snapshot,
+      });
+    },
+  );
 });
