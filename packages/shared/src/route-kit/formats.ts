@@ -13,11 +13,26 @@ const EMAIL_RE = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
 /** The first date Postgres stores: it has no year 0000 (22008), though JavaScript parses one. */
 const MIN_STORABLE_DATE = "0001-01-01";
 
+const MIN_STORABLE_INSTANT_MS = Date.parse(`${MIN_STORABLE_DATE}T00:00:00Z`);
+
 /** A real calendar date `YYYY-MM-DD` Postgres can store (2025-02-30 and year 0000 are refused). */
 function isCalendarDate(value: string): boolean {
   if (!DATE_RE.test(value) || value < MIN_STORABLE_DATE) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+/**
+ * A parseable instant Postgres can store. Refused: a literal year before 0001 (the raw string reaches the driver)
+ * and an instant before 0001-01-01Z (a route that does `new Date(value)` serialises it as year 0000 or earlier).
+ */
+function isStorableDateTime(value: string): boolean {
+  const instant = Date.parse(value);
+  return (
+    !Number.isNaN(instant) &&
+    instant >= MIN_STORABLE_INSTANT_MS &&
+    value.slice(0, MIN_STORABLE_DATE.length) >= MIN_STORABLE_DATE
+  );
 }
 
 /** An absolute URI with a scheme (WHATWG URL parse). */
@@ -33,7 +48,7 @@ function isUri(value: string): boolean {
 export const ROUTE_FORMATS: Readonly<Record<string, (value: string) => boolean>> = {
   uuid: (v) => UUID_RE.test(v),
   date: isCalendarDate,
-  "date-time": (v) => !Number.isNaN(Date.parse(v)),
+  "date-time": isStorableDateTime,
   email: (v) => EMAIL_RE.test(v),
   uri: isUri,
 };

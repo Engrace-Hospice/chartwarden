@@ -416,6 +416,13 @@ describe("wound routes: a 422 for each rule", () => {
     expect(res.json().error.code).toBe(code);
   });
 
+  it("422s a year-0000 observedAt as a malformed request, before the service converts it to a Date Postgres cannot store", async () => {
+    const res = await rule(venous, { observedAt: "0000-01-01T00:00:00Z" });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("VALIDATION_FAILED");
+    expect(JSON.stringify(res.json())).toContain("observedAt");
+  });
+
   it("rejects a laterality the site does not have, and an onset date in the future", async () => {
     const { app } = makeServer();
     const mismatch = await create(app, { ...heel, siteCode: "sacrum", laterality: "left" });

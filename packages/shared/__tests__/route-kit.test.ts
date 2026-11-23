@@ -355,6 +355,19 @@ describe("route-kit schemas and formats", () => {
     expect(Value.Check(date, "0001-01-01")).toBe(true);
     expect(Value.Check(date, "9999-12-31")).toBe(true);
   });
+
+  it("refuses year 0000 on date-time too, whatever the offset puts the instant in", () => {
+    const dateTime = Type.String({ format: "date-time" });
+    expect(Value.Check(dateTime, "0000-01-01T00:00:00Z")).toBe(false);
+    expect(Value.Check(dateTime, "0000-12-31T23:59:59.999Z")).toBe(false);
+    // Literal year 0000 even though the instant is already in 0001, and the converse: instant in year 0.
+    expect(Value.Check(dateTime, "0000-12-31T23:00:00-05:00")).toBe(false);
+    expect(Value.Check(dateTime, "0001-01-01T00:00:00+05:00")).toBe(false);
+    expect(Value.Check(dateTime, "0001-01-01T00:00:00Z")).toBe(true);
+    expect(Value.Check(dateTime, "2026-11-19T14:00:00+02:00")).toBe(true);
+    expect(Value.Check(dateTime, "9999-12-31T23:59:59Z")).toBe(true);
+    expect(Value.Check(dateTime, "not a date-time")).toBe(false);
+  });
 });
 
 describe("route-kit parse", () => {
