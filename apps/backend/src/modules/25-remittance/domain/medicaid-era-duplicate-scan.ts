@@ -43,6 +43,10 @@ interface ReplayFacts {
   /** Payer claim control numbers and patient control numbers, tagged so a reversal only ever repeats a reversal. */
   readonly icns: ReadonlySet<string>;
   readonly pcns: ReadonlySet<string>;
+  /** Payment date and payee, which a claimless set has no control number to stand in for. */
+  readonly paymentContext: string;
+  /** Provider adjustment reason and reference pairs; filled only for a set with no claim (a claimless set has no PCN or ICN). */
+  readonly claimlessAdjustments: ReadonlySet<string>;
 }
 
 function replayFacts(observation: MedicaidEraObservation): ReplayFacts {
@@ -63,6 +67,18 @@ function replayFacts(observation: MedicaidEraObservation): ReplayFacts {
     paymentCents: observation.source.paymentCents,
     icns: controlNumbers((claim) => claim.payerClaimControlNumber),
     pcns: controlNumbers((claim) => claim.patientControlNumber),
+    paymentContext: JSON.stringify([
+      observation.source.paymentDate,
+      observation.source.payee.identifier,
+      observation.source.payee.taxIdentifier,
+    ]),
+    claimlessAdjustments: new Set(
+      observation.claims.length > 0
+        ? []
+        : observation.providerAdjustments.map(({ reason, reference }) =>
+            JSON.stringify([reason, reference]),
+          ),
+    ),
   };
 }
 
@@ -79,20 +95,31 @@ function relation(earlier: ReplayFacts, later: ReplayFacts): MedicaidEraDuplicat
     later.paymentCents > 0 &&
     later.paymentCents === earlier.paymentCents &&
     intersects(earlier.pcns, later.pcns);
-  return intersects(earlier.icns, later.icns) || repeatsPayment ? "possible" : "none";
+  // A provider-adjustment-only set has no PCN or ICN, so it repeats when the same payment, date and payee carry a shared
+  // adjustment reason and reference (a zero payment counts: the adjustment is what would be posted twice).
+  const repeatsClaimlessSet =
+    later.paymentCents !== null &&
+    later.paymentCents === earlier.paymentCents &&
+    later.paymentContext === earlier.paymentContext &&
+    intersects(earlier.claimlessAdjustments, later.claimlessAdjustments);
+  return intersects(earlier.icns, later.icns) || repeatsPayment || repeatsClaimlessSet
+    ? "possible"
+    : "none";
 }
 
-/** Keys under which two sets could be related: a trace number, a payer claim control number or a patient control number. */
+/** Keys under which two sets could be related: a trace number, a payer or patient claim control number, or (claimless) a provider adjustment. */
 const lookupKeys = (facts: ReplayFacts): readonly string[] => [
   ...(facts.trace === null ? [] : [`trace:${facts.trace}`]),
   ...[...facts.icns].map((value) => `icn:${value}`),
   ...[...facts.pcns].map((value) => `pcn:${value}`),
+  ...[...facts.claimlessAdjustments].map((value) => `plb:${value}`),
 ];
 
 /**
  * Replay inside ONE artifact: the reader port only knows previously staged files, so two sets in a single interchange
  * that repeat a trace number, or a payer claim control number, or a nonzero payment for the same patient control number,
- * are classified here. The first set is the original and later repeats are held; a reused trace number with different
+ * or (a set with no claim loops) the same payment, date, payee and provider adjustment reason and reference, are
+ * classified here. The first set is the original and later repeats are held; a reused trace number with different
  * content is a conflict for both. A reversal repeats its original's control numbers by design, so a reversal and a
  * payment never count as replays of each other.
  *
