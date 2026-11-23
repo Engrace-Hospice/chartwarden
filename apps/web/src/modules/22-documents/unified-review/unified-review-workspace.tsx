@@ -1,19 +1,22 @@
 import { EmptyState, Glyph, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { safeIntakeReturnTo } from "../../../shell/intake-return";
 import type { Workspace } from "../doclens-api";
+import { startReview } from "../doclens-api";
 import { batchStatusLabel, sourceLabel } from "../doclens-model";
 import { DocLensReviewWorkspace } from "../doclens-review-workspace";
 import { ReviewExceptionPanel } from "./review-exception-panel";
-import {
-  type ReviewExceptionProjection,
-  exceptionCountsBySection,
-  projectReviewExceptions,
-} from "./review-exceptions";
+import { type ReviewExceptionTask, projectExceptionSummary } from "./review-exception-tasks";
+import { exceptionCountsBySection, projectReviewExceptions } from "./review-exceptions";
 import { ReviewFieldGroup } from "./review-field-group";
-import { projectReviewGroups, projectUnifiedReview } from "./review-projection";
+import {
+  candidateIsOtherPatient,
+  projectReviewGroups,
+  projectUnifiedReview,
+} from "./review-projection";
+import { ReviewSafeguardPanel } from "./review-safeguard-panel";
 import { ReviewSectionList } from "./review-section-list";
 import type { ReviewSectionId } from "./review-sections";
 import { ReviewSourcePanel } from "./review-source-panel";
@@ -32,15 +35,20 @@ function UnifiedReviewSummary(): JSX.Element {
   const returnTo = safeIntakeReturnTo(searchParams.get("returnTo"));
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
   const [selectedSectionId, setSelectedSectionId] =
     useState<ReviewSectionId>("identity-demographics");
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [selectedSafeguardPage, setSelectedSafeguardPage] = useState<number | null>(null);
+  const [nextCandidateId, setNextCandidateId] = useState<string | null>(null);
   const [sourceUnavailablePages, setSourceUnavailablePages] = useState<ReadonlySet<number>>(
     new Set(),
   );
+  const taskFocusRef = useRef<HTMLDivElement | null>(null);
 
-  const refresh = useCallback(async (): Promise<void> => {
-    if (!batchId) return;
+  const refresh = useCallback(async (): Promise<Workspace | null> => {
+    if (!batchId) return null;
     const response = await client
       .GET("/api/v1/intake/uploads/{id}/workspace", { params: { path: { id: batchId } } })
       .catch(() => null);
@@ -50,21 +58,52 @@ function UnifiedReviewSummary(): JSX.Element {
           ? "This intake batch is not available to you."
           : "The unified review workspace could not be loaded.",
       );
-      return;
+      return null;
     }
-    setWorkspace(response.data);
+    const data = response.data;
+    setWorkspace(data);
     setLoadError(null);
+    setSelectedCandidateId((current) => {
+      if (
+        current &&
+        data.candidates.some(
+          (candidate) =>
+            candidate.id === current &&
+            !candidate.redacted &&
+            !candidateIsOtherPatient(data, candidate),
+        )
+      )
+        return current;
+      return (
+        data.candidates.find(
+          (candidate) =>
+            candidate.decision === null &&
+            !candidate.redacted &&
+            !candidateIsOtherPatient(data, candidate),
+        )?.id ??
+        data.candidates.find(
+          (candidate) => !candidate.redacted && !candidateIsOtherPatient(data, candidate),
+        )?.id ??
+        null
+      );
+    });
+    return data;
   }, [batchId, client]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    if (selectedCandidateId || selectedSafeguardPage !== null) taskFocusRef.current?.focus();
+  }, [selectedCandidateId, selectedSafeguardPage]);
+
   const groups = useMemo(() => (workspace ? projectReviewGroups(workspace) : []), [workspace]);
   const exceptions = useMemo(
     () => (workspace ? projectReviewExceptions(workspace, groups, { sourceUnavailablePages }) : []),
     [workspace, groups, sourceUnavailablePages],
   );
+  const exceptionSummary = useMemo(() => projectExceptionSummary(exceptions), [exceptions]);
   const projection = useMemo(
     () =>
       workspace ? projectUnifiedReview(workspace, exceptionCountsBySection(exceptions)) : null,
@@ -72,6 +111,8 @@ function UnifiedReviewSummary(): JSX.Element {
   );
   const selectedCandidate =
     workspace?.candidates.find((candidate) => candidate.id === selectedCandidateId) ?? null;
+  const nextCandidate =
+    workspace?.candidates.find((candidate) => candidate.id === nextCandidateId) ?? null;
 
   const onAvailabilityChange = useCallback((page: number, unavailable: boolean): void => {
     setSourceUnavailablePages((current) => {
@@ -82,9 +123,46 @@ function UnifiedReviewSummary(): JSX.Element {
     });
   }, []);
 
-  const selectException = (exception: ReviewExceptionProjection): void => {
-    setSelectedSectionId(exception.sectionId);
-    if (exception.candidateId) setSelectedCandidateId(exception.candidateId);
+  const selectCandidate = useCallback(
+    (candidateId: string): void => {
+      const candidate = workspace?.candidates.find((item) => item.id === candidateId);
+      if (!workspace || !candidate || candidateIsOtherPatient(workspace, candidate)) return;
+      const group = groups.find((item) => item.candidateIds.includes(candidateId));
+      if (group) setSelectedSectionId(group.sectionId);
+      setSelectedSafeguardPage(null);
+      setSelectedCandidateId(candidateId);
+      setNextCandidateId(null);
+      taskFocusRef.current?.focus();
+    },
+    [groups, workspace],
+  );
+
+  const selectException = (task: ReviewExceptionTask): void => {
+    setSelectedSectionId(task.sectionId);
+    if (task.candidateId && !task.reasons.some((reason) => reason.kind === "identity-unresolved")) {
+      selectCandidate(task.candidateId);
+      return;
+    }
+    setSelectedCandidateId(null);
+    setSelectedSafeguardPage(task.page);
+    setNextCandidateId(null);
+    taskFocusRef.current?.focus();
+  };
+
+  const onDecisionSaved = (latest: Workspace, candidateId: string): void => {
+    const eligible = latest.candidates.filter(
+      (candidate) =>
+        candidate.decision === null &&
+        !candidate.redacted &&
+        !candidateIsOtherPatient(latest, candidate),
+    );
+    const currentIndex = latest.candidates.findIndex((candidate) => candidate.id === candidateId);
+    const next =
+      eligible.find(
+        (candidate) =>
+          latest.candidates.findIndex((item) => item.id === candidate.id) > currentIndex,
+      ) ?? eligible[0];
+    setNextCandidateId(next?.id ?? null);
   };
 
   if (loadError && !workspace) {
@@ -129,7 +207,7 @@ function UnifiedReviewSummary(): JSX.Element {
     <div className="wx-reports wx-unified-review">
       <header className="wx-page-head wx-unified-head">
         <div>
-          <p className="wx-unified-eyebrow">WardenLens / Unified review</p>
+          <p className="wx-unified-eyebrow">WardenLens / Review workspace</p>
           <h1>Review patient information</h1>
           <p>
             {workspace.batch.patientName ?? "Unassigned intake"} · {workspace.documents.length}{" "}
@@ -142,6 +220,24 @@ function UnifiedReviewSummary(): JSX.Element {
             label={complete ? "Review complete" : batchStatusLabel(workspace.batch.status)}
             tone={reviewTone}
           />
+          {!workspace.review && !complete ? (
+            <button
+              type="button"
+              className="wx-btn-primary"
+              disabled={starting}
+              onClick={() => {
+                setStarting(true);
+                setActionError(null);
+                void startReview(client, batchId).then(async (result) => {
+                  setStarting(false);
+                  if (!result.ok) setActionError(result.message);
+                  else await refresh();
+                });
+              }}
+            >
+              {starting ? "Starting…" : "Start review"}
+            </button>
+          ) : null}
           {returnTo ? (
             <Link className="wx-btn-secondary" to={returnTo}>
               Back to referral intake
@@ -156,12 +252,18 @@ function UnifiedReviewSummary(): JSX.Element {
         </div>
       </header>
 
+      {actionError ? (
+        <p role="alert" className="wx-doclens-error">
+          {actionError}
+        </p>
+      ) : null}
+
       <section className="wx-unified-progress" aria-labelledby="unified-progress-title">
         <div>
-          <strong id="unified-progress-title">Candidate decision progress</strong>
+          <strong id="unified-progress-title">Review progress</strong>
           <span>
             {projection.decidedCount} of {projection.candidateCount} observations decided ·{" "}
-            {projection.reviewedSectionCount} of 6 sections have no projected exceptions
+            {projection.reviewedSectionCount} of 6 sections reviewed
           </span>
         </div>
         <progress max={Math.max(1, projection.candidateCount)} value={projection.decidedCount}>
@@ -177,17 +279,29 @@ function UnifiedReviewSummary(): JSX.Element {
           <Glyph name="lock" size={18} />
           <div>
             <strong>Read-only while another reviewer owns this review</strong>
-            <span>The unified summary remains available; candidate decisions stay locked.</span>
+            <span>Source evidence remains visible when authorized; decisions stay locked.</span>
           </div>
         </output>
       ) : null}
 
       <div className="wx-unified-layout">
-        <div className="wx-unified-main">
+        <section className="wx-unified-clinical" aria-label="Clinical information">
+          <header>
+            <div>
+              <h2>Clinical information</h2>
+              <p>Consolidated information from {workspace.documents.length} source documents.</p>
+            </div>
+          </header>
           <ReviewSectionList
             sections={projection.sections}
             selectedId={selectedSectionId}
-            onSelect={setSelectedSectionId}
+            onSelect={(sectionId) => {
+              setSelectedSectionId(sectionId);
+              if (sectionId === "documents-safeguards") {
+                setSelectedCandidateId(null);
+                setSelectedSafeguardPage(null);
+              }
+            }}
           />
           {selectedSection ? (
             <section
@@ -203,40 +317,64 @@ function UnifiedReviewSummary(): JSX.Element {
                   <p>{selectedSection.description}</p>
                 </div>
                 <span>
-                  {selectedSection.decidedCount} / {selectedSection.candidateCount} observations
-                  decided
+                  {selectedSection.decidedCount} / {selectedSection.candidateCount} decided
                 </span>
               </header>
               {selectedSection.groups.length === 0 ? (
                 <div className="wx-unified-empty">
-                  <Glyph name="info" size={18} />
-                  No extracted observations are mapped to this section. Review source documents and
-                  safeguards before completion.
+                  <Glyph name="info" size={18} /> No extracted observations are mapped to this
+                  section.
                 </div>
               ) : (
                 selectedSection.groups.map((group) => (
                   <ReviewFieldGroup
                     key={group.id}
-                    batchId={batchId}
                     group={group}
-                    returnTo={returnTo}
-                    onSelectSource={setSelectedCandidateId}
+                    onSelectSource={selectCandidate}
+                    onReviewDecision={selectCandidate}
                   />
                 ))
               )}
             </section>
           ) : null}
+        </section>
+
+        <section
+          className="wx-unified-task-column"
+          ref={taskFocusRef}
+          tabIndex={-1}
+          aria-label="Active review task"
+        >
           {selectedCandidate ? (
             <ReviewSourcePanel
+              key={selectedCandidate.id}
               batchId={batchId}
+              workspace={workspace}
               candidate={selectedCandidate}
               returnTo={returnTo}
               onClose={() => setSelectedCandidateId(null)}
               onAvailabilityChange={onAvailabilityChange}
+              refresh={refresh}
+              onDecisionSaved={onDecisionSaved}
+              nextCandidate={nextCandidate}
+              onNext={() => nextCandidate && selectCandidate(nextCandidate.id)}
             />
-          ) : null}
-        </div>
-        <ReviewExceptionPanel exceptions={exceptions} onSelect={selectException} />
+          ) : selectedSectionId === "documents-safeguards" || selectedSafeguardPage !== null ? (
+            <ReviewSafeguardPanel
+              workspace={workspace}
+              selectedPage={selectedSafeguardPage}
+              refresh={refresh}
+            />
+          ) : (
+            <section className="wx-unified-task-empty" aria-label="Review task">
+              <Glyph name="info" size={28} />
+              <h2>Select a review task</h2>
+              <p>Choose an observation or exception to inspect its source and record a decision.</p>
+            </section>
+          )}
+        </section>
+
+        <ReviewExceptionPanel summary={exceptionSummary} onSelect={selectException} />
       </div>
     </div>
   );
