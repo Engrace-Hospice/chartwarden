@@ -40,6 +40,26 @@ describe("createIdentityAuth — plugin wiring (AUTH-T05)", () => {
     expect(typeof auth.options.emailAndPassword?.password?.hash).toBe("function");
   });
 
+  it("drops Better Auth's argument objects while retaining safe level/message observability", () => {
+    const events: { level: string; message: string }[] = [];
+    const configured = createIdentityAuth({} as never, {
+      authLogger: (level, message) => events.push({ level, message }),
+    });
+    const betterAuthLog = configured.options.logger?.log as
+      | ((level: string, message: string, ...args: unknown[]) => void)
+      | undefined;
+    betterAuthLog?.("error", "session lookup failed", { params: ["secret-session-token"] });
+    betterAuthLog?.("error", {
+      message: "query failed",
+      params: ["object-first-secret-session-token"],
+    } as never);
+    expect(events).toEqual([
+      { level: "error", message: "session lookup failed" },
+      { level: "error", message: "Better Auth emitted a non-string error" },
+    ]);
+    expect(JSON.stringify(events)).not.toContain("secret-session-token");
+  });
+
   it("GAP-002: a fixed 72-h outer lifetime, never refreshed on use (SESSION_POLICY decides the rest)", () => {
     expect(auth.options.session?.expiresIn).toBe(72 * 60 * 60);
     expect(auth.options.session?.disableSessionRefresh).toBe(true);

@@ -12,6 +12,10 @@
 import type { DbClient } from "@chartwarden/db";
 import { getSeam } from "../../bootstrap/index";
 import { createDbDocumentBackend } from "./documents-route-service-db";
+import {
+  documentContentScannerFromEnv,
+  documentUploadScanRequired,
+} from "./routes/document-content-scanner";
 import { type UploadLogger, createServerUploadService } from "./routes/server-upload";
 import { RENDER_SYSTEM_MEMBERSHIP_ID } from "./seams/drizzle-seam-store";
 import { createS3ObjectStore, s3ObjectStoreConfigFromEnv } from "./seams/index";
@@ -39,7 +43,8 @@ export function buildPortalUploadIntakePort(
     db,
     logger,
     objects,
-    scanRequired: process.env.DOCUMENT_UPLOAD_SCAN_REQUIRED === "true",
+    scanner: documentContentScannerFromEnv(process.env),
+    scanRequired: documentUploadScanRequired(process.env),
     referralReader: {
       canAccessReferral(input) {
         return getSeam("ReferralReader").canAccessReferral(input);

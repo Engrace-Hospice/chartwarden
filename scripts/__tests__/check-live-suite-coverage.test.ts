@@ -111,9 +111,9 @@ describe("the repo baseline", () => {
     expect(report.deferred).not.toContain("test:e2e");
   });
 
-  it("has no deferred browser suites after #852 wires admin and portal", () => {
-    // The list is pinned so a new deferral needs a deliberate edit here. CI now starts all three
-    // SPAs and runs test:e2e:apps, so retaining the former exception would hide a stale deferral.
-    expect(report.deferred).toEqual([]);
+  it("pins the real-provider operational browser suite as the only deferral", () => {
+    // CI runs the ordinary app suites. Operational acceptance additionally requires explicit
+    // authorization for a real M32 provider, so it stays manual and visible rather than using mocks.
+    expect(report.deferred).toEqual(["test:e2e:intake-operational"]);
   });
 });

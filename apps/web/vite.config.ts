@@ -17,6 +17,9 @@ export default defineConfig({
     // Dev proxy: same-origin API calls (createApiClient baseUrl "") hit the Fastify backend.
     proxy: {
       "/api": { target: API_PROXY_TARGET, changeOrigin: true },
+      // Operational acceptance verifies this build marker through the SAME origin/proxy as every
+      // browser mutation, so it cannot validate one loopback API while `/api` targets another.
+      "/version": { target: API_PROXY_TARGET, changeOrigin: true },
       "/webhooks": { target: API_PROXY_TARGET, changeOrigin: true },
       // ADR-0054 realtime hints; the backend serves it only when REALTIME_ENABLED is set (polling covers the rest).
       "/socket.io": { target: API_PROXY_TARGET, changeOrigin: true, ws: true },

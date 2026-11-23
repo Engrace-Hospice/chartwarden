@@ -59,6 +59,8 @@ const GOOD: EnvLike = {
   // F-172 (#248) — the platform KEK wrapping the M35 `patient_pseudonym_key` singleton (a SEPARATE
   // secret from M34_TENANT_KEK; same `<kekId>:<base64 32 bytes>` shape).
   M35_PSEUDONYM_KEY_KEK: `kek-2:${Buffer.alloc(32, 6).toString("base64")}`,
+  CLAMD_HOST: "clamav",
+  CLAMD_PORT: "3310",
 };
 
 describe("collectEnvProblems", () => {
@@ -69,6 +71,19 @@ describe("collectEnvProblems", () => {
 
   it("passes a fully-configured production env", () => {
     expect(collectEnvProblems(GOOD)).toEqual([]);
+  });
+
+  it("requires the real clamd document-upload path in production", () => {
+    expect(
+      collectEnvProblems({ ...GOOD, CLAMD_HOST: "" }).find(
+        (problem) => problem.key === "CLAMD_HOST",
+      ),
+    ).toEqual({ key: "CLAMD_HOST", problem: "is required in production" });
+    expect(
+      collectEnvProblems({ ...GOOD, CLAMD_PORT: "70000" }).find(
+        (problem) => problem.key === "CLAMD_PORT",
+      ),
+    ).toEqual({ key: "CLAMD_PORT", problem: "must be an integer from 1 to 65535" });
   });
 
   it("validates browser origins separately from exact native callback schemes", () => {
