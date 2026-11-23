@@ -346,6 +346,15 @@ describe("route-kit schemas and formats", () => {
     expect(Value.Check(Type.String({ format: "email" }), "a@b.example")).toBe(true);
     expect(Value.Check(Type.String({ format: "email" }), "a@b")).toBe(false);
   });
+
+  it("refuses year 0000, which JavaScript parses and Postgres rejects, but keeps year 0001", () => {
+    const date = Type.String({ format: "date" });
+    expect(Value.Check(date, "0000-01-01")).toBe(false);
+    expect(Value.Check(date, "0000-12-31")).toBe(false);
+    expect(Value.Check(date, "0000-02-29")).toBe(false);
+    expect(Value.Check(date, "0001-01-01")).toBe(true);
+    expect(Value.Check(date, "9999-12-31")).toBe(true);
+  });
 });
 
 describe("route-kit parse", () => {
