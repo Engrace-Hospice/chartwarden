@@ -228,8 +228,9 @@ async function visitTimeOf(
 }
 
 /**
- * The IDG follow-up's link or clear in ONE unit (the encounter row locked first, a signed, cosigned or voided note refused). CLEARING asks the author's checks (the
- * routes') and the encounter's own (`loadOr404`: the tenant switch and the template's read keys), and nothing of M14, `idg.act` or a seam: a clinician who lost
+ * The IDG follow-up's link or clear in ONE unit (the encounter row locked first, a signed, cosigned or voided note refused). Both ask that the caller authored the
+ * visit (404 for anyone else, as the route's rule does, so the service does not rely on it). CLEARING asks the author's checks and the encounter's own
+ * (`loadOr404`: the tenant switch and the template's read keys), and nothing of M14, `idg.act` or a seam: a clinician who lost
  * `idg.act`, or whose M14 is down, can still clear a link they made. The row being left cannot
  * then be judged without M14, so it is raised to Part 2 (fails closed: the flag only moves the audit class), and no candidate was read, so the answer lists
  * nothing: the client re-reads the list (GET) when it wants one. LINKING needs `idg.act` and an item in the viewer's own candidate list.
@@ -243,6 +244,10 @@ async function linkIdgActionItem(
   now: Date,
 ): Promise<IdgFollowUpItemsView> {
   const encounter = await loadOr404(unit, encounterId, true, caller);
+  // The author's act, as the routes' `is_author` rule has it, asked here too so the service does not rely on them: anyone else gets the answer an absent visit
+  // gets, before the note's state or anything of M14 is told.
+  if (encounter.authoredByMembershipId !== caller.membershipId)
+    throw new NotFoundError("encounter");
   checkMutableForEdit({ status: encounter.status });
   assertDraftsFromIdgFollowUp(encounter);
   const live = await guarded("the linked IDG action item", () =>

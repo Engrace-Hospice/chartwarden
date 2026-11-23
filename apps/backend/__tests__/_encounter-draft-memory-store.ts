@@ -74,6 +74,8 @@ export const draftEncounterRow = (over: Partial<DraftEncounterRow> = {}): DraftE
   discipline: "rn",
   serviceDate: "2026-11-18",
   status: "draft",
+  // the member the draft tests' callers are (`membershipId` of their sessions)
+  authoredByMembershipId: "00000000-0000-4000-8000-0000000000aa",
   providerEntityId: null,
   locationId: null,
   ...over,

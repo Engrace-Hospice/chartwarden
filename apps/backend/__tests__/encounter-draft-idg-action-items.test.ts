@@ -535,7 +535,7 @@ describe("setIdgActionItem", () => {
     expect(already.seams.linkedIdgFollowUpItem).not.toHaveBeenCalled();
   });
 
-  it("a re-ask that fails is a 503 DRAFT_UNAVAILABLE for the whole link (the unit rolls back), not a row left unchecked", async () => {
+  it("a re-ask that fails answers 503 DRAFT_UNAVAILABLE, never a success, and is no audited refusal (that nothing persists is proved live: this store does not roll back)", async () => {
     const mem = memoryRunInOrg({
       encounter: IDG_RN,
       selection: selectionFor("idg_followup", "rn"),
@@ -557,6 +557,46 @@ describe("setIdgActionItem", () => {
       503,
     );
     expect(mem.refusals).toEqual([]);
+  });
+
+  it("the service itself asks that the caller authored the visit (the route's own rule is not the only one): anyone else is the same 404 as an absent visit, a link and a clear alike, and nothing is read or written", async () => {
+    const other = { ...caller, membershipId: "00000000-0000-4000-8000-0000000000bc" };
+    const linked = service({ memory: { idgLinks: [liveLink(ITEM_1)] } });
+    await expectCode(
+      linked.svc.setIdgActionItem(other, ENCOUNTER, { actionItemId: ITEM_2 }, AUDIT),
+      "NOT_FOUND",
+      404,
+    );
+    await expectCode(
+      linked.svc.setIdgActionItem(other, ENCOUNTER, { actionItemId: null }, AUDIT),
+      "NOT_FOUND",
+      404,
+    );
+    expect(linked.idgLinks).toEqual([liveLink(ITEM_1)]);
+    expect(linked.seams.idgFollowUpItems).not.toHaveBeenCalled();
+    expect(linked.seams.linkedIdgFollowUpItem).not.toHaveBeenCalled();
+    // no new signal: it is no refusal of a link the author named, so it audits nothing
+    expect(linked.refusals).toEqual([]);
+
+    // the same 404 as an encounter that is not there, and before the note's state is told (a signed note would be 409 to the author)
+    const absent = service({ memory: { encounter: null } });
+    await expectCode(
+      absent.svc.setIdgActionItem(caller, ENCOUNTER, { actionItemId: ITEM_1 }, AUDIT),
+      "NOT_FOUND",
+      404,
+    );
+    const signed = service({
+      memory: { encounter: draftEncounterRow({ ...IDG_RN, status: "signed" }) },
+    });
+    await expectCode(
+      signed.svc.setIdgActionItem(other, ENCOUNTER, { actionItemId: ITEM_1 }, AUDIT),
+      "NOT_FOUND",
+      404,
+    );
+
+    // a clear keeps its own checks and nothing more: the author clears without idg.act, as before
+    await linked.svc.setIdgActionItem(withoutIdgKey, ENCOUNTER, { actionItemId: null }, AUDIT);
+    expect(linked.idgLinks[0]).toMatchObject({ removedAt: NOW });
   });
 
   it("refuses a signed note's change (an addendum is the way) and writes nothing", async () => {

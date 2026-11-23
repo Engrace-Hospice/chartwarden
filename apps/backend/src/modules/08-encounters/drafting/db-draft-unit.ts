@@ -45,6 +45,7 @@ async function loadEncounter(
       discipline: E.discipline,
       serviceDate: E.serviceDate,
       status: E.status,
+      authoredByMembershipId: E.authoredByMembershipId,
       providerEntityId: E.providerEntityId,
       locationId: E.locationId,
     })

@@ -10,6 +10,8 @@ import type { ConfirmationRecord } from "./section-state";
 /** An encounter as the draft routes load it: the draft's projection plus the status and the siting the satellite rows copy. */
 export interface DraftEncounterRow extends DraftEncounter {
   readonly status: EncounterStatus;
+  /** The membership that authored the visit (what the routes' `is_author` rule compares the session's membership to). */
+  readonly authoredByMembershipId: string;
   readonly providerEntityId: string | null;
   readonly locationId: string | null;
 }
