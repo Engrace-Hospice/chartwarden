@@ -72,16 +72,31 @@ controls:
       - file: packages/db/migrations/1530_m9_wound.sql
       - file: packages/db/migrations/1531_m9_wound_observation.sql
       - file: packages/db/migrations/1532_m7_care_plan_change_proposal.sql
-      # M24-1075-L2B: payer authorization and rate evidence are org-scoped, RLS/FORCEd, and append-only;
-      # the live M24 suite runs as chartwarden_app and verifies cross-tenant denial, verification-write
-      # rejection, immutable rows, and audit-reference scrubbing.
+      # M24-1075 (migrations 1535, 1538, 1539): payer program assignment and enrollment evidence (1535, mutable), payer authorization
+      # events (1538) and payer rate policy (1539, both append-only) are org-scoped, with RLS ENABLEd and FORCEd on one app.org_id
+      # policy. The live M24 suite runs as chartwarden_app and proves, per table, that a cross-tenant INSERT is refused by the WITH CHECK
+      # alone (the provider-entity guard is switched off for that case, with an own-tenant control), that a provider entity of another
+      # organization is refused by the guard, and that the catalog holds one org-keyed policy with RLS enabled and forced. 1538/1539
+      # rows are immutable: the application role holds no UPDATE or DELETE grant, the append-only trigger refuses every role (proved on
+      # a superuser connection), and an application insert cannot assert verification. 1535 rows are mutable by design and guarded: UPDATE
+      # is granted per column (exactly the columns the verify and revoke paths write, proved from the catalog), the verifier is never
+      # the recorder (CHECK), a row's identity never changes, a closed row is final, a verified row can only be revoked or superseded
+      # and its verification evidence cannot be rewritten (proved on a superuser connection, so only the trigger can answer). Known
+      # limit: these are ordinary triggers, which the table owner or a superuser can disable, so they hold against the application's own
+      # write paths, not against a database administrator.
       - script: test:rls:live:m24
+      - file: packages/db/migrations/1535_m24_payer_program_readiness.sql
       - file: packages/db/migrations/1538_m24_payer_authorization_evidence.sql
       - file: packages/db/migrations/1539_m24_payer_rate_policy_evidence.sql
       - file: packages/db/migrations/__tests__/m24-rls-isolation.live.test.ts
-      # M24-1075-L6A: M40 payer classification is global reference data (app read, canonical-writer insert,
-      # append-only, FORCE RLS); M24 submission provenance is nullable/unverified by default. Fresh disposable
-      # PostgreSQL suites apply the full migration chain and run as chartwarden_app/NOBYPASSRLS.
+      # M24-1075-L6A: M40 payer classification is global reference data: every tenant reads it, only mdm_canonical_writer inserts,
+      # rows are append-only and RLS is enabled and FORCEd. The live M40 suite proves it on a row that satisfies every CHECK, so only
+      # the layer under test can refuse: chartwarden_app has no INSERT grant, and with one forced on the policies still refuse it, the
+      # canonical writer's insert of the same row succeeds, and UPDATE/DELETE are refused by the append-only trigger. M24 submission
+      # provenance is nullable and unverified by default; the f172 live suite proves, on rows that satisfy every CHECK, that the
+      # application role can neither insert a verified attempt, promote one, nor rewrite the provenance columns of a verified attempt,
+      # while it keeps updating a verified attempt's result. Fresh disposable PostgreSQL suites apply the full migration chain and run
+      # as chartwarden_app/NOBYPASSRLS.
       - script: test:rls:live:m40
       - script: test:m24:remittance-feedback:live
       - file: packages/db/migrations/1541_m40_medicaid_payer_classification_and_m24_submission_provenance.sql
