@@ -192,3 +192,85 @@ describe("M40 payer program classification qualification", () => {
     }
   });
 });
+
+describe("a superseder only retires its predecessor once it has been in force", () => {
+  // X is verified and open since January; X' points at it and ends on 2026-03-31.
+  const original = classification({ id: "class-x" });
+  const superseder = (
+    verificationStatus: MedicaidPayerProgramClassification["verificationStatus"],
+    overrides: Partial<MedicaidPayerProgramClassification> = {},
+  ) =>
+    classification({
+      id: "class-x-prime",
+      effectiveTo: "2026-03-31",
+      supersedesId: original.id,
+      verificationStatus,
+      ...overrides,
+    });
+  const qualify = (
+    rows: readonly MedicaidPayerProgramClassification[],
+    serviceFrom: string,
+    serviceTo: string,
+  ) =>
+    qualifyMedicaidProgramClassification(
+      rows,
+      "ffs_open_card",
+      "payer-1",
+      "OR",
+      serviceFrom,
+      serviceTo,
+    );
+  const FEBRUARY = ["2026-02-01", "2026-02-28"] as const;
+  const AUGUST = ["2026-08-01", "2026-08-31"] as const;
+
+  it.each(["unverified", "rejected"] as const)(
+    "keeps the verified row current when its %s superseder never took effect",
+    (status) => {
+      for (const [from, to] of [FEBRUARY, AUGUST]) {
+        expect(qualify([original, superseder(status)], from, to)).toEqual({
+          qualified: true,
+          classification: original,
+        });
+      }
+    },
+  );
+
+  it("keeps the verified row current when a pending proposal starts later and runs open", () => {
+    const pending = superseder("unverified", {
+      classification: "medicaid_cco",
+      effectiveFrom: "2026-04-01",
+      effectiveTo: null,
+    });
+    for (const [from, to] of [FEBRUARY, AUGUST]) {
+      expect(qualify([original, pending], from, to)).toEqual({
+        qualified: true,
+        classification: original,
+      });
+    }
+  });
+
+  it("lets a verified, end-dated superseder retire its predecessor", () => {
+    expect(qualify([original, superseder("verified")], ...AUGUST)).toEqual({
+      qualified: false,
+      reasonCode: "MEDICAID_PROGRAM_CLASSIFICATION_EXPIRED",
+    });
+  });
+
+  it("keeps a revoked superseder's predecessor retired: it was once in force, so fail closed", () => {
+    for (const [from, to] of [FEBRUARY, AUGUST]) {
+      expect(qualify([original, superseder("revoked")], from, to).qualified).toBe(false);
+    }
+  });
+
+  it("keeps the chain intact when the superseder was itself superseded", () => {
+    const successor = classification({
+      id: "class-x-second",
+      effectiveFrom: "2026-04-01",
+      supersedesId: "class-x-prime",
+    });
+    expect(qualify([original, superseder("superseded"), successor], ...AUGUST)).toEqual({
+      qualified: true,
+      classification: successor,
+    });
+  });
+});
