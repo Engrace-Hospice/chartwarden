@@ -141,6 +141,7 @@
         "apps/backend/__tests__/admission-intake.test.ts",
         "apps/backend/__tests__/admission-malformed-id.test.ts",
         "apps/backend/__tests__/admission-routes.test.ts",
+        "apps/backend/__tests__/admission-seams.test.ts",
         "apps/backend/__tests__/discharge-details-routes.test.ts",
         "apps/backend/__tests__/discharge-worklist-routes.test.ts",
         "apps/backend/__tests__/election-addendum-upload-routes.test.ts",

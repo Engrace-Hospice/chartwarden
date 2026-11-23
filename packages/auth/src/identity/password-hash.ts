@@ -13,14 +13,23 @@ const PARAMS = {
   hashLength: 32,
 } as const;
 
+// hash-wasm refuses an empty password ("Password must be specified") and Better Auth reaches it on a sign-in: it verifies the typed password
+// against a known account, and hashes it to match the time of an unknown one. Either threw, so an empty password answered 500. An empty password
+// is answered like a wrong one: a random stand-in is hashed or verified instead (the same work, so the time says nothing), and nothing stored from
+// it can ever be matched, so a stand-in is never a password anyone could type. An empty password is never stored either: every route that sets one
+// checks minPasswordLength (12) first (sign-up, change, reset, update-user) and so does credential-admin's requirePassword; that is a caller's rule,
+// not this file's, and `argon2idHash("")` succeeds because Better Auth's timing hash for an unknown account must not throw.
+const standIn = (password: string): string => (password === "" ? crypto.randomUUID() : password);
+
 /** Hash a password to an `$argon2id$...` encoded string (random 16-byte salt per call). */
 export async function argon2idHash(password: string): Promise<string> {
   const salt = new Uint8Array(16);
   crypto.getRandomValues(salt);
-  return argon2id({ password, salt, ...PARAMS, outputType: "encoded" });
+  return argon2id({ password: standIn(password), salt, ...PARAMS, outputType: "encoded" });
 }
 
-/** Verify a password against an `$argon2id$...` encoded hash. */
+/** Verify a password against an `$argon2id$...` encoded hash. An empty password never verifies. */
 export async function argon2idVerify(hash: string, password: string): Promise<boolean> {
-  return argon2Verify({ password, hash });
+  const matches = await argon2Verify({ password: standIn(password), hash });
+  return matches && password !== "";
 }

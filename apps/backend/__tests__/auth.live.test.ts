@@ -114,6 +114,18 @@ describe.skipIf(!DB_URL)(
       expect(s.rowCount).toBeGreaterThanOrEqual(1);
     });
 
+    it("a sign-in with an empty password is an ordinary 401 for a known and an unknown account (hash-wasm refuses an empty password; it answered 500)", async () => {
+      const email = `empty${Date.now()}@example.test`;
+      await auth.api.signUpEmail({
+        body: { email, password: "correct-horse-battery-staple-9", name: "Empty Password" },
+      });
+      for (const who of [email, `nobody${Date.now()}@example.test`]) {
+        await expect(
+          auth.api.signInEmail({ body: { email: who, password: "" } }),
+        ).rejects.toMatchObject({ statusCode: 401 });
+      }
+    });
+
     it("provisions and authenticates a username-only identity through the production Better Auth extension", async () => {
       const { createIdentityCredentialAdmin } = await import("@chartwarden/auth");
       const credentials = createIdentityCredentialAdmin(auth);

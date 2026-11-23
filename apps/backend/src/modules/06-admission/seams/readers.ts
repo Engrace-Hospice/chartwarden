@@ -19,6 +19,7 @@ import type {
   LevelOfCareReader,
   LocalDate,
 } from "@chartwarden/types";
+import { NotFoundError } from "@chartwarden/types";
 import { daysBetween } from "../state-machines/index";
 import {
   type AdmissionReaderStore,
@@ -27,10 +28,14 @@ import {
   toElectionPeriodSummary,
 } from "./store";
 
-/** Thrown when a status read targets an admission id that does not exist / is not visible under RLS. */
-export class AdmissionNotFoundError extends Error {
+/**
+ * Thrown when a status read targets an admission id that does not exist / is not visible under RLS. A NotFoundError, so a route that reads an
+ * unknown admission answers the ordinary 404 (one answer for absent and RLS-hidden, no existence oracle) and not a 500; the name stays, because
+ * M10's ABAC predicate recognises the error by it.
+ */
+export class AdmissionNotFoundError extends NotFoundError {
   constructor(admissionId: AdmissionId) {
-    super(`admission '${admissionId}' not found`);
+    super("admission", admissionId);
     this.name = "AdmissionNotFoundError";
   }
 }
