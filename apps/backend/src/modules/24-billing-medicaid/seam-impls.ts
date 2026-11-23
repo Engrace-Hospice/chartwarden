@@ -598,6 +598,9 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
               !!s.payerClassificationId &&
               s.payerClassificationId === base.assignmentClassificationId &&
               base.assignmentStatus === "verified" &&
+              // Payer ids compare as recorded, not through M40 merges: after a payer merge a claim or assignment
+              // keyed to the retired id stops matching, which fails closed (the evidence is re-recorded against
+              // the surviving payer).
               base.assignmentPayerId === base.canonicalPayerId &&
               base.assignmentState === base.serviceState &&
               s.assignmentVersionSnapshot === base.assignmentVersion &&
