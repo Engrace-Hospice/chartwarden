@@ -68,6 +68,10 @@ const NON_COMMERCIAL_FILING_INDICATORS: readonly string[] = [
 ];
 const FILING_INDICATOR = /^[A-Z0-9]{1,2}$/;
 const MEMBER_ID = /^[A-Za-z0-9-]{2,60}$/;
+/** SBR09 values a non-commercial claim may carry: Medicare Part A (M23) or Medicaid (M24). */
+const GOVERNMENT_FILING_INDICATORS: readonly string[] = ["MA", "MC"];
+const normalizeId = (value: unknown): unknown =>
+  typeof value === "string" ? value.trim().toUpperCase() : value;
 
 const submitterOrReceiver = (
   role: "41" | "40",
@@ -95,12 +99,20 @@ export function partySegments(p: Parties837i, onOrAfterBirth: string): string[][
   const memberId = s.memberId ?? s.mbi;
   const memberIdField = s.memberId === undefined ? "subscriber.mbi" : "subscriber.memberId";
   if (typeof memberId !== "string") throw new X12BuildError(memberIdField);
+  // Both identifiers set: they must be the same one, or the deprecated alias would silently lose to `memberId`.
+  if (s.memberId != null && s.mbi != null && normalizeId(s.memberId) !== normalizeId(s.mbi)) {
+    throw new X12BuildError("subscriber.memberId");
+  }
   const normalizedMemberId = memberId.trim().toUpperCase();
   const commercial = p.commercial;
   if (commercial !== undefined && p.claimFilingIndicator !== undefined) {
     throw new X12BuildError("claimFilingIndicator");
   }
   const filingIndicator = commercial?.claimFilingIndicator ?? p.claimFilingIndicator ?? "MA";
+  // The type says "MA" | "MC"; untyped input must not reach SBR09 as anything else without `commercial`.
+  if (commercial === undefined && !GOVERNMENT_FILING_INDICATORS.includes(filingIndicator)) {
+    throw new X12BuildError("claimFilingIndicator");
+  }
   if (commercial === undefined && filingIndicator === "MA") {
     if (!MBI_PATTERN.test(normalizedMemberId)) throw new X12BuildError(memberIdField);
   } else {

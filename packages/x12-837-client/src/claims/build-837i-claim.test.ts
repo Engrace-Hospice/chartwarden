@@ -132,6 +132,18 @@ describe("build837iClaim — fail closed, field names only", () => {
       { ...CLAIM_INPUT, subscriber: { ...CLAIM_INPUT.subscriber, mbi: "SECRET" } },
       "subscriber.mbi",
     ],
+    // SBR09 must be a filing indicator the builder was designed for: Medicare Part A or Medicaid unless commercial.
+    [{ ...CLAIM_INPUT, claimFilingIndicator: "ZZ" }, "claimFilingIndicator"],
+    [{ ...CLAIM_INPUT, claimFilingIndicator: "CI" }, "claimFilingIndicator"],
+    [{ ...CLAIM_INPUT, claimFilingIndicator: "MB" }, "claimFilingIndicator"],
+    // Two member identifiers that disagree: refuse rather than let one silently win.
+    [
+      {
+        ...CLAIM_INPUT,
+        subscriber: { ...CLAIM_INPUT.subscriber, memberId: "2EG4TE5MK74" },
+      },
+      "subscriber.memberId",
+    ],
   ])("refuses %#", (input, field) => bad(input, field));
 
   it.each([
@@ -173,6 +185,11 @@ describe("build837iClaim — fail closed, field names only", () => {
         }) as never,
       ),
     ).not.toThrow();
+  });
+
+  it("accepts the deprecated mbi alias beside an identical memberId, whatever its case or padding", () => {
+    const subscriber = { ...CLAIM_INPUT.subscriber, memberId: " 1eg4te5mk73 " };
+    expect(build837iClaim({ ...CLAIM_INPUT, subscriber })).toBe(build837iClaim(CLAIM_INPUT));
   });
 
   it("emits DTP*096 before the statement dates (Loop 2300 order)", () => {
