@@ -127,6 +127,8 @@ export function DocLensReviewWorkspace(): JSX.Element {
   const { batchId = "" } = useParams<{ batchId: string }>();
   const [searchParams] = useSearchParams();
   const requestedReturnTo = safeIntakeReturnTo(searchParams.get("returnTo"));
+  const fromUnified = searchParams.get("from") === "unified";
+  const initialCandidateId = searchParams.get("candidate");
   const [ws, setWs] = useState<Workspace | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [viewerPage, setViewerPage] = useState<number | null>(null);
@@ -163,8 +165,15 @@ export function DocLensReviewWorkspace(): JSX.Element {
     const data = r.data;
     setLoadError(null);
     setWs(data);
-    setViewerPage((p) => p ?? data.pages[0]?.page ?? data.candidates[0]?.page ?? null);
-  }, [client, batchId]);
+    const initialCandidate = data.candidates.find(
+      (candidate) => candidate.id === initialCandidateId,
+    );
+    setSelectedId((selected) => selected ?? initialCandidate?.id ?? null);
+    setViewerPage(
+      (page) =>
+        page ?? initialCandidate?.page ?? data.pages[0]?.page ?? data.candidates[0]?.page ?? null,
+    );
+  }, [client, batchId, initialCandidateId]);
 
   useEffect(() => {
     void refresh();
@@ -403,9 +412,16 @@ export function DocLensReviewWorkspace(): JSX.Element {
     : [...new Set(ws.candidates.map((c) => c.page))].sort((a, b) => a - b);
   const returnTo =
     requestedReturnTo ??
-    (ws.batch.referralId ? `/referrals/${ws.batch.referralId}/intake?step=verify` : "/intake");
-  const returnLabel =
-    requestedReturnTo || ws.batch.referralId ? "Back to referral intake" : "Back to intake review";
+    (fromUnified
+      ? `/intake/${encodeURIComponent(batchId)}/review`
+      : ws.batch.referralId
+        ? `/referrals/${ws.batch.referralId}/intake?step=verify`
+        : "/intake");
+  const returnLabel = fromUnified
+    ? "Back to unified review"
+    : requestedReturnTo || ws.batch.referralId
+      ? "Back to referral intake"
+      : "Back to intake review";
 
   return (
     <div className="wx-reports wx-doclens">
