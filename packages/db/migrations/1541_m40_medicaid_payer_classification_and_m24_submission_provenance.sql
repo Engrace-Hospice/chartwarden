@@ -72,7 +72,8 @@ ALTER TABLE medicaid_submission ADD CONSTRAINT medicaid_submission_verified_prov
   (source_account_ref IS NOT NULL AND source_environment IS NOT NULL AND canonical_payer_id_snapshot IS NOT NULL
     AND payer_classification_id_snapshot IS NOT NULL
     AND program_kind_snapshot IS NOT NULL
-    AND program_assignment_id_snapshot IS NOT NULL AND program_assignment_version_snapshot > 0
+    AND program_assignment_id_snapshot IS NOT NULL
+    AND program_assignment_version_snapshot IS NOT NULL AND program_assignment_version_snapshot > 0
     AND submitted_claim_version IS NOT NULL
     AND submitted_claim_version > 0 AND submitted_at IS NOT NULL AND vendor_transaction_id IS NOT NULL)
 );--> statement-breakpoint
