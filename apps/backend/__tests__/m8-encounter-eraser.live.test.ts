@@ -1085,7 +1085,7 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       expect(draft.vocab_version_id).toBe(PIN);
     });
 
-    it("the IDG follow-up link's delete audit images are ALL filed under the Part 2 class with the action item id withheld, whatever flag the row was filed with", async () => {
+    it("the IDG follow-up link's delete audit images are ALL filed under the Part 2 class, whatever flag the row was filed with, and no image of the table names an action item", async () => {
       const deletes = await admin.query<{
         retention_class: string;
         before: Record<string, unknown>;
@@ -1100,11 +1100,11 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
         expect(row.retention_class).toBe("compliance_42cfr_part2");
         expect(row.before.action_item_id).toBe("<changed>");
       }
-      // and no Part 2 audit row of the table, of any event, names an action item the suite seeded (a row filed plain is a plain-class image by design: its insert image names the id)
+      // and no audit row of the table, of any event and any retention class, names an action item the suite seeded: the trail names the row and the encounter
       expect(idgItemIds.length).toBeGreaterThan(0);
       const leaked = await admin.query(
         `SELECT 1 FROM audit_event WHERE resource_kind = 'encounter_idg_action_item_link'
-            AND organization_id = $1 AND retention_class = 'compliance_42cfr_part2' AND to_jsonb(audit_event)::text LIKE ANY($2::text[])`,
+            AND organization_id = $1 AND to_jsonb(audit_event)::text LIKE ANY($2::text[])`,
         [ORG_A, idgItemIds.map((id) => `%${id}%`)],
       );
       expect(leaked.rowCount).toBe(0);

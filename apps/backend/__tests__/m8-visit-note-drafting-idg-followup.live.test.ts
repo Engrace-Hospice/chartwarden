@@ -177,6 +177,8 @@ describe.skipIf(!DB_URL)(
     /** Every M14 read the draft made (what a refused draft, and a viewer without `idg.act`, must not have asked), and a switch to make M14 fail. */
     const idgReads: { patientId: string; membershipId: string | null }[] = [];
     let idgFailing = false;
+    /** Fails only the by-id read (`linkedFollowUpItem`): the candidate read before it answers, as when M14 goes down between the two. */
+    let linkedReadFailing = false;
     /** Runs right after M14 answers the candidate read, as a change landing between that read and the row's insert would. */
     let afterOpenRead: (() => Promise<void>) | null = null;
     const TEST_DEK = { version: "test-v1", key: Buffer.alloc(32, 9) };
@@ -606,6 +608,15 @@ describe.skipIf(!DB_URL)(
       for (const [i, row] of sealed.entries())
         expect(row.content_hash).toBe(sha256(texts[i] ?? ""));
     }
+    /** How many audit rows of the link table, of any event and any retention class, name the action item (none may: the trail names the row and the encounter). */
+    const auditRowsNaming = async (orgId: string, itemId: string): Promise<number> =>
+      (
+        await rows(
+          `SELECT 1 FROM audit_event WHERE organization_id = $1 AND resource_kind = 'encounter_idg_action_item_link'
+              AND to_jsonb(audit_event)::text LIKE $2`,
+          [orgId, `%${itemId}%`],
+        )
+      ).length;
     const auditEvents = (orgId: string, eventType: string, resourceId: string) =>
       rows<{
         resource_kind: string;
@@ -676,7 +687,7 @@ describe.skipIf(!DB_URL)(
           query: Parameters<typeof realFollowUp.linkedFollowUpItem>[0],
         ) => {
           idgReads.push({ patientId: query.patientId, membershipId: query.viewer.membershipId });
-          if (idgFailing) throw new Error(UPSTREAM_DETAIL);
+          if (idgFailing || linkedReadFailing) throw new Error(UPSTREAM_DETAIL);
           return realFollowUp.linkedFollowUpItem(query);
         },
       } as never);
@@ -796,6 +807,7 @@ describe.skipIf(!DB_URL)(
     afterEach(() => {
       part2Memberships.clear();
       idgFailing = false;
+      linkedReadFailing = false;
       afterOpenRead = null;
       idgReads.length = 0;
     });
@@ -1243,16 +1255,22 @@ describe.skipIf(!DB_URL)(
         });
       });
 
-      it("a clean item is filed as plain, and its audit image carries the id", async () => {
+      it("a clean item is filed as plain (the compliance class), and its audit image names the row and the encounter, never the item", async () => {
         const v = await seedVisit();
         const clear = await seedItem(v);
         expect((await linkItem(v, clear)).statusCode).toBe(200);
-        const events = await rows<{ retention_class: string }>(
-          `SELECT retention_class::text FROM audit_event
-            WHERE organization_id = $1 AND resource_kind = 'encounter_idg_action_item_link' AND after->>'action_item_id' = $2`,
-          [v.org.orgId, clear],
+        const events = await rows<{ retention_class: string; after: Record<string, unknown> }>(
+          `SELECT retention_class::text, after FROM audit_event
+            WHERE organization_id = $1 AND resource_kind = 'encounter_idg_action_item_link' AND after->>'encounter_id' = $2`,
+          [v.org.orgId, v.encounterId],
         );
-        expect(events).toEqual([{ retention_class: "compliance" }]);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ retention_class: "compliance" });
+        expect(events[0]?.after).toMatchObject({
+          part2_derived: false,
+          action_item_id: "<changed>",
+        });
+        expect(await auditRowsNaming(v.org.orgId, clear)).toBe(0);
       });
 
       it("clearing a link raises the row to Part 2 first, whatever M14 would say (a clear asks M14 nothing, so the row being left fails closed), so neither image of the removal carries the id", async () => {
@@ -1307,6 +1325,10 @@ describe.skipIf(!DB_URL)(
           removed: true,
           part2_derived: false,
         });
+        // the removal of a replaced row is not asked about again, so its images must not depend on its flag: neither tenant's trail names an item
+        for (const id of [old, next])
+          expect(await auditRowsNaming(flaggedNow.org.orgId, id)).toBe(0);
+        for (const id of [was, becomes]) expect(await auditRowsNaming(clean.org.orgId, id)).toBe(0);
       });
     });
 
@@ -1548,6 +1570,138 @@ describe.skipIf(!DB_URL)(
         expect(await open(v.org, sealed.text_cipher)).not.toContain(SENTENCE);
       });
 
+      /** A resolution of the IDG follow-up section the client has no draft of: whatever well-formed hash it sends is ignored. */
+      const resolveUndrafted = (
+        v: Visit,
+        resolution: "confirmed" | "deselected",
+        url = "/draft/sections/idg_followup",
+      ) =>
+        put(encounterUrl(v, url), v.headers, {
+          resolution,
+          contentHash: "0".repeat(64),
+          corpusVersion: "none",
+        });
+
+      it("B: the exit from the refusal: a confirmed section M14 stopped handing is WITHDRAWN by a deselect (the link stays), the refusal ends, and the note signs without the sentence; it can never be CONFIRMED", async () => {
+        const v = await seedVisit();
+        const a = await seedItem(v);
+        await linkItem(v, a);
+        await ownWords(v);
+        await confirmDrafted(v);
+        expect((await finalize(v)).statusCode).toBe(200);
+        await setItem(a, "assigned_to_membership_id = $2", [randomUUID()]);
+        const refused = await sign(v);
+        expect(refused.statusCode, refused.body).toBe(409);
+        stale(refused.body);
+
+        // a not-drafted section cannot be confirmed, and the refusal stands
+        expect((await resolveUndrafted(v, "confirmed")).statusCode).toBe(409);
+        expect((await sign(v)).statusCode).toBe(409);
+
+        // the withdrawal: a deselect, the same stored row a deselect of an emptied section keeps
+        const withdrawn = await resolveUndrafted(v, "deselected");
+        expect(withdrawn.statusCode, withdrawn.body).toBe(200);
+        expect(withdrawn.json()).toMatchObject({ sectionId: "idg_followup", state: "not_drafted" });
+        const kept = one(
+          await rows<{ resolution: string; part2_derived: boolean; source_refs: unknown[] }>(
+            `SELECT resolution::text, part2_derived, source_refs FROM encounter_draft_confirmation
+              WHERE encounter_id = $1 AND section_id = 'idg_followup'`,
+            [v.encounterId],
+          ),
+        );
+        expect(kept).toEqual({ resolution: "deselected", part2_derived: true, source_refs: [] });
+        // a second withdrawal has nothing to withdraw
+        expect((await resolveUndrafted(v, "deselected")).statusCode).toBe(409);
+
+        // the link stands (nothing was cleared), the section is the clinician's own words, and the note signs
+        expect(await liveLinkOf(v)).toHaveLength(1);
+        await ownWords(v);
+        const signedNow = await sign(v);
+        expect(signedNow.statusCode, signedNow.body).toBe(200);
+        const sealed = one((await noteRowsOf(v)).filter((r) => r.section_id === "idg_followup"));
+        expect(await open(v.org, sealed.text_cipher)).not.toContain(SENTENCE);
+      });
+
+      it("B: the same exit for an ADDENDUM to a signed note, whose link row is frozen and which has no void: refused stale at its sign, withdrawn by a deselect, then it signs and amends nothing", async () => {
+        const v = await seedVisit();
+        const a = await seedItem(v);
+        await linkItem(v, a);
+        await signedNote(v);
+        const REASON = "Corrected the IDG follow-up statement after the team reviewed the item.";
+        const created = await post(encounterUrl(v, "/addenda"), v.headers, {
+          reason: REASON,
+          amendsSectionIds: ["idg_followup"],
+        });
+        expect(created.statusCode, created.body).toBe(201);
+        const addendumId = created.json().id as string;
+        // the addendum also carries the clinician's own words for another section, so withdrawing the amended one leaves it something to sign
+        await svc.updateAddendumSelections(v.org.orgId, v.encounterId, addendumId, {
+          sections: requiredSectionSelections("idg_followup", "np").sections.filter(
+            (section) => section.sectionId !== "idg_followup",
+          ),
+        });
+        const draftUrl = `/addenda/${addendumId}/draft`;
+        const seenDraft = await get(encounterUrl(v, draftUrl), v.headers);
+        expect(seenDraft.statusCode, seenDraft.body).toBe(200);
+        const section = (seenDraft.json() as { sections: SectionJson[] }).sections.find(
+          (x) => x.sectionId === "idg_followup",
+        );
+        expect(section?.state).toBe("unresolved");
+        const confirmedNow = await put(
+          encounterUrl(v, `${draftUrl}/sections/idg_followup`),
+          v.headers,
+          {
+            resolution: "confirmed",
+            contentHash: section?.contentHash,
+            corpusVersion: section?.corpusVersion,
+          },
+        );
+        expect(confirmedNow.statusCode, confirmedNow.body).toBe(200);
+        const sendAddendum = (action: "finalize" | "sign") =>
+          post(
+            encounterUrl(v, `/addenda/${addendumId}/${action}`),
+            v.headers,
+            action === "sign" ? { attestationConfirmed: true } : undefined,
+          );
+        const finalizedAddendum = await sendAddendum("finalize");
+        expect(finalizedAddendum.statusCode, finalizedAddendum.body).toBe(200);
+
+        // M14 stops handing the item before the addendum signs: the refusal, on every attempt
+        await setItem(a, "assigned_to_membership_id = $2", [randomUUID()]);
+        const refusedFirst = await sendAddendum("sign");
+        expect(refusedFirst.statusCode, refusedFirst.body).toBe(409);
+        stale(refusedFirst.body);
+        expect(refusedFirst.body).not.toContain(a);
+        expect((await sendAddendum("sign")).statusCode).toBe(409);
+
+        // the frozen link cannot be cleared, and a not-drafted section cannot be confirmed
+        expect((await linkItem(v, null)).statusCode).toBe(409);
+        expect(
+          (await resolveUndrafted(v, "confirmed", `${draftUrl}/sections/idg_followup`)).statusCode,
+        ).toBe(409);
+        expect((await sendAddendum("sign")).statusCode).toBe(409);
+
+        // the exit: the author withdraws the confirmation, and the addendum signs, amending nothing
+        const withdrawn = await resolveUndrafted(
+          v,
+          "deselected",
+          `${draftUrl}/sections/idg_followup`,
+        );
+        expect(withdrawn.statusCode, withdrawn.body).toBe(200);
+        expect(withdrawn.json()).toMatchObject({ state: "not_drafted" });
+        const signedAddendum = await sendAddendum("sign");
+        expect(signedAddendum.statusCode, signedAddendum.body).toBe(200);
+        expect(
+          await rows(
+            "SELECT 1 FROM hearthnote_signed_section WHERE encounter_id = $1 AND addendum_id = $2",
+            [v.encounterId, addendumId],
+          ),
+        ).toEqual([]);
+        // the note's own section is as it was signed
+        const original = one((await noteRowsOf(v)).filter((r) => r.section_id === "idg_followup"));
+        expect(await open(v.org, original.text_cipher)).toBe(`IDG Decision Follow-Up\n${SENTENCE}`);
+      });
+
       it("B: a viewer without idg.act is refused nothing (VN-D66), and neither is an author whose link was cleared or whose section was never confirmed", async () => {
         const keyless = await seedVisit({ author: orgs.A.npNoIdg });
         const a = await seedItem(keyless);
@@ -1695,7 +1849,7 @@ describe.skipIf(!DB_URL)(
         expect(JSON.stringify(updates)).not.toContain(a);
       });
 
-      it("L2: the verdict flips between M14's candidate read and the row's insert: the link is filed as plain, then raised to Part 2 in the SAME request (never every link)", async () => {
+      it("L2: the verdict flips between M14's candidate read and the row's insert: the link is filed as plain, raised to Part 2 in the SAME request (never every link), and no image of the row names the item", async () => {
         const v = await seedVisit();
         const a = await seedItem(v);
         part2Memberships.add(v.author.membershipId); // a cleared author: M14 hands the item flagged once the patient is flagged
@@ -1710,20 +1864,50 @@ describe.skipIf(!DB_URL)(
         expect(await linksOf(v)).toEqual([
           expect.objectContaining({ action_item_id: a, part2_derived: true, removed: false }),
         ]);
-        // the raise's own audit image is Part 2 and carries no id (the insert's image, written before M14 was asked again, is the narrow window that remains)
-        const raise = await rows<{ retention_class: string }>(
-          `SELECT retention_class::text FROM audit_event
-            WHERE organization_id = $1 AND event_type = 'encounter_idg_action_item_link.update' AND after->>'encounter_id' = $2`,
+        // the insert was filed as plain (the verdict it carried was stale), the raise is Part 2: and NEITHER image, the insert's included, names the item
+        const events = await rows<{ event_type: string; retention_class: string }>(
+          `SELECT event_type, retention_class::text FROM audit_event
+            WHERE organization_id = $1 AND resource_kind = 'encounter_idg_action_item_link' AND after->>'encounter_id' = $2 ORDER BY created_at, id`,
           [v.org.orgId, v.encounterId],
         );
-        expect(raise.length).toBeGreaterThan(0);
-        expect(raise.every((e) => e.retention_class === "compliance_42cfr_part2")).toBe(true);
+        expect(events.map((e) => e.event_type).sort()).toEqual([
+          "encounter_idg_action_item_link.insert",
+          "encounter_idg_action_item_link.update",
+        ]);
+        expect(events.find((e) => e.event_type.endsWith(".update"))?.retention_class).toBe(
+          "compliance_42cfr_part2",
+        );
+        expect(await auditRowsNaming(v.org.orgId, a)).toBe(0);
 
         // a link whose verdict does not change stays plain
         const w = await seedVisit();
         const b = await seedItem(w);
         expect((await linkItem(w, b)).statusCode).toBe(200);
         expect(await linksOf(w)).toEqual([expect.objectContaining({ part2_derived: false })]);
+      });
+
+      it("a by-id re-ask that fails AFTER the candidate read is a 503 DRAFT_UNAVAILABLE naming no upstream detail, and the whole link rolls back: no row, no audit row of the link, no refusal event", async () => {
+        const v = await seedVisit();
+        const a = await seedItem(v);
+        linkedReadFailing = true;
+        const res = await linkItem(v, a);
+        expect(res.statusCode, res.body).toBe(503);
+        expect(res.json().error.code).toBe("DRAFT_UNAVAILABLE");
+        expect(res.body).not.toContain(UPSTREAM_DETAIL);
+        expect(await linksOf(v)).toEqual([]);
+        expect(
+          await rows(
+            `SELECT 1 FROM audit_event WHERE organization_id = $1
+                AND (resource_kind = 'encounter_idg_action_item_link' OR event_type = 'm8.encounter.idg_follow_up_link_refused')
+                AND to_jsonb(audit_event)::text LIKE $2`,
+            [v.org.orgId, `%${v.encounterId}%`],
+          ),
+        ).toEqual([]);
+
+        // the read answering again, the same link is made (nothing was left half done)
+        linkedReadFailing = false;
+        expect((await linkItem(v, a)).statusCode).toBe(200);
+        expect(await liveLinkOf(v)).toHaveLength(1);
       });
 
       it("a Part 2 item: confirm, finalize and sign (a cleared author); the signed note is the sentence for a reader with disclosure and withheld from one without", async () => {
