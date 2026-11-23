@@ -65,7 +65,7 @@ services:
   # gateway listens on the compose network (8333); master, volume and filer bind to the container's loopback, so no
   # other container can reach the filer's unauthenticated HTTP/gRPC API (a direct path to every object that skips
   # S3 auth). The S3 gateway's own gRPC port (18333) stays reachable but refuses non-local callers when no signing
-  # key is configured (s3api checkAdminAuth). 127.0.0.1:9000 is the host-Nginx upstream, unchanged from MinIO.
+  # key is configured (s3api checkAdminAuth). 127.0.0.1:9000 is the host-Nginx upstream.
   # One volume per tenant bucket (growth 1, not SeaweedFS's default 7) keeps file handles bounded as tenants grow.
   seaweedfs:
     image: chrislusf/seaweedfs:4.52@sha256:57877e32bb90073b37dc109b438ba66e84fd5ed9ced5f5c04f56444ef243ce59
@@ -109,7 +109,7 @@ services:
 
   # GAP-139 — the api and worker hold a SCOPED key, never the store's admin. This one-shot renders SeaweedFS's
   # identity file (s3.json) with scripts/storage/seaweedfs-identities.ts:
-  #   admin   SEAWEEDFS_ADMIN_ACCESS_KEY / _SECRET_KEY   operators and the one-time MinIO migration only
+  #   admin   SEAWEEDFS_ADMIN_ACCESS_KEY / _SECRET_KEY   operators only
   #   app     SEAWEEDFS_APP_ACCESS_KEY / _SECRET_KEY     deploy/production/object-store/app-policy.json and nothing else:
   #           object + bucket calls on `tenant-*` / `chartwarden-*`, lifecycle on `tenant-*`; no bucket delete, no
   #           versioning or policy change (the legacy SeaweedFS `Admin:tenant-*` grant allowed both)
@@ -155,10 +155,6 @@ services:
   # accepted for this stream): SeaweedFS logs asynchronously, so a down Fluent Bit never blocks an S3 request.
   # Its forward input (24224, no auth) is on the `audit` network alone, shared only with seaweedfs and api: no other
   # container can inject records that Fluent Bit would post with the webhook bearer.
-  # ROLLBACK SAFETY: the api serves the audit receiver on two paths, the canonical /api/v1/webhooks/object-store/access-log
-  # and the legacy /api/v1/webhooks/minio/access-log. This compatibility release keeps the SENDER on the legacy path,
-  # because the previous release (the rollback image) serves only that one, and a rollback does not recreate
-  # fluent-bit. The sender moves to the canonical path in a later release, once no rollback target predates it.
   fluent-bit:
     image: fluent/fluent-bit:5.1.5@sha256:2740f387f6e68fab66d28e4fa6a853387b9cab6ffb4cb78958f69bba4eb0e7b4
     mem_limit: 128m
@@ -174,65 +170,10 @@ services:
     environment:
       AUDIT_SINK_HOST: api
       AUDIT_SINK_PORT: "3000"
-      AUDIT_SINK_PATH: /api/v1/webhooks/minio/access-log
+      AUDIT_SINK_PATH: /api/v1/webhooks/object-store/access-log
       AUDIT_SINK_TOKEN: ${OBJECT_STORE_AUDIT_WEBHOOK_TOKEN:?set in .env.production}
     volumes:
       - ./object-store/fluent-bit.yaml:/fluent-bit/etc/fluent-bit.yaml:ro
-
-  # LEGACY (profile `legacy-minio`): the MinIO this host ran before the SeaweedFS cutover. Started only by deploy.sh's
-  # one-time `object-store-migrate` step, which copies every object into SeaweedFS with its SHA-256; deploy.sh stops
-  # it once the copy is complete. Its volume stays until an operator removes it (deploy/production/README.md,
-  # "Object store: the SeaweedFS cutover"). Publishes no port: 127.0.0.1:9000 now belongs to SeaweedFS.
-  minio:
-    profiles: ["legacy-minio"]
-    image: cgr.dev/chainguard/minio:latest@sha256:e70b2b1e74d79457f808710483bd726ff364529ca30736eaa15a6ab547d3a5a7
-    mem_limit: 1g
-    cpus: 2
-    restart: "no"
-    command: server /data --console-address ":9001"
-    # #855: the volume was written by the old minio/minio image as root; keep root so it needs no chown.
-    user: "0:0"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set in .env.production}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set in .env.production}
-    volumes:
-      - minio-data:/data
-    healthcheck:
-      # The Chainguard image has bash but no curl/wget: probe /minio/health/ready over bash's /dev/tcp.
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /minio/health/ready HTTP/1.0\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && read -r status <&3 && case \"$$status\" in *' 200 '*) exit 0;; esac; exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-
-  # LEGACY (profile `legacy-minio`): the one-time MinIO -> SeaweedFS copy (scripts/object-store-copy.ts). A generic
-  # S3 copier would drop every object's stored SHA-256 and leave all uploads unverifiable; this re-puts each object
-  # with it and reads it back. A MIRROR (deletes target keys MinIO lacks, within the mass-delete guard): deploy.sh runs
-  # it with the api/worker stopped, so nothing writes either store, and a retry cleans up after a failed attempt.
-  # SeaweedFS is never written by the app before this pass succeeds. `--adopt-unchecksummed`: an object MinIO
-  # holds without a checksum (the adapter always sends one, so none should exist) gets the SHA-256 of its bytes.
-  object-store-migrate:
-    profiles: ["legacy-minio"]
-    image: ${CHARTWARDEN_IMAGE:?set immutable GHCR image in .env.production}
-    pull_policy: always
-    mem_limit: 1g
-    cpus: 1
-    restart: "no"
-    command: ["bun", "run", "scripts/object-store-copy.ts", "--adopt-unchecksummed"]
-    environment:
-      SOURCE_S3_ENDPOINT: http://minio:9000
-      SOURCE_S3_ACCESS_KEY: ${MINIO_ROOT_USER:?set in .env.production}
-      SOURCE_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set in .env.production}
-      # A retry that must remove more than max(10, 10%) of a bucket (or all of it) is refused; an operator names the
-      # bucket(s) here for one run (README, cutover), after checking that MinIO is really the truth for them.
-      ALLOW_MASS_DELETE: ${OBJECT_STORE_MIGRATE_ALLOW_MASS_DELETE:-}
-      TARGET_S3_ENDPOINT: http://seaweedfs:8333
-      TARGET_S3_ACCESS_KEY: ${SEAWEEDFS_ADMIN_ACCESS_KEY:?set in .env.production}
-      TARGET_S3_SECRET_KEY: ${SEAWEEDFS_ADMIN_SECRET_KEY:?set in .env.production}
-    depends_on:
-      minio:
-        condition: service_healthy
-      seaweedfs:
-        condition: service_healthy
 
   # GAP-138 — DocLens stage 2 (OCR + layout). Without this service DOCLING_WORKER_URL was unset in
   # production, the backend bound `createUnboundDoclingClient`, and every DocLens parse answered 503.
@@ -375,16 +316,11 @@ services:
     command: ["bun", "run", "scripts/backfill-tenant-buckets.ts"]
     environment:
       DATABASE_ADMIN_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
-      # The application contract is OBJECT_STORE_*. The MINIO_* twins carry the SAME values for one rollback window
-      # (an old release reads only MINIO_*); both come from the canonical SeaweedFS app credentials.
+      # The application contract is OBJECT_STORE_*, from the canonical SeaweedFS app credentials.
       OBJECT_STORE_ENDPOINT: http://seaweedfs:8333
       OBJECT_STORE_ACCESS_KEY: ${SEAWEEDFS_APP_ACCESS_KEY:?set in .env.production}
       OBJECT_STORE_SECRET_KEY: ${SEAWEEDFS_APP_SECRET_KEY:?set in .env.production}
       OBJECT_STORE_REGION: us-east-1
-      MINIO_ENDPOINT: http://seaweedfs:8333
-      MINIO_ACCESS_KEY: ${SEAWEEDFS_APP_ACCESS_KEY:?set in .env.production}
-      MINIO_SECRET_KEY: ${SEAWEEDFS_APP_SECRET_KEY:?set in .env.production}
-      MINIO_REGION: us-east-1
     restart: "no"
 
   api:
@@ -402,29 +338,21 @@ services:
       DATABASE_URL: postgresql://chartwarden_app:${CHARTWARDEN_APP_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       DATABASE_PLATFORM_URL: postgresql://chartwarden_platform_login:${CHARTWARDEN_PLATFORM_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       DATABASE_DESTRUCTION_URL: postgresql://chartwarden_destruction_login:${CHARTWARDEN_DESTRUCTION_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
-      # GAP-141 — the bearer Fluent Bit presents to the access-log webhook (SeaweedFS's audit log). Fluent Bit posts to the
-      # legacy /api/v1/webhooks/minio/access-log in this compatibility release (see `fluent-bit`); this release serves it
-      # and the canonical /api/v1/webhooks/object-store/access-log. OBJECT_STORE_AUDIT_WEBHOOK_TOKEN is the canonical token;
-      # the MINIO_* twin is the same value, read by the previous release if it is rolled back onto this compose file.
+      # GAP-141 — the bearer Fluent Bit presents to the access-log webhook (SeaweedFS's audit log), served at
+      # /api/v1/webhooks/object-store/access-log.
       OBJECT_STORE_AUDIT_WEBHOOK_TOKEN: ${OBJECT_STORE_AUDIT_WEBHOOK_TOKEN:?set in .env.production}
-      MINIO_ACCESS_LOG_WEBHOOK_TOKEN: ${OBJECT_STORE_AUDIT_WEBHOOK_TOKEN:?set in .env.production}
       # M36 WP 1.5 — the ClamAV sidecar above. The builtin scanner is refused unless ALLOW_BUILTIN_ATTACHMENT_SCANNER=1.
       MESSAGING_ATTACHMENT_SCANNER: clamd
       CLAMD_HOST: clamav
       CLAMD_PORT: "3310"
       REDIS_URL: redis://valkey:6379
-      # The application contract is OBJECT_STORE_*; the MINIO_* twins carry the SAME values for one rollback window.
+      # The application contract is OBJECT_STORE_*.
       OBJECT_STORE_ENDPOINT: http://seaweedfs:8333
       OBJECT_STORE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
       # GAP-139 — the scoped app key (object-store-provision, app-policy.json), NOT the store's admin key.
       OBJECT_STORE_ACCESS_KEY: ${SEAWEEDFS_APP_ACCESS_KEY:?set in .env.production}
       OBJECT_STORE_SECRET_KEY: ${SEAWEEDFS_APP_SECRET_KEY:?set in .env.production}
       OBJECT_STORE_REGION: us-east-1
-      MINIO_ENDPOINT: http://seaweedfs:8333
-      MINIO_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
-      MINIO_ACCESS_KEY: ${SEAWEEDFS_APP_ACCESS_KEY:?set in .env.production}
-      MINIO_SECRET_KEY: ${SEAWEEDFS_APP_SECRET_KEY:?set in .env.production}
-      MINIO_REGION: us-east-1
       # GAP-138 — DocLens parse worker (compose-network only).
       DOCLING_WORKER_URL: http://docling-worker:8000
       DOCLING_WORKER_TOKEN: ${DOCLING_WORKER_TOKEN:?set in .env.production}
@@ -487,18 +415,13 @@ services:
       CLAMD_HOST: clamav
       CLAMD_PORT: "3310"
       REDIS_URL: redis://valkey:6379
-      # The application contract is OBJECT_STORE_*; the MINIO_* twins carry the SAME values for one rollback window.
+      # The application contract is OBJECT_STORE_*.
       OBJECT_STORE_ENDPOINT: http://seaweedfs:8333
       OBJECT_STORE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
       # GAP-139 — the scoped app key (object-store-provision, app-policy.json), NOT the store's admin key.
       OBJECT_STORE_ACCESS_KEY: ${SEAWEEDFS_APP_ACCESS_KEY:?set in .env.production}
       OBJECT_STORE_SECRET_KEY: ${SEAWEEDFS_APP_SECRET_KEY:?set in .env.production}
       OBJECT_STORE_REGION: us-east-1
-      MINIO_ENDPOINT: http://seaweedfs:8333
-      MINIO_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
-      MINIO_ACCESS_KEY: ${SEAWEEDFS_APP_ACCESS_KEY:?set in .env.production}
-      MINIO_SECRET_KEY: ${SEAWEEDFS_APP_SECRET_KEY:?set in .env.production}
-      MINIO_REGION: us-east-1
       # GAP-138 — DocLens parse worker (compose-network only).
       DOCLING_WORKER_URL: http://docling-worker:8000
       DOCLING_WORKER_TOKEN: ${DOCLING_WORKER_TOKEN:?set in .env.production}
@@ -557,17 +480,12 @@ services:
       DATABASE_PLATFORM_URL: postgresql://chartwarden_platform_login:${CHARTWARDEN_PLATFORM_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       DATABASE_DESTRUCTION_URL: postgresql://chartwarden_destruction_login:${CHARTWARDEN_DESTRUCTION_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       REDIS_URL: redis://valkey:6379
-      # The application contract is OBJECT_STORE_*; the MINIO_* twins carry the SAME values for one rollback window.
+      # The application contract is OBJECT_STORE_*.
       OBJECT_STORE_ENDPOINT: http://seaweedfs:8333
       OBJECT_STORE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
       OBJECT_STORE_ACCESS_KEY: ${SEAWEEDFS_APP_ACCESS_KEY:?set in .env.production}
       OBJECT_STORE_SECRET_KEY: ${SEAWEEDFS_APP_SECRET_KEY:?set in .env.production}
       OBJECT_STORE_REGION: us-east-1
-      MINIO_ENDPOINT: http://seaweedfs:8333
-      MINIO_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
-      MINIO_ACCESS_KEY: ${SEAWEEDFS_APP_ACCESS_KEY:?set in .env.production}
-      MINIO_SECRET_KEY: ${SEAWEEDFS_APP_SECRET_KEY:?set in .env.production}
-      MINIO_REGION: us-east-1
     ports:
       - "${M29_MLLP_BIND_ADDRESS:-127.0.0.1}:11000-11019:11000-11019"
     depends_on:
@@ -682,9 +600,6 @@ volumes:
     name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_postgres-data
   valkey-data:
     name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_valkey-data
-  # LEGACY: the pre-cutover MinIO data (read once by object-store-migrate; removed by an operator afterwards).
-  minio-data:
-    name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_minio-data
   seaweedfs-data:
     name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_seaweedfs-data
   # s3.json (identities + secrets): written only by object-store-provision, mounted read-only by seaweedfs.

@@ -14,8 +14,9 @@
 // it for the named buckets only (e.g. a tenant whose last document was erased).
 // A restore (`--restore`) never deletes: objects written to the primary since the last copy run survive it.
 // The source's stored checksum is the reference: bytes that do not match it are never written to the target.
-// `--adopt-unchecksummed` (the one-time MinIO -> SeaweedFS migration only): a source object stored WITHOUT a
-// checksum is copied with the SHA-256 of the bytes read, instead of failing; the target then verifies it.
+// `--adopt-unchecksummed` (a one-off for a source whose objects were never written with a checksum; the MinIO ->
+// SeaweedFS migration that needed it has run and is gone): a source object stored WITHOUT a checksum is copied with
+// the SHA-256 of the bytes read, instead of failing; the target then verifies it.
 // Not handled: a bucket dropped on the source keeps its objects on the copy; a created bucket gets no
 // versioning or expiry rule (run the provisioner / backfill after a restore).
 //

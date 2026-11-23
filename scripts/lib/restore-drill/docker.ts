@@ -24,7 +24,8 @@ const POSTGRES_DIR = join(
   "postgres",
 );
 let postgresImageBuilt = Boolean(process.env.WX_DRILL_POSTGRES_IMAGE);
-// The dev stack's image (present locally); production's compose.yml pins `minio/minio:latest`.
+// The drill's object-store stand-in is still a MinIO container today (ADR-0050 amendment: the drill has not moved
+// to SeaweedFS yet; production runs SeaweedFS, so deploy/production/compose.yml has no MinIO service any more).
 export const MINIO_IMAGE = process.env.WX_DRILL_MINIO_IMAGE ?? "cgr.dev/chainguard/minio:latest";
 export const PG_SUPERUSER = "postgres";
 export const PG_PASSWORD = "drill-superuser-pw";

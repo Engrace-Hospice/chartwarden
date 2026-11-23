@@ -15,11 +15,11 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import {
-  OBJECT_STORE_ENV_PAIRS,
-  type ObjectStoreEnvPair,
+  LEFTOVER_MINIO_ENV_NAMES,
+  OBJECT_STORE_ENV_NAMES,
   envEntry,
   syntheticValue,
-} from "./object-store-env-pairs";
+} from "./deploy-env-helpers";
 
 // #861 (CW-QA-0017) — fault injection for deploy/production/deploy.sh's rollback decision. The real script runs
 // against a stubbed `docker` that fakes the migration ledger, the migrate run and each later failure point; the
@@ -68,9 +68,6 @@ case "$*" in
     exit "\${STUB_PROVISION_EXIT:-0}" ;;
   *"--force-recreate api worker web docling-worker"*) exit "\${STUB_UP_EXIT:-0}" ;;
   *"volume ls"*) [ -z "\${STUB_MINIO_VOLUME:-}" ] || echo "\$STUB_MINIO_VOLUME" ;;
-  *"--entrypoint bun object-store-provision -e console.log"*) if [ -n "\${STUB_CUTOVER_RECORDED:-}" ]; then echo recorded; else echo absent; fi ;;
-  *"run --rm --no-deps object-store-migrate"*) exit "\${STUB_COPY_EXIT:-0}" ;;
-  *"ps -aq api worker"*) printf 'cid-api\\ncid-worker\\n' ;;
 esac
 exit 0
 `;
@@ -110,15 +107,11 @@ interface Scenario {
   readonly hangProvisionSeconds?: number;
   /** smoke.sh makes the deploy dir read-only, so the EXIT-trap cleanup fails. */
   readonly lockDir?: boolean;
-  /** The host still has a MinIO volume (the one-time SeaweedFS cutover is due unless recorded). */
+  /** The host still has the retired MinIO volume and no cutover marker (deploy.sh must not care any more). */
   readonly legacyMinio?: boolean;
-  /** The seaweedfs-config volume records a completed cutover (the marker file itself is absent). */
-  readonly cutoverRecorded?: boolean;
-  /** Exit status of the MinIO -> SeaweedFS mirror pass. */
-  readonly copyExit?: number;
-  /** The object-store credential lines of `.env.production`. Default: a host that predates the rename (MINIO_* only). */
+  /** The object-store credential lines of `.env.production`. Default: canonical names plus the leftover MINIO_* lines. */
   readonly objectStoreEnv?: readonly string[];
-  /** Exercise mismatch refusal before deploy.sh generates any unrelated compatibility secret. */
+  /** Leave the Docling bearer out, to see deploy.sh generate it. */
   readonly omitDoclingWorkerToken?: boolean;
   /** `.env.production` ends without a newline (deploy.sh must not glue an appended line onto the last one). */
   readonly noTrailingNewline?: boolean;
@@ -145,7 +138,7 @@ interface Outcome {
   readonly curlArgs: string;
   /** The -K config curl read on stdin. */
   readonly curlStdin: string;
-  /** `.object-store-cutover` exists after the run. */
+  /** `.object-store-cutover` exists after the run (deploy.sh no longer writes it). */
   readonly cutoverMarker: boolean;
   /** `.env.production` as the host had it before the run. */
   readonly envBefore: string;
@@ -165,10 +158,11 @@ interface Prepared {
   readonly envBefore: string;
 }
 
-/** A host that predates the rename: the object-store credentials exist under the MINIO_* names only. */
-const LEGACY_OBJECT_STORE_ENV: readonly string[] = OBJECT_STORE_ENV_PAIRS.map(
-  (p) => `${p.legacy}=${syntheticValue(p.legacy, "old")}`,
-);
+/** A live host: the canonical names, plus the MINIO_* aliases the compatibility release left behind (unused now). */
+const DEFAULT_OBJECT_STORE_ENV: readonly string[] = [
+  ...OBJECT_STORE_ENV_NAMES.map((n) => `${n}=${syntheticValue(n, "new")}`),
+  ...LEFTOVER_MINIO_ENV_NAMES.map((n) => `${n}=${syntheticValue(n, "old")}`),
+];
 
 function prepare(s: Scenario): Prepared {
   const dir = mkdtempSync(join(scratch, "host-"));
@@ -190,7 +184,7 @@ function prepare(s: Scenario): Prepared {
     `CHARTWARDEN_IMAGE=${OLD_API}`,
     "CHARTWARDEN_WEB_IMAGE=ghcr.io/o/chartwarden-web:sha-old",
     ...(s.omitDoclingWorkerToken ? [] : ["DOCLING_WORKER_TOKEN=x"]),
-    ...(s.objectStoreEnv ?? LEGACY_OBJECT_STORE_ENV),
+    ...(s.objectStoreEnv ?? DEFAULT_OBJECT_STORE_ENV),
     "CHARTWARDEN_DESTRUCTION_PASSWORD=x",
     ...(s.alert?.via === "legacy-env-file" && s.alert.url
       ? [`DEPLOY_ALERT_WEBHOOK_URL=${s.alert.url}`]
@@ -228,8 +222,6 @@ function prepare(s: Scenario): Prepared {
       STUB_LEDGER_FAIL: s.ledgerFail ?? "",
       STUB_CURL_EXIT: String(s.alert?.curlExit ?? 0),
       STUB_MINIO_VOLUME: s.legacyMinio ? "wardenx_minio-data" : "",
-      STUB_CUTOVER_RECORDED: s.cutoverRecorded ? "1" : "",
-      STUB_COPY_EXIT: String(s.copyExit ?? 0),
       STUB_SLEEP: s.hangProvisionSeconds ? String(s.hangProvisionSeconds) : "",
       ...(s.alert?.via === "env" && s.alert.url ? { DEPLOY_ALERT_WEBHOOK_URL: s.alert.url } : {}),
     },
@@ -315,49 +307,37 @@ describe.skipIf(BUN === "")("deploy.sh rollback decision under injected failures
     expect(oldRestarts(o)).toBe(0);
   });
 
-  describe("one-time SeaweedFS cutover", () => {
-    const index = (o: Outcome, needle: string): number =>
-      o.calls.findIndex((c) => c.includes(needle));
+  // The one-time MinIO -> SeaweedFS cutover is gone: a host that still has the retired MinIO volume (and no marker, and
+  // no record in the seaweedfs-config volume) is deployed exactly like any other.
+  describe("retired MinIO cutover", () => {
+    const callsMatching = (o: Outcome, re: RegExp): string[] => o.calls.filter((c) => re.test(c));
 
-    it("a failed mirror undoes the cutover (MinIO back on its port, the stopped api/worker started) before any migration", () => {
-      const o = deploy({ legacyMinio: true, copyExit: 1 });
-      expect(o.code, o.out).toBe(1);
+    it("a host with a leftover minio-data volume and no marker deploys normally: no volume query, no stop, no copy, no marker", () => {
+      const o = deploy({ legacyMinio: true });
+      expect(o.code, o.out).toBe(0);
+      expect(callsMatching(o, /volume ls/)).toEqual([]);
+      expect(
+        callsMatching(o, /stop api worker|legacy-minio|object-store-migrate|--profile/),
+      ).toEqual([]);
       expect(o.cutoverMarker).toBe(false);
-      const stop = index(o, "stop api worker");
-      const copy = index(o, "object-store-migrate");
-      expect(stop).toBeGreaterThan(-1);
-      expect(copy).toBeGreaterThan(stop);
-      expect(index(o, "stop seaweedfs")).toBeGreaterThan(copy);
-      expect(index(o, "-f - --profile legacy-minio up")).toBeGreaterThan(copy);
-      expect(index(o, "start cid-api cid-worker")).toBeGreaterThan(copy);
-      expect(o.calls.some((c) => c.includes("scripts/db/migrate.ts"))).toBe(false);
-      expect(oldRestarts(o)).toBe(0); // the stopped containers come back unchanged, not recreated
+      expect(oldRestarts(o)).toBe(0);
     });
 
-    it("a failure after the cutover recreates the previous release (on SeaweedFS), never leaves the api stopped", () => {
-      const o = deploy({ legacyMinio: true, migrateExit: 1 });
-      expect(o.code, o.out).toBe(1);
-      expect(o.cutoverMarker).toBe(true);
-      expect(o.calls.some((c) => c.includes('writeFileSync("/config/cutover-done"'))).toBe(true);
-      expect(oldRestarts(o), o.out).toBe(1);
+    it("a failure after migrating restores the previous release the ordinary way, with no cutover banner", () => {
+      const o = deploy({ legacyMinio: true, smokeExit: 1 });
+      expectRolledBack(o, true);
+      expect(o.out).not.toContain("cutover");
     });
 
-    it("an operator hold after the cutover says the api is STOPPED and how to bring it back", () => {
+    it("an operator hold carries no 'app is STOPPED' exception", () => {
       const o = deploy({
         legacyMinio: true,
         applied: ["1291_m1_drop_legacy.sql"],
         provisionExit: 1,
       });
       expectHeld(o);
-      expect(o.out).toContain("THE APP IS DOWN");
-    });
-
-    it("a cutover recorded in the volume is never re-run when the marker file is lost", () => {
-      const o = deploy({ legacyMinio: true, cutoverRecorded: true });
-      expect(o.code, o.out).toBe(0);
-      expect(o.cutoverMarker).toBe(true);
-      expect(o.calls.some((c) => c.includes("stop api worker"))).toBe(false);
-      expect(o.calls.some((c) => c.includes("object-store-migrate"))).toBe(false);
+      expect(o.out).not.toContain("THE APP IS DOWN");
+      expect(o.out).not.toContain("EXCEPTION");
     });
   });
 
@@ -473,224 +453,158 @@ describe.skipIf(BUN === "")("deploy.sh rollback decision under injected failures
   });
 });
 
-// Object-store credential names (additive compatibility release). deploy.sh reconciles each canonical <-> legacy pair in
-// `.env.production` BEFORE the rollback backup is taken: copy old->new, copy new->old, generate one value for both, accept
-// equal values, and refuse different ones (exit 78) before any docker call. No value is ever printed, none is rotated.
-describe.skipIf(BUN === "")("deploy.sh object-store credential names", () => {
-  type Mode = "old-only" | "new-only" | "both-equal" | "both-different" | "neither";
-  const oldValue = (p: ObjectStoreEnvPair): string => syntheticValue(p.legacy, "old");
-  const newValue = (p: ObjectStoreEnvPair): string => syntheticValue(p.canonical, "new");
-
-  function pairLines(p: ObjectStoreEnvPair, mode: Mode): string[] {
-    switch (mode) {
-      case "old-only":
-        return [`${p.legacy}=${oldValue(p)}`];
-      case "new-only":
-        return [`${p.canonical}=${newValue(p)}`];
-      case "both-equal":
-        return [`${p.canonical}=${newValue(p)}`, `${p.legacy}=${newValue(p)}`];
-      case "both-different":
-        return [`${p.canonical}=${newValue(p)}`, `${p.legacy}=${oldValue(p)}`];
-      case "neither":
-        return [];
-    }
-  }
-
-  /** The env lines for all five pairs, each in the given mode (or the mode `modeOf` picks for it). */
-  const envFor = (modeOf: Mode | ((p: ObjectStoreEnvPair, i: number) => Mode)): string[] =>
-    OBJECT_STORE_ENV_PAIRS.flatMap((p, i) =>
-      pairLines(p, typeof modeOf === "function" ? modeOf(p, i) : modeOf),
-    );
+// Object-store credentials. deploy.sh makes sure the five canonical names compose.yml reads exist in `.env.production`
+// BEFORE the rollback backup is taken: an absent one is generated once, an existing one is never touched or rotated, and no
+// value is ever printed. The retired MINIO_* rollback aliases are neither read nor written; a host that still carries them
+// keeps booting.
+describe.skipIf(BUN === "")("deploy.sh object-store credentials", () => {
+  const value = (name: string): string => syntheticValue(name, "new");
+  const canonicalEnv = (): string[] => OBJECT_STORE_ENV_NAMES.map((n) => `${n}=${value(n)}`);
+  const leftoverEnv = (): string[] =>
+    LEFTOVER_MINIO_ENV_NAMES.map((n) => `${n}=${syntheticValue(n, "old")}`);
 
   /** Every synthetic value a fixture could hold: none of them may ever appear in deploy output. */
-  const allSyntheticValues = OBJECT_STORE_ENV_PAIRS.flatMap((p) => [oldValue(p), newValue(p)]);
+  const allSyntheticValues = [
+    ...OBJECT_STORE_ENV_NAMES.map(value),
+    ...LEFTOVER_MINIO_ENV_NAMES.map((n) => syntheticValue(n, "old")),
+  ];
   const expectNoSecretInOutput = (o: Outcome): void => {
     for (const v of allSyntheticValues) expect(o.out).not.toContain(v);
   };
+  const minioLines = (env: string): string[] =>
+    env.split("\n").filter((l) => l.startsWith("MINIO_"));
 
-  it("old names only (an existing host): each new name gets the exact old value, the old lines stay", () => {
-    const o = deploy({ objectStoreEnv: envFor("old-only") });
+  it("canonical names only (the template's shape): succeeds, writes nothing, creates no MINIO_* alias", () => {
+    const o = deploy({ objectStoreEnv: canonicalEnv() });
     expect(o.code, o.out).toBe(0);
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      expect(envEntry(o.env, p.canonical), p.canonical).toEqual({ value: oldValue(p), count: 1 });
-      expect(envEntry(o.env, p.legacy), p.legacy).toEqual({ value: oldValue(p), count: 1 });
-      expect(o.out).toContain(`copied ${p.legacy} to ${p.canonical} in .env.production`);
+    for (const n of OBJECT_STORE_ENV_NAMES) {
+      expect(envEntry(o.env, n), n).toEqual({ value: value(n), count: 1 });
     }
+    expect(minioLines(o.env)).toEqual([]);
+    expect(o.out).not.toMatch(/(copied|generated) (SEAWEEDFS|OBJECT_STORE|MINIO)_/);
     expectNoSecretInOutput(o);
   });
 
-  it("new names only (a fresh host): each legacy alias gets the exact new value, the new lines stay", () => {
-    const o = deploy({ objectStoreEnv: envFor("new-only") });
+  it("a live host that still has the MINIO_* lines keeps booting: they are left byte-for-byte, nothing is copied either way", () => {
+    const o = deploy({ objectStoreEnv: [...canonicalEnv(), ...leftoverEnv()] });
     expect(o.code, o.out).toBe(0);
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      expect(envEntry(o.env, p.canonical), p.canonical).toEqual({ value: newValue(p), count: 1 });
-      expect(envEntry(o.env, p.legacy), p.legacy).toEqual({ value: newValue(p), count: 1 });
-      expect(o.out).toContain(`copied ${p.canonical} to ${p.legacy} in .env.production`);
+    for (const n of OBJECT_STORE_ENV_NAMES) {
+      expect(envEntry(o.env, n), n).toEqual({ value: value(n), count: 1 });
     }
+    for (const n of LEFTOVER_MINIO_ENV_NAMES) {
+      expect(envEntry(o.env, n), n).toEqual({ value: syntheticValue(n, "old"), count: 1 });
+    }
+    expect(o.out).not.toMatch(/(copied|generated) (SEAWEEDFS|OBJECT_STORE|MINIO)_/);
     expectNoSecretInOutput(o);
   });
 
-  it("both names set and equal: succeeds and writes nothing", () => {
-    const o = deploy({ objectStoreEnv: envFor("both-equal") });
+  it("a canonical name that DIFFERS from its old MINIO_* twin is no longer an error: the canonical value wins, nothing exits 78", () => {
+    const o = deploy({
+      objectStoreEnv: [
+        `SEAWEEDFS_APP_SECRET_KEY=${value("SEAWEEDFS_APP_SECRET_KEY")}`,
+        `MINIO_APP_SECRET_KEY=${syntheticValue("MINIO_APP_SECRET_KEY", "old")}`,
+        ...canonicalEnv().filter((l) => !l.startsWith("SEAWEEDFS_APP_SECRET_KEY=")),
+      ],
+    });
     expect(o.code, o.out).toBe(0);
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      expect(envEntry(o.env, p.canonical), p.canonical).toEqual({ value: newValue(p), count: 1 });
-      expect(envEntry(o.env, p.legacy), p.legacy).toEqual({ value: newValue(p), count: 1 });
-    }
-    expect(o.out).not.toMatch(/copied (SEAWEEDFS|OBJECT_STORE|MINIO)_/);
-    expect(o.out).not.toMatch(/generated (SEAWEEDFS|OBJECT_STORE|MINIO)_/);
+    expect(o.out).not.toContain("MISMATCH");
+    expect(envEntry(o.env, "SEAWEEDFS_APP_SECRET_KEY").value).toBe(
+      value("SEAWEEDFS_APP_SECRET_KEY"),
+    );
     expectNoSecretInOutput(o);
   });
 
-  it("neither name set: ONE value is generated and written under both names, and never printed", () => {
+  it("a fresh host (none of the names set): each canonical name is generated once, never printed, no MINIO_* is written", () => {
     const o = deploy({ objectStoreEnv: [] });
     expect(o.code, o.out).toBe(0);
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      const canonical = envEntry(o.env, p.canonical);
-      const legacy = envEntry(o.env, p.legacy);
-      expect(canonical.count, p.canonical).toBe(1);
-      expect(legacy.count, p.legacy).toBe(1);
-      expect(canonical.value, p.canonical).toBeTruthy();
-      expect(legacy.value, `${p.legacy} must equal ${p.canonical}`).toBe(canonical.value);
-      expect(o.out).toContain(`generated ${p.canonical} and ${p.legacy} in .env.production`);
-      // The generated value (a secret for every pair but the two account names) is not in the log.
-      if (!p.canonical.endsWith("ACCESS_KEY")) {
-        expect(canonical.value?.length ?? 0, p.canonical).toBeGreaterThanOrEqual(32);
-        expect(o.out).not.toContain(canonical.value as string);
+    for (const n of OBJECT_STORE_ENV_NAMES) {
+      const entry = envEntry(o.env, n);
+      expect(entry.count, n).toBe(1);
+      expect(entry.value, n).toBeTruthy();
+      expect(o.out).toContain(`generated ${n} in .env.production`);
+      if (!n.endsWith("ACCESS_KEY")) {
+        // A secret for every name but the two account names: long, and absent from the log.
+        expect(entry.value?.length ?? 0, n).toBeGreaterThanOrEqual(32);
+        expect(o.out).not.toContain(entry.value as string);
       }
     }
+    expect(minioLines(o.env)).toEqual([]);
     // The admin and app accounts must differ (seaweedfs-identities.ts refuses the same name for both).
     expect(envEntry(o.env, "SEAWEEDFS_ADMIN_ACCESS_KEY").value).toBe("chartwarden-seaweedfs-admin");
     expect(envEntry(o.env, "SEAWEEDFS_APP_ACCESS_KEY").value).toBe("chartwarden-app");
+    const secrets = [
+      "SEAWEEDFS_ADMIN_SECRET_KEY",
+      "SEAWEEDFS_APP_SECRET_KEY",
+      "OBJECT_STORE_AUDIT_WEBHOOK_TOKEN",
+    ];
+    expect(new Set(secrets.map((n) => envEntry(o.env, n).value)).size).toBe(secrets.length);
   });
 
-  it("each pair is reconciled by its own state in one run", () => {
-    const modes: Mode[] = ["old-only", "new-only", "both-equal", "neither", "old-only"];
-    const o = deploy({ objectStoreEnv: envFor((_p, i) => modes[i] ?? "neither") });
-    expect(o.code, o.out).toBe(0);
-    OBJECT_STORE_ENV_PAIRS.forEach((p, i) => {
-      const canonical = envEntry(o.env, p.canonical);
-      const legacy = envEntry(o.env, p.legacy);
-      expect(canonical.count, p.canonical).toBe(1);
-      expect(legacy.count, p.legacy).toBe(1);
-      expect(legacy.value, p.legacy).toBe(canonical.value);
-      if (modes[i] === "old-only") expect(canonical.value).toBe(oldValue(p));
-      if (modes[i] === "new-only" || modes[i] === "both-equal")
-        expect(canonical.value).toBe(newValue(p));
-    });
-    expectNoSecretInOutput(o);
-  });
-
-  it.each(OBJECT_STORE_ENV_PAIRS.map((p) => [p.canonical, p] as const))(
-    "%s and its alias set to different values: exit 78 before any docker call, nothing written, no value shown",
-    (_name, mismatched) => {
-      const o = deploy({
-        objectStoreEnv: envFor((p) => (p === mismatched ? "both-different" : "both-equal")),
-      });
-      expect(o.code, o.out).toBe(78);
-      expect(o.calls, "docker must not be called").toEqual([]);
-      expect(o.env).toBe(o.envBefore);
-      expect(o.files.filter((f) => f.startsWith(".env.production."))).toEqual([]);
-      expect(o.previousReleaseSaved).toBe(false);
-      expect(o.out).toContain("OBJECT-STORE ENV MISMATCH");
-      expect(o.out).toContain(`${mismatched.canonical} and ${mismatched.legacy}`);
-      expect(o.out).toContain("values not shown");
-      expectNoSecretInOutput(o);
-    },
-  );
-
-  it("a mismatch in one pair blocks the whole run: the other pairs are not half-migrated", () => {
+  it("only the missing names are generated; the others keep their value", () => {
     const o = deploy({
-      objectStoreEnv: envFor((_p, i) => (i === 0 ? "both-different" : "old-only")),
-    });
-    expect(o.code, o.out).toBe(78);
-    expect(o.calls).toEqual([]);
-    expect(o.env).toBe(o.envBefore); // byte-identical: no canonical name was created for the clean pairs
-    for (const p of OBJECT_STORE_ENV_PAIRS.slice(1)) {
-      expect(envEntry(o.env, p.canonical).count, p.canonical).toBe(0);
-    }
-  });
-
-  it("a mismatch refuses before generating an unrelated missing Docling token", () => {
-    const o = deploy({
-      omitDoclingWorkerToken: true,
-      objectStoreEnv: envFor((_p, i) => (i === 0 ? "both-different" : "both-equal")),
-    });
-    expect(o.code, o.out).toBe(78);
-    expect(o.calls).toEqual([]);
-    expect(o.env).toBe(o.envBefore);
-    expect(envEntry(o.env, "DOCLING_WORKER_TOKEN").count).toBe(0);
-    expect(o.out).not.toContain("generated DOCLING_WORKER_TOKEN");
-  });
-
-  it("every mismatched pair is named in one failure", () => {
-    const o = deploy({ objectStoreEnv: envFor("both-different") });
-    expect(o.code, o.out).toBe(78);
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      expect(o.out).toContain(`${p.canonical} and ${p.legacy}`);
-    }
-    expectNoSecretInOutput(o);
-  });
-
-  it("a mismatch alerts with step object-store-env and exit 78, carrying no value", () => {
-    const o = deploy({
-      objectStoreEnv: envFor((_p, i) => (i === 1 ? "both-different" : "both-equal")),
-      alert: { via: "env", url: WEBHOOK },
-    });
-    expect(o.code, o.out).toBe(78);
-    expect(o.alertBody).toMatchObject({
-      step: "object-store-env",
-      exit_code: 78,
-      operator_decision_required: false,
-      applied_migrations: [],
-    });
-    for (const v of allSyntheticValues) expect(JSON.stringify(o.alertBody)).not.toContain(v);
-  });
-
-  it("copies the raw value verbatim: spaces, quotes, `=`, `$`, `#`, `&`, `/` and backslashes survive", () => {
-    const raw = 'a=b/c&d$HOME#e "q" \\n tail ';
-    const first = OBJECT_STORE_ENV_PAIRS[0] as ObjectStoreEnvPair;
-    // Pair 0 old-only with the awkward value; the other four pairs already agree (two lines each).
-    const o = deploy({
-      objectStoreEnv: [`${first.legacy}=${raw}`, ...envFor("both-equal").slice(2)],
+      objectStoreEnv: canonicalEnv().filter(
+        (l) => !l.startsWith("SEAWEEDFS_ADMIN_SECRET_KEY=") && !l.startsWith("OBJECT_STORE_AUDIT"),
+      ),
     });
     expect(o.code, o.out).toBe(0);
-    expect(envEntry(o.env, first.canonical)).toEqual({ value: raw, count: 1 });
-    expect(envEntry(o.env, first.legacy)).toEqual({ value: raw, count: 1 });
+    expect(o.out).toContain("generated SEAWEEDFS_ADMIN_SECRET_KEY in .env.production");
+    expect(o.out).toContain("generated OBJECT_STORE_AUDIT_WEBHOOK_TOKEN in .env.production");
+    expect(o.out).not.toContain("generated SEAWEEDFS_APP");
+    expect(envEntry(o.env, "SEAWEEDFS_APP_SECRET_KEY")).toEqual({
+      value: value("SEAWEEDFS_APP_SECRET_KEY"),
+      count: 1,
+    });
+  });
+
+  it("a host that has the MINIO_* names ONLY (never ran the compatibility release) gets fresh canonical values; its MINIO_* lines are not read or changed", () => {
+    const o = deploy({ objectStoreEnv: leftoverEnv() });
+    expect(o.code, o.out).toBe(0);
+    for (const n of OBJECT_STORE_ENV_NAMES) expect(envEntry(o.env, n).count, n).toBe(1);
+    for (const n of LEFTOVER_MINIO_ENV_NAMES) {
+      expect(envEntry(o.env, n), n).toEqual({ value: syntheticValue(n, "old"), count: 1 });
+    }
+    expectNoSecretInOutput(o);
   });
 
   it("an env file with no trailing newline never has an appended line glued onto its last line", () => {
-    const o = deploy({ objectStoreEnv: envFor("old-only"), noTrailingNewline: true });
+    const o = deploy({ objectStoreEnv: [], noTrailingNewline: true });
     expect(o.code, o.out).toBe(0);
     expect(envEntry(o.env, "CHARTWARDEN_DESTRUCTION_PASSWORD")).toEqual({ value: "x", count: 1 });
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      expect(envEntry(o.env, p.canonical), p.canonical).toEqual({ value: oldValue(p), count: 1 });
-    }
+    for (const n of OBJECT_STORE_ENV_NAMES) expect(envEntry(o.env, n).count, n).toBe(1);
   });
 
-  it("the rollback backup is taken AFTER the reconciliation: a failed deploy restores an env that still carries both names", () => {
-    const o = deploy({ objectStoreEnv: envFor("old-only"), smokeExit: 1 });
+  it("the Docling bearer is generated like before when missing", () => {
+    const o = deploy({ objectStoreEnv: canonicalEnv(), omitDoclingWorkerToken: true });
+    expect(o.code, o.out).toBe(0);
+    expect(o.out).toContain("generated DOCLING_WORKER_TOKEN in .env.production");
+    expect(envEntry(o.env, "DOCLING_WORKER_TOKEN").count).toBe(1);
+  });
+
+  it("the rollback backup is taken AFTER the generation: a failed deploy restores an env that still carries the generated names", () => {
+    const o = deploy({ objectStoreEnv: [], smokeExit: 1 });
     expectRolledBack(o, true);
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      expect(envEntry(o.env, p.canonical), p.canonical).toEqual({ value: oldValue(p), count: 1 });
-      expect(envEntry(o.env, p.legacy), p.legacy).toEqual({ value: oldValue(p), count: 1 });
-    }
-    expectNoSecretInOutput(o);
+    for (const n of OBJECT_STORE_ENV_NAMES) expect(envEntry(o.env, n).count, n).toBe(1);
   });
 
-  it("an operator hold after a contract migration still leaves both names identical in the saved previous-release env", () => {
+  it("an operator hold after a contract migration saves a previous-release env that carries the same names", () => {
     const o = deploy({
-      objectStoreEnv: envFor("new-only"),
+      objectStoreEnv: canonicalEnv(),
       applied: ["1291_m1_drop_legacy.sql"],
       smokeExit: 1,
     });
     expectHeld(o);
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      const canonical = envEntry(o.previousReleaseEnv, p.canonical);
-      expect(canonical, p.canonical).toEqual({ value: newValue(p), count: 1 });
-      expect(envEntry(o.previousReleaseEnv, p.legacy), p.legacy).toEqual(canonical);
+    for (const n of OBJECT_STORE_ENV_NAMES) {
+      expect(envEntry(o.previousReleaseEnv, n), n).toEqual({ value: value(n), count: 1 });
     }
     expect(o.previousReleaseEnv).toContain(`CHARTWARDEN_IMAGE=${OLD_API}`);
+  });
+
+  it("deploy.sh never references the retired aliases: no MINIO_*, no legacy-minio profile, no mismatch exit", () => {
+    const script = readFileSync(DEPLOY, "utf8");
+    expect(script).not.toMatch(/MINIO_(ROOT|APP|ACCESS_LOG)/);
+    expect(script).not.toContain("legacy-minio");
+    expect(script).not.toContain("OBJECT_STORE_ENV_PAIRS");
+    expect(script).not.toMatch(/exit 78/);
   });
 });
 

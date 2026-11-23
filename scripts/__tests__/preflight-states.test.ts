@@ -69,7 +69,7 @@ const SMOKE = [
 const LEGACY_VOLUMES = [
   "wardenx_postgres-data",
   "wardenx_valkey-data",
-  "wardenx_minio-data",
+  "wardenx_seaweedfs-data",
   "wardenx_clamav-data",
 ];
 const NEW_VOLUMES = LEGACY_VOLUMES.map((v) => v.replace("wardenx_", "chartwarden_"));
@@ -170,17 +170,17 @@ describe("preflight.sh across the infra-rename windows", () => {
       pgProjects: ["chartwarden"],
     });
     expect(r.code).toBe(67);
-    expect(r.out).toContain("chartwarden_minio-data");
+    expect(r.out).toContain("chartwarden_seaweedfs-data");
   });
 
-  it("refuses a half-finished copy of the SeaweedFS volume (post-cutover object store)", () => {
+  it("does not look at the retired MinIO volume: a leftover wardenx_minio-data never blocks a deploy", () => {
     const r = run({
       env: ["CHARTWARDEN_VOLUME_PREFIX=chartwarden", "CHARTWARDEN_DB_NAME=wardenx", ...SMOKE],
-      volumes: ["wardenx_postgres-data", "wardenx_seaweedfs-data", "chartwarden_postgres-data"],
+      volumes: [...NEW_VOLUMES, "wardenx_minio-data"],
       pgProjects: ["chartwarden"],
     });
-    expect(r.code).toBe(67);
-    expect(r.out).toContain("chartwarden_seaweedfs-data");
+    expect(r.code, r.out).toBe(0);
+    expect(r.out).not.toContain("minio-data");
   });
 
   it("refuses when the key says chartwarden but the cluster still holds wardenx (rename not run)", () => {
