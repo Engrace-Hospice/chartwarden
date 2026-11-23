@@ -164,6 +164,7 @@ per-module build truth is the generated matrix (`bun run status:matrix`).
 
 | Document | Scope |
 |---|---|
+| [`implementation/wardenlens-unified-review-v3-spec.md`](./implementation/wardenlens-unified-review-v3-spec.md) | WardenLens V3 patient-centered review projection, safety invariants, interaction architecture, responsive behavior, tests, and phased roadmap. |
 | [`implementation/CHARTWARDEN_INTAKE_REDESIGN_IMPLEMENTATION_PLAN.md`](./implementation/CHARTWARDEN_INTAKE_REDESIGN_IMPLEMENTATION_PLAN.md) | Unified intake redesign scope, work packages, delivery gates, and testing matrix. |
 | [`implementation/intake-current-state-audit.md`](./implementation/intake-current-state-audit.md) | Verified intake routes, controls, state transitions, preservation matrix, and rollout constraints. |
 | [`implementation/intake-workspace-user-guide.md`](./implementation/intake-workspace-user-guide.md) | Frontline workflow guidance for referral intake, patient matching, admission handoff, and readiness correction. |
