@@ -69,6 +69,7 @@ export const medicaidPayerAuthorizationEvent = pgTable(
       t.serviceFrom,
       t.serviceTo,
     ),
+    supersedes: index("medicaid_payer_auth_supersedes_ix").on(t.organizationId, t.supersedesId),
     rangeValid: check("medicaid_payer_auth_service_range_valid", sql`service_from <= service_to`),
     stateValid: check("medicaid_payer_auth_state_valid", sql`length(service_state) = 2`),
     locValid: check(

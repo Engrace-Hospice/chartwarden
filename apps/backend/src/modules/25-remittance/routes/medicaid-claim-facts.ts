@@ -40,7 +40,7 @@ export interface MedicaidSubmissionEvidenceView {
   readonly replacesClaimId: string | null;
   readonly replacedByClaimId: string | null;
   readonly attempts: readonly {
-    readonly submissionId: string;
+    readonly submissionId: string | null;
     readonly attemptIndex: number;
     readonly claimVersion: number | null;
     readonly sourceAccountRef: string | null;

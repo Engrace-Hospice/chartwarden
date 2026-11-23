@@ -76,6 +76,8 @@ CREATE TABLE medicaid_payer_rate_policy (
 CREATE INDEX medicaid_payer_rate_policy_lookup_ix ON medicaid_payer_rate_policy
   (organization_id, provider_entity_id, canonical_payer_id, service_state, locality_code,
    service_category, unit_basis, effective_from, effective_to);--> statement-breakpoint
+CREATE INDEX medicaid_payer_rate_policy_supersedes_ix ON medicaid_payer_rate_policy
+  (organization_id, supersedes_id);--> statement-breakpoint
 
 ALTER TABLE medicaid_payer_rate_policy ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE medicaid_payer_rate_policy FORCE ROW LEVEL SECURITY;--> statement-breakpoint

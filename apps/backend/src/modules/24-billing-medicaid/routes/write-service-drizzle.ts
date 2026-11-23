@@ -1689,8 +1689,8 @@ export function buildDrizzleM24WriteService(
                       eq(PA.admissionId, input.admissionId),
                       eq(PA.providerEntityId, input.providerEntityId),
                       eq(PA.serviceState, serviceState),
-                      lte(PA.effectiveFrom, rangeTo),
-                      or(isNull(PA.effectiveTo), gte(PA.effectiveTo, rangeFrom)),
+                      lte(PA.effectiveFrom, input.serviceTo),
+                      or(isNull(PA.effectiveTo), gte(PA.effectiveTo, input.serviceFrom)),
                     ),
                   )
                   .orderBy(PA.effectiveFrom, PA.id)
@@ -1798,8 +1798,8 @@ export function buildDrizzleM24WriteService(
                       eq(EE.organizationId, actor.organizationId),
                       eq(EE.providerEntityId, input.providerEntityId),
                       eq(EE.serviceState, serviceState),
-                      lte(EE.effectiveFrom, rangeTo),
-                      or(isNull(EE.effectiveTo), gte(EE.effectiveTo, rangeFrom)),
+                      lte(EE.effectiveFrom, input.serviceTo),
+                      or(isNull(EE.effectiveTo), gte(EE.effectiveTo, input.serviceFrom)),
                     ),
                   )
                   .orderBy(EE.effectiveFrom, EE.id)
@@ -1883,6 +1883,7 @@ export function buildDrizzleM24WriteService(
               row.canonicalPayerId === projectedProgramResponsibility.canonicalPayerId &&
               row.clearinghouse === selectedClearinghouse.vendor &&
               row.transactionType === "837I" &&
+              (row.status === "pending" || row.status === "verified") &&
               day(row.effectiveFrom) <= input.serviceTo &&
               (!row.effectiveTo || day(row.effectiveTo) >= input.serviceFrom),
           );
@@ -2330,8 +2331,8 @@ export function buildDrizzleM24WriteService(
               eq(PA.admissionId, input.admissionId),
               eq(PA.providerEntityId, input.providerEntityId),
               eq(PA.serviceState, serviceState),
-              lte(PA.effectiveFrom, new Date(input.serviceTo)),
-              or(isNull(PA.effectiveTo), gte(PA.effectiveTo, new Date(input.serviceFrom))),
+              lte(PA.effectiveFrom, input.serviceTo),
+              or(isNull(PA.effectiveTo), gte(PA.effectiveTo, input.serviceFrom)),
             ),
           )
           .orderBy(PA.effectiveFrom, PA.id)
@@ -3839,8 +3840,8 @@ export function buildDrizzleM24WriteService(
             programKind: input.programKind,
             canonicalPayerId: input.canonicalPayerId ?? null,
             status: "pending",
-            effectiveFrom: new Date(input.effectiveFrom),
-            effectiveTo: input.effectiveTo ? new Date(input.effectiveTo) : null,
+            effectiveFrom: input.effectiveFrom,
+            effectiveTo: input.effectiveTo ?? null,
             sourceKind: input.sourceKind,
             evidenceReference: input.evidenceReference ?? null,
             recordedByMembershipId: membershipId,
@@ -3868,8 +3869,8 @@ export function buildDrizzleM24WriteService(
             transactionType: input.transactionType ?? null,
             evidenceKind: input.evidenceKind,
             status: "pending",
-            effectiveFrom: new Date(input.effectiveFrom),
-            effectiveTo: input.effectiveTo ? new Date(input.effectiveTo) : null,
+            effectiveFrom: input.effectiveFrom,
+            effectiveTo: input.effectiveTo ?? null,
             recordedByMembershipId: membershipId,
             version: 1,
           })

@@ -43,6 +43,7 @@ export const medicaidPayerProgramClassification = pgTable(
       t.effectiveTo,
       t.verificationStatus,
     ),
+    supersedes: index("mdm_medicaid_payer_program_classification_supersedes_ix").on(t.supersedesId),
     stateShape: check(
       "mdm_medicaid_payer_program_classification_state_ck",
       sql`length(${t.stateCode}) = 2`,
