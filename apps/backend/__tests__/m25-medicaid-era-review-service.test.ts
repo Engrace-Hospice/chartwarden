@@ -207,6 +207,56 @@ describe("replay inside one artifact", () => {
     ]);
   });
 
+  describe("a provider-adjustment-only set (no claim loops)", () => {
+    const plbOnly = (trace: string, reference = "REF2", payment = "250.00") =>
+      setBody(payment, [`PLB*1512345678*20261231*L6:${reference}*-${payment}`], trace);
+    const verdicts = (observations: ReturnType<typeof multiSet>["observations"]) =>
+      classifyIntraArtifactDuplicates(observations);
+    const pair = (first: readonly string[], second: readonly string[]) =>
+      verdicts(twoSets(first, second).observations);
+
+    it("holds a replay of the same set under a new trace number as a possible duplicate", async () => {
+      const { raw } = twoSets(plbOnly("T1"), plbOnly("T2"));
+      expect(await decisions(raw)).toEqual(["provider_adjustment_review", "possible_duplicate"]);
+    });
+
+    it("keeps the same trace number an exact duplicate", () => {
+      expect(pair(plbOnly("T1"), plbOnly("T1"))).toEqual(["none", "exact"]);
+    });
+
+    it("does not flag two sets that carry a different provider adjustment reference", () => {
+      expect(pair(plbOnly("T1", "REF2"), plbOnly("T2", "REF9"))).toEqual(["none", "none"]);
+    });
+
+    it("does not flag two sets that pay a different amount", () => {
+      expect(pair(plbOnly("T1"), plbOnly("T2", "REF2", "260.00"))).toEqual(["none", "none"]);
+    });
+
+    it("does not flag two sets with the same adjustment and amount but another payment date or payee", () => {
+      const { observations } = twoSets(plbOnly("T1"), plbOnly("T2"));
+      const [first, second] = observations as [(typeof observations)[0], (typeof observations)[0]];
+      const withSource = (source: Partial<(typeof first)["source"]>) => [
+        first,
+        { ...second, source: { ...second.source, ...source } },
+      ];
+      expect(verdicts(withSource({ paymentDate: "2026-06-16" }))).toEqual(["none", "none"]);
+      expect(
+        verdicts(withSource({ payee: { ...second.source.payee, identifier: "1888888888" } })),
+      ).toEqual(["none", "none"]);
+    });
+
+    it("does not flag repeated empty sets, which carry nothing to post twice", () => {
+      const bare = (trace: string) => setBody("0.00", [], trace);
+      expect(pair(bare("T1"), bare("T2"))).toEqual(["none", "none"]);
+    });
+
+    it("does not hold a claimless set against a claim set that pays the same amount", () => {
+      expect(
+        pair(plbOnly("T1"), setBody("250.00", paidClaim("PCN-0001", "ICN-A1", "250.00"), "T2")),
+      ).toEqual(["none", "none"]);
+    });
+  });
+
   describe("a payer reversal that shares the original's claim control number", () => {
     const reversalSet = (icn: string, trace: string) =>
       [
