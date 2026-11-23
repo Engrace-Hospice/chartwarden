@@ -8,6 +8,7 @@ import {
   parse999,
   read277caStatusDates,
   routeAckEvent,
+  transactionSetControlNumber,
 } from "@chartwarden/x12-837-client";
 import { X12FormatError, tokenizeInterchange } from "@chartwarden/x12-837-client";
 
@@ -87,16 +88,15 @@ export interface M24LineEvidence {
   readonly sourceLineReference: string;
   readonly sourceLocRecordReferences: readonly string[];
   readonly quantityEvidenceReference: string;
+  /**
+   * What the line's quantity was read from. An 837I SV204 basis is `DA` or `UN` only, so there is no minutes or hours
+   * source: hourly care must be converted to `UN` under a payer policy this mapper does not have, and is refused.
+   */
   readonly quantitySource:
     | "verified_daily_units"
-    | "verified_clinical_minutes"
-    | "verified_hourly_units"
     | "verified_other_units"
     | "synthetic_daily_units"
-    | "synthetic_clinical_minutes"
     | "synthetic_other_units";
-  /** Required for `clinical_minutes`; never derived from date-only service periods. */
-  readonly clinicalMinutes?: number;
 }
 
 export interface M24InstitutionalLine {
@@ -108,7 +108,7 @@ export interface M24InstitutionalLine {
   readonly serviceFrom: string;
   readonly serviceThrough: string | null;
   readonly quantity: number;
-  readonly unitBasis: "UN" | "DA" | "HR" | "MJ";
+  readonly unitBasis: "UN" | "DA";
   readonly chargeCents: number;
 }
 
@@ -171,6 +171,25 @@ function serviceDayCount(from: string, through: string): number | null {
   return start === null || end === null || end < start ? null : end - start + 1;
 }
 
+/**
+ * Index of the first line that bills the same revenue + procedure code for a day an earlier line already covers
+ * (a double bill of the same service), or null. Lines for different codes may legitimately share days.
+ * Dates are compared as ISO strings; a line without a through date covers its own day only.
+ */
+function firstOverlappingLine(lines: Claim837iInput["claim"]["lines"]): number | null {
+  const covered = new Map<string, { from: string; through: string }[]>();
+  for (const [index, line] of lines.entries()) {
+    const key = `${line.revenueCode}\u0000${line.hcpcs ?? ""}`;
+    const span = { from: line.serviceDate, through: line.serviceThroughDate ?? line.serviceDate };
+    const earlier = covered.get(key) ?? [];
+    if (earlier.some((other) => span.from <= other.through && other.from <= span.through)) {
+      return index;
+    }
+    covered.set(key, [...earlier, span]);
+  }
+  return null;
+}
+
 function documentFromInput(facts: M24DocumentFacts): M24DocumentResult<M24InstitutionalDocument> {
   if (facts.authority !== "server_reader" && facts.authority !== "synthetic_fixture") {
     return fail("M24_SOURCE_NOT_AUTHORITATIVE", "source.authority");
@@ -227,34 +246,16 @@ function documentFromInput(facts: M24DocumentFacts): M24DocumentResult<M24Instit
     if (line.serviceThroughDate === undefined) {
       return fail("M24_SERVICE_DATES_UNRESOLVED", `claim.lines[${index}].serviceThroughDate`);
     }
+    if (line.unitBasis !== undefined && line.unitBasis !== "UN" && line.unitBasis !== "DA") {
+      // Types forbid this; untyped input (HR, MJ, ...) is refused rather than serialized into SV204.
+      return fail("M24_QUANTITY_UNRESOLVED", `claim.lines[${index}].unitBasis`);
+    }
     if (line.unitBasis === "DA") {
       const days = serviceDayCount(line.serviceDate, line.serviceThroughDate);
       if (
         days === null ||
         line.units !== days ||
         !["verified_daily_units", "synthetic_daily_units"].includes(evidence.quantitySource)
-      ) {
-        return fail("M24_QUANTITY_UNRESOLVED", `claim.lines[${index}].units`);
-      }
-    } else if (line.unitBasis === "MJ") {
-      if (
-        evidence.quantitySource !== "verified_clinical_minutes" &&
-        evidence.quantitySource !== "synthetic_clinical_minutes"
-      ) {
-        return fail("M24_QUANTITY_UNRESOLVED", `claim.lines[${index}].clinicalMinutes`);
-      }
-      if (
-        evidence.clinicalMinutes === undefined ||
-        !Number.isSafeInteger(evidence.clinicalMinutes) ||
-        evidence.clinicalMinutes <= 0 ||
-        evidence.clinicalMinutes !== line.units
-      ) {
-        return fail("M24_QUANTITY_UNRESOLVED", `claim.lines[${index}].clinicalMinutes`);
-      }
-    } else if (line.unitBasis === "HR") {
-      if (
-        evidence.quantitySource !== "verified_hourly_units" &&
-        evidence.quantitySource !== "synthetic_other_units"
       ) {
         return fail("M24_QUANTITY_UNRESOLVED", `claim.lines[${index}].units`);
       }
@@ -265,6 +266,8 @@ function documentFromInput(facts: M24DocumentFacts): M24DocumentResult<M24Instit
       return fail("M24_QUANTITY_UNRESOLVED", `claim.lines[${index}].units`);
     }
   }
+  const overlap = firstOverlappingLine(facts.x12Input.claim.lines);
+  if (overlap !== null) return fail("M24_DOCUMENT_INVALID", `claim.lines[${overlap}].serviceDate`);
   if (facts.x12Input.claimFilingIndicator !== "MC" || facts.x12Input.commercial !== undefined) {
     return fail("M24_DOCUMENT_INVALID", "claimFilingIndicator");
   }
@@ -323,6 +326,17 @@ function documentFromInput(facts: M24DocumentFacts): M24DocumentResult<M24Instit
     }
     return fail("M24_DOCUMENT_INVALID", "x12");
   }
+}
+
+/**
+ * TEST ONLY. Mints the capability marker that `mapQualifiedM24ClaimToInstitutionalDocument` requires, so a test can
+ * exercise every refusal behind it. Deliberately not re-exported from the package root or `./testing`; production code
+ * has no way to import it (the package `exports` map exposes only those two entries).
+ */
+export function mintQualifiedFactsForTestOnly(
+  facts: Omit<M24QualifiedClaimFacts, typeof qualifiedFactsMarker>,
+): M24QualifiedClaimFacts {
+  return { ...facts, [qualifiedFactsMarker]: true };
 }
 
 /** Server-only mapper. Current L3 evidence leaves rate, payer format, route and policy unqualified. */
@@ -689,7 +703,11 @@ export interface SyntheticSubmissionIdentity {
   readonly providerEntityId: string;
   readonly canonicalPayerId: string;
   readonly programId: string;
+  /** CLM01 / BHT03 / the 277CA TRN02 claim identifier. */
   readonly controlNumber: string;
+  /** ST02, the id a 999 echoes in AK202 for the acknowledged transaction set (not the CLM01). */
+  readonly transactionSetControlNumber: string;
+  /** GS06, the id a 999 echoes in AK102. */
   readonly functionalGroupControlNumber: string;
   readonly idempotencyKey: string;
 }
@@ -733,6 +751,7 @@ const sameIdentity = (a: SyntheticSubmissionIdentity, b: SyntheticSubmissionIden
   a.canonicalPayerId === b.canonicalPayerId &&
   a.programId === b.programId &&
   a.controlNumber === b.controlNumber &&
+  a.transactionSetControlNumber === b.transactionSetControlNumber &&
   a.functionalGroupControlNumber === b.functionalGroupControlNumber &&
   a.idempotencyKey === b.idempotencyKey;
 
@@ -795,6 +814,9 @@ export function createSyntheticSubmissionIdentity(
     canonicalPayerId: fixture.canonicalPayerId,
     programId: fixture.programId,
     controlNumber,
+    transactionSetControlNumber: transactionSetControlNumber(
+      fixture.claimInput.envelope.interchangeControlNumber,
+    ),
     functionalGroupControlNumber: String(fixture.claimInput.envelope.interchangeControlNumber),
     // Deterministic and scoped; excludes subscriber data and payload content.
     idempotencyKey: syntheticIdempotencyKey(
@@ -821,7 +843,7 @@ export function inspectSynthetic999(
     if (
       parsed.acknowledgedGroupControlNumber !== expected.functionalGroupControlNumber ||
       !parsed.transactionSets.some(
-        (transactionSet) => transactionSet.controlNumber === expected.controlNumber,
+        (transactionSet) => transactionSet.controlNumber === expected.transactionSetControlNumber,
       )
     ) {
       return { ok: false, reason: "identity-mismatch" };
@@ -849,11 +871,18 @@ export function inspectSynthetic999(
   }
 }
 
-/** Reuses the shared 277CA control/date reader; caller supplies an explicit synthetic disposition scenario. */
+/**
+ * 277CA claim status categories (X12 code list 507, STC01-1) that decide the disposition. A1/A2 acknowledge receipt or
+ * acceptance into adjudication; A3/A6/A7/A8 return or reject the claim. Every other category (A0 forwarded, A4 not
+ * found, A5 split, E*, ...) does not settle accepted versus rejected and is refused instead of guessed.
+ */
+const ACCEPTED_277CA_CATEGORIES: readonly string[] = ["A1", "A2"];
+const REJECTED_277CA_CATEGORIES: readonly string[] = ["A3", "A6", "A7", "A8"];
+
+/** Reuses the shared 277CA control/date reader; the disposition is read from the claim's STC01 category. */
 export function inspectSynthetic277ca(
   expected: SyntheticSubmissionIdentity,
   raw: string,
-  disposition: SyntheticAckDisposition,
 ):
   | {
       readonly ok: true;
@@ -864,25 +893,29 @@ export function inspectSynthetic277ca(
     }
   | { readonly ok: false; readonly reason: "invalid-ack" | "identity-mismatch" } {
   try {
-    const claims = read277caStatusDates(raw);
-    if (!claims.some((claim) => claim.claimControlNumber === expected.controlNumber)) {
-      return { ok: false, reason: "identity-mismatch" };
-    }
+    const claim = read277caStatusDates(raw).find(
+      (item) => item.claimControlNumber === expected.controlNumber,
+    );
+    if (claim === undefined) return { ok: false, reason: "identity-mismatch" };
+    const category = claim.statusCategoryCode ?? "";
+    const disposition: SyntheticAckDisposition | null = ACCEPTED_277CA_CATEGORIES.includes(category)
+      ? "accepted"
+      : REJECTED_277CA_CATEGORIES.includes(category)
+        ? "rejected"
+        : null;
+    if (disposition === null) return { ok: false, reason: "invalid-ack" };
     const routed = routeAckEvent({
       eventId: "synthetic-277ca-inspection",
       controlNumber: expected.controlNumber,
       reasonCodes: [],
-      occurredAt:
-        claims.find((claim) => claim.claimControlNumber === expected.controlNumber)
-          ?.statusEffectiveDate ?? "",
+      occurredAt: claim.statusEffectiveDate ?? "",
       stage: "payer",
       disposition,
     });
-    const claim = claims.find((item) => item.claimControlNumber === expected.controlNumber);
     return {
       ok: true,
       claimControlNumber: expected.controlNumber,
-      statusEffectiveDate: claim?.statusEffectiveDate ?? null,
+      statusEffectiveDate: claim.statusEffectiveDate,
       stage: "payer",
       disposition: routed.outcome === "accepted" ? "accepted" : "rejected",
     };

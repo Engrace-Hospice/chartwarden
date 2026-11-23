@@ -1,6 +1,10 @@
 import { type Claim837iInput, tokenizeInterchange } from "@chartwarden/x12-837-client";
 import { describe, expect, it, vi } from "vitest";
-import { mapQualifiedM24ClaimToInstitutionalDocument } from "../src/m24-institutional-837i";
+import {
+  type M24QualifiedClaimFacts,
+  mapQualifiedM24ClaimToInstitutionalDocument,
+  mintQualifiedFactsForTestOnly,
+} from "../src/m24-institutional-837i";
 import {
   InMemorySyntheticSubmissionLedger,
   M24_SYNTHETIC_FIXTURE_MARKER,
@@ -82,8 +86,8 @@ const claimInput: Claim837iInput = {
         revenueCode: "0652",
         hcpcs: "Q5001",
         chargeCents: 15_000,
-        units: 90,
-        unitBasis: "MJ",
+        units: 2,
+        unitBasis: "UN",
         serviceDate: "2026-01-03",
         serviceThroughDate: "2026-01-03",
       },
@@ -112,9 +116,8 @@ const fixture = (overrides: Partial<SyntheticM24ClaimFixture> = {}): SyntheticM2
     {
       sourceLineReference: "synthetic:line-2",
       sourceLocRecordReferences: ["synthetic:loc-2"],
-      quantityEvidenceReference: "synthetic:clinical-minutes-1",
-      quantitySource: "synthetic_clinical_minutes",
-      clinicalMinutes: 90,
+      quantityEvidenceReference: "synthetic:other-units-1",
+      quantitySource: "synthetic_other_units",
     },
   ],
   claimInput,
@@ -202,11 +205,15 @@ describe("synthetic M24 institutional claim rendering", () => {
       expect.objectContaining({
         serviceFrom: "2026-01-03",
         serviceThrough: "2026-01-03",
-        quantity: 90,
-        unitBasis: "MJ",
+        quantity: 2,
+        unitBasis: "UN",
       }),
     ]);
     expect(built.value.totalChargeCents).toBe(35_000);
+    // SV204 is DA or UN only (005010X223A2): the raw X12 carries exactly the line bases.
+    expect(segments.filter((segment) => segment[0] === "SV2").map((segment) => segment[4])).toEqual(
+      ["DA", "UN"],
+    );
   });
 
   it("preserves the Stedi JSON service-date and unit contract while keeping request formats distinct", () => {
@@ -234,7 +241,7 @@ describe("synthetic M24 institutional claim rendering", () => {
                 },
                 {
                   serviceDate: "20260103",
-                  institutionalService: { measurementUnit: "MJ", serviceUnitCount: "90" },
+                  institutionalService: { measurementUnit: "UN", serviceUnitCount: "2" },
                 },
               ],
             },
@@ -266,7 +273,46 @@ describe("synthetic M24 institutional claim rendering", () => {
     if (claimMd.ok) expect(claimMd.value.request).not.toHaveProperty("AccountKey");
   });
 
-  it("preserves separate synthetic lines across the September 30 / October 1 fiscal boundary", () => {
+  const boundaryClaim = (lines: Claim837iInput["claim"]["lines"]): Claim837iInput => ({
+    ...claimInput,
+    claim: {
+      ...claimInput.claim,
+      statementFromDate: "2026-09-30",
+      statementThroughDate: "2026-10-01",
+      admissionDate: "2026-09-30",
+      lines,
+    },
+  });
+
+  it("does not segment at the fiscal boundary: a line spanning September 30 / October 1 passes through as one line", () => {
+    const spanning = boundaryClaim([
+      {
+        ...claimInput.claim.lines[0]!,
+        serviceDate: "2026-09-30",
+        serviceThroughDate: "2026-10-01",
+        units: 2,
+        chargeCents: 25_000,
+      },
+    ]);
+    const built = buildSyntheticM24InstitutionalDocument(
+      fixture({
+        claimInput: spanning,
+        claimTotalCents: 25_000,
+        lineEvidence: [fixture().lineEvidence[0]!],
+      }),
+    );
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(
+      built.value.lines.map(({ serviceFrom, serviceThrough, quantity }) => [
+        serviceFrom,
+        serviceThrough,
+        quantity,
+      ]),
+    ).toEqual([["2026-09-30", "2026-10-01", 2]]);
+  });
+
+  it("keeps caller-segmented single-day lines across the fiscal boundary separate", () => {
     const boundaryInput: Claim837iInput = {
       ...claimInput,
       claim: {
@@ -379,23 +425,90 @@ describe("synthetic M24 institutional claim rendering", () => {
       gaps: [{ code: "M24_DOCUMENT_INVALID", field: "subscriber.lastName" }],
     });
     expect(JSON.stringify(delimiterFailure)).not.toContain("Testpatient~BAD");
+  });
+
+  it("refuses a lines basis that is not an 837I SV204 unit (hours and minutes), before any quantity check", () => {
+    for (const unitBasis of ["HR", "MJ"] as const) {
+      const lines = [
+        claimInput.claim.lines[0]!,
+        { ...claimInput.claim.lines[1]!, unitBasis } as never,
+      ];
+      expect(
+        buildSyntheticM24InstitutionalDocument(
+          fixture({ claimInput: { ...claimInput, claim: { ...claimInput.claim, lines } } }),
+        ),
+      ).toEqual({
+        ok: false,
+        gaps: [{ code: "M24_QUANTITY_UNRESOLVED", field: "claim.lines[1].unitBasis" }],
+      });
+    }
+  });
+
+  it("refuses a UN line whose quantity evidence is not unit evidence", () => {
     expect(
       buildSyntheticM24InstitutionalDocument(
         fixture({
           lineEvidence: [
             fixture().lineEvidence[0]!,
-            { ...fixture().lineEvidence[1]!, clinicalMinutes: undefined },
+            { ...fixture().lineEvidence[1]!, quantitySource: "synthetic_daily_units" },
           ],
         }),
       ),
     ).toMatchObject({
       ok: false,
-      gaps: [{ code: "M24_QUANTITY_UNRESOLVED", field: "claim.lines[1].clinicalMinutes" }],
+      gaps: [{ code: "M24_QUANTITY_UNRESOLVED", field: "claim.lines[1].units" }],
     });
   });
 
-  it("keeps production mapping unresolved until every authoritative qualification dimension is verified", () => {
-    const unavailable = mapQualifiedM24ClaimToInstitutionalDocument({
+  it("refuses two lines that bill the same revenue and procedure code for overlapping days", () => {
+    const first = claimInput.claim.lines[0]!;
+    const overlapping = {
+      ...first,
+      serviceDate: "2026-01-02",
+      serviceThroughDate: "2026-01-03",
+      chargeCents: 15_000,
+    };
+    expect(
+      buildSyntheticM24InstitutionalDocument(
+        fixture({
+          claimInput: {
+            ...claimInput,
+            claim: { ...claimInput.claim, lines: [first, overlapping] },
+          },
+          claimTotalCents: 35_000,
+          lineEvidence: [fixture().lineEvidence[0]!, fixture().lineEvidence[0]!],
+        }),
+      ),
+    ).toEqual({
+      ok: false,
+      gaps: [{ code: "M24_DOCUMENT_INVALID", field: "claim.lines[1].serviceDate" }],
+    });
+  });
+});
+
+describe("production mapping from server-minted facts", () => {
+  const verifiedQualification = {
+    payerResponsibility: "verified",
+    programIdentity: "verified",
+    providerOwnership: "verified",
+    serviceDates: "verified",
+    quantity: "verified",
+    coding: "verified",
+    rate: "verified",
+    authorization: "verified",
+    format: "verified",
+    route: "verified",
+  } as const;
+  const evidence = {
+    payerResponsibility: ["synthetic:payer-responsibility"],
+    providerOwnership: ["synthetic:provider-ownership"],
+    ratePolicy: ["synthetic:rate-policy"],
+    authorization: ["synthetic:authorization"],
+    formatQualification: ["synthetic:format"],
+    routeQualification: ["synthetic:route"],
+  };
+  const facts = (overrides: Partial<M24QualifiedClaimFacts> = {}): M24QualifiedClaimFacts =>
+    mintQualifiedFactsForTestOnly({
       authority: "server_reader",
       organizationId: "synthetic:org-1",
       providerEntityId: "synthetic:provider-1",
@@ -407,32 +520,124 @@ describe("synthetic M24 institutional claim rendering", () => {
       sourceClaimId: "synthetic:claim-1",
       claimTotalCents: 35_000,
       lineEvidence: fixture().lineEvidence,
-      evidenceReferences: {
-        payerResponsibility: ["synthetic:payer-responsibility"],
-        providerOwnership: ["synthetic:provider-ownership"],
-        ratePolicy: ["synthetic:rate-policy"],
-        authorization: ["synthetic:authorization"],
-        formatQualification: ["synthetic:format"],
-        routeQualification: ["synthetic:route"],
-      },
-      qualification: {
-        payerResponsibility: "verified",
-        programIdentity: "verified",
-        providerOwnership: "verified",
-        serviceDates: "verified",
-        quantity: "verified",
-        coding: "verified",
-        rate: "unresolved",
-        authorization: "unresolved",
-        format: "unresolved",
-        route: "unresolved",
-      },
+      evidenceReferences: evidence,
+      qualification: verifiedQualification,
       x12Input: claimInput,
       secondaryRoomAndBoardIncluded: false,
-    } as never);
-    expect(unavailable).toMatchObject({
+      ...overrides,
+    });
+
+  it("builds a document when every dimension is verified (the control the refusals below are measured against)", () => {
+    expect(mapQualifiedM24ClaimToInstitutionalDocument(facts())).toMatchObject({
+      ok: true,
+      value: { controlNumber: "000000701", totalChargeCents: 35_000 },
+    });
+  });
+
+  it("refuses an object without the server capability marker, whatever its qualification values", () => {
+    // Object.entries skips symbol keys, so this is every string-keyed fact of a valid object minus the marker.
+    const forged = Object.fromEntries(Object.entries(facts()));
+    expect(forged.qualification).toEqual(verifiedQualification);
+    expect(mapQualifiedM24ClaimToInstitutionalDocument(forged as never)).toEqual({
       ok: false,
       gaps: [{ code: "M24_SOURCE_NOT_AUTHORITATIVE", field: "source.authority" }],
+    });
+  });
+
+  it("refuses minted facts whose authority is not the server reader", () => {
+    expect(
+      mapQualifiedM24ClaimToInstitutionalDocument(
+        facts({ authority: "synthetic_fixture" as never }),
+      ),
+    ).toEqual({
+      ok: false,
+      gaps: [{ code: "M24_SOURCE_NOT_AUTHORITATIVE", field: "source.authority" }],
+    });
+  });
+
+  it.each([
+    ["payerResponsibility", "M24_PAYER_RESPONSIBILITY_UNRESOLVED"],
+    ["programIdentity", "M24_PROGRAM_IDENTITY_UNRESOLVED"],
+    ["providerOwnership", "M24_PROVIDER_OWNERSHIP_UNVERIFIED"],
+    ["serviceDates", "M24_SERVICE_DATES_UNRESOLVED"],
+    ["quantity", "M24_QUANTITY_UNRESOLVED"],
+    ["coding", "M24_CODING_UNQUALIFIED"],
+    ["rate", "MEDICAID_RATE_POLICY_UNRESOLVED"],
+    ["authorization", "M24_AUTHORIZATION_UNRESOLVED"],
+    ["format", "M24_FORMAT_NOT_QUALIFIED"],
+    ["route", "M24_ROUTE_NOT_QUALIFIED"],
+  ] as const)("reports %s as %s when only that dimension is unresolved", (dimension, code) => {
+    expect(
+      mapQualifiedM24ClaimToInstitutionalDocument(
+        facts({ qualification: { ...verifiedQualification, [dimension]: "unresolved" } }),
+      ),
+    ).toEqual({ ok: false, gaps: [{ code, field: `qualification.${dimension}` }] });
+  });
+
+  it("reports every unresolved dimension together", () => {
+    const result = mapQualifiedM24ClaimToInstitutionalDocument(
+      facts({
+        qualification: {
+          ...verifiedQualification,
+          rate: "unresolved",
+          authorization: "unresolved",
+          format: "unresolved",
+          route: "unresolved",
+        },
+      }),
+    );
+    expect(result).toMatchObject({ ok: false });
+    expect(!result.ok && result.gaps.map((gap) => gap.field)).toEqual([
+      "qualification.rate",
+      "qualification.authorization",
+      "qualification.format",
+      "qualification.route",
+    ]);
+  });
+
+  it.each(Object.keys(evidence))("refuses empty %s evidence references", (dimension) => {
+    expect(
+      mapQualifiedM24ClaimToInstitutionalDocument(
+        facts({ evidenceReferences: { ...evidence, [dimension]: [] } }),
+      ),
+    ).toEqual({
+      ok: false,
+      gaps: [{ code: "M24_DOCUMENT_INVALID", field: `evidenceReferences.${dimension}` }],
+    });
+  });
+
+  it("refuses a claim kind other than primary Medicaid hospice", () => {
+    expect(mapQualifiedM24ClaimToInstitutionalDocument(facts({ claimKind: "other" }))).toEqual({
+      ok: false,
+      gaps: [{ code: "M24_PAYER_RESPONSIBILITY_UNRESOLVED", field: "claimKind" }],
+    });
+  });
+
+  it("refuses secondary room and board, other payers and a non-Medicaid filing indicator", () => {
+    expect(
+      mapQualifiedM24ClaimToInstitutionalDocument(facts({ secondaryRoomAndBoardIncluded: true })),
+    ).toMatchObject({ gaps: [{ code: "M24_SECONDARY_ROOM_AND_BOARD_UNSUPPORTED" }] });
+    const otherPayer = {
+      responsibility: "S",
+      claimFilingIndicator: "MA",
+      memberId: "1EG4TE5MK73",
+      payerName: "Synthetic Medicare",
+      payerId: "SYNTHETIC-MEDICARE",
+    } as const;
+    expect(
+      mapQualifiedM24ClaimToInstitutionalDocument(
+        facts({
+          x12Input: { ...claimInput, claim: { ...claimInput.claim, otherPayers: [otherPayer] } },
+        }),
+      ),
+    ).toMatchObject({ gaps: [{ code: "M24_SECONDARY_PAYER_UNSUPPORTED" }] });
+    expect(
+      mapQualifiedM24ClaimToInstitutionalDocument(
+        facts({ x12Input: { ...claimInput, claimFilingIndicator: "MA" } }),
+      ),
+    ).toEqual({
+      ok: false,
+      gaps: [{ code: "M24_DOCUMENT_INVALID", field: "claimFilingIndicator" }],
     });
   });
 });
@@ -552,6 +757,7 @@ describe("M24 offline route and acknowledgment contracts", () => {
       canonicalPayerId: "synthetic:canonical-payer-1",
       programId: "synthetic:or-eocco-test",
       controlNumber: "000000701",
+      transactionSetControlNumber: "0701",
       functionalGroupControlNumber: "701",
       idempotencyKey: "synthetic-stedi-m24-claim-001",
     };
@@ -618,52 +824,115 @@ describe("M24 offline route and acknowledgment contracts", () => {
         event(),
       ]),
     ).toBe("conflict");
+  });
 
-    const isa =
-      "ISA*00*          *00*          *ZZ*SYNTHSENDER01  *ZZ*SYNTHRECEIVER   *260101*1200*^*00501*000000701*0*T*:~";
-    const ack999 = [
-      isa,
-      "GS*FA*SYNTHRECEIVER*SYNTHSENDER01*20260101*1200*701*X*005010X231A1~",
-      "ST*999*0001*005010X231A1~",
-      "AK1*HC*701*005010X223A2~",
-      "AK2*837*000000701*005010X223A2~",
-      "IK5*A~",
-      "AK9*A*1*1*1~",
-      "SE*6*0001~",
-      "GE*1*701~",
-      "IEA*1*000000701~",
-    ].join("\n");
-    expect(inspectSynthetic999(identity, ack999, "synthetic-999", 2)).toMatchObject({
-      ok: true,
-      acknowledgment: { kind: "999", disposition: "accepted" },
+  it("derives the expected ST02 from the built document, as a real 999 echoes it", () => {
+    const built = buildSyntheticM24InstitutionalDocument(fixture());
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    const st = tokenizeInterchange(built.value.x12).segments.find((segment) => segment[0] === "ST");
+    const identity = createSyntheticSubmissionIdentity(fixture(), "stedi");
+    // CLM01 (`000000701`) and ST02 (`0701`) are different identifiers; a 999 carries only ST02.
+    expect(identity.controlNumber).toBe("000000701");
+    expect(identity.transactionSetControlNumber).toBe(st?.[2]);
+    expect(identity.transactionSetControlNumber).toBe("0701");
+  });
+
+  describe("999 and 277CA inspection of content built from the document", () => {
+    const built = buildSyntheticM24InstitutionalDocument(fixture());
+    const identity = createSyntheticSubmissionIdentity(fixture(), "stedi");
+    const segments = built.ok ? tokenizeInterchange(built.value.x12).segments : [];
+    const isa = segments.find((segment) => segment[0] === "ISA")!;
+    const st02 = segments.find((segment) => segment[0] === "ST")?.[2] ?? "";
+    const clm01 = segments.find((segment) => segment[0] === "CLM")?.[1] ?? "";
+    const isaLine = `${isa.join("*")}~`;
+    const ack999For = (acknowledgedSt02: string, verdict = "A") =>
+      [
+        isaLine,
+        "GS*FA*SYNTHRECEIVER*SYNTHSENDER01*20260101*1200*701*X*005010X231A1~",
+        "ST*999*0001*005010X231A1~",
+        "AK1*HC*701*005010X223A2~",
+        `AK2*837*${acknowledgedSt02}*005010X223A2~`,
+        `IK5*${verdict}~`,
+        `AK9*${verdict}*1*1*${verdict === "A" ? 1 : 0}~`,
+        "SE*6*0001~",
+        "GE*1*701~",
+        "IEA*1*000000701~",
+      ].join("\n");
+    const ack277For = (claimControlNumber: string, stc01: string) =>
+      [
+        isaLine,
+        "GS*HN*SYNTHRECEIVER*SYNTHSENDER01*20260101*1200*702*X*005010X214~",
+        "ST*277*0002*005010X214~",
+        "BHT*0085*08*SYNTH277*20260101*1200*TH~",
+        "HL*1**20*1~",
+        "HL*2*1*21*1~",
+        "HL*3*2*19*1~",
+        "HL*4*3*PT~",
+        `TRN*2*${claimControlNumber}~`,
+        `STC*${stc01}*20260101~`,
+        "SE*9*0002~",
+        "GE*1*702~",
+        "IEA*1*000000701~",
+      ].join("\n");
+
+    it("accepts a 999 that acknowledges the built ST02", () => {
+      expect(built.ok).toBe(true);
+      expect(inspectSynthetic999(identity, ack999For(st02), "synthetic-999", 2)).toMatchObject({
+        ok: true,
+        acknowledgment: { kind: "999", disposition: "accepted" },
+      });
+      expect(
+        inspectSynthetic999(identity, ack999For(st02, "R"), "synthetic-999-r", 2),
+      ).toMatchObject({ ok: true, acknowledgment: { kind: "999", disposition: "rejected" } });
     });
-    const wrongTransactionAck = ack999.replace("AK2*837*000000701*", "AK2*837*000000702*");
-    expect(
-      inspectSynthetic999(identity, wrongTransactionAck, "synthetic-999-wrong-control", 2),
-    ).toEqual({
-      ok: false,
-      reason: "identity-mismatch",
+
+    it("refuses a 999 that echoes the claim control number (CLM01) instead of the ST02", () => {
+      expect(inspectSynthetic999(identity, ack999For(clm01), "synthetic-999-clm01", 2)).toEqual({
+        ok: false,
+        reason: "identity-mismatch",
+      });
     });
-    const ack277 = [
-      isa,
-      "GS*HN*SYNTHRECEIVER*SYNTHSENDER01*20260101*1200*702*X*005010X214~",
-      "ST*277*0002*005010X214~",
-      "BHT*0085*08*SYNTH277*20260101*1200*TH~",
-      "HL*1**20*1~",
-      "HL*2*1*21*1~",
-      "HL*3*2*19*1~",
-      "HL*4*3*PT~",
-      "TRN*2*000000701~",
-      "STC*A1:19:PR*20260101~",
-      "SE*6*0002~",
-      "GE*1*702~",
-      "IEA*1*000000701~",
-    ].join("\n");
-    expect(inspectSynthetic277ca(identity, ack277, "accepted")).toMatchObject({
-      ok: true,
-      claimControlNumber: identity.controlNumber,
-      stage: "payer",
-      disposition: "accepted",
+
+    it("refuses a 999 for another transaction set", () => {
+      expect(inspectSynthetic999(identity, ack999For("0702"), "synthetic-999-other", 2)).toEqual({
+        ok: false,
+        reason: "identity-mismatch",
+      });
+    });
+
+    it.each([
+      ["A1:19:PR", "accepted"],
+      ["A2:20:PR", "accepted"],
+      ["A3:21:85", "rejected"],
+      ["A6:562:85", "rejected"],
+      ["A7:562:85", "rejected"],
+      ["A8:562:85", "rejected"],
+    ] as const)("derives the 277CA disposition from STC01 %s as %s", (stc01, disposition) => {
+      expect(inspectSynthetic277ca(identity, ack277For(clm01, stc01))).toMatchObject({
+        ok: true,
+        claimControlNumber: identity.controlNumber,
+        statusEffectiveDate: "2026-01-01",
+        stage: "payer",
+        disposition,
+      });
+    });
+
+    it.each(["A0:19:PR", "A4:21:85", "A5:20:PR", "E0:19:PR", "", "ZZ:1:PR"])(
+      "refuses a 277CA whose STC01 %j does not determine accept or reject",
+      (stc01) => {
+        expect(inspectSynthetic277ca(identity, ack277For(clm01, stc01))).toEqual({
+          ok: false,
+          reason: "invalid-ack",
+        });
+      },
+    );
+
+    it("refuses a 277CA for another claim control number", () => {
+      expect(inspectSynthetic277ca(identity, ack277For("000000702", "A1:19:PR"))).toEqual({
+        ok: false,
+        reason: "identity-mismatch",
+      });
     });
   });
 });

@@ -120,7 +120,8 @@ export interface StediClaimJson {
         readonly procedureCode: string;
         readonly procedureModifiers?: readonly string[];
         readonly lineItemChargeAmount: string;
-        readonly measurementUnit: "UN" | "DA" | "HR" | "MJ";
+        /** SV204: DA or UN only (837I 005010X223A2; Stedi's institutional `measurementUnit` enum). */
+        readonly measurementUnit: "UN" | "DA";
         readonly serviceUnitCount: string;
         /** SV207; omitted when zero. Field name UNVERIFIED against Stedi. */
         readonly nonCoveredChargeAmount?: string;
