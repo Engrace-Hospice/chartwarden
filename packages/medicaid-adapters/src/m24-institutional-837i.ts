@@ -172,14 +172,16 @@ function serviceDayCount(from: string, through: string): number | null {
 }
 
 /**
- * Index of the first line that bills the same revenue + procedure code for a day an earlier line already covers
- * (a double bill of the same service), or null. Lines for different codes may legitimately share days.
+ * Index of the first line that bills the same revenue + procedure code + modifier set for a day an earlier line already
+ * covers (a double bill of the same service), or null. Lines for different codes, or for the same code under different
+ * modifiers (e.g. a professional/technical split), may legitimately share days. Modifiers compare as a set, so a
+ * reordering does not make a double bill look distinct.
  * Dates are compared as ISO strings; a line without a through date covers its own day only.
  */
 function firstOverlappingLine(lines: Claim837iInput["claim"]["lines"]): number | null {
   const covered = new Map<string, { from: string; through: string }[]>();
   for (const [index, line] of lines.entries()) {
-    const key = `${line.revenueCode}\u0000${line.hcpcs ?? ""}`;
+    const key = `${line.revenueCode}\u0000${line.hcpcs ?? ""}\u0000${[...(line.modifiers ?? [])].sort().join(",")}`;
     const span = { from: line.serviceDate, through: line.serviceThroughDate ?? line.serviceDate };
     const earlier = covered.get(key) ?? [];
     if (earlier.some((other) => span.from <= other.through && other.from <= span.through)) {
@@ -694,7 +696,11 @@ export function mapSyntheticVendorRequest(
 
 export type SyntheticReceiptOutcome = "not-sent" | "received" | "unknown";
 export type SyntheticAckKind = "transport_receipt" | "999" | "277CA";
-export type SyntheticAckDisposition = "accepted" | "rejected";
+/**
+ * `received` is a 277CA A1 receipt: the payer has the claim, which (X12 code list 507) does not mean it was accepted for
+ * adjudication. Only a 277CA can carry it; it never maps to an acceptance decision.
+ */
+export type SyntheticAckDisposition = "accepted" | "rejected" | "received";
 
 export interface SyntheticSubmissionIdentity {
   readonly vendor: "stedi" | "claimmd";
@@ -736,6 +742,7 @@ export type SyntheticAckDecision =
   | "clearinghouse-accepted"
   | "clearinghouse-rejected"
   | "payer-acknowledged"
+  | "payer-received"
   | "payer-rejected"
   | "duplicate"
   | "out-of-order"
@@ -765,6 +772,8 @@ export function correlateSyntheticAcknowledgment(
     return "unknown-control-number";
   }
   if (!sameIdentity(expected, acknowledgment.identity)) return "identity-mismatch";
+  if (acknowledgment.disposition === "received" && acknowledgment.kind !== "277CA")
+    return "conflict";
   if (prior.some((event) => event.eventId === acknowledgment.eventId)) return "duplicate";
   const latest = prior.reduce((max, event) => Math.max(max, event.sequence), 0);
   const conflicting = prior.find(
@@ -782,6 +791,7 @@ export function correlateSyntheticAcknowledgment(
       ? "clearinghouse-accepted"
       : "clearinghouse-rejected";
   }
+  if (acknowledgment.disposition === "received") return "payer-received";
   return acknowledgment.disposition === "accepted" ? "payer-acknowledged" : "payer-rejected";
 }
 
@@ -872,11 +882,13 @@ export function inspectSynthetic999(
 }
 
 /**
- * 277CA claim status categories (X12 code list 507, STC01-1) that decide the disposition. A1/A2 acknowledge receipt or
- * acceptance into adjudication; A3/A6/A7/A8 return or reject the claim. Every other category (A0 forwarded, A4 not
- * found, A5 split, E*, ...) does not settle accepted versus rejected and is refused instead of guessed.
+ * 277CA claim status categories (X12 code list 507, STC01-1) that decide the disposition. A1 acknowledges receipt only
+ * ("does not mean that the claim has been accepted for adjudication"), A2 acceptance into adjudication; A3/A6/A7/A8
+ * return or reject the claim. Every other category (A0 forwarded, A4 not found, A5 split, E*, ...) does not settle
+ * received, accepted or rejected and is refused instead of guessed.
  */
-const ACCEPTED_277CA_CATEGORIES: readonly string[] = ["A1", "A2"];
+const RECEIVED_277CA_CATEGORIES: readonly string[] = ["A1"];
+const ACCEPTED_277CA_CATEGORIES: readonly string[] = ["A2"];
 const REJECTED_277CA_CATEGORIES: readonly string[] = ["A3", "A6", "A7", "A8"];
 
 /** Reuses the shared 277CA control/date reader; the disposition is read from the claim's STC01 category. */
@@ -898,12 +910,24 @@ export function inspectSynthetic277ca(
     );
     if (claim === undefined) return { ok: false, reason: "identity-mismatch" };
     const category = claim.statusCategoryCode ?? "";
-    const disposition: SyntheticAckDisposition | null = ACCEPTED_277CA_CATEGORIES.includes(category)
-      ? "accepted"
-      : REJECTED_277CA_CATEGORIES.includes(category)
-        ? "rejected"
-        : null;
+    const disposition: SyntheticAckDisposition | null = RECEIVED_277CA_CATEGORIES.includes(category)
+      ? "received"
+      : ACCEPTED_277CA_CATEGORIES.includes(category)
+        ? "accepted"
+        : REJECTED_277CA_CATEGORIES.includes(category)
+          ? "rejected"
+          : null;
     if (disposition === null) return { ok: false, reason: "invalid-ack" };
+    // M23's ack alphabet has no receipt-only state, so a receipt is not routed (routing would call it accepted).
+    if (disposition === "received") {
+      return {
+        ok: true,
+        claimControlNumber: expected.controlNumber,
+        statusEffectiveDate: claim.statusEffectiveDate,
+        stage: "payer",
+        disposition,
+      };
+    }
     const routed = routeAckEvent({
       eventId: "synthetic-277ca-inspection",
       controlNumber: expected.controlNumber,
