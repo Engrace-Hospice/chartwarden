@@ -17,7 +17,8 @@
  *   4. The chain: confirm, finalize, sign. A physician's or nurse practitioner's note needs no cosignature; sealed rows equal final_cipher and cite kinds and ids
  *      only. An order recorded after the confirm makes the finalize refuse (gate check 13, DRAFT_SECTION_STALE naming `med_reconciliation`).
  *   5. The IDG follow-up drafts as the discipline's own visit does (RN, LPN, social worker, chaplain) and a physician's or nurse practitioner's only the vitals;
- *      the `idg_followup` section itself is never drafted; an LPN's note is cosigned by the case manager.
+ *      the `idg_followup` section itself is not drafted for a visit with no linked action item (S5b drafts it from the item the author links, which
+ *      m8-visit-note-drafting-idg-followup.live.test.ts proves); an LPN's note is cosigned by the case manager.
  *   6. The telephonic visit of a physician or nurse practitioner drafts nothing and reads nothing. Another tenant's visits are 404, and a tenant with the switch
  *      off answers 404 before any key. A source that cannot be read is 503 DRAFT_UNAVAILABLE and nothing is written. The read audit event lands.
  *
@@ -1356,7 +1357,7 @@ describe.skipIf(!DB_URL)(
     // 5. the IDG follow-up
     // ===============================================================================================================
     describe("5. the IDG follow-up drafts as the discipline's own visit does", () => {
-      it("an RN drafts the five sections the routine visit does, and the idg_followup section is the clinician's own", async () => {
+      it("an RN drafts the five sections the routine visit does, and the idg_followup section is the clinician's own while no action item is linked", async () => {
         const v = await seedVisit({ type: "idg_followup", discipline: "rn" });
         const { res, body } = await getDraft(v);
         expect(res.statusCode, res.body).toBe(200);
@@ -1397,7 +1398,7 @@ describe.skipIf(!DB_URL)(
       });
 
       it.each(["np", "md"] as const)(
-        "a %s drafts the recorded vitals and nothing else, and reads no care plan, scale, order or plan",
+        "a %s with no action item linked drafts the recorded vitals and nothing else, and reads no care plan, scale, order, plan or IDG item",
         async (discipline) => {
           const v = await seedVisit({ type: "idg_followup", discipline });
           const { body } = await getDraft(v);

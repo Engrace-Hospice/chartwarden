@@ -325,6 +325,7 @@ describe("the sources a social-work or chaplain template needs read (draftSource
       medicationChanges: false,
       scales: false,
       disciplinePlan: true,
+      idgFollowUp: false,
     });
   });
 });

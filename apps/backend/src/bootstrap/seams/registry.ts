@@ -101,6 +101,7 @@ import {
   hopeTimepointProviderDenyStub,
   hospitalizationRiskProviderDenyStub,
   idgDecisionProviderDenyStub,
+  idgFollowUpReaderDenyStub,
   idgPacketProviderDenyStub,
   idgScheduleProviderDenyStub,
   incidentRegisterProviderDenyStub,
@@ -1174,6 +1175,15 @@ export const REQUIRED_SEAMS = [
     ownerModule: 14,
     phi: true,
     denyStub: idgScheduleProviderDenyStub,
+  },
+  // `IdgFollowUpReader` (ADR-0114 S5b) is the action-item read M8's visit-note draft consumes: the open items a visit may link (`openFollowUpItems`) and the
+  // one it is linked to, by id and in any status (`linkedFollowUpItem`); facts only (meeting date, decision kind, due date, status), Part 2 decided per
+  // viewer by M14. Patient-linked → phi: true; fail-closed until M14 registers it.
+  {
+    key: "IdgFollowUpReader",
+    ownerModule: 14,
+    phi: true,
+    denyStub: idgFollowUpReaderDenyStub,
   },
   // M17 (Scheduling & Route Optimization) owned seams (§4.3). All four are READ-only DTO surfaces over M17's
   // `visit` / `visit_state_history` / `route_segment` rows: `VisitReader` is the visit read path M8 (encounter-

@@ -99,6 +99,13 @@ describe("the composition root wires the note-closure gate", () => {
     );
   });
 
+  it("hands the encounter routes the per-actor limiter for the IDG follow-up link route (it bounds the refused-link audit rows)", () => {
+    // without it the PUT has only the org-wide tier (mountEncounterRoutes defaults to a no-op), and nothing else in the suite would notice
+    expect(index).toMatch(
+      /mountEncounterRoutes\([^;]*?idgLinkRateLimit:createRouteRateLimit\(\{store:rateLimitStore\?\?createInMemoryRateLimitStore\(\),limit:IDG_FOLLOW_UP_LINK_ROUTE_RATE_LIMIT,keyPrefix:"m8-idg-link"\}\)/,
+    );
+  });
+
   it("hands the encounter routes a reporter for a closure-override denial event that could not be written (class only)", () => {
     expect(index).toMatch(
       /mountEncounterRoutes\([^;]*?onDenialAuditFailure:\(error\)=>app\.log\.warn\(\{errorClass:errorinstanceofError\?error\.name:typeoferror\}/,

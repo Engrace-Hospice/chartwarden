@@ -16,6 +16,7 @@ import type {
   EncounterDiscipline,
   EncounterType,
   FaceToFaceSummary,
+  IdgFollowUpItem,
   InterventionDiscipline,
   LevelOfCareDays,
   MedicationOrderChange,
@@ -46,6 +47,11 @@ export interface DraftViewer {
   readonly roles: readonly string[];
   /** The actor's ACTIVE membership id, or `null` when the session carries none (fails closed against a release). */
   readonly membershipId: string | null;
+  /**
+   * The permission keys the session resolves to. The draft asks ONE of them itself, `idg.act`, and only for the IDG follow-up's own section
+   * (S5b, VN-D66): a viewer without it gets that section as not drafted and the rest of the draft is unaffected. Absent is NONE (fails closed).
+   */
+  readonly permissions?: ReadonlySet<string> | undefined;
 }
 
 /**
@@ -80,6 +86,27 @@ export interface DraftSeamPorts {
     viewer: DraftViewer,
     asOf: string,
   ): Promise<DisciplinePlanElementsAsOf | null>;
+  /**
+   * M14 `IdgFollowUpReader.openFollowUpItems` (S5b, the IDG follow-up visits): the patient's open or in-progress action items assigned to the viewer's own
+   * membership and linked to an encounter, as facts (never a title, a body or a payload). M14 decides Part 2 per viewer itself (W-SUD-01) and hands a
+   * viewer it does not clear nothing for a flagged patient. THROWS when M14 cannot answer.
+   */
+  idgFollowUpItems(
+    organizationId: string,
+    patientId: string,
+    viewer: DraftViewer,
+  ): Promise<readonly IdgFollowUpItem[]>;
+  /**
+   * M14 `IdgFollowUpReader.linkedFollowUpItem` (S5b): the ONE action item this visit is linked to, by id and in ANY status (M14's own auto-close closes an
+   * encounter-kind item when its assignee signs any visit, so the item a confirmed section states may have closed since), for the viewer's membership, with the
+   * same facts and the same per-viewer Part 2 verdict as `idgFollowUpItems`. `null` when M14 hands this viewer nothing for it. THROWS when M14 cannot answer.
+   */
+  linkedIdgFollowUpItem(
+    organizationId: string,
+    patientId: string,
+    actionItemId: string,
+    viewer: DraftViewer,
+  ): Promise<IdgFollowUpItem | null>;
   /** M9 `ScaleSeriesProvider.series`: bounds are inclusive and filter on `captured_at`. */
   scaleSeries(
     patientId: string,
@@ -188,6 +215,11 @@ export interface DraftStorePorts {
    * row and no live one). Read only by a template that drafts from the discipline's plan.
    */
   removedDisciplinePlanElementIds(encounterId: string): Promise<ReadonlySet<string>>;
+  /**
+   * S5b (VN-D64): the M14 action item this IDG follow-up visit is linked to (its one live `encounter_idg_action_item_link` row), or `null` for none.
+   * Read only by a template that drafts the IDG follow-up's own section.
+   */
+  linkedIdgActionItemId(encounterId: string): Promise<string | null>;
   /** The stored selection tree (prose opened) and the slots that render it. */
   loadSelection(
     encounter: DraftEncounter,

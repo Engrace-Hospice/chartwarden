@@ -96,6 +96,7 @@ const OWNED_TABLES = {
   hearthnoteLlmModifications: "hearthnote_llm_modification",
   draftConfirmations: "encounter_draft_confirmation",
   disciplinePlanLinks: "encounter_discipline_plan_link",
+  idgActionItemLinks: "encounter_idg_action_item_link",
   signedSections: "hearthnote_signed_section",
   amendments: "encounter_amendment",
   addendumCosignatureRequests: "addendum_cosignature_request",
@@ -106,6 +107,7 @@ const OWNED_KEYS = Object.keys(OWNED_TABLES) as OwnedKey[];
 const VISIT_NOTE_KEYS = [
   "draftConfirmations",
   "disciplinePlanLinks",
+  "idgActionItemLinks",
   "signedSections",
   "amendments",
   "addendumCosignatureRequests",
@@ -132,6 +134,7 @@ const PER_ROOT: Record<OwnedKey, number> = {
   hearthnoteLlmModifications: 1,
   draftConfirmations: 2,
   disciplinePlanLinks: 2,
+  idgActionItemLinks: 2,
   signedSections: 4,
   amendments: 2,
   addendumCosignatureRequests: 1,
@@ -179,6 +182,7 @@ const OWNED_SCOPE: Record<OwnedKey, string> = {
   hearthnoteLlmModifications: `assembled_output_id IN (SELECT id FROM hearthnote_assembled_output WHERE ${HEARTHNOTE_SCOPE})`,
   draftConfirmations: `encounter_id IN (${ENCOUNTERS_OF})`,
   disciplinePlanLinks: `encounter_id IN (${ENCOUNTERS_OF})`,
+  idgActionItemLinks: `encounter_id IN (${ENCOUNTERS_OF})`,
   signedSections: `encounter_id IN (${ENCOUNTERS_OF})`,
   amendments: `encounter_id IN (${ENCOUNTERS_OF})`,
   addendumCosignatureRequests: `encounter_id IN (${ENCOUNTERS_OF})`,
@@ -326,6 +330,36 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
 
   const insertId = async (sqlText: string, values: readonly unknown[]): Promise<string> =>
     one((await admin.query<{ id: string }>(sqlText, [...values])).rows).id;
+
+  /** Every M14 action item the link rows of this suite name: the audit images of their deletes must never carry one (checked after the run). */
+  const idgItemIds: string[] = [];
+
+  /** One M14 action item of the encounter's own patient and organization (a meeting and an item, seeded as the superuser): what an IDG link row must name. */
+  async function seedIdgActionItem(
+    org: "A" | "B",
+    encounterId: string,
+    assignee: string,
+  ): Promise<string> {
+    const [orgId, peId, locId] = siteOf(org);
+    const patientId = one(
+      (
+        await admin.query<{ patient_id: string }>(
+          "SELECT patient_id FROM encounter WHERE id = $1",
+          [encounterId],
+        )
+      ).rows,
+    ).patient_id;
+    const meetingId = await insertId(
+      `INSERT INTO idg_meeting (organization_id, location_id, scheduled_start, scheduled_end, status, coordinator_membership_id, tenant_quorum_snapshot)
+       VALUES ($1,$2,now(),now() + interval '1 hour','adjourned',$3,'{}'::jsonb) RETURNING id`,
+      [orgId, locId, assignee],
+    );
+    return insertId(
+      `INSERT INTO idg_action_item (organization_id, provider_entity_id, location_id, idg_meeting_id, patient_id, assigned_to_membership_id, title)
+       VALUES ($1,$2,$3,$4,$5,$6,'Synthetic follow-up') RETURNING id`,
+      [orgId, peId, locId, meetingId, patientId, assignee],
+    );
+  }
 
   /** One assembled output (envelope-shaped ciphers; a Layer-2-involved one also carries a `layer2_cipher`), seeded as the superuser. */
   const seedOutput = (
@@ -492,6 +526,26 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
          removed_at, removed_by_membership_id)
        VALUES ($1,$2,$3,$4,$5,true,now(),$6)`,
       [...site, encounterId, randomUUID(), member],
+    );
+    // ADR-0114 S5b: one removed link to an M14 action item, and the live one that replaced it (one live row per encounter). The database holds a new
+    // row's item to a REAL action item of the row's organization and the encounter's patient (the guard trigger), so each row names one. The live row is
+    // filed as plain (`part2_derived` false): the eraser's DELETE must still be filed as Part 2 with the id withheld (checked below).
+    const [removedItem, liveItem] = [
+      await seedIdgActionItem(org, encounterId, member),
+      await seedIdgActionItem(org, encounterId, member),
+    ];
+    idgItemIds.push(removedItem, liveItem);
+    await admin.query(
+      `INSERT INTO encounter_idg_action_item_link (organization_id, provider_entity_id, location_id, encounter_id, action_item_id,
+         linked_by_membership_id, part2_derived, removed_at, removed_by_membership_id)
+       VALUES ($1,$2,$3,$4,$5,$6,true,now(),$6)`,
+      [...site, encounterId, removedItem, member],
+    );
+    await admin.query(
+      `INSERT INTO encounter_idg_action_item_link (organization_id, provider_entity_id, location_id, encounter_id, action_item_id,
+         linked_by_membership_id, part2_derived)
+       VALUES ($1,$2,$3,$4,$5,$6,false)`,
+      [...site, encounterId, liveItem, member],
     );
     await admin.query(
       `INSERT INTO cosignature_request (organization_id, provider_entity_id, location_id, encounter_id, routed_to_membership_id)
@@ -1029,6 +1083,31 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       }
       const draft = after.find((row) => row.id === targets.get("draft")) as Row;
       expect(draft.vocab_version_id).toBe(PIN);
+    });
+
+    it("the IDG follow-up link's delete audit images are ALL filed under the Part 2 class, whatever flag the row was filed with, and no image of the table names an action item", async () => {
+      const deletes = await admin.query<{
+        retention_class: string;
+        before: Record<string, unknown>;
+      }>(
+        `SELECT retention_class::text, before FROM audit_event
+          WHERE organization_id = $1 AND event_type = 'encounter_idg_action_item_link.delete' AND before ->> 'encounter_id' = ANY($2::text[])`,
+        [ORG_A, [...targets.values()]],
+      );
+      // the target's link rows (the removed one filed Part 2, the live one filed plain): every delete image is a Part 2 image
+      expect(deletes.rows).toHaveLength(TARGET_COUNTS.idgActionItemLinks);
+      for (const row of deletes.rows) {
+        expect(row.retention_class).toBe("compliance_42cfr_part2");
+        expect(row.before.action_item_id).toBe("<changed>");
+      }
+      // and no audit row of the table, of any event and any retention class, names an action item the suite seeded: the trail names the row and the encounter
+      expect(idgItemIds.length).toBeGreaterThan(0);
+      const leaked = await admin.query(
+        `SELECT 1 FROM audit_event WHERE resource_kind = 'encounter_idg_action_item_link'
+            AND organization_id = $1 AND to_jsonb(audit_event)::text LIKE ANY($2::text[])`,
+        [ORG_A, idgItemIds.map((id) => `%${id}%`)],
+      );
+      expect(leaked.rowCount).toBe(0);
     });
 
     it("deletes every satellite the patient owns, in every table", async () => {

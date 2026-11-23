@@ -1,10 +1,10 @@
 // apps/backend/src/modules/08-encounters/drafting/discipline-plan-elements.ts — the response of the per-element routes of a social-work or chaplain visit's
 // drafted plan (ADR-0114 S4b, VN-D60): which of the discipline's goals and interventions the visit keeps. Pure shapes and the template predicate; the read is
-// `readDisciplinePlanElements` (inputs.ts) and the write the store's `linkDisciplinePlan` / `removeDisciplinePlan`. A clinician sees only what the plan hands
+// `readDisciplinePlanElements` (discipline-plan-inputs.ts) and the write the store's `linkDisciplinePlan` / `removeDisciplinePlan`. A clinician sees only what the plan hands
 // their own Part 2 verdict, so nothing here can name an element they may not read.
 import { draftSourceNeeds } from "@chartwarden/hearthnote";
 import { EncounterStateError } from "../lifecycle/errors";
-import type { DisciplinePlanElement } from "./inputs";
+import type { DisciplinePlanElement } from "./discipline-plan-inputs";
 import type { DraftEncounter } from "./ports";
 
 /** One element as the picker shows it: its words and whether the visit keeps it. The Part 2 flag is the row's, never the wire's. */

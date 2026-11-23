@@ -2771,6 +2771,7 @@ describe.skipIf(!DB_URL)(
           const encounter = {
             ...draftEncounter(orgs.A, f),
             status: "draft" as const,
+            authoredByMembershipId: orgs.A.author.membershipId,
             providerEntityId: orgs.A.providerEntityId,
             locationId: orgs.A.locationId,
           };

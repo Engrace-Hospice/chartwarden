@@ -5,8 +5,8 @@ import type { DbClient } from "@chartwarden/db";
 import { schema } from "@chartwarden/db";
 import { describe, expect, it, vi } from "vitest";
 import { createInMemoryObjectStore } from "../seams/store";
+import type { DocumentContentScanner } from "./document-content-scanner";
 import {
-  type DocumentContentScanner,
   type ServerUploadDeps,
   type UploadLogger,
   createServerUploadService as createUploadService,

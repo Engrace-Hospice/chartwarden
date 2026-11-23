@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   CORPUS_CLINICAL_REVIEW,
   DRAFT_VOCAB_CODES,
+  IDG_DECISION_KIND_LABELS,
   NARRATIVE_VOCAB_RELEASES,
   VOCABULARY,
   VOCAB_VERSION,
@@ -20,10 +21,15 @@ const ROUTINE_ENTRY_COUNT = 25; // narrative-vocab@2026.11.0 (S1)
 const RECERT_ENTRY_COUNT = 11; // narrative-vocab@2026.12.0 (S2)
 const ADMISSION_ENTRY_COUNT = 5; // narrative-vocab@2026.12.1 (S2b)
 const DISCIPLINE_PLAN_ENTRY_COUNT = 6; // narrative-vocab@2026.12.3 (S4)
+const IDG_FOLLOW_UP_ENTRY_COUNT = 2; // narrative-vocab@2026.12.5 (S5b)
 const DRAFT_ENTRY_COUNT =
-  ROUTINE_ENTRY_COUNT + RECERT_ENTRY_COUNT + ADMISSION_ENTRY_COUNT + DISCIPLINE_PLAN_ENTRY_COUNT;
+  ROUTINE_ENTRY_COUNT +
+  RECERT_ENTRY_COUNT +
+  ADMISSION_ENTRY_COUNT +
+  DISCIPLINE_PLAN_ENTRY_COUNT +
+  IDG_FOLLOW_UP_ENTRY_COUNT;
 const LEGACY_CODES = new Set(VOCABULARY.slice(0, LEGACY_ENTRY_COUNT).map((e) => e.code));
-/** Every draft-wording entry: the 25 of 2026.11.0, the 11 of 2026.12.0, the 5 of 2026.12.1 and the 6 of 2026.12.3. The `visit_reason` entries of 2026.11.1 sit after them. */
+/** Every draft-wording entry: the 25 of 2026.11.0, the 11 of 2026.12.0, the 5 of 2026.12.1, the 6 of 2026.12.3 and the 2 of 2026.12.5. The `visit_reason` entries of 2026.11.1 sit after them. */
 const NEW_ENTRIES = VOCABULARY.slice(LEGACY_ENTRY_COUNT, LEGACY_ENTRY_COUNT + DRAFT_ENTRY_COUNT);
 const ROUTINE_ENTRIES = NEW_ENTRIES.slice(0, ROUTINE_ENTRY_COUNT);
 const RECERT_ENTRIES = NEW_ENTRIES.slice(
@@ -36,7 +42,13 @@ const ADMISSION_ENTRIES = NEW_ENTRIES.slice(
 );
 const DISCIPLINE_PLAN_ENTRIES = NEW_ENTRIES.slice(
   ROUTINE_ENTRY_COUNT + RECERT_ENTRY_COUNT + ADMISSION_ENTRY_COUNT,
+  ROUTINE_ENTRY_COUNT + RECERT_ENTRY_COUNT + ADMISSION_ENTRY_COUNT + DISCIPLINE_PLAN_ENTRY_COUNT,
 );
+const IDG_FOLLOW_UP_ENTRIES = NEW_ENTRIES.slice(
+  ROUTINE_ENTRY_COUNT + RECERT_ENTRY_COUNT + ADMISSION_ENTRY_COUNT + DISCIPLINE_PLAN_ENTRY_COUNT,
+);
+/** The six disciplines of the IDG follow-up template (S5b drafts its own section for each). */
+const IDG_DISCIPLINES = ["rn", "lpn", "msw", "chaplain", "md", "np"] as const;
 const MSW_AND_CHAPLAIN_TYPES = [
   "msw_assessment",
   "msw_followup",
@@ -72,7 +84,7 @@ const ORDER_CODES = ["nv.adm.med_active", "nv.adm.med_active_prn"];
 
 describe("corpus release", () => {
   it("is a new release, registered with its own uuid and a date", () => {
-    expect(VOCAB_VERSION).toBe("narrative-vocab@2026.12.4");
+    expect(VOCAB_VERSION).toBe("narrative-vocab@2026.12.5");
     expect(NARRATIVE_VOCAB_RELEASES.map((r) => r.version)).toEqual([
       "narrative-vocab@2026.06.0",
       "narrative-vocab@2026.11.0",
@@ -82,12 +94,21 @@ describe("corpus release", () => {
       "narrative-vocab@2026.12.2",
       "narrative-vocab@2026.12.3",
       "narrative-vocab@2026.12.4",
+      "narrative-vocab@2026.12.5",
     ]);
     expect(activeNarrativeVocabRelease(VOCAB_VERSION).version).toBe(VOCAB_VERSION);
-    expect(activeNarrativeVocabRelease(VOCAB_VERSION).releasedOn).toBe("2026-11-21");
+    expect(activeNarrativeVocabRelease(VOCAB_VERSION).releasedOn).toBe("2026-11-22");
     expect(new Set(NARRATIVE_VOCAB_RELEASES.map((r) => r.id)).size).toBe(
       NARRATIVE_VOCAB_RELEASES.length,
     );
+  });
+
+  it("keeps the 2026.12.4 release row untouched (a note signed under it pins that id)", () => {
+    expect(NARRATIVE_VOCAB_RELEASES[7]).toEqual({
+      version: "narrative-vocab@2026.12.4",
+      id: "6f1d7e52-3b8a-4c19-a0d4-9e27b5c3f8a1",
+      releasedOn: "2026-11-21",
+    });
   });
 
   it("keeps the 2026.12.3 release row untouched (a note signed under it pins that id)", () => {
@@ -196,18 +217,19 @@ describe("effectiveReviewStatus", () => {
 });
 
 describe("DRAFT_VOCAB_CODES", () => {
-  it("is exactly the codes added in 2026.11.0, 2026.12.0, 2026.12.1 and 2026.12.3, none of the 23 earlier ones", () => {
+  it("is exactly the codes added in 2026.11.0, 2026.12.0, 2026.12.1, 2026.12.3 and 2026.12.5, none of the 23 earlier ones", () => {
     expect([...DRAFT_VOCAB_CODES].sort()).toEqual(NEW_ENTRIES.map((e) => e.code).sort());
     for (const code of LEGACY_CODES) expect(DRAFT_VOCAB_CODES.has(code)).toBe(false);
   });
 });
 
 describe("draft entries", () => {
-  it("adds 25 entries (2026.11.0), then 11 (2026.12.0), then 5 (2026.12.1), then 6 (2026.12.3) after the 23 legacy ones, with unique codes", () => {
+  it("adds 25 entries (2026.11.0), then 11 (2026.12.0), then 5 (2026.12.1), then 6 (2026.12.3), then 2 (2026.12.5) after the 23 legacy ones, with unique codes", () => {
     expect(ROUTINE_ENTRIES).toHaveLength(ROUTINE_ENTRY_COUNT);
     expect(RECERT_ENTRIES).toHaveLength(RECERT_ENTRY_COUNT);
     expect(ADMISSION_ENTRIES).toHaveLength(ADMISSION_ENTRY_COUNT);
     expect(DISCIPLINE_PLAN_ENTRIES).toHaveLength(DISCIPLINE_PLAN_ENTRY_COUNT);
+    expect(IDG_FOLLOW_UP_ENTRIES).toHaveLength(IDG_FOLLOW_UP_ENTRY_COUNT);
     expect(new Set(VOCABULARY.map((e) => e.code)).size).toBe(VOCABULARY.length);
     for (const e of NEW_ENTRIES) expect(LEGACY_CODES.has(e.code)).toBe(false);
   });
@@ -275,6 +297,39 @@ describe("draft entries", () => {
     for (const e of interventions) {
       expect(e.disciplines, e.code).toEqual(["msw"]);
       expect(e.encounterTypes, e.code).toEqual(["msw_assessment", "msw_followup", "idg_followup"]);
+    }
+  });
+
+  // S5b (VN-D68): the IDG follow-up's own section, from the one action item the author linked the visit to. Tagged for the IDG follow-up of all six
+  // of its disciplines and for nothing else, in one draft-only category wired to no section.
+  it("the 2 of 2026.12.5 are one draft-only category, tagged for the IDG follow-up of its six disciplines and no other template", () => {
+    for (const e of IDG_FOLLOW_UP_ENTRIES) {
+      expect(e.category, e.code).toBe("idg_followup");
+      expect(e.code.startsWith("nv.idg."), e.code).toBe(true);
+      expect(e.disciplines, e.code).toEqual([...IDG_DISCIPLINES]);
+      expect(e.encounterTypes, e.code).toEqual(["idg_followup"]);
+    }
+  });
+
+  it("the ten decision-kind labels are the slot's only options, one per kind M14 records, each distinct", () => {
+    const labels = Object.values(IDG_DECISION_KIND_LABELS);
+    expect(Object.keys(IDG_DECISION_KIND_LABELS).sort()).toEqual([
+      "bereavement_risk_flag",
+      "care_plan_update",
+      "discipline_plan_update",
+      "family_meeting_needed",
+      "level_of_care_consideration",
+      "medication_recommendation",
+      "order_request",
+      "recertification_consideration",
+      "referral",
+      "team_note",
+    ]);
+    expect(new Set(labels).size).toBe(10);
+    for (const e of IDG_FOLLOW_UP_ENTRIES) {
+      const spec = e.slotSpecs?.idg_decision_label;
+      expect(spec?.kind, e.code).toBe("choice");
+      expect(spec?.kind === "choice" ? spec.options : [], e.code).toEqual(labels);
     }
   });
 
@@ -356,6 +411,7 @@ describe("draft entries", () => {
     const interventionCodes = DISCIPLINE_PLAN_ENTRIES.filter((e) =>
       e.code.startsWith("nv.dp.intervention"),
     ).map((e) => e.code);
+    const idgCodes = IDG_FOLLOW_UP_ENTRIES.map((e) => e.code);
     for (const type of ["msw_assessment", "msw_followup"] as const) {
       expect(codes(type, "msw").sort(), type).toEqual([...goalCodes, ...interventionCodes].sort());
     }
@@ -386,17 +442,17 @@ describe("draft entries", () => {
         ].sort(),
       );
       expect(codes("idg_followup", discipline).sort(), `idg_followup:${discipline}`).toEqual(
-        [...SHARED_WITH_PHYSICIANS].sort(),
+        [...SHARED_WITH_PHYSICIANS, ...idgCodes].sort(),
       );
     }
     // The IDG follow-up drafts as the discipline's own visit does: the RN as the routine visit, the LPN with no scale, the social worker and the
-    // chaplain from their own plan.
-    expect(codes("idg_followup", "rn").sort()).toEqual([...SHARED_WITH_IDG].sort());
-    expect(codes("idg_followup", "lpn").sort()).toEqual([...SHARED_WITH_LPN].sort());
+    // chaplain from their own plan; and (S5b) its own section from the linked action item, for all six.
+    expect(codes("idg_followup", "rn").sort()).toEqual([...SHARED_WITH_IDG, ...idgCodes].sort());
+    expect(codes("idg_followup", "lpn").sort()).toEqual([...SHARED_WITH_LPN, ...idgCodes].sort());
     expect(codes("idg_followup", "msw").sort()).toEqual(
-      [...goalCodes, ...interventionCodes].sort(),
+      [...goalCodes, ...interventionCodes, ...idgCodes].sort(),
     );
-    expect(codes("idg_followup", "chaplain").sort()).toEqual([...goalCodes].sort());
+    expect(codes("idg_followup", "chaplain").sort()).toEqual([...goalCodes, ...idgCodes].sort());
   });
 
   // S5 (VN-D53): a physician's or nurse practitioner's note is the clinician's own judgement. No phrase of a plan, a care-plan intervention or goal, a
@@ -407,7 +463,8 @@ describe("draft entries", () => {
         expect(
           e.category === "vitals_review" ||
             e.category === "admission_record" ||
-            e.category === "decline_evidence",
+            e.category === "decline_evidence" ||
+            e.category === "idg_followup",
           e.code,
         ).toBe(true);
       }
@@ -424,6 +481,7 @@ describe("draft entries", () => {
       "chief_concern",
       "decline_evidence",
       "discipline_plan",
+      "idg_followup",
       "medication_change",
       "plan",
       "scale_reading",
@@ -615,6 +673,69 @@ describe("draft wording (neutral, factual, numbers only)", () => {
         "provided",
       ]) {
         expect(text, code).not.toContain(word);
+      }
+    }
+  });
+
+  // S5b (VN-D68): the meeting date, a fixed label for the decision kind and the due date. Never the decision's words, and never that the item was
+  // done, completed or addressed: the visit follows it up, and the clinician says what happened.
+  const idgFollowUpWording: ReadonlyArray<readonly [string, string]> = [
+    [
+      "nv.idg.followup_due",
+      "This visit follows up the team's decision of ${idg_meeting_date}: ${idg_decision_label}; due ${idg_due_date}",
+    ],
+    [
+      "nv.idg.followup",
+      "This visit follows up the team's decision of ${idg_meeting_date}: ${idg_decision_label}",
+    ],
+  ];
+
+  it("pins every 2026.12.5 phrase and every decision-kind label byte for byte", () => {
+    expect(idgFollowUpWording).toHaveLength(IDG_FOLLOW_UP_ENTRY_COUNT);
+    for (const [code, phrase] of idgFollowUpWording) {
+      expect(getVocabEntry(code)?.phrase, code).toBe(phrase);
+    }
+    expect(IDG_DECISION_KIND_LABELS).toEqual({
+      care_plan_update: "an update to the plan of care",
+      order_request: "an order request",
+      medication_recommendation: "a medication recommendation",
+      level_of_care_consideration: "a level of care consideration",
+      recertification_consideration: "a recertification consideration",
+      family_meeting_needed: "a family meeting",
+      bereavement_risk_flag: "a bereavement support review",
+      referral: "a referral",
+      team_note: "a team note",
+      discipline_plan_update: "an update to a discipline's plan of care",
+    });
+  });
+
+  it("no 2026.12.5 phrase or label says anything was done, completed or addressed, or names a diagnosis, a symptom or a risk", () => {
+    const texts = [
+      ...idgFollowUpWording.map(([code, phrase]) => [code, phrase] as const),
+      ...Object.entries(IDG_DECISION_KIND_LABELS),
+    ];
+    for (const [name, value] of texts) {
+      const text = value.toLowerCase();
+      for (const word of [
+        "perform",
+        "complet",
+        "achiev",
+        "progress",
+        "improv",
+        "status",
+        "outcome",
+        "declin",
+        "risk",
+        "flag",
+        "sud",
+        "substance",
+        "assess",
+        "addressed",
+        "discussed",
+        "provided",
+        "resolved",
+      ]) {
+        expect(text, name).not.toContain(word);
       }
     }
   });

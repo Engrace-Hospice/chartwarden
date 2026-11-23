@@ -2193,8 +2193,10 @@ import {
   DisciplinePlanElementsResponseSchema as M8DisciplinePlanElementsResponseSchema,
   DraftResponseSchema as M8DraftResponseSchema,
   DraftSectionResponseSchema as M8DraftSectionResponseSchema,
+  IdgActionItemsResponseSchema as M8IdgActionItemsResponseSchema,
   ResolveSectionSchema as M8ResolveSectionSchema,
   SetDisciplinePlanElementSchema as M8SetDisciplinePlanElementSchema,
+  SetIdgActionItemSchema as M8SetIdgActionItemSchema,
 } from "../../apps/backend/src/modules/08-encounters/routes/draft-section-typebox";
 import {
   DraftPolicyResponseSchema as M8DraftPolicyResponseSchema,
@@ -5953,7 +5955,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "PUT /api/v1/encounters/:encounterId/addenda/:addendumId/draft/sections/:sectionId": {
     summary:
-      "Confirm or deselect one section the addendum names, against the content the author saw (`contentHash` and `corpusVersion` from the amendment draft); 409 DRAFT_SECTION_STALE when either no longer matches. Only the addendum's author, only while the addendum is a draft or finalized (409 ILLEGAL_TRANSITION after), only for a named section (422 UNKNOWN_TEMPLATE_SECTION). Confirming amends the section when the addendum signs; deselecting declines the redraft and leaves the section as signed. The note's care-plan links are never changed. Idempotent. encounter.addendum_author; AI principals refused; 404 when the tenant has the draft switched off",
+      "Confirm or deselect one section the addendum names, against the content the author saw (`contentHash` and `corpusVersion` from the amendment draft); 409 DRAFT_SECTION_STALE when either no longer matches. Only the addendum's author, only while the addendum is a draft or finalized (409 ILLEGAL_TRANSITION after), only for a named section (422 UNKNOWN_TEMPLATE_SECTION). Confirming amends the section when the addendum signs; deselecting declines the redraft and leaves the section as signed. A section that no longer drafts (M14 stopped handing its action item) that the author had CONFIRMED is refused at sign as 409 DRAFT_SECTION_STALE naming it: a DESELECT of it withdraws that confirmation whatever hash the request carries (nothing is drafted to match), and a CONFIRM of a section that is not drafted is always 409 DRAFT_SECTION_STALE. The note's care-plan links are never changed. Idempotent. encounter.addendum_author; AI principals refused; 404 when the tenant has the draft switched off",
     body: M8ResolveSectionSchema,
     response: M8DraftSectionResponseSchema,
   },
@@ -6028,7 +6030,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "PUT /api/v1/encounters/:encounterId/draft/sections/:sectionId": {
     summary:
-      "Confirm or deselect one drafted section against the content the clinician saw (`contentHash` and `corpusVersion` from the draft). The server recomputes the draft for the same viewer and answers 409 DRAFT_SECTION_STALE when either no longer matches. Confirming links the section's care-plan goals and interventions to the encounter; deselecting removes them from it (a note never changes the care plan), so a deselected section is bound to what remains and a section left empty reads not_drafted. Idempotent. Only on an encounter that is not signed, cosigned or voided; encounter.author and caseload scope as the selections save, but the encounter's AUTHOR only (is_author; 403 for anyone else, a supervisor included: the signer must be who confirmed); AI principals refused; 404 when the tenant has the draft switched off. Answers the section's new state",
+      "Confirm or deselect one drafted section against the content the clinician saw (`contentHash` and `corpusVersion` from the draft). The server recomputes the draft for the same viewer and answers 409 DRAFT_SECTION_STALE when either no longer matches. Confirming links the section's care-plan goals and interventions to the encounter; deselecting removes them from it (a note never changes the care plan), so a deselected section is bound to what remains and a section left empty reads not_drafted. A section the clinician CONFIRMED that no longer drafts (M14 stopped handing its action item) is refused at finalize and sign as DRAFT_SECTION_STALE naming it: a DESELECT of it withdraws that confirmation whatever hash the request carries (nothing is drafted to match), a CONFIRM of a section that is not drafted is always 409 DRAFT_SECTION_STALE, and a deselect of one with no confirmation is the same 409. Idempotent. Only on an encounter that is not signed, cosigned or voided; encounter.author and caseload scope as the selections save, but the encounter's AUTHOR only (is_author; 403 for anyone else, a supervisor included: the signer must be who confirmed); AI principals refused; 404 when the tenant has the draft switched off. Answers the section's new state",
     body: M8ResolveSectionSchema,
     response: M8DraftSectionResponseSchema,
   },
@@ -6043,6 +6045,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Keep one goal or intervention in this visit's drafted plan (`included: true`) or leave it out (`included: false`). Idempotent; the note's author alone (encounter.author, caseload scope; a supervisor is refused 403), never an AI principal; a signed, cosigned or voided note is refused (an addendum is the way). Changing what the plan states changes the section's content hash, so a section already confirmed must be confirmed again (DRAFT_SECTION_STALE otherwise). An element the viewer is not handed (absent, another plan's, or Part 2 without disclosure) is the same 404; the answer is the updated list",
     body: M8SetDisciplinePlanElementSchema,
     response: M8DisciplinePlanElementsResponseSchema,
+  },
+  // ADR-0114 S5b - the one M14 IDG action item an IDG follow-up visit follows up.
+  "GET /api/v1/encounters/:encounterId/idg-action-items": {
+    summary:
+      "The IDG action items the calling viewer may link an IDG follow-up visit to: open or in progress, assigned to the viewer's own membership, for the visit's patient, linked to an encounter and naming a decision, newest meeting first, AND the item the visit is already linked to even when M14 has closed it since (M14 closes an encounter-kind item when its assignee signs any visit), each marked `linked`. Facts only: the organization-local meeting date, the decision kind and the fixed label the note states for it, the due date and the status (`open`, `in_progress`, or for the linked item `completed`, `cancelled`, `auto_closed`), never an item's title or body or the decision's narrative. M14 decides 42 CFR Part 2 per viewer: for a patient with an active SUD flag, or one no packet vouches for, a viewer without disclosure is handed nothing. Only for an IDG follow-up visit (else 422 UNKNOWN_TEMPLATE_SECTION); needs encounter.read and idg.act (403 `IDG_ACTION_PERMISSION_REQUIRED`, a stable code, without it); 404 for a tenant with the draft switched off and for an encounter that is not the caller's; 503 DRAFT_UNAVAILABLE when M14 cannot answer",
+    response: M8IdgActionItemsResponseSchema,
+  },
+  "PUT /api/v1/encounters/:encounterId/idg-action-item": {
+    summary:
+      "Link this IDG follow-up visit to ONE M14 action item (`actionItemId`), or clear the link (`null`). Idempotent (naming the linked item again, even after M14 has closed it, changes nothing); a different item replaces the linked one. The draft's `idg_followup` section then states the item's meeting date, decision kind and due date (one sentence) for a viewer holding idg.act, and is not drafted for anyone else; the link does not close the item (M14's own auto-close is unchanged), and the draft states the item whatever its status. Linking needs encounter.author, idg.act (403 `IDG_ACTION_PERMISSION_REQUIRED`, a stable code, without it), the note's author alone (caseload scope; a supervisor is refused 403) and no AI principal; CLEARING (`null`) needs the author's checks only, no idg.act and no M14, and answers an empty `items` list (read the list again with GET). A signed, cosigned or voided note is refused 409 (an addendum is the way). An item the viewer is not handed (absent, closed and not the linked one, reassigned, another patient's, or Part 2 without disclosure) is the same 404; a re-link past the per-visit row cap is 409 IDG_ACTION_ITEM_LINK_LIMIT; a refused link leaves a permanent audit event, so the route allows at most 10 requests a minute per user and 100 a minute per organization (429 RATE_LIMITED, Retry-After 60; a link, a clear and a refused link all count); a link answers the updated list",
+    body: M8SetIdgActionItemSchema,
+    response: M8IdgActionItemsResponseSchema,
   },
 });
 

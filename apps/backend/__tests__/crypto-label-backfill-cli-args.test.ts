@@ -1,15 +1,26 @@
+import { spawnSync } from "node:child_process";
 // The read-only label verifier CLI's argument handling. Every case must be refused (exit 1) BEFORE any connection is opened, so these run with no
 // database and no environment: a bad flag can never reach a table.
-import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 const CLI = join(__dirname, "../../../scripts/db/backfill-crypto-labels.ts");
-const cli = (...args: string[]) =>
-  spawnSync("bun", ["run", CLI, ...args], {
-    env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "" },
-    encoding: "utf8",
-  });
+const cli = (...args: string[]) => {
+  // Bun automatically loads .env from cwd. A unique empty directory makes the test's deliberately
+  // empty environment deterministic even when the host happens to have a /tmp/.env file.
+  const cwd = mkdtempSync(join(tmpdir(), "chartwarden-crypto-label-cli-"));
+  try {
+    return spawnSync("bun", ["run", CLI, ...args], {
+      cwd,
+      env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "" },
+      encoding: "utf8",
+    });
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+};
 
 // each case starts a bun process; give them room when the whole suite runs in parallel
 vi.setConfig({ testTimeout: 30_000 });

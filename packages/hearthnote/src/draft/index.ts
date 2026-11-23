@@ -23,6 +23,7 @@ export type {
   DraftedSection,
   EmptyDraftSection,
   FaceToFaceDraftInput,
+  IdgFollowUpDraftInput,
   MedicationChangeInput,
   MedicationChangeKind,
   MedicationOrderInput,

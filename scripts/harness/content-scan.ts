@@ -169,7 +169,7 @@ export function shannonEntropy(s: string): number {
 
 /** Paths whose content is never scanned (lockfiles, binary-ish corpora, the registry itself). */
 const UNSCANNED =
-  /(^|\/)(bun\.lock|package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$|\.(pdf|png|jpe?g|gif|webp|ico|woff2?|ttf|zip|gz|pen)$|^HOPE Data Spec|(^|\/)compliance\/synthetic-identifiers\.json$/i;
+  /(^|\/)(bun\.lock|package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$|\.(pdf|png|jpe?g|gif|webp|ico|woff2?|ttf|zip|gz|pen)$|(^|\/)compliance\/synthetic-identifiers\.json$/i;
 const TESTISH =
   /(__tests__|__fixtures__|\.test\.|\.spec\.|\/fixtures?\/|\.stories\.|\.example$|^e2e\/)/;
 

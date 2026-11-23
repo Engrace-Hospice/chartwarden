@@ -98,6 +98,12 @@ export const NARRATIVE_VOCAB_RELEASES: readonly NarrativeVocabRelease[] = [
     id: "6f1d7e52-3b8a-4c19-a0d4-9e27b5c3f8a1",
     releasedOn: "2026-11-21",
   },
+  // The IDG follow-up's two draft phrases and the ten decision-kind labels (ADR-0114 S5b). Additive: no earlier phrase changed.
+  {
+    version: "narrative-vocab@2026.12.5",
+    id: "8b98ab6c-dd33-4e80-8ffc-f1dc711210d5",
+    releasedOn: "2026-11-22",
+  },
 ];
 
 /** Raised when {@link VOCAB_VERSION} names a release this registry does not carry. */

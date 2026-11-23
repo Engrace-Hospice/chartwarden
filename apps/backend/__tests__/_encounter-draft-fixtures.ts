@@ -160,6 +160,8 @@ export function fakePorts(over: Partial<DraftPorts> = {}): Spied {
   const defaults: DraftPorts = {
     carePlanAsOf: async () => null,
     disciplinePlanAsOf: async () => null,
+    idgFollowUpItems: async () => [],
+    linkedIdgFollowUpItem: async () => null,
     scaleSeries: honestSeries({}),
     medicationChangesBetween: async () => [],
     electionPeriods: async () => [],
@@ -186,6 +188,7 @@ export function fakePorts(over: Partial<DraftPorts> = {}): Spied {
     latestVitals: async () => null,
     removedCarePlanElementIds: async () => new Set<string>(),
     removedDisciplinePlanElementIds: async () => new Set<string>(),
+    linkedIdgActionItemId: async () => null,
     loadSelection: async () => EMPTY_SELECTION,
   };
   const merged: DraftPorts = { ...defaults, ...over };

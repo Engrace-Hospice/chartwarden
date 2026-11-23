@@ -18,7 +18,6 @@ paths = [
   '''(^|/)bun\.lock$''',
   '''\.pen$''',
   '''^scripts/__fixtures__/''',
-  '''^HOPE Data Spec''',
 ]
 regexes = [
   '''AKIAIOSFODNN7EXAMPLE''',

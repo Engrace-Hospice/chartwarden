@@ -194,6 +194,7 @@ import { buildMortalityReviewerResolver } from "./bootstrap/m30-mortality-review
 import { m34ActiveMembershipUserId } from "./bootstrap/m34-identity-shred-subjects";
 import {
   buildMetricsRegistry,
+  metricQueueNames,
   mountMetricsRoute,
   registerBullMQQueueMetrics,
   registerHttpMetrics,
@@ -395,6 +396,7 @@ import {
   EMERGENCY_ROUTE_RATE_LIMIT,
   HELP_REQUEST_ROUTE_RATE_LIMIT,
   HOPE_SFV_COMPLETION_ROUTE_RATE_LIMIT,
+  IDG_FOLLOW_UP_LINK_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
   MAC_CREDENTIAL_TEST_ROUTE_RATE_LIMIT,
   MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
@@ -1088,6 +1090,7 @@ import {
   type DocLensExtractorPort,
   type DocLensSudDetectorPort,
   type DocLensVisionVerifierPort,
+  M22_DOCLENS_INTAKE_QUEUE,
   M22_DOCUMENT_RENDERED_EVENT,
   M22_FORM_RENDER_PLATFORM_JOB_ID,
   M22_OUTBOX_EVENTS,
@@ -5797,6 +5800,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const auth = dbHandle
     ? createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0], {
         emailTransport,
+        authLogger: (level, message) => {
+          const fields = { component: "better-auth" };
+          if (level === "error") app.log.error(fields, message);
+          else if (level === "warn") app.log.warn(fields, message);
+          else if (level === "debug") app.log.debug(fields, message);
+          else app.log.info(fields, message);
+        },
         // GAP-002 — the password-reset leg of the M2 §8.1 authentication trail (the rest is the bridge's).
         auditSink: authAuditSink,
         onAuditError: authAuditErrorLogger,
@@ -6677,12 +6687,25 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   { errorClass: error instanceof Error ? error.name : typeof error },
                   "closure override denial audit event could not be written",
                 ),
+              // ADR-0114 S5b - a refused IDG follow-up link leaves a best-effort audit event; if THAT write fails, say so (error class only).
+              onRefusalAuditFailure: (error) =>
+                app.log.warn(
+                  { errorClass: error instanceof Error ? error.name : typeof error },
+                  "IDG follow-up link refusal audit event could not be written",
+                ),
               // ADR-0113 D7 - fail-open (an availability control): 10/min/user, 100/min/org on the override grant and revoke routes, which
               // bounds the immutable denied-attempt audit rows one supervisor can add (fresh Idempotency-Keys defeat the replay cache).
               overrideRateLimit: createRouteRateLimit({
                 store: rateLimitStore ?? createInMemoryRateLimitStore(),
                 limit: CLOSURE_OVERRIDE_ROUTE_RATE_LIMIT,
                 keyPrefix: "m8-closure-override",
+              }),
+              // ADR-0114 S5b - fail-open: 10/min/user, 100/min/org on the IDG follow-up link route, which bounds the immutable refused-link audit rows one
+              // author can add (the org-wide 600/min tier alone allowed about 36,000 an hour).
+              idgLinkRateLimit: createRouteRateLimit({
+                store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                limit: IDG_FOLLOW_UP_LINK_ROUTE_RATE_LIMIT,
+                keyPrefix: "m8-idg-link",
               }),
             },
           );
@@ -14802,7 +14825,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       ...m14Workers,
       ...m29NppesWorkers,
     ];
-    const metricsQueueNames = [...new Set(allWorkers.map((w) => w.name))];
+    // The WardenLens worker is constructed immediately below this block, so it is absent from
+    // `allWorkers`. The same role/database/queue preconditions guarantee it will be wired.
+    const metricsQueueNames = metricQueueNames(allWorkers, [M22_DOCLENS_INTAKE_QUEUE]);
     const metricsQueues = metricsQueueNames.map(
       (name) => new Queue(name, { connection: queueConnection }),
     );

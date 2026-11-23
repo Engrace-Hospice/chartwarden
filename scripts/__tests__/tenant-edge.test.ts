@@ -38,6 +38,8 @@ describe("deploy/production/.env.tenant.example", () => {
       DATABASE_URL: "postgresql://chartwarden_app:x@postgres:5432/chartwarden",
       DATABASE_PLATFORM_URL: "postgresql://chartwarden_platform_login:x@postgres:5432/chartwarden",
       REDIS_URL: "redis://valkey:6379",
+      // Production Compose injects the internal-only scanner address rather than the operator template.
+      CLAMD_HOST: "clamav",
       ...filled,
     });
     expect(problems.map((p) => p.key).sort()).toEqual([

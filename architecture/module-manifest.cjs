@@ -512,6 +512,7 @@ exports.MODULES = [
       "documentation_obligation_override",
       "encounter_draft_confirmation",
       "encounter_discipline_plan_link",
+      "encounter_idg_action_item_link",
       "hearthnote_signed_section",
       "encounter_amendment",
       "addendum_cosignature_request",

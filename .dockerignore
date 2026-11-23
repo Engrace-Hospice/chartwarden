@@ -28,6 +28,11 @@ dist/
 .cursor/
 .DS_Store
 
+# Git-ignored operator scratch space can contain multi-gigabyte local fixtures. A clean-clone image
+# never needs it; including it multiplies the context into every API/worker/migrate image and can
+# exhaust Docker Desktop before the acceptance stack reaches its health checks.
+scratchpad/
+
 # Generated repository-analysis output. It is neither application source nor a runtime dependency;
 # excluding it keeps the large graph JSON and its cached metadata out of published images.
 graphify-out/

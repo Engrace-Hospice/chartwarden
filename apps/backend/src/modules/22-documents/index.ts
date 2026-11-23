@@ -49,6 +49,10 @@ import { selectOutboundFaxTransport } from "./fax/outbound-fax";
 import { createDbRecordsRequestService } from "./records-request/records-request-db";
 import { createDbRecordsRequestFaxStore } from "./records-request/records-request-fax-db";
 import { registerRecordsRequestRoutes } from "./records-request/records-request-routes";
+import {
+  documentContentScannerFromEnv,
+  documentUploadScanRequired,
+} from "./routes/document-content-scanner";
 import { registerDocumentRoutes as _registerM22Routes } from "./routes/documents-routes";
 import { createServerUploadService } from "./routes/server-upload";
 import { createSignedUrlService as _createSignedUrlService } from "./routes/signed-url-service";
@@ -58,6 +62,7 @@ import {
   createDocumentStorageProvider,
   createDrizzleStaffMintAccessLog,
   createS3ObjectStore,
+  createS3TenantStorageProvisioner,
   s3ObjectStoreConfigFromEnv,
 } from "./seams/index";
 
@@ -84,16 +89,18 @@ export function mountDocumentRoutes(
   const doclingObjects = objectStoreConfig
     ? createS3ObjectStore({ ...objectStoreConfig, publicEndpoint: objectStoreConfig.endpoint })
     : null;
+  const tenantStorage = objectStoreConfig
+    ? createS3TenantStorageProvisioner(objectStoreConfig)
+    : null;
   // GAP-068 — `POST /documents` + `/documents/:id/versions` store bytes through the SAME bound object store
-  // as the presigned flow. No MINIO_* -> upload answers 503 (nothing stored). No malware scanner
-  // implementation exists in this repo, so `DOCUMENT_UPLOAD_SCAN_REQUIRED=true` makes a missing scanner
-  // fail the upload closed (503) rather than store unscanned bytes; unset, it is parity with the presigned
-  // flow (content-type/magic-byte/size/SHA-256 verified, no AV engine).
+  // as the presigned flow. Production requires the M22-owned clamd adapter; an absent scanner fails the
+  // upload closed before storage when DOCUMENT_UPLOAD_SCAN_REQUIRED=true.
   const uploads = createServerUploadService({
     db,
     logger: app.log, // the production logger: the upload's "best effort" warnings (an orphan object, an abandoned put) must be heard
     objects,
-    scanRequired: process.env.DOCUMENT_UPLOAD_SCAN_REQUIRED === "true",
+    scanner: documentContentScannerFromEnv(process.env),
+    scanRequired: documentUploadScanRequired(process.env),
     referralReader: {
       canAccessReferral(input) {
         return getSeam("ReferralReader").canAccessReferral(input);
@@ -172,8 +179,13 @@ export function mountDocumentRoutes(
     createVerifiedUploadService({
       db,
       objects,
+      ensureTenantBucket: tenantStorage
+        ? (organizationId) => tenantStorage.ensureTenantPrefixes({ organizationId, prefixes: [] })
+        : undefined,
       // ADR-0109 D10 (PR 3) — the grief-library video `ftyp` check reads the upload's first bytes back.
       reader: objects,
+      scanner: documentContentScannerFromEnv(process.env),
+      scanRequired: documentUploadScanRequired(process.env),
       referralReader: {
         canAccessReferral(input) {
           return getSeam("ReferralReader").canAccessReferral(input);
@@ -317,9 +329,9 @@ export {
   registerDocumentAbacPredicates,
 } from "./abac-predicates";
 export { type DocumentRouteDeps, registerDocumentRoutes } from "./routes/documents-routes";
+export type { DocumentContentScanner } from "./routes/document-content-scanner";
 export { registerVerifiedUploadRoutes } from "./routes/verified-upload-routes";
 export {
-  type DocumentContentScanner,
   type ServerUploadService,
   createServerUploadService,
   decodeBase64Content,

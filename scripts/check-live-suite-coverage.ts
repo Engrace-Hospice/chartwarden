@@ -94,7 +94,9 @@ const INTERACTIVE_MODES = new Set(["test:e2e:ui"]);
  * you to delete the entry, so a stale deferral cannot quietly outlive its reason.
  */
 const DEFERRED: Readonly<Record<string, string>> = {
-  // Empty on purpose, and the map stays. `test:e2e` was the entry that motivated it — the 18-test
+  "test:e2e:intake-operational":
+    "Operational-acceptance harness requires an isolated full stack plus an explicitly authorized real M32 provider; CI has neither provider authorization nor the required local Ollama/Docling environment. It remains opt-in and must never substitute mocks for this gate.",
+  // `test:e2e` was the entry that motivated this map — the 18-test
   // Playwright suite with its six axe-core WCAG scans, unrunnable because `bun run db:reset` aborted
   // partway (#39) and 10 of the 18 specs were red against a since-redesigned screen (#56). Both
   // closed, the suite is 18/18, and the `e2e` job now runs it — so the entry is gone, exactly as the

@@ -26,6 +26,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   type DocLensClassifierPort,
   type DocLensExtractorPort,
+  type DocLensSudDetectorPort,
   createCandidateValueCipher,
   parseDoclingResponse,
   runDocLensIntake,
@@ -306,6 +307,24 @@ describe.skipIf(!DB_URL)("F-236 — DocLens intake job + live M32 pipeline — L
     );
     expect(jobs.rows.every((r) => r.status === "awaiting_capability")).toBe(true);
     expect(jobs.rows[0].failure_reason).toContain("ai.full");
+  });
+
+  it("keeps a refused SUD detector retryable when rules find no evidence", async () => {
+    const batchId = await seedBatch(ORG_A, true);
+    const refusingSud: DocLensSudDetectorPort = {
+      detect: async () => ({
+        available: false,
+        detail: "capability temporarily unavailable",
+      }),
+    };
+
+    await expect(
+      runDocLensIntake(deps({ sudDetector: () => refusingSud }), job(ORG_A, batchId)),
+    ).resolves.toMatchObject({ outcome: "awaiting_capability", candidates: 4 });
+    expect(
+      (await admin.query("SELECT status FROM intake_upload_batch WHERE id=$1", [batchId])).rows[0]
+        ?.status,
+    ).toBe("classifier_complete");
   });
 
   it("keeps a partially refused batch out of review and resumes only the awaiting job", async () => {

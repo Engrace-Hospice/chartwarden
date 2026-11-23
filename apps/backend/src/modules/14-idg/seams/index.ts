@@ -5,18 +5,20 @@
 // (decision-to-careplan-update latency measure) + M33 consume; `IdgScheduleProvider` — the meeting-schedule +
 // 15-day-cadence read path M28 (FHIR `CareTeam`/`Encounter`) + M30 (cadence-adherence measure) + M33 consume.
 // `registerIdgSeams` registers all three real impls over their boot deny-stubs (before validateSeams()), driven
-// from the composition root's wireModuleSeams(). All three share ONE injected IdgSeamStore (in-memory slice
+// from the composition root's wireModuleSeams(). All four share ONE injected IdgSeamStore (in-memory slice
 // here; Drizzle in prod, reads under the consumer's RLS) — mirrors the M9/M10/M11/M12/M13 seams/index.ts
 // precedents. None is a mutate path: M14 owns the meeting/decision/packet lifecycle internally.
 import type {
   CarePlanReader,
   IdgDecisionProvider,
+  IdgFollowUpReader,
   IdgPacketProvider,
   IdgScheduleProvider,
 } from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import {
   createIdgDecisionProvider,
+  createIdgFollowUpReader,
   createIdgPacketProvider,
   createIdgScheduleProvider,
 } from "./providers";
@@ -25,13 +27,16 @@ import { type IdgSeamStore, createInMemoryIdgSeamStore } from "./store";
 export {
   type IdgCadenceAdherence,
   type IdgDecisionSeedRow,
+  type IdgFollowUpRow,
   type IdgSeamSeed,
   type IdgSeamStore,
   type StoredIdgPacket,
   createInMemoryIdgSeamStore,
 } from "./store";
 export {
+  MAX_FOLLOW_UP_ITEMS,
   createIdgDecisionProvider,
+  createIdgFollowUpReader,
   createIdgPacketProvider,
   createIdgScheduleProvider,
 } from "./providers";
@@ -48,7 +53,7 @@ export interface IdgSeamDeps {
 }
 
 /**
- * Register M14's three §4.8 owned seams into the M1 registry over their boot deny-stubs (M14-T05; before
+ * Register M14's four §4.8 owned seams into the M1 registry over their boot deny-stubs (M14-T05; before
  * validateSeams()). All three share one {@link IdgSeamStore} so a single Drizzle adapter backs the whole
  * packet + decision + schedule read surface. Called by the composition root's wireModuleSeams().
  */
@@ -57,6 +62,8 @@ export function registerIdgSeams(deps: IdgSeamDeps = {}): void {
   registerSeam("IdgPacketProvider", createIdgPacketProvider(store));
   registerSeam("IdgDecisionProvider", createIdgDecisionProvider(store));
   registerSeam("IdgScheduleProvider", createIdgScheduleProvider(store));
+  // ADR-0114 S5b: the open action items a visit's author may follow up (M8's visit-note draft reads it through the registry).
+  registerSeam("IdgFollowUpReader", createIdgFollowUpReader(store));
 }
 
 /** Typed resolver for M14's IdgPacketProvider (M22 render + M33 consume the read seam). */
@@ -72,6 +79,11 @@ export function getIdgDecisionProvider(): IdgDecisionProvider {
 /** Typed resolver for M14's IdgScheduleProvider (M28 FHIR + M30 cadence measure + M33 consume the read seam). */
 export function getIdgScheduleProvider(): IdgScheduleProvider {
   return getSeam("IdgScheduleProvider");
+}
+
+/** Typed resolver for M14's IdgFollowUpReader (M8's visit-note draft consumes the read seam). */
+export function getIdgFollowUpReader(): IdgFollowUpReader {
+  return getSeam("IdgFollowUpReader");
 }
 
 /** M14 CONSUMES M7's §7.8 CarePlanReader (the M8 seams/index.ts precedent; manifest dependsOn already
