@@ -124,7 +124,7 @@ Four operational documents whose producers already put the whole content on the 
 `visit_confirmation` reminder, the M18 `evv_verification` record, the M34 `dsar_bundle` transmittal sheet and the M34
 `tenant_export_cover_letter`. No producer changed. Each is patient-independent (the payloads hold ids, never a name),
 has a constant PHI-free title, prints ids shortened, and draws only declared fields: the DSAR payload's `title`,
-`bundleMinioObjectKey` and `patientId` are never drawn. The two archive digests must be 64 lowercase hex (the sheet
+`bundleObjectKey` and `patientId` are never drawn. The two archive digests must be 64 lowercase hex (the sheet
 exists so the recipient can verify the file). The EVV record makes no geo claim: the `planEvvVerificationRender`
 geo/map content is not on the real `m18.evv.aggregator_accepted` event.
 
