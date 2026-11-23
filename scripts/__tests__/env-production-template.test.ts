@@ -106,6 +106,9 @@ describe("deploy/production/.env.production.example", () => {
       DATABASE_URL: "postgresql://chartwarden_app:x@postgres:5432/chartwarden",
       DATABASE_PLATFORM_URL: "postgresql://chartwarden_platform_login:x@postgres:5432/chartwarden",
       REDIS_URL: "redis://valkey:6379",
+      // Production compose injects the clamd endpoint into api/worker beside the sidecar.
+      CLAMD_HOST: "clamav",
+      CLAMD_PORT: "3310",
       ...render(text),
     };
     const problems = collectEnvProblems(env);

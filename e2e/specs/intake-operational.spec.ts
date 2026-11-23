@@ -8,6 +8,10 @@ import { signInAs } from "../fixtures/helpers";
 const enabled = process.env.INTAKE_OPERATIONAL_ACCEPTANCE === "1";
 const documentPath = process.env.INTAKE_SYNTHETIC_DOCUMENT;
 const evidenceDir = process.env.INTAKE_EVIDENCE_DIR;
+const EICAR = Buffer.from(
+  "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*",
+  "latin1",
+);
 
 function requireLoopbackUrl(name: string): URL {
   const raw = process.env[name];
@@ -116,7 +120,7 @@ test.describe("intake operational acceptance", () => {
     browser,
     page,
   }) => {
-    test.setTimeout(8 * 60_000);
+    test.setTimeout(14 * 60_000);
     page.setDefaultTimeout(20_000);
     if (!documentPath) throw new Error("INTAKE_SYNTHETIC_DOCUMENT is required");
     await requireIsolatedAcceptanceStack();
@@ -132,6 +136,24 @@ test.describe("intake operational acceptance", () => {
     await addRecords.evaluate((element) => element.scrollIntoView({ block: "center" }));
     await addRecords.click({ timeout: 15_000 });
     const upload = page.getByRole("dialog");
+    // The production clamd path is part of operational acceptance: the checksum-verified direct PUT
+    // must still be scanned before M22 creates a document/version or intake batch.
+    await upload.getByLabel("Records file").setInputFiles({
+      name: "synthetic-eicar.pdf",
+      mimeType: "application/pdf",
+      buffer: EICAR,
+    });
+    await upload.getByLabel("Received by").selectOption({ label: "Fax" });
+    await upload.getByRole("button", { name: "Upload and file" }).click();
+    await expect(upload.getByRole("alert")).toContainText(/rejected by content scan/i, {
+      timeout: 30_000,
+    });
+    const rejectedBatches = await page.request.get(
+      `/api/v1/intake/referral-batches?referralId=${referralId}`,
+    );
+    expect(rejectedBatches.ok()).toBe(true);
+    expect(((await rejectedBatches.json()) as { items?: unknown[] }).items ?? []).toHaveLength(0);
+
     await upload.getByLabel("Records file").setInputFiles(documentPath);
     await upload.getByLabel("Received by").selectOption({ label: "Fax" });
     const submit = upload.getByRole("button", { name: "Upload and file" });
@@ -152,7 +174,10 @@ test.describe("intake operational acceptance", () => {
           const body = (await response.json()) as { items?: { status?: string }[] };
           return body.items?.[0]?.status ?? "missing";
         },
-        { timeout: 4 * 60_000, intervals: [5_000] },
+        // Local governed models can serialize multiple stage-5 vision checks on production-like
+        // worker images. Keep the clinical completion assertion strict while allowing the bounded
+        // provider window used by the M32 seams (individual extraction calls allow up to 10 minutes).
+        { timeout: 8 * 60_000, intervals: [5_000] },
       )
       .toBe("extraction_complete");
     await page.reload();

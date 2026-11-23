@@ -16,6 +16,7 @@ import {
 } from "../internal-documents";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectReaderPort, ObjectStorePort } from "../seams/store";
+import type { DocumentContentScanner } from "./document-content-scanner";
 import { assertKindWritable } from "./immutable-kinds";
 import type { DocumentProvenanceMetadata } from "./service";
 
@@ -137,6 +138,16 @@ function validateInput(input: InitiateVerifiedUploadInput): void {
   }
 }
 
+function assertWithinRequiredScannerLimit(byteSize: number, scanRequired: boolean | undefined): void {
+  if (scanRequired && byteSize > MAX_DOCUMENT_UPLOAD_BYTES) {
+    throw new ChartWardenError(
+      "UPLOAD_SCAN_SIZE_UNSUPPORTED",
+      "the uploaded object exceeds the configured malware scanner limit",
+      422,
+    );
+  }
+}
+
 function assertStore(objects: ObjectStorePort | null): ObjectStorePort {
   if (!objects) {
     throw new DegradedError(
@@ -163,6 +174,57 @@ async function mp4HeadOk(
   return head !== null && hasMp4FtypBox(head);
 }
 
+type VerifiedObjectScanResult = "clean" | "infected" | "not_required";
+
+/** Scan a checksum/size/MIME-verified presigned upload before it becomes a document version. */
+export async function scanVerifiedUploadedObject(
+  deps: {
+    readonly reader?: ObjectReaderPort | null;
+    readonly scanner?: DocumentContentScanner | null;
+    readonly scanRequired?: boolean;
+  },
+  input: {
+    readonly organizationId: string;
+    readonly objectKey: string;
+    readonly mimeType: string;
+    readonly byteSize: number;
+  },
+): Promise<VerifiedObjectScanResult> {
+  // clamd's production INSTREAM contract is sized for the 25 MiB clinical-document cap. Large
+  // grief-library video needs a future streaming/quarantine path; fail before reading it into the API
+  // process whenever production scanning is mandatory.
+  if (input.byteSize > MAX_DOCUMENT_UPLOAD_BYTES) {
+    assertWithinRequiredScannerLimit(input.byteSize, deps.scanRequired);
+    return "not_required";
+  }
+  if (!deps.scanner || !deps.reader) {
+    if (deps.scanRequired) {
+      throw new DegradedError(
+        "document-scanner",
+        "verified document upload requires the configured malware scanner",
+      );
+    }
+    return "not_required";
+  }
+  const bytes = await deps.reader.getObject({
+    bucket: deriveTenantBucket(input.organizationId),
+    objectKey: input.objectKey,
+    maxBytes: input.byteSize,
+  });
+  if (!bytes || bytes.byteLength !== input.byteSize) {
+    throw new ChartWardenError(
+      "UPLOAD_INTEGRITY_MISMATCH",
+      "uploaded object could not be read at its verified size",
+      422,
+    );
+  }
+  try {
+    return (await deps.scanner.scan({ bytes, mimeType: input.mimeType })).verdict;
+  } catch {
+    throw new DegradedError("document-scanner", "the malware scanner is unavailable");
+  }
+}
+
 /** Two-step upload: presigned checksum-enforced PUT, then authoritative HEAD verification and DB commit. */
 export function createVerifiedUploadService(deps: {
   readonly db: DbClient;
@@ -171,6 +233,9 @@ export function createVerifiedUploadService(deps: {
   readonly ensureTenantBucket?: (organizationId: string) => Promise<unknown>;
   /** Reads an upload's first bytes back (the mp4 `ftyp` check). Unbound => a video upload cannot complete (fail closed). */
   readonly reader?: ObjectReaderPort | null;
+  readonly scanner?: DocumentContentScanner | null;
+  /** Fail closed before document/version creation when the scanner or reader is absent. */
+  readonly scanRequired?: boolean;
   readonly referralReader?: ReferralAccessReader;
   readonly now?: () => Date;
   readonly randomId?: () => string;
@@ -229,6 +294,9 @@ export function createVerifiedUploadService(deps: {
     async initiate({ organizationId, userId, membershipId, input }) {
       const objects = assertStore(deps.objects);
       validateInput(input);
+      // Refuse before referral reads, bucket creation, ledger creation or presigning: production must
+      // not invite an upload its mandatory scanner cannot accept.
+      assertWithinRequiredScannerLimit(input.byteSize, deps.scanRequired);
       await validateReferralAccess(organizationId, userId, input);
       const uploadId = randomId();
       const opaqueVersionId = randomId();
@@ -393,6 +461,31 @@ export function createVerifiedUploadService(deps: {
           videoLooksWrong
             ? "uploaded object is not an MP4 video"
             : "uploaded object does not match the declared checksum, size, and MIME type",
+          422,
+        );
+      }
+
+      const scan = await scanVerifiedUploadedObject(deps, {
+        organizationId,
+        objectKey: upload.objectKey,
+        mimeType: upload.mimeType,
+        byteSize: Number(upload.expectedByteSize),
+      });
+      if (scan === "infected") {
+        // Keep the ledger retryable until every object version is gone. If storage deletion fails,
+        // another completion attempt repeats the scan and cleanup instead of hiding an orphan behind
+        // a terminal status.
+        await objects.destroyAllVersions({
+          bucket: deriveTenantBucket(organizationId),
+          objectKey: upload.objectKey,
+          organizationId,
+        });
+        await inOrg(organizationId, userId, async (tx) => {
+          await tx.update(U).set({ status: "aborted", updatedAt: now() }).where(eq(U.id, uploadId));
+        });
+        throw new ChartWardenError(
+          "UPLOAD_REJECTED",
+          "the uploaded file was rejected by content scan",
           422,
         );
       }

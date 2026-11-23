@@ -285,6 +285,19 @@ const REQUIREMENTS: readonly Requirement[] = [
     key: "REDIS_URL",
     rule: (v) => (/^rediss?:\/\//.test(v) ? null : "must be a redis:// or rediss:// URL"),
   },
+  // M22 document uploads contain untrusted clinical files. Production code unconditionally requires
+  // scanning; these endpoint requirements ensure its M22-owned clamd adapter can bind at boot.
+  { key: "CLAMD_HOST" },
+  {
+    key: "CLAMD_PORT",
+    when: (env) => env.CLAMD_PORT !== undefined,
+    rule: (v) => {
+      const port = Number(v);
+      return Number.isSafeInteger(port) && port >= 1 && port <= 65_535
+        ? null
+        : "must be an integer from 1 to 65535";
+    },
+  },
   // ADR-0053 amendment 2026-11-04: the Claim.MD account key and which account it opens (test or production).
   {
     key: "CLAIMMD_ACCOUNT_KEY",

@@ -553,18 +553,20 @@ async function runDocLensIntakeWhileProcessable(
       throw new DegradedError("doclens-intake", "SUD indicators found but no outbox is bound");
     }
     const evidence = merged.length ? await deps.cipher.encrypt(org, JSON.stringify(merged)) : null;
-    await tx
-      .update(BATCH)
-      .set({
-        ...(scanComplete ? { sudDetectorRef: [...new Set(refs)].join("+") } : {}),
-        ...(evidence
-          ? {
-              sudEvidenceCipher: evidence,
-              ...(newlyDetected ? { sudStatus: "detected" as const } : {}),
-            }
-          : {}),
-      })
-      .where(eq(BATCH.id, job.batchId));
+    if (scanComplete || evidence) {
+      await tx
+        .update(BATCH)
+        .set({
+          ...(scanComplete ? { sudDetectorRef: [...new Set(refs)].join("+") } : {}),
+          ...(evidence
+            ? {
+                sudEvidenceCipher: evidence,
+                ...(newlyDetected ? { sudStatus: "detected" as const } : {}),
+              }
+            : {}),
+        })
+        .where(eq(BATCH.id, job.batchId));
+    }
     if (newlyDetected && deps.outbox) {
       const payload: IntakeSudDetectedPayload = {
         intakeBatchId: job.batchId,

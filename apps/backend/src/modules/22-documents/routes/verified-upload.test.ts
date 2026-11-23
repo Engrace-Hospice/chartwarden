@@ -4,7 +4,11 @@
 // only thing that keeps a tenant from filing evidence of its own BAA.
 import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
-import { type InitiateVerifiedUploadInput, createVerifiedUploadService } from "./verified-upload";
+import {
+  type InitiateVerifiedUploadInput,
+  createVerifiedUploadService,
+  scanVerifiedUploadedObject,
+} from "./verified-upload";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const USER = "22222222-2222-4222-8222-222222222222";
@@ -65,6 +69,39 @@ describe("createVerifiedUploadService.initiate", () => {
       }),
     ).rejects.not.toMatchObject({ code: "DOCUMENT_IMMUTABLE" });
     expect(touched.length).toBeGreaterThan(0);
+  });
+
+  it("refuses a large video before creating a ledger or presign when scanning is mandatory", async () => {
+    const touched: string[] = [];
+    const trap = (name: string) =>
+      new Proxy(
+        {},
+        {
+          get: (_target, property) => {
+            touched.push(`${name}.${String(property)}`);
+            throw new Error(`${name} was touched`);
+          },
+        },
+      );
+    const svc = createVerifiedUploadService({
+      db: trap("db") as unknown as DbClient,
+      objects: trap("objects") as never,
+      scanRequired: true,
+    });
+    await expect(
+      svc.initiate({
+        organizationId: ORG,
+        userId: USER,
+        membershipId: MEMBERSHIP,
+        input: {
+          ...INPUT,
+          aggregateType: "bereavement_library_item" as never,
+          mimeType: "video/mp4",
+          byteSize: 500 * 1024 * 1024,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "UPLOAD_SCAN_SIZE_UNSUPPORTED", statusCode: 422 });
+    expect(touched).toEqual([]);
   });
 
   it("provisions the tenant bucket before creating an upload row or issuing a presign", async () => {
@@ -132,5 +169,88 @@ describe("createVerifiedUploadService.initiate", () => {
       }),
     ).rejects.toThrow(/db\..* was touched/);
     expect(touched).not.toContain("ensure");
+  });
+});
+
+describe("scanVerifiedUploadedObject", () => {
+  const bytes = Buffer.from("%PDF-1.4 synthetic");
+  const input = {
+    organizationId: ORG,
+    objectKey: "uploads/synthetic",
+    mimeType: "application/pdf",
+    byteSize: bytes.byteLength,
+  };
+
+  it("reads the checksum-verified object and accepts only an explicit clean verdict", async () => {
+    const seen: string[] = [];
+    await expect(
+      scanVerifiedUploadedObject(
+        {
+          reader: {
+            getObject: async (args) => {
+              seen.push(`${args.bucket}/${args.objectKey}:${args.maxBytes}`);
+              return bytes;
+            },
+          },
+          scanner: {
+            scan: async (scan) => {
+              expect(scan.bytes).toEqual(bytes);
+              return { verdict: "clean" };
+            },
+          },
+          scanRequired: true,
+        },
+        input,
+      ),
+    ).resolves.toBe("clean");
+    expect(seen).toEqual([`tenant-${ORG}/uploads/synthetic:${bytes.byteLength}`]);
+  });
+
+  it("returns infected so completion can abort the ledger and destroy the object", async () => {
+    await expect(
+      scanVerifiedUploadedObject(
+        {
+          reader: { getObject: async () => bytes },
+          scanner: { scan: async () => ({ verdict: "infected" }) },
+          scanRequired: true,
+        },
+        input,
+      ),
+    ).resolves.toBe("infected");
+  });
+
+  it("fails closed when production requires scanning but either dependency is absent", async () => {
+    await expect(
+      scanVerifiedUploadedObject({ reader: null, scanner: null, scanRequired: true }, input),
+    ).rejects.toMatchObject({ code: "DEGRADED", statusCode: 503 });
+  });
+
+  it("does not let video bypass a required production scan", async () => {
+    await expect(
+      scanVerifiedUploadedObject(
+        { reader: null, scanner: null, scanRequired: true },
+        { ...input, mimeType: "video/mp4" },
+      ),
+    ).rejects.toMatchObject({ code: "DEGRADED", statusCode: 503 });
+  });
+
+  it("rejects objects above the scanner contract before reading them into API memory", async () => {
+    let reads = 0;
+    await expect(
+      scanVerifiedUploadedObject(
+        {
+          reader: {
+            getObject: async () => {
+              reads += 1;
+              return bytes;
+            },
+          },
+          scanner: { scan: async () => ({ verdict: "clean" }) },
+          scanRequired: true,
+        },
+        { ...input, mimeType: "video/mp4", byteSize: 500 * 1024 * 1024 },
+      ),
+    ).rejects.toMatchObject({ code: "UPLOAD_SCAN_SIZE_UNSUPPORTED", statusCode: 422 });
+    expect(reads).toBe(0);
   });
 });

@@ -7,7 +7,7 @@
 // attribution the document table's write-audit trigger also records through `app.user_id`.
 //
 // FAIL CLOSED like every M22 upload: no object store configured (`MINIO_*` unset) answers a typed 503 and nothing is stored; with
-// `DOCUMENT_UPLOAD_SCAN_REQUIRED=true` an unbound scanner does too.
+// production (or `DOCUMENT_UPLOAD_SCAN_REQUIRED=true` in acceptance) an unbound scanner does too.
 import { type DbClient, schema } from "@chartwarden/db";
 import { ChartWardenError, type OrgId } from "@chartwarden/types";
 import { and, eq, ne } from "drizzle-orm";
@@ -18,6 +18,10 @@ import {
   TENANT_BAA_MAX_BYTES,
 } from "../../bootstrap/onboarding-baa-document-port";
 import { assertTxScopedToOrg } from "../../bootstrap/onboarding-credential-port";
+import {
+  documentContentScannerFromEnv,
+  documentUploadScanRequired,
+} from "./routes/document-content-scanner";
 import {
   type ServerUploadService,
   type UploadLogger,
@@ -136,7 +140,8 @@ export function buildEnvTenantBaaDocumentOnboardingPort(
       db,
       logger,
       objects: objectStoreConfig ? createS3ObjectStore(objectStoreConfig) : null,
-      scanRequired: process.env.DOCUMENT_UPLOAD_SCAN_REQUIRED === "true",
+      scanner: documentContentScannerFromEnv(process.env),
+      scanRequired: documentUploadScanRequired(process.env),
     }),
   );
 }

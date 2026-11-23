@@ -28,6 +28,7 @@ import {
 } from "../internal-documents";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "../seams/store";
+import type { DocumentContentScanner } from "./document-content-scanner";
 import { assertKindWritable } from "./immutable-kinds";
 import type {
   DocumentWriteActor,
@@ -61,18 +62,6 @@ const MAGIC_PREFIXES: Readonly<Record<AllowedMime, readonly (readonly number[])[
   [DOCX_MIME]: [[0x50, 0x4b, 0x03, 0x04]],
 };
 
-export type ContentScanVerdict = { readonly verdict: "clean" | "infected" };
-
-/** A malware scanner over the verified bytes. None is bound in this repo yet; see `scanRequired`. */
-export interface DocumentContentScanner {
-  scan(input: {
-    readonly bytes: Uint8Array;
-    readonly mimeType: string;
-    /** Aborts the scan where the caller holds a transaction (a scanner that cannot abort may ignore it: the caller stops waiting). */
-    readonly signal?: AbortSignal;
-  }): Promise<ContentScanVerdict>;
-}
-
 export interface UploadLogger {
   warn(obj: Record<string, unknown>, msg: string): void;
 }
@@ -82,7 +71,7 @@ export interface ServerUploadDeps {
   readonly objects: ObjectStorePort | null;
   readonly referralReader?: ReferralAccessReader;
   readonly scanner?: DocumentContentScanner | null;
-  /** Fail closed when no scanner is bound (production posture while no scanner implementation exists). */
+  /** Fail closed when no scanner is bound (always true in production). */
   readonly scanRequired?: boolean;
   /**
    * REQUIRED: every "best effort" in this file is only as good as the warning that says it did not work (an orphan object, a put that was
