@@ -4,7 +4,7 @@
     "covered": 40,
     "routes": 2131,
     "coveredRoutes": 2131,
-    "directRoutesReferenced": 1928
+    "directRoutesReferenced": 1934
   },
   "modules": [
     {
@@ -505,11 +505,12 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/billing-medicaid-inject.test.ts",
+        "apps/backend/__tests__/m24-payer-readiness-routes.test.ts",
         "apps/backend/__tests__/m25-later-tiers.live.test.ts",
         "apps/backend/__tests__/m25-payer-guard.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts"
       ],
-      "directRoutesReferenced": 39
+      "directRoutesReferenced": 45
     },
     {
       "module": "25-remittance",

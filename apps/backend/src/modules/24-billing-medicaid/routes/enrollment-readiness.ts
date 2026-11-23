@@ -25,11 +25,12 @@ export interface EnrollmentEvidenceFacts {
   readonly programKind: string | null;
   readonly clearinghouse: string | null;
   readonly status: string;
-  readonly effectiveFrom: Date;
-  readonly effectiveTo: Date | null;
+  readonly effectiveFrom: Date | string;
+  readonly effectiveTo: Date | string | null;
 }
 
-const day = (d: Date): string => d.toISOString().slice(0, 10);
+const day = (d: Date | string): string =>
+  (typeof d === "string" ? d : d.toISOString()).slice(0, 10);
 
 export function enrollmentRequirementStatus(
   rows: ReadonlyArray<EnrollmentEvidenceFacts>,
