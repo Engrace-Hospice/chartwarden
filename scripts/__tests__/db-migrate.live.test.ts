@@ -207,6 +207,31 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
       }
     }
 
+    const tablesWithRefs = (found: { refs: readonly { table: string }[] }): string[] =>
+      [...new Set(found.refs.map((r) => r.table))].sort();
+
+    /** The pre-window query reports `reported`, and 1546 then aborts naming exactly those (the transaction is rolled back). */
+    async function expectBlocks(plant: string, reported: string[]): Promise<void> {
+      await rehearse(plant, async () => {
+        expect(await leftovers()).toEqual(reported);
+        await expect(db.query(migrationSql)).rejects.toThrow(
+          `still naming the minio_object_key columns: ${reported.join(", ")}`,
+        );
+      });
+    }
+
+    /**
+     * The pre-window query reports `reportedBefore` (it reads the definition as it stands, before the rename rewrites it),
+     * 1546 then applies, and nothing is left afterwards.
+     */
+    async function expectApplies(plant: string, reportedBefore: string[]): Promise<void> {
+      await rehearse(plant, async () => {
+        expect(await leftovers()).toEqual(reportedBefore);
+        await db.query(migrationSql);
+        expect(await leftovers()).toEqual([]);
+      });
+    }
+
     const columnsOf = async (table: string): Promise<string[]> =>
       (
         await db.query<{ attname: string }>(
@@ -251,14 +276,14 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
       );
       await db.query(
         `INSERT INTO dsar_export_job (organization_id, patient_id, request_source, requestor_identity_verification_evidence,
-           requesting_membership_id, sla_due_at, bundle_minio_object_key)
+           requesting_membership_id, sla_due_at, status, bundle_minio_object_key)
          VALUES ($1, '9a000000-0000-4000-8000-000000000001', 'patient', 'synthetic evidence', $2, now() + interval '30 days',
-           'tenants/synthetic/exports/dsar/job-1.ndjson.gz')`,
+           'fulfilled', 'tenants/synthetic/exports/dsar/job-1.ndjson.gz')`,
         [ORG, MEMBERSHIP],
       );
       await db.query(
-        `INSERT INTO tenant_export_job (organization_id, requested_purpose, requesting_membership_id, bundle_minio_object_key)
-         VALUES ($1, 'compliance_audit', $2, 'tenants/synthetic/exports/tenant/job-1.ndjson.gz')`,
+        `INSERT INTO tenant_export_job (organization_id, requested_purpose, requesting_membership_id, status, bundle_minio_object_key)
+         VALUES ($1, 'compliance_audit', $2, 'fulfilled', 'tenants/synthetic/exports/tenant/job-1.ndjson.gz')`,
         [ORG, MEMBERSHIP],
       );
       await db.query("SET session_replication_role = origin");
@@ -301,6 +326,72 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
             "constraint remittance_advice.remittance_advice_minio_chk",
             "index document_version_minio_scratch_ix",
           ]),
+      );
+    });
+
+    const SCRATCH_TRIGGER_FUNCTION = `CREATE FUNCTION scratch_trg_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;`;
+
+    it("blocks on a view that exposes the old output name", async () => {
+      await expectBlocks(
+        "CREATE VIEW scratch_exposing_view AS SELECT id, minio_object_key FROM remittance_advice",
+        ["view public.scratch_exposing_view"],
+      );
+    });
+
+    it("blocks on a materialized view that exposes the old output name", async () => {
+      await expectBlocks(
+        "CREATE MATERIALIZED VIEW scratch_exposing_mv AS SELECT id, minio_object_key FROM fhir_bulk_export_artifact",
+        ["matview public.scratch_exposing_mv"],
+      );
+    });
+
+    it("blocks on a trigger that names the old column, in its name or in its arguments", async () => {
+      await expectBlocks(
+        `${SCRATCH_TRIGGER_FUNCTION}
+         CREATE TRIGGER scratch_arg_trg BEFORE UPDATE ON document_version FOR EACH ROW EXECUTE FUNCTION scratch_trg_fn('minio_object_key');
+         CREATE TRIGGER scratch_minio_object_key_trg BEFORE UPDATE ON document_version FOR EACH ROW EXECUTE FUNCTION scratch_trg_fn();`,
+        [
+          "trigger document_version.scratch_arg_trg",
+          "trigger document_version.scratch_minio_object_key_trg",
+        ],
+      );
+    });
+
+    it("blocks on a policy that names the old column of a table the rename does not touch", async () => {
+      await expectBlocks(
+        `CREATE TABLE document_version_bak AS TABLE document_version;
+         ALTER TABLE document_version_bak ENABLE ROW LEVEL SECURITY;
+         CREATE POLICY scratch_bak_pol ON document_version_bak FOR SELECT USING (minio_object_key <> '')`,
+        ["policy document_version_bak.scratch_bak_pol"],
+      );
+    });
+
+    it("blocks on an extra column named with minio on one of the five tables", async () => {
+      await expectBlocks("ALTER TABLE remittance_advice ADD COLUMN legacy_minio_note text", [
+        "column remittance_advice.legacy_minio_note",
+      ]);
+    });
+
+    it("applies over a view that aliases the column to the new name or only uses it inside an expression", async () => {
+      await expectApplies(
+        "CREATE VIEW scratch_alias_view AS SELECT id, minio_object_key AS object_key FROM remittance_advice",
+        ["view public.scratch_alias_view"],
+      );
+      await expectApplies(
+        "CREATE VIEW scratch_expression_view AS SELECT id, length(minio_object_key) AS key_length FROM remittance_advice",
+        ["view public.scratch_expression_view"],
+      );
+    });
+
+    it("applies over a policy and an UPDATE OF trigger on the old column: the rename rewrites their definitions", async () => {
+      await expectApplies(
+        "CREATE POLICY scratch_pol ON document_version FOR SELECT USING (minio_object_key <> '')",
+        ["policy document_version.scratch_pol"],
+      );
+      await expectApplies(
+        `${SCRATCH_TRIGGER_FUNCTION}
+         CREATE TRIGGER scratch_upd_of BEFORE UPDATE OF minio_object_key ON document_version FOR EACH ROW EXECUTE FUNCTION scratch_trg_fn();`,
+        ["trigger document_version.scratch_upd_of"],
       );
     });
 
@@ -349,6 +440,9 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
       // Arrange: what the restore verifier sees on the previous schema (legacy names), and the rows themselves.
       const refsBefore = await liveRefs(db);
       expect(unclassifiedRefColumns(refsBefore.discovered)).toEqual([]);
+      // Every renamed table contributes live references (the export jobs count only when fulfilled), so the
+      // before/after comparison below cannot pass on two empty lists.
+      expect(tablesWithRefs(refsBefore)).toEqual([...RENAMED_TABLES].sort());
       const keysBefore = async (sql: string) => (await db.query<{ k: string }>(sql)).rows;
       const documentKeys = await keysBefore(
         "SELECT minio_object_key AS k FROM document_version ORDER BY version_number",
@@ -385,6 +479,7 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
       // The restore verifier reads the same rows through the new names.
       const refsAfter = await liveRefs(db);
       expect(unclassifiedRefColumns(refsAfter.discovered)).toEqual([]);
+      expect(tablesWithRefs(refsAfter)).toEqual([...RENAMED_TABLES].sort());
       expect(refsAfter.refs.map((r) => r.key).sort()).toEqual(
         refsBefore.refs.map((r) => r.key).sort(),
       );
