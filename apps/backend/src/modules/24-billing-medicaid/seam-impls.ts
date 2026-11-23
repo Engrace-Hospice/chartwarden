@@ -597,8 +597,10 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
               s.provenanceStatus === "verified" &&
               s.environment === "production" &&
               !!s.sourceAccountRef &&
-              !!s.canonicalPayerId &&
-              s.canonicalPayerId === base.canonicalPayerId &&
+              // `s.payerId` is the attempt's own payer snapshot; `s.canonicalPayerId` is the claim's, so comparing
+              // that one to `base` compared the claim to itself and let an attempt sent to another payer qualify.
+              !!s.payerId &&
+              s.payerId === base.canonicalPayerId &&
               !!s.payerClassificationId &&
               s.payerClassificationId === base.assignmentClassificationId &&
               base.assignmentStatus === "verified" &&
