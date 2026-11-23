@@ -1,0 +1,82 @@
+name: Publish ClamAV image
+
+# Builds deploy/clamav (Wolfi + ClamAV 1.5), fails on any HIGH/CRITICAL, pushes it to GHCR, signs it keyless and attests
+# its SBOM, the same chain postgres-image.yml and deploy.yml run. Manual only: production pins the digest this prints in
+# deploy/production/compose.yml by hand. The scanner is stateless (the signature DB is a volume), so a bump is a plain
+# image swap: `docker compose up -d --no-deps clamav` (deploy.sh keeps it up without recreating it between releases).
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: clamav-image
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/engrace-hospice/chartwarden-clamav
+
+jobs:
+  publish:
+    name: Build, scan, sign and publish
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: [self-hosted, Linux, X64, hostinger]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # cosign keyless (F-040/#100)
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: deploy/clamav
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE }}:1.5-sha-${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+      # Not just a version check: the image downloads real signatures, answers PING and flags EICAR over TCP before it is
+      # scanned, signed or pinned (the engine and libc differ from the Alpine image production still runs).
+      - name: Smoke test (signatures load, EICAR is detected)
+        run: sh deploy/clamav/smoke.sh "${IMAGE}@${{ steps.build.outputs.digest }}"
+      - name: Scan (HIGH/CRITICAL fail the publish)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          trivyignores: .trivyignore.yaml
+      - uses: sigstore/cosign-installer@v3
+      - uses: anchore/sbom-action/download-syft@v0
+      - name: Sign, attest SBOM, verify
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          COSIGN_YES: "true"
+        run: |
+          test -n "$DIGEST" || { echo "build reported no digest" >&2; exit 1; }
+          ref="${IMAGE}@${DIGEST}"
+          syft "$ref" -o spdx-json=sbom-clamav.spdx.json
+          packages=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1])).get('packages',[])))" sbom-clamav.spdx.json)
+          test "$packages" -gt 0 || { echo "SBOM describes no packages" >&2; exit 1; }
+          cosign sign "$ref"
+          cosign attest --predicate sbom-clamav.spdx.json --type spdxjson "$ref"
+          id="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/clamav-image.yml@${GITHUB_REF}"
+          cosign verify "$ref" --certificate-identity "$id" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
+          cosign verify-attestation "$ref" --type spdxjson --certificate-identity "$id" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
+          {
+            echo "### Published"
+            echo '```'
+            echo "${IMAGE}:1.5-sha-${GITHUB_SHA}@${DIGEST}"
+            echo '```'
+            echo "Pin it as the clamav image in deploy/production/compose.yml; verify with cosign first (deploy/production/README.md, ClamAV image)."
+          } >> "$GITHUB_STEP_SUMMARY"
