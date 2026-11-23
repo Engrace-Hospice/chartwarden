@@ -50,8 +50,9 @@ guide, provider enrollment, claim acceptance or production route.
   explicit clinical minutes. M6 has no authoritative actual CHC-hours contract and no in-home respite
   service type, so those cases remain unresolved/blocked. M24 continues not to price segmented output.
 - Oregon adapter metadata no longer claims combined hospice/R&B support, a live channel, synchronous
-  acknowledgment semantics or 817/818 replacement/void support. Its remaining 811-814 TOB list reflects
-  OHA FFS instructions only and does not qualify EOCCO.
+  acknowledgment semantics or 817/818 replacement/void support. Its remaining 811-814 `supportedTobs` list reflects
+  OHA FFS instructions only and does not qualify EOCCO; the list is declaration-only (no production code reads it),
+  and `replacementTob`/`voidTob` still derive the standard 817/818, an open owner decision.
 - Medicaid electronic submission remains unconditionally unavailable.
 
 ### L2B qualification evidence (2026-11-22)
@@ -76,6 +77,7 @@ guide, provider enrollment, claim acceptance or production route.
   directories; `arch:boundaries` hit its 2 GiB Node heap cap; and `arch:status-matrix` was stale before
   regenerating the report. After regeneration, `bun run arch:status-matrix` passed. The independent
   table-ownership, tenancy, DDL, migration, manifest, compliance and OpenAPI gates passed.
+- **Update 2026-11-22 (PR #1088 review-fix pass):** the branch passes `bun run typecheck`, `bun run lint` and `bun run arch:fitness` on the PR head after the review-fix pass (run on the integrated branch before push); the backend-wide typecheck out-of-memory and the `arch:fitness` failures recorded above describe the bounded local runs made at the time and are superseded for typecheck and architecture-fitness status. The M40/M24 provenance migration is ordinal 1541. This records the gate status for the PR head and names no commit, because the head moves with every fix; it is not a new qualification of this lot's behaviour, and full `bun run test` is not part of this update.
 
 ## External evidence still required
 
