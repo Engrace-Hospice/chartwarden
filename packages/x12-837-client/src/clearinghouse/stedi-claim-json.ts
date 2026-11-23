@@ -111,8 +111,17 @@ export interface StediClaimJson {
     }>;
     readonly conditionCodesList?: HiList<{ readonly conditionCode: string }>;
     readonly serviceLines: readonly {
-      /** `CCYYMMDD`, or `CCYYMMDD-CCYYMMDD` for a from-through range (field shape UNVERIFIED against Stedi). */
+      /**
+       * `CCYYMMDD`: the only day of a single-day line, or the first day of a from-through range. (Until the M24 work
+       * this carried the whole range as `CCYYMMDD-CCYYMMDD`; the range now lives in `serviceDate` + `serviceDateEnd`.)
+       * Stedi's public API reference describes `serviceDate` as "single date or start of range", YYYYMMDD.
+       */
       readonly serviceDate: string;
+      /**
+       * `CCYYMMDD`: the last day of a from-through range; absent on a single-day line. Stedi's public API reference
+       * describes `serviceDateEnd` as "end of a range", YYYYMMDD. UNVERIFIED: neither field name has been exercised
+       * against the Stedi sandbox (it cannot submit claims, ACCOUNT_NOT_PROVISIONED), only read from that reference.
+       */
       readonly serviceDateEnd?: string;
       readonly institutionalService: {
         readonly serviceLineRevenueCode: string;
