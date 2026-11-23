@@ -78,7 +78,9 @@ controls:
       # alone (the provider-entity guard is switched off for that case, with an own-tenant control), that a provider entity of another
       # organization is refused by the guard, and that the catalog holds one org-keyed policy with RLS enabled and forced. 1538/1539
       # rows are immutable: the application role holds no UPDATE or DELETE grant, the append-only trigger refuses every role (proved on
-      # a superuser connection), and an application insert cannot assert verification. 1535 rows are mutable by design and guarded: UPDATE
+      # a superuser connection), and an application insert cannot assert verification. 1535 rows are mutable by design and guarded: the
+      # application role records a row only as candidate or pending (a BEFORE INSERT guard refuses an already verified or closed row on
+      # both tables, proved per status against a superuser control, with verification by another member still working), UPDATE
       # is granted per column (exactly the columns the verify and revoke paths write, proved from the catalog), the verifier is never
       # the recorder (CHECK), a row's identity never changes, a closed row is final, a verified row can only be revoked or superseded
       # and its verification evidence cannot be rewritten (proved on a superuser connection, so only the trigger can answer). Known
@@ -94,9 +96,11 @@ controls:
       # the layer under test can refuse: chartwarden_app has no INSERT grant, and with one forced on the policies still refuse it, the
       # canonical writer's insert of the same row succeeds, and UPDATE/DELETE are refused by the append-only trigger. M24 submission
       # provenance is nullable and unverified by default; the f172 live suite proves, on rows that satisfy every CHECK, that the
-      # application role can neither insert a verified attempt, promote one, nor rewrite the provenance columns of a verified attempt,
-      # while it keeps updating a verified attempt's result. Fresh disposable PostgreSQL suites apply the full migration chain and run
-      # as chartwarden_app/NOBYPASSRLS.
+      # application role can neither insert a verified attempt, promote one, nor rewrite any column the verification stands on or that
+      # says which attempt the row is on a verified attempt (organization, claim, provider entity, state, channel, MCO, control number,
+      # attempt index, adapter vendor and version, and the provenance snapshot: one assertion per column, each against a superuser
+      # control), while it keeps updating a verified attempt's result, error detail, polling schedule and terminal time. Fresh disposable
+      # PostgreSQL suites apply the full migration chain and run as chartwarden_app/NOBYPASSRLS.
       - script: test:rls:live:m40
       - script: test:m24:remittance-feedback:live
       - file: packages/db/migrations/1541_m40_medicaid_payer_classification_and_m24_submission_provenance.sql
