@@ -969,6 +969,28 @@ describe.skipIf(!DB_URL)(
         expect(rows).toHaveLength(1);
       });
 
+      // The verified CHECK, not the guard: the superuser passes the guard (it only constrains chartwarden_app), so a
+      // refusal here can only be the CHECK. A NULL would pass `col > 0` (NULL is not false), hence the IS NOT NULL.
+      it("a verified attempt cannot have its assignment version snapshot nulled or set to zero (the CHECK refuses it)", async () => {
+        const { submissionIds } = await seedScenario({ attempts: [{}], acknowledged: false });
+        const submissionId = submissionIds[0] as string;
+        const setSnapshot = (value: number | null) =>
+          admin.query(
+            "UPDATE medicaid_submission SET program_assignment_version_snapshot=$2 WHERE id=$1",
+            [submissionId, value],
+          );
+        for (const value of [null, 0]) {
+          const refusal = await refusalOf(
+            () => setSnapshot(value),
+            `setting the snapshot to ${value}`,
+          );
+          expect(refusal, `${value}`).toMatch(/medicaid_submission_verified_provenance_ck/);
+          expect(refusal, `${value}`).not.toMatch(/qualified server-owned path/);
+        }
+        // Control: the same statement with a positive version is valid, so the refusals above were the CHECK.
+        expect((await setSnapshot(2)).rowCount).toBe(1);
+      });
+
       it("a fully verified production attempt on the exact claim version is SUBMISSION_EVIDENCE with its identities", async () => {
         const scenario = await seedScenario();
         const evidence = await m24Seams!.claimMatch.submissionEvidenceForLine(ORG_A, peA, {
