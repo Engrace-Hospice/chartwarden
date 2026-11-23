@@ -138,7 +138,10 @@ function validateInput(input: InitiateVerifiedUploadInput): void {
   }
 }
 
-function assertWithinRequiredScannerLimit(byteSize: number, scanRequired: boolean | undefined): void {
+function assertWithinRequiredScannerLimit(
+  byteSize: number,
+  scanRequired: boolean | undefined,
+): void {
   if (scanRequired && byteSize > MAX_DOCUMENT_UPLOAD_BYTES) {
     throw new ChartWardenError(
       "UPLOAD_SCAN_SIZE_UNSUPPORTED",

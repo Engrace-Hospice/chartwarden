@@ -62,7 +62,8 @@ export function assertLocalDockerEndpoint(endpoint: string): void {
       local = false;
     }
   }
-  if (!local) throw new Error("refusing to run the destructive smoke cleanup on a non-local Docker daemon");
+  if (!local)
+    throw new Error("refusing to run the destructive smoke cleanup on a non-local Docker daemon");
 }
 
 function verifyLocalDockerDaemon(env: NodeJS.ProcessEnv): void {
@@ -70,7 +71,8 @@ function verifyLocalDockerDaemon(env: NodeJS.ProcessEnv): void {
   const raw = run("docker", ["context", "inspect"], env, { quiet: true }).stdout;
   const contexts = JSON.parse(raw) as { Endpoints?: { docker?: { Host?: unknown } } }[];
   const endpoint = contexts[0]?.Endpoints?.docker?.Host;
-  if (typeof endpoint !== "string") throw new Error("Docker context did not expose its daemon endpoint");
+  if (typeof endpoint !== "string")
+    throw new Error("Docker context did not expose its daemon endpoint");
   assertLocalDockerEndpoint(endpoint);
 }
 

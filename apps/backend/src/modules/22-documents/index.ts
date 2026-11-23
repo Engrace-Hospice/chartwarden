@@ -329,7 +329,7 @@ export {
   registerDocumentAbacPredicates,
 } from "./abac-predicates";
 export { type DocumentRouteDeps, registerDocumentRoutes } from "./routes/documents-routes";
-export { type DocumentContentScanner } from "./routes/document-content-scanner";
+export type { DocumentContentScanner } from "./routes/document-content-scanner";
 export { registerVerifiedUploadRoutes } from "./routes/verified-upload-routes";
 export {
   type ServerUploadService,
