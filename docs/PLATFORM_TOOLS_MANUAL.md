@@ -11,7 +11,7 @@ Oct 2, 2026 · @FabDev · imported into the repo 2026-10-05
 > - tenant hosts follow ADR-0049;
 > - the cosign signature policy is stage 1;
 > - Valkey holds durable BullMQ queues (`noeviction`);
-> - local development keeps MinIO;
+> - local development kept MinIO at the import; since 2026-11-05 local development and CI use RustFS and production uses SeaweedFS (chapter 8);
 > - document blobs are **not** yet encrypted before upload (an open gap, chapter 8);
 > - leftover NATS references are removed.
 
@@ -423,8 +423,8 @@ Targets (engineering objectives, proven only by drills):
 
 **Update (2026-11-05) · superseded.** The product owner chose **SeaweedFS** for production object storage and **RustFS** for local development, CI and the second copy of the primary; Garage lacks object versioning, noncurrent-version expiry, an audit feed and Object Lock, all of which the code now uses. The rationale, the findings and the test suites are in the 2026-11-05 amendment to [ADR-0050](./adr/ADR-0050-talos-kubernetes-platform.md) D6. This chapter is kept for its cluster-operation notes until a SeaweedFS chapter replaces it.
 
-**Update (2026-10-02):** The code uses **one bucket per tenant** (`deriveTenantBucket` in M22), not a single `chartwarden-documents` bucket. Tenant buckets are created and destroyed through the M34 provision gateway, which does not exist yet and must call Garage's admin API. The adapter (`s3-object-store.ts`) is plain SigV4 with path-style URLs and 300-second presigned GETs, so it works with Garage by setting `OBJECT_STORE_ENDPOINT` and `OBJECT_STORE_REGION` (Garage's region, `garage` by default). Platform buckets (`cnpg-wal`, `cnpg-base`) stay as listed below. Local development keeps MinIO (product-owner decision, 2026-10-05). CI runs a live suite that exercises the real
-adapter against a Garage container, so production's store is still tested (ADR-0050 D6).
+**Update (2026-10-02):** The code uses **one bucket per tenant** (`deriveTenantBucket` in M22), not a single `chartwarden-documents` bucket. Tenant buckets are created and destroyed through the M34 provision gateway, which does not exist yet and must call Garage's admin API. The adapter (`s3-object-store.ts`) is plain SigV4 with path-style URLs and 300-second presigned GETs, so it works with Garage by setting `OBJECT_STORE_ENDPOINT` and `OBJECT_STORE_REGION` (Garage's region, `garage` by default). Platform buckets (`cnpg-wal`, `cnpg-base`) stay as listed below. Local development kept MinIO (product-owner decision, 2026-10-05; RustFS replaced it on 2026-11-05, see above). CI's live
+suite now exercises the real adapter against SeaweedFS and RustFS, not Garage, so production's store is still tested (ADR-0050 D6).
 
 ### Role in ChartWarden
 
@@ -1257,8 +1257,9 @@ infrastructure/
 
 **Dev/CI only · Software factory · Local AWS API emulation**
 
-**Update (2026-10-05):** The code uses the PostgreSQL outbox and BullMQ on Valkey, not NATS. Local development keeps
-MinIO, and CI runs a Garage live suite so production's store is still exercised.
+**Update (2026-10-05):** The code uses the PostgreSQL outbox and BullMQ on Valkey, not NATS.
+**Update (2026-11-05):** Local development and CI use RustFS (it replaced MinIO), and CI runs an object-store live suite
+against SeaweedFS and RustFS so production's store is still exercised.
 
 ### Role in ChartWarden
 
@@ -1268,9 +1269,9 @@ Floci emulates AWS service APIs (such as S3, SQS, and SNS) locally, so code path
 
 | Environment | Object storage | Messaging | Cache | AWS adapters tested with |
 | --- | --- | --- | --- | --- |
-| Developer laptop | MinIO (container) | Outbox + BullMQ | Valkey | Floci, when working on adapters |
-| CI integration tests | MinIO, plus a Garage live suite | Outbox + BullMQ | Valkey | Floci, in a dedicated adapter-test job |
-| Production | Garage | Outbox + BullMQ | Valkey | Not present |
+| Developer laptop | RustFS (container) | Outbox + BullMQ | Valkey | Floci, when working on adapters |
+| CI integration tests | RustFS, plus a SeaweedFS and RustFS live suite | Outbox + BullMQ | Valkey | Floci, in a dedicated adapter-test job |
+| Production | SeaweedFS | Outbox + BullMQ | Valkey | Not present |
 
 The main test suite runs against the same kinds of components production uses. Emulating a broker production does not run would test the wrong thing.
 
