@@ -87,10 +87,13 @@ CREATE UNIQUE INDEX medicaid_submission_source_transaction_uq
   WHERE source_account_ref IS NOT NULL AND source_environment IS NOT NULL AND vendor_transaction_id IS NOT NULL;--> statement-breakpoint
 -- The application role never writes verified provenance: it cannot insert a verified attempt or promote an unverified one
 -- (only a qualified server-owned path, which does not run as chartwarden_app, may). It DOES keep updating an attempt that
--- is already verified (result, polling, terminal time, acknowledgment handling), so the guard looks at OLD: on UPDATE it
--- refuses only a promotion, or a change to the very columns the verified CHECK relies on. Without the second rule the
--- application could rewrite a verified attempt's account, environment, payer or assignment snapshot and keep the row
--- verified.
+-- is already verified (result, error detail, polling and terminal time, acknowledgment handling), so the guard looks at OLD:
+-- on UPDATE it refuses only a promotion, or a change to a column the verification stands on. Those are the provenance
+-- columns the verified CHECK relies on AND the columns that say which attempt the row is (its claim, provider entity,
+-- state, channel, MCO, control number, attempt index and adapter): the seam joins an attempt to its claim by
+-- medicaid_claim_id, so without the second group the application could repoint a verified attempt at another claim of the
+-- same organization and provider entity and keep it verified. The worker writes the adapter vendor and version before it
+-- sends, while the attempt is still unverified, so no application path writes any frozen column afterwards.
 CREATE OR REPLACE FUNCTION guard_medicaid_submission_provenance() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -107,15 +110,19 @@ BEGIN
     RAISE EXCEPTION 'M24 submission provenance requires a qualified server-owned path';
   END IF;
   IF OLD.source_provenance_status = 'verified'
-     AND ROW(NEW.source_provenance_status, NEW.source_account_ref, NEW.source_environment, NEW.canonical_payer_id_snapshot,
-             NEW.payer_classification_id_snapshot, NEW.program_kind_snapshot, NEW.program_assignment_id_snapshot,
-             NEW.program_assignment_version_snapshot, NEW.submitted_claim_version, NEW.submitted_at,
-             NEW.vendor_transaction_id)
+     AND ROW(NEW.id, NEW.organization_id, NEW.medicaid_claim_id, NEW.provider_entity_id, NEW.service_state, NEW.channel,
+             NEW.mco_id_snapshot, NEW.medicaid_claim_control_number, NEW.attempt_index, NEW.adapter_vendor,
+             NEW.adapter_version, NEW.source_provenance_status, NEW.source_account_ref, NEW.source_environment,
+             NEW.canonical_payer_id_snapshot, NEW.payer_classification_id_snapshot, NEW.program_kind_snapshot,
+             NEW.program_assignment_id_snapshot, NEW.program_assignment_version_snapshot, NEW.submitted_claim_version,
+             NEW.submitted_at, NEW.vendor_transaction_id)
          IS DISTINCT FROM
-         ROW(OLD.source_provenance_status, OLD.source_account_ref, OLD.source_environment, OLD.canonical_payer_id_snapshot,
-             OLD.payer_classification_id_snapshot, OLD.program_kind_snapshot, OLD.program_assignment_id_snapshot,
-             OLD.program_assignment_version_snapshot, OLD.submitted_claim_version, OLD.submitted_at,
-             OLD.vendor_transaction_id) THEN
+         ROW(OLD.id, OLD.organization_id, OLD.medicaid_claim_id, OLD.provider_entity_id, OLD.service_state, OLD.channel,
+             OLD.mco_id_snapshot, OLD.medicaid_claim_control_number, OLD.attempt_index, OLD.adapter_vendor,
+             OLD.adapter_version, OLD.source_provenance_status, OLD.source_account_ref, OLD.source_environment,
+             OLD.canonical_payer_id_snapshot, OLD.payer_classification_id_snapshot, OLD.program_kind_snapshot,
+             OLD.program_assignment_id_snapshot, OLD.program_assignment_version_snapshot, OLD.submitted_claim_version,
+             OLD.submitted_at, OLD.vendor_transaction_id) THEN
     RAISE EXCEPTION 'M24 submission provenance of a verified attempt changes only through a qualified server-owned path';
   END IF;
   RETURN NEW;
