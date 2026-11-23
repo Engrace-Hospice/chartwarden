@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { and, arrayContains, eq, ne } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import type { MedicaidEraReviewReaders } from "../domain/medicaid-era-trusted-review";
 import type { M25ReadActor } from "../routes/actor";
 import {
@@ -12,7 +12,6 @@ import { providerEntityScopeCondition } from "../routes/scope";
 import { CLAIMMD_ERA_RESOLUTION_JOB_ID, type createClaimMdEraStore } from "./claimmd-era-store";
 
 const STAGE = schema.claimmdEraM25Stage;
-const DELIVERY = schema.claimmdEraDelivery;
 const REVIEW = schema.medicaidEraReview;
 type ClaimMdStore = ReturnType<typeof createClaimMdEraStore>;
 
@@ -149,7 +148,7 @@ export function buildDrizzleMedicaidEraReviewReaders(
       });
     },
     async duplicateDecision({ actor, source }) {
-      const [stagedDelivery] = await withOrgContext(db, actor, async (tx) => {
+      const [stage] = await withOrgContext(db, actor, async (tx) => {
         const [stage] = await tx
           .select({ providerEntityId: STAGE.providerEntityId })
           .from(STAGE)
@@ -163,24 +162,20 @@ export function buildDrizzleMedicaidEraReviewReaders(
             ),
           )
           .limit(1);
-        if (!stage) return [];
-        return tx
-          .select({ state: DELIVERY.state })
-          .from(DELIVERY)
-          .where(
-            and(
-              eq(DELIVERY.organizationId, actor.organizationId),
-              eq(DELIVERY.providerEntityId, stage.providerEntityId),
-              eq(DELIVERY.vendor, source.vendor),
-              eq(DELIVERY.accountReference, source.accountReference),
-              eq(DELIVERY.usage, source.usage),
-              arrayContains(DELIVERY.stageIds, [source.artifactReference]),
-            ),
-          )
-          .limit(1);
+        return stage ? [stage] : [];
       });
-      if (stagedDelivery?.state === "exact_duplicate") return "exact";
-      if (stagedDelivery?.state === "possible_duplicate") return "possible";
+      if (stage && store) {
+        const stagedDuplicate = await store.duplicateStateForReviewStage({
+          stageId: source.artifactReference,
+          organizationId: actor.organizationId,
+          providerEntityId: stage.providerEntityId,
+          accountReference: source.accountReference,
+          usage: source.usage,
+        });
+        if (stagedDuplicate === "exact_duplicate") return "exact";
+        if (stagedDuplicate === "possible_duplicate") return "possible";
+        if (stagedDuplicate === "conflict") return "conflict";
+      }
       const prior = await withOrgContext(db, actor, async (tx) =>
         tx
           .select({ id: REVIEW.id })
