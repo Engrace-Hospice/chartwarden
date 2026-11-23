@@ -74,7 +74,7 @@ ALTER TABLE medicaid_submission ADD CONSTRAINT medicaid_submission_verified_prov
     AND submitted_claim_version IS NOT NULL
     AND submitted_claim_version > 0 AND submitted_at IS NOT NULL AND vendor_transaction_id IS NOT NULL)
 );--> statement-breakpoint
-ALTER TABLE medicaid_program_assignment ADD COLUMN canonical_payer_classification_id uuid;--> statement-breakpoint
+-- (medicaid_program_assignment.canonical_payer_classification_id is created with the table in 1535, beside its column grant and guards.)
 ALTER TABLE medicaid_submission ADD CONSTRAINT medicaid_submission_program_kind_snapshot_ck
   CHECK (program_kind_snapshot IS NULL OR program_kind_snapshot IN ('ffs_open_card', 'managed_care', 'other_managed_care', 'unsupported', 'unresolved', 'ambiguous'));--> statement-breakpoint
 CREATE INDEX medicaid_submission_source_identity_ix

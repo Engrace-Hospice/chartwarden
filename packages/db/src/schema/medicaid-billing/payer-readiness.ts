@@ -4,6 +4,7 @@
 import { sql } from "drizzle-orm";
 import {
   check,
+  date,
   index,
   integer,
   jsonb,
@@ -13,6 +14,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
 import {
@@ -35,14 +37,15 @@ export const medicaidProgramAssignment = pgTable(
     providerEntityId: uuid("provider_entity_id")
       .notNull()
       .references(() => providerEntities.id, { onDelete: "restrict" }),
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }), // nullable siting
     serviceState: varchar("service_state", { length: 2 }).notNull(),
     programKind: m24MedicaidProgramKind("program_kind").notNull(),
     canonicalPayerId: uuid("canonical_payer_id"), // logical M40 reference
     canonicalPayerClassificationId: uuid("canonical_payer_classification_id"), // logical M40 evidence record
     payerSnapshot: jsonb("payer_snapshot"), // stable identity label/identifier, no patient data
     status: m24ProgramAssignmentStatus("status").notNull().default("candidate"),
-    effectiveFrom: timestamp("effective_from", { withTimezone: true, mode: "date" }).notNull(),
-    effectiveTo: timestamp("effective_to", { withTimezone: true, mode: "date" }),
+    effectiveFrom: date("effective_from", { mode: "string" }).notNull(), // calendar date (1535 creates `date`)
+    effectiveTo: date("effective_to", { mode: "string" }),
     sourceKind: varchar("source_kind", { length: 40 }).notNull(),
     verificationSource: varchar("verification_source", { length: 80 }),
     evidenceReference: text("evidence_reference"), // secured document pointer or opaque source id
@@ -72,6 +75,10 @@ export const medicaidProgramAssignment = pgTable(
     verifiedHasProvenance: check(
       "medicaid_program_assignment_verified_provenance",
       sql`status <> 'verified' OR (verified_at IS NOT NULL AND verified_by_membership_id IS NOT NULL AND evidence_reference IS NOT NULL)`,
+    ),
+    verifierIsNotRecorder: check(
+      "medicaid_program_assignment_four_eyes",
+      sql`status <> 'verified' OR verified_by_membership_id <> recorded_by_membership_id`,
     ),
     ffsHasNoMco: check(
       "medicaid_program_assignment_ffs_identity",
@@ -106,8 +113,8 @@ export const medicaidEnrollmentEvidence = pgTable(
     transactionType: varchar("transaction_type", { length: 8 }),
     evidenceKind: m24EnrollmentEvidenceKind("evidence_kind").notNull(),
     status: m24EnrollmentEvidenceStatus("status").notNull().default("pending"),
-    effectiveFrom: timestamp("effective_from", { withTimezone: true, mode: "date" }).notNull(),
-    effectiveTo: timestamp("effective_to", { withTimezone: true, mode: "date" }),
+    effectiveFrom: date("effective_from", { mode: "string" }).notNull(), // calendar date (1535 creates `date`)
+    effectiveTo: date("effective_to", { mode: "string" }),
     verificationSource: varchar("verification_source", { length: 80 }),
     evidenceReference: text("evidence_reference"), // secured document pointer; never a secret
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
@@ -140,6 +147,10 @@ export const medicaidEnrollmentEvidence = pgTable(
     transactionType: check(
       "medicaid_enrollment_evidence_transaction_type",
       sql`transaction_type IS NULL OR transaction_type IN ('837I', '835')`,
+    ),
+    verifierIsNotRecorder: check(
+      "medicaid_enrollment_evidence_four_eyes",
+      sql`status <> 'verified' OR verified_by_membership_id <> recorded_by_membership_id`,
     ),
     verifiedPayerRouteIsMapped: check(
       "medicaid_enrollment_verified_payer_route_is_mapped",
