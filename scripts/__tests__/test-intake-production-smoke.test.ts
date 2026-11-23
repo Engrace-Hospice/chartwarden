@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { assertLocalDockerEndpoint } from "../intake-docker-safety";
 import {
   INTAKE_SMOKE_PROJECT_PREFIX,
-  assertLocalDockerEndpoint,
+  addCleanupFailure,
   assertSafeIntakeSmokeProject,
   isolatedComposeEnvironment,
 } from "../test-intake-production-smoke";
@@ -42,5 +43,12 @@ describe("intake production-like smoke isolation", () => {
     expect(env.TWILIO_AUTH_TOKEN).toBe("");
     expect(env.AWS_SECRET_ACCESS_KEY).toBeUndefined();
     expect(env.M24_LAUNCH_GATEWAY_ENABLED).toBe("false");
+  });
+
+  it("reports cleanup failure without discarding the primary smoke failure", () => {
+    const error = addCleanupFailure(new Error("worker health failed"));
+    expect(error).toBeInstanceOf(AggregateError);
+    expect(error.message).toContain("worker health failed");
+    expect(error.message).toContain("cleanup also failed");
   });
 });
