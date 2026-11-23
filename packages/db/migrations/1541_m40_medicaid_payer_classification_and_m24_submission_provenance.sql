@@ -83,11 +83,38 @@ CREATE INDEX medicaid_submission_source_identity_ix
 CREATE UNIQUE INDEX medicaid_submission_source_transaction_uq
   ON medicaid_submission (organization_id, provider_entity_id, adapter_vendor, source_account_ref, source_environment, vendor_transaction_id)
   WHERE source_account_ref IS NOT NULL AND source_environment IS NOT NULL AND vendor_transaction_id IS NOT NULL;--> statement-breakpoint
+-- The application role never writes verified provenance: it cannot insert a verified attempt or promote an unverified one
+-- (only a qualified server-owned path, which does not run as chartwarden_app, may). It DOES keep updating an attempt that
+-- is already verified (result, polling, terminal time, acknowledgment handling), so the guard looks at OLD: on UPDATE it
+-- refuses only a promotion, or a change to the very columns the verified CHECK relies on. Without the second rule the
+-- application could rewrite a verified attempt's account, environment, payer or assignment snapshot and keep the row
+-- verified.
 CREATE OR REPLACE FUNCTION guard_medicaid_submission_provenance() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
-  IF current_user = 'chartwarden_app' AND NEW.source_provenance_status = 'verified' THEN
+  IF current_user <> 'chartwarden_app' THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.source_provenance_status = 'verified' THEN
+      RAISE EXCEPTION 'M24 submission provenance requires a qualified server-owned path';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.source_provenance_status = 'verified' AND OLD.source_provenance_status IS DISTINCT FROM 'verified' THEN
     RAISE EXCEPTION 'M24 submission provenance requires a qualified server-owned path';
+  END IF;
+  IF OLD.source_provenance_status = 'verified'
+     AND ROW(NEW.source_provenance_status, NEW.source_account_ref, NEW.source_environment, NEW.canonical_payer_id_snapshot,
+             NEW.payer_classification_id_snapshot, NEW.program_kind_snapshot, NEW.program_assignment_id_snapshot,
+             NEW.program_assignment_version_snapshot, NEW.submitted_claim_version, NEW.submitted_at,
+             NEW.vendor_transaction_id)
+         IS DISTINCT FROM
+         ROW(OLD.source_provenance_status, OLD.source_account_ref, OLD.source_environment, OLD.canonical_payer_id_snapshot,
+             OLD.payer_classification_id_snapshot, OLD.program_kind_snapshot, OLD.program_assignment_id_snapshot,
+             OLD.program_assignment_version_snapshot, OLD.submitted_claim_version, OLD.submitted_at,
+             OLD.vendor_transaction_id) THEN
+    RAISE EXCEPTION 'M24 submission provenance of a verified attempt changes only through a qualified server-owned path';
   END IF;
   RETURN NEW;
 END $$;--> statement-breakpoint
