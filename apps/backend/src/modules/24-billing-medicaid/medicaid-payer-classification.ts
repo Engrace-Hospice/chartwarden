@@ -29,14 +29,21 @@ export function qualifyMedicaidProgramClassification(
     return { qualified: false, reasonCode: "MEDICAID_PROGRAM_CLASSIFICATION_MISSING" };
   // A row retires its predecessor only if it was ever in force. A pending (unverified) or rejected proposal never
   // was, so it must not remove a verified classification; a revoked or itself-superseded one was, so its
-  // predecessor stays retired (fail closed).
-  const supersededIds = new Set(
-    rows.flatMap((r) =>
-      r.supersedesId && r.verificationStatus !== "unverified" && r.verificationStatus !== "rejected"
-        ? [r.supersedesId]
-        : [],
-    ),
-  );
+  // predecessor stays retired (fail closed). The table is append-only, so verifying a proposal means appending a
+  // new row that points at the PROPOSAL: the retirement passes through proposals to the row they proposed to replace.
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const neverInForce = (r: MedicaidPayerProgramClassification): boolean =>
+    r.verificationStatus === "unverified" || r.verificationStatus === "rejected";
+  const supersededIds = new Set<string>();
+  for (const row of rows) {
+    if (neverInForce(row)) continue;
+    let id = row.supersedesId;
+    while (id && !supersededIds.has(id)) {
+      supersededIds.add(id);
+      const next = byId.get(id);
+      id = next && neverInForce(next) ? next.supersedesId : null;
+    }
+  }
   const currentRows = rows.filter(
     (r) => r.verificationStatus !== "superseded" && !supersededIds.has(r.id),
   );

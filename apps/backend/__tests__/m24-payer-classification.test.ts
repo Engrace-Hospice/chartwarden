@@ -262,6 +262,30 @@ describe("a superseder only retires its predecessor once it has been in force", 
     }
   });
 
+  it("retires the original when a verified row replaces a proposal that pointed at it", () => {
+    // X verified open; Y is an unverified proposal that supersedes X; the table is append-only, so verifying Y means
+    // appending Y2 (verified, ends 2026-03-31) with supersedes_id = Y. Y2 speaks for what Y proposed: X is retired too.
+    const proposal = superseder("unverified", { id: "class-y" });
+    const verified = superseder("verified", { id: "class-y2", supersedesId: proposal.id });
+    const rows = [original, proposal, verified];
+    expect(qualify(rows, ...AUGUST)).toEqual({
+      qualified: false,
+      reasonCode: "MEDICAID_PROGRAM_CLASSIFICATION_EXPIRED",
+    });
+    expect(qualify(rows, ...FEBRUARY)).toEqual({ qualified: true, classification: verified });
+  });
+
+  it("still keeps the original current when the proposal in the chain is never replaced by a verified row", () => {
+    const proposal = superseder("unverified", { id: "class-y" });
+    const rejected = superseder("rejected", { id: "class-y2", supersedesId: proposal.id });
+    for (const [from, to] of [FEBRUARY, AUGUST]) {
+      expect(qualify([original, proposal, rejected], from, to)).toEqual({
+        qualified: true,
+        classification: original,
+      });
+    }
+  });
+
   it("keeps the chain intact when the superseder was itself superseded", () => {
     const successor = classification({
       id: "class-x-second",
