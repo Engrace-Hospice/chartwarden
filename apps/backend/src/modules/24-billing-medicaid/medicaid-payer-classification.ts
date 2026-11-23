@@ -27,13 +27,25 @@ export function qualifyMedicaidProgramClassification(
     return { qualified: false, reasonCode: "MEDICAID_PROGRAM_CLASSIFICATION_MISMATCH" };
   if (rows.length === 0)
     return { qualified: false, reasonCode: "MEDICAID_PROGRAM_CLASSIFICATION_MISSING" };
-  const supersededIds = new Set(rows.flatMap((r) => (r.supersedesId ? [r.supersedesId] : [])));
+  // A row retires its predecessor only if it was ever in force. A pending (unverified) or rejected proposal never
+  // was, so it must not remove a verified classification; a revoked or itself-superseded one was, so its
+  // predecessor stays retired (fail closed).
+  const supersededIds = new Set(
+    rows.flatMap((r) =>
+      r.supersedesId && r.verificationStatus !== "unverified" && r.verificationStatus !== "rejected"
+        ? [r.supersedesId]
+        : [],
+    ),
+  );
   const currentRows = rows.filter(
     (r) => r.verificationStatus !== "superseded" && !supersededIds.has(r.id),
   );
-  const covering = currentRows.filter(
+  const coveringAny = currentRows.filter(
     (r) => r.effectiveFrom <= serviceFrom && (r.effectiveTo === null || r.effectiveTo >= serviceTo),
   );
+  // Unverified evidence only speaks (to say "unverified") when no verified row covers the window.
+  const coveringVerified = coveringAny.filter((r) => r.verificationStatus === "verified");
+  const covering = coveringVerified.length > 0 ? coveringVerified : coveringAny;
   if (covering.length > 1)
     return { qualified: false, reasonCode: "MEDICAID_PROGRAM_CLASSIFICATION_AMBIGUOUS" };
   if (covering.length === 0) {
