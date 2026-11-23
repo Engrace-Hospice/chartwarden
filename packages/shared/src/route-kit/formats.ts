@@ -22,16 +22,24 @@ function isCalendarDate(value: string): boolean {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
+const MAX_STORABLE_INSTANT_MS = Date.parse("9999-12-31T23:59:59.999Z");
+
+const ISO_DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})(?:[Tt ]|$)/;
+
 /**
- * A parseable instant Postgres can store. Refused: a literal year before 0001 (the raw string reaches the driver)
- * and an instant before 0001-01-01Z (a route that does `new Date(value)` serialises it as year 0000 or earlier).
+ * A parseable instant Postgres can store. The text must start with an ISO calendar date (Date.parse also reads
+ * "12/31/0000" and rolls 2026-02-30 over to March 2), the date part must be a real day at or after 0001-01-01 (the raw
+ * string reaches the driver), and the instant must lie in 0001-01-01Z..9999-12-31Z (a route that does `new Date(value)`
+ * serialises anything outside as year 0000 or a six-digit year).
  */
 function isStorableDateTime(value: string): boolean {
+  const datePart = ISO_DATE_PREFIX_RE.exec(value)?.[1];
+  if (datePart === undefined || !isCalendarDate(datePart)) return false;
   const instant = Date.parse(value);
   return (
     !Number.isNaN(instant) &&
     instant >= MIN_STORABLE_INSTANT_MS &&
-    value.slice(0, MIN_STORABLE_DATE.length) >= MIN_STORABLE_DATE
+    instant <= MAX_STORABLE_INSTANT_MS
   );
 }
 
