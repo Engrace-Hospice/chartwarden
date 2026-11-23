@@ -20,6 +20,7 @@ let paths: string[] = [];
 let previewRequestStatus = 200;
 let holdPreviewResponse = false;
 let releasePreviewResponse: (() => void) | null = null;
+let previewBody: unknown;
 
 const BLOCKED_ARRANGEMENT_PREVIEW = {
   primaryCoverage: { status: "uniform", coverageKind: "medicaid", rank: 1 },
@@ -98,7 +99,7 @@ async function stubFetch(input: RequestInfo | URL): Promise<Response> {
         releasePreviewResponse = resolve;
       });
     }
-    return new Response(JSON.stringify(BLOCKED_ARRANGEMENT_PREVIEW), {
+    return new Response(JSON.stringify(previewBody), {
       status: 200,
       headers: { "content-type": "application/json" },
     });
@@ -178,6 +179,7 @@ beforeEach(() => {
   previewRequestStatus = 200;
   holdPreviewResponse = false;
   releasePreviewResponse = null;
+  previewBody = BLOCKED_ARRANGEMENT_PREVIEW;
 });
 
 describe("F-066 — the assembly wizard's admission belongs to the chosen patient", () => {
@@ -289,5 +291,132 @@ describe("F-066 — the assembly wizard's admission belongs to the chosen patien
     });
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     expect(await screen.findByText("Not applicable for the recorded primary payer")).toBeTruthy();
+  });
+});
+
+// The billing-context step renders the program, clearinghouse and enrollment sections the preview now carries.
+async function reachBillingContext(): Promise<void> {
+  mount();
+  const [patient] = comboboxes();
+  await pickFirstOption(patient as HTMLInputElement);
+  const [, admission, provider] = comboboxes();
+  await pickFirstOption(provider as HTMLInputElement);
+  await pickFirstOption(admission as HTMLInputElement);
+  fireEvent.change(screen.getByLabelText("Service from"), { target: { value: "2026-03-01" } });
+  fireEvent.change(screen.getByLabelText("Service to"), { target: { value: "2026-03-31" } });
+  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  await screen.findByText("Server preview loaded for this service window.");
+  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  await screen.findByText("Coverage and coordination");
+}
+
+const fieldValue = (label: string): string | null | undefined =>
+  screen.getByText(label).nextElementSibling?.textContent;
+
+describe("the billing context step shows what the server resolved", () => {
+  it("states an unresolved program, clearinghouse and trading-partner credential as unresolved", async () => {
+    await reachBillingContext();
+    expect(fieldValue("Medicaid program and payer")).toBe("Missing · Program assignment missing");
+    expect(fieldValue("Selected clearinghouse")).toBe("Unavailable");
+    expect(fieldValue("Trading-partner credential configuration")).toBe(
+      "Missing · Trading partner credential missing; configuration is not payer enrollment",
+    );
+    expect(screen.queryByText("Era enrollment")).toBeNull();
+  });
+
+  it("shows a verified program assignment, the selected clearinghouse and each enrollment row", async () => {
+    previewBody = {
+      ...BLOCKED_ARRANGEMENT_PREVIEW,
+      programResponsibility: {
+        status: "verified",
+        programKind: "managed_care",
+        canonicalPayerId: "33333333-8888-4888-8888-333333333333",
+        canonicalPayerName: "Synthetic Oregon Medicaid",
+        reasonCode: "PROGRAM_ASSIGNMENT_VERIFIED",
+      },
+      selectedClearinghouse: {
+        status: "selected",
+        vendor: "claimmd",
+        configurationStatus: "ready",
+      },
+      enrollmentReadiness: [
+        {
+          kind: "era_enrollment",
+          status: "pending",
+          reasonCode: "ENROLLMENT_EVIDENCE_PENDING",
+          vendorPayerId: "VP-SYN-1",
+        },
+        { kind: "claim_enrollment", status: "missing", reasonCode: "ENROLLMENT_EVIDENCE_MISSING" },
+      ],
+    };
+    await reachBillingContext();
+    expect(fieldValue("Medicaid program and payer")).toBe(
+      "Managed care · Synthetic Oregon Medicaid; verified assignment covers this service range",
+    );
+    expect(fieldValue("Selected clearinghouse")).toBe("claimmd · Ready");
+    expect(fieldValue("Era enrollment")).toBe(
+      "Pending · Enrollment evidence pending · vendor payer ID VP-SYN-1",
+    );
+    expect(fieldValue("Claim enrollment")).toBe("Missing · Enrollment evidence missing");
+  });
+
+  it("keeps the policy-coupled statements next to the unqualified payer policy they depend on", async () => {
+    await reachBillingContext();
+    expect(fieldValue("Payer authorization evidence")).toContain("Unqualified payer policy");
+    expect(fieldValue("Clinical quantity")).toContain("Clinical quantity missing or unqualified");
+    expect(fieldValue("Pricing information")).toContain("Pricing information required");
+    expect(fieldValue("Electronic submission")).toContain("Unavailable");
+  });
+});
+
+describe("a preview this bundle cannot trust fails closed instead of throwing", () => {
+  const withoutSection = (section: string) => {
+    const { [section]: _omitted, ...rest } = BLOCKED_ARRANGEMENT_PREVIEW as Record<string, unknown>;
+    return rest;
+  };
+  const continueToPreview = async (): Promise<void> => {
+    mount();
+    const [patient] = comboboxes();
+    await pickFirstOption(patient as HTMLInputElement);
+    const [, admission, provider] = comboboxes();
+    await pickFirstOption(provider as HTMLInputElement);
+    await pickFirstOption(admission as HTMLInputElement);
+    fireEvent.change(screen.getByLabelText("Service from"), { target: { value: "2026-03-01" } });
+    fireEvent.change(screen.getByLabelText("Service to"), { target: { value: "2026-03-31" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  };
+
+  it.each([
+    ["programResponsibility"],
+    ["selectedClearinghouse"],
+    ["payerAuthorizationEvidence"],
+    ["enrollmentReadiness"],
+  ])("rejects an older backend preview that has no %s", async (section) => {
+    previewBody = withoutSection(section);
+    await continueToPreview();
+    expect(
+      await screen.findByText(
+        /The billing preview could not be loaded\. No eligibility or payer conclusion was made/,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("Server preview loaded for this service window.")).toBeNull();
+  });
+
+  it("rejects a preview that does not state electronic submission is unavailable", async () => {
+    previewBody = { ...BLOCKED_ARRANGEMENT_PREVIEW, electronicSubmissionAvailable: true };
+    await continueToPreview();
+    expect(await screen.findByText(/The billing preview could not be loaded\./)).toBeTruthy();
+  });
+
+  it("rejects a preview whose payer policy is no longer unqualified", async () => {
+    previewBody = {
+      ...BLOCKED_ARRANGEMENT_PREVIEW,
+      payerAuthorizationEvidence: {
+        ...BLOCKED_ARRANGEMENT_PREVIEW.payerAuthorizationEvidence,
+        policyQualification: "qualified",
+      },
+    };
+    await continueToPreview();
+    expect(await screen.findByText(/The billing preview could not be loaded\./)).toBeTruthy();
   });
 });
