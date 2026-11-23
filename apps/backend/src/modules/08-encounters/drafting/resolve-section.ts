@@ -11,6 +11,12 @@
 //     if the goal is linked again, and would read `confirmed` with no new confirmation), so it is withdrawn: kept as `deselected`
 //     and bound to a hash no recomputed section can equal (`withdrawnHash`), which a re-link reads as `needs_reconfirmation`.
 //
+// THE EXIT FROM A STALE REFUSAL. A section the clinician confirmed that a recompute no longer drafts (S5b: M14 reassigned the IDG action item, or no longer
+// clears the viewer for a Part 2 one) is refused at finalize, sign and an addendum's sign (`settleIdgSection`). The author must always have a way out of that,
+// and for a SIGNED note's addendum the link row is frozen and an addendum has no void: so a DESELECT of a section that has a stored `confirmed` resolution and
+// no longer drafts WITHDRAWS it (`withdrawUndrafted`): the same withdrawn row a deselect of an emptied section keeps, with no hash to compare (nothing is drafted,
+// so the hash and corpus version of the request are not consulted). Nothing not drafted can be CONFIRMED, and a section with no confirmation has nothing to withdraw.
+//
 // Idempotent: confirming the same content again, or deselecting a section that is already `deselected` and current, writes nothing and
 // reports no event. A retry of a deselect that left the section empty carries the old hash, finds nothing drafted and is stale: the
 // client refetches and sees `not_drafted`.
@@ -23,7 +29,7 @@ import type { DraftEncounterRow, DraftResolvedEvent, DraftStore } from "./draft-
 import { type DraftSectionView, sectionView } from "./draft-view";
 import { raiseIdgLinkPart2Of } from "./idg-follow-up";
 import type { DraftPorts, DraftSeamPorts, DraftViewer } from "./ports";
-import { type SectionStateName, sectionStates } from "./section-state";
+import { type ConfirmationRecord, type SectionStateName, sectionStates } from "./section-state";
 import { settleAll } from "./unavailable";
 
 export interface ResolveSectionInput {
@@ -70,6 +76,58 @@ function stateOf(
   return states.find((s) => s.sectionId === sectionId)?.state ?? "not_drafted";
 }
 
+/**
+ * Withdraws the stored confirmation of a section that no longer drafts (see the header): refused as stale unless the request is a deselect and a `confirmed`
+ * resolution is stored. The row is bound to a hash no recomputed section can equal, keeps no source ids and fails closed on Part 2 (there is no verdict to
+ * carry: nothing is drafted); the audit event names the hash that was withdrawn. The section is then `not_drafted` with no action against it, and if M14
+ * hands the item back it reads `needs_reconfirmation` until the author resolves it afresh.
+ */
+async function withdrawUndrafted(
+  store: DraftStore,
+  input: ResolveSectionInput,
+  confirmations: readonly ConfirmationRecord[],
+  edited: boolean,
+): Promise<ResolveSectionOutcome> {
+  const { encounter, sectionId } = input;
+  const confirmed = confirmations.find(
+    (c) => c.sectionId === sectionId && c.resolution === "confirmed",
+  );
+  if (input.resolution !== "deselected" || confirmed === undefined) throw stale(sectionId);
+  const boundContentHash = withdrawnHash(sectionId, confirmed.corpusVersion);
+  await store.saveConfirmation({
+    encounter,
+    sectionId,
+    resolution: "deselected",
+    contentHash: boundContentHash,
+    corpusVersion: confirmed.corpusVersion,
+    part2Derived: true,
+    sourceRefs: [],
+    edited,
+    resolvedByMembershipId: input.actorMembershipId,
+    resolvedAt: input.now,
+  });
+  return {
+    view: sectionView(
+      { sectionId, state: "empty", reason: "nothing_to_draft_from" },
+      "not_drafted",
+    ),
+    event: {
+      encounterId: encounter.id,
+      addendumId: input.addendumId,
+      sectionId,
+      resolution: "deselected",
+      edited,
+      contentHash: confirmed.contentHash,
+      boundContentHash,
+      corpusVersion: confirmed.corpusVersion,
+      part2Derived: true,
+      sourceRefs: [],
+      carePlanElementsLinked: 0,
+      carePlanElementsRemoved: 0,
+    },
+  };
+}
+
 export async function resolveSection(
   seams: DraftSeamPorts,
   store: DraftStore,
@@ -106,7 +164,9 @@ export async function resolveSection(
   ) {
     return { view: sectionView(seen, current), event: null };
   }
-  if (!matches || seen.state !== "drafted") throw stale(sectionId);
+  if (seen.state !== "drafted")
+    return withdrawUndrafted(store, input, confirmations, own.has(sectionId));
+  if (!matches) throw stale(sectionId);
 
   const edited = own.has(sectionId);
   const carePlanRefs = seen.sourceRefs.filter(isCarePlanRef);
