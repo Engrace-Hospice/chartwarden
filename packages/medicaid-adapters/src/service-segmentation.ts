@@ -59,6 +59,11 @@ const DIMENSIONS: readonly HospiceFactDimension[] = [
  * Splits an inclusive hospice claim window at every supplied effective-date boundary. A returned span is
  * priceable only when exactly one verified fact for each required dimension covers it and its quantity
  * is verified. The function never chooses the first of conflicting facts or derives hourly care from dates.
+ *
+ * It splits at EVERY boundary, including two contiguous facts that share an identity (RHC on 03-01..03-02 and RHC on
+ * 03-03..03-05 give two segments): it never coalesces, so merging same-identity neighbours is the caller's decision.
+ * A segment whose quantity cannot be resolved from complete, same-basis daily evidence carries `quantity: null`
+ * (never the first day's value) and a reason code.
  */
 export function segmentHospiceServiceWindow(input: {
   readonly from: IsoDate;
@@ -125,7 +130,8 @@ export function segmentHospiceServiceWindow(input: {
     }
     if (input.unknownPolicyBoundaries) reasons.push("POLICY_BOUNDARIES_UNQUALIFIED");
 
-    const quantity = input.quantityByDate.get(from) ?? null;
+    const firstDayQuantity = input.quantityByDate.get(from) ?? null;
+    let quantity = firstDayQuantity;
     if (!quantity) {
       reasons.push("CLINICAL_QUANTITY_UNRESOLVED");
     } else if (to !== from) {
@@ -138,8 +144,10 @@ export function segmentHospiceServiceWindow(input: {
       }
       if (perDay.length !== Math.round((utc(to) - utc(from)) / DAY_MS) + 1) {
         reasons.push("CLINICAL_QUANTITY_UNRESOLVED");
-      } else if (perDay.some((entry) => entry.kind !== quantity.kind)) {
+        quantity = null;
+      } else if (perDay.some((entry) => entry.kind !== quantity?.kind)) {
         reasons.push("CLINICAL_QUANTITY_BASIS_CONFLICT");
+        quantity = null;
       } else if (quantity.kind === "daily") {
         const entries = perDay as Extract<HospiceQuantityEvidence, { kind: "daily" }>[];
         if (entries.some((entry) => !entry.verified)) reasons.push("CLINICAL_QUANTITY_UNVERIFIED");

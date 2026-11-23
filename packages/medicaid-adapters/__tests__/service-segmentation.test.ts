@@ -145,7 +145,7 @@ describe("segmentHospiceServiceWindow", () => {
 
   it("fails closed on missing payer-policy boundaries, missing facts and conflicting overlap", () => {
     const from = "2026-05-01";
-    const to = "2026-05-02";
+    const to = "2026-05-01";
     const facts = [...allFacts(from, to), fact("program", from, to, "conflicting-program")];
     const segments = segmentHospiceServiceWindow({
       from,
@@ -156,14 +156,85 @@ describe("segmentHospiceServiceWindow", () => {
       ]),
       unknownPolicyBoundaries: true,
     });
-    expect(segments[0]?.reasonCodes).toEqual(
-      expect.arrayContaining([
-        "AMBIGUOUS_PROGRAM_FACT",
-        "MISSING_RATE_FACT",
-        "POLICY_BOUNDARIES_UNQUALIFIED",
-        "CLINICAL_QUANTITY_UNVERIFIED",
-      ]),
-    );
+    expect(segments).toHaveLength(1);
+    expect(segments[0]?.reasonCodes).toEqual([
+      "AMBIGUOUS_PROGRAM_FACT",
+      "MISSING_RATE_FACT",
+      "POLICY_BOUNDARIES_UNQUALIFIED",
+      "CLINICAL_QUANTITY_UNVERIFIED",
+    ]);
+    expect(segments[0]?.facts.program).toBeUndefined();
+    expect(segments[0]?.facts.rate).toBeUndefined();
     expect(segments[0]?.priceable).toBe(false);
+  });
+
+  it("carries no quantity on a multi-day segment whose days are not all evidenced", () => {
+    const from = "2026-05-01";
+    const to = "2026-05-03";
+    const [segment] = segmentHospiceServiceWindow({
+      from,
+      to,
+      facts: allFacts(from, to),
+      quantityByDate: new Map([
+        [from, { kind: "daily", units: 1, sourceRecordId: "q-1", verified: true }],
+      ]),
+    });
+    expect(segment).toMatchObject({
+      from,
+      to,
+      quantity: null,
+      reasonCodes: ["CLINICAL_QUANTITY_UNRESOLVED"],
+      priceable: false,
+    });
+  });
+
+  it("carries no quantity when the first day is missing but later days are evidenced", () => {
+    const [segment] = segmentHospiceServiceWindow({
+      from: "2026-05-01",
+      to: "2026-05-02",
+      facts: allFacts("2026-05-01", "2026-05-02"),
+      quantityByDate: new Map([
+        ["2026-05-02", { kind: "daily", units: 1, sourceRecordId: "q-2", verified: true }],
+      ]),
+    });
+    expect(segment).toMatchObject({ quantity: null, priceable: false });
+    expect(segment?.reasonCodes).toEqual(["CLINICAL_QUANTITY_UNRESOLVED"]);
+  });
+
+  it("carries no quantity when days mix daily and hourly evidence", () => {
+    const from = "2026-05-01";
+    const to = "2026-05-02";
+    const [segment] = segmentHospiceServiceWindow({
+      from,
+      to,
+      facts: allFacts(from, to),
+      quantityByDate: new Map([
+        [from, { kind: "daily", units: 1, sourceRecordId: "q-1", verified: true }],
+        [to, { kind: "hourly", minutes: 60, sourceRecordId: "q-2", verified: true }],
+      ]),
+    });
+    expect(segment).toMatchObject({ quantity: null, priceable: false });
+    expect(segment?.reasonCodes).toEqual(["CLINICAL_QUANTITY_BASIS_CONFLICT"]);
+  });
+
+  it("splits at every supplied boundary even when contiguous facts share an identity", () => {
+    // Documented contract: the function never coalesces; merging same-identity neighbours is the caller's choice.
+    const from = "2026-06-01";
+    const to = "2026-06-02";
+    const segments = segmentHospiceServiceWindow({
+      from,
+      to,
+      facts: [
+        ...allFacts(from, to).filter((entry) => entry.dimension !== "loc"),
+        fact("loc", from, from, "RHC"),
+        fact("loc", to, to, "RHC"),
+      ],
+      quantityByDate: dailyQuantities(from, to),
+    });
+    expect(segments.map(({ from: start, to: end }) => [start, end])).toEqual([
+      [from, from],
+      [to, to],
+    ]);
+    expect(segments.every((segment) => segment.priceable)).toBe(true);
   });
 });
