@@ -37,13 +37,15 @@ M24's live consumer still maps absent/invalid decimal strings to zero. In the in
 
 ## Qualification
 
+> **Paths updated (2026-11-22):** on rebase the Medicaid ERA observation test moved from `apps/backend/src/modules/25-remittance/domain/__tests__/` to `apps/backend/__tests__/m25-medicaid-era-observation.test.ts` (its cross-package fixture import fell outside the backend build's `rootDir`). The commands below name the current path; the recorded counts were produced at the old location.
+
 Commands executed:
 
 ```text
-bunx vitest run packages/x12-835-client/__tests__ apps/backend/src/modules/25-remittance/domain/__tests__ apps/backend/src/modules/25-remittance/ingest/__tests__/claimmd-era-duplicate.test.ts
-bunx tsc --noEmit --pretty false --target ES2022 --lib ES2023,DOM --module ESNext --moduleResolution Bundler --strict --noUncheckedIndexedAccess --noImplicitOverride --skipLibCheck --types node apps/backend/src/modules/25-remittance/domain/medicaid-era-observation.ts apps/backend/src/modules/25-remittance/domain/medicaid-era-offline-contracts.ts apps/backend/src/modules/25-remittance/domain/__tests__/medicaid-era-observation.test.ts
-bunx biome check apps/backend/src/modules/25-remittance/domain/medicaid-era-observation.ts apps/backend/src/modules/25-remittance/domain/medicaid-era-offline-contracts.ts apps/backend/src/modules/25-remittance/domain/__tests__/medicaid-era-observation.test.ts
-bun run harness:phi-scan apps/backend/src/modules/25-remittance/domain/medicaid-era-observation.ts apps/backend/src/modules/25-remittance/domain/medicaid-era-offline-contracts.ts apps/backend/src/modules/25-remittance/domain/__tests__/medicaid-era-observation.test.ts docs/audits/billing-e2e/M24_1075_L4_TECHNICAL_QUALIFICATION_20261122.md
+bunx vitest run packages/x12-835-client/__tests__ apps/backend/src/modules/25-remittance/domain/__tests__ apps/backend/__tests__/m25-medicaid-era-observation.test.ts apps/backend/src/modules/25-remittance/ingest/__tests__/claimmd-era-duplicate.test.ts
+bunx tsc --noEmit --pretty false --target ES2022 --lib ES2023,DOM --module ESNext --moduleResolution Bundler --strict --noUncheckedIndexedAccess --noImplicitOverride --skipLibCheck --types node apps/backend/src/modules/25-remittance/domain/medicaid-era-observation.ts apps/backend/src/modules/25-remittance/domain/medicaid-era-offline-contracts.ts apps/backend/__tests__/m25-medicaid-era-observation.test.ts
+bunx biome check apps/backend/src/modules/25-remittance/domain/medicaid-era-observation.ts apps/backend/src/modules/25-remittance/domain/medicaid-era-offline-contracts.ts apps/backend/__tests__/m25-medicaid-era-observation.test.ts
+bun run harness:phi-scan apps/backend/src/modules/25-remittance/domain/medicaid-era-observation.ts apps/backend/src/modules/25-remittance/domain/medicaid-era-offline-contracts.ts apps/backend/__tests__/m25-medicaid-era-observation.test.ts docs/audits/billing-e2e/M24_1075_L4_TECHNICAL_QUALIFICATION_20261122.md
 bun run arch:architecture-docs
 bun run arch:module-docs
 timeout 90s env NODE_OPTIONS=--max-old-space-size=1536 bunx tsc -p apps/backend/tsconfig.json --noEmit --pretty false
@@ -55,6 +57,8 @@ git diff --check
 Results: **33 test files passed, 600 tests passed**. The new tests parse synthetic test-mode X12, adapt multiple claims and transaction sets, verify exact cents and PLB balance, preserve line codes/units/references/adjustments/remarks, preserve a denial with a zero-dollar remittance, assert unverified attribution and no posting authorization, exercise synthetic scoped-match outcomes, verify inert Stedi/Claim.MD retrieval plans and reuse M25 exact/possible duplicate decisions. The targeted strict TypeScript check, changed-file Biome, 4-file PHI scan, architecture-doc check, module-doc check and `git diff --check` passed.
 
 No PostgreSQL/RLS suite was applicable because no database schema, persistent read path or authorization boundary changed. The command with `--incremental false` exited immediately with TS6379 because composite projects disallow that option. The full backend project typecheck then ran with a 1.5 GiB V8 heap limit and exited out-of-memory. The bounded targeted strict typecheck for the changed files passed. The full `arch:boundaries` dependency-cruiser run did not finish during two 30-second attempts; full architecture fitness was not run. No vendor sandbox test, provider/payer enrollment test, production match, live ingestion, full E2E from the L3 837I builder, or secret scan was run for L4. Local Gitleaks was unavailable. These are not counted as passing.
+
+**Update 2026-11-22 (PR #1088 review-fix pass):** at `e91e0ec9b` the branch passes `bun run typecheck`, `bun run lint` and `bun run arch:fitness`; the out-of-memory and not-completed entries above describe the bounded local runs made at the time and are superseded for typecheck and architecture-fitness status. The M40/M24 provenance migration is ordinal 1541. This records the gate status for that commit; it is not a new qualification of this lot's behaviour, and full `bun run test` is not part of this update.
 
 Independent fresh code and compliance reviews found no remaining CRITICAL/HIGH findings. The reviewers' initial line-detail and test-only matching completeness findings were addressed; the low-severity wording note was clarified. Reviewers did not independently execute tests or external vendor qualification.
 

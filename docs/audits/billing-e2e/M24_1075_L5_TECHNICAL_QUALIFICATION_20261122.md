@@ -21,7 +21,7 @@ F09 remains open. This increment supplies the fail-closed evaluation logic but n
 
 ## Implemented assessment contract
 
-`medicaid-era-trusted-review.ts` defines:
+`medicaid-era-trusted-review.ts` defines the attribution, matching and assessment functions, and `medicaid-era-review-service.ts` the `inspect` service (moved there, with the in-file replay scan in `medicaid-era-duplicate-scan.ts`, during the PR #1088 review-fix pass):
 
 - Server-owned account evidence including organization, provider entity, vendor, account/environment, canonical payer/program, accepted vendor payer identifiers, NPI/TIN, enrollment state, effective interval and evidence freshness.
 - Authenticated staging provenance as a separate input from raw X12 fields. Tenant identity is never derived from patient control number, patient name, payer/payee display name or interchange control number.
@@ -32,6 +32,24 @@ F09 remains open. This increment supplies the fail-closed evaluation logic but n
 
 The parser observation now retains payer/payee identifier qualifiers and payee TIN for transient identity validation. No such identifiers are logged or written to a generic audit payload.
 
+## PR #1088 review-fix addendum (2026-11-22)
+
+Behaviour changes made to the evaluator after independent review of PR #1088, each pinned by a synthetic production-usage test in `apps/backend/__tests__/m25-medicaid-era-{production-match,attribution,review-service}.test.ts` (the pre-existing suites above only exercised `usage: "test"`, which short-circuits before the claim comparison):
+
+- `matchMedicaidEraClaim` returns a claim, submission or version only for `MATCHED`; every refusal returns null ids.
+- `PAID` and `DENIED` claims are matchable (a reversal or recoupment only ever arrives after the first ERA set that state); `ABANDONED` is refused as `CLAIM_ABANDONED`, not as "never submitted". The M24 read seam is deliberately looser (it treats every state except `REPLACED`/`VOIDED`/`ABANDONED` as active); this layer additionally refuses claims that never reached a submitted state.
+- A parseable 835 with no claim loops (PLB-only) yields one set-level assessment instead of nothing; an unattributed one is held without amounts.
+- Replay inside one artifact is held: later sets repeating a trace number (exact, or conflict when content differs, for both sets), a payer claim control number or a nonzero payment amount (possible). The reader port's cross-file decision is combined with it, strictest wins.
+- Account evidence is filtered to the actor's organization and provider scope before resolution, so a held foreign account cannot leak its hold reason; a foreign-only match reads as `SOURCE_ARTIFACT_UNAVAILABLE`.
+- `effectiveTo` (and `effectiveFrom`) must be calendar-valid `YYYY-MM-DD`; malformed evidence is held as `SOURCE_EVIDENCE_STALE` instead of failing open.
+- One account shared by several provider entities is disambiguated by the payee NPI the ERA names; identical NPIs stay ambiguous and a payee matching none is `PAYEE_IDENTITY_CONFLICT`.
+- Missing ERA service dates, invalid ranges and a genuine containment failure carry distinct reason codes (`ERA_SERVICE_DATES_MISSING`, `SERVICE_DATES_INVALID`, `CLAIM_SERVICE_RANGE_MISMATCH`). Only claim-level DTM*232/233 are read; line-level service dates are not, so such an ERA stays unmatched.
+- Assessments expose `claimStatusCode` for an attributed claim, and an unverified assessment's `unresolvedRequirements` no longer disclose claim count, PLB or service-line structure.
+
+Judgment calls recorded in code: attribution is point-in-time (dates and freshness compare to the artifact's `receivedAt`, with `verifiedAt <= receivedAt` as the guard against an account re-pointed afterwards), so re-inspecting an old artifact after its evidence lapsed still attributes it; a provider-level adjustment in the same set still outranks a claim-level denial in `decision` (the denial stays visible through `claimStatusCode`).
+
+Still true: the evaluator has no production caller or concrete reader, and `medicaidSubmissionEvidence` has no caller either. This addendum changes no F09 status.
+
 ## Limitations and operator review
 
 No M24 source-account reader, Medicaid staged artifact resolver, safe durable assessment store, or review route was added. As a result, this lot does not expose a Medicaid ERA worklist or action UI. Existing M25 investigation and Claim.MD review endpoints are tenant-scoped, but their current source ownership contracts do not safely represent Medicaid ERA stages. Reusing those paths without extending their source contract would falsely attribute records or allow unsupported posting workflows.
@@ -40,14 +58,17 @@ No new database objects, RLS policies, migrations, or financial posting behavior
 
 ## Qualification status
 
-- `bun test apps/backend/src/modules/25-remittance/domain/__tests__/medicaid-era-trusted-review.test.ts apps/backend/src/modules/25-remittance/domain/__tests__/medicaid-era-observation.test.ts` — 2 files, 14 tests passed; fixtures are synthetic.
+> **Paths updated (2026-11-22):** on rebase the two Medicaid ERA tests moved from `apps/backend/src/modules/25-remittance/domain/__tests__/` to `apps/backend/__tests__/m25-medicaid-era-*.test.ts`. The commands below name the current paths; the recorded counts were produced at the old location.
+
+- `bun test apps/backend/__tests__/m25-medicaid-era-trusted-review.test.ts apps/backend/__tests__/m25-medicaid-era-observation.test.ts` — 2 files, 14 tests passed; fixtures are synthetic.
 - Changed-file strict TypeScript check — passed for `medicaid-era-observation.ts`, `medicaid-era-trusted-review.ts` and its test using explicit `--strict --noUncheckedIndexedAccess` flags.
-- `bunx biome check apps/backend/src/modules/25-remittance/domain/medicaid-era-observation.ts apps/backend/src/modules/25-remittance/domain/medicaid-era-trusted-review.ts apps/backend/src/modules/25-remittance/domain/__tests__/medicaid-era-trusted-review.test.ts` — passed.
+- `bunx biome check apps/backend/src/modules/25-remittance/domain/medicaid-era-observation.ts apps/backend/src/modules/25-remittance/domain/medicaid-era-trusted-review.ts apps/backend/__tests__/m25-medicaid-era-trusted-review.test.ts` — passed.
 - `bun run harness:phi-scan` — passed; 13,455 files scanned.
 - `bun run arch:architecture-docs` and `bun run arch:module-docs` — passed (three existing warn-only verification-stamp notices).
 - `git diff --check` — passed.
 - `NODE_OPTIONS=--max-old-space-size=1536 bunx tsc --noEmit -p apps/backend/tsconfig.json --pretty false` — not completed: Node heap exhausted at the 1.5 GiB cap before diagnostics. This is not a pass.
 - `bun run arch:boundaries` — not completed: dependency-cruiser grew beyond 1.7 GiB RSS after about 80 seconds and was stopped to avoid an unbounded resource run. This is not a pass.
+- **Update 2026-11-22 (PR #1088 review-fix pass):** at `e91e0ec9b` the branch passes `bun run typecheck`, `bun run lint` and `bun run arch:fitness`; the out-of-memory and not-completed entries above describe the bounded local runs made at the time and are superseded for typecheck and architecture-fitness status. The M40/M24 provenance migration is ordinal 1541. This records the gate status for that commit; it is not a new qualification of this lot's behaviour, and full `bun run test` is not part of this update.
 - Gitleaks is unavailable in the local environment; no secret-scan result is claimed.
 - Offline vendor contract: no changes; prior L4 test-mode retrieval plans remain inert.
 - Claim.MD sandbox: not tested.
