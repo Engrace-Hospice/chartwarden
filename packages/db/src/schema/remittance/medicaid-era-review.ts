@@ -33,6 +33,9 @@ export const medicaidEraReview = pgTable(
     sourceDigest: varchar("source_digest", { length: 64 }).notNull(),
     assessmentFingerprint: varchar("assessment_fingerprint", { length: 64 }).notNull(),
     assessmentVersion: varchar("assessment_version", { length: 32 }).notNull(),
+    assessmentTrustStatus: varchar("assessment_trust_status", { length: 24 })
+      .notNull()
+      .default("legacy_unverified"),
     decisionStatus: varchar("decision_status", { length: 32 }).notNull(),
     reasonCodes: jsonb("reason_codes").notNull().$type<string[]>(),
     claimMatchStatus: varchar("claim_match_status", { length: 32 }).notNull(),

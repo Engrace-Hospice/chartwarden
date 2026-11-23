@@ -114764,11 +114764,12 @@ export interface operations {
                             /** Format: uuid */
                             providerEntityId: string;
                             /** @constant */
+                            assessmentTrustStatus: "legacy_unverified";
+                            /** @constant */
                             vendor: "claimmd";
-                            sourceEnvironment: "test" | "production";
-                            /** Format: uuid */
-                            canonicalPayerId: string;
-                            programId: string;
+                            sourceEnvironment: "test" | "production" | null;
+                            canonicalPayerId: string | null;
+                            programId: string | null;
                             decisionStatus: string;
                             reasonCodes: string[];
                             claimMatchStatus: string;
@@ -114811,13 +114812,14 @@ export interface operations {
                         /** Format: uuid */
                         providerEntityId: string;
                         /** @constant */
+                        assessmentTrustStatus: "legacy_unverified";
+                        /** @constant */
                         vendor: "claimmd";
-                        accountReference: string;
-                        sourceEnvironment: "test" | "production";
-                        sourceDigest: string;
-                        /** Format: uuid */
-                        canonicalPayerId: string;
-                        programId: string;
+                        accountReference: string | null;
+                        sourceEnvironment: "test" | "production" | null;
+                        sourceDigest: string | null;
+                        canonicalPayerId: string | null;
+                        programId: string | null;
                         assessmentVersion: string;
                         decisionStatus: string;
                         reasonCodes: string[];
@@ -114825,7 +114827,7 @@ export interface operations {
                         duplicateStatus: string;
                         safeSummary: {
                             [key: string]: unknown;
-                        };
+                        } | null;
                         workflowState: string;
                         version: number;
                         /** Format: date-time */
@@ -114901,8 +114903,8 @@ export interface operations {
                             version: number;
                             action: string;
                             reasonCode: string | null;
-                            /** Format: uuid */
-                            actorMembershipId: string;
+                            actorMembershipId: string | null;
+                            trustStatus: "legacy_unverified" | "evaluator_attested";
                             /** Format: date-time */
                             createdAt: string;
                         }[];

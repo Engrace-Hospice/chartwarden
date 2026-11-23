@@ -128,3 +128,7 @@ The independent review found and led to a fix for one reader regression: normal 
 Changes are prepared on the existing branch for a focused commit and PR #1088 update. PR #1088 must remain Draft; issue #1075 remains open. No merge, deployment or production migration is authorized.
 
 Medicaid electronic submission remained disabled. No live vendor/payer request or ERA retrieval occurred. No payment, M24 financial claim transition or financial outbox event occurred. No synthetic evidence was promoted to production qualification. No EOCCO rate/enrollment/authorization or secondary Medicaid Room & Board path was enabled.
+
+## L6C follow-up — 2026-11-23
+
+L6C added migration 1544 to remove `chartwarden_platform` / `chartwarden_platform_login` write access to Medicaid ERA review and history, marked existing rows `legacy_unverified`, redacted their assessment summaries from tenant APIs, and removed the shared `DATABASE_PLATFORM_URL` writer binding from M25. The repository still has no isolated evaluator runtime or separately controlled writer secret. Therefore the previously successful L6B positive write path is no longer available after migration 1544, and L6C remains `M24_1075_L6C_BLOCKED` pending a genuinely isolated evaluator-to-writer implementation. See [L6C security qualification](./M24_1075_L6C_SECURITY_QUALIFICATION_20261123.md). The original L6B direct-SQL exploit evidence above is retained as historical evidence; it is not being represented as fixed by the L6B implementation itself.
