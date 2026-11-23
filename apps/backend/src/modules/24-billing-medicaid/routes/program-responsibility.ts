@@ -34,6 +34,20 @@ export type ProgramResolution =
 
 const day = (v: string) => v.slice(0, 10);
 
+/**
+ * The assembly-preview contract (`AssemblyPreviewResponse.programResponsibility`) names these fields only: the
+ * assignment ids stay server-side, so the view is built field by field and never spreads the resolution.
+ */
+export function previewProgramResponsibility(resolution: ProgramResolution) {
+  return {
+    status: resolution.status,
+    programKind: resolution.programKind,
+    canonicalPayerId: resolution.canonicalPayerId,
+    canonicalPayerName: null,
+    reasonCode: resolution.reasonCode,
+  };
+}
+
 export function enrollmentTransactionMatches(
   actual: string | null,
   required: "837I" | "835" | null,

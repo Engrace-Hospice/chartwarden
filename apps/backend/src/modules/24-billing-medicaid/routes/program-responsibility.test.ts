@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   type ProgramAssignmentCandidate,
   enrollmentTransactionMatches,
+  previewProgramResponsibility,
   resolveProgramResponsibility,
   resolveProviderPayerRoute,
   verificationSourceAllowed,
@@ -242,5 +243,31 @@ describe("resolveProgramResponsibility", () => {
         "2026-01-31",
       ),
     ).toMatchObject({ status: "expired", reasonCode: "PROGRAM_ASSIGNMENT_EXPIRED" });
+  });
+});
+
+describe("previewProgramResponsibility", () => {
+  it("returns exactly the declared preview fields, without the server-side assignment ids", () => {
+    const resolution = resolveProgramResponsibility(
+      [assignment("first")],
+      "2026-01-01",
+      "2026-01-31",
+    );
+    expect(resolution.assignmentIds).toEqual(["first"]);
+    const view = previewProgramResponsibility(resolution);
+    expect(Object.keys(view).sort()).toEqual([
+      "canonicalPayerId",
+      "canonicalPayerName",
+      "programKind",
+      "reasonCode",
+      "status",
+    ]);
+    expect(view).toMatchObject({
+      status: "verified",
+      programKind: "managed_care",
+      canonicalPayerId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      canonicalPayerName: null,
+      reasonCode: "PROGRAM_RESPONSIBILITY_VERIFIED",
+    });
   });
 });
