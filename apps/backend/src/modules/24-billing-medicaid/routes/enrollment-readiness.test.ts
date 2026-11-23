@@ -206,21 +206,78 @@ describe("enrollmentRequirementStatus payer binding", () => {
     ).toMatchObject({ status: "verified" });
   });
 
-  it("never compares the program kind for payer-independent state provider enrollment", () => {
-    const stateEnrollment = evidence({
-      evidenceKind: "state_medicaid_provider_enrollment",
-      transactionType: null,
-      canonicalPayerId: null,
-      programKind: "managed_care",
+  describe("state provider enrollment against the claim's program kind", () => {
+    const stateRow = (extra: Partial<EnrollmentEvidenceFacts> = {}) =>
+      evidence({
+        evidenceKind: "state_medicaid_provider_enrollment",
+        transactionType: null,
+        canonicalPayerId: null,
+        programKind: "managed_care",
+        ...extra,
+      });
+    const stateStatus = (rows: readonly EnrollmentEvidenceFacts[], programKind: string | null) =>
+      status(rows, "state_medicaid_provider_enrollment", {
+        canonicalPayerId: null,
+        programKind,
+        requiredTransactionType: null,
+      });
+
+    it("reads a row recorded for another concrete program as missing", () => {
+      expect(stateStatus([stateRow()], "ffs_open_card")).toMatchObject({ status: "missing" });
+      expect(stateStatus([stateRow()], "other_managed_care")).toMatchObject({
+        status: "missing",
+      });
+      expect(stateStatus([stateRow()], "managed_care")).toMatchObject({ status: "verified" });
     });
-    for (const claimProgramKind of ["ffs_open_card", "other_managed_care", "unresolved", null]) {
-      expect(
-        status([stateEnrollment], "state_medicaid_provider_enrollment", {
-          programKind: claimProgramKind,
-          requiredTransactionType: null,
-        }),
-      ).toMatchObject({ status: "verified" });
-    }
+
+    it("picks the row for the claim's program among overlapping per-program rows", () => {
+      const rows = [stateRow({ programKind: "ffs_open_card" }), stateRow()];
+      expect(stateStatus(rows, "ffs_open_card")).toMatchObject({ status: "verified" });
+      expect(stateStatus(rows, "managed_care")).toMatchObject({ status: "verified" });
+    });
+
+    it("is ambiguous when two verified rows both match the claim's program", () => {
+      const rows = [
+        stateRow({ programKind: "ffs_open_card" }),
+        stateRow({ programKind: "ffs_open_card" }),
+      ];
+      expect(stateStatus(rows, "ffs_open_card")).toMatchObject({
+        status: "ambiguous",
+        reasonCode: "ENROLLMENT_EVIDENCE_AMBIGUOUS",
+      });
+    });
+
+    it("does not let a row with no program kind, or a claim with none, constrain", () => {
+      for (const claimProgramKind of ["ffs_open_card", "managed_care", "unresolved", null]) {
+        expect(stateStatus([stateRow({ programKind: null })], claimProgramKind)).toMatchObject({
+          status: "verified",
+        });
+      }
+      expect(stateStatus([stateRow()], null)).toMatchObject({ status: "verified" });
+    });
+
+    it("does not read a concrete row as missing against a sentinel program, with no payer", () => {
+      // Reachable: an unresolved/ambiguous/unsupported ProgramResolution carries canonicalPayerId null, and the
+      // payer-independent state kind is the only kind that passes the payer guard with it.
+      for (const sentinel of ["unresolved", "ambiguous", "unsupported"]) {
+        expect(stateStatus([stateRow()], sentinel)).toMatchObject({
+          status: "verified",
+          reasonCode: "ENROLLMENT_EVIDENCE_VERIFIED",
+        });
+      }
+    });
+
+    it("stops payer-bound kinds before the program comparison when the payer is null", () => {
+      // The sentinel branch is dead for these kinds through the real caller: sentinels come with a null payer.
+      for (const sentinel of ["unresolved", "ambiguous", "unsupported"]) {
+        expect(
+          status([evidence()], "837i_enrollment", {
+            canonicalPayerId: null,
+            programKind: sentinel,
+          }),
+        ).toMatchObject({ status: "unavailable", reasonCode: "PROGRAM_PAYER_IDENTITY_UNRESOLVED" });
+      }
+    });
   });
 
   it("does not read a concrete-program row as missing when the claim's program is a sentinel", () => {

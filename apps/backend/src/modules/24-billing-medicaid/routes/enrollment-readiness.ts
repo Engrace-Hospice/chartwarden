@@ -78,11 +78,13 @@ export function enrollmentRequirementStatus(
     if (kind !== "state_medicaid_provider_enrollment" && row.canonicalPayerId !== canonicalPayerId)
       return false;
     if (row.canonicalPayerId && row.canonicalPayerId !== canonicalPayerId) return false;
-    // The program kind narrows a payer-bound row only once the claim's program is known. State provider enrollment
-    // is payer- and program-independent, and a sentinel on the claim side (the program is unresolved, ambiguous or
-    // unsupported) is not a program the row can disagree with: comparing it would read a recorded row as "missing".
+    // A row recorded for one concrete program never speaks for a claim in another, for every kind (the record route
+    // stores programKind for state provider enrollment too). The comparison is skipped only while the claim side is
+    // null or a sentinel (the program is unresolved, ambiguous or unsupported): that is not a program the row can
+    // disagree with, and comparing it would read a recorded row as "missing". A row with no programKind never
+    // constrains. The sentinel is reachable only for the payer-independent state kind: a sentinel resolution carries
+    // a null payer, which stops every other kind above.
     if (
-      kind !== "state_medicaid_provider_enrollment" &&
       programKind &&
       !CLAIM_PROGRAM_SENTINELS.has(programKind) &&
       row.programKind &&
