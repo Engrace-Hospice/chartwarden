@@ -294,7 +294,6 @@ const FINDING_QUALIFIERS: ReadonlySet<string> = new Set([
   "never",
   "neg",
   "negative",
-  "without",
   "deny",
   "denies",
   "denied",
@@ -323,9 +322,49 @@ const FINDING_QUALIFIERS: ReadonlySet<string> = new Set([
   "brother",
   "sibling",
   "parent",
+  // Resolved, doubtful or unconfirmed: the page does not state an active diagnosis.
+  "resolved",
+  "unlikely",
+  "likely",
+  "doubtful",
+  "none",
+  "remission",
+  "cured",
+  "cleared",
+  "inactive",
+  "unconfirmed",
+  "differential",
+  "screening",
+  "unknown",
+  // Someone else's, by every spelling a chart uses.
+  "mom",
+  "mum",
+  "dad",
+  "son",
+  "daughter",
+  "aunt",
+  "uncle",
+  "grandmother",
+  "grandfather",
+  "grandparent",
+  "wife",
+  "husband",
+  "spouse",
+  "relative",
+  "relatives",
+  "fam",
+  "fh",
+  "fhx",
+  // A bare "N" in a yes/no column.
+  "n",
 ]);
-/** "?COPD" and "r/o COPD". */
-const UNCERTAIN_MARK = /\?|\br\s*\/\s*o\b/i;
+/**
+ * Negates only what FOLLOWS it. "Presented without COPD" denies it, but "Alzheimer's disease with late onset,
+ * with dementia, without behavioral disturbance" is a descriptor of a diagnosis that is stated.
+ */
+const NEGATES_FOLLOWING: ReadonlySet<string> = new Set(["without"]);
+/** "?COPD", "r/o COPD" (also "R.O."), a negative "(-)" / "[-]", and an unticked or crossed box. */
+const UNCERTAIN_MARK = /\?|\br\s*[/.]\s*o\b|\(\s*-\s*\)|\[\s*-?\s*\]|[✗✘✕☐☒×]/i;
 
 /**
  * The only words that may touch the value without changing which disease it names. Anything else adjacent
@@ -344,9 +383,18 @@ const MODIFIER_BEFORE: ReadonlySet<string> = new Set([
   "permanent",
   "persistent",
   "known",
+  "metastatic",
+  // "Alzheimer's dementia (moderate) and malnutrition": a list of findings, each its own.
+  "and",
+  // "Stage IV pancreatic cancer": the numeral belongs to "stage".
+  "i",
+  "ii",
+  "iii",
+  "iv",
 ]);
 const CONNECTOR_AFTER: ReadonlySet<string> = new Set([
   "with",
+  "without",
   "on",
   "in",
   "and",
@@ -368,7 +416,13 @@ const PHRASE_BREAK: ReadonlySet<string> = new Set([",", ":", ";", "(", ")", "[",
 
 /** Words and phrase-break marks, lower-cased. Hyphens and apostrophes split words; a decimal point does not end a sentence. */
 const tokenize = (s: string): string[] => s.toLowerCase().match(/[0-9a-z]+|[,:;()[\]]/g) ?? [];
-const SENTENCE_END = /\.(?!\d)/;
+/**
+ * A period ends a sentence only after a word of four or more letters (or a number) and not before a digit:
+ * "Neg. COPD", "Fam. hx: COPD" and "Mat. breast cancer" are one sentence led by an abbreviation, not two.
+ */
+const SENTENCE_END = /(?<=[a-z]{4}|\d)\.(?!\d)/i;
+/** A sentence this short is a qualifier standing alone ("Negative.", "Ruled out.") and applies to its neighbours. */
+const FRAGMENT_TOKENS = 3;
 
 /**
  * Prose comparison for a diagnosis description. True when a sentence of the reading holds every token of
@@ -379,12 +433,21 @@ const SENTENCE_END = /\.(?!\d)/;
 function proseContains(extracted: string, observed: string): boolean {
   const value = tokenize(extracted);
   if (!value.some((t) => !PHRASE_BREAK.has(t))) return false;
-  for (const sentence of observed.split(SENTENCE_END)) {
-    if (UNCERTAIN_MARK.test(sentence)) continue;
-    const tokens = tokenize(sentence);
-    if (tokens.some((t) => FINDING_QUALIFIERS.has(t))) continue;
+  const sentences = observed.split(SENTENCE_END).map((text) => ({
+    text,
+    tokens: tokenize(text),
+  }));
+  const qualified = ({ text, tokens }: (typeof sentences)[number]): boolean =>
+    UNCERTAIN_MARK.test(text) || tokens.some((t) => FINDING_QUALIFIERS.has(t));
+  for (const [at, sentence] of sentences.entries()) {
+    if (qualified(sentence)) continue;
+    // "COPD. Negative." — a fragment that is only a qualifier belongs to the sentence beside it.
+    const neighbours = [sentences[at - 1], sentences[at + 1]];
+    if (neighbours.some((n) => n && n.tokens.length <= FRAGMENT_TOKENS && qualified(n))) continue;
+    const { tokens } = sentence;
     for (let i = 0; i + value.length <= tokens.length; i++) {
       if (!value.every((t, k) => tokens[i + k] === t)) continue;
+      if (tokens.slice(0, i).some((t) => NEGATES_FOLLOWING.has(t))) continue;
       const before = tokens[i - 1];
       const after = tokens[i + value.length];
       if (before !== undefined && !PHRASE_BREAK.has(before) && !MODIFIER_BEFORE.has(before))

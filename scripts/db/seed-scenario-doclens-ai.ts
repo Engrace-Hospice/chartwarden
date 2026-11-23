@@ -50,8 +50,10 @@ const TEMPLATES = [
   // F-237 — stage 5 (vision double-check) and the model pass of SUD detection.
   {
     capability: "doclens_vision_verify",
-    file: "packages/ai-platform/prompts/doclens/vision_verify.v1.md",
-    version: 1,
+    // v2: a list path ("diagnoses[].description") is named in the list rule. v1 described only an index such
+    // as "[1]", so the model read the bracket-only path as a single field and returned one entry of the crop.
+    file: "packages/ai-platform/prompts/doclens/vision_verify.v2.md",
+    version: 2,
     backend: LOCAL_VISION_BACKEND,
   },
   {

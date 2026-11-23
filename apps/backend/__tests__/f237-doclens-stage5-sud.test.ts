@@ -99,6 +99,52 @@ describe("F-237 — stage 5 diagnosis descriptions and roles", () => {
     ["Dementia", "Vascular dementia", false],
     ["Cancer", "Breast cancer", false],
     ["Stroke", "Stroke-like episode", false],
+    // Resolved, doubtful or unconfirmed: the page does not state an active diagnosis.
+    ["COPD", "COPD is unlikely", false],
+    ["COPD", "COPD, resolved", false],
+    ["COPD", "COPD (resolved)", false],
+    ["COPD", "COPD is in remission", false],
+    ["COPD", "COPD: none", false],
+    ["COPD", "COPD (unknown)", false],
+    ["COPD", "Resolved: COPD", false],
+    ["COPD", "Differential: COPD", false],
+    ["COPD", "COPD: unconfirmed", false],
+    // An abbreviation's period is not a sentence end; a stand-alone qualifier applies to its neighbour.
+    ["COPD", "Neg. COPD", false],
+    ["COPD", "R.O. COPD", false],
+    ["COPD", "Fam. COPD", false],
+    ["Breast cancer", "Mat. breast cancer", false],
+    ["COPD", "COPD. Negative.", false],
+    ["COPD", "COPD.\nRuled out.", false],
+    ["COPD", "Denied. COPD", false],
+    // Someone else's, in every spelling a chart uses.
+    ["Breast cancer", "Daughter: breast cancer", false],
+    ["Breast cancer", "Breast cancer in mom", false],
+    ["COPD", "COPD in dad", false],
+    ["COPD", "FHx: COPD", false],
+    ["COPD", "Relatives: COPD", false],
+    // A form's negative mark or an unticked box.
+    ["COPD", "COPD (-)", false],
+    ["COPD", "COPD [-]", false],
+    ["COPD", "COPD: N", false],
+    ["COPD", "☐ COPD", false],
+    ["COPD", "COPD ✗", false],
+    // Plain stage and spread words around the value still agree.
+    ["Pancreatic cancer", "Metastatic pancreatic cancer", true],
+    ["Pancreatic cancer", "Stage IV pancreatic cancer", true],
+    ["COPD", "COPD. Hypertension.", true], // a neighbour that holds no qualifier
+    // "without" negates what follows it, not the diagnosis it describes; a list of findings is not a doubt.
+    [
+      "Alzheimer's disease with late onset",
+      "Alzheimer's disease with late onset, with dementia, moderate, without behavioral disturbance",
+      true,
+    ],
+    ["COPD", "COPD without exacerbation", true],
+    ["COPD", "Presented without COPD", false],
+    ["COPD", "Without COPD", false],
+    ["malnutrition", "Alzheimer's dementia (moderate) and malnutrition", true],
+    ["COPD", "Hypertension and COPD", true],
+    ["COPD", "Denies fever and COPD", false],
   ])("prose: %s in %s → %s", (extracted, observed, agrees) => {
     expect(visionReadingAgrees(extracted, observed, "prose")).toBe(agrees);
   });

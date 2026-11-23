@@ -233,11 +233,26 @@ describe("splitter rules", () => {
       expect(headerDate(p)).toBe("2026-09-17");
     });
 
-    it("needs at least two date cells and ignores a table of ordinary values", () => {
+    it("needs at least three date cells and ignores a table of ordinary values", () => {
       expect(headerDate(page(1, ["text", "Seen 10/01/2026"], ...cells("Test", "09/17/2026")))).toBe(
         "2026-10-01",
       );
       expect(headerDate(page(1, ...cells("BNP", "4,820", "4,410", "3,950")))).toBeNull();
+    });
+
+    it("does not read a start/end pair as columns (its end date is in the future)", () => {
+      const p = page(
+        1,
+        ...cells("Benefit period start", "Benefit period end", "11/01/2026", "01/29/2027"),
+      );
+      expect(headerDate(p)).toBe("2026-11-01"); // the first unlabelled date, as before
+    });
+
+    it("skips a day that is not on the calendar instead of letting it roll over", () => {
+      const p = page(1, ...cells("Test", "09/17/2026", "09/31/2026", "09/30/2026"));
+      // 09/31 is not a date, so only two real columns remain: no column rule, first real date wins.
+      expect(headerDate(p)).toBe("2026-09-17");
+      expect(headerDate(page(1, ["text", "Seen 02/30/2026"]))).toBeNull();
     });
   });
 });

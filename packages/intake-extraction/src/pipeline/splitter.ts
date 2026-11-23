@@ -141,11 +141,21 @@ const DATE_LABELS: readonly RegExp[] = [
 const iso = (y: string | number, m: number, d: number) =>
   `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 
+/** A real calendar day: "09/31/2026" is not one (Date.parse would roll it to 10/01 and Postgres would refuse it). */
+const isCalendarDay = (y: string | number, m: number, d: number): boolean => {
+  const date = new Date(Date.UTC(Number(y), m - 1, d));
+  return (
+    date.getUTCFullYear() === Number(y) && date.getUTCMonth() === m - 1 && date.getUTCDate() === d
+  );
+};
+
 /** How far into the page a table's header row may start and still count (page header + patient banner first). */
 const TABLE_HEADER_BLOCKS = 12;
 const BARE_DATE = /^\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})\s*$/;
 /** Columns of one table cover days or weeks; a spread wider than this is a misread year, not a table. */
 const MAX_COLUMN_SPAN_DAYS = 366;
+/** A start/end pair ("Benefit period | 11/01/2026 | 01/29/2027") is not a results table: its end date is in the future. */
+const MIN_DATE_COLUMNS = 3;
 const DAY_MS = 86_400_000;
 
 interface DateColumns {
@@ -161,24 +171,23 @@ function bareDateCell(b: SplitterBlock): string | null {
   if (!m) return null;
   const month = Number(m[1]);
   const day = Number(m[2]);
-  return month >= 1 && month <= 12 && day >= 1 && day <= 31
-    ? iso(m[3] as string, month, day)
-    : null;
+  return isCalendarDay(m[3] as string, month, day) ? iso(m[3] as string, month, day) : null;
 }
 
 /**
  * A cumulative lab and other column-per-date tables carry no single document date: every date is a column
  * ("Test | 09/17/2026 | 09/24/2026 | 09/30/2026 | Ref range"). The document is current as of its LATEST
- * column, not the leftmost one. Only a run of ADJACENT `table_cell` blocks holding two or more full dates
- * counts (a lone collection date, or "Follow-up | 10/05 | Cardiology | 10/12", is not a date row), and only
- * when the columns lie within {@link MAX_COLUMN_SPAN_DAYS} of each other.
+ * column, not the leftmost one. Only a run of ADJACENT `table_cell` blocks holding {@link MIN_DATE_COLUMNS}
+ * or more real full dates counts (a lone collection date, a start/end pair, or "Follow-up | 10/05 |
+ * Cardiology | 10/12", is not a date row), and only when the columns lie within
+ * {@link MAX_COLUMN_SPAN_DAYS} of each other.
  */
 function dateColumns(page: SplitterPage): DateColumns | null {
   const head = page.blocks.slice(0, TABLE_HEADER_BLOCKS);
   let from = -1;
   let dates: string[] = [];
   const closeRun = (to: number): DateColumns | null => {
-    if (dates.length < 2) return null;
+    if (dates.length < MIN_DATE_COLUMNS) return null;
     const sorted = [...dates].sort(); // ISO dates sort lexicographically
     const first = Date.parse(sorted[0] as string);
     const last = Date.parse(sorted[sorted.length - 1] as string);
@@ -221,7 +230,7 @@ export function headerDate(page: SplitterPage, blocks = 6): string | null {
     if (BIRTH_LABEL.test(before)) continue;
     const m = Number(n[1]);
     const d = Number(n[2]);
-    if (m < 1 || m > 12 || d < 1 || d > 31) continue;
+    if (!isCalendarDay(n[3] as string, m, d)) continue;
     const rank = DATE_LABELS.findIndex((re) => re.test(before));
     found.push({
       date: iso(n[3] as string, m, d),
