@@ -133,6 +133,15 @@ describe("buildStediClaimJson", () => {
     expect(compareStediClaimJsonToX12(json, build837iClaim(input))).toEqual([]);
   });
 
+  it.each(["HR", "MJ"])(
+    "refuses measurementUnit %s: Stedi's institutional unit is DA or UN (837I SV204)",
+    (unitBasis) => {
+      expect(() =>
+        buildStediClaimJson(withClaim({ lines: [{ ...line, unitBasis }] }) as never),
+      ).toThrow("invalid 837I claim input: claim.lines.unitBasis");
+    },
+  );
+
   it("pads decimal value amounts and maps address2 and middle names", () => {
     const json = buildStediClaimJson({
       ...CLAIM_INPUT,

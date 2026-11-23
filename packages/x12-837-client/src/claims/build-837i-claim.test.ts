@@ -110,6 +110,9 @@ describe("build837iClaim — fail closed, field names only", () => {
     [claimWith({ lines: [{ ...line, chargeCents: 1.5 }] }), "claim.lines"],
     [claimWith({ lines: [{ ...line, units: 0 }] }), "claim.lines"],
     [claimWith({ lines: [{ ...line, unitBasis: "XX" }] }), "claim.lines.unitBasis"],
+    // 005010X223A2 SV204 allows only DA and UN: hours and minutes are not 837I unit bases.
+    [claimWith({ lines: [{ ...line, unitBasis: "HR" }] }), "claim.lines.unitBasis"],
+    [claimWith({ lines: [{ ...line, unitBasis: "MJ" }] }), "claim.lines.unitBasis"],
     [claimWith({ lines: [{ ...line, revenueCode: "65" }] }), "claim.lines"],
     [claimWith({ lines: [{ ...line, hcpcs: "q5001" }] }), "claim.lines"],
     [claimWith({ lines: [{ ...line, modifiers: ["P*"] }] }), "claim.lines"],
