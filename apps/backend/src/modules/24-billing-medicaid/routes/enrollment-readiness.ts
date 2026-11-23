@@ -29,6 +29,13 @@ export interface EnrollmentEvidenceFacts {
   readonly effectiveTo: Date | string | null;
 }
 
+/** Values the claim's program kind carries while no concrete program is established (see ProgramResolution). */
+const CLAIM_PROGRAM_SENTINELS: ReadonlySet<string> = new Set([
+  "unresolved",
+  "ambiguous",
+  "unsupported",
+]);
+
 const day = (d: Date | string): string =>
   (typeof d === "string" ? d : d.toISOString()).slice(0, 10);
 
@@ -71,7 +78,17 @@ export function enrollmentRequirementStatus(
     if (kind !== "state_medicaid_provider_enrollment" && row.canonicalPayerId !== canonicalPayerId)
       return false;
     if (row.canonicalPayerId && row.canonicalPayerId !== canonicalPayerId) return false;
-    if (row.programKind && programKind && row.programKind !== programKind) return false;
+    // The program kind narrows a payer-bound row only once the claim's program is known. State provider enrollment
+    // is payer- and program-independent, and a sentinel on the claim side (the program is unresolved, ambiguous or
+    // unsupported) is not a program the row can disagree with: comparing it would read a recorded row as "missing".
+    if (
+      kind !== "state_medicaid_provider_enrollment" &&
+      programKind &&
+      !CLAIM_PROGRAM_SENTINELS.has(programKind) &&
+      row.programKind &&
+      row.programKind !== programKind
+    )
+      return false;
     if (
       (kind === "clearinghouse_payer_route" ||
         kind === "institutional_format_qualification" ||
