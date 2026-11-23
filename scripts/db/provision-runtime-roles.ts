@@ -499,6 +499,77 @@ async function main(): Promise<void> {
       for (const t of PLATFORM_PROVISION_UPDATE_TABLES) {
         await run(`GRANT UPDATE ON "${t}" TO chartwarden_platform;`);
       }
+      // Create the login before the Medicaid review revocations below. A fresh migrate-then-provision
+      // database has the carrier role only; existing installations already have this login. Both
+      // orders must leave the shared platform credential without assessment writes.
+      await run(`DO $$ BEGIN
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'chartwarden_platform_login') THEN
+          CREATE ROLE chartwarden_platform_login LOGIN IN ROLE chartwarden_platform;
+        END IF;
+      END $$;`);
+      await run(
+        `ALTER ROLE chartwarden_platform_login LOGIN BYPASSRLS PASSWORD ${quoteLiteral(platformPassword)};`,
+      );
+      await run("GRANT chartwarden_platform TO chartwarden_platform_login;");
+      // M25 Medicaid ERA assessments are evaluator-owned facts. The general platform credential is
+      // shared by API/worker/listener runtimes and must never regain assessment or history writes
+      // through a later role-provisioning run. Until an isolated evaluator writer exists, keep the
+      // records read-only to platform jobs and make the limitation explicit at provisioning time.
+      for (const table of ["medicaid_era_review", "medicaid_era_review_history"]) {
+        await run(`REVOKE ALL PRIVILEGES ON TABLE "${table}" FROM chartwarden_platform;`);
+        await run(`REVOKE ALL PRIVILEGES ON TABLE "${table}" FROM chartwarden_platform_login;`);
+      }
+      await run(`DO $$
+        DECLARE role_name text; table_name text; column_name text;
+        BEGIN
+          FOREACH role_name IN ARRAY ARRAY['chartwarden_platform', 'chartwarden_platform_login'] LOOP
+            FOREACH table_name IN ARRAY ARRAY['medicaid_era_review', 'medicaid_era_review_history'] LOOP
+              FOR column_name IN
+                SELECT attname FROM pg_attribute
+                 WHERE attrelid = table_name::regclass AND attnum > 0 AND NOT attisdropped
+              LOOP
+                EXECUTE format(
+                  'REVOKE INSERT (%1$I), UPDATE (%1$I), REFERENCES (%1$I) ON TABLE %2$I FROM %3$I',
+                  column_name, table_name, role_name
+                );
+              END LOOP;
+            END LOOP;
+          END LOOP;
+        END $$;`);
+      const medicaidEraWritePrivileges = await db.query<{ can_write: boolean }>(`
+        SELECT EXISTS (
+          SELECT 1
+          FROM unnest(ARRAY['medicaid_era_review', 'medicaid_era_review_history']) AS table_name
+          WHERE has_table_privilege('chartwarden_platform_login', table_name, 'INSERT')
+             OR has_table_privilege('chartwarden_platform_login', table_name, 'UPDATE')
+             OR has_table_privilege('chartwarden_platform_login', table_name, 'DELETE')
+             OR has_table_privilege('chartwarden_platform_login', table_name, 'TRUNCATE')
+        ) AS can_write
+      `);
+      if (medicaidEraWritePrivileges.rows[0]?.can_write) {
+        throw new Error(
+          "chartwarden_platform_login must remain read-only for Medicaid ERA assessment and history tables",
+        );
+      }
+      const medicaidEraColumnWritePrivileges = await db.query<{ can_write: boolean }>(`
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_attribute a
+          JOIN pg_class c ON c.oid = a.attrelid
+          WHERE c.relname IN ('medicaid_era_review', 'medicaid_era_review_history')
+            AND a.attnum > 0 AND NOT a.attisdropped
+            AND (
+              has_column_privilege('chartwarden_platform_login', c.oid, a.attnum, 'INSERT')
+              OR has_column_privilege('chartwarden_platform_login', c.oid, a.attnum, 'UPDATE')
+              OR has_column_privilege('chartwarden_platform_login', c.oid, a.attnum, 'REFERENCES')
+            )
+        ) AS can_write
+      `);
+      if (medicaidEraColumnWritePrivileges.rows[0]?.can_write) {
+        throw new Error(
+          "chartwarden_platform_login must not hold column-level writes on Medicaid ERA review tables",
+        );
+      }
       // Slice 7 (7S, migration 1484): the support tables are written by COLUMN. A session is closed (the sweep, a manual close, an
       // operator's Resolve) by two columns, a grant is revoked (Resolve) by three; nothing else on either row is ever rewritten from
       // the platform side, so a carrier that could (expires_at, actor_membership_id, scope) would hold unused authority over what a
@@ -558,15 +629,6 @@ async function main(): Promise<void> {
       }
 
       // ── the login role (BYPASSRLS is an attribute — it lives HERE, not on the carrier) ───────
-      await run(`DO $$ BEGIN
-        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'chartwarden_platform_login') THEN
-          CREATE ROLE chartwarden_platform_login LOGIN IN ROLE chartwarden_platform;
-        END IF;
-      END $$;`);
-      await run(
-        `ALTER ROLE chartwarden_platform_login LOGIN BYPASSRLS PASSWORD ${quoteLiteral(platformPassword)};`,
-      );
-      await run("GRANT chartwarden_platform TO chartwarden_platform_login;");
       console.log(
         "✓ chartwarden_platform_login provisioned (carrier chartwarden_platform + BYPASSRLS)",
       );

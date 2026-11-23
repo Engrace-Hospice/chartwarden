@@ -29,10 +29,7 @@ import {
   createClaimMdEraStore,
 } from "../../../../apps/backend/src/modules/25-remittance/ingest/claimmd-era-store";
 import { buildDrizzleMedicaidEraReviewReaders } from "../../../../apps/backend/src/modules/25-remittance/ingest/medicaid-era-review-readers";
-import {
-  M25_MEDICAID_ERA_REVIEW_WRITE_JOB_ID,
-  buildDrizzleMedicaidEraReviewWorkflow,
-} from "../../../../apps/backend/src/modules/25-remittance/ingest/medicaid-era-review-service";
+import { buildDrizzleMedicaidEraReviewWorkflow } from "../../../../apps/backend/src/modules/25-remittance/ingest/medicaid-era-review-service";
 import { createDbMdmStore } from "../../../../apps/backend/src/modules/40-mdm/mdm-store-db";
 import { registerMdmSeams } from "../../../../apps/backend/src/modules/40-mdm/seams";
 import type { DbClient } from "../../src/client";
@@ -571,7 +568,7 @@ describe.skipIf(!DB_URL)(
       }
     });
 
-    it("persists a real synthetic Claim.MD 835 review through production readers and the audited writer", async () => {
+    it("evaluates a synthetic Claim.MD 835 through production readers but fails closed without an isolated writer", async () => {
       const providerEntityId = "33333333-3333-4333-8333-333333333390";
       const payerId = "44444444-4444-4444-8444-444444444490";
       const actorMembershipId = "66666666-6666-4666-8666-666666666690";
@@ -730,6 +727,8 @@ describe.skipIf(!DB_URL)(
       const platformUrl = new URL(DB_URL as string);
       platformUrl.username = "chartwarden_platform_login";
       platformUrl.password = "synthetic-platform-l6b";
+      const platformSql = new Client({ connectionString: platformUrl.toString() });
+      await platformSql.connect();
       const platformHandle = createDbClient({ connectionString: platformUrl.toString(), max: 1 });
       type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
       const platformAudit: PlatformBypassAuditor<Tx> = async (tx, event) => {
@@ -746,7 +745,6 @@ describe.skipIf(!DB_URL)(
         registerMdmSeams({ store: createDbMdmStore(appHandle.db) });
         registerM24PublishedSeams(appHandle.db);
         registerPlatformJob(CLAIMMD_ERA_RESOLUTION_JOB_ID);
-        registerPlatformJob(M25_MEDICAID_ERA_REVIEW_WRITE_JOB_ID);
         const store = createClaimMdEraStore({
           platformDb: platformHandle.db,
           auditBypass: platformAudit,
@@ -756,7 +754,7 @@ describe.skipIf(!DB_URL)(
           organizationId: ORG_A,
           userId: "55555555-5555-4555-8555-555555555590",
           roles: ["billing_specialist"],
-          providerEntityScope: [providerEntityId],
+          providerEntityScope: [providerEntityId, "33333333-3333-3333-3333-333333333333"],
           membershipId: actorMembershipId,
           stepUpRecent: true,
         } as const;
@@ -764,80 +762,121 @@ describe.skipIf(!DB_URL)(
         const workflow = buildDrizzleMedicaidEraReviewWorkflow(
           appHandle.db,
           createMedicaidEraReviewService(readers),
-          { platformDb: platformHandle.db, auditBypass: platformAudit },
         );
-        const first = await workflow.evaluate(actor, stageId, "synthetic-l6b-eval-0001");
-        expect(first.status, first.status === "held" ? first.reasonCode : undefined).toBe(
-          "review_saved",
+        await expect(workflow.evaluate(actor, stageId, "synthetic-l6c-eval-0001")).rejects.toThrow(
+          /MEDICAID_ERA_REVIEW_WRITER_UNAVAILABLE/,
         );
-        if (first.status !== "review_saved") throw new Error("synthetic review was not persisted");
-        const firstDetail = await workflow.detail(actor, first.reviewId);
-        expect(firstDetail).toMatchObject({
+        const legacyDetail = await workflow.detail(actor, a.medicaidEraReview);
+        expect(legacyDetail).toMatchObject({
           organizationId: ORG_A,
-          providerEntityId,
-          stageId,
-          vendor: "claimmd",
-          accountReference,
-          sourceEnvironment: "test",
-          canonicalPayerId: payerId,
-          programId: classificationId,
-          sourceDigest: rawFileDigest,
+          providerEntityId: "33333333-3333-3333-3333-333333333333",
+          assessmentTrustStatus: "legacy_unverified",
+          accountReference: null,
+          sourceEnvironment: null,
+          sourceDigest: null,
+          stageId: null,
+          canonicalPayerId: null,
+          programId: null,
+          decisionStatus: "unverified",
+          reasonCodes: ["LEGACY_ASSESSMENT_UNVERIFIED"],
+          claimMatchStatus: "UNVERIFIED",
+          duplicateStatus: "unverified",
+          safeSummary: null,
+        });
+        const legacyHistory = await workflow.history(actor, a.medicaidEraReview);
+        expect(legacyHistory).toHaveLength(1);
+        expect(legacyHistory[0]).toMatchObject({
           version: 1,
-          decisionStatus: "review_required",
+          action: "legacy_unverified",
+          reasonCode: null,
+          actorMembershipId: null,
+          trustStatus: "legacy_unverified",
         });
-        expect(firstDetail.safeSummary).toMatchObject({
-          transactionSetCount: 1,
-          claims: [{ postingAuthorized: false }],
+        const legacyPage = await workflow.list(actor);
+        expect(legacyPage.items.find((item) => item.id === a.medicaidEraReview)).toMatchObject({
+          assessmentTrustStatus: "legacy_unverified",
+          sourceEnvironment: null,
+          canonicalPayerId: null,
+          programId: null,
+          decisionStatus: "unverified",
+          claimMatchStatus: "UNVERIFIED",
+          duplicateStatus: "unverified",
         });
-        const initialHistory = await workflow.history(actor, first.reviewId);
-        expect(initialHistory).toHaveLength(1);
-        expect(initialHistory[0]).toMatchObject({ version: 1, action: "assessed" });
 
-        const replay = await workflow.evaluate(actor, stageId, "synthetic-l6b-eval-0001");
-        expect(replay).toMatchObject({
-          status: "review_saved",
-          reviewId: first.reviewId,
-          version: 1,
-          replay: true,
-        });
-        expect(await workflow.history(actor, first.reviewId)).toHaveLength(1);
-
-        const note = await workflow.addNote(
-          actor,
-          first.reviewId,
-          1,
-          "SYNTHETIC_REVIEW_NOTE",
-          "synthetic-l6b-note-0001",
-        );
-        expect(note).toMatchObject({ version: 2, replay: false });
-        const disposition = await workflow.transition(
-          actor,
-          first.reviewId,
-          2,
-          "investigating",
-          "SYNTHETIC_INVESTIGATION",
-          "synthetic-l6b-state-0001",
-        );
-        expect(disposition).toMatchObject({ version: 3, workflowState: "investigating" });
+        // The general platform SQL credential is the same role used by the API and generic workers.
+        // Even a fully source-bound row and an evaluator-shaped summary must be rejected at SQL.
         await expect(
-          workflow.transition(
-            actor,
-            first.reviewId,
-            2,
-            "follow_up_required",
-            "STALE_SYNTHETIC_REVIEW",
-            "synthetic-l6b-state-stale",
+          platformSql.query(
+            `INSERT INTO medicaid_era_review (organization_id, provider_entity_id, stage_id, vendor,
+             account_reference, source_environment, canonical_payer_id, program_id, source_digest,
+             assessment_fingerprint, assessment_version, decision_status, reason_codes, claim_match_status,
+             duplicate_status, safe_summary)
+             SELECT organization_id, provider_entity_id, id, 'claimmd', account_reference, usage,
+               gen_random_uuid(), 'forged-program', source_file_digest, repeat('9',64), 'forged',
+               'payment_reported', '[]'::jsonb, 'MATCHED', 'none',
+               '{"claims":[{"postingAuthorized":true,"amounts":{"claimPaidCents":999999}}]}'::jsonb
+             FROM claimmd_era_m25_stage WHERE id=$1`,
+            [stageId],
           ),
-        ).rejects.toThrow(/reload the review/);
-        expect(await workflow.history(actor, first.reviewId)).toHaveLength(3);
+        ).rejects.toThrow(/permission denied/);
+        await expect(
+          platformSql.query(
+            `UPDATE medicaid_era_review SET decision_status='payment_reported',
+               safe_summary='{"claims":[{"postingAuthorized":true}]}'::jsonb,
+               version=version+1 WHERE id=$1`,
+            [a.medicaidEraReview],
+          ),
+        ).rejects.toThrow(/permission denied/);
+        await expect(
+          db.query(
+            `UPDATE medicaid_era_review SET safe_summary=
+               '{"claims":[{"postingAuthorized":true}]}'::jsonb, version=version+1 WHERE id=$1`,
+            [a.medicaidEraReview],
+          ),
+        ).rejects.toThrow(/medicaid_era_review_nonposting_summary_ck/);
+        await expect(
+          platformSql.query(
+            `INSERT INTO medicaid_era_review_history
+               (organization_id,provider_entity_id,review_id,version,action,actor_membership_id)
+             VALUES ($1,$2,$3,99,'assessed',gen_random_uuid())`,
+            [ORG_A, providerEntityId, a.medicaidEraReview],
+          ),
+        ).rejects.toThrow(/permission denied/);
+        await expect(platformSql.query("SET ROLE chartwarden_medicaid_era_writer")).rejects.toThrow(
+          /role .* does not exist/,
+        );
+        const platformPrivilege = await db.query<{
+          can_insert: boolean;
+          can_update: boolean;
+          can_read: boolean;
+          can_write_history: boolean;
+          can_update_summary_column: boolean;
+          can_insert_history_actor_column: boolean;
+        }>(
+          `SELECT has_table_privilege('chartwarden_platform_login','medicaid_era_review','INSERT') AS can_insert,
+                  has_table_privilege('chartwarden_platform_login','medicaid_era_review','UPDATE') AS can_update,
+                  has_table_privilege('chartwarden_platform_login','medicaid_era_review','SELECT') AS can_read,
+                  has_table_privilege('chartwarden_platform_login','medicaid_era_review_history','INSERT') AS can_write_history,
+                  has_column_privilege('chartwarden_platform_login','medicaid_era_review','safe_summary','UPDATE') AS can_update_summary_column,
+                  has_column_privilege('chartwarden_platform_login','medicaid_era_review_history','actor_membership_id','INSERT') AS can_insert_history_actor_column`,
+        );
+        expect(platformPrivilege.rows[0]).toEqual({
+          can_insert: false,
+          can_update: false,
+          can_read: false,
+          can_write_history: false,
+          can_update_summary_column: false,
+          can_insert_history_actor_column: false,
+        });
         const bypassAuditRows = await db.query<{ n: number }>(
           `SELECT count(*)::int AS n FROM audit_event
              WHERE event_type='platform.bypass_invoked'
-               AND context->>'jobId' IN ($1,$2)`,
-          [CLAIMMD_ERA_RESOLUTION_JOB_ID, M25_MEDICAID_ERA_REVIEW_WRITE_JOB_ID],
+               AND context->>'jobId' = $1`,
+          [CLAIMMD_ERA_RESOLUTION_JOB_ID],
         );
-        expect(bypassAuditRows.rows[0]?.n).toBeGreaterThanOrEqual(4);
+        expect(bypassAuditRows.rows[0]?.n).toBeGreaterThanOrEqual(2);
       } finally {
+        await platformSql.end();
         await platformHandle.close();
         await appHandle.close();
       }

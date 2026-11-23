@@ -1,10 +1,6 @@
 import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
-import {
-  type PlatformBypassAuditor,
-  withOrgContext,
-  withPlatformContext,
-} from "@chartwarden/tenancy";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { ConflictError, DegradedError, NotFoundError, ValidationError } from "@chartwarden/types";
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import type { MedicaidEraReviewService as Evaluator } from "../domain/medicaid-era-trusted-review";
@@ -28,29 +24,16 @@ const allowed = new Set<State>([
   "reopened",
 ]);
 
-export const M25_MEDICAID_ERA_REVIEW_WRITE_JOB_ID = "m25-medicaid-era-review-write";
-
-export function buildDrizzleMedicaidEraReviewWorkflow(
-  db: DbClient,
-  evaluator: Evaluator,
-  options: {
-    readonly platformDb?: DbClient;
-    readonly auditBypass?: PlatformBypassAuditor<Tx>;
-  } = {},
-) {
-  const write = <T>(reason: string, fn: (tx: Tx) => Promise<T>) => {
-    if (!options.platformDb || !options.auditBypass)
-      throw new DegradedError(
+export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: Evaluator) {
+  // No database client may be injected here until a dedicated evaluator identity is isolated from
+  // the API and general workers. In particular, DATABASE_PLATFORM_URL is not a trusted writer.
+  const write = <T>(_reason: string, _fn: (tx: Tx) => Promise<T>): Promise<T> =>
+    Promise.reject(
+      new DegradedError(
         "MEDICAID_ERA_REVIEW_WRITER_UNAVAILABLE",
         "nonposting review writes are unavailable",
-      );
-    return withPlatformContext(
-      options.platformDb,
-      { jobId: M25_MEDICAID_ERA_REVIEW_WRITE_JOB_ID, reason, crossTenant: false },
-      options.auditBypass,
-      fn,
+      ),
     );
-  };
   const find = async (
     actor: M25ReadActor,
     id: string,
@@ -296,6 +279,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
             reasonCodes: REVIEW.reasonCodes,
             claimMatchStatus: REVIEW.claimMatchStatus,
             duplicateStatus: REVIEW.duplicateStatus,
+            assessmentTrustStatus: REVIEW.assessmentTrustStatus,
             workflowState: REVIEW.workflowState,
             version: REVIEW.version,
             createdAt: REVIEW.createdAt,
@@ -319,7 +303,20 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
         const items = hasMore ? rows.slice(0, bounded) : rows;
         const last = items.at(-1);
         return {
-          items,
+          items: items.map((item) =>
+            item.assessmentTrustStatus === "legacy_unverified"
+              ? {
+                  ...item,
+                  sourceEnvironment: null,
+                  canonicalPayerId: null,
+                  programId: null,
+                  decisionStatus: "unverified",
+                  reasonCodes: ["LEGACY_ASSESSMENT_UNVERIFIED"],
+                  claimMatchStatus: "UNVERIFIED",
+                  duplicateStatus: "unverified",
+                }
+              : item,
+          ),
           nextCursor:
             hasMore && last
               ? Buffer.from(`${last.createdAt.toISOString()}|${last.id}`).toString("base64url")
@@ -334,13 +331,38 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
           id,
           tx,
         );
+        if (detail.assessmentTrustStatus === "legacy_unverified")
+          // Historical rows predate evaluator attestation. Their stored source identity is not
+          // trustworthy evidence, so do not expose it as if the account/artifact were verified.
+          // Keep only the vendor discriminator needed to explain which review family this is.
+          return (({
+            stageId: _stageId,
+            accountReference: _accountReference,
+            sourceEnvironment: _sourceEnvironment,
+            sourceDigest: _sourceDigest,
+            ...legacyDetail
+          }) => ({
+            ...legacyDetail,
+            accountReference: null,
+            sourceEnvironment: null,
+            sourceDigest: null,
+            stageId: null,
+            canonicalPayerId: null,
+            programId: null,
+            assessmentVersion: "legacy_unverified",
+            decisionStatus: "unverified",
+            reasonCodes: ["LEGACY_ASSESSMENT_UNVERIFIED"],
+            claimMatchStatus: "UNVERIFIED",
+            duplicateStatus: "unverified",
+            safeSummary: null,
+          }))(detail);
         return detail;
       });
     },
     async history(actor: M25ReadActor, id: string) {
       return withOrgContext(db, actor, async (tx) => {
         const review = await find(actor, id, tx);
-        return tx
+        const items = await tx
           .select({
             version: HISTORY.version,
             action: HISTORY.action,
@@ -357,6 +379,15 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
             ),
           )
           .orderBy(HISTORY.version);
+        if (review.assessmentTrustStatus === "legacy_unverified")
+          return items.map((item) => ({
+            ...item,
+            action: "legacy_unverified",
+            reasonCode: null,
+            actorMembershipId: null,
+            trustStatus: "legacy_unverified" as const,
+          }));
+        return items.map((item) => ({ ...item, trustStatus: "evaluator_attested" as const }));
       });
     },
     async addNote(

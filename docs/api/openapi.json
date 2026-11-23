@@ -338514,6 +338514,7 @@
                         "required": [
                           "id",
                           "providerEntityId",
+                          "assessmentTrustStatus",
                           "vendor",
                           "sourceEnvironment",
                           "canonicalPayerId",
@@ -338535,6 +338536,10 @@
                             "format": "uuid",
                             "type": "string"
                           },
+                          "assessmentTrustStatus": {
+                            "const": "legacy_unverified",
+                            "type": "string"
+                          },
                           "vendor": {
                             "const": "claimmd",
                             "type": "string"
@@ -338548,15 +338553,32 @@
                               {
                                 "const": "production",
                                 "type": "string"
+                              },
+                              {
+                                "type": "null"
                               }
                             ]
                           },
                           "canonicalPayerId": {
-                            "format": "uuid",
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "programId": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "decisionStatus": {
                             "type": "string"
@@ -338641,6 +338663,7 @@
                     "id",
                     "organizationId",
                     "providerEntityId",
+                    "assessmentTrustStatus",
                     "vendor",
                     "accountReference",
                     "sourceEnvironment",
@@ -338671,12 +338694,23 @@
                       "format": "uuid",
                       "type": "string"
                     },
+                    "assessmentTrustStatus": {
+                      "const": "legacy_unverified",
+                      "type": "string"
+                    },
                     "vendor": {
                       "const": "claimmd",
                       "type": "string"
                     },
                     "accountReference": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "sourceEnvironment": {
                       "anyOf": [
@@ -338687,19 +338721,43 @@
                         {
                           "const": "production",
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     },
                     "sourceDigest": {
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "pattern": "^[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "canonicalPayerId": {
-                      "format": "uuid",
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "programId": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "assessmentVersion": {
                       "type": "string"
@@ -338723,10 +338781,17 @@
                       "type": "string"
                     },
                     "safeSummary": {
-                      "type": "object",
-                      "patternProperties": {
-                        "^(.*)$": {}
-                      }
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {}
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "workflowState": {
                       "type": "string"
@@ -338907,6 +338972,7 @@
                           "action",
                           "reasonCode",
                           "actorMembershipId",
+                          "trustStatus",
                           "createdAt"
                         ],
                         "properties": {
@@ -338927,8 +338993,27 @@
                             ]
                           },
                           "actorMembershipId": {
-                            "format": "uuid",
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "trustStatus": {
+                            "anyOf": [
+                              {
+                                "const": "legacy_unverified",
+                                "type": "string"
+                              },
+                              {
+                                "const": "evaluator_attested",
+                                "type": "string"
+                              }
+                            ]
                           },
                           "createdAt": {
                             "format": "date-time",
