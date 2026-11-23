@@ -205,6 +205,43 @@ describe("enrollmentRequirementStatus payer binding", () => {
       status([evidence({ programKind: null })], "837i_enrollment", { programKind: "managed_care" }),
     ).toMatchObject({ status: "verified" });
   });
+
+  it("never compares the program kind for payer-independent state provider enrollment", () => {
+    const stateEnrollment = evidence({
+      evidenceKind: "state_medicaid_provider_enrollment",
+      transactionType: null,
+      canonicalPayerId: null,
+      programKind: "managed_care",
+    });
+    for (const claimProgramKind of ["ffs_open_card", "other_managed_care", "unresolved", null]) {
+      expect(
+        status([stateEnrollment], "state_medicaid_provider_enrollment", {
+          programKind: claimProgramKind,
+          requiredTransactionType: null,
+        }),
+      ).toMatchObject({ status: "verified" });
+    }
+  });
+
+  it("does not read a concrete-program row as missing when the claim's program is a sentinel", () => {
+    for (const sentinel of ["unresolved", "ambiguous", "unsupported"]) {
+      expect(
+        status([evidence({ programKind: "managed_care" })], "837i_enrollment", {
+          programKind: sentinel,
+        }),
+      ).toMatchObject({ status: "verified" });
+    }
+  });
+
+  it("still compares the program kind once the claim's program is known", () => {
+    for (const known of ["ffs_open_card", "managed_care", "other_managed_care"]) {
+      expect(
+        status([evidence({ programKind: "managed_care" })], "837i_enrollment", {
+          programKind: known,
+        }).status,
+      ).toBe(known === "managed_care" ? "verified" : "missing");
+    }
+  });
 });
 
 describe("enrollmentRequirementStatus counts only verified rows toward ambiguity", () => {
