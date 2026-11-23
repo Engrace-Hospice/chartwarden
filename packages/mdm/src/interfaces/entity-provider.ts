@@ -170,7 +170,8 @@ export interface MdmEntityProvider {
   resolvePharmacy(orgId: string, id: string): Promise<MdmResolved<"pharmacy"> | null>;
   resolveReferralSource(orgId: string, id: string): Promise<MdmResolved<"referral_source"> | null>;
   resolvePayer(orgId: string, id: string): Promise<MdmResolved<"payer"> | null>;
-  /** Source-backed, effective-dated classification records. Empty means unqualified, never FFS. */
+  /** Source-backed, effective-dated classification records. Empty means unqualified, never FFS. Returns every row
+   *  for the (payer, state), not only those overlapping the window: superseders outside it still end-date rows. */
   medicaidPayerProgramClassifications(
     orgId: string,
     canonicalPayerId: string,
