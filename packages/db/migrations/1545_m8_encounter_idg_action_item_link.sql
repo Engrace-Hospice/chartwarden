@@ -9,9 +9,12 @@
 --   hold more later without a contract change: only this partial unique index would move.
 --   REMOVAL. Soft, as the M7 and S4b tables': the application role holds DELETE on no M8 table, so a removal stamps `removed_at` and the member. Any
 --   number of removed rows may remain.
---   PART 2. `part2_derived` has no default: the writer states it (the M14 verdict for the item's patient, W-SUD-01). An action item id of a Part 2 row
---   is withheld from its audit image (the row files under compliance_42cfr_part2), and a DELETE (the erasure) is always filed so, since a flag filed low
---   is raised only when the store next writes the row.
+--   PART 2. `part2_derived` has no default: the writer states it (the M14 verdict for the item's patient, W-SUD-01). A Part 2 row files under
+--   compliance_42cfr_part2, and a DELETE (the erasure) is always filed so, since a flag filed low is raised only when the store next writes the row.
+--   THE AUDIT IMAGE NEVER NAMES THE ITEM. The action item id is scrubbed from every image (insert, update before and after, delete), for every row, Part 2 or
+--   not: the verdict on a row can be stale at the insert (M14 is asked on its own transaction beside the write) or when a replaced row is removed (the item
+--   being left is not asked about again), and the id of an item whose meeting is Part 2 would then reach the plain audit class. The trail names the encounter
+--   and the row id; the item stays on the row, under RLS.
 -- The M14 action item id is a LOGICAL reference: app-validated against the viewer's own candidates and, at INSERT, checked by the guard trigger below to be an
 -- action item of the row's own organization and of the encounter's own patient (no cross-module FK: M8 must not import M14; the check is a read, not a reference).
 -- Roles are the post-1139 names (chartwarden_*).
@@ -52,18 +55,16 @@ CREATE OR REPLACE FUNCTION audit_phi_write_encounter_idg_action_item_link() RETU
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE v_before jsonb; v_after jsonb; v_part2 boolean;
 BEGIN
-  -- No column is scrubbed unconditionally (the denylist mirror is empty); the empty list keeps the shape every M8 trigger has, which
-  -- arch:audit-denylist-sync reads, before the row-conditional scrub below.
+  -- The action item id is scrubbed from EVERY image, whatever the row's flag says (the denylist mirror names it): the row's own verdict can be stale (see the
+  -- header), so no image is left to depend on it. What stays in the image is the row id, the encounter, the members and the two flags.
   v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE')
-    THEN public.audit_scrub(to_jsonb(OLD), ARRAY[]::text[]) ELSE NULL END;
+    THEN public.audit_scrub(to_jsonb(OLD), ARRAY['action_item_id']::text[]) ELSE NULL END;
   v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE')
-    THEN public.audit_scrub(to_jsonb(NEW), ARRAY[]::text[]) ELSE NULL END;
-  -- A Part 2 row (either image of an update) withholds its action item id and files under the Part 2 retention class. So does EVERY delete, whatever the
-  -- row's flag says: a row filed while its patient was not flagged keeps a low flag when the patient is flagged later and nothing writes the row again
-  -- (the store raises a flag only on the rows it writes), and the only delete is the destruction role's erasure, whose image gains nothing from naming an id.
+    THEN public.audit_scrub(to_jsonb(NEW), ARRAY['action_item_id']::text[]) ELSE NULL END;
+  -- A Part 2 row (either image of an update) files under the Part 2 retention class. So does EVERY delete, whatever the row's flag says: a row filed while
+  -- its patient was not flagged keeps a low flag when the patient is flagged later and nothing writes the row again (the store raises a flag only on the rows
+  -- it writes), and the only delete is the destruction role's erasure.
   v_part2 := TG_OP = 'DELETE' OR COALESCE(OLD.part2_derived, false) OR COALESCE(NEW.part2_derived, false);
-  IF v_part2 AND v_before IS NOT NULL THEN v_before := public.audit_scrub(v_before, ARRAY['action_item_id']::text[]); END IF;
-  IF v_part2 AND v_after IS NOT NULL THEN v_after := public.audit_scrub(v_after, ARRAY['action_item_id']::text[]); END IF;
   INSERT INTO public.audit_event (
     organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id,
     correlation_id, outcome, severity, before, after, context, retention_class

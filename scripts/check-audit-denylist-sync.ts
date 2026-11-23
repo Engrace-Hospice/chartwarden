@@ -219,17 +219,12 @@ const CONDITIONAL_REDACTIONS: ReadonlyArray<{
       "'compliance_42cfr_part2'",
     ],
   },
-  // ADR-0114 S5b: a Part 2 IDG follow-up link withholds its M14 action item id and files under the Part 2 class (the flat denylist is empty, as the plan link's).
+  // ADR-0114 S5b: a Part 2 IDG follow-up link files under the Part 2 class (its M14 action item id is withheld from every image, Part 2 or not, by the flat
+  // denylist above: only the retention class is row-conditional).
   {
     key: "M8.encounter_idg_action_item_link",
     migration: "packages/db/migrations/1545_m8_encounter_idg_action_item_link.sql",
-    mustContain: [
-      "v_part2",
-      "part2_derived",
-      "audit_scrub(v_before, ARRAY['action_item_id']",
-      "audit_scrub(v_after, ARRAY['action_item_id']",
-      "'compliance_42cfr_part2'",
-    ],
+    mustContain: ["v_part2", "part2_derived", "'compliance_42cfr_part2'"],
   },
   {
     key: "M8.encounter_amendment",

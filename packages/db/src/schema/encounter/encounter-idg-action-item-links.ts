@@ -28,7 +28,7 @@ export const encounterIdgActionItemLinks = pgTable(
     linkedByMembershipId: uuid("linked_by_membership_id")
       .notNull()
       .references(() => memberships.id, { onDelete: "restrict" }),
-    /** No default: the writer states it. A Part 2 row withholds its action item id from the audit image and files under the Part 2 class. */
+    /** No default: the writer states it. A Part 2 row files under the Part 2 class (no audit image names the action item, for any row). */
     part2Derived: boolean("part2_derived").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     removedAt: timestamp("removed_at", { withTimezone: true }),

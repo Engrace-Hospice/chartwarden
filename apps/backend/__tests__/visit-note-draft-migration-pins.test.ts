@@ -241,12 +241,20 @@ describe("encounter_idg_action_item_link", () => {
     );
   });
 
-  it("carries part2_derived with no default, files Part 2 rows under the Part 2 class and withholds their action item id from the audit image", () => {
+  it("carries part2_derived with no default and files Part 2 rows under the Part 2 class; the audit image NEVER names the action item, for any statement and any row", () => {
     expect(IDG_LINK).toMatch(/"part2_derived" boolean NOT NULL,/);
     expect(IDG_LINK).toContain("compliance_42cfr_part2");
-    expect(IDG_LINK).toMatch(/audit_scrub\(v_before, ARRAY\['action_item_id'\]/);
-    expect(IDG_LINK).toMatch(/audit_scrub\(v_after, ARRAY\['action_item_id'\]/);
-    expect(M8_AUDIT_DENYLIST.encounter_idg_action_item_link).toEqual([]);
+    // the id is scrubbed from BOTH images unconditionally (the flat denylist), so no row-conditional scrub is left and a flag filed low, a flag that flips
+    // between M14's answer and the insert and a removal of a row whose item is no longer asked about all file the same image: the row id and the encounter
+    expect(IDG_LINK).toMatch(
+      /v_before := CASE WHEN TG_OP IN \('UPDATE','DELETE'\)\s+THEN public\.audit_scrub\(to_jsonb\(OLD\), ARRAY\['action_item_id'\]::text\[\]\) ELSE NULL END;/,
+    );
+    expect(IDG_LINK).toMatch(
+      /v_after := CASE WHEN TG_OP IN \('INSERT','UPDATE'\)\s+THEN public\.audit_scrub\(to_jsonb\(NEW\), ARRAY\['action_item_id'\]::text\[\]\) ELSE NULL END;/,
+    );
+    expect(IDG_LINK).not.toMatch(/audit_scrub\(v_before/);
+    expect(IDG_LINK).not.toMatch(/audit_scrub\(v_after/);
+    expect(M8_AUDIT_DENYLIST.encounter_idg_action_item_link).toEqual(["action_item_id"]);
     expect(getTableConfig(schema.encounterIdgActionItemLinks).columns.map((c) => c.name)).toContain(
       "part2_derived",
     );
