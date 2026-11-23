@@ -1,5 +1,7 @@
 // M24 → M25 submission-evidence seam: a result that is not proven hides every identity that would let a caller
-// follow the claim, its lineage or its submission (claim, replaces/replaced-by, submission, assignment ids).
+// follow the claim, its lineage or its submission (claim, replaces/replaced-by, submission, assignment ids) and every
+// vendor- or payer-side reference of its attempts (vendor transaction id, payer classification id, source account,
+// the payer claim control number on an acknowledgment). A proven result returns them unchanged.
 // Runs the real projection over a scripted database handle; the live f172 suite covers the SQL itself.
 import { describe, expect, it } from "vitest";
 import type { M24ReadService } from "../src/modules/24-billing-medicaid/routes/read-service";
@@ -16,6 +18,24 @@ const ASSIGNMENT = "e5000000-0000-4000-8000-000000000001";
 const PAYER = "e6000000-0000-4000-8000-000000000001";
 const CLASSIFICATION = "e7000000-0000-4000-8000-000000000001";
 const CCN = "AB1234OR260201ABC00";
+const PAYER_CCN = "PCN-SYNTHETIC-0001";
+
+/** The acknowledgment columns of a joined row, for a claim whose submission was acknowledged by the payer. */
+const acknowledged = {
+  ackKind: "277CA",
+  ackOutcome: "accepted",
+  payerClaimControlNumber: PAYER_CCN,
+  ackReceivedAt: new Date("2026-03-02T00:00:00.000Z"),
+};
+
+/** Every attempt-level identifier or vendor-side reference an unproven result must not carry. */
+const HIDDEN_REFERENCES = {
+  submissionId: null,
+  assignmentId: null,
+  vendorTransactionId: null,
+  payerClassificationId: null,
+  sourceAccountRef: null,
+};
 
 /** One joined row: a claim with a fully provenanced production submission and a verified assignment. */
 const provenRow = (extra: Record<string, unknown> = {}) => ({
@@ -67,14 +87,27 @@ async function evidenceFor(rows: readonly unknown[]) {
 }
 
 describe("submissionEvidenceForLine", () => {
-  it("returns the identities of a proven, active claim", async () => {
-    const [result] = await evidenceFor([provenRow({ replacesClaimId: PREDECESSOR })]);
+  it("returns the identities and references of a proven, active claim unchanged", async () => {
+    const [result] = await evidenceFor([
+      provenRow({ replacesClaimId: PREDECESSOR, ...acknowledged }),
+    ]);
     expect(result).toMatchObject({
       disposition: "SUBMISSION_EVIDENCE",
       claimId: CLAIM,
       replacesClaimId: PREDECESSOR,
       replacedByClaimId: null,
-      attempts: [{ submissionId: SUBMISSION, assignmentId: ASSIGNMENT }],
+      attempts: [
+        {
+          submissionId: SUBMISSION,
+          assignmentId: ASSIGNMENT,
+          vendorTransactionId: "synthetic-tx-1",
+          payerClassificationId: CLASSIFICATION,
+          sourceAccountRef: "account:synthetic-1",
+          acknowledgments: [
+            { kind: "277CA", outcome: "accepted", payerClaimControlNumber: PAYER_CCN },
+          ],
+        },
+      ],
     });
   });
 
@@ -91,7 +124,7 @@ describe("submissionEvidenceForLine", () => {
       claimId: null,
       replacesClaimId: null,
       replacedByClaimId: null,
-      attempts: [{ submissionId: null, assignmentId: null }],
+      attempts: [HIDDEN_REFERENCES],
     });
   });
 
@@ -101,16 +134,36 @@ describe("submissionEvidenceForLine", () => {
     ["a claim version mismatch", { submittedClaimVersion: 3 }],
     ["an assignment that is no longer verified", { assignmentStatus: "revoked" }],
   ])("hides every identity when the submission is unqualified by %s", async (_label, extra) => {
-    const [result] = await evidenceFor([provenRow({ replacesClaimId: PREDECESSOR, ...extra })]);
+    const [result] = await evidenceFor([
+      provenRow({ replacesClaimId: PREDECESSOR, ...acknowledged, ...extra }),
+    ]);
     expect(result).toMatchObject({
       disposition: "SUBMISSION_UNVERIFIED",
       claimId: null,
       replacesClaimId: null,
       replacedByClaimId: null,
-      attempts: [{ submissionId: null, assignmentId: null }],
+      attempts: [HIDDEN_REFERENCES],
     });
+    // the acknowledgment survives as status only: its payer claim control number is a payer-side reference
+    expect(result?.attempts[0]?.acknowledgments).toEqual([
+      {
+        kind: "277CA",
+        outcome: "accepted",
+        payerClaimControlNumber: null,
+        receivedAt: "2026-03-02T00:00:00.000Z",
+      },
+    ]);
     // what stays visible is the non-identifying evidence the reviewer needs to see why it is unproven
     expect(result).toMatchObject({ claimState: expect.any(String), claimVersion: 4 });
+    expect(result?.attempts[0]).toMatchObject({
+      attemptIndex: 0,
+      claimVersion: expect.anything(),
+      environment: expect.any(String),
+      vendor: "synthetic-vendor",
+      provenanceStatus: expect.any(String),
+      result: "accepted_sync",
+      submittedAt: "2026-03-01T00:00:00.000Z",
+    });
   });
 
   it("hides identities when two attempts both qualify", async () => {
@@ -121,5 +174,8 @@ describe("submissionEvidenceForLine", () => {
     const [result] = await evidenceFor([provenRow(), second]);
     expect(result).toMatchObject({ disposition: "SUBMISSION_UNVERIFIED", claimId: null });
     expect(result?.attempts.map((a) => a.submissionId)).toEqual([null, null]);
+    expect(result?.attempts.map((a) => a.vendorTransactionId)).toEqual([null, null]);
+    expect(result?.attempts.map((a) => a.payerClassificationId)).toEqual([null, null]);
+    expect(result?.attempts.map((a) => a.sourceAccountRef)).toEqual([null, null]);
   });
 });
