@@ -10,63 +10,113 @@ const RANK: Readonly<Record<MedicaidEraDuplicateDecision, number>> = {
   conflict: 3,
 };
 
+/** CLP02 = 22: the payer reverses a claim it paid before, under that claim's own control numbers. */
+const REVERSAL_STATUS_CODE = 22;
+
 export function strictestDuplicate(
   ...decisions: readonly MedicaidEraDuplicateDecision[]
 ): MedicaidEraDuplicateDecision {
   return decisions.reduce((worst, next) => (RANK[next] > RANK[worst] ? next : worst), "none");
 }
 
-/** What a set pays: the payment amount and each claim's control numbers, status and amounts. */
-const contentKey = (observation: MedicaidEraObservation): string =>
+/**
+ * Everything a set carries except its transmission control numbers (ISA13, GS06 and ST02 differ on every replay), so a
+ * reused trace number with any other difference (payment, claim, claim or provider-level adjustment) is a conflict.
+ */
+const contentKey = ({ source, claims, providerAdjustments }: MedicaidEraObservation): string =>
   JSON.stringify([
-    observation.source.paymentCents,
-    observation.claims.map((claim) => [
-      claim.patientControlNumber,
-      claim.payerClaimControlNumber,
-      claim.statusCode,
-      claim.chargeCents,
-      claim.paidCents,
-    ]),
+    {
+      ...source,
+      interchangeControlNumber: null,
+      functionalGroupControlNumber: null,
+      transactionSetControlNumber: null,
+    },
+    claims,
+    providerAdjustments,
   ]);
 
-function relation(
-  earlier: MedicaidEraObservation,
-  later: MedicaidEraObservation,
-): MedicaidEraDuplicateDecision {
-  const trace = earlier.source.traceNumber;
-  if (trace !== null && trace === later.source.traceNumber)
-    return contentKey(earlier) === contentKey(later) ? "exact" : "conflict";
-  const earlierIcns = new Set(
-    earlier.claims.flatMap((claim) =>
-      claim.payerClaimControlNumber ? [claim.payerClaimControlNumber] : [],
-    ),
-  );
-  const sharesIcn = later.claims.some(
-    (claim) => claim.payerClaimControlNumber && earlierIcns.has(claim.payerClaimControlNumber),
-  );
-  // Equal zero-dollar sets are routine (denials), so only a repeated nonzero payment amount counts.
-  const sharesPayment =
-    later.source.paymentCents !== null &&
-    later.source.paymentCents > 0 &&
-    later.source.paymentCents === earlier.source.paymentCents;
-  return sharesIcn || sharesPayment ? "possible" : "none";
+/** What one set exposes to the replay rules, computed once per set. */
+interface ReplayFacts {
+  readonly trace: string | null;
+  readonly content: string;
+  readonly paymentCents: number | null;
+  /** Payer claim control numbers and patient control numbers, tagged so a reversal only ever repeats a reversal. */
+  readonly icns: ReadonlySet<string>;
+  readonly pcns: ReadonlySet<string>;
 }
+
+function replayFacts(observation: MedicaidEraObservation): ReplayFacts {
+  const controlNumbers = (
+    pick: (claim: MedicaidEraObservation["claims"][number]) => string | null,
+  ) =>
+    new Set(
+      observation.claims.flatMap((claim) => {
+        const value = pick(claim);
+        return value
+          ? [`${claim.statusCode === REVERSAL_STATUS_CODE ? "reversal" : "payment"}:${value}`]
+          : [];
+      }),
+    );
+  return {
+    trace: observation.source.traceNumber,
+    content: contentKey(observation),
+    paymentCents: observation.source.paymentCents,
+    icns: controlNumbers((claim) => claim.payerClaimControlNumber),
+    pcns: controlNumbers((claim) => claim.patientControlNumber),
+  };
+}
+
+const intersects = (a: ReadonlySet<string>, b: ReadonlySet<string>): boolean =>
+  [...a].some((value) => b.has(value));
+
+function relation(earlier: ReplayFacts, later: ReplayFacts): MedicaidEraDuplicateDecision {
+  if (earlier.trace !== null && earlier.trace === later.trace)
+    return earlier.content === later.content ? "exact" : "conflict";
+  // Equal payments alone prove nothing: a hospice flat per-diem pays many different claims the same amount, and equal
+  // zero-dollar sets are routine (denials). A repeated nonzero payment only counts for the same patient control number.
+  const repeatsPayment =
+    later.paymentCents !== null &&
+    later.paymentCents > 0 &&
+    later.paymentCents === earlier.paymentCents &&
+    intersects(earlier.pcns, later.pcns);
+  return intersects(earlier.icns, later.icns) || repeatsPayment ? "possible" : "none";
+}
+
+/** Keys under which two sets could be related: a trace number, a payer claim control number or a patient control number. */
+const lookupKeys = (facts: ReplayFacts): readonly string[] => [
+  ...(facts.trace === null ? [] : [`trace:${facts.trace}`]),
+  ...[...facts.icns].map((value) => `icn:${value}`),
+  ...[...facts.pcns].map((value) => `pcn:${value}`),
+];
 
 /**
  * Replay inside ONE artifact: the reader port only knows previously staged files, so two sets in a single interchange
- * that repeat a trace number, a payer claim control number or a nonzero payment amount are classified here. The first
- * set is the original and later repeats are held; a reused trace number with different content is a conflict for both.
+ * that repeat a trace number, or a payer claim control number, or a nonzero payment for the same patient control number,
+ * are classified here. The first set is the original and later repeats are held; a reused trace number with different
+ * content is a conflict for both. A reversal repeats its original's control numbers by design, so a reversal and a
+ * payment never count as replays of each other.
+ *
+ * Each set is indexed once; only sets that share a key with an earlier one are compared, so the scan is linear in the
+ * number of claims plus the number of related pairs.
  */
-// ponytail: pairwise comparison, fine for the handful of sets one interchange carries; index by key if that ever grows.
 export function classifyIntraArtifactDuplicates(
   observations: readonly MedicaidEraObservation[],
 ): readonly MedicaidEraDuplicateDecision[] {
+  const facts = observations.map(replayFacts);
   const decisions: MedicaidEraDuplicateDecision[] = observations.map(() => "none");
-  for (let later = 1; later < observations.length; later++) {
-    for (let earlier = 0; earlier < later; earlier++) {
-      const verdict = relation(observations[earlier]!, observations[later]!);
+  const earlierSetsByKey = new Map<string, number[]>();
+  for (const [later, laterFacts] of facts.entries()) {
+    const keys = lookupKeys(laterFacts);
+    const related = new Set(keys.flatMap((key) => earlierSetsByKey.get(key) ?? []));
+    for (const earlier of related) {
+      const verdict = relation(facts[earlier]!, laterFacts);
       decisions[later] = strictestDuplicate(decisions[later]!, verdict);
       if (verdict === "conflict") decisions[earlier] = "conflict";
+    }
+    for (const key of keys) {
+      const sets = earlierSetsByKey.get(key);
+      if (sets) sets.push(later);
+      else earlierSetsByKey.set(key, [later]);
     }
   }
   return decisions;
