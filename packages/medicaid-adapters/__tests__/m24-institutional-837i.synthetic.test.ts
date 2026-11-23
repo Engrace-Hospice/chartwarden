@@ -486,6 +486,55 @@ describe("synthetic M24 institutional claim rendering", () => {
   });
 });
 
+describe("overlapping service days of the same code", () => {
+  const withSecondLine = (
+    patch: Record<string, unknown>,
+    firstPatch: Record<string, unknown> = {},
+  ) => {
+    const first = { ...claimInput.claim.lines[0]!, ...firstPatch };
+    const second = {
+      ...first,
+      serviceDate: "2026-01-02",
+      serviceThroughDate: "2026-01-03",
+      chargeCents: 15_000,
+      ...patch,
+    };
+    return buildSyntheticM24InstitutionalDocument(
+      fixture({
+        claimInput: { ...claimInput, claim: { ...claimInput.claim, lines: [first, second] } },
+        claimTotalCents: 35_000,
+        lineEvidence: [fixture().lineEvidence[0]!, fixture().lineEvidence[0]!],
+      }),
+    );
+  };
+  const refused = {
+    ok: false,
+    gaps: [{ code: "M24_DOCUMENT_INVALID", field: "claim.lines[1].serviceDate" }],
+  };
+
+  it.each([
+    ["one line carries a modifier the other lacks", { modifiers: ["PM"] }, {}],
+    ["the lines carry different modifiers", { modifiers: ["GT"] }, { modifiers: ["PM"] }],
+  ])("allows the same code on overlapping days when %s", (_name, patch, firstPatch) => {
+    expect(withSecondLine(patch, firstPatch).ok).toBe(true);
+  });
+
+  it.each([
+    ["no modifiers at all", {}, {}],
+    ["the same modifier", { modifiers: ["PM"] }, { modifiers: ["PM"] }],
+    [
+      "the same modifiers in another order",
+      { modifiers: ["GT", "PM"] },
+      { modifiers: ["PM", "GT"] },
+    ],
+  ])(
+    "still refuses the same code and modifiers on overlapping days (%s)",
+    (_name, patch, firstPatch) => {
+      expect(withSecondLine(patch, firstPatch)).toEqual(refused);
+    },
+  );
+});
+
 describe("production mapping from server-minted facts", () => {
   const verifiedQualification = {
     payerResponsibility: "verified",
@@ -902,7 +951,6 @@ describe("M24 offline route and acknowledgment contracts", () => {
     });
 
     it.each([
-      ["A1:19:PR", "accepted"],
       ["A2:20:PR", "accepted"],
       ["A3:21:85", "rejected"],
       ["A6:562:85", "rejected"],
@@ -917,6 +965,36 @@ describe("M24 offline route and acknowledgment contracts", () => {
         disposition,
       });
     });
+
+    // X12 code list 507: A1 "acknowledgement/receipt - the claim/encounter has been received. This does not mean that the
+    // claim has been accepted for adjudication." (the repo's own stedi-claim-status.ts maps A1 and A2 to "received").
+    it("derives a receipt, not an acceptance, from STC01 A1", () => {
+      const inspected = inspectSynthetic277ca(identity, ack277For(clm01, "A1:19:PR"));
+      expect(inspected).toMatchObject({ ok: true, stage: "payer", disposition: "received" });
+      const acknowledgment: SyntheticAcknowledgment = {
+        eventId: "synthetic-277ca-a1",
+        identity,
+        kind: "277CA",
+        disposition: "received",
+        sequence: 2,
+      };
+      expect(correlateSyntheticAcknowledgment(identity, acknowledgment)).toBe("payer-received");
+    });
+
+    it.each(["transport_receipt", "999"] as const)(
+      "refuses a receipt disposition on a %s event, which only a 277CA can carry",
+      (kind) => {
+        expect(
+          correlateSyntheticAcknowledgment(identity, {
+            eventId: "synthetic-receipt-misuse",
+            identity,
+            kind,
+            disposition: "received",
+            sequence: 1,
+          }),
+        ).toBe("conflict");
+      },
+    );
 
     it.each(["A0:19:PR", "A4:21:85", "A5:20:PR", "E0:19:PR", "", "ZZ:1:PR"])(
       "refuses a 277CA whose STC01 %j does not determine accept or reject",
