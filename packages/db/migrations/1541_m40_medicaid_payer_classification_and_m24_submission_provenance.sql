@@ -93,8 +93,11 @@ CREATE UNIQUE INDEX medicaid_submission_source_transaction_uq
 -- columns the verified CHECK relies on AND the columns that say which attempt the row is (its claim, provider entity,
 -- state, channel, MCO, control number, attempt index and adapter): the seam joins an attempt to its claim by
 -- medicaid_claim_id, so without the second group the application could repoint a verified attempt at another claim of the
--- same organization and provider entity and keep it verified. The worker writes the adapter vendor and version before it
--- sends, while the attempt is still unverified, so no application path writes any frozen column afterwards.
+-- same organization and provider entity and keep it verified. The worker writes the adapter vendor and version AFTER
+-- adapter.submit returns, in the same transaction as the update that terminalizes the attempt (submission-jobs.ts), while
+-- the attempt is still unverified, so no application path writes any frozen column afterwards. A future path that
+-- verified an attempt before that write would fail with the provenance-guard error below, because adapter_vendor and
+-- adapter_version are frozen on a verified row.
 CREATE OR REPLACE FUNCTION guard_medicaid_submission_provenance() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN

@@ -807,7 +807,10 @@ describe.skipIf(!DB_URL)(
         );
 
         // A6: once an attempt is verified the application keeps updating it: the result, the polling schedule, the
-        // terminal time and the error detail are none of the frozen columns.
+        // terminal time and the error detail are none of the frozen columns. (adapter_vendor and adapter_version ARE
+        // frozen on a verified row: the worker writes them after adapter.submit returns, in the same transaction as
+        // the terminalizing update, while the attempt is still unverified. A future path that verified an attempt
+        // before that write would fail with the provenance-guard error.)
         const updated = await asApp((tx) =>
           tx
             .update(schema.medicaidSubmission)
