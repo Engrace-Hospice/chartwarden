@@ -26,7 +26,7 @@ Because the catalog is intentionally empty absent source review, current classif
 
 Migration 1540 adds nullable source account, test/production environment, payer/program/classification and assignment snapshots, submitted claim version, and provenance disposition to M24 submission attempts. Existing rows remain `unverified`; there is no historical backfill. A partial unique index scopes future vendor transaction identities by organization, provider entity, vendor, source account and environment. An application-role trigger prevents `chartwarden_app` from setting provenance to verified. The fields do not add an outbound submission path or certify vendor acceptance.
 
-`MedicaidClaimMatchProvider.submissionEvidenceForLine` is implemented in the M24-owned seam and projected through M25's Medicaid claim-facts contract. It scopes by organization, provider entity, and claim control number; joins the M24 claim, assignment, attempts, and linked acknowledgments; returns only non-patient identity and provenance fields; and never queries M24 storage from M25. A claim ID is exposed as `SUBMISSION_EVIDENCE` only for exactly one production attempt with verified source provenance and matching account/vendor transaction, payer/program/classification/assignment snapshots, exact claim version, acceptable persisted attempt result, and an active non-replaced/non-void claim. Otherwise the result is `SUBMISSION_UNVERIFIED` and the claim ID is null. Acknowledgment facts are returned without treating 999/277CA as adjudication.
+`MedicaidClaimMatchProvider.submissionEvidenceForLine` is implemented in the M24-owned seam and exposed through M25's Medicaid claim-facts module as `medicaidSubmissionEvidence`; that wrapper has no production caller yet, so no M25 request path reads the seam today. It scopes by organization, provider entity, and claim control number; joins the M24 claim, assignment, attempts, and linked acknowledgments; returns only non-patient identity and provenance fields; and never queries M24 storage from M25. A claim ID is exposed as `SUBMISSION_EVIDENCE` only for exactly one production attempt with verified source provenance and matching account/vendor transaction, payer/program/classification/assignment snapshots, exact claim version, acceptable persisted attempt result, and an active non-replaced/non-void claim. Otherwise the result is `SUBMISSION_UNVERIFIED` and the claim ID is null. Acknowledgment facts are returned without treating 999/277CA as adjudication.
 
 No current production row can satisfy this contract: outbound Medicaid submission remains refused and no submission provenance is generated. The projection is a future authoritative read boundary, not evidence that a real claim was transmitted.
 
@@ -55,11 +55,20 @@ Passed:
 - Independent read-only code/security review identified two medium findings (superseded classifications remained in the candidate set; Oregon FFS was not constrained to state OR). Both were fixed in the pure resolver and database/schema constraints; reviewer rechecked and confirmed both closed, with no new blocker.
 - An initial live test attempt failed while dropping a role because another temporary database from this task still held objects. That task-created database was removed; the suites were rerun one database at a time and passed. The shared development cluster was not involved.
 
+Live coverage by suite (private disposable PostgreSQL, application role). Only the two suites listed under "Passed" above were run for this report; the seam cases in the second bullet below were added afterwards, in the PR #1088 review-fix pass, and were not part of the L6A run:
+
+- `packages/db/migrations/__tests__/m40-rls-isolation.live.test.ts` — the M40 classification table's RLS and grants.
+- `apps/backend/__tests__/f172-m24-remittance-feedback.live.test.ts` — `submissionEvidenceForLine`: stored attempts project as `SUBMISSION_UNVERIFIED`, cross-tenant reads return nothing and the application role cannot promote provenance to verified (L6A run); a fully qualified production attempt projects as `SUBMISSION_EVIDENCE` with its claim ID, with one refusal per qualification predicate and a same-organization cross-provider case (review-fix pass).
+
+Before the review-fix pass no live suite exercised the seam's proven (`SUBMISSION_EVIDENCE`) path.
+
 Incomplete/blocked:
 
 - `NODE_OPTIONS=--max-old-space-size=3072 bunx tsc -b apps/backend --pretty false` — backend project typecheck exhausted the configured 3 GiB V8 heap. This is not a pass. Package-level `mdm` and `db` typecheck did pass.
 - Full `bun run typecheck`, `bun run arch:fitness`, and full `bun run test` were not completed; do not treat scoped checks or prior lot results as substitutes.
 - Full architecture-boundary fitness and secret scanning were not completed. The changed-file PHI scan, focused architecture checks, and independent code/security review passed; the full compliance reviewer workflow was not run.
+
+**Update 2026-11-22 (PR #1088 review-fix pass):** at `e91e0ec9b` the branch passes `bun run typecheck`, `bun run lint` and `bun run arch:fitness`; the out-of-memory and not-completed entries above describe the bounded local runs made at the time and are superseded for typecheck and architecture-fitness status. The M40/M24 provenance migration is ordinal 1541. This records the gate status for that commit; it is not a new qualification of this lot's behaviour, and full `bun run test` is not part of this update.
 
 The migration-chain and targeted RLS qualification completed. The backend-wide typecheck OOM and full-repository gates remain review/CI limitations; no type diagnostic was returned before the process exhausted its heap.
 
