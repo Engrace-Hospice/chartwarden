@@ -253,6 +253,19 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
     expect(everything).not.toContain(u.email);
   });
 
+  it("an empty password is an ordinary 401 written as login_failed and counted by the throttle, for a known and an unknown account (it answered 500 and left no trail)", async () => {
+    const u = await seedStaff("emptypw", "rn_emptypw");
+    const before = (await auditRows("m2.auth.login_failed")).length;
+    expect((await signIn(u.email, "")).statusCode).toBe(401);
+    expect((await signIn(`nobody-${Date.now()}@example.test`, "")).statusCode).toBe(401);
+    const after = await auditRows("m2.auth.login_failed");
+    expect(after.length).toBeGreaterThanOrEqual(before + 2);
+    expect(after[after.length - 1]?.outcome).toBe("failure");
+    // Four more empty attempts make five failures for the account: the sixth is locked out, as with any wrong password.
+    for (let i = 0; i < 4; i += 1) expect((await signIn(u.email, "")).statusCode).toBe(401);
+    expect((await signIn(u.email, "")).statusCode).toBe(429);
+  });
+
   it("the 6th failure inside the window is refused and writes account_locked", async () => {
     const u = await seedStaff("lock", "rn_lock");
     for (let i = 0; i < 5; i += 1) await signIn(u.email, "wrong-wrong-wrong-1");
