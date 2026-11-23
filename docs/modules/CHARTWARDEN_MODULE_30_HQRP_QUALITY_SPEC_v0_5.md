@@ -190,7 +190,7 @@ This list is binding. Every item here is owned by another module and reached via
 - **On-call triage.** Module 19. M30 may consume `OnCallTriageMetricsProvider` for the triage-response-time quality measure when M19's seam lands; the consumer attaches at M19 ↔ M30 wire-up time, not as a Phase-1 hard requirement.
 - **Field safety.** Module 20. No M30 consumption path — field-safety incidents flow through M30 as `incident_report` rows with `kind='other_safety_event'` and the M20-specific subtype carried in the `data` jsonb; M30 does not directly read M20 schemas.
 - **Supplies, DME, comfort kits.** Module 21. M30 may consume `ComfortKitMetricsProvider.getDeploymentRate` for the comfort-kit-deployment quality measure when M21's seam lands; forward seam at M30 lock.
-- **Document storage and PDF rendering.** Module 22. M30 emits `m30.sra_artifact.render_requested`, `m30.qapi_minutes.render_requested`, `m30.incident.render_requested`, `m30.mortality_review.render_requested`, and `m30.cop_compliance.render_requested`; M22 renders, stores in MinIO, and emits back. M30 has no MinIO code, no PDF library, no file-storage primitive — only typed outbox event emissions and the back-reference consumer that updates the M30 row's `document_id` on render completion.
+- **Document storage and PDF rendering.** Module 22. M30 emits `m30.sra_artifact.render_requested`, `m30.qapi_minutes.render_requested`, `m30.incident.render_requested`, `m30.mortality_review.render_requested`, and `m30.cop_compliance.render_requested`; M22 renders, stores in the object store, and emits back. M30 has no object-store code, no PDF library, no file-storage primitive — only typed outbox event emissions and the back-reference consumer that updates the M30 row's `document_id` on render completion.
 - **Claim assembly, NOE/NOTR filing, claim validation, claim submission.** Module 23. M30 consumes `ClaimLineReader` and `PatientDaysProvider` for the HCI claims-derived indicators; M30 does not assemble or submit claims.
 - **Medicaid claims and per-state adapters.** Module 24. No M30 consumption path — the HCI is Medicare-only per CMS spec; Medicaid-program-attributed days come through M23's aggregator if needed.
 - **Remittance posting.** Module 25. No M30 consumption path.
@@ -3243,7 +3243,7 @@ m30_risk_register_cms_attribution_flags_total                  labels: measure_c
 | Test type | Target | Notes |
 |-----------|--------|-------|
 | Unit | ≥ 90% statements, ≥ 85% branches | Strict on validator and seam packages; pure-function bias |
-| Integration | All seams, all RLS predicates, all outbox emissions | Testcontainers Postgres + Valkey + MinIO |
+| Integration | All seams, all RLS predicates, all outbox emissions | Testcontainers Postgres + Valkey + RustFS (S3-compatible) |
 | Contract | TypeBox schemas round-trip on every route | Pact-style fixture comparison |
 | E2E | Playwright on all critical paths (WF-01..WF-22) | Headed in CI smoke, headless in nightly |
 | Performance | k6 scenarios at fleet scale (50 orgs × 5k patients each) | Nightly trend; SLO gate on p95 |
@@ -3265,7 +3265,7 @@ Located at `apps/backend/src/modules/30-quality/__tests__/`. Coverage focus area
 
 ### 9.3 Integration tests (Testcontainers)
 
-Located at `apps/backend/src/modules/30-quality/__tests__/integration/`. Stack: PostgreSQL 18 with the M30 migration set applied, Valkey 8, MinIO. Each test spins up a clean container per file (sharing within file via beforeAll).
+Located at `apps/backend/src/modules/30-quality/__tests__/integration/`. Stack: PostgreSQL 18 with the M30 migration set applied, Valkey 8, RustFS (S3-compatible, as in local dev and CI). Each test spins up a clean container per file (sharing within file via beforeAll).
 
 - **RLS isolation suite.** Two orgs (`orgA`, `orgB`) seeded with overlapping measure ranges, incidents, and SRA cycles. For every M30 route, the test asserts a Postgres role bound to `orgA` cannot see `orgB` rows. Repeated per-table on every M30 base table. Tests also include direct SQL probes from the test harness using the `app_user` role.
 - **Patient scope isolation.** A patient in `orgA` is "removed" from a clinician's caseload via M3's caseload provider; the clinician must no longer see that patient's mortality review or PHI-bearing incidents. Includes a deliberate URL-tampering attack (R-71 with a different orgA patient's review_id by a non-clinician with `mortality.read` but no patient scope) — expected: 404.
@@ -3438,7 +3438,7 @@ Tasks are organized into 7 phases. Each phase has a target completion (in eng-we
   - Emits `m30.measure.value_emitted` outbox; if threshold crossed, emits `m30.measure.threshold_breached`.
 - T-2.6 Implement nightly recompute cron and outbox-subscriber enqueue handlers (`m6.discharge.death`, `m6.election.signed`, `m10.hope.submission_accepted`, `m23.claim.adjudicated`, `m18.evv.visit_verified`).
 - T-2.7 Implement R-01..R-05 routes.
-- T-2.8 Snapshot store: persist to MinIO under `m30/snapshots/<orgId>/<measureId>/<contentHash>.json` with retention=10y.
+- T-2.8 Snapshot store: persist to the object store under `m30/snapshots/<orgId>/<measureId>/<contentHash>.json` with retention=10y.
 
 **Verification:** unit tests for all compute functions pass against CMS worked-example fixtures; integration test for nightly run emits expected rows on a 2-org seeded fixture.
 

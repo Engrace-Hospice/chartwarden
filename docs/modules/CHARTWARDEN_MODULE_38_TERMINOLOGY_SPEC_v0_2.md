@@ -1156,7 +1156,7 @@ M38 is mostly machinery consumed by other modules' UIs (problem list, order entr
 
 **Deprecation remediation** — group-by-deprecated-code view, sorted by affected record count desc. Each group expands to show sample record ids (with deep-link to the chart) and a one-click "view all affected records" filter. Where `mappingKind = 'equivalent'`, an inline "propose bulk update" affordance is shown (Phase 1 hands off to the consuming module's edit flow; Phase 2 may offer staged bulk patch).
 
-**Load a version (admin)** — three-step wizard: (1) upload source file (MinIO upload), system + version selection; (2) staged-diff preview (new codes, retired codes, changed displays, count of affected value sets); (3) step-up re-auth + confirm. After confirm, the job runs; the screen shows live status (`loading → staged → active`); on `active`, the value-set expansion and embedding refresh jobs are dispatched automatically.
+**Load a version (admin)** — three-step wizard: (1) upload source file (object-store upload), system + version selection; (2) staged-diff preview (new codes, retired codes, changed displays, count of affected value sets); (3) step-up re-auth + confirm. After confirm, the job runs; the screen shows live status (`loading → staged → active`); on `active`, the value-set expansion and embedding refresh jobs are dispatched automatically.
 
 ### 5.3 Accessibility (WCAG 2.1 AA)
 

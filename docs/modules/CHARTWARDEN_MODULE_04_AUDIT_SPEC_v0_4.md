@@ -939,12 +939,12 @@ Type.Object({
 
 | Queue | Trigger | Work |
 |---|---|---|
-| `audit.archive` (M1) | scheduled | tier closed partitions hot→warm (MinIO) per class |
+| `audit.archive` (M1) | scheduled | tier closed partitions hot→warm (object store) per class |
 | `audit.retention_scan` | scheduled (daily) | find expired partitions/objects by class + state override → create pending destruction certs; skip `legal_hold` and `compliance_42cfr_part2` rows whose patient is alive / <6yr post-death |
 | `audit.execute_destruction` | on cert approval | partition detach + cryptographic erasure; emit cert + audit; Part 2 rows refused → `partial_refused` |
 | `audit.seal_partition` (phase 2) | on partition close | compute + store chain hash |
 | `audit.integrity_sample` | scheduled (quarterly) | sample 100 events vs pgBackRest backup; alert on mismatch (Security Hardening T6 validation). **As built:** the reference is the `audit_seal` hash chain (check every `prev_chain_hash` link, recompute a random sample of sealed months), not a backup — **the pgBackRest comparison is NOT built** (no backup reader; each run records `backup_cross_reference = unavailable_no_backup_reader`). Gated per org by `audit_hash_chain_enabled` (default off); run history in `audit_integrity_run` (migration 0510); a mismatch alerts (`m4.audit.integrity_mismatch`) and fails the job. See `docs/history/auditor-redemption-and-audit-integrity-sample.md`. |
-| `audit.build_export` | on export request | render watermarked file to MinIO |
+| `audit.build_export` | on export request | render watermarked file to the object store |
 
 ### 4.5 Permission Keys Registered into Module 3
 
@@ -1521,7 +1521,7 @@ The audit log is mostly machinery; the visible surfaces serve Compliance, survey
 | Cross-tenant audit read without break-glass | denied; attempt audited |
 | Accounting requested beyond 6-year right (HIPAA scope) | clamped to 6 years with a note; Part 2 scope is lifetime, no clamp |
 | High-volume list view | aggregate event recorded; individual chart opens still individual |
-| Partition archived to MinIO then queried | query transparently spans hot + warm tiers |
+| Partition archived to the object store then queried | query transparently spans hot + warm tiers |
 | Action used in code with no catalog entry | runtime audit-write fails; boot fails if discovered at startup |
 | Module registers an action outside its `mN.` prefix | M4 boot refuses startup (namespace violation) |
 | Destruction batch reaches a Part 2 row while patient alive | eraser refuses; certificate → `partial_refused`; non-Part-2 rows still erased |
@@ -1601,7 +1601,7 @@ The audit log is mostly machinery; the visible surfaces serve Compliance, survey
 
 ### 12.4 RLS Isolation
 
-- Org A's audit events invisible under Org B context, including across warm-tier (MinIO) reads.
+- Org A's audit events invisible under Org B context, including across warm-tier (object store) reads.
 - Cross-tenant audit read requires break-glass; denied otherwise; denial audited.
 
 ### 12.5 E2E (Playwright)
