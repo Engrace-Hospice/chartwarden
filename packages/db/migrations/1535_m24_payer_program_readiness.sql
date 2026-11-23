@@ -3,6 +3,13 @@
 -- and from transport credentials. Existing claim rows remain NULL and are therefore legacy-unresolved;
 -- no historical financial or payer snapshot is rewritten. Enrollment evidence remains separate from
 -- credential configuration and cannot unlock electronic submission.
+--
+-- Both tables are mutable (verify / revoke), so the database, not only the write service, holds the rules the
+-- append-only evidence tables of 1538/1539 hold by trigger: the verifier is never the recorder (four-eyes CHECK), the
+-- application role may UPDATE only the columns those two paths write, a row's identity never changes, and a status
+-- only moves forward (verify from an open status, a verified row only to revoked/superseded/expired, a closed row is
+-- final, and the verification evidence is frozen once the row leaves its open status). A provider entity must belong
+-- to the row's organization (a foreign key alone would accept, and so reveal the existence of, another tenant's).
 CREATE TYPE m24_medicaid_program_kind AS ENUM (
   'ffs_open_card', 'managed_care', 'other_managed_care', 'unsupported', 'unresolved', 'ambiguous'
 );--> statement-breakpoint
@@ -33,9 +40,11 @@ CREATE TABLE medicaid_program_assignment (
   patient_payer_id uuid NOT NULL,
   admission_id uuid NOT NULL,
   provider_entity_id uuid NOT NULL REFERENCES provider_entity(id) ON DELETE RESTRICT,
+  location_id uuid REFERENCES location(id) ON DELETE RESTRICT,
   service_state varchar(2) NOT NULL,
   program_kind m24_medicaid_program_kind NOT NULL,
   canonical_payer_id uuid,
+  canonical_payer_classification_id uuid,
   payer_snapshot jsonb,
   status m24_program_assignment_status NOT NULL DEFAULT 'candidate',
   effective_from date NOT NULL,
@@ -54,6 +63,9 @@ CREATE TABLE medicaid_program_assignment (
   CONSTRAINT medicaid_program_assignment_range_valid CHECK (effective_to IS NULL OR effective_from <= effective_to),
   CONSTRAINT medicaid_program_assignment_verified_provenance CHECK (
     status <> 'verified' OR (verified_at IS NOT NULL AND verified_by_membership_id IS NOT NULL AND evidence_reference IS NOT NULL)
+  ),
+  CONSTRAINT medicaid_program_assignment_four_eyes CHECK (
+    status <> 'verified' OR verified_by_membership_id <> recorded_by_membership_id
   ),
   CONSTRAINT medicaid_program_assignment_ffs_identity CHECK (
     program_kind <> 'ffs_open_card' OR canonical_payer_id IS NOT NULL
@@ -100,6 +112,9 @@ CREATE TABLE medicaid_enrollment_evidence (
   CONSTRAINT medicaid_enrollment_evidence_transaction_type CHECK (
     transaction_type IS NULL OR transaction_type IN ('837I', '835')
   ),
+  CONSTRAINT medicaid_enrollment_evidence_four_eyes CHECK (
+    status <> 'verified' OR verified_by_membership_id <> recorded_by_membership_id
+  ),
   CONSTRAINT medicaid_enrollment_verified_payer_route_is_mapped CHECK (
     evidence_kind <> 'clearinghouse_payer_route' OR status <> 'verified' OR
       (clearinghouse IS NOT NULL AND canonical_payer_id IS NOT NULL AND vendor_payer_id IS NOT NULL AND transaction_type IS NOT NULL)
@@ -120,7 +135,11 @@ ALTER TABLE medicaid_program_assignment FORCE ROW LEVEL SECURITY;--> statement-b
 CREATE POLICY medicaid_program_assignment_org ON medicaid_program_assignment FOR ALL TO chartwarden_app
   USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)
   WITH CHECK (organization_id = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE ON medicaid_program_assignment TO chartwarden_app;--> statement-breakpoint
+-- UPDATE is granted per column: exactly what the verify and revoke paths write. The row's identity, siting, payer, period
+-- and recorder are not updatable by the application role at all (the guard trigger below holds for every role).
+GRANT SELECT, INSERT ON medicaid_program_assignment TO chartwarden_app;--> statement-breakpoint
+GRANT UPDATE (status, canonical_payer_classification_id, verification_source, evidence_reference, verified_at,
+  verified_by_membership_id, revocation_reason, version, updated_at) ON medicaid_program_assignment TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON medicaid_program_assignment TO chartwarden_admin;--> statement-breakpoint
 
 ALTER TABLE medicaid_enrollment_evidence ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
@@ -128,8 +147,104 @@ ALTER TABLE medicaid_enrollment_evidence FORCE ROW LEVEL SECURITY;--> statement-
 CREATE POLICY medicaid_enrollment_evidence_org ON medicaid_enrollment_evidence FOR ALL TO chartwarden_app
   USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)
   WITH CHECK (organization_id = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE ON medicaid_enrollment_evidence TO chartwarden_app;--> statement-breakpoint
+GRANT SELECT, INSERT ON medicaid_enrollment_evidence TO chartwarden_app;--> statement-breakpoint
+GRANT UPDATE (status, verification_source, evidence_reference, verified_at, verified_by_membership_id,
+  revocation_reason, version, updated_at) ON medicaid_enrollment_evidence TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON medicaid_enrollment_evidence TO chartwarden_admin;--> statement-breakpoint
+
+-- A provider entity must belong to the row's organization. The foreign key accepts any provider_entity id, so without this a
+-- tenant could write a row naming another tenant's provider entity, and success versus failure would reveal that it exists.
+-- The function reads provider_entity as the caller (under RLS), so another tenant's provider entity is simply not visible and
+-- an unknown id looks the same: one message for both. Shared by both tables (1538 and 1539 carry the same rule).
+CREATE OR REPLACE FUNCTION guard_m24_readiness_provider_entity_org() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
+DECLARE v_provider_org uuid;
+BEGIN
+  SELECT organization_id INTO v_provider_org FROM provider_entity WHERE id = NEW.provider_entity_id;
+  IF v_provider_org IS DISTINCT FROM NEW.organization_id THEN
+    RAISE EXCEPTION '% provider entity must belong to the record organization', TG_TABLE_NAME USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+CREATE TRIGGER trg_medicaid_program_assignment_provider_entity
+  BEFORE INSERT ON medicaid_program_assignment
+  FOR EACH ROW EXECUTE FUNCTION guard_m24_readiness_provider_entity_org();--> statement-breakpoint
+CREATE TRIGGER trg_medicaid_enrollment_evidence_provider_entity
+  BEFORE INSERT ON medicaid_enrollment_evidence
+  FOR EACH ROW EXECUTE FUNCTION guard_m24_readiness_provider_entity_org();--> statement-breakpoint
+
+-- UPDATE guards, for every role (the column grants above already keep the application role off the identity columns).
+--   1. Identity never changes: what the row IS (organization, patient, coverage, admission, provider entity, siting, state,
+--      program, payer, period, source, recorder, lineage, creation time).
+--   2. A rejected, revoked or superseded row is final.
+--   3. A verified row can only be revoked or superseded: never back to candidate/pending/rejected, and never re-verified.
+--   4. The verification evidence (source, reference, time, verifier, the M40 classification relied on) is written by the
+--      verify step only: once a row has left candidate/pending it cannot be rewritten, so a verified row cannot have its
+--      evidence swapped under the verification.
+-- Verification therefore happens only from candidate/pending, which is also what the write service enforces.
+CREATE OR REPLACE FUNCTION guard_medicaid_program_assignment_update() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
+BEGIN
+  IF ROW(NEW.id, NEW.organization_id, NEW.patient_id, NEW.patient_payer_id, NEW.admission_id, NEW.provider_entity_id,
+         NEW.location_id, NEW.service_state, NEW.program_kind, NEW.canonical_payer_id, NEW.payer_snapshot,
+         NEW.effective_from, NEW.effective_to, NEW.source_kind, NEW.recorded_by_membership_id, NEW.supersedes_id,
+         NEW.created_at)
+     IS DISTINCT FROM
+     ROW(OLD.id, OLD.organization_id, OLD.patient_id, OLD.patient_payer_id, OLD.admission_id, OLD.provider_entity_id,
+         OLD.location_id, OLD.service_state, OLD.program_kind, OLD.canonical_payer_id, OLD.payer_snapshot,
+         OLD.effective_from, OLD.effective_to, OLD.source_kind, OLD.recorded_by_membership_id, OLD.supersedes_id,
+         OLD.created_at) THEN
+    RAISE EXCEPTION 'medicaid_program_assignment: the identity of an assignment cannot be changed' USING ERRCODE = '23514';
+  END IF;
+  IF OLD.status IN ('rejected', 'revoked', 'superseded') THEN
+    RAISE EXCEPTION 'medicaid_program_assignment: a rejected, revoked or superseded assignment is final' USING ERRCODE = '23514';
+  END IF;
+  IF OLD.status = 'verified' AND NEW.status NOT IN ('verified', 'revoked', 'superseded') THEN
+    RAISE EXCEPTION 'medicaid_program_assignment: a verified assignment can only be revoked or superseded' USING ERRCODE = '23514';
+  END IF;
+  IF OLD.status NOT IN ('candidate', 'pending')
+     AND ROW(NEW.verification_source, NEW.evidence_reference, NEW.verified_at, NEW.verified_by_membership_id,
+             NEW.canonical_payer_classification_id)
+         IS DISTINCT FROM
+         ROW(OLD.verification_source, OLD.evidence_reference, OLD.verified_at, OLD.verified_by_membership_id,
+             OLD.canonical_payer_classification_id) THEN
+    RAISE EXCEPTION 'medicaid_program_assignment: verification evidence cannot change once the assignment has left candidate or pending' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+CREATE TRIGGER trg_medicaid_program_assignment_update_guard
+  BEFORE UPDATE ON medicaid_program_assignment
+  FOR EACH ROW EXECUTE FUNCTION guard_medicaid_program_assignment_update();--> statement-breakpoint
+
+CREATE OR REPLACE FUNCTION guard_medicaid_enrollment_evidence_update() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
+BEGIN
+  IF ROW(NEW.id, NEW.organization_id, NEW.provider_entity_id, NEW.service_state, NEW.program_kind, NEW.canonical_payer_id,
+         NEW.clearinghouse, NEW.vendor_payer_id, NEW.transaction_type, NEW.evidence_kind, NEW.effective_from,
+         NEW.effective_to, NEW.recorded_by_membership_id, NEW.supersedes_id, NEW.created_at)
+     IS DISTINCT FROM
+     ROW(OLD.id, OLD.organization_id, OLD.provider_entity_id, OLD.service_state, OLD.program_kind, OLD.canonical_payer_id,
+         OLD.clearinghouse, OLD.vendor_payer_id, OLD.transaction_type, OLD.evidence_kind, OLD.effective_from,
+         OLD.effective_to, OLD.recorded_by_membership_id, OLD.supersedes_id, OLD.created_at) THEN
+    RAISE EXCEPTION 'medicaid_enrollment_evidence: the identity of an evidence row cannot be changed' USING ERRCODE = '23514';
+  END IF;
+  IF OLD.status IN ('rejected', 'expired', 'revoked', 'superseded') THEN
+    RAISE EXCEPTION 'medicaid_enrollment_evidence: a rejected, expired, revoked or superseded evidence row is final' USING ERRCODE = '23514';
+  END IF;
+  IF OLD.status = 'verified' AND NEW.status NOT IN ('verified', 'revoked', 'expired', 'superseded') THEN
+    RAISE EXCEPTION 'medicaid_enrollment_evidence: a verified evidence row can only be revoked, expired or superseded' USING ERRCODE = '23514';
+  END IF;
+  IF OLD.status <> 'pending'
+     AND ROW(NEW.verification_source, NEW.evidence_reference, NEW.verified_at, NEW.verified_by_membership_id)
+         IS DISTINCT FROM
+         ROW(OLD.verification_source, OLD.evidence_reference, OLD.verified_at, OLD.verified_by_membership_id) THEN
+    RAISE EXCEPTION 'medicaid_enrollment_evidence: verification evidence cannot change once the row has left pending' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+CREATE TRIGGER trg_medicaid_enrollment_evidence_update_guard
+  BEFORE UPDATE ON medicaid_enrollment_evidence
+  FOR EACH ROW EXECUTE FUNCTION guard_medicaid_enrollment_evidence_update();--> statement-breakpoint
 
 -- Audit only stable, non-sensitive fields. Patient id and evidence/document pointers are excluded.
 CREATE OR REPLACE FUNCTION audit_phi_write_medicaid_program_assignment() RETURNS trigger
