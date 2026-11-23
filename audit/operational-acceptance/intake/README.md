@@ -2,8 +2,10 @@
 
 ## Decision
 
-**GO (97/100)** for the WardenLens/Lantern intake release, subject to the normal reviewed release
-process. This is not authorization to merge or deploy.
+**NO-GO (90/100)** for deployment of PR #1100's merge commit `85f981e8d`: the PR was merged
+externally before the final remediations and evidence were delivered. The corrected local branch
+content scores 97/100 technically, but it still requires a reviewable delivery path. This report is
+not authorization to merge or deploy.
 
 The 2026-11-22 follow-up closed the three prior operational blockers. A rebuilt production worker image
 exposed WardenLens queue metrics, real ClamAV rejected an EICAR synthetic PDF on the verified-upload path
@@ -19,11 +21,12 @@ repository fixture. No real PHI, credentials, environment values, or raw provide
 | Item | Evidence |
 | --- | --- |
 | Repository | `Engrace-Hospice/chartwarden` |
-| Source | `origin/main` at `e6826c545` |
+| Tested acceptance baseline | `origin/main` at `26805c6d085a22711c9acb9c05ed8fc244892726` |
 | Branch | `test/intake-operational-acceptance` |
-| Tested branch head before final evidence commits | `c05f1f818f07b0d023c514eecded5764d0e77309` plus the corrections listed below; the exact pushed PR head is recorded in PR #1100 |
+| Tested implementation head | `379e4f29730954b4725b406ad4ce903dd63e070f`; the subsequent harness/report correction is recorded in branch history |
+| Delivery state | PR #1100 was merged externally by `fabwebdev` at 2026-11-23T04:32:59Z as `85f981e8d`, before remediation commit `5e4a77ef5`; the merged PR cannot accept the final diff |
 | Date/time zone | 2026-11-22, America/Los_Angeles |
-| Isolation | Compose projects `cw-intake-oa-20261122` and `cw-intake-oa-20261122-clamd`; loopback-only high ports; unique volumes |
+| Isolation | Random smoke project plus unique browser project `cw-intake-oa-pr1100-final`; loopback-only high ports; unique volumes |
 | Data | Generated synthetic referral, patient, and two-page hospital-document fixture |
 
 ## Environment-readiness matrix
@@ -35,7 +38,7 @@ repository fixture. No real PHI, credentials, environment values, or raw provide
 | Valkey | Real | PASS | `PING` succeeded; stopping it made both readiness and queue access fail closed; readiness recovered after restart. |
 | BullMQ | Real | PASS | A disposable queue failed once, retried, and completed on attempt 2. WardenLens outage recovery used the real `m22-doclens-intake` queue. |
 | Object storage | Real RustFS/S3 API | PASS | Tenant bucket provisioning, presign, upload verification, filing, and the API's signed `/ready` probe succeeded. With storage stopped, initiate returned a standard 500 envelope and created no upload row. |
-| Malware scanner | Real ClamAV 1.4, production code/config path | PASS | The architecture-equivalent development image used the production clamd configuration and protocol. The checksum-verified presigned upload streamed the exact stored bytes through clamd INSTREAM. Synthetic EICAR was rejected and destroyed; the clean synthetic PDF filed and entered Docling. |
+| Malware scanner | Real ClamAV 1.5.2 on Wolfi, production code/config path | PASS | After merging current main's replacement image, the architecture-equivalent development image used the production clamd configuration and protocol. The checksum-verified presigned upload streamed the exact stored bytes through clamd INSTREAM. Synthetic EICAR was rejected and destroyed; the clean synthetic PDF filed and entered Docling. |
 | Docling | Real 2.143.1 service | PASS | Parsed the synthetic two-page PDF in 6.12 s. During outage the batch remained `uploaded`; after restore it reached `ready_for_review` in 121 s. |
 | API | Real | PASS | `/health` and `/ready` passed with DB, Valkey, object storage and outbox checks. Valkey outage produced 503, then recovered to 200. |
 | Worker | Rebuilt production image | PASS | `/health` passed; `/metrics` exposed all bounded `m22-doclens-intake` states. The configured ephemeral M35 KEK minted one active wrapped key; five synthetic session events were dispatched with five M35 receipts and no pending/failed rows. |
@@ -66,8 +69,8 @@ bun run test:intake:operational-live
 bun run test:intake:production-smoke
   PASS: rebuilt API/worker image health; WardenLens queue metrics; clean/EICAR clamd verdicts;
   signed object-storage readiness; M35 KEK ring configured
-  Project: cw-intake-oa-smoke-1447b55e4c05
-  Completed: 2026-11-23T03:00:12.931Z; project resources removed on completion
+  Project: cw-intake-oa-smoke-1b72caf36224
+  Completed: 2026-11-23T03:55:56.794Z; project resources removed on completion
 
 E2E_BASE_URL=http://127.0.0.1:<isolated-web-port> \
 INTAKE_ACCEPTANCE_STACK_ID=<unique-server-side-cw-intake-oa-marker> \
@@ -75,7 +78,8 @@ INTAKE_SYNTHETIC_DOCUMENT=<synthetic-pdf-path> \
 INTAKE_ADMIN_EMAIL=<synthetic-admin> INTAKE_ADMIN_PASSWORD=<secret> \
 INTAKE_REVIEWER_EMAIL=<synthetic-reviewer> INTAKE_REVIEWER_PASSWORD=<secret> \
 bun run test:e2e:intake-operational
-  PASS: 1 Playwright scenario (1.3 min), including production-path EICAR rejection
+  PASS: 1 Playwright scenario (1.4 min), including the current ClamAV 1.5 production-path
+  EICAR rejection; unique project and volumes removed on completion
 
 bunx vitest run packages/auth/__tests__/identity-auth-config.test.ts \
   scripts/__tests__/test-intake-production-smoke.test.ts \
@@ -97,9 +101,11 @@ bun run arch:compliance
 bun run test
   First run: FAIL — one pre-existing assertion searched the complete response, and a random
   correlation UUID contained `867`; no patient value was disclosed
-  Corrected regression: the assertion now inspects only message/details and still forbids the
-  sensitive fragments; focused rerun PASS
-  Final full-suite rerun: see the final PR evidence comment
+  Corrected regression: the assertion validates the correlation UUID, removes only that
+  nondeterministic field, and checks the remaining complete error envelope for each sensitive value;
+  focused rerun PASS
+  Final full-suite rerun: PASS — 2,998 files; 60,383 tests; 9,605 skipped; 16 todo
+  Started 2026-11-22T20:15:49-08:00; duration 847.07 s
 ```
 
 The live-suite runner first resolves both `DOCKER_HOST` and the effective Docker context and refuses
@@ -115,20 +121,23 @@ after partial starts, includes orphaned services and volumes, and is scoped to t
 No Docker socket, credential directory, home directory or writable host data path is mounted. Remote
 contexts are refused before cleanup could affect them. Two containers created by separate concurrent
 local work later reused the fixed exploratory browser project label; they were identified and left
-untouched. The committed smoke harness does not use that fixed label.
+untouched. After the final browser stack's own Compose resources were removed, separate concurrent
+local work also created `cw-p3-pg` with the final project label; its non-Compose container name and
+later start time distinguish it from this run, and it was likewise left untouched. The committed smoke
+harness does not use either fixed label.
 
 ## Governed-provider evidence
 
 - Registered healthy backends: local `llama3.1:8b-instruct-q8_0` and `qwen2.5vl:7b`.
-- Real workflow batch: `5139394b-bd00-4a9d-b79b-ebe3b0798d2c`.
-- Correlation ID: `5bb116d3-7f78-4b55-9e76-2f7b45a8d15d`; final status
+- Real workflow batch: `670a9b06-5152-4b8a-b6cc-de00ea5a43a2`.
+- Correlation ID: `6bb2c65e-71ca-4090-a574-7eb808a78295`; final status
   `writeback_complete`.
 - The reviewer workspace exposed all persisted candidates with page and bounding-box source references.
 - All 13 candidate values were sealed (`value_cipher`), all 13 carried page and bounding-box sources,
   and no plaintext candidate values were persisted.
 - Provider calls were recorded by the M32 invocation ledger for classification, extraction, SUD
   detection and vision verification. All 13 invocations completed through the registered Llama 3.1
-  and Qwen 2.5 VL backends; observed latency ranged from 1,128 ms to 25,813 ms.
+  and Qwen 2.5 VL backends; observed latency ranged from 1,111 ms to 27,191 ms.
 
 `gemma4:e4b-mlx` was also present locally and returned the expected JSON from a non-gating synthetic
 sanity prompt in 5.38 s. It is not an M32 catalog backend and therefore was not relabelled as Llama or
@@ -216,6 +225,11 @@ Screenshots are in [`screenshots/`](./screenshots/). They contain synthetic data
 - A second disposable attempt used seed data wrapped under `kek-1` while the isolated containers were
   configured for `kek-local`; the worker refused the unknown KEK and persisted no candidate/writeback.
   The final run reseeded the disposable tenant under the configured local KEK and passed.
+- After current main was incorporated, the first fresh browser attempt started before the deployment
+  backend inventory had been synchronized. The healthy provider adapters existed, but governed routing
+  correctly refused absent `ai_model_backend` rows and left the batch `awaiting_capability`. The final
+  attempt ran only after both approved artifacts were registered with their real digests and license
+  terms and the health ledger reported `healthy`; it passed.
 - The broad `db:seed:all` helper is not required by intake and did not complete: one invocation lacked
   the isolated Better Auth URL, and a retry later stopped in unrelated field-operations EVV seed data.
   The final acceptance used the minimum synthetic base, organization and staff seeds needed by intake.
@@ -230,12 +244,17 @@ follow-up evidence above. Production operators must still source KEKs from the a
 retain prior KEK material across rotations, register governed model artifacts before enabling a tenant,
 and follow the ordinary reviewed release process. Production also refuses verified objects above the
 current 25 MiB clamd contract before reading their bytes; large grief-library video needs a separately
-reviewed streaming/quarantine design before it can be enabled with mandatory scanning. No merge or
-deployment was performed by this work.
+reviewed streaming/quarantine design before it can be enabled with mandatory scanning. This work did
+not execute a merge or deployment; the external merge of PR #1100 occurred while final verification was
+running. Deployment of `85f981e8d` is **NO-GO** until the reviewed remediation commit is delivered by a
+new reviewable change. This assignment explicitly forbids creating a replacement PR, so that delivery
+dependency remains BLOCKED pending owner direction.
 
-The remaining three points in the 97/100 score cover the deployment-time secret-store/network-policy
-evidence, the ungoverned status of the optional local Gemma artifact, and the existing greater-than-25
-MiB mandatory-scanning limitation. None permits bypassing a clinical, authorization or readiness gate.
+The remaining three points in the corrected branch's 97/100 technical score cover the deployment-time
+secret-store/network-policy evidence, the ungoverned status of the optional local Gemma artifact, and
+the existing greater-than-25 MiB mandatory-scanning limitation. The additional seven-point delivery
+deduction reflects that PR #1100's merge commit does not contain the final compliance and Docker-safety
+remediations. None of these limitations permits bypassing a clinical, authorization or readiness gate.
 
 Recovery procedures are in
 [`docs/runbooks/wardenlens-intake-recovery.md`](../../../docs/runbooks/wardenlens-intake-recovery.md).

@@ -66,6 +66,9 @@ async function runSuite(suite: string): Promise<void> {
   const database = `intake_${id}`;
   const password = randomBytes(32).toString("base64url");
   let created = false;
+  let failure: unknown;
+  let startedAt: string | undefined;
+  let passed = false;
   try {
     run(
       "docker",
@@ -100,23 +103,33 @@ async function runSuite(suite: string): Promise<void> {
     url.password = password;
     await waitForPostgres(url.toString());
 
-    const startedAt = new Date().toISOString();
+    startedAt = new Date().toISOString();
     console.log(JSON.stringify({ suite, startedAt, isolation: "fresh-loopback-tmpfs" }));
     run("bunx", ["vitest", "run", suite], {
       env: { ...process.env, CHARTWARDEN_TEST_DATABASE_URL: url.toString() },
     });
-    console.log(
-      JSON.stringify({ suite, startedAt, completedAt: new Date().toISOString(), result: "PASS" }),
-    );
+    passed = true;
+  } catch (error) {
+    failure = error;
   } finally {
     if (created) {
       const cleanup = spawnSync("docker", ["rm", "-f", "--volumes", container], {
         cwd: ROOT,
         encoding: "utf8",
       });
-      if (cleanup.status !== 0) console.warn(`cleanup failed for ${container}`);
+      if (cleanup.status !== 0) {
+        const cleanupError = new Error(`cleanup failed for ${container}`);
+        failure = failure
+          ? new AggregateError([failure, cleanupError], "live suite and cleanup both failed")
+          : cleanupError;
+      }
     }
   }
+  if (failure) throw failure;
+  if (!passed || !startedAt) throw new Error(`suite ${suite} completed without PASS evidence`);
+  console.log(
+    JSON.stringify({ suite, startedAt, completedAt: new Date().toISOString(), result: "PASS" }),
+  );
 }
 
 export async function main(): Promise<void> {
