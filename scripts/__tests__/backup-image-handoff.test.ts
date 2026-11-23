@@ -275,7 +275,7 @@ describe.skipIf(!TOOLS)("restore.sh -> the restore-objects container", () => {
   it("an OLD backup image (reads RESTORE_MINIO_*) configures its restore target from that environment", () => {
     const r = restore();
     expect(r.code, r.out).toBe(0);
-    const env = {
+    const env: Record<string, string> = {
       ...r.containerEnv,
       BACKUP_OBJECT_SSE_C_KEY: Buffer.alloc(32, 7).toString("base64"),
       BACKUP_OFFSITE_S3_ENDPOINT: "https://offsite.example.test",
