@@ -19,7 +19,7 @@ document's own banner says the same: every backup topology in it is a target, no
 | Asset | What exists today | What does not |
 |---|---|---|
 | Postgres | `pg_dump -U postgres -d chartwarden \| gzip` into `backups/pre-reseed-<ts>.sql.gz` on the VPS, **only** when an operator runs `reseed-demo.sh reseed` (`deploy/production/reseed-demo.sh`) | No scheduled backup, no WAL archiving, no PITR, no off-host copy, no retention, no restore script. pgBackRest is `ops/pgbackrest/pgbackrest.conf.template` ("NOT wired to any real host/credentials"). `deploy.sh` backs up only `.env.production` |
-| Object store (MinIO) | Data lives in the `minio-data` Docker volume on the same host | **No backup of any kind**: no `mc mirror`, no site replication, no snapshot. DR/BCP section 4.2 (replication to a backup VM, Object Lock) is unbuilt |
+| Object store (MinIO when this was written; production is SeaweedFS now and `minio-data` is retired) | Data lives in one Docker volume on the same host (`seaweedfs-data` today) | **No backup of any kind**: no `mc mirror`, no site replication, no snapshot. DR/BCP section 4.2 (replication to a backup VM, Object Lock) is unbuilt |
 | Cross-store coordination | none | Nothing relates a DB backup to an object-store backup. A DB restore with no matching object restore leaves attachment rows pointing at missing objects |
 | Secrets | `.env.production` copy beside each deploy | `MESSAGING_ENCRYPTION_KEY` (and `M34_TENANT_KEK`) are not in any backup; a DB restored without the same key cannot decrypt a single message body, and `messaging.hash_verify` reports every row as a mismatch |
 | Roles | Created by migrations and `provision-runtime-roles.ts` | `pg_dump` of one database carries **no roles**. See section 3: a naive restore fails |

@@ -1,5 +1,10 @@
 # Infrastructure rename runbook: wardenx -> chartwarden
 
+> **Superseded for the object store (historical runbook).** Every MinIO step below describes a stack that no longer exists:
+> production's object store is SeaweedFS, and `compose.yml` has no `minio` service, `minio-provision`, `minio-data` volume or
+> `MINIO_*` variable (`preflight.sh` and `volumes-copy.sh` no longer look at a `minio-data` volume). Read this for the rename
+> procedure only and do not run its MinIO commands; see `README.md` ("Object store: the environment contract").
+
 Operator runbook for the infrastructure identifiers that a code merge CANNOT rename safely. The
 product/code rename is already merged. Nothing below is automated; each step is manual, ordered, and
 reversible until its "commit point". Run it from a maintenance window the operator owns. Never run
