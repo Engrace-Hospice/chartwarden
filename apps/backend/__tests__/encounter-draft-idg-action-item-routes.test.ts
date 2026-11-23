@@ -34,6 +34,8 @@ import { registerDraftingRoutes } from "../src/modules/08-encounters/routes/draf
 const ORG = "org_a";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
 const ENCOUNTER = "a0000000-0000-4000-8000-000000000001";
+/** Another visit, authored by `other_rn`: a second valid author with a budget of their own. */
+const OTHER_ENCOUNTER = "a0000000-0000-4000-8000-000000000002";
 const ITEM = "c0000000-0000-4000-8000-0000000000c1";
 const VIEW = {
   patientId: PATIENT,
@@ -90,6 +92,14 @@ function makeServer(options: { inCaseload?: boolean; idgLinkRateLimit?: PreHandl
         discipline: "rn",
         status: "draft",
         authoredByUserId: "author_1",
+      },
+      {
+        id: OTHER_ENCOUNTER,
+        organizationId: ORG,
+        patientId: PATIENT,
+        discipline: "rn",
+        status: "draft",
+        authoredByUserId: "other_rn",
       },
     ],
   });
@@ -483,12 +493,42 @@ describe("the per-actor limiter on the link route (bounds the immutable refused-
     expect((await put(app, AUTHOR)).statusCode).toBe(429);
   });
 
-  it("is per author: one author's spent budget does not refuse another", async () => {
-    const { app } = makeServer({ idgLinkRateLimit: limiter(1, "test-idg-link-actor") });
+  it("is per author: one author's spent budget does not refuse another valid author on their own visit", async () => {
+    const { app, service } = makeServer({ idgLinkRateLimit: limiter(1, "test-idg-link-actor") });
     expect((await put(app, AUTHOR)).statusCode).toBe(200);
     expect((await put(app, AUTHOR)).statusCode).toBe(429);
-    // another clinician is refused by the author's own rule (403), not by the limiter: they never reach it
-    expect((await put(app, OTHER)).statusCode).toBe(403);
+    // a second author, on the visit they wrote, is not refused by the first one's spent budget
+    const second = await app.inject({
+      method: "PUT",
+      url: linkUrl(OTHER_ENCOUNTER),
+      headers: OTHER,
+      payload: { actionItemId: ITEM },
+    });
+    expect(second.statusCode).toBe(200);
+    expect(service.setIdgActionItem).toHaveBeenCalledTimes(2);
+    // and the first author is still refused (the bucket is theirs)
+    expect((await put(app, AUTHOR)).statusCode).toBe(429);
+  });
+
+  it("a request refused for the user's own cap does not drain the organization's budget (the user's bucket is counted first)", async () => {
+    // user cap 1, organization cap 2: the first author spends one of each, is refused twice more on their own cap, and the second author still has the other
+    const { app } = makeServer({
+      idgLinkRateLimit: createRouteRateLimit({
+        store: createInMemoryRateLimitStore(),
+        limit: { perUser: 1, perOrg: 2, windowMs: 60_000, failMode: "open" },
+        keyPrefix: "test-idg-link-org",
+      }) as PreHandler,
+    });
+    expect((await put(app, AUTHOR)).statusCode).toBe(200);
+    expect((await put(app, AUTHOR)).statusCode).toBe(429);
+    expect((await put(app, AUTHOR)).statusCode).toBe(429);
+    const second = await app.inject({
+      method: "PUT",
+      url: linkUrl(OTHER_ENCOUNTER),
+      headers: OTHER,
+      payload: { actionItemId: ITEM },
+    });
+    expect(second.statusCode).toBe(200);
   });
 
   it("sits after the guards: a caller they refuse never spends the budget, and the GET is not limited", async () => {
