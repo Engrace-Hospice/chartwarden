@@ -8,19 +8,22 @@ import { PART2_WITHHELD_MESSAGE, fieldLabel } from "../doclens-model";
 
 type ImageState = "loading" | "ready" | "unavailable" | "forbidden";
 
-function detailPath(batchId: string, candidateId: string): string {
+function detailPath(batchId: string, candidateId: string, returnTo: string | null): string {
   const query = new URLSearchParams({ mode: "detailed", from: "unified", candidate: candidateId });
+  if (returnTo) query.set("returnTo", returnTo);
   return `/intake/${encodeURIComponent(batchId)}/review?${query.toString()}`;
 }
 
 export function ReviewSourcePanel({
   batchId,
   candidate,
+  returnTo,
   onClose,
   onAvailabilityChange,
 }: {
   batchId: string;
   candidate: Candidate;
+  returnTo: string | null;
   onClose: () => void;
   onAvailabilityChange: (page: number, unavailable: boolean) => void;
 }): JSX.Element {
@@ -97,7 +100,7 @@ export function ReviewSourcePanel({
         <p>
           Preview only. Opening this page does not confirm the source or record a clinical decision.
         </p>
-        <Link className="wx-btn-primary" to={detailPath(batchId, candidate.id)}>
+        <Link className="wx-btn-primary" to={detailPath(batchId, candidate.id, returnTo)}>
           Open detailed review <Glyph name="arrow-right" size={16} />
         </Link>
       </footer>

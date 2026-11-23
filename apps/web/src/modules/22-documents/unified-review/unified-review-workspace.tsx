@@ -2,6 +2,7 @@ import { EmptyState, Glyph, LoadingSpinner, StatusPill, useApiClient } from "@ch
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
+import { safeIntakeReturnTo } from "../../../shell/intake-return";
 import type { Workspace } from "../doclens-api";
 import { batchStatusLabel, sourceLabel } from "../doclens-model";
 import { DocLensReviewWorkspace } from "../doclens-review-workspace";
@@ -27,6 +28,8 @@ export function UnifiedReviewWorkspace(): JSX.Element {
 function UnifiedReviewSummary(): JSX.Element {
   const client = useApiClient();
   const { batchId = "" } = useParams<{ batchId: string }>();
+  const [searchParams] = useSearchParams();
+  const returnTo = safeIntakeReturnTo(searchParams.get("returnTo"));
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedSectionId, setSelectedSectionId] =
@@ -92,6 +95,11 @@ function UnifiedReviewSummary(): JSX.Element {
           <button type="button" className="wx-btn-secondary" onClick={() => void refresh()}>
             Retry
           </button>
+          {returnTo ? (
+            <Link to={returnTo} className="wx-btn-secondary">
+              Back to referral intake
+            </Link>
+          ) : null}
         </div>
       </div>
     );
@@ -115,6 +123,7 @@ function UnifiedReviewSummary(): JSX.Element {
       ? "critical"
       : "warning";
   const detailQuery = new URLSearchParams({ mode: "detailed", from: "unified" });
+  if (returnTo) detailQuery.set("returnTo", returnTo);
 
   return (
     <div className="wx-reports wx-unified-review">
@@ -133,6 +142,11 @@ function UnifiedReviewSummary(): JSX.Element {
             label={complete ? "Review complete" : batchStatusLabel(workspace.batch.status)}
             tone={reviewTone}
           />
+          {returnTo ? (
+            <Link className="wx-btn-secondary" to={returnTo}>
+              Back to referral intake
+            </Link>
+          ) : null}
           <Link
             className="wx-btn-secondary"
             to={`/intake/${encodeURIComponent(batchId)}/review?${detailQuery.toString()}`}
@@ -205,6 +219,7 @@ function UnifiedReviewSummary(): JSX.Element {
                     key={group.id}
                     batchId={batchId}
                     group={group}
+                    returnTo={returnTo}
                     onSelectSource={setSelectedCandidateId}
                   />
                 ))
@@ -215,6 +230,7 @@ function UnifiedReviewSummary(): JSX.Element {
             <ReviewSourcePanel
               batchId={batchId}
               candidate={selectedCandidate}
+              returnTo={returnTo}
               onClose={() => setSelectedCandidateId(null)}
               onAvailabilityChange={onAvailabilityChange}
             />

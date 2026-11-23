@@ -82,12 +82,13 @@ const workspace: Workspace = {
 };
 
 let pageStatus = 200;
+let workspaceStatus = 200;
 const fetchStub = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
   const request = input instanceof Request ? input : new Request(String(input));
   const path = new URL(request.url, "http://localhost").pathname;
   if (path.endsWith("/workspace")) {
-    return new Response(JSON.stringify(workspace), {
-      status: 200,
+    return new Response(workspaceStatus === 200 ? JSON.stringify(workspace) : "unavailable", {
+      status: workspaceStatus,
       headers: { "content-type": "application/json" },
     });
   }
@@ -106,12 +107,12 @@ const SESSION = {
   isAdmin: false,
 };
 
-function mount(): void {
+function mount(entry = `/intake/${BATCH}/review`): void {
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: fetchStub })}>
       <SessionProvider session={SESSION}>
         <ToastProvider>
-          <MemoryRouter initialEntries={[`/intake/${BATCH}/review`]}>
+          <MemoryRouter initialEntries={[entry]}>
             <Routes>
               <Route path="/intake/:batchId/review" element={<UnifiedReviewWorkspace />} />
             </Routes>
@@ -124,6 +125,7 @@ function mount(): void {
 
 beforeEach(() => {
   pageStatus = 200;
+  workspaceStatus = 200;
   fetchStub.mockClear();
 });
 afterEach(() => vi.restoreAllMocks());
@@ -141,6 +143,64 @@ describe("UnifiedReviewWorkspace", () => {
     const decisionLink = screen.getByRole("link", { name: /Review decision/ });
     expect(decisionLink.getAttribute("href")).toContain(`candidate=${PHONE}`);
     expect(document.querySelector(".wx-unified-layout")).toBeTruthy();
+  });
+
+  it("displays an approved correction without misrepresenting the extracted value", async () => {
+    const candidate = workspace.candidates[0];
+    if (!candidate) throw new Error("Expected the synthetic phone candidate");
+    candidate.decision = {
+      id: "decision-1",
+      decision: "approve_with_edit",
+      editedValue: "(503) 555-0199",
+      reason: null,
+      partOfBulkApprove: false,
+      decidedAt: "2026-11-22T11:00:00.000Z",
+    };
+
+    try {
+      mount();
+
+      expect(await screen.findByText("(503) 555-0199")).toBeTruthy();
+      expect(screen.getByText("Extracted: (503) 555-0177")).toBeTruthy();
+      expect(screen.getByText("Approved correction")).toBeTruthy();
+    } finally {
+      candidate.decision = null;
+    }
+  });
+
+  it("preserves a validated referral return target across unified and detailed review", async () => {
+    const referralId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    const returnTo = `/referrals/${referralId}/intake?step=receive`;
+    mount(`/intake/${BATCH}/review?returnTo=${encodeURIComponent(returnTo)}`);
+
+    expect(
+      (await screen.findByRole("link", { name: "Back to referral intake" })).getAttribute("href"),
+    ).toBe(returnTo);
+    const decision = screen.getByRole("link", { name: /Review decision/ });
+    const decisionUrl = new URL(decision.getAttribute("href") ?? "", "http://localhost");
+    expect(decisionUrl.searchParams.get("returnTo")).toBe(returnTo);
+    expect(decisionUrl.searchParams.get("from")).toBe("unified");
+
+    const detailed = screen.getByRole("link", { name: /Detailed reviewer/ });
+    const detailedUrl = new URL(detailed.getAttribute("href") ?? "", "http://localhost");
+    expect(detailedUrl.searchParams.get("returnTo")).toBe(returnTo);
+
+    fireEvent.click(screen.getByRole("button", { name: /Preview source/ }));
+    const sourceReview = screen.getByRole("link", { name: /Open detailed review/ });
+    const sourceReviewUrl = new URL(sourceReview.getAttribute("href") ?? "", "http://localhost");
+    expect(sourceReviewUrl.searchParams.get("returnTo")).toBe(returnTo);
+  });
+
+  it("preserves referral return navigation when the workspace cannot load", async () => {
+    workspaceStatus = 503;
+    const referralId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    const returnTo = `/referrals/${referralId}/intake?step=verify`;
+    mount(`/intake/${BATCH}/review?returnTo=${encodeURIComponent(returnTo)}`);
+
+    expect(await screen.findByText("Review unavailable")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Back to referral intake" }).getAttribute("href")).toBe(
+      returnTo,
+    );
   });
 
   it("supports keyboard activation of section disclosure controls", async () => {

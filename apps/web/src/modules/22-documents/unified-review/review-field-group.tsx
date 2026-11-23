@@ -4,18 +4,21 @@ import { Link } from "react-router-dom";
 import { decisionLabel, docTypeLabel, pct } from "../doclens-model";
 import type { ReviewFieldGroupProjection } from "./review-projection";
 
-function detailPath(batchId: string, candidateId: string): string {
+function detailPath(batchId: string, candidateId: string, returnTo: string | null): string {
   const query = new URLSearchParams({ mode: "detailed", from: "unified", candidate: candidateId });
+  if (returnTo) query.set("returnTo", returnTo);
   return `/intake/${encodeURIComponent(batchId)}/review?${query.toString()}`;
 }
 
 export function ReviewFieldGroup({
   batchId,
   group,
+  returnTo,
   onSelectSource,
 }: {
   batchId: string;
   group: ReviewFieldGroupProjection;
+  returnTo: string | null;
   onSelectSource: (candidateId: string) => void;
 }): JSX.Element {
   const status = group.conflict
@@ -45,11 +48,18 @@ export function ReviewFieldGroup({
         {group.observations.map(({ candidate, document }) => (
           <li key={candidate.id} data-candidate-id={candidate.id}>
             <div className="wx-unified-observation-value">
-              <strong>
-                {candidate.redacted
-                  ? "Part 2 content withheld"
-                  : (candidate.value ?? "No value extracted")}
-              </strong>
+              {candidate.redacted ? (
+                <strong>Part 2 content withheld</strong>
+              ) : candidate.decision?.decision === "approve_with_edit" &&
+                candidate.decision.editedValue !== null ? (
+                <>
+                  <strong>{candidate.decision.editedValue}</strong>
+                  <span>Approved correction</span>
+                  <span>Extracted: {candidate.value ?? "No value extracted"}</span>
+                </>
+              ) : (
+                <strong>{candidate.value ?? "No value extracted"}</strong>
+              )}
               <span>
                 {document?.title ?? docTypeLabel(candidate.documentType)} · Page {candidate.page} ·{" "}
                 {pct(candidate.confidence)} confidence
@@ -69,7 +79,10 @@ export function ReviewFieldGroup({
               >
                 <Glyph name="eye" size={15} /> Preview source
               </button>
-              <Link className="wx-btn-secondary wx-btn-sm" to={detailPath(batchId, candidate.id)}>
+              <Link
+                className="wx-btn-secondary wx-btn-sm"
+                to={detailPath(batchId, candidate.id, returnTo)}
+              >
                 Review decision <Glyph name="arrow-right" size={15} />
               </Link>
             </div>

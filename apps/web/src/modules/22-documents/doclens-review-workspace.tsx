@@ -417,11 +417,13 @@ export function DocLensReviewWorkspace(): JSX.Element {
       : ws.batch.referralId
         ? `/referrals/${ws.batch.referralId}/intake?step=verify`
         : "/intake");
-  const returnLabel = fromUnified
-    ? "Back to unified review"
-    : requestedReturnTo || ws.batch.referralId
-      ? "Back to referral intake"
-      : "Back to intake review";
+  const returnLabel = requestedReturnTo
+    ? "Back to referral intake"
+    : fromUnified
+      ? "Back to unified review"
+      : ws.batch.referralId
+        ? "Back to referral intake"
+        : "Back to intake review";
 
   return (
     <div className="wx-reports wx-doclens">
