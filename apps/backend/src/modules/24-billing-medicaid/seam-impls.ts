@@ -202,11 +202,14 @@ export interface MedicaidClaimSubmissionEvidence {
     readonly submissionId: string | null;
     readonly attemptIndex: number;
     readonly claimVersion: number | null;
+    /** Hidden (null) unless the result is proven (a vendor-side reference). */
     readonly sourceAccountRef: string | null;
     readonly environment: string | null;
     readonly vendor: string;
+    /** Hidden (null) unless the result is proven (a vendor-side reference). */
     readonly vendorTransactionId: string | null;
     readonly payerId: string | null;
+    /** Hidden (null) unless the result is proven. */
     readonly payerClassificationId: string | null;
     readonly programKind: string | null;
     /** Hidden (null) unless the result is proven. */
@@ -218,6 +221,7 @@ export interface MedicaidClaimSubmissionEvidence {
     readonly acknowledgments: readonly {
       readonly kind: string;
       readonly outcome: string;
+      /** Hidden (null) unless the result is proven (a payer-side reference). */
       readonly payerClaimControlNumber: string | null;
       readonly receivedAt: string;
     }[];
@@ -632,26 +636,30 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
             claimState: base.claimState,
             claimVersion: base.claimVersion,
             // An unproven result carries no identity a caller could follow: not the claim, its lineage (a REPLACED
-            // claim would otherwise leak its successor's id), the submission or the assignment.
+            // claim would otherwise leak its successor's id), the submission, the assignment, nor a vendor- or
+            // payer-side reference of an attempt (vendor transaction id, classification id, source account, the
+            // payer claim control number of an acknowledgment). Only non-identifying status stays.
             replacesClaimId: proven ? base.replacesClaimId : null,
             replacedByClaimId: proven ? base.replacedByClaimId : null,
             attempts: attemptRows.map(({ base: s, acknowledgments }) => ({
               submissionId: proven ? s.submissionId! : null,
               attemptIndex: s.attemptIndex!,
               claimVersion: s.submittedClaimVersion,
-              sourceAccountRef: s.sourceAccountRef,
+              sourceAccountRef: proven ? s.sourceAccountRef : null,
               environment: s.environment,
               vendor: s.vendor!,
-              vendorTransactionId: s.vendorTransactionId,
+              vendorTransactionId: proven ? s.vendorTransactionId : null,
               payerId: s.payerId,
-              payerClassificationId: s.payerClassificationId,
+              payerClassificationId: proven ? s.payerClassificationId : null,
               programKind: s.programKindSnapshot,
               assignmentId: proven ? s.assignmentId : null,
               assignmentVersion: s.assignmentVersionSnapshot,
               provenanceStatus: s.provenanceStatus!,
               result: s.result!,
               submittedAt: s.submittedAt?.toISOString() ?? null,
-              acknowledgments,
+              acknowledgments: proven
+                ? acknowledgments
+                : acknowledgments.map((ack) => ({ ...ack, payerClaimControlNumber: null })),
             })),
           };
         });
