@@ -194,10 +194,12 @@ export interface MedicaidClaimSubmissionEvidence {
   readonly serviceTo: string;
   readonly claimState: string;
   readonly claimVersion: number;
+  /** Hidden (null) unless the result is proven, like every identifier below it. */
   readonly replacesClaimId: string | null;
   readonly replacedByClaimId: string | null;
   readonly attempts: readonly {
-    readonly submissionId: string;
+    /** Hidden (null) unless the result is proven. */
+    readonly submissionId: string | null;
     readonly attemptIndex: number;
     readonly claimVersion: number | null;
     readonly sourceAccountRef: string | null;
@@ -207,6 +209,7 @@ export interface MedicaidClaimSubmissionEvidence {
     readonly payerId: string | null;
     readonly payerClassificationId: string | null;
     readonly programKind: string | null;
+    /** Hidden (null) unless the result is proven. */
     readonly assignmentId: string | null;
     readonly assignmentVersion: number | null;
     readonly provenanceStatus: string;
@@ -625,10 +628,12 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
             serviceTo: base.serviceTo.toISOString().slice(0, 10),
             claimState: base.claimState,
             claimVersion: base.claimVersion,
-            replacesClaimId: base.replacesClaimId,
-            replacedByClaimId: base.replacedByClaimId,
+            // An unproven result carries no identity a caller could follow: not the claim, its lineage (a REPLACED
+            // claim would otherwise leak its successor's id), the submission or the assignment.
+            replacesClaimId: proven ? base.replacesClaimId : null,
+            replacedByClaimId: proven ? base.replacedByClaimId : null,
             attempts: attemptRows.map(({ base: s, acknowledgments }) => ({
-              submissionId: s.submissionId!,
+              submissionId: proven ? s.submissionId! : null,
               attemptIndex: s.attemptIndex!,
               claimVersion: s.submittedClaimVersion,
               sourceAccountRef: s.sourceAccountRef,
@@ -638,7 +643,7 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
               payerId: s.payerId,
               payerClassificationId: s.payerClassificationId,
               programKind: s.programKindSnapshot,
-              assignmentId: s.assignmentId,
+              assignmentId: proven ? s.assignmentId : null,
               assignmentVersion: s.assignmentVersionSnapshot,
               provenanceStatus: s.provenanceStatus!,
               result: s.result!,
