@@ -8,6 +8,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -113,6 +114,14 @@ interface Scenario {
   readonly objectStoreEnv?: readonly string[];
   /** Leave the Docling bearer out, to see deploy.sh generate it. */
   readonly omitDoclingWorkerToken?: boolean;
+  /** The host has compose.backup.yml next to compose.yml (the overlay is added when its source key is configured). */
+  readonly backupOverlay?: boolean;
+  /** Extra `.env.production` lines (the backup overlay's source key, old or new name). */
+  readonly extraEnv?: readonly string[];
+  /** Files placed in the host's `secrets/` directory before the run, name -> `{ content, mode }` (mode default 0400). */
+  readonly secretFiles?: Readonly<
+    Record<string, { readonly content: string; readonly mode?: number }>
+  >;
   /** `.env.production` ends without a newline (deploy.sh must not glue an appended line onto the last one). */
   readonly noTrailingNewline?: boolean;
   /**
@@ -146,6 +155,8 @@ interface Outcome {
   readonly previousReleaseEnv: string;
   /** Every entry in the deploy dir after the run (a leftover `.env.production.*` staging file shows here). */
   readonly files: readonly string[];
+  /** The host's `secrets/` directory after the run: name -> content and permission bits. Empty when it does not exist. */
+  readonly secrets: Readonly<Record<string, { readonly content: string; readonly mode: number }>>;
 }
 
 const readIfExists = (p: string): string => (existsSync(p) ? readFileSync(p, "utf8") : "");
@@ -177,6 +188,7 @@ function prepare(s: Scenario): Prepared {
   );
   chmodSync(join(dir, "smoke.sh"), 0o755);
   writeFileSync(join(dir, "compose.yml"), "services: {}\n");
+  if (s.backupOverlay) writeFileSync(join(dir, "compose.backup.yml"), "services: {}\n");
   mkdirSync(join(dir, "object-store"));
   writeFileSync(join(dir, "object-store", "audit.json"), "{}\n");
   writeFileSync(join(dir, "object-store", "fluent-bit.yaml"), "service: {}\n");
@@ -185,6 +197,7 @@ function prepare(s: Scenario): Prepared {
     "CHARTWARDEN_WEB_IMAGE=ghcr.io/o/chartwarden-web:sha-old",
     ...(s.omitDoclingWorkerToken ? [] : ["DOCLING_WORKER_TOKEN=x"]),
     ...(s.objectStoreEnv ?? DEFAULT_OBJECT_STORE_ENV),
+    ...(s.extraEnv ?? []),
     "CHARTWARDEN_DESTRUCTION_PASSWORD=x",
     ...(s.alert?.via === "legacy-env-file" && s.alert.url
       ? [`DEPLOY_ALERT_WEBHOOK_URL=${s.alert.url}`]
@@ -192,6 +205,13 @@ function prepare(s: Scenario): Prepared {
   ];
   const envBefore = `${envLines.join("\n")}${s.noTrailingNewline ? "" : "\n"}`;
   writeFileSync(join(dir, ".env.production"), envBefore);
+  if (s.secretFiles) {
+    mkdirSync(join(dir, "secrets"), { mode: 0o700 });
+    for (const [name, file] of Object.entries(s.secretFiles)) {
+      writeFileSync(join(dir, "secrets", name), file.content);
+      chmodSync(join(dir, "secrets", name), file.mode ?? 0o400);
+    }
+  }
   if (s.alert?.via === "file" && s.alert.url) {
     writeFileSync(join(dir, ".deploy-alert.env"), `DEPLOY_ALERT_WEBHOOK_URL=${s.alert.url}\n`, {
       mode: 0o600,
@@ -248,7 +268,22 @@ function collect(p: Prepared, code: number, out: string): Outcome {
     envBefore: p.envBefore,
     previousReleaseEnv: readIfExists(join(dir, ".env.production.previous-release")),
     files: readdirSync(dir),
+    secrets: readSecrets(join(dir, "secrets")),
   };
+}
+
+function readSecrets(
+  secretsDir: string,
+): Record<string, { readonly content: string; readonly mode: number }> {
+  if (!existsSync(secretsDir)) return {};
+  return Object.fromEntries(
+    readdirSync(secretsDir).map((name) => {
+      const file = join(secretsDir, name);
+      const mode = statSync(file).mode & 0o777;
+      if ((mode & 0o400) === 0) chmodSync(file, 0o600); // an unreadable fixture: reported as it was, read back as owner
+      return [name, { content: readFileSync(file, "utf8"), mode }];
+    }),
+  );
 }
 
 function deploy(s: Scenario): Outcome {
@@ -605,6 +640,178 @@ describe.skipIf(BUN === "")("deploy.sh object-store credentials", () => {
     expect(script).not.toContain("legacy-minio");
     expect(script).not.toContain("OBJECT_STORE_ENV_PAIRS");
     expect(script).not.toMatch(/exit 78/);
+  });
+});
+
+// Backup-overlay names. compose.backup.yml reads BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY and the secret file
+// secrets/backup_source_object_store_secret_key; a live host still has the OLD names (BACKUP_SOURCE_MINIO_ACCESS_KEY and
+// secrets/backup_source_minio_secret_key). deploy.sh copies them across, additively and idempotently, before anything is
+// started or backed up: an existing new value or file is never changed, no value is printed, the old ones stay in place.
+describe.skipIf(BUN === "")("deploy.sh backup-overlay name migration", () => {
+  const OLD_KEY = "BACKUP_SOURCE_MINIO_ACCESS_KEY";
+  const NEW_KEY = "BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY";
+  const OLD_SECRET = "backup_source_minio_secret_key";
+  const NEW_SECRET = "backup_source_object_store_secret_key";
+  const accessKey = "synthetic-backup-reader-not-a-real-key";
+  const secretValue = "synthetic-backup-reader-secret-not-a-real-secret\n";
+  const otherSecret = "synthetic-already-migrated-secret-not-real\n";
+  const expectNoBackupSecretInOutput = (o: Outcome): void => {
+    expect(o.out).not.toContain(secretValue.trim());
+    expect(o.out).not.toContain(otherSecret.trim());
+    expect(o.out).not.toContain(accessKey);
+  };
+
+  it("a live host (old variable + old secret file): the new variable and file are created with the same value, mode 0400; the old ones stay", () => {
+    const o = deploy({
+      extraEnv: [`${OLD_KEY}=${accessKey}`],
+      secretFiles: { [OLD_SECRET]: { content: secretValue } },
+    });
+    expect(o.code, o.out).toBe(0);
+    expect(envEntry(o.env, NEW_KEY)).toEqual({ value: accessKey, count: 1 });
+    expect(envEntry(o.env, OLD_KEY)).toEqual({ value: accessKey, count: 1 });
+    expect(o.secrets[NEW_SECRET]).toEqual({ content: secretValue, mode: 0o400 });
+    expect(o.secrets[OLD_SECRET]).toEqual({ content: secretValue, mode: 0o400 });
+    expect(o.out).toContain(`copied ${OLD_KEY} to ${NEW_KEY} in .env.production`);
+    expect(o.out).toContain(`copied secrets/${OLD_SECRET} to secrets/${NEW_SECRET}`);
+    expectNoBackupSecretInOutput(o);
+  });
+
+  it("is idempotent: a second deploy on the migrated host changes nothing and prints no copy", () => {
+    const p = prepare({
+      extraEnv: [`${OLD_KEY}=${accessKey}`],
+      secretFiles: { [OLD_SECRET]: { content: secretValue } },
+    });
+    spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+    const first = collect(p, 0, "");
+    const second = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+    const after = collect(p, second.status ?? -1, `${second.stdout}${second.stderr}`);
+    expect(after.code, after.out).toBe(0);
+    // Only the image lines differ between two deploys of the same release; every backup line is identical.
+    expect(envEntry(after.env, NEW_KEY)).toEqual(envEntry(first.env, NEW_KEY));
+    expect(envEntry(after.env, NEW_KEY).count).toBe(1);
+    expect(after.secrets).toEqual(first.secrets);
+    expect(after.out).not.toMatch(/copied (BACKUP_SOURCE|secrets)/);
+  });
+
+  it("a host that already has the new names keeps them, whatever the old ones hold: nothing copied, nothing changed", () => {
+    const o = deploy({
+      extraEnv: [`${NEW_KEY}=new-reader-key`, `${OLD_KEY}=${accessKey}`],
+      secretFiles: {
+        [NEW_SECRET]: { content: otherSecret },
+        [OLD_SECRET]: { content: secretValue },
+      },
+    });
+    expect(o.code, o.out).toBe(0);
+    expect(envEntry(o.env, NEW_KEY)).toEqual({ value: "new-reader-key", count: 1 });
+    expect(envEntry(o.env, OLD_KEY)).toEqual({ value: accessKey, count: 1 });
+    expect(o.secrets[NEW_SECRET]?.content).toBe(otherSecret);
+    expect(o.out).not.toMatch(/copied (BACKUP_SOURCE|secrets)/);
+    expectNoBackupSecretInOutput(o);
+  });
+
+  it("a fresh host (no backup overlay at all): nothing is created, no secrets directory appears, nothing is said", () => {
+    const o = deploy({});
+    expect(o.code, o.out).toBe(0);
+    expect(envEntry(o.env, NEW_KEY).count).toBe(0);
+    expect(envEntry(o.env, OLD_KEY).count).toBe(0);
+    expect(o.secrets).toEqual({});
+    expect(o.files).not.toContain("secrets");
+    expect(o.out).not.toMatch(/BACKUP_SOURCE|backup_source/);
+  });
+
+  it("the new variable present but EMPTY is filled from the old one by an appended line; the empty line is left as it was", () => {
+    const o = deploy({ extraEnv: [`${NEW_KEY}=`, `${OLD_KEY}=${accessKey}`] });
+    expect(o.code, o.out).toBe(0);
+    expect(envEntry(o.env, NEW_KEY)).toEqual({ value: accessKey, count: 2 }); // the last line wins, as for compose
+    expect(o.env).toContain(`${NEW_KEY}=\n`);
+    expectNoBackupSecretInOutput(o);
+  });
+
+  it("the old variable alone (no secret files on this host): only the variable is copied, no secret file is invented", () => {
+    const o = deploy({ extraEnv: [`${OLD_KEY}=${accessKey}`] });
+    expect(o.code, o.out).toBe(0);
+    expect(envEntry(o.env, NEW_KEY)).toEqual({ value: accessKey, count: 1 });
+    expect(o.secrets).toEqual({});
+  });
+
+  it("the old secret file alone: only the file is copied, no variable is invented", () => {
+    const o = deploy({ secretFiles: { [OLD_SECRET]: { content: secretValue } } });
+    expect(o.code, o.out).toBe(0);
+    expect(o.secrets[NEW_SECRET]).toEqual({ content: secretValue, mode: 0o400 });
+    expect(envEntry(o.env, NEW_KEY).count).toBe(0);
+  });
+
+  it("an existing new secret file is never overwritten, even when the old one differs", () => {
+    const o = deploy({
+      extraEnv: [`${OLD_KEY}=${accessKey}`],
+      secretFiles: {
+        [NEW_SECRET]: { content: otherSecret },
+        [OLD_SECRET]: { content: secretValue },
+      },
+    });
+    expect(o.code, o.out).toBe(0);
+    expect(o.secrets[NEW_SECRET]?.content).toBe(otherSecret);
+    expect(envEntry(o.env, NEW_KEY)).toEqual({ value: accessKey, count: 1 });
+  });
+
+  it("copies the raw variable value verbatim: spaces, quotes, `=`, `$`, `#`, `&` and backslashes survive", () => {
+    const raw = 'a=b/c&d$HOME#e "q" \\n tail ';
+    const o = deploy({ extraEnv: [`${OLD_KEY}=${raw}`] });
+    expect(o.code, o.out).toBe(0);
+    expect(envEntry(o.env, NEW_KEY)).toEqual({ value: raw, count: 1 });
+  });
+
+  it("an env file with no trailing newline never has the appended variable glued onto its last line", () => {
+    const o = deploy({ extraEnv: [`${OLD_KEY}=${accessKey}`], noTrailingNewline: true });
+    expect(o.code, o.out).toBe(0);
+    expect(envEntry(o.env, "CHARTWARDEN_DESTRUCTION_PASSWORD")).toEqual({ value: "x", count: 1 });
+    expect(envEntry(o.env, NEW_KEY)).toEqual({ value: accessKey, count: 1 });
+  });
+
+  it("the rollback backup is taken AFTER the migration: a failed deploy restores an env that carries both names", () => {
+    const o = deploy({
+      extraEnv: [`${OLD_KEY}=${accessKey}`],
+      secretFiles: { [OLD_SECRET]: { content: secretValue } },
+      smokeExit: 1,
+    });
+    expectRolledBack(o, true);
+    expect(envEntry(o.env, NEW_KEY)).toEqual({ value: accessKey, count: 1 });
+    expect(envEntry(o.env, OLD_KEY)).toEqual({ value: accessKey, count: 1 });
+  });
+
+  it.skipIf(process.getuid?.() === 0)(
+    "an unreadable old secret file stops the deploy before any docker call, with the env untouched and a hand-copy hint",
+    () => {
+      const o = deploy({
+        extraEnv: [`${OLD_KEY}=${accessKey}`],
+        secretFiles: { [OLD_SECRET]: { content: secretValue, mode: 0o000 } },
+      });
+      expect(o.code, o.out).toBe(1);
+      expect(o.calls, "docker must not be called").toEqual([]);
+      expect(o.env).toBe(o.envBefore);
+      expect(o.secrets[NEW_SECRET]).toBeUndefined();
+      expect(o.out).toContain("Copy it by hand");
+      expect(o.out).toContain("No service was touched");
+      expectNoBackupSecretInOutput(o);
+    },
+  );
+
+  it("the backup overlay (compose.backup.yml) is added to object-store-provision once the OLD variable has been migrated", () => {
+    const o = deploy({
+      backupOverlay: true,
+      extraEnv: [`${OLD_KEY}=${accessKey}`],
+      secretFiles: { [OLD_SECRET]: { content: secretValue } },
+    });
+    expect(o.code, o.out).toBe(0);
+    expect(
+      o.calls.some((c) => c.includes("-f compose.backup.yml run --rm object-store-provision")),
+    ).toBe(true);
+  });
+
+  it("without the variable (old or new) the overlay is not added", () => {
+    const o = deploy({ backupOverlay: true });
+    expect(o.code, o.out).toBe(0);
+    expect(o.calls.some((c) => c.includes("compose.backup.yml"))).toBe(false);
   });
 });
 

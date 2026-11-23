@@ -38,9 +38,9 @@ async function main(): Promise<number> {
   const result = await verifyRestore({
     adminUrl: required(env, "RESTORE_ADMIN_URL"),
     appUrl: required(env, "RESTORE_APP_URL"),
-    minioEndpoint: required(env, "RESTORE_MINIO_ENDPOINT"),
-    minioAccessKey: required(env, "RESTORE_MINIO_ACCESS_KEY"),
-    minioSecretKey: required(env, "RESTORE_MINIO_SECRET_KEY"),
+    minioEndpoint: required(env, "RESTORE_OBJECT_STORE_ENDPOINT"),
+    minioAccessKey: required(env, "RESTORE_OBJECT_STORE_ACCESS_KEY"),
+    minioSecretKey: required(env, "RESTORE_OBJECT_STORE_SECRET_KEY"),
     marker,
     manifest: readManifestGz(readFileSync(required(env, "RESTORE_MANIFEST_FILE"))),
   });

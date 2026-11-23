@@ -5,16 +5,17 @@
 #   entrypoint <cmd...>        render /etc/pgbackrest/pgbackrest.conf from BACKUP_* env, then the Postgres image's entrypoint
 #   snapshot [full|diff|incr|none]
 #                              one coordinated snapshot: optional pgBackRest base backup (local + off-site repo), then
-#                              capture the DB LSN, force + confirm WAL archiving up to it, list every MinIO object
+#                              capture the DB LSN, force + confirm WAL archiving up to it, list every object-store object
 #                              (sha256 per object), mirror the buckets off-site, confirm every listed object landed,
 #                              and write snapshots/<id>/{manifest.ndjson.gz,marker.json} off-site (marker last)
 #   schedule                   the long-running loop the `backup` sidecar runs (snapshot every interval, daily base backup)
 #   healthcheck                exit 1 when the last successful snapshot is older than BACKUP_MAX_AGE_S
-#   provision-source-reader    MinIO source only (the drill): create the read-only account (needs MINIO_ROOT_*). Production's
-#                              SeaweedFS reader comes from compose.yml's object-store-provision (compose.backup.yml)
+#   provision-source-reader    MinIO source only (the drill's stand-in, a MinIO container today): create the read-only
+#                              account (needs MINIO_ROOT_*, the stand-in's own root login). Production's SeaweedFS reader
+#                              comes from compose.yml's object-store-provision (compose.backup.yml)
 #   marker [id|latest]         print a snapshot's marker (default: the newest complete one)
 #   restore-db <id|latest>     pgBackRest restore of a snapshot into the EMPTY $PGDATA (PITR to the marker's LSN)
-#   restore-objects <id>       copy the snapshot's objects into the RESTORE_MINIO_* store and verify every sha256
+#   restore-objects <id>       copy the snapshot's objects into the RESTORE_OBJECT_STORE_* store and verify every sha256
 #   wal-health                 alert when archive_command is failing or pg_wal grows past BACKUP_PG_WAL_ALERT_BYTES
 #
 # Coordination rule: the app writes an object BEFORE it commits the row that references it, and the object listing
@@ -31,7 +32,7 @@ set -Eeuo pipefail
 umask 077
 
 SECRET_VARS=(BACKUP_OFFSITE_S3_SECRET_KEY BACKUP_PG_LOCAL_CIPHER_PASS BACKUP_PG_OFFSITE_CIPHER_PASS
-  BACKUP_OBJECT_SSE_C_KEY BACKUP_SOURCE_MINIO_SECRET_KEY RESTORE_MINIO_SECRET_KEY MINIO_ROOT_PASSWORD)
+  BACKUP_OBJECT_SSE_C_KEY BACKUP_SOURCE_OBJECT_STORE_SECRET_KEY RESTORE_OBJECT_STORE_SECRET_KEY MINIO_ROOT_PASSWORD)
 STANZA="${BACKUP_PG_STANZA:-chartwarden}"
 CONF=/etc/pgbackrest/pgbackrest.conf
 STATE_DIR="${BACKUP_STATE_DIR:-/var/lib/cw-backup}"
@@ -179,12 +180,12 @@ mc_setup() { # aliases: offsite (always), source / target when configured
   local host port
   read -r host port <<<"$(offsite_host_port)"
   mc_host offsite "https://$host:$port" "$BACKUP_OFFSITE_S3_ACCESS_KEY" "$BACKUP_OFFSITE_S3_SECRET_KEY"
-  if [ -n "${BACKUP_SOURCE_MINIO_ACCESS_KEY:-}" ]; then
-    mc_host source "${BACKUP_SOURCE_MINIO_URL:-http://seaweedfs:8333}" "$BACKUP_SOURCE_MINIO_ACCESS_KEY" \
-      "${BACKUP_SOURCE_MINIO_SECRET_KEY:?}"
+  if [ -n "${BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY:-}" ]; then
+    mc_host source "${BACKUP_SOURCE_OBJECT_STORE_URL:-http://seaweedfs:8333}" "$BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY" \
+      "${BACKUP_SOURCE_OBJECT_STORE_SECRET_KEY:?}"
   fi
-  if [ -n "${RESTORE_MINIO_ACCESS_KEY:-}" ]; then
-    mc_host target "${RESTORE_MINIO_URL:?}" "$RESTORE_MINIO_ACCESS_KEY" "${RESTORE_MINIO_SECRET_KEY:?}"
+  if [ -n "${RESTORE_OBJECT_STORE_ACCESS_KEY:-}" ]; then
+    mc_host target "${RESTORE_OBJECT_STORE_URL:?}" "$RESTORE_OBJECT_STORE_ACCESS_KEY" "${RESTORE_OBJECT_STORE_SECRET_KEY:?}"
   fi
   OFFSITE="offsite/$BACKUP_OFFSITE_S3_BUCKET"
   # SSE-C: every off-site object (copies, manifests, markers) is encrypted with a key the off-site provider never holds.
@@ -273,7 +274,7 @@ cmd_snapshot() {
   trap 'on_snapshot_failure $?' EXIT
   render_conf
   mc_setup
-  need BACKUP_SOURCE_MINIO_ACCESS_KEY
+  need BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY
   mkdir -p "$STATE_DIR"
   STEP=lock
   exec 9>"$STATE_DIR/snapshot.lock"
@@ -407,10 +408,10 @@ cmd_healthcheck() {
 # MinIO SOURCE ONLY (`mc admin`): the coordinated drill's MinIO stand-in. Production's source is SeaweedFS, whose
 # read-only key is rendered by compose.yml's object-store-provision from object-store/reader-policy.json.
 cmd_provision_source_reader() {
-  need MINIO_ROOT_USER MINIO_ROOT_PASSWORD BACKUP_SOURCE_MINIO_ACCESS_KEY BACKUP_SOURCE_MINIO_SECRET_KEY
-  local policy="${BACKUP_SOURCE_MINIO_POLICY:-chartwarden-backup-reader}"
+  need MINIO_ROOT_USER MINIO_ROOT_PASSWORD BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY BACKUP_SOURCE_OBJECT_STORE_SECRET_KEY
+  local policy="${BACKUP_SOURCE_OBJECT_STORE_POLICY:-chartwarden-backup-reader}"
   export MC_CONFIG_DIR="$STATE_DIR/mc"
-  mc_host root "${BACKUP_SOURCE_MINIO_URL:?}" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
+  mc_host root "${BACKUP_SOURCE_OBJECT_STORE_URL:?}" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
   local doc="$STATE_DIR/reader-policy.json"
   mkdir -p "$STATE_DIR"
   cat >"$doc" <<'POLICY'
@@ -423,9 +424,9 @@ cmd_provision_source_reader() {
 }
 POLICY
   mcq admin policy create root "$policy" "$doc" >/dev/null
-  mcq admin user add root "$BACKUP_SOURCE_MINIO_ACCESS_KEY" "$BACKUP_SOURCE_MINIO_SECRET_KEY" >/dev/null
+  mcq admin user add root "$BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY" "$BACKUP_SOURCE_OBJECT_STORE_SECRET_KEY" >/dev/null
   local out
-  if ! out="$(mcq admin policy attach root "$policy" --user "$BACKUP_SOURCE_MINIO_ACCESS_KEY" 2>&1)"; then
+  if ! out="$(mcq admin policy attach root "$policy" --user "$BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY" 2>&1)"; then
     grep -qi "already" <<<"$out" || die "attaching policy $policy failed: $out"
   fi
   log "read-only backup account ready (policy $policy)"
@@ -476,7 +477,7 @@ cmd_restore_db() {
 
 cmd_restore_objects() {
   mc_setup
-  need RESTORE_MINIO_ACCESS_KEY
+  need RESTORE_OBJECT_STORE_ACCESS_KEY
   local id="${1:?snapshot id}" work marker want got b k h t f bad=0
   valid_snapshot_id "$id"
   work="$STATE_DIR/restore-$id"

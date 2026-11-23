@@ -81,28 +81,41 @@ describe("preflight.sh across the infra-rename windows", () => {
     expect(r.out).toContain("preflight ok");
   });
 
-  it("requires a repository-owned digest pin when the backup overlay is enabled", () => {
-    const digest = `sha256:${"a".repeat(64)}`;
-    const good = run({
-      env: [
-        "BACKUP_SOURCE_MINIO_ACCESS_KEY=reader",
-        `CHARTWARDEN_BACKUP_IMAGE=ghcr.io/engrace-hospice/chartwarden-backup:18-tools-sha-abc@${digest}`,
-      ],
-    });
-    expect(good.code, good.out).toBe(0);
-
-    for (const image of [
-      "chartwarden-backup:local",
-      "ghcr.io/engrace-hospice/chartwarden-backup:latest",
-      `ghcr.io/other/chartwarden-backup:18-tools-sha-abc@${digest}`,
-      "ghcr.io/engrace-hospice/chartwarden-backup:18-tools-sha-abc@sha256:abc",
-    ]) {
-      const bad = run({
-        env: ["BACKUP_SOURCE_MINIO_ACCESS_KEY=reader", `CHARTWARDEN_BACKUP_IMAGE=${image}`],
+  // The key was renamed (BACKUP_SOURCE_MINIO_ACCESS_KEY -> BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY). Preflight runs before
+  // deploy.sh copies the old name to the new one on a host's first deploy, so EITHER name must enable the check.
+  describe.each(["BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY", "BACKUP_SOURCE_MINIO_ACCESS_KEY"])(
+    "requires a repository-owned digest pin when the backup overlay is enabled by %s",
+    (key) => {
+      it("accepts the published tag@sha256 digest", () => {
+        const digest = `sha256:${"a".repeat(64)}`;
+        const good = run({
+          env: [
+            `${key}=reader`,
+            `CHARTWARDEN_BACKUP_IMAGE=ghcr.io/engrace-hospice/chartwarden-backup:18-tools-sha-abc@${digest}`,
+          ],
+        });
+        expect(good.code, good.out).toBe(0);
       });
-      expect(bad.code, `${image}\n${bad.out}`).toBe(67);
-      expect(bad.out).toContain("CHARTWARDEN_BACKUP_IMAGE");
-    }
+
+      it("refuses a local, mutable, foreign or malformed image", () => {
+        const digest = `sha256:${"a".repeat(64)}`;
+        for (const image of [
+          "chartwarden-backup:local",
+          "ghcr.io/engrace-hospice/chartwarden-backup:latest",
+          `ghcr.io/other/chartwarden-backup:18-tools-sha-abc@${digest}`,
+          "ghcr.io/engrace-hospice/chartwarden-backup:18-tools-sha-abc@sha256:abc",
+        ]) {
+          const bad = run({ env: [`${key}=reader`, `CHARTWARDEN_BACKUP_IMAGE=${image}`] });
+          expect(bad.code, `${image}\n${bad.out}`).toBe(67);
+          expect(bad.out).toContain("CHARTWARDEN_BACKUP_IMAGE");
+        }
+      });
+    },
+  );
+
+  it("does not check the backup image when neither name enables the overlay", () => {
+    const r = run({ env: ["CHARTWARDEN_BACKUP_IMAGE=chartwarden-backup:local"] });
+    expect(r.code, r.out).toBe(0);
   });
 
   it("accepts the live state today: wardenx_* volumes, prefix + db pinned to wardenx", () => {

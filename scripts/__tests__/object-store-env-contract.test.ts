@@ -58,8 +58,10 @@ describe("deploy.sh: the object-store variables it keeps", () => {
     expect(script).not.toContain("legacy-minio");
   });
 
-  it("keeps the real backup variable it reads (the backup overlay is enabled by the read-only source key)", () => {
-    expect(read("deploy/production/deploy.sh")).toContain("BACKUP_SOURCE_MINIO_ACCESS_KEY");
+  it("enables the backup overlay by the renamed read-only source key", () => {
+    expect(read("deploy/production/deploy.sh")).toContain(
+      "grep -q '^BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY=.' .env.production",
+    );
   });
 });
 
@@ -127,27 +129,64 @@ describe("deploy/production/compose.yml: canonical variables point to SeaweedFS"
     expect(e.AUDIT_SINK_HOST).toBe("api");
   });
 
-  it("the real backup / restore-drill MinIO variables are untouched", () => {
-    expect(read("deploy/production/compose.backup.yml")).toContain(
-      "BACKUP_SOURCE_MINIO_ACCESS_KEY",
-    );
+  it("the backup overlay and the restore tooling use the OBJECT_STORE names for the source and restore stores", () => {
+    const overlay = read("deploy/production/compose.backup.yml");
+    for (const name of [
+      "BACKUP_SOURCE_OBJECT_STORE_URL",
+      "BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY",
+      "BACKUP_SOURCE_OBJECT_STORE_SECRET_KEY_FILE",
+      "backup_source_object_store_secret_key",
+    ]) {
+      expect(overlay, name).toContain(name);
+    }
     const restore = read("deploy/production/backup/restore.sh");
     for (const name of [
-      "RESTORE_MINIO_ACCESS_KEY",
-      "RESTORE_MINIO_SECRET_KEY",
-      "RESTORE_MINIO_PORT",
-      "MINIO_ROOT_USER",
+      "RESTORE_OBJECT_STORE_ACCESS_KEY",
+      "RESTORE_OBJECT_STORE_SECRET_KEY",
+      "RESTORE_OBJECT_STORE_PORT",
+      "RESTORE_OBJECT_STORE_IMAGE",
     ]) {
       expect(restore, name).toContain(name);
     }
     const verify = read("scripts/backup/verify-restore.ts");
     for (const name of [
-      "RESTORE_MINIO_ENDPOINT",
-      "RESTORE_MINIO_ACCESS_KEY",
-      "RESTORE_MINIO_SECRET_KEY",
+      "RESTORE_OBJECT_STORE_ENDPOINT",
+      "RESTORE_OBJECT_STORE_ACCESS_KEY",
+      "RESTORE_OBJECT_STORE_SECRET_KEY",
     ]) {
       expect(verify, name).toContain(name);
     }
+  });
+
+  it("the old BACKUP_SOURCE_MINIO_* / RESTORE_MINIO_* names survive only where they must: the host migration, preflight and restore's plain-secret guard", () => {
+    const OLD = /BACKUP_SOURCE_MINIO_|RESTORE_MINIO_|backup_source_minio_secret_key/;
+    const allowed = new Set([
+      "deploy/production/deploy.sh",
+      "deploy/production/preflight.sh",
+      "deploy/production/backup/restore.sh",
+    ]);
+    for (const file of [
+      "deploy/production/compose.backup.yml",
+      "deploy/production/compose.yml",
+      "deploy/production/backup/cw-backup.sh",
+      "deploy/production/backup/restore.sh",
+      "deploy/production/deploy.sh",
+      "deploy/production/preflight.sh",
+      "scripts/backup/coordinated-drill.ts",
+      "scripts/backup/verify-restore.ts",
+    ]) {
+      const text = read(file);
+      if (!allowed.has(file)) expect(text, file).not.toMatch(OLD);
+    }
+    // restore.sh: only the plain-secret refusal still names the old spelling.
+    const restoreOld = read("deploy/production/backup/restore.sh")
+      .split("\n")
+      .filter((l) => OLD.test(l) || /BACKUP_SOURCE_\(OBJECT_STORE\|MINIO\)/.test(l));
+    for (const l of restoreOld)
+      expect(l, l).toMatch(/PLAIN_SECRETS|old BACKUP_SOURCE_MINIO|Formerly/);
+    // The drill still stands up a real MinIO container: its own root login variables stay.
+    expect(read("deploy/production/backup/restore.sh")).toContain("MINIO_ROOT_USER");
+    expect(read("deploy/production/backup/cw-backup.sh")).toContain("MINIO_ROOT_PASSWORD");
   });
 });
 

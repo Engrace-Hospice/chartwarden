@@ -28,7 +28,9 @@ docker info >/dev/null 2>&1 </dev/null || fail "docker is not reachable (docker 
 
 # The backup overlay is enabled by its scoped SeaweedFS reader key. Once enabled, it must consume the
 # repository-owned published image by an immutable tag@digest, never a local build or mutable tag (#993).
-if has_key BACKUP_SOURCE_MINIO_ACCESS_KEY; then
+# The key was renamed from BACKUP_SOURCE_MINIO_ACCESS_KEY: this runs BEFORE deploy.sh copies the old name to the new one
+# on a host's first deploy of this release, so either name enables the check (never fail open on the old spelling).
+if has_key BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY || has_key BACKUP_SOURCE_MINIO_ACCESS_KEY; then
   backup_image=$(resolve CHARTWARDEN_BACKUP_IMAGE)
   case "$backup_image" in
     ghcr.io/engrace-hospice/chartwarden-backup:18-tools-sha-*@sha256:*) ;;
