@@ -103,6 +103,8 @@ export function buildDrizzleM24ReadService(
     version: r.version,
     validationRunIdLatest: r.validationRunIdLatest ?? null,
     eligibilityOutcomeSnapshot: r.eligibilityOutcomeSnapshot ?? null,
+    // `programAssignmentVerified` reads the assembly-time snapshot, not the assignment's live status (see the write
+    // service's toClaimView): revoking an assignment does not reach a claim already assembled.
     electronicSubmissionRefusal:
       electronicSubmissionRefusal(
         r.serviceState,

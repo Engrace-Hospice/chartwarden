@@ -1282,6 +1282,9 @@ export function buildDrizzleM24WriteService(
       version: r.version,
       validationRunIdLatest: r.validationRunIdLatest ?? null,
       eligibilityOutcomeSnapshot: r.eligibilityOutcomeSnapshot ?? null,
+      // `programAssignmentVerified` reads the assembly-time snapshot, not the assignment's live status: revoking an
+      // assignment does not reach a claim already assembled. Latent while `submissionAvailable` is hard-false; the
+      // seam (submissionEvidenceForLine) re-reads the live status, and so must any path that starts to send.
       electronicSubmissionRefusal:
         electronicSubmissionRefusal(
           r.serviceState,
@@ -3175,6 +3178,8 @@ export function buildDrizzleM24WriteService(
         if (reduced.error)
           throw new ConflictError("INVALID_TRANSITION", `cannot submit from ${claim.state}`);
         // S11 (#711): refuse BEFORE any state change, submission row or outbox event, so no submit job is enqueued.
+        // The verified flag is the assembly-time snapshot, not the assignment's live status; re-read the live
+        // status here before any route can become sendable (see toClaimView).
         const refusal = electronicSubmissionRefusal(
           claim.serviceState,
           isGatewayBound(claim.serviceState),
