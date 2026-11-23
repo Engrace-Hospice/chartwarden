@@ -60,7 +60,19 @@ export type PayerRatePolicyResult =
       readonly rate: null;
     };
 
-/** Exact payer/provider/unit/locality/window lookup. It never falls back across a policy dimension. */
+/** A rate row in one of these states can never become the rate in force; it does not compete with a live row. */
+const TERMINAL_STATUSES: readonly RateVerificationStatus[] = [
+  "rejected",
+  "expired",
+  "revoked",
+  "superseded",
+];
+
+/**
+ * Exact payer/provider/unit/locality/window lookup. It never falls back across a policy dimension. Terminal-status
+ * rows (rejected, expired, revoked, superseded) are dropped before counting, so a dead row beside a verified one is
+ * not "ambiguous"; if only dead rows match, the result is `unverified`, never `missing`.
+ */
 export function resolvePayerRatePolicy(
   lookup: PayerRatePolicyLookup,
   candidates: readonly PayerRatePolicyFact[],
@@ -84,12 +96,18 @@ export function resolvePayerRatePolicy(
       rate.effectiveFrom <= lookup.serviceFrom &&
       (rate.effectiveTo === null || rate.effectiveTo >= lookup.serviceTo),
   );
-  if (exact.length > 1) {
+  const live = exact.filter((rate) => !TERMINAL_STATUSES.includes(rate.verificationStatus));
+  if (live.length > 1) {
     return { status: "ambiguous", reasonCode: "MEDICAID_RATE_POLICY_AMBIGUOUS", rate: null };
   }
-  const rate = exact[0];
-  if (!rate)
-    return { status: "missing", reasonCode: "MEDICAID_RATE_POLICY_UNRESOLVED", rate: null };
+  const rate = live[0];
+  if (!rate) {
+    return {
+      status: exact.length > 0 ? "unverified" : "missing",
+      reasonCode: "MEDICAID_RATE_POLICY_UNRESOLVED",
+      rate: null,
+    };
+  }
   if (
     rate.verificationStatus !== "verified" ||
     !rate.sourceDocumentRef ||

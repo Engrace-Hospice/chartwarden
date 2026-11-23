@@ -77,6 +77,46 @@ describe("resolvePayerRatePolicy", () => {
     );
   });
 
+  it.each(["rejected", "expired", "revoked", "superseded"] as const)(
+    "ignores a %s row that overlaps the verified row instead of calling it ambiguous",
+    (verificationStatus) => {
+      const terminal = { ...rate, id: "rate-old", verificationStatus };
+      expect(resolvePayerRatePolicy(lookup, [terminal, rate])).toMatchObject({
+        status: "qualified",
+        rate,
+      });
+      expect(resolvePayerRatePolicy(lookup, [rate, terminal])).toMatchObject({
+        status: "qualified",
+        rate,
+      });
+    },
+  );
+
+  it("still reports a lone terminal row as unverified, never as missing or qualified", () => {
+    for (const verificationStatus of ["rejected", "expired", "revoked", "superseded"] as const) {
+      expect(resolvePayerRatePolicy(lookup, [{ ...rate, verificationStatus }])).toMatchObject({
+        status: "unverified",
+        rate: null,
+      });
+    }
+  });
+
+  it("stays ambiguous for two live rows, and for a pending row beside a verified one", () => {
+    expect(
+      resolvePayerRatePolicy(lookup, [
+        rate,
+        { ...rate, id: "rate-new", verificationStatus: "pending" },
+      ]).status,
+    ).toBe("ambiguous");
+    expect(
+      resolvePayerRatePolicy(lookup, [
+        rate,
+        { ...rate, id: "rate-new", verificationStatus: "superseded" },
+        { ...rate, id: "rate-dup" },
+      ]).status,
+    ).toBe("ambiguous");
+  });
+
   it("rejects duplicate conflicts and missing required policy inputs", () => {
     expect(resolvePayerRatePolicy(lookup, [rate, { ...rate, id: "rate-2" }]).status).toBe(
       "ambiguous",
