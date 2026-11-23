@@ -364,5 +364,21 @@ describe.each(ROUTES)("$label", (route) => {
       const open = await call(ADMIN, openEnded);
       expect(open.res.statusCode).toBe(route.status);
     });
+
+    // Postgres has no year 0000 (22008): a date the route accepts there reaches the insert as a 500.
+    it("422s year 0000 on effectiveFrom and effectiveTo, before the service runs", async () => {
+      const { effectiveTo: _open, ...openEnded } = route.payload;
+      const from = await call(ADMIN, { ...openEnded, effectiveFrom: "0000-01-01" });
+      expect(from.res.statusCode).toBe(422);
+      expect(JSON.stringify(from.res.json())).toContain("effectiveFrom");
+      expect(from.calls).not.toHaveBeenCalled();
+      const to = await call(ADMIN, {
+        ...route.payload,
+        effectiveFrom: "0000-01-01",
+        effectiveTo: "0000-12-31",
+      });
+      expect(to.res.statusCode).toBe(422);
+      expect(to.calls).not.toHaveBeenCalled();
+    });
   }
 });
