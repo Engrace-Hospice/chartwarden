@@ -103,6 +103,45 @@ interface AssemblyPreview {
   isAdvisorySnapshot: true;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+const hasStrings = (value: unknown, keys: readonly string[]): boolean =>
+  isRecord(value) && keys.every((key) => typeof value[key] === "string");
+
+/**
+ * Runtime check of the preview before the wizard reads it. The response is untyped at the boundary, so a new web bundle
+ * served against an older backend (no `programResponsibility`, `selectedClearinghouse`, ...) would otherwise throw while
+ * rendering the billing-context step. It also pins the two facts the static copy below depends on: electronic
+ * submission is unavailable and the payer policy is unqualified. A preview that says otherwise is refused, not
+ * rendered under statements it would contradict.
+ */
+function isAssemblyPreview(value: unknown): value is AssemblyPreview {
+  if (!isRecord(value)) return false;
+  return (
+    hasStrings(value.primaryCoverage, ["status"]) &&
+    hasStrings(value.medicaidCoverage, ["status"]) &&
+    typeof value.payerResponsibility === "string" &&
+    hasStrings(value.recordedEligibility, ["status"]) &&
+    Array.isArray(value.claimKinds) &&
+    Array.isArray(value.rbArrangements) &&
+    typeof value.arrangementListStatus === "string" &&
+    hasStrings(value.medicareEvidence, ["match"]) &&
+    typeof value.stateBillingPolicy === "string" &&
+    hasStrings(value.programResponsibility, ["status", "reasonCode"]) &&
+    hasStrings(value.payerAuthorizationEvidence, [
+      "clinicalDocuments",
+      "notification",
+      "authorization",
+    ]) &&
+    isRecord(value.payerAuthorizationEvidence) &&
+    value.payerAuthorizationEvidence.policyQualification === "unqualified" &&
+    Array.isArray(value.enrollmentReadiness) &&
+    hasStrings(value.selectedClearinghouse, ["status"]) &&
+    hasStrings(value.tradingPartnerCredential, ["status", "reasonCode"]) &&
+    value.electronicSubmissionAvailable === false
+  );
+}
+
 function coverageLabel(coverage: AssemblyPreview["primaryCoverage"]): string {
   if (coverage.status !== "uniform") return `Unresolved (${humanize(coverage.status)})`;
   const kind = coverage.coverageKind
@@ -210,11 +249,11 @@ export function MedicaidAssemblyWizard(): JSX.Element {
         } as never,
       )) as { data?: unknown; error?: unknown };
       if (generation !== previewGeneration.current) return false;
-      if (requestError || !data) {
+      if (requestError || !isAssemblyPreview(data)) {
         setPreviewLoadState("failed");
         return false;
       }
-      setPreview(data as AssemblyPreview);
+      setPreview(data);
       setPreviewLoadState("loaded");
       return true;
     } catch {
@@ -694,6 +733,9 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                         : "Unconfirmed; secondary Medicaid claim formats remain unavailable"
                   }
                 />
+                {/* The three statements below are static copy. They are true only while the server reports an
+                    unqualified payer policy and unavailable electronic submission; isAssemblyPreview refuses any
+                    preview that says otherwise, so they can never be shown beside a contradicting payload. */}
                 <Field
                   label="Clinical quantity"
                   value="Clinical quantity missing or unqualified · no hours are inferred from date-only LOC records"
