@@ -42,9 +42,18 @@ describe("deploy/production/README.md documents the object-store contract", () =
     }
   });
 
-  it("warns that the backup image must be republished and pinned before the sidecar is recreated", () => {
-    expect(readme).toContain("CHARTWARDEN_BACKUP_IMAGE");
-    expect(readme).toContain("BEFORE the next");
+  it("documents the temporary alias bridge and the order for removing it (repin the backup image first)", () => {
+    expect(readme).toContain(
+      "TEMPORARY ALIAS: delete when\n  CHARTWARDEN_BACKUP_IMAGE is repinned to an image built from this commit",
+    );
+    for (const needle of [
+      "RESTORE_MINIO_IMAGE",
+      "BACKUP_SOURCE_MINIO_URL",
+      "**Order:**",
+      "THEN delete the alias blocks",
+    ]) {
+      expect(readme, needle).toContain(needle);
+    }
   });
 
   it("no longer documents the removed pieces as live: no pair table, no cutover steps, no compatibility path", () => {

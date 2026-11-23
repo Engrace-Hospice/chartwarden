@@ -88,13 +88,22 @@ main() {
   if grep -Eq "$PLAIN_SECRETS" "$BACKUP_ENV_FILE"; then
     die "BACKUP_ENV_FILE holds a plain secret value; give secrets as <NAME>_FILE files under BACKUP_SECRETS_DIR"
   fi
-  local minio_image="${RESTORE_OBJECT_STORE_IMAGE:-$DEFAULT_MINIO_IMAGE}"
-  [[ $minio_image == *@sha256:* ]] || die "RESTORE_OBJECT_STORE_IMAGE must be pinned by digest (image@sha256:...)"
+  # TEMPORARY ALIAS: delete when CHARTWARDEN_BACKUP_IMAGE is repinned to an image built from this commit.
+  # A DR wrapper written before the rename exports RESTORE_MINIO_IMAGE / RESTORE_MINIO_PORT: honour them (the new names win)
+  # instead of silently restoring onto the default image and port.
+  if [ -z "${RESTORE_OBJECT_STORE_IMAGE:-}" ] && [ -n "${RESTORE_MINIO_IMAGE:-}" ]; then
+    log "RESTORE_MINIO_IMAGE is the old name of RESTORE_OBJECT_STORE_IMAGE; using it"
+  fi
+  if [ -z "${RESTORE_OBJECT_STORE_PORT:-}" ] && [ -n "${RESTORE_MINIO_PORT:-}" ]; then
+    log "RESTORE_MINIO_PORT is the old name of RESTORE_OBJECT_STORE_PORT; using it"
+  fi
+  local minio_image="${RESTORE_OBJECT_STORE_IMAGE:-${RESTORE_MINIO_IMAGE:-$DEFAULT_MINIO_IMAGE}}"
+  [[ $minio_image == *@sha256:* ]] || die "RESTORE_OBJECT_STORE_IMAGE (or its old name RESTORE_MINIO_IMAGE) must be pinned by digest (image@sha256:...)"
   local id="${RESTORE_ID:-$(rand_hex 4)}"
   [[ $id =~ ^[a-z0-9]+$ ]] || die "RESTORE_ID must be lowercase alphanumeric"
   local net="cw-restore-$id" vol="cw-restore-$id-pgdata" stage="cw-restore-$id-stage"
   local pg="cw-restore-$id-pg" minio="cw-restore-$id-minio"
-  local pg_port="${RESTORE_PG_PORT:-55433}" minio_port="${RESTORE_OBJECT_STORE_PORT:-59000}"
+  local pg_port="${RESTORE_PG_PORT:-55433}" minio_port="${RESTORE_OBJECT_STORE_PORT:-${RESTORE_MINIO_PORT:-59000}}"
   local out="${RESTORE_OUT_DIR:-./restore-$id}"
   mkdir -p "$out"
   chmod 700 "$out"
@@ -145,9 +154,15 @@ main() {
     --network "$net" -p "127.0.0.1:$minio_port:9000" --security-opt no-new-privileges \
     -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD "$minio_image" server /data >/dev/null
   wait_for "restored minio" curl -fs "http://127.0.0.1:$minio_port/minio/health/ready"
-  RESTORE_OBJECT_STORE_ACCESS_KEY="$minio_user" RESTORE_OBJECT_STORE_SECRET_KEY="$minio_pw" docker run --rm --label "$LABEL=$id" \
+  # TEMPORARY ALIAS: delete the RESTORE_MINIO_* lines (the three below and the three in the `docker run`) when
+  # CHARTWARDEN_BACKUP_IMAGE is repinned to an image built from this commit. The restore runs the digest-pinned backup image,
+  # whose cw-backup.sh may still read RESTORE_MINIO_*; without them a DR restore restores the DB and then fails in
+  # restore-objects. Both spellings carry the same values.
+  RESTORE_OBJECT_STORE_ACCESS_KEY="$minio_user" RESTORE_OBJECT_STORE_SECRET_KEY="$minio_pw" \
+    RESTORE_MINIO_ACCESS_KEY="$minio_user" RESTORE_MINIO_SECRET_KEY="$minio_pw" docker run --rm --label "$LABEL=$id" \
     --network "$net" --user postgres "${HARDEN[@]}" --env-file "$envf" -e "RESTORE_OBJECT_STORE_URL=http://$minio:9000" \
-    -e RESTORE_OBJECT_STORE_ACCESS_KEY -e RESTORE_OBJECT_STORE_SECRET_KEY -v "$stage:/var/lib/cw-backup" \
+    -e "RESTORE_MINIO_URL=http://$minio:9000" -e RESTORE_OBJECT_STORE_ACCESS_KEY -e RESTORE_OBJECT_STORE_SECRET_KEY \
+    -e RESTORE_MINIO_ACCESS_KEY -e RESTORE_MINIO_SECRET_KEY -v "$stage:/var/lib/cw-backup" \
     ${MOUNTS[@]+"${MOUNTS[@]}"} "$IMAGE" cw-backup.sh restore-objects "$snapshot_id" >"$out/manifest.ndjson.gz"
   local t_end
   t_end="$(now_ms)"
@@ -160,6 +175,10 @@ main() {
     echo "RESTORE_OBJECT_STORE_ENDPOINT=http://127.0.0.1:$minio_port"
     echo "RESTORE_OBJECT_STORE_ACCESS_KEY=$minio_user"
     echo "RESTORE_OBJECT_STORE_SECRET_KEY=$minio_pw"
+    # TEMPORARY ALIAS: delete these three when the verifier's image (CHARTWARDEN_IMAGE) no longer predates the rename.
+    echo "RESTORE_MINIO_ENDPOINT=http://127.0.0.1:$minio_port"
+    echo "RESTORE_MINIO_ACCESS_KEY=$minio_user"
+    echo "RESTORE_MINIO_SECRET_KEY=$minio_pw"
     echo "RESTORE_MARKER_FILE=$(cd "$out" && pwd)/marker.json"
     echo "RESTORE_MANIFEST_FILE=$(cd "$out" && pwd)/manifest.ndjson.gz"
     echo "RESTORE_WALL_MS=$((t_end - t0))"

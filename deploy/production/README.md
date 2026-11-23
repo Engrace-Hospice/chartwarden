@@ -225,11 +225,19 @@ MinIO with stale data.
   `MINIO_*` lines in `.env.production`, `BACKUP_SOURCE_MINIO_ACCESS_KEY`, `secrets/backup_source_minio_secret_key`, the
   `.object-store-cutover` marker file, and (see below) the `<prefix>_minio-data` volume. None of them is needed, and leaving
   them changes nothing.
-- **The backup sidecar's image** is digest-pinned in `CHARTWARDEN_BACKUP_IMAGE` and `deploy.sh` does not recreate `backup`.
-  The new `compose.backup.yml` hands it `BACKUP_SOURCE_OBJECT_STORE_*`, which only an image built from this change reads:
-  publish the backup image from this commit (`backup-image.yml`) and pin its digest BEFORE the next
-  `up backup` / `up postgres`, or the sidecar fails loudly (`need BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY`). `restore.sh` has
-  the same coupling through its image. The running sidecar is untouched until then.
+- **The backup sidecar's image** is digest-pinned in `CHARTWARDEN_BACKUP_IMAGE` and `deploy.sh` does not recreate `backup`,
+  so the pinned image's `cw-backup.sh` may still read the OLD names (`BACKUP_SOURCE_MINIO_*`, `RESTORE_MINIO_*`) for a while.
+  For one release the repo therefore bridges both spellings, in blocks marked `TEMPORARY ALIAS: delete when
+  CHARTWARDEN_BACKUP_IMAGE is repinned to an image built from this commit`: `compose.backup.yml` also sets
+  `BACKUP_SOURCE_MINIO_URL`, `_ACCESS_KEY` and `_SECRET_KEY_FILE` (the same values and the same secret mount), and
+  `restore.sh` hands the `restore-objects` container both `RESTORE_OBJECT_STORE_*` and `RESTORE_MINIO_*` (and writes both
+  into `restore.env`), and accepts `RESTORE_MINIO_IMAGE` / `RESTORE_MINIO_PORT` as fallbacks for the renamed image and port
+  variables (the new names win), so a recreated sidecar and a DR restore work on the old pinned image. **Order:** publish
+  the backup image from a commit that contains this change (`backup-image.yml`, manual), repin `CHARTWARDEN_BACKUP_IMAGE` to
+  its digest, recreate `backup` / `postgres` and confirm a snapshot, THEN delete the alias blocks from `compose.backup.yml`
+  and `restore.sh` in a later change. Deleting them first would make a sidecar on the old image die on
+  `BACKUP_SOURCE_MINIO_ACCESS_KEY is not set`, and a restore with it restore the database and then fail in
+  `restore-objects`. `restore.sh` keeps refusing a plain backup-source secret in either spelling.
 
 ## Object store: removing the retired MinIO data (operator, once)
 

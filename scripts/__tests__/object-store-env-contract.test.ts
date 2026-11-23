@@ -158,32 +158,36 @@ describe("deploy/production/compose.yml: canonical variables point to SeaweedFS"
     }
   });
 
-  it("the old BACKUP_SOURCE_MINIO_* / RESTORE_MINIO_* names survive only where they must: the host migration, preflight and restore's plain-secret guard", () => {
+  it("the old BACKUP_SOURCE_MINIO_* / RESTORE_MINIO_* names survive only where they must: the host migration, preflight, the plain-secret guard and the marked TEMPORARY ALIAS blocks", () => {
     const OLD = /BACKUP_SOURCE_MINIO_|RESTORE_MINIO_|backup_source_minio_secret_key/;
-    const allowed = new Set([
-      "deploy/production/deploy.sh",
-      "deploy/production/preflight.sh",
-      "deploy/production/backup/restore.sh",
-    ]);
+    // Files that never name the old spelling.
     for (const file of [
-      "deploy/production/compose.backup.yml",
       "deploy/production/compose.yml",
       "deploy/production/backup/cw-backup.sh",
-      "deploy/production/backup/restore.sh",
-      "deploy/production/deploy.sh",
-      "deploy/production/preflight.sh",
       "scripts/backup/coordinated-drill.ts",
       "scripts/backup/verify-restore.ts",
     ]) {
-      const text = read(file);
-      if (!allowed.has(file)) expect(text, file).not.toMatch(OLD);
+      expect(read(file), file).not.toMatch(OLD);
     }
-    // restore.sh: only the plain-secret refusal still names the old spelling.
-    const restoreOld = read("deploy/production/backup/restore.sh")
-      .split("\n")
-      .filter((l) => OLD.test(l) || /BACKUP_SOURCE_\(OBJECT_STORE\|MINIO\)/.test(l));
-    for (const l of restoreOld)
-      expect(l, l).toMatch(/PLAIN_SECRETS|old BACKUP_SOURCE_MINIO|Formerly/);
+    // Files that carry a bridge for the digest-pinned backup image: every old-name line sits inside a block marked
+    // `TEMPORARY ALIAS: delete when CHARTWARDEN_BACKUP_IMAGE is repinned ...` (or is the plain-secret guard / a comment).
+    for (const file of [
+      "deploy/production/compose.backup.yml",
+      "deploy/production/backup/restore.sh",
+    ]) {
+      const text = read(file);
+      expect(text, file).toContain(
+        "TEMPORARY ALIAS: delete when CHARTWARDEN_BACKUP_IMAGE is repinned to an image built from this commit",
+      );
+    }
+    const overlay = read("deploy/production/compose.backup.yml");
+    const alias = overlay.slice(
+      overlay.indexOf("# TEMPORARY ALIAS"),
+      overlay.indexOf("# END TEMPORARY ALIAS"),
+    );
+    expect(alias).toContain("BACKUP_SOURCE_MINIO_ACCESS_KEY");
+    // Outside the marked block the overlay names only the new spelling.
+    expect(overlay.replace(alias, "")).not.toMatch(/BACKUP_SOURCE_MINIO_[A-Z_]+:/);
     // The drill still stands up a real MinIO container: its own root login variables stay.
     expect(read("deploy/production/backup/restore.sh")).toContain("MINIO_ROOT_USER");
     expect(read("deploy/production/backup/cw-backup.sh")).toContain("MINIO_ROOT_PASSWORD");
