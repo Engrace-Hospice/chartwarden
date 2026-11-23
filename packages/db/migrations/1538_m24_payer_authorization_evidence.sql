@@ -2,6 +2,13 @@
 -- L2B adds an M24-owned append-only evidence ledger. It records distinct observations about clinical
 -- document availability, notification, payer receipt and authorization. It stores no clinical document
 -- body, does not assert EOCCO policy, and does not authorize submission.
+--
+-- ERASURE (open constraint, owner decision): the table is patient-keyed (patient_id, patient_payer_id, admission_id,
+-- clinical_document_id) and carries encrypted_authorization_reference, but it has no destruction-role grant and the
+-- append-only trigger below refuses UPDATE and DELETE for every role, so a patient's rows and the encrypted reference
+-- cannot be erased or shredded by the existing erasure path (medicaid-eraser.ts does not know this table). No writer
+-- exists yet. Whoever adds one must decide the erasure path first (a destruction grant plus a guard that admits only
+-- that role's DELETE, or column-level crypto-shredding of the reference) before any row is written.
 CREATE TYPE m24_payer_authorization_event_kind AS ENUM (
   'clinical_document_available', 'notification_prepared', 'notification_sent', 'receipt_acknowledged',
   'authorization_pending', 'authorization_approved', 'authorization_denied', 'authorization_expired',
