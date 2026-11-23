@@ -3,12 +3,12 @@ import { parseX12835AllSets } from "@chartwarden/x12-835-client";
 import { describe, expect, it } from "vitest";
 import { CLEAN_BODY, wrap835 } from "../../../packages/x12-835-client/__tests__/fixtures-835";
 import { observeParsedMedicaidEra } from "../src/modules/25-remittance/domain/medicaid-era-observation";
+import { createMedicaidEraReviewService } from "../src/modules/25-remittance/domain/medicaid-era-review-service";
 import {
   type AuthenticatedMedicaidEraSource,
   type MedicaidEraAccountEvidence,
   type MedicaidEraClaimCandidate,
   assessMedicaidEraReview,
-  createMedicaidEraReviewService,
   matchMedicaidEraClaim,
   resolveMedicaidEraAttribution,
 } from "../src/modules/25-remittance/domain/medicaid-era-trusted-review";
