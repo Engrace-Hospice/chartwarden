@@ -130,7 +130,10 @@ export function resolveProviderPayerRoute(
   };
 }
 
-/** Resolve only one verified identity that covers every service date. Overlaps and identity changes fail closed. */
+/**
+ * Resolve only one verified identity that covers every service date, from one assignment record. Overlaps, identity
+ * changes and a window spread over several records fail closed.
+ */
 export function resolveProgramResponsibility(
   rows: readonly ProgramAssignmentCandidate[],
   fromInput: string,
@@ -269,6 +272,18 @@ export function resolveProgramResponsibility(
       canonicalPayerId: null,
       assignmentIds: [],
       reasonCode: "PROGRAM_ASSIGNMENT_MISSING",
+    };
+  }
+  // A claim records ONE program assignment (`program_assignment_id`), and submission evidence is qualified against
+  // that single id. A window stitched together from several contiguous records would read "verified" yet could
+  // never qualify, so it fails closed: record one covering assignment or split the claim.
+  if (used.size > 1) {
+    return {
+      status: "ambiguous",
+      programKind: "ambiguous",
+      canonicalPayerId: null,
+      assignmentIds: [...used],
+      reasonCode: "PROGRAM_ASSIGNMENT_SPANS_MULTIPLE_RECORDS",
     };
   }
   return {

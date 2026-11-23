@@ -173,6 +173,33 @@ describe("resolveProgramResponsibility", () => {
     ).toMatchObject({ status: "expired", reasonCode: "PROGRAM_ASSIGNMENT_EXPIRED" });
   });
 
+  it("refuses a window that several contiguous records cover, since a claim names one assignment", () => {
+    const first = assignment("first", { effectiveTo: "2026-01-15" });
+    const second = assignment("second", { effectiveFrom: "2026-01-16" });
+    expect(resolveProgramResponsibility([first, second], "2026-01-01", "2026-01-31")).toMatchObject(
+      {
+        status: "ambiguous",
+        programKind: "ambiguous",
+        canonicalPayerId: null,
+        assignmentIds: ["first", "second"],
+        reasonCode: "PROGRAM_ASSIGNMENT_SPANS_MULTIPLE_RECORDS",
+      },
+    );
+    // each half on its own is still a single-record, verified window
+    expect(resolveProgramResponsibility([first, second], "2026-01-01", "2026-01-15")).toMatchObject(
+      {
+        status: "verified",
+        assignmentIds: ["first"],
+      },
+    );
+    expect(resolveProgramResponsibility([first, second], "2026-01-16", "2026-01-31")).toMatchObject(
+      {
+        status: "verified",
+        assignmentIds: ["second"],
+      },
+    );
+  });
+
   it("keeps pending, overlap ambiguity, and unsupported assignments distinct", () => {
     expect(
       resolveProgramResponsibility(
