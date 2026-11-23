@@ -17,7 +17,7 @@ This lot removes the demonstrated general-platform SQL write path and disables a
 - Existing PR #1088 is open and Draft; issue #1075 remains open.
 - GitHub reported no PR checks on the branch at qualification time.
 - No rebase, force-push, merge or deployment was performed for this qualification.
-- Final commit and publication state are recorded after local qualification.
+- Implementation lockdown commit `7d3fb3c28c52d1721c816f2607650f4c2211f4f7` was pushed normally; PR #1088's body was updated with this report, exact gates, review disposition, and limitations. The PR remains Draft and is not merge-qualified.
 
 ## B. Existing threat model
 
