@@ -8,6 +8,7 @@ image=${1:?usage: smoke.sh <image>}
 here=$(cd "$(dirname "$0")" && pwd)
 name="cw-clamav-smoke-$$"
 trap 'docker rm -f -v "$name" >/dev/null 2>&1 || true' EXIT
+trap 'exit 1' INT TERM  # a cancelled job must still run the EXIT cleanup
 
 # The test string is built from two halves so this file is not itself an antivirus hit.
 # shellcheck disable=SC2016  # literal: the single quotes are the point
@@ -36,6 +37,7 @@ scan() {
 
 infected=$(scan "$eicar")
 clean=$(scan "clean file")
-case $infected in *"Eicar-Test-Signature FOUND"*) ;; *) echo "EICAR not detected: $infected" >&2; exit 1 ;; esac
+# The signature name belongs to the database (Eicar-Test-Signature today), so match any EICAR detection.
+case $infected in *[Ee][Ii][Cc][Aa][Rr]*" FOUND"*) ;; *) echo "EICAR not detected: $infected" >&2; exit 1 ;; esac
 case $clean in *": OK"*) ;; *) echo "clean file not reported OK: $clean" >&2; exit 1 ;; esac
 echo "smoke ok: $(docker exec "$name" clamd --version)"
