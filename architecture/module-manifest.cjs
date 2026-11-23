@@ -1036,6 +1036,8 @@ exports.MODULES = [
       "claimmd_era_resolution_history",
       "claimmd_era_match_decision",
       "claimmd_era_financial_review_decision",
+      "medicaid_era_review",
+      "medicaid_era_review_history",
       "claimmd_era_posting_plan",
       "claimmd_era_posting_event",
       "billing_operations_investigation",

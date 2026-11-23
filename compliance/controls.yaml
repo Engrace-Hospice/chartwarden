@@ -106,6 +106,11 @@ controls:
       - file: packages/db/migrations/1541_m40_medicaid_payer_classification_and_m24_submission_provenance.sql
       - file: packages/db/migrations/__tests__/m40-rls-isolation.live.test.ts
       - file: apps/backend/__tests__/f172-m24-remittance-feedback.live.test.ts
+      # M24-1075-L6B adds the nonposting Medicaid review tables; FORCE RLS and tenant/provider-scoped
+      # workflow reads are exercised as chartwarden_app/NOBYPASSRLS, including the empty-source hold.
+      - script: test:rls:live:m25
+      - file: packages/db/migrations/1543_m25_medicaid_era_nonposting_reviews.sql
+      - file: packages/db/migrations/__tests__/m25-rls-isolation.live.test.ts
 
   - id: CW-AC-02
     title: Unique user identification and authorization at the route (RBAC + ABAC predicates)
@@ -117,6 +122,10 @@ controls:
       - script: arch:abac-composed
       - script: arch:request-header-auth
       - script: test:auth:live
+      # M24-1075-L6B: ERA review details and mutations require financial-review permission; evaluation
+      # requires match-review permission, and the public API exposes no posting operation.
+      - file: apps/backend/src/modules/25-remittance/routes/medicaid-era-review.routes.ts
+      - file: apps/backend/src/modules/25-remittance/routes/__tests__/medicaid-era-review.routes.test.ts
       - script: test:m10:s04-override:live
       # WardenLens review ownership is enforced server-side across decisions, SUD/identity resolution,
       # relink, completion, release and discard. The batch is locked before its active review, and a

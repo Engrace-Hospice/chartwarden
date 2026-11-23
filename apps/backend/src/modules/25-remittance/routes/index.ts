@@ -51,6 +51,7 @@ export {
 } from "./submission-service";
 
 import type { ClaimMdEraReviewService } from "../ingest/claimmd-era-review";
+import type { ReturnTypeMedicaidEraReviewWorkflow } from "../ingest/medicaid-era-review-service";
 import type { M25IngestService } from "../ingest/service";
 import type { AdrReadinessService } from "./adr-readiness-service";
 import type { AdrService } from "./adr-service";
@@ -84,6 +85,7 @@ export interface M25RouteServices {
   readonly ingestService?: M25IngestService;
   /** Optional tenant-scoped read-only consumer for encrypted Claim.MD staging details. */
   readonly claimMdEraReviewService?: ClaimMdEraReviewService;
+  readonly medicaidEraReviewService?: ReturnTypeMedicaidEraReviewWorkflow;
   readonly billingOperationsInvestigationService?: BillingOperationsInvestigationService;
   /** ADR intake + MAC rules (milestone 2a); the ADR routes mount only when supplied. */
   readonly adrService?: AdrService;

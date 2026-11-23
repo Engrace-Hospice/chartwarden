@@ -19,6 +19,8 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
+import { getMdmEntityProvider } from "../40-mdm/seams";
 import type { M24Actor } from "./routes/actor";
 import type { M24ReadService } from "./routes/read-service";
 
@@ -166,6 +168,10 @@ export interface MedicaidClaimMatchProvider {
     providerEntityId: string,
     keys: { readonly claimControlNumber: string },
   ): Promise<MedicaidClaimSubmissionEvidence[]>;
+  eraEnrollmentEvidence(
+    orgId: string,
+    providerEntityId: string,
+  ): Promise<MedicaidEraEnrollmentEvidence[]>;
   patientIdForClaim(orgId: string, claimId: string): Promise<string | null>;
   /**
    * M25 milestone 11 (11a-1) - the facts M25 needs to render a Medicaid claim on the case view and (later) to
@@ -178,6 +184,24 @@ export interface MedicaidClaimMatchProvider {
    * The list is capped at {@link MEDICAID_CLAIM_IDS_CAP}; M25's payer badge asks once per worklist page.
    */
   medicaidClaimIds(orgId: string, claimIds: readonly string[]): Promise<ReadonlySet<string>>;
+}
+
+export interface MedicaidEraEnrollmentEvidence {
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  readonly vendor: "claimmd" | "stedi";
+  readonly accountReference: string;
+  readonly environment: "test" | "production";
+  readonly canonicalPayerId: string;
+  readonly programId: string;
+  readonly payerIdentifier: string | null;
+  readonly billingNpi: string;
+  readonly billingTin: null;
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string;
+  readonly evidenceReference: string;
+  readonly verifiedAt: string;
+  readonly evidenceFreshUntil: string;
 }
 
 export interface MedicaidClaimSubmissionEvidence {
@@ -442,6 +466,105 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
   };
 
   const claimMatch: MedicaidClaimMatchProvider = {
+    async eraEnrollmentEvidence(orgId, providerEntityId) {
+      return withOrgContext(db, systemActor(orgId), async (tx) => {
+        const EE = schema.medicaidEnrollmentEvidence;
+        const site = await buildFoundationSiteReader().providerEntityIdentifiers(
+          tx,
+          orgId,
+          providerEntityId,
+        );
+        if (!site?.npi) return [];
+        const rows = await tx
+          .select({
+            clearinghouse: EE.clearinghouse,
+            accountReference: EE.vendorAccountRef,
+            environment: EE.sourceEnvironment,
+            serviceState: EE.serviceState,
+            canonicalPayerId: EE.canonicalPayerId,
+            programKind: EE.programKind,
+            vendorPayerId: EE.vendorPayerId,
+            effectiveFrom: EE.effectiveFrom,
+            effectiveTo: EE.effectiveTo,
+            evidenceFreshUntil: EE.evidenceFreshUntil,
+            evidenceReference: EE.evidenceReference,
+            verifiedAt: EE.verifiedAt,
+            status: EE.status,
+            transactionType: EE.transactionType,
+            evidenceKind: EE.evidenceKind,
+          })
+          .from(EE)
+          .where(
+            and(
+              eq(EE.organizationId, orgId),
+              eq(EE.providerEntityId, providerEntityId),
+              eq(EE.evidenceKind, "835_era_enrollment"),
+              eq(EE.status, "verified"),
+              eq(EE.transactionType, "835"),
+              inArray(EE.clearinghouse, ["claimmd", "stedi"]),
+            ),
+          );
+        const output: MedicaidEraEnrollmentEvidence[] = [];
+        for (const row of rows) {
+          if (
+            !row.clearinghouse ||
+            !row.accountReference ||
+            !row.environment ||
+            !row.canonicalPayerId ||
+            !row.effectiveTo ||
+            !row.evidenceFreshUntil ||
+            !row.evidenceReference ||
+            !row.verifiedAt ||
+            row.status !== "verified" ||
+            row.transactionType !== "835" ||
+            !row.vendorPayerId ||
+            !row.programKind
+          )
+            continue;
+          const classifications = await getMdmEntityProvider().medicaidPayerProgramClassifications(
+            orgId,
+            row.canonicalPayerId,
+            row.serviceState,
+            row.effectiveFrom,
+            row.effectiveTo,
+          );
+          const compatible = classifications.filter(
+            (classification) =>
+              classification.verificationStatus === "verified" &&
+              classification.canonicalPayerId === row.canonicalPayerId &&
+              classification.stateCode === row.serviceState &&
+              classification.effectiveFrom <= row.effectiveFrom &&
+              (classification.effectiveTo === null ||
+                classification.effectiveTo >= row.effectiveTo!) &&
+              ((row.programKind === "ffs_open_card" &&
+                classification.classification === "oregon_ffs") ||
+                (row.programKind === "managed_care" &&
+                  classification.classification === "medicaid_cco") ||
+                (row.programKind === "other_managed_care" &&
+                  classification.classification === "other_managed_care")),
+          );
+          if (compatible.length !== 1) continue;
+          output.push({
+            organizationId: orgId,
+            providerEntityId,
+            vendor: row.clearinghouse as "claimmd" | "stedi",
+            accountReference: row.accountReference,
+            environment: row.environment as "test" | "production",
+            canonicalPayerId: row.canonicalPayerId,
+            programId: compatible[0]!.id,
+            payerIdentifier: row.vendorPayerId,
+            billingNpi: site.npi,
+            billingTin: null,
+            effectiveFrom: row.effectiveFrom,
+            effectiveTo: row.effectiveTo,
+            evidenceReference: row.evidenceReference,
+            verifiedAt: row.verifiedAt.toISOString(),
+            evidenceFreshUntil: row.evidenceFreshUntil,
+          });
+        }
+        return output;
+      });
+    },
     async candidatesForLine(orgId, providerEntityId, keys) {
       if (!keys.claimControlNumber) return [];
       return withOrgContext(db, systemActor(orgId), async (tx) => {

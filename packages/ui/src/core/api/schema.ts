@@ -27095,6 +27095,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/remittance/medicaid-era-artifacts/{artifactId}/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-evaluate a scoped staged Medicaid ERA without posting or claim transitions */
+        post: operations["postApiV1RemittanceMedicaideraartifactsByArtifactIdEvaluate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/medicaid-era-reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tenant- and provider-scoped nonposting Medicaid ERA review worklist */
+        get: operations["getApiV1RemittanceMedicaiderareviews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/medicaid-era-reviews/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Authorized PHI-minimal detail for a nonposting Medicaid ERA review */
+        get: operations["getApiV1RemittanceMedicaiderareviewsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/medicaid-era-reviews/{id}/disposition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a versioned nonposting Medicaid ERA investigation disposition */
+        post: operations["postApiV1RemittanceMedicaiderareviewsByIdDisposition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/medicaid-era-reviews/{id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Append-only investigation history for a Medicaid ERA review */
+        get: operations["getApiV1RemittanceMedicaiderareviewsByIdHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/medicaid-era-reviews/{id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Append a coded, PHI-minimal note to a Medicaid ERA investigation */
+        post: operations["postApiV1RemittanceMedicaiderareviewsByIdNotes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/remittance/revenue-cycle-summary": {
         parameters: {
             query?: never;
@@ -82696,6 +82798,10 @@ export interface operations {
                     /** Format: uuid */
                     canonicalPayerId?: string;
                     clearinghouse?: "stedi" | "claimmd" | "other";
+                    vendorAccountRef?: string;
+                    sourceEnvironment?: "test" | "production";
+                    /** Format: date */
+                    evidenceFreshUntil?: string;
                     vendorPayerId?: string;
                     transactionType?: "837I" | "835";
                     evidenceKind: "state_medicaid_provider_enrollment" | "mco_participation" | "837i_enrollment" | "835_era_enrollment" | "clearinghouse_payer_route" | "institutional_format_qualification" | "payer_transport_certification" | "production_activation_approval";
@@ -114474,6 +114580,255 @@ export interface operations {
                     "application/json": {
                         id: string;
                         matchState: "posted" | "reversed" | "manual_matched";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RemittanceMedicaideraartifactsByArtifactIdEvaluate: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                artifactId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "review_saved";
+                        /** Format: uuid */
+                        reviewId: string;
+                        version: number;
+                        replay: boolean;
+                    } | {
+                        status: "unavailable" | "held";
+                        reasonCode: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceMedicaiderareviews: {
+        parameters: {
+            query?: {
+                limit?: string;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            /** @constant */
+                            vendor: "claimmd";
+                            sourceEnvironment: "test" | "production";
+                            /** Format: uuid */
+                            canonicalPayerId: string;
+                            programId: string;
+                            decisionStatus: string;
+                            reasonCodes: string[];
+                            claimMatchStatus: string;
+                            duplicateStatus: string;
+                            workflowState: string;
+                            version: number;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceMedicaiderareviewsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** @constant */
+                        vendor: "claimmd";
+                        accountReference: string;
+                        sourceEnvironment: "test" | "production";
+                        sourceDigest: string;
+                        /** Format: uuid */
+                        canonicalPayerId: string;
+                        programId: string;
+                        assessmentVersion: string;
+                        decisionStatus: string;
+                        reasonCodes: string[];
+                        claimMatchStatus: string;
+                        duplicateStatus: string;
+                        safeSummary: {
+                            [key: string]: unknown;
+                        };
+                        workflowState: string;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RemittanceMedicaiderareviewsByIdDisposition: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    state: "investigating" | "follow_up_required" | "reviewed_not_posted" | "reopened";
+                    reasonCode: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                        workflowState: string;
+                        replay: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceMedicaiderareviewsByIdHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            version: number;
+                            action: string;
+                            reasonCode: string | null;
+                            /** Format: uuid */
+                            actorMembershipId: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RemittanceMedicaiderareviewsByIdNotes: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    reasonCode: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                        workflowState: string;
+                        replay: boolean;
                     };
                 };
             };

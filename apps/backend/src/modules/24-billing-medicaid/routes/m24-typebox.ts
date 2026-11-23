@@ -508,6 +508,11 @@ export const RecordEnrollmentEvidenceBody = Type.Object(
     ),
     canonicalPayerId: Type.Optional(uuid()),
     clearinghouse: Type.Optional(lit(["stedi", "claimmd", "other"] as const)),
+    vendorAccountRef: Type.Optional(
+      Type.String({ minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9._:-]+$" }),
+    ),
+    sourceEnvironment: Type.Optional(lit(["test", "production"] as const)),
+    evidenceFreshUntil: Type.Optional(Type.String({ format: "date" })),
     vendorPayerId: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
     transactionType: Type.Optional(lit(["837I", "835"] as const)),
     evidenceKind: lit([

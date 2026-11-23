@@ -3865,12 +3865,15 @@ export function buildDrizzleM24WriteService(
             programKind: input.programKind ?? null,
             canonicalPayerId: input.canonicalPayerId ?? null,
             clearinghouse: input.clearinghouse ?? null,
+            vendorAccountRef: input.vendorAccountRef ?? null,
+            sourceEnvironment: input.sourceEnvironment ?? null,
             vendorPayerId: input.vendorPayerId ?? null,
             transactionType: input.transactionType ?? null,
             evidenceKind: input.evidenceKind,
             status: "pending",
             effectiveFrom: input.effectiveFrom,
             effectiveTo: input.effectiveTo ?? null,
+            evidenceFreshUntil: input.evidenceFreshUntil ?? null,
             recordedByMembershipId: membershipId,
             version: 1,
           })
@@ -4091,6 +4094,50 @@ export function buildDrizzleM24WriteService(
             "MEDICAID_835_EVIDENCE_TRANSACTION_MISMATCH",
             "ERA enrollment must name transaction 835",
           );
+        }
+        if (
+          row.evidenceKind === "835_era_enrollment" &&
+          (!row.clearinghouse ||
+            !row.vendorAccountRef ||
+            !row.sourceEnvironment ||
+            !row.canonicalPayerId ||
+            !row.programKind ||
+            !row.effectiveTo ||
+            !row.evidenceFreshUntil)
+        ) {
+          throw new ChartWardenError(
+            "MEDICAID_835_SOURCE_ACCOUNT_REQUIRED",
+            "verified ERA enrollment must identify its payer program, account, environment, and complete evidence dates",
+            409,
+          );
+        }
+        if (row.evidenceKind === "835_era_enrollment") {
+          if (!canonicalPayerReader)
+            throw new DegradedError(
+              "MEDICAID_CANONICAL_PAYER_READER_UNBOUND",
+              "M40 payer verification is unavailable",
+            );
+          const classifications = await canonicalPayerReader.medicaidProgramClassifications?.(
+            actor.organizationId,
+            row.canonicalPayerId!,
+            row.serviceState,
+            day(row.effectiveFrom),
+            day(row.effectiveTo!),
+          );
+          const classification = qualifyMedicaidProgramClassification(
+            classifications ?? [],
+            row.programKind!,
+            row.canonicalPayerId!,
+            row.serviceState,
+            day(row.effectiveFrom),
+            day(row.effectiveTo!),
+          );
+          if (!classification.qualified) {
+            throw new ConflictError(
+              classification.reasonCode,
+              "M40 does not provide one source-verified payer classification compatible with the ERA enrollment evidence",
+            );
+          }
         }
         const updated = await tx
           .update(EE)

@@ -1,0 +1,252 @@
+import { createHash } from "node:crypto";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { and, arrayContains, eq, ne } from "drizzle-orm";
+import type { MedicaidEraReviewReaders } from "../domain/medicaid-era-trusted-review";
+import type { M25ReadActor } from "../routes/actor";
+import {
+  medicaidEraEnrollmentEvidence,
+  medicaidSubmissionEvidence,
+} from "../routes/medicaid-claim-facts";
+import { providerEntityScopeCondition } from "../routes/scope";
+import { CLAIMMD_ERA_RESOLUTION_JOB_ID, type createClaimMdEraStore } from "./claimmd-era-store";
+
+const STAGE = schema.claimmdEraM25Stage;
+const DELIVERY = schema.claimmdEraDelivery;
+const REVIEW = schema.medicaidEraReview;
+type ClaimMdStore = ReturnType<typeof createClaimMdEraStore>;
+
+/** M25-owned adapters. Claim.MD is the sole raw-X12 source; source ownership still requires M24 evidence. */
+export function buildDrizzleMedicaidEraReviewReaders(
+  db: DbClient,
+  store?: ClaimMdStore,
+): MedicaidEraReviewReaders {
+  return {
+    async readAuthenticatedArtifact(actor: M25ReadActor, reference) {
+      // Stedi 835 report artifacts are JSON, not X12. No Stedi artifact is accepted by this parser path.
+      if (!store || !/^[0-9a-f-]{36}$/i.test(reference)) return null;
+      const [stage] = await withOrgContext(db, actor, async (tx) =>
+        tx
+          .select({
+            id: STAGE.id,
+            sourceInboxId: STAGE.sourceInboxId,
+            vendor: STAGE.vendor,
+            accountReference: STAGE.accountReference,
+            usage: STAGE.usage,
+            eraId: STAGE.eraId,
+            fileIndex: STAGE.fileIndex,
+            fileDigest: STAGE.sourceFileDigest,
+            state: STAGE.state,
+            safeReasonCode: STAGE.safeReasonCode,
+            createdAt: STAGE.createdAt,
+            providerEntityId: STAGE.providerEntityId,
+          })
+          .from(STAGE)
+          .where(
+            and(
+              eq(STAGE.id, reference),
+              eq(STAGE.organizationId, actor.organizationId),
+              providerEntityScopeCondition(STAGE.providerEntityId, actor.providerEntityScope),
+            ),
+          )
+          .limit(1),
+      );
+      if (
+        !stage ||
+        stage.vendor !== "claimmd" ||
+        (stage.state !== "staged" &&
+          !(
+            (stage.state === "possible_duplicate" &&
+              stage.safeReasonCode === "POSSIBLE_CROSS_SOURCE_DUPLICATE") ||
+            (stage.state === "held" && stage.safeReasonCode === "EXACT_CROSS_SOURCE_DUPLICATE")
+          )) ||
+        !stage.fileDigest ||
+        !stage.accountReference ||
+        !["test", "production"].includes(stage.usage) ||
+        (actor.providerEntityScope !== undefined &&
+          !actor.providerEntityScope.includes(stage.providerEntityId))
+      )
+        return null;
+      const captured = await store.readCapturedEra({
+        inboxId: stage.sourceInboxId,
+        accountReference: stage.accountReference,
+        usage: stage.usage as "test" | "production",
+        executionJobId: CLAIMMD_ERA_RESOLUTION_JOB_ID,
+      });
+      if (captured.vendor !== "claimmd" || captured.eraId !== stage.eraId || !captured.capturedAt)
+        return null;
+      const rawX12 = captured.files[stage.fileIndex];
+      if (typeof rawX12 !== "string") return null;
+      const digest = createHash("sha256").update(rawX12, "utf8").digest("hex");
+      if (digest !== stage.fileDigest || digest !== stage.fileDigest.toLowerCase()) return null;
+      return {
+        source: {
+          vendor: "claimmd" as const,
+          accountReference: captured.accountReference,
+          usage: captured.usage,
+          artifactReference: stage.id,
+          artifactDigest: digest,
+          receivedAt: captured.capturedAt.toISOString(),
+        },
+        rawX12,
+      };
+    },
+    async accountEvidence(actor, source) {
+      const [stage] = await withOrgContext(db, actor, async (tx) =>
+        tx
+          .select({ providerEntityId: STAGE.providerEntityId })
+          .from(STAGE)
+          .where(
+            and(
+              eq(STAGE.id, source.artifactReference),
+              eq(STAGE.organizationId, actor.organizationId),
+            ),
+          )
+          .limit(1),
+      );
+      if (
+        !stage ||
+        (actor.providerEntityScope !== undefined &&
+          !actor.providerEntityScope.includes(stage.providerEntityId))
+      )
+        return [];
+      const refs = await medicaidEraEnrollmentEvidence(
+        actor.organizationId,
+        stage.providerEntityId,
+      );
+      return refs.flatMap((row) => {
+        if (
+          row.vendor !== source.vendor ||
+          row.accountReference !== source.accountReference ||
+          row.environment !== source.usage ||
+          row.organizationId !== actor.organizationId ||
+          (actor.providerEntityScope !== undefined &&
+            !actor.providerEntityScope.includes(row.providerEntityId))
+        )
+          return [];
+        return [
+          {
+            organizationId: row.organizationId,
+            providerEntityId: row.providerEntityId,
+            vendor: row.vendor,
+            accountReference: row.accountReference,
+            usage: row.environment,
+            canonicalPayerId: row.canonicalPayerId,
+            programId: row.programId,
+            acceptedPayerIdentifiers: row.payerIdentifier
+              ? [{ qualifier: "PI", identifier: row.payerIdentifier }]
+              : [],
+            billingNpi: row.billingNpi,
+            billingTin: row.billingTin,
+            enrollment: "verified_active" as const,
+            effectiveFrom: row.effectiveFrom,
+            effectiveTo: row.effectiveTo,
+            evidenceReference: row.evidenceReference,
+            verifiedAt: row.verifiedAt,
+            evidenceFreshUntil: row.evidenceFreshUntil,
+          },
+        ];
+      });
+    },
+    async duplicateDecision({ actor, source }) {
+      const [stagedDelivery] = await withOrgContext(db, actor, async (tx) => {
+        const [stage] = await tx
+          .select({ providerEntityId: STAGE.providerEntityId })
+          .from(STAGE)
+          .where(
+            and(
+              eq(STAGE.id, source.artifactReference),
+              eq(STAGE.organizationId, actor.organizationId),
+              eq(STAGE.vendor, source.vendor),
+              eq(STAGE.accountReference, source.accountReference),
+              eq(STAGE.usage, source.usage),
+            ),
+          )
+          .limit(1);
+        if (!stage) return [];
+        return tx
+          .select({ state: DELIVERY.state })
+          .from(DELIVERY)
+          .where(
+            and(
+              eq(DELIVERY.organizationId, actor.organizationId),
+              eq(DELIVERY.providerEntityId, stage.providerEntityId),
+              eq(DELIVERY.vendor, source.vendor),
+              eq(DELIVERY.accountReference, source.accountReference),
+              eq(DELIVERY.usage, source.usage),
+              arrayContains(DELIVERY.stageIds, [source.artifactReference]),
+            ),
+          )
+          .limit(1);
+      });
+      if (stagedDelivery?.state === "exact_duplicate") return "exact";
+      if (stagedDelivery?.state === "possible_duplicate") return "possible";
+      const prior = await withOrgContext(db, actor, async (tx) =>
+        tx
+          .select({ id: REVIEW.id })
+          .from(REVIEW)
+          .where(
+            and(
+              eq(REVIEW.organizationId, actor.organizationId),
+              eq(REVIEW.vendor, source.vendor),
+              eq(REVIEW.accountReference, source.accountReference),
+              eq(REVIEW.sourceEnvironment, source.usage),
+              eq(REVIEW.sourceDigest, source.artifactDigest),
+              ne(REVIEW.stageId, source.artifactReference),
+            ),
+          )
+          .limit(2),
+      );
+      return prior.length > 1 ? "conflict" : prior.length === 1 ? "exact" : "none";
+    },
+    async claimCandidates({ organizationId, providerEntityId, claimControlNumber }) {
+      const facts = await medicaidSubmissionEvidence(
+        organizationId,
+        providerEntityId,
+        claimControlNumber,
+      );
+      const result = [];
+      for (const fact of facts) {
+        if (fact.disposition !== "SUBMISSION_EVIDENCE" || !fact.claimId) continue;
+        const attempts = fact.attempts.filter((attempt) => attempt.provenanceStatus === "verified");
+        const attempt = attempts.length === 1 ? attempts[0] : null;
+        if (!attempt) continue;
+        const payerControl =
+          attempt.acknowledgments.find((ack) => ack.payerClaimControlNumber)
+            ?.payerClaimControlNumber ?? null;
+        result.push({
+          organizationId: fact.organizationId,
+          providerEntityId: fact.providerEntityId,
+          claimId: fact.claimId,
+          canonicalPayerId: fact.canonicalPayerId,
+          programId: attempt.payerClassificationId,
+          claimControlNumber: fact.claimControlNumber,
+          serviceFrom: fact.serviceFrom,
+          serviceTo: fact.serviceTo,
+          claimVersion: fact.claimVersion,
+          claimState: fact.claimState,
+          replacementLineage:
+            fact.claimState === "VOIDED"
+              ? ("void" as const)
+              : fact.replacedByClaimId
+                ? ("unresolved" as const)
+                : fact.replacesClaimId
+                  ? ("replacement" as const)
+                  : ("original" as const),
+          submission: {
+            status: "verified_submitted" as const,
+            submissionId: attempt.submissionId,
+            claimId: fact.claimId,
+            claimVersion: attempt.claimVersion,
+            claimControlNumber: fact.claimControlNumber,
+            payerClaimControlNumber: payerControl,
+            vendor: attempt.vendor,
+            accountReference: attempt.sourceAccountRef,
+            transactionReference: attempt.vendorTransactionId,
+          },
+        });
+      }
+      return result;
+    },
+  };
+}

@@ -286,7 +286,9 @@ export interface RecordEnrollmentEvidenceInput {
   programKind?: "ffs_open_card" | "managed_care" | "other_managed_care";
   canonicalPayerId?: string;
   clearinghouse?: "stedi" | "claimmd" | "other";
+  vendorAccountRef?: string;
   vendorPayerId?: string;
+  sourceEnvironment?: "test" | "production";
   transactionType?: "837I" | "835";
   evidenceKind:
     | "state_medicaid_provider_enrollment"
@@ -299,6 +301,7 @@ export interface RecordEnrollmentEvidenceInput {
     | "production_activation_approval";
   effectiveFrom: string;
   effectiveTo?: string;
+  evidenceFreshUntil?: string;
 }
 export interface VerifyPayerReadinessRecordInput {
   expectedVersion: number;
