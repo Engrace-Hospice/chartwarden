@@ -10,6 +10,7 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
 import { m24PayerAuthorizationEventKind, m24PayerAuthorizationEvidenceStatus } from "./enums";
@@ -29,6 +30,7 @@ export const medicaidPayerAuthorizationEvent = pgTable(
     providerEntityId: uuid("provider_entity_id")
       .notNull()
       .references(() => providerEntities.id, { onDelete: "restrict" }),
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }), // nullable siting
     patientId: uuid("patient_id").notNull(),
     patientPayerId: uuid("patient_payer_id").notNull(),
     admissionId: uuid("admission_id").notNull(),

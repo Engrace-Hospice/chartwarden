@@ -22,6 +22,7 @@ CREATE TABLE medicaid_payer_authorization_event (
   service_state text NOT NULL,
   service_from date NOT NULL,
   service_to date NOT NULL,
+  location_id uuid REFERENCES location(id) ON DELETE RESTRICT,
   level_of_care text,
   event_kind m24_payer_authorization_event_kind NOT NULL,
   evidence_status m24_payer_authorization_evidence_status NOT NULL DEFAULT 'unverified',
