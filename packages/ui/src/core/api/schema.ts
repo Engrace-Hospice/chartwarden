@@ -130932,7 +130932,7 @@ export interface operations {
                         checks: {
                             db: "ok" | "fail";
                             valkey: "ok" | "fail";
-                            minio: "ok" | "fail";
+                            objectStore: "ok" | "fail";
                             outbox: "ok" | "fail";
                             capabilities?: {
                                 [key: string]: "ready" | "disabled" | "degraded";

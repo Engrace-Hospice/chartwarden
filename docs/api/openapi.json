@@ -421189,7 +421189,7 @@
                       "required": [
                         "db",
                         "valkey",
-                        "minio",
+                        "objectStore",
                         "outbox"
                       ],
                       "properties": {
@@ -421217,7 +421217,7 @@
                             }
                           ]
                         },
-                        "minio": {
+                        "objectStore": {
                           "anyOf": [
                             {
                               "const": "ok",
