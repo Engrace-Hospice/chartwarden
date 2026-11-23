@@ -14623,20 +14623,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: LoadWageIndexesBodySchema,
     response: LoadWageIndexesResultSchema,
   },
-  "POST /api/v1/webhooks/minio/access-log": {
-    summary:
-      "Legacy alias for the object-store audit receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8)",
-    body: Type.Union([
-      Type.Record(Type.String(), Type.Unknown()),
-      Type.Array(Type.Record(Type.String(), Type.Unknown())),
-    ]),
-    response: Type.Object({
-      received: Type.Integer(),
-      recorded: Type.Integer(),
-      unattributed: Type.Integer(),
-      duplicates: Type.Integer(),
-    }),
-  },
   "POST /api/v1/webhooks/object-store/access-log": {
     summary:
       "Object-store audit receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8)",

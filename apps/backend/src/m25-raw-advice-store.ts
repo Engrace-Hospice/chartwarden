@@ -1,5 +1,5 @@
 // apps/backend/src/m25-raw-advice-store.ts — the M25 raw-835 stage (#658, #669, #670): the tenant's own bucket
-// (same MINIO_* contract and `deriveTenantBucket` as M22) under `m25-835/<adviceId>`. The id is server-generated,
+// (same OBJECT_STORE_* contract and `deriveTenantBucket` as M22) under `m25-835/<adviceId>`. The id is server-generated,
 // never the caller's key, so M25 can neither overwrite nor read an M22 object whatever key a caller names.
 import { M25_STAGED_EXPIRY_DAYS, M25_STAGED_PREFIX } from "./m25-staged-835-config";
 import {

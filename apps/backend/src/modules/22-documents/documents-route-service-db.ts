@@ -28,7 +28,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 // that used to take a hardcoded sentinel.
 //
 // The signed-URL STORAGE PRESIGNER is not built here — the barrel (`index.ts`) binds the S3 adapter's
-// presigner (or a typed `DegradedError` when MINIO_* is unset). This module supplies only the read
+// presigner (or a typed `DegradedError` when OBJECT_STORE_* is unset). This module supplies only the read
 // resolvers (`abacResolver` over document owner-facts, `objectResolver` over version object-keys).
 import { assertVersion } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";

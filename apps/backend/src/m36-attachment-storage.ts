@@ -3,7 +3,7 @@
 // M36 does not depend on M22 (module-manifest dependsOn [1,2,3,4]), so it owns two PORTS (`AttachmentStoragePort`,
 // `ScanPort`) and this file, which lives at the app root like m23-override-audit.ts, binds them: storage over M22's
 // per-tenant MinIO/S3 object store (the same SigV4 adapter and `tenant-<orgId>` bucket the documents module uses),
-// the scanner from env. Without MINIO_* the storage port refuses with a typed 503 (nothing is stored); without a
+// the scanner from env. Without OBJECT_STORE_* the storage port refuses with a typed 503 (nothing is stored); without a
 // scanner nothing ever leaves `pending` (fail closed).
 //
 //   MESSAGING_ATTACHMENT_SCANNER=clamd     CLAMD_HOST (+ CLAMD_PORT, default 3310): a ClamAV sidecar over INSTREAM

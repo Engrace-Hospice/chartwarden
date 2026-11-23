@@ -31457,23 +31457,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/webhooks/minio/access-log": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Legacy alias for the object-store audit receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8) */
-        post: operations["postApiV1WebhooksMinioAccesslog"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/webhooks/object-store/access-log": {
         parameters: {
             query?: never;
@@ -129987,41 +129970,6 @@ export interface operations {
                 content: {
                     "application/json": {
                         received: number;
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
-    postApiV1WebhooksMinioAccesslog: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    [key: string]: unknown;
-                } | {
-                    [key: string]: unknown;
-                }[];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        received: number;
-                        recorded: number;
-                        unattributed: number;
-                        duplicates: number;
                     };
                 };
             };
