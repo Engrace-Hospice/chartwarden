@@ -40,7 +40,7 @@ import type {
 import type { BaaEntityKind } from "@chartwarden/mdm";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
-import { type SQL, and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { type SQL, and, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from "drizzle-orm";
 
 /** Rows the platform-ops NPPES console shows (the DB function clamps it again at 200). */
 const NPPES_SYNC_LOG_LIMIT = 50;
@@ -154,12 +154,9 @@ export function createDbMdmStore(db: DbClient): MdmStore {
       return (rows[0] ? mapPayer(rows[0]) : null) as CanonicalFields<K> | null;
     },
 
-    async medicaidPayerProgramClassifications(
-      canonicalPayerId,
-      stateCode,
-      _serviceFrom,
-      _serviceTo,
-    ) {
+    async medicaidPayerProgramClassifications(canonicalPayerId, stateCode, serviceFrom, serviceTo) {
+      // Only rows overlapping the service window (inclusive ends, a null end is open), as the in-memory store does;
+      // M24 still re-filters and decides which of them may qualify.
       const rows = await db
         .select()
         .from(MEDICAID_PAYER_CLASS)
@@ -167,6 +164,11 @@ export function createDbMdmStore(db: DbClient): MdmStore {
           and(
             eq(MEDICAID_PAYER_CLASS.canonicalPayerId, canonicalPayerId),
             eq(MEDICAID_PAYER_CLASS.stateCode, stateCode),
+            lte(MEDICAID_PAYER_CLASS.effectiveFrom, serviceTo),
+            or(
+              isNull(MEDICAID_PAYER_CLASS.effectiveTo),
+              gte(MEDICAID_PAYER_CLASS.effectiveTo, serviceFrom),
+            ),
           ),
         );
       return rows.map((r) => ({
