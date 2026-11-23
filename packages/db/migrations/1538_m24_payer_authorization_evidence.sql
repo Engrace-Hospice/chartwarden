@@ -66,6 +66,8 @@ CREATE TABLE medicaid_payer_authorization_event (
 );--> statement-breakpoint
 CREATE INDEX medicaid_payer_auth_patient_payer_window_ix ON medicaid_payer_authorization_event
   (organization_id, patient_id, patient_payer_id, admission_id, canonical_payer_id, service_from, service_to);--> statement-breakpoint
+CREATE INDEX medicaid_payer_auth_supersedes_ix ON medicaid_payer_authorization_event
+  (organization_id, supersedes_id);--> statement-breakpoint
 
 ALTER TABLE medicaid_payer_authorization_event ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE medicaid_payer_authorization_event FORCE ROW LEVEL SECURITY;--> statement-breakpoint

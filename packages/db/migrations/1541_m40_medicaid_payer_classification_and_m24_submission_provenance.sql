@@ -33,6 +33,8 @@ CREATE TABLE mdm_medicaid_payer_program_classification (
 );--> statement-breakpoint
 CREATE INDEX mdm_medicaid_payer_program_classification_lookup_ix
   ON mdm_medicaid_payer_program_classification(canonical_payer_id, state_code, effective_from, effective_to, verification_status);--> statement-breakpoint
+CREATE INDEX mdm_medicaid_payer_program_classification_supersedes_ix
+  ON mdm_medicaid_payer_program_classification(supersedes_id);--> statement-breakpoint
 ALTER TABLE mdm_medicaid_payer_program_classification ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY mdm_medicaid_payer_program_classification_read ON mdm_medicaid_payer_program_classification
   FOR SELECT TO chartwarden_app USING (true);--> statement-breakpoint

@@ -82,6 +82,10 @@ export const medicaidPayerRatePolicy = pgTable(
       t.effectiveFrom,
       t.effectiveTo,
     ),
+    supersedes: index("medicaid_payer_rate_policy_supersedes_ix").on(
+      t.organizationId,
+      t.supersedesId,
+    ),
     programValid: check(
       "medicaid_payer_rate_policy_program_valid",
       sql`program_kind IN ('oregon_ffs', 'managed_care')`,
