@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CLEAN_BODY, wrap835 } from "../../../packages/x12-835-client/__tests__/fixtures-835";
 import {
   type MedicaidEraMatchStatus,
   assessMedicaidEraReview,
@@ -8,6 +9,8 @@ import {
 import type { MedicaidEraClaimCandidate } from "../src/modules/25-remittance/domain/medicaid-era-trusted-review";
 import {
   header,
+  parseProduction,
+  setBody,
   singleSet,
   sourceFor,
   submittedCandidate,
@@ -282,5 +285,138 @@ describe("claim state at the time an ERA arrives", () => {
       matchStatus: "MATCHED",
       postingAuthorized: false,
     });
+  });
+});
+
+describe("claim service dates", () => {
+  const refuse = (input: Partial<Parameters<typeof matchMedicaidEraClaim>[0]>) =>
+    match([submittedCandidate()], input);
+
+  it.each([
+    ["no dates at all", { serviceFrom: null, serviceTo: null }],
+    ["no end date", { serviceTo: null }],
+    ["no start date", { serviceFrom: null }],
+  ])("names missing ERA service dates as missing, not as a mismatch (%s)", (_name, input) => {
+    expect(refuse(input)).toMatchObject({
+      status: "SERVICE_RANGE_CONFLICT",
+      reasonCode: "ERA_SERVICE_DATES_MISSING",
+    });
+  });
+
+  it.each([
+    ["a malformed ERA date", { serviceFrom: "2026-5-1" }],
+    ["an inverted ERA range", { serviceFrom: "2026-05-31", serviceTo: "2026-05-01" }],
+    ["an impossible calendar date", { serviceTo: "2026-02-30" }],
+  ])("names %s as invalid", (_name, input) => {
+    expect(refuse(input)).toMatchObject({
+      status: "SERVICE_RANGE_CONFLICT",
+      reasonCode: "SERVICE_DATES_INVALID",
+    });
+  });
+
+  it("names an invalid claim-side range as invalid", () => {
+    expect(match([submittedCandidate({ serviceTo: "N/A" })])).toMatchObject({
+      status: "SERVICE_RANGE_CONFLICT",
+      reasonCode: "SERVICE_DATES_INVALID",
+    });
+  });
+
+  it("keeps CLAIM_SERVICE_RANGE_MISMATCH for a genuine containment failure", () => {
+    expect(refuse({ serviceFrom: "2026-04-30" })).toMatchObject({
+      reasonCode: "CLAIM_SERVICE_RANGE_MISMATCH",
+    });
+  });
+});
+
+describe("assessment disclosure", () => {
+  const deniedWithProviderAdjustment = () =>
+    singleSet(
+      setBody("50.00", [
+        "CLP*PCN-0001*4*300.00*0.00*0.00*MC*ICN-A1",
+        "DTM*232*20260501",
+        "DTM*233*20260531",
+        "CAS*CO*45*300.00",
+        "PLB*1512345678*20261231*L6:REF2*-50.00",
+      ]),
+    );
+
+  it("exposes the payer claim status code for an attributed, matched claim", () => {
+    const { raw, observation: denied } = deniedWithProviderAdjustment();
+    const attribution = verifiedAttribution(raw, denied);
+    const assessment = assessMedicaidEraReview({
+      observation: denied,
+      attribution,
+      match: matchMedicaidEraClaim({
+        attribution,
+        patientControlNumber: "PCN-0001",
+        payerClaimControlNumber: "ICN-A1",
+        serviceFrom: "2026-05-01",
+        serviceTo: "2026-05-31",
+        candidates: [submittedCandidate()],
+      }),
+      duplicate: "none",
+    });
+    // A provider-level adjustment in the same set outranks the claim denial in the decision; the status code keeps
+    // the claim-level outcome visible to the reviewer.
+    expect(assessment).toMatchObject({
+      decision: "provider_adjustment_review",
+      claimStatusCode: 4,
+    });
+  });
+
+  it("hides the status code, amounts and structure of an unverified ERA", () => {
+    const raw = wrap835(CLEAN_BODY);
+    const parsed = parseProduction(raw)[0]!;
+    const held = resolveMedicaidEraAttribution({
+      source: sourceFor(raw),
+      observation: parsed,
+      accounts: [],
+    });
+    const assessment = assessMedicaidEraReview({
+      observation: parsed,
+      attribution: held,
+      match: matchMedicaidEraClaim({
+        attribution: held,
+        patientControlNumber: "PCN-0001",
+        payerClaimControlNumber: "ICN-A1",
+        serviceFrom: null,
+        serviceTo: null,
+        candidates: [],
+      }),
+      duplicate: "none",
+    });
+    expect(parsed.claims.length).toBeGreaterThan(1);
+    expect(parsed.providerAdjustments.length).toBeGreaterThan(0);
+    expect(assessment.claimStatusCode).toBeNull();
+    expect(assessment.unresolvedRequirements).toEqual([
+      "SOURCE_ACCOUNT_UNREGISTERED",
+      "PAYER_SPECIFIC_ADJUDICATION_POLICY_UNQUALIFIED",
+    ]);
+  });
+
+  it("keeps the structural requirements for a verified ERA", () => {
+    const raw = wrap835(CLEAN_BODY);
+    const parsed = parseProduction(raw)[0]!;
+    const attribution = verifiedAttribution(raw, parsed);
+    const assessment = assessMedicaidEraReview({
+      observation: parsed,
+      attribution,
+      match: matchMedicaidEraClaim({
+        attribution,
+        patientControlNumber: "PCN-0001",
+        payerClaimControlNumber: "ICN-A1",
+        serviceFrom: "2026-05-01",
+        serviceTo: "2026-05-31",
+        candidates: [submittedCandidate()],
+      }),
+      duplicate: "none",
+    });
+    expect(assessment.unresolvedRequirements).toEqual(
+      expect.arrayContaining([
+        "MULTI_CLAIM_REVIEW_REQUIRED",
+        "PLB_ALLOCATION_POLICY_REQUIRED",
+        "PAYER_LINE_OUTCOME_POLICY_UNQUALIFIED",
+      ]),
+    );
   });
 });
