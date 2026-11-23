@@ -26,6 +26,9 @@ import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { dropLiveRoles } from "../../packages/db/migrations/__tests__/_live-roles";
 import { MIGRATIONS_DIR, applyMigrations, ensureLedger } from "../db/migrate";
+import { unclassifiedRefColumns } from "../lib/backup/object-refs";
+import { liveRefs } from "../lib/backup/verify-restore";
+import { extractCatalogPredicate } from "../lib/object-key-rename-predicate";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -169,6 +172,286 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
       await rm(historicalDir, { force: true, recursive: true });
     }
   }, 600_000);
+
+  describe("migration 1546 (object-key column rename) over a populated previous schema", () => {
+    const OBJECT_KEY_MIGRATION = "1546_object_key_column_rename.sql";
+    const ORG = "91000000-0000-4000-8000-000000000001";
+    const DOCUMENT = "92000000-0000-4000-8000-000000000001";
+    const MEMBERSHIP = "93000000-0000-4000-8000-000000000001";
+    const RENAMED_TABLES = [
+      "document_version",
+      "remittance_advice",
+      "fhir_bulk_export_artifact",
+      "dsar_export_job",
+      "tenant_export_job",
+    ];
+    const migrationSql = readFileSync(join(MIGRATIONS_DIR, OBJECT_KEY_MIGRATION), "utf8");
+    let previousDir = "";
+
+    /** Everything the migration's end-of-file check would report, by the SAME predicate the runbook has the operator run. */
+    const leftovers = async (): Promise<string[]> =>
+      (
+        await db.query<{ what: string }>(
+          `SELECT what FROM (${extractCatalogPredicate(migrationSql)}) found ORDER BY what`,
+        )
+      ).rows.map((r) => r.what);
+
+    /** Run `body` inside a transaction that is always rolled back (DDL is transactional): a scenario leaves no trace. */
+    async function rehearse(plant: string, body: () => Promise<void>): Promise<void> {
+      await db.query("BEGIN");
+      try {
+        if (plant) await db.query(plant);
+        await body();
+      } finally {
+        await db.query("ROLLBACK");
+      }
+    }
+
+    const columnsOf = async (table: string): Promise<string[]> =>
+      (
+        await db.query<{ attname: string }>(
+          `SELECT attname FROM pg_attribute WHERE attrelid = $1::regclass AND attnum > 0 AND NOT attisdropped AND attname ~ 'object_key'`,
+          [table],
+        )
+      ).rows.map((r) => r.attname);
+
+    beforeAll(async () => {
+      await resetSchema();
+      previousDir = await mkdtemp(join(tmpdir(), "chartwarden-object-key-previous-"));
+      for (const file of readdirSync(MIGRATIONS_DIR)
+        .filter((f) => f.endsWith(".sql") && f !== OBJECT_KEY_MIGRATION)
+        .sort())
+        await writeFile(join(previousDir, file), readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
+      const before = await applyMigrations(db, { migrationsDir: previousDir });
+      expect(before.ran).not.toContain(OBJECT_KEY_MIGRATION);
+
+      // Synthetic rows only. The parent rows go in with FK checks and triggers off; document_version goes in with the
+      // audit trigger on (the old function, the old scrub list), so the pre-migration audit rows exist too.
+      await db.query("SET session_replication_role = replica");
+      await db.query(
+        `INSERT INTO organization (id, slug, legal_name, display_name) VALUES ($1, 'object-key-rename', 'Synthetic Org', 'Synthetic Org')`,
+        [ORG],
+      );
+      await db.query(
+        `INSERT INTO document (id, organization_id, retention_class, source_kind, aggregate_type, title, created_by_membership_id)
+         VALUES ($1, $2, 'operational', 'user_upload', 'other', 'Synthetic document', $3)`,
+        [DOCUMENT, ORG, MEMBERSHIP],
+      );
+      await db.query(
+        `INSERT INTO fhir_bulk_export_artifact (organization_id, job_id, resource_type, minio_object_key, byte_size, row_count, checksum_sha256)
+         VALUES ($1, '95000000-0000-4000-8000-000000000001', 'Patient', 'tenants/synthetic/fhir/Patient.ndjson', 10, 2, repeat('a', 64))`,
+        [ORG],
+      );
+      await db.query(
+        `INSERT INTO remittance_advice (organization_id, provider_entity_id, payer_id, payer_kind, interchange_control_number,
+           transaction_set_control_number, payment_method, total_payment_amount, minio_object_key, file_sha256)
+         VALUES ($1, '97000000-0000-4000-8000-000000000001', '98000000-0000-4000-8000-000000000001', 'medicare', '000000001', '0001', 'check', 12.34,
+           'clearinghouse/synthetic/rem-1', repeat('b', 64))`,
+        [ORG],
+      );
+      await db.query(
+        `INSERT INTO dsar_export_job (organization_id, patient_id, request_source, requestor_identity_verification_evidence,
+           requesting_membership_id, sla_due_at, bundle_minio_object_key)
+         VALUES ($1, '9a000000-0000-4000-8000-000000000001', 'patient', 'synthetic evidence', $2, now() + interval '30 days',
+           'tenants/synthetic/exports/dsar/job-1.ndjson.gz')`,
+        [ORG, MEMBERSHIP],
+      );
+      await db.query(
+        `INSERT INTO tenant_export_job (organization_id, requested_purpose, requesting_membership_id, bundle_minio_object_key)
+         VALUES ($1, 'compliance_audit', $2, 'tenants/synthetic/exports/tenant/job-1.ndjson.gz')`,
+        [ORG, MEMBERSHIP],
+      );
+      await db.query("SET session_replication_role = origin");
+      for (const [n, key] of [
+        ["1", "tenants/synthetic/patients/p1/doc-1.pdf"],
+        ["2", "tenants/synthetic/patients/p1/doc-2.pdf"],
+      ] as const)
+        await db.query(
+          `INSERT INTO document_version (organization_id, document_id, version_number, minio_object_key, mime_type, byte_size, sha256_hex, uploaded_by_kind)
+           VALUES ($1, $2, $3, $4, 'application/pdf', '123', repeat('c', 64), 'api')`,
+          [ORG, DOCUMENT, n, key],
+        );
+    }, 600_000);
+
+    afterAll(async () => {
+      await rm(previousDir, { force: true, recursive: true });
+    });
+
+    it("the previous schema has nothing the rename cannot rewrite (the pre-window query returns no row)", async () => {
+      expect(await leftovers()).toEqual([]);
+    });
+
+    it("the predicate reports what the rename cannot rewrite, and not an unrelated scratch copy or an ad hoc index on the column", async () => {
+      // A scratch copy of the table, and an ad hoc index on the renamed column: harmless (the rename rewrites the index).
+      await rehearse(
+        `CREATE TABLE document_version_bak AS TABLE document_version;
+         CREATE INDEX document_version_adhoc_key_ix ON document_version (minio_object_key);`,
+        async () => expect(await leftovers()).toEqual([]),
+      );
+      // A function that names the column in its text, an index and a constraint named after the old vendor: not rewritten.
+      await rehearse(
+        `CREATE FUNCTION scratch_scrub() RETURNS text LANGUAGE sql AS $$ SELECT 'minio_object_key' $$`,
+        async () => expect(await leftovers()).toEqual(["function scratch_scrub()"]),
+      );
+      await rehearse(
+        `CREATE INDEX document_version_minio_scratch_ix ON document_version (sha256_hex);
+         ALTER TABLE remittance_advice ADD CONSTRAINT remittance_advice_minio_chk CHECK (file_sha256 <> '')`,
+        async () =>
+          expect(await leftovers()).toEqual([
+            "constraint remittance_advice.remittance_advice_minio_chk",
+            "index document_version_minio_scratch_ix",
+          ]),
+      );
+    });
+
+    it("applies over an unrelated scratch copy and an ad hoc index, and aborts (rolled back) on a leftover function", async () => {
+      await rehearse(
+        `CREATE TABLE document_version_bak AS TABLE document_version;
+         CREATE INDEX document_version_adhoc_key_ix ON document_version (minio_object_key);`,
+        async () => {
+          await db.query(migrationSql);
+          expect(await columnsOf("document_version")).toEqual(["object_key"]);
+        },
+      );
+      await rehearse(
+        `CREATE FUNCTION scratch_scrub() RETURNS text LANGUAGE sql AS $$ SELECT 'minio_object_key' $$`,
+        async () =>
+          await expect(db.query(migrationSql)).rejects.toThrow(
+            /object-key rename incomplete.*function scratch_scrub\(\)/,
+          ),
+      );
+      // Rolled back whole: the previous names are all still there.
+      expect(await columnsOf("document_version")).toEqual(["minio_object_key"]);
+    });
+
+    it("gives up on a lock it cannot get within its lock_timeout, and changes nothing", async () => {
+      const blocker = new Client({ connectionString: DB_URL });
+      await blocker.connect();
+      try {
+        await blocker.query("BEGIN");
+        await blocker.query("LOCK TABLE document_version IN ACCESS SHARE MODE");
+        const startedAt = Date.now();
+        await db.query("BEGIN");
+        try {
+          await expect(db.query(migrationSql)).rejects.toMatchObject({ code: "55P03" });
+        } finally {
+          await db.query("ROLLBACK");
+        }
+        expect(Date.now() - startedAt).toBeLessThan(25_000);
+      } finally {
+        await blocker.query("ROLLBACK");
+        await blocker.end();
+      }
+      expect(await columnsOf("document_version")).toEqual(["minio_object_key"]);
+    }, 60_000);
+
+    it("renames the five columns in place, keeps every row, and the audit scrub still hides the key", async () => {
+      // Arrange: what the restore verifier sees on the previous schema (legacy names), and the rows themselves.
+      const refsBefore = await liveRefs(db);
+      expect(unclassifiedRefColumns(refsBefore.discovered)).toEqual([]);
+      const keysBefore = async (sql: string) => (await db.query<{ k: string }>(sql)).rows;
+      const documentKeys = await keysBefore(
+        "SELECT minio_object_key AS k FROM document_version ORDER BY version_number",
+      );
+      expect(documentKeys).toHaveLength(2);
+
+      // Act: the real runner, on the real ledger (only 1546 is pending).
+      const result = await applyMigrations(db, { migrationsDir: MIGRATIONS_DIR, strict: true });
+
+      // Assert
+      expect(result.ran).toEqual([OBJECT_KEY_MIGRATION]);
+      expect(
+        await keysBefore("SELECT object_key AS k FROM document_version ORDER BY version_number"),
+      ).toEqual(documentKeys);
+      expect(await keysBefore("SELECT object_key AS k FROM remittance_advice")).toEqual([
+        { k: "clearinghouse/synthetic/rem-1" },
+      ]);
+      expect(await keysBefore("SELECT object_key AS k FROM fhir_bulk_export_artifact")).toEqual([
+        { k: "tenants/synthetic/fhir/Patient.ndjson" },
+      ]);
+      expect(await keysBefore("SELECT bundle_object_key AS k FROM dsar_export_job")).toEqual([
+        { k: "tenants/synthetic/exports/dsar/job-1.ndjson.gz" },
+      ]);
+      expect(await keysBefore("SELECT bundle_object_key AS k FROM tenant_export_job")).toEqual([
+        { k: "tenants/synthetic/exports/tenant/job-1.ndjson.gz" },
+      ]);
+      for (const table of RENAMED_TABLES)
+        expect(
+          (await columnsOf(table)).filter((c) => c.includes("minio")),
+          table,
+        ).toEqual([]);
+      expect(await leftovers()).toEqual([]);
+
+      // The restore verifier reads the same rows through the new names.
+      const refsAfter = await liveRefs(db);
+      expect(unclassifiedRefColumns(refsAfter.discovered)).toEqual([]);
+      expect(refsAfter.refs.map((r) => r.key).sort()).toEqual(
+        refsBefore.refs.map((r) => r.key).sort(),
+      );
+
+      // The unique index is rebuilt over the new name and still enforces uniqueness.
+      const index = await db.query<{ attname: string }>(
+        `SELECT a.attname FROM pg_attribute a WHERE a.attrelid = 'document_version_object_key_uk'::regclass AND a.attnum > 0`,
+      );
+      expect(index.rows).toEqual([{ attname: "object_key" }]);
+      await expect(
+        db.query(
+          `INSERT INTO document_version (organization_id, document_id, version_number, object_key, mime_type, byte_size, sha256_hex, uploaded_by_kind)
+           VALUES ($1, $2, '9', $3, 'application/pdf', '1', repeat('d', 64), 'api')`,
+          [ORG, DOCUMENT, documentKeys[0]!.k],
+        ),
+      ).rejects.toMatchObject({ code: "23505" });
+
+      // The NOT NULL constraints follow the columns.
+      const notNull = await db.query<{ conname: string }>(
+        `SELECT conname FROM pg_constraint WHERE contype = 'n' AND conrelid = ANY ($1::regclass[]) AND conname ~ 'object_key' ORDER BY conname`,
+        [`{${RENAMED_TABLES.join(",")}}`],
+      );
+      expect(notNull.rows.map((r) => r.conname)).toEqual([
+        "document_version_object_key_not_null",
+        "fhir_bulk_export_artifact_object_key_not_null",
+        "remittance_advice_object_key_not_null",
+      ]);
+
+      // The audit scrub list names the new column: a new INSERT and an UPDATE both audit `object_key` as scrubbed.
+      await db.query(
+        `INSERT INTO document_version (id, organization_id, document_id, version_number, object_key, mime_type, byte_size, sha256_hex, uploaded_by_kind)
+         VALUES ('9c000000-0000-4000-8000-000000000003', $1, $2, '3', 'tenants/synthetic/patients/p1/doc-3.pdf', 'application/pdf', '1', repeat('e', 64), 'api')`,
+        [ORG, DOCUMENT],
+      );
+      await db.query(
+        `UPDATE document_version SET mime_type = 'application/pdf; charset=binary' WHERE id = '9c000000-0000-4000-8000-000000000003'`,
+      );
+      const audit = await db.query<{
+        event_type: string;
+        after_key: string | null;
+        before_key: string | null;
+        old_name_in_after: boolean;
+      }>(
+        `SELECT event_type, after ->> 'object_key' AS after_key, before ->> 'object_key' AS before_key,
+                coalesce(after ? 'minio_object_key', false) AS old_name_in_after
+           FROM audit_event WHERE resource_kind = 'document_version' AND resource_id = '9c000000-0000-4000-8000-000000000003' ORDER BY created_at, event_type`,
+      );
+      expect(audit.rows).toEqual([
+        {
+          event_type: "document_version.insert",
+          after_key: "<changed>",
+          before_key: null,
+          old_name_in_after: false,
+        },
+        {
+          event_type: "document_version.update",
+          after_key: "<changed>",
+          before_key: "<changed>",
+          old_name_in_after: false,
+        },
+      ]);
+      const leaked = await db.query(
+        `SELECT 1 FROM audit_event WHERE resource_kind = 'document_version' AND (before::text LIKE '%tenants/synthetic%' OR after::text LIKE '%tenants/synthetic%')`,
+      );
+      expect(leaked.rows).toEqual([]);
+    }, 300_000);
+  });
 
   it("a second run against an already-migrated database is a true no-op", async () => {
     const result = await applyMigrations(db, { migrationsDir: MIGRATIONS_DIR });

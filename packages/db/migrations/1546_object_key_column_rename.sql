@@ -16,15 +16,20 @@
 -- THE AUDIT SCRUB TRAP. `audit_phi_write_document_version()` (0049) scrubs the object key out of every audit image by NAME:
 -- `audit_scrub(to_jsonb(NEW), ARRAY['byte_payload_cipher', 'minio_object_key'])`. A column rename does not touch that string, so leaving it would keep the
 -- function running while the renamed `object_key` (tenant + patient prefix, DENYLISTED §3.6) went into audit_event in clear: a silent PHI/audit regression.
--- The function is replaced below with the new name, in this same transaction, and the final block fails the migration if ANY function, trigger, policy,
--- view, index or constraint still names the old columns (so a catalog object this file missed, or a hand-made one in production, aborts the migration
--- rather than going quiet). Audit rows already written keep their old image key `minio_object_key: "<changed>"` (audit_event is append-only; the value was
+-- The function is replaced below with the new name, in this same transaction, and the final block fails the migration if ANY function, trigger, policy or
+-- view, or any column, index or constraint of the five renamed tables, still names the old columns (so a catalog object this file missed, or a hand-made
+-- one in production, aborts the migration rather than going quiet; the runbook has the same query for the operator to run before the window).
+-- Audit rows already written keep their old image key `minio_object_key: "<changed>"` (audit_event is append-only; the value was
 -- scrubbed, only the key's name is old); new rows carry `object_key: "<changed>"`. No other audit trigger names these columns: the M25, M28 and M34
 -- triggers scrub nothing today (unchanged here), so their images carry the key as before.
 --
 -- Public names that do NOT change (deliberately, not renamed here): the `m25.edi.835_received` outbox payload field, the `POST /api/v1/internal/remittance/advices`
 -- request field and the 277CA sidecar body field, all `minioObjectKey`, and the `bundleMinioObjectKey` JSON key inside persisted `tenant_export_job_event.shard_receipt`
 -- (an `oversized_hold` row waiting for approval still carries it). They are mapped to the new names at the code boundary.
+-- Bound every lock wait: RENAME COLUMN and the index rebuild take ACCESS EXCLUSIVE, and a session left idle in a transaction on one of these tables would
+-- otherwise stall the window indefinitely (and, queued behind it, block every other statement on the table). The runner's BEGIN scopes this to the file.
+-- A lock timeout (SQLSTATE 55P03) rolls this file back whole; it is safe to run again once the blocking session is gone. It bounds the wait, not the index build.
+SET LOCAL lock_timeout = '10s';--> statement-breakpoint
 ALTER TABLE "document_version" RENAME COLUMN "minio_object_key" TO "object_key";--> statement-breakpoint
 -- The unique index is rebuilt, not renamed: RENAME COLUMN leaves the index's own key-column name (`pg_attribute`, shown by `\d <index>`) at `minio_object_key`, and
 -- only a rebuild gives it the new one. Uniqueness is unbroken: DROP and CREATE share this transaction and the table lock, with the writers already drained.
@@ -87,30 +92,60 @@ ALTER FUNCTION audit_phi_write_document_version() OWNER TO chartwarden_audit_wri
 -- Re-affirms the existing trigger-to-function binding (the trigger itself did not change); restating it keeps the function and its trigger in one block.
 CREATE OR REPLACE TRIGGER "trg_audit_document_version" AFTER INSERT OR UPDATE OR DELETE ON document_version
   FOR EACH ROW EXECUTE FUNCTION audit_phi_write_document_version();--> statement-breakpoint
--- Fail loud: no catalog object may still name either old column. Covers every kind of object whose text can carry a column name (functions and audit
--- scrub lists above all), so a missed one aborts this migration (it rolls back whole) instead of silently going stale.
+-- Fail loud: nothing may still name the old columns after the renames. Functions (their text is never rewritten: the audit scrub list above all),
+-- triggers, policies and views are checked database-wide; the columns, indexes and constraints of the five renamed tables are checked by NAME only (a
+-- definition is rewritten by the rename). An object that is harmless (a scratch copy of a table, an ad hoc index on a renamed column) does not trip it. A hit
+-- aborts this migration, which rolls back whole, instead of going silently stale. The objects this file itself renames or replaces are excused, which is also
+-- what lets the SAME query run BEFORE the window (docs/runbooks/object-key-column-rename-deployment.md) and return no row on a healthy database.
 DO $$
 DECLARE
   v_left text;
 BEGIN
   SELECT string_agg(what, ', ' ORDER BY what) INTO v_left FROM (
-    SELECT 'function ' || p.oid::regprocedure::text AS what
-      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-     WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND p.prosrc ILIKE '%minio\_object\_key%'
-    UNION ALL
-    SELECT 'trigger ' || tgrelid::regclass::text || '.' || tgname FROM pg_trigger WHERE NOT tgisinternal AND pg_get_triggerdef(oid) ILIKE '%minio\_object\_key%'
-    UNION ALL
-    SELECT 'policy ' || tablename || '.' || policyname FROM pg_policies WHERE coalesce(qual, '') || ' ' || coalesce(with_check, '') ILIKE '%minio\_object\_key%'
-    UNION ALL
-    SELECT 'view ' || schemaname || '.' || viewname FROM pg_views WHERE schemaname NOT IN ('pg_catalog', 'information_schema') AND definition ILIKE '%minio\_object\_key%'
-    UNION ALL
-    SELECT 'matview ' || schemaname || '.' || matviewname FROM pg_matviews WHERE definition ILIKE '%minio\_object\_key%'
-    UNION ALL
-    SELECT 'index ' || schemaname || '.' || indexname FROM pg_indexes WHERE schemaname NOT IN ('pg_catalog', 'information_schema') AND (indexname ILIKE '%minio%' OR indexdef ILIKE '%minio\_object\_key%')
-    UNION ALL
-    SELECT 'constraint ' || conrelid::regclass::text || '.' || conname FROM pg_constraint WHERE conname ILIKE '%minio%' OR pg_get_constraintdef(oid) ILIKE '%minio\_object\_key%'
-    UNION ALL
-    SELECT 'column ' || attrelid::regclass::text || '.' || attname FROM pg_attribute WHERE attnum > 0 AND NOT attisdropped AND attname ILIKE '%minio\_object\_key%'
+-- predicate:begin
+WITH renamed AS (
+  SELECT unnest(ARRAY['document_version', 'remittance_advice', 'fhir_bulk_export_artifact', 'dsar_export_job', 'tenant_export_job']::regclass[])::oid AS relid
+)
+SELECT 'function ' || p.oid::regprocedure::text AS what
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+   AND p.proname <> 'audit_phi_write_document_version'
+   AND p.prosrc ILIKE '%minio\_object\_key%'
+UNION ALL
+SELECT 'trigger ' || t.tgrelid::regclass::text || '.' || t.tgname
+  FROM pg_trigger t
+ WHERE NOT t.tgisinternal AND pg_get_triggerdef(t.oid) ILIKE '%minio\_object\_key%'
+UNION ALL
+SELECT 'policy ' || pol.tablename || '.' || pol.policyname
+  FROM pg_policies pol
+ WHERE coalesce(pol.qual, '') || ' ' || coalesce(pol.with_check, '') ILIKE '%minio\_object\_key%'
+UNION ALL
+SELECT 'view ' || v.schemaname || '.' || v.viewname
+  FROM pg_views v
+ WHERE v.schemaname NOT IN ('pg_catalog', 'information_schema') AND v.definition ILIKE '%minio\_object\_key%'
+UNION ALL
+SELECT 'matview ' || m.schemaname || '.' || m.matviewname
+  FROM pg_matviews m
+ WHERE m.definition ILIKE '%minio\_object\_key%'
+UNION ALL
+SELECT 'column ' || a.attrelid::regclass::text || '.' || a.attname
+  FROM pg_attribute a JOIN renamed r ON r.relid = a.attrelid
+ WHERE a.attnum > 0 AND NOT a.attisdropped AND a.attname ILIKE '%minio%'
+   AND (a.attrelid::oid, a.attname::text) NOT IN (
+     ('document_version'::regclass::oid, 'minio_object_key'),
+     ('remittance_advice'::regclass::oid, 'minio_object_key'),
+     ('fhir_bulk_export_artifact'::regclass::oid, 'minio_object_key'),
+     ('dsar_export_job'::regclass::oid, 'bundle_minio_object_key'),
+     ('tenant_export_job'::regclass::oid, 'bundle_minio_object_key'))
+UNION ALL
+SELECT 'index ' || ic.relname
+  FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid JOIN renamed r ON r.relid = i.indrelid
+ WHERE ic.relname ILIKE '%minio%' AND ic.relname <> 'document_version_minio_key_uk'
+UNION ALL
+SELECT 'constraint ' || c.conrelid::regclass::text || '.' || c.conname
+  FROM pg_constraint c JOIN renamed r ON r.relid = c.conrelid
+ WHERE c.conname ILIKE '%minio%' AND NOT (c.contype = 'n' AND c.conname LIKE '%\_minio\_object\_key\_not\_null')
+-- predicate:end
   ) found;
   IF v_left IS NOT NULL THEN
     RAISE EXCEPTION 'object-key rename incomplete: still naming the minio_object_key columns: %', v_left;
