@@ -65,9 +65,34 @@ def require_service_token(authorization: str | None = Header(default=None)) -> N
 Converter = Callable[[str], Any]
 
 
-@lru_cache(maxsize=1)
-def _docling_converter() -> Converter:
+OCR_ENGINES = ("rapidocr", "tesseract", "easyocr")
+
+
+def _engine_from_env(name: str, default: str) -> str | None:
+    """An OCR engine name from the environment; empty or "none" means no engine (the backup only)."""
+    value = os.environ.get(name, default).strip().lower()
+    if value in ("", "none"):
+        return None
+    if value not in OCR_ENGINES:
+        raise ValueError(f"{name} must be one of {', '.join(OCR_ENGINES)} (or none for the backup)")
+    return value
+
+
+def _ocr_options(engine: str) -> Any:
     # Imported lazily: Docling pulls torch and its layout models, which tests never need.
+    if engine == "rapidocr":
+        from docling.datamodel.pipeline_options import RapidOcrOptions
+
+        return RapidOcrOptions(lang=["en"], force_full_page_ocr=True)  # PP-OCR models on onnxruntime
+    if engine == "tesseract":
+        from docling.datamodel.pipeline_options import TesseractCliOcrOptions
+
+        return TesseractCliOcrOptions(lang=["eng"], force_full_page_ocr=True)
+    return None  # easyocr: Docling's own default
+
+
+@lru_cache(maxsize=None)
+def _converter_for(engine: str) -> Converter:
     from docling.datamodel.base_models import InputFormat
     from docling.datamodel.pipeline_options import PdfPipelineOptions
     from docling.document_converter import DocumentConverter, ImageFormatOption, PdfFormatOption
@@ -78,13 +103,9 @@ def _docling_converter() -> Converter:
         options.artifacts_path = artifacts  # the models baked into the image; never a runtime download
     options.do_ocr = True  # faxes are images of text
     options.do_table_structure = True
-    # OCR engine (F-238). Tesseract is the default: on the DocLens complex-packet fixture (21 faxed pages,
-    # scripts/doclens/make-complex-packet.py) it read 42/55 key phrases exactly vs EasyOCR's 15/55, and
-    # 21/31 ICD-10 codes vs 14/31, in ~1/10th of the CPU time. EasyOCR stays selectable.
-    if os.environ.get("DOCLING_OCR_ENGINE", "tesseract").lower() == "tesseract":
-        from docling.datamodel.pipeline_options import TesseractCliOcrOptions
-
-        options.ocr_options = TesseractCliOcrOptions(lang=["eng"], force_full_page_ocr=True)
+    ocr_options = _ocr_options(engine)
+    if ocr_options is not None:
+        options.ocr_options = ocr_options
     converter = DocumentConverter(
         format_options={
             InputFormat.PDF: PdfFormatOption(pipeline_options=options),
@@ -94,6 +115,32 @@ def _docling_converter() -> Converter:
 
     def convert(path: str) -> Any:
         return converter.convert(path, max_num_pages=MAX_PAGES).document
+
+    return convert
+
+
+@lru_cache(maxsize=1)
+def _docling_converter() -> Converter:
+    # OCR engine (F-238). Tesseract is the primary and RapidOCR (PaddleOCR's PP-OCR models on onnxruntime) the
+    # backup: if the primary raises on a document, the same document is parsed again with the backup, so an OCR
+    # fault never fails an intake. Through the whole DocLens complex-packet pipeline Tesseract kept 19/19 document
+    # dates and 10 stage-5 disagreements; RapidOCR (which reads "Blvd" where Tesseract reads "Blwvd") lost the H&P
+    # date (it ran "09/17/2026Author:" together) and doubled the disagreements to 20, at ~2x the CPU time.
+    # EasyOCR (15/55 key phrases, ~10x slower than Tesseract) stays selectable.
+    primary_engine = _engine_from_env("DOCLING_OCR_ENGINE", "tesseract") or "tesseract"
+    backup_engine = _engine_from_env("DOCLING_OCR_BACKUP", "rapidocr")
+    primary = _converter_for(primary_engine)
+    if backup_engine is None or backup_engine == primary_engine:
+        return primary
+
+    def convert(path: str) -> Any:
+        try:
+            return primary(path)
+        except Exception as exc:  # noqa: BLE001 — Docling raises many types; the class is enough, never the text
+            log.warning(
+                "ocr engine %s failed (%s); retrying with %s", primary_engine, type(exc).__name__, backup_engine
+            )
+            return _converter_for(backup_engine)(path)
 
     return convert
 

@@ -38,6 +38,16 @@ docker run --rm -v "$PWD/app:/srv/app:ro" -v "$PWD/tests:/srv/tests:ro" \
 Commit `pyproject.toml` and `uv.lock` together. Refresh the Wolfi base digest in the same pass
 (`docker pull cgr.dev/chainguard/wolfi-base:latest`, then copy the digest into `WOLFI_BASE` in the `Dockerfile`).
 
+## OCR engines
+
+Tesseract is the primary engine; RapidOCR (PaddleOCR's PP-OCR models on onnxruntime, baked into the image by
+`docling-tools models download ... rapidocr`) is the backup. If the primary raises on a document, `/parse` parses the
+same document again with the backup; only the exception class is logged. `DOCLING_OCR_ENGINE` picks the primary
+and `DOCLING_OCR_BACKUP` the backup (`tesseract`, `rapidocr` or `easyocr`; backup `none` turns the fallback off).
+Why Tesseract leads: on the DocLens complex-packet fixture the two scored alike on key phrases and ICD codes (50 vs 49
+of 55, 23 vs 24 of 25), but through the whole intake pipeline RapidOCR lost one document date (it ran
+"09/17/2026Author:" together) and doubled the stage-5 disagreements (10 to 20), at about twice the CPU time.
+
 ## Base image
 
 Wolfi (`cgr.dev/chainguard/wolfi-base`), Chainguard's minimal glibc distro, not Debian: torch, easyocr and opencv

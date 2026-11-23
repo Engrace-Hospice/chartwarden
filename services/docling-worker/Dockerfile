@@ -3,7 +3,7 @@
 # Wolfi (Chainguard's minimal glibc distro) instead of Debian: the image is the one that parses uploaded documents,
 # so it carries as little OS as possible. glibc matters: torch, easyocr and opencv ship manylinux (glibc) wheels
 # only, so musl/Alpine is not an option. Two stages: the venv and models are built with uv on Wolfi, then copied
-# into a runtime that adds only python-3.12 and the tesseract CLI (the default OCR engine, app/main.py).
+# into a runtime that adds only python-3.12 and the tesseract CLI (the primary OCR engine, app/main.py).
 # wolfi-base publishes `latest` only, so it is pinned by digest; bump the digest to pick up OS fixes.
 ARG WOLFI_BASE=cgr.dev/chainguard/wolfi-base@sha256:8509ee4351a2e501b7f98201f2e2642396e82020c61a589cacdcfe74b9de46c1
 
@@ -24,7 +24,7 @@ RUN uv sync --frozen --no-dev --no-install-project --extra docling \
  && uv pip check --python /opt/venv/bin/python
 # Bake the layout / table / OCR models into the image: a worker must not download models from the
 # internet at request time (and must not need egress at all in production).
-RUN docling-tools models download -o /opt/models/docling layout tableformer easyocr
+RUN docling-tools models download -o /opt/models/docling layout tableformer easyocr rapidocr
 
 FROM ${WOLFI_BASE}
 # python-3.12 at the same path the venv was built against (/usr/bin/python3.12); tesseract + English and OSD data for
