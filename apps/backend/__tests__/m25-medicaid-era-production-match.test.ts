@@ -288,6 +288,70 @@ describe("claim state at the time an ERA arrives", () => {
   });
 });
 
+describe("a payer reversal of a superseded claim version", () => {
+  const { observation: reversal } = singleSet([
+    "BPR*H*0.00*C*NON************20260615",
+    ...header(),
+    "CLP*PCN-0001*22*1000.00*0.00*0.00*MC*ICN-A1",
+    "DTM*232*20260501",
+    "DTM*233*20260531",
+    "CAS*CO*45*1000.00",
+  ]);
+  const assess = (candidate: MedicaidEraClaimCandidate, observed = reversal) =>
+    assessMedicaidEraReview({
+      observation: observed,
+      attribution: verifiedProduction(),
+      match: match([candidate]),
+      duplicate: "none",
+    });
+
+  // The usual replacement/void flow: the provider replaces or voids a paid claim and the payer reverses the ORIGINAL
+  // version. M24 no longer calls that version active, and the read seam supplies no verified submission evidence for it,
+  // so it can never MATCH; the reviewer is still told it is a reversal and why it is held.
+  it.each([
+    ["a REPLACED original", submittedCandidate({ claimState: "REPLACED" })],
+    ["a VOIDED original", submittedCandidate({ claimState: "VOIDED" })],
+    ["an original with a void lineage", submittedCandidate({ replacementLineage: "void" })],
+  ])("is a reversal review, held unmatched and without ids, for %s", (_name, candidate) => {
+    const assessment = assess(candidate);
+    expect(assessment).toMatchObject({
+      decision: "reversal_or_recoupment_review",
+      reasonCode: "REVERSAL_OF_SUPERSEDED_CLAIM_VERSION",
+      matchStatus: "CLAIM_VERSION_CONFLICT",
+      matchedClaim: null,
+      claimStatusCode: 22,
+      postingAuthorized: false,
+    });
+    expect(assessment.unresolvedRequirements).toContain("CLAIM_VERSION_NOT_ACTIVE");
+  });
+
+  it("does not turn an abandoned claim into a reversal review", () => {
+    expect(assess(submittedCandidate({ claimState: "ABANDONED" }))).toMatchObject({
+      decision: "unmatched_or_ambiguous",
+      reasonCode: "CLAIM_ABANDONED",
+      matchedClaim: null,
+    });
+  });
+
+  it("does not relabel a non-reversal payment against a replaced claim", () => {
+    const { observation: payment } = singleSet();
+    expect(assess(submittedCandidate({ claimState: "REPLACED" }), payment)).toMatchObject({
+      decision: "unmatched_or_ambiguous",
+      reasonCode: "CLAIM_VERSION_NOT_ACTIVE",
+      matchedClaim: null,
+    });
+  });
+
+  it("does not relabel a reversal that fails to match for any other reason", () => {
+    expect(assess(submittedCandidate({ canonicalPayerId: "payer-synthetic-other" }))).toMatchObject(
+      {
+        decision: "unmatched_or_ambiguous",
+        reasonCode: "CLAIM_PAYER_PROGRAM_MISMATCH",
+      },
+    );
+  });
+});
+
 describe("claim service dates", () => {
   const refuse = (input: Partial<Parameters<typeof matchMedicaidEraClaim>[0]>) =>
     match([submittedCandidate()], input);

@@ -61,31 +61,70 @@ type HeldAttributionReason =
 
 const digits = (value: string | null | undefined): string => (value ?? "").replace(/\D/g, "");
 
+/** The payee NPI the ERA names (qualifier XX), digits only; empty when the payee is identified another way. */
+const payeeNpiOf = (observation: MedicaidEraObservation): string =>
+  observation.source.payee.identifierQualifier === "XX"
+    ? digits(observation.source.payee.identifier)
+    : "";
+
+/**
+ * True when the ERA names a payee NPI that is the billing NPI of some `hidden` account (one the caller may not see) and
+ * of none of the `visible` ones. Such an ERA is addressed to someone else, so the caller must not be told anything about
+ * it, not even a hold reason: a payee conflict for a sibling entity's ERA would confirm that the sibling exists.
+ */
+export function payeeOnlyMatchesHiddenAccounts(
+  observation: MedicaidEraObservation,
+  visible: readonly MedicaidEraAccountEvidence[],
+  hidden: readonly MedicaidEraAccountEvidence[],
+): boolean {
+  const payeeNpi = payeeNpiOf(observation);
+  const matches = (accounts: readonly MedicaidEraAccountEvidence[]) =>
+    accounts.some((account) => digits(account.billingNpi) === payeeNpi);
+  return payeeNpi !== "" && !matches(visible) && matches(hidden);
+}
+
+/** True only when the row's effective window demonstrably contains the date; a malformed window covers nothing. */
+const windowCovers = (account: MedicaidEraAccountEvidence, date: string): boolean =>
+  isIsoCalendarDate(date) &&
+  isIsoCalendarDate(account.effectiveFrom) &&
+  (account.effectiveTo === null || isIsoCalendarDate(account.effectiveTo)) &&
+  account.effectiveFrom <= date &&
+  (account.effectiveTo === null || account.effectiveTo >= date);
+
 /**
  * One vendor account can serve several provider entities. The payee NPI the ERA names (against each entity's billing
- * NPI) is the only X12 fact that tells them apart; without it, or when several entities share the NPI, the account stays
- * ambiguous.
+ * NPI) is the only X12 fact that tells them apart. Several rows with that NPI are either different entities or one
+ * entity's re-enrollment history; the row whose effective window covers the receipt date is the one that speaks for the
+ * artifact, and the account stays ambiguous unless exactly one does.
  */
 function selectSourceAccount(
   candidates: readonly MedicaidEraAccountEvidence[],
   payeeNpi: string,
+  receivedDate: string,
 ): { readonly account: MedicaidEraAccountEvidence } | { readonly reason: HeldAttributionReason } {
   if (candidates.length === 1) return { account: candidates[0]! };
   if (!payeeNpi) return { reason: "SOURCE_ACCOUNT_AMBIGUOUS" };
   const byPayee = candidates.filter((candidate) => digits(candidate.billingNpi) === payeeNpi);
   if (byPayee.length === 0) return { reason: "PAYEE_IDENTITY_CONFLICT" };
-  if (byPayee.length !== 1) return { reason: "SOURCE_ACCOUNT_AMBIGUOUS" };
-  return { account: byPayee[0]! };
+  if (byPayee.length === 1) return { account: byPayee[0]! };
+  const covering = byPayee.filter((candidate) => windowCovers(candidate, receivedDate));
+  return covering.length === 1 ? { account: covering[0]! } : { reason: "SOURCE_ACCOUNT_AMBIGUOUS" };
 }
 
 /**
  * Resolve attribution from authenticated account context plus effective, verified enrollment evidence.
  *
  * Attribution is point-in-time: every date and freshness test compares against the artifact's authenticated `receivedAt`,
- * not against now. An ERA belongs to whoever held the account, with fresh evidence, when it was received, so re-inspecting
- * it after the evidence has since lapsed still attributes it (a late recoupment stays reviewable). The guard against an
- * account that was re-pointed afterwards is `verifiedAt <= receivedAt`: evidence first verified after receipt cannot
- * speak for the artifact. `enrollment` is the account's current status, so a since-revoked enrollment still holds.
+ * not against now. Evidence that merely LAPSED after receipt (`effectiveTo` or `evidenceFreshUntil` passed since) still
+ * attributes the artifact, so a late recoupment stays reviewable.
+ *
+ * The guard against an account that was re-pointed afterwards is `verifiedAt <= receivedAt`, and it is coarser than that
+ * intent: `verifiedAt` is one instant per row, with no first-verified instant beside it. A row that is re-verified IN PLACE
+ * (its `verifiedAt` rewritten to the latest check) therefore holds EVERY artifact received before that re-verification as
+ * SOURCE_EVIDENCE_STALE; fail-closed, and the cost of a routine re-verification is that older artifacts stop attributing.
+ * They attribute again only against an evidence row that was verified at or before their receipt, i.e. history kept as
+ * appended rows (picked by effective window, see `selectSourceAccount`). `enrollment` is the row's current status, so a
+ * since-revoked enrollment still holds.
  */
 export function resolveMedicaidEraAttribution(input: {
   readonly source: AuthenticatedMedicaidEraSource;
@@ -99,16 +138,13 @@ export function resolveMedicaidEraAttribution(input: {
       account.usage === input.source.usage,
   );
   if (candidates.length === 0) return { status: "held", reason: "SOURCE_ACCOUNT_UNREGISTERED" };
-  const payeeNpi =
-    input.observation.source.payee.identifierQualifier === "XX"
-      ? digits(input.observation.source.payee.identifier)
-      : "";
-  const selected = selectSourceAccount(candidates, payeeNpi);
+  const payeeNpi = payeeNpiOf(input.observation);
+  const date = input.source.receivedAt.slice(0, 10);
+  const selected = selectSourceAccount(candidates, payeeNpi, date);
   if ("reason" in selected) return { status: "held", reason: selected.reason };
   const account = selected.account;
   if (!Number.isFinite(Date.parse(input.source.receivedAt)))
     return { status: "held", reason: "SOURCE_EVIDENCE_STALE" };
-  const date = input.source.receivedAt.slice(0, 10);
   if (
     !isIsoCalendarDate(date) ||
     !isIsoCalendarDate(account.effectiveFrom) ||
@@ -232,6 +268,9 @@ const SUBMITTED_CLAIM_STATES: ReadonlySet<string> = new Set([
 /** Claim versions that are no longer the live one (the seam's `activeClaim` excludes the same three). */
 const INACTIVE_CLAIM_STATES: ReadonlySet<string> = new Set(["VOIDED", "REPLACED", "ABANDONED"]);
 
+/** Reason code for a REPLACED or VOIDED claim version (or a void lineage): superseded, not abandoned. */
+const CLAIM_VERSION_NOT_ACTIVE = "CLAIM_VERSION_NOT_ACTIVE";
+
 /** Exact control identity is only a candidate. Scope, payer, period, lineage and persisted send evidence are mandatory. */
 export function matchMedicaidEraClaim(input: {
   readonly attribution: MedicaidEraAttribution;
@@ -338,7 +377,7 @@ export function matchMedicaidEraClaim(input: {
   if (candidate.replacementLineage === "void" || INACTIVE_CLAIM_STATES.has(candidate.claimState))
     return result(
       "CLAIM_VERSION_CONFLICT",
-      candidate.claimState === "ABANDONED" ? "CLAIM_ABANDONED" : "CLAIM_VERSION_NOT_ACTIVE",
+      candidate.claimState === "ABANDONED" ? "CLAIM_ABANDONED" : CLAIM_VERSION_NOT_ACTIVE,
     );
   if (!SUBMITTED_CLAIM_STATES.has(candidate.claimState))
     return result("SUBMISSION_UNVERIFIED", "CLAIM_HAS_NO_SUBMITTED_STATE");
@@ -513,8 +552,19 @@ export function assessMedicaidEraReview(input: {
           ? "SOURCE_IDENTITY_CONFLICT_HOLD"
           : "POSSIBLE_DUPLICATE_HOLD";
   } else if (unmatched && !claimlessWithAdjustments) {
-    decision = "unmatched_or_ambiguous";
-    reasonCode = input.match.reasonCode;
+    // The usual replacement/void flow: the payer reverses the ORIGINAL version, which M24 no longer calls active (and for
+    // which the read seam supplies no verified submission evidence), so it can never match. It is still a reversal the
+    // reviewer must see, held unmatched: no claim or submission id, and the match refusal stays in unresolvedRequirements.
+    const reversesSupersededVersion =
+      claim?.statusCode === 22 &&
+      input.match.status === "CLAIM_VERSION_CONFLICT" &&
+      input.match.reasonCode === CLAIM_VERSION_NOT_ACTIVE;
+    decision = reversesSupersededVersion
+      ? "reversal_or_recoupment_review"
+      : "unmatched_or_ambiguous";
+    reasonCode = reversesSupersededVersion
+      ? "REVERSAL_OF_SUPERSEDED_CLAIM_VERSION"
+      : input.match.reasonCode;
   } else if (claim && claim.statusCode === 22) {
     decision = "reversal_or_recoupment_review";
     reasonCode = "PAYER_REPORTED_REVERSAL_STATUS";
