@@ -969,7 +969,8 @@ describe("M24 offline route and acknowledgment contracts", () => {
     });
 
     // X12 code list 507: A1 "acknowledgement/receipt - the claim/encounter has been received. This does not mean that the
-    // claim has been accepted for adjudication." (the repo's own stedi-claim-status.ts maps A1 and A2 to "received").
+    // claim has been accepted for adjudication." A2 is the acceptance; that split is from the standard, not from the repo
+    // (stedi-claim-status.ts maps A1 and A2 alike to "received"), which agrees with this test only that A1 is a receipt.
     it("derives a receipt, not an acceptance, from STC01 A1", () => {
       const inspected = inspectSynthetic277ca(identity, ack277For(clm01, "A1:19:PR"));
       expect(inspected).toMatchObject({ ok: true, stage: "payer", disposition: "received" });
