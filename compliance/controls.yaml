@@ -1419,6 +1419,7 @@ controls:
       # in document_access_log; the record parser, the bearer check, the path and the deploy-time sender check are each
       # tested separately, and the end-to-end chain is witnessed only on a deployed host.
       - file: apps/backend/src/modules/22-documents/access-log/minio-access-log.test.ts
+      - file: scripts/__tests__/deploy-schema-rollback.test.ts
       - script: test:object-store:conformance:live
       - file: deploy/production/compose.yml
       # WF09 (migrations 1528-1532): each new PHI table has a SECURITY DEFINER write-audit trigger owned by chartwarden_audit_writer (insert,
