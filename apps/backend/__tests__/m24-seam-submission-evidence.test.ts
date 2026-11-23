@@ -133,6 +133,8 @@ describe("submissionEvidenceForLine", () => {
     ["unverified provenance", { provenanceStatus: "unverified" }],
     ["a claim version mismatch", { submittedClaimVersion: 3 }],
     ["an assignment that is no longer verified", { assignmentStatus: "revoked" }],
+    // the attempt's payer snapshot differs from the claim's payer
+    ["an attempt sent to another payer", { payerId: "b0000000-0000-4000-8000-0000000000ff" }],
   ])("hides every identity when the submission is unqualified by %s", async (_label, extra) => {
     const [result] = await evidenceFor([
       provenRow({ replacesClaimId: PREDECESSOR, ...acknowledged, ...extra }),
