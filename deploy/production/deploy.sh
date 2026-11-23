@@ -187,21 +187,48 @@ ensure_secret DOCLING_WORKER_TOKEN "$(openssl rand -hex 32)"
 # Docker secret file secrets/backup_source_object_store_secret_key, but a live host still holds the OLD names. This step is
 # additive and idempotent, and runs before anything is started or backed up, so the rollback backup below carries the new
 # variable too:
-#   secret file: the new one is missing and the old one exists -> copied (cp -p: same mode and owner)
+#   secret file: the new one is missing and the old one exists -> copied atomically (cp -p to a temp name, then mv: same
+#                mode and owner, and a copy that dies half way never leaves a partial file under the real name)
 #   variable:    the new one is unset or empty and the old one has a value -> appended with that exact raw value (the last
 #                line wins, as it does for compose)
 # An existing new value or file is never changed, output names the variables and files only (never a value), and the old
 # variable and file stay in place, unused, until an operator deletes them. A host with neither old name, or one that has
 # migrated already, is left alone; an old name still present never fails a deploy.
+# Fail closed BEFORE .env.production is touched: when the overlay is configured (compose.backup.yml present and either
+# variable set) the new secret file must exist once the copy is done. A secrets/ directory this user cannot enter makes the
+# old file invisible (`[ -f ]` is false on EACCES), so the copy is skipped; without this check the variable would still
+# migrate, the overlay would be enabled and provisioning would die later on a missing bind-mount file, on every re-run.
 env_raw() { sed -n "s/^$1=//p" .env.production | tail -n 1; }
+backup_secret_old=secrets/backup_source_minio_secret_key
+backup_secret_new=secrets/backup_source_object_store_secret_key
+backup_names_hint() {
+  echo "Copy it by hand: cp -p $deploy_dir/$backup_secret_old $deploy_dir/$backup_secret_new (same mode and owner, as a user that can enter secrets/), then re-run." >&2
+  echo "No service was touched, no migration was applied and the backup-name migration did not change .env.production." >&2
+}
 deploy_step=backup-names
-if [ ! -e secrets/backup_source_object_store_secret_key ] && [ -f secrets/backup_source_minio_secret_key ]; then
-  cp -p secrets/backup_source_minio_secret_key secrets/backup_source_object_store_secret_key || {
-    echo "could not copy $deploy_dir/secrets/backup_source_minio_secret_key to secrets/backup_source_object_store_secret_key (check that this user can read it)." >&2
-    echo "Copy it by hand (same mode and owner) and re-run. No service was touched and no migration was applied." >&2
+backup_overlay_configured=0
+if [ -f compose.backup.yml ] && { [ -n "$(env_raw BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY)" ] || [ -n "$(env_raw BACKUP_SOURCE_MINIO_ACCESS_KEY)" ]; }; then
+  backup_overlay_configured=1
+fi
+if [ ! -e "$backup_secret_new" ] && [ -f "$backup_secret_old" ]; then
+  backup_secret_tmp=$backup_secret_new.tmp.$$
+  if cp -p "$backup_secret_old" "$backup_secret_tmp" && mv "$backup_secret_tmp" "$backup_secret_new"; then
+    echo "copied $backup_secret_old to $backup_secret_new"
+  else
+    rm -f "$backup_secret_tmp"
+    echo "could not copy $deploy_dir/$backup_secret_old to $backup_secret_new (check that this user can read it and write secrets/)." >&2
+    backup_names_hint
     exit 1
-  }
-  echo "copied secrets/backup_source_minio_secret_key to secrets/backup_source_object_store_secret_key"
+  fi
+fi
+if [ "$backup_overlay_configured" -eq 1 ] && [ ! -e "$backup_secret_new" ]; then
+  if [ -d secrets ] && [ ! -x secrets ]; then
+    echo "$deploy_dir/secrets is not accessible to this user, so $backup_secret_new cannot be confirmed to exist (the backup overlay is configured)." >&2
+  else
+    echo "the backup overlay is configured but $deploy_dir/$backup_secret_new does not exist (and there is no old file to copy)." >&2
+  fi
+  backup_names_hint
+  exit 1
 fi
 if [ -z "$(env_raw BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY)" ] && [ -n "$(env_raw BACKUP_SOURCE_MINIO_ACCESS_KEY)" ]; then
   append_env BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY "$(env_raw BACKUP_SOURCE_MINIO_ACCESS_KEY)"

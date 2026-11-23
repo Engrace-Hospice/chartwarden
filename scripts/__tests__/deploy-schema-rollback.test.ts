@@ -89,6 +89,21 @@ writeFileSync(join(binDir, "curl"), CURL_STUB);
 chmodSync(join(binDir, "curl"), 0o755);
 const WEBHOOK = "https://hooks.example.test/services/T000/B000/s3cr3t-token";
 
+// A `cp` that dies half way through copying the OLD backup secret (it leaves a partial destination behind, then fails) and
+// is the real cp for everything else deploy.sh copies. Prepended to PATH only by a scenario that asks for it.
+const failCpBin = join(scratch, "fail-cp-bin");
+mkdirSync(failCpBin);
+writeFileSync(
+  join(failCpBin, "cp"),
+  `#!/bin/sh
+case "$*" in
+  *backup_source_minio_secret_key*) for last; do :; done; printf 'partial' > "$last"; exit 1 ;;
+esac
+exec /bin/cp "$@"
+`,
+);
+chmodSync(join(failCpBin, "cp"), 0o755);
+
 const OLD_API = "ghcr.io/o/chartwarden:sha-old";
 const NEW_API = "ghcr.io/o/chartwarden:sha-new";
 const BASE_LEDGER = ["0001_init.sql", "1287_m41_commercial_destruction_grants.sql"];
@@ -122,6 +137,10 @@ interface Scenario {
   readonly secretFiles?: Readonly<
     Record<string, { readonly content: string; readonly mode?: number }>
   >;
+  /** Permission bits of the host's `secrets/` directory itself (default 0700), applied after the files are written. */
+  readonly secretsDirMode?: number;
+  /** The `cp` of the old backup secret dies half way through, leaving a partial destination behind. */
+  readonly failSecretCopy?: boolean;
   /** `.env.production` ends without a newline (deploy.sh must not glue an appended line onto the last one). */
   readonly noTrailingNewline?: boolean;
   /**
@@ -211,6 +230,7 @@ function prepare(s: Scenario): Prepared {
       writeFileSync(join(dir, "secrets", name), file.content);
       chmodSync(join(dir, "secrets", name), file.mode ?? 0o400);
     }
+    if (s.secretsDirMode !== undefined) chmodSync(join(dir, "secrets"), s.secretsDirMode);
   }
   if (s.alert?.via === "file" && s.alert.url) {
     writeFileSync(join(dir, ".deploy-alert.env"), `DEPLOY_ALERT_WEBHOOK_URL=${s.alert.url}\n`, {
@@ -225,7 +245,7 @@ function prepare(s: Scenario): Prepared {
     log,
     envBefore,
     env: {
-      PATH: `${binDir}:/usr/bin:/bin`,
+      PATH: `${s.failSecretCopy ? `${failCpBin}:` : ""}${binDir}:/usr/bin:/bin`,
       CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED: "1",
       CHARTWARDEN_FITNESS_ROOT: fixtureRoot,
       STUB_LOG: log,
@@ -276,6 +296,7 @@ function readSecrets(
   secretsDir: string,
 ): Record<string, { readonly content: string; readonly mode: number }> {
   if (!existsSync(secretsDir)) return {};
+  chmodSync(secretsDir, 0o700); // a scenario may have left the directory inaccessible; read it back as its owner
   return Object.fromEntries(
     readdirSync(secretsDir).map((name) => {
       const file = join(secretsDir, name);
@@ -812,6 +833,133 @@ describe.skipIf(BUN === "")("deploy.sh backup-overlay name migration", () => {
     const o = deploy({ backupOverlay: true });
     expect(o.code, o.out).toBe(0);
     expect(o.calls.some((c) => c.includes("compose.backup.yml"))).toBe(false);
+  });
+
+  // Review finding 1a: a secrets/ directory this user cannot enter (0700 owned by uid 999, the deploy user is neither) made
+  // `[ -f old ]` false, so the copy was skipped silently while the variable half still migrated and enabled the overlay.
+  describe.skipIf(process.getuid?.() === 0)("an inaccessible secrets directory", () => {
+    it("stops before .env.production is touched, with a hand-copy hint, when the overlay is configured", () => {
+      const o = deploy({
+        backupOverlay: true,
+        extraEnv: [`${OLD_KEY}=${accessKey}`],
+        secretFiles: { [OLD_SECRET]: { content: secretValue } },
+        secretsDirMode: 0o000,
+      });
+      expect(o.code, o.out).toBe(1);
+      expect(o.calls, "docker must not be called").toEqual([]);
+      expect(o.env, "the env file is exactly what the host had").toBe(o.envBefore);
+      expect(envEntry(o.env, NEW_KEY).count).toBe(0);
+      expect(o.secrets[NEW_SECRET]).toBeUndefined();
+      expect(o.out).toContain("Copy it by hand");
+      expect(o.out).toContain("No service was touched");
+      expect(o.out).toContain("not accessible");
+      expectNoBackupSecretInOutput(o);
+    });
+
+    it("a re-run fails the same way (never a half-migrated env) until the operator copies the file", () => {
+      const p = prepare({
+        backupOverlay: true,
+        extraEnv: [`${OLD_KEY}=${accessKey}`],
+        secretFiles: { [OLD_SECRET]: { content: secretValue } },
+        secretsDirMode: 0o000,
+      });
+      for (let i = 0; i < 2; i += 1) {
+        const r = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+        expect(r.status, `${r.stdout}${r.stderr}`).toBe(1);
+        expect(readFileSync(join(p.dir, ".env.production"), "utf8")).toBe(p.envBefore);
+      }
+      chmodSync(join(p.dir, "secrets"), 0o700); // the operator fixes access (or copies by hand) ...
+      const fixed = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+      expect(fixed.status, `${fixed.stdout}${fixed.stderr}`).toBe(0); // ... and the deploy now migrates
+      expect(existsSync(join(p.dir, "secrets", NEW_SECRET))).toBe(true);
+    });
+
+    it("an inaccessible directory is harmless when no backup overlay is configured on the host", () => {
+      const o = deploy({
+        secretFiles: { [OLD_SECRET]: { content: secretValue } },
+        secretsDirMode: 0o000,
+      });
+      expect(o.code, o.out).toBe(0);
+      expect(envEntry(o.env, NEW_KEY).count).toBe(0);
+    });
+  });
+
+  it("the overlay is configured but NO secret file exists on the host: stops before the env is touched, naming the missing file", () => {
+    const o = deploy({ backupOverlay: true, extraEnv: [`${OLD_KEY}=${accessKey}`] });
+    expect(o.code, o.out).toBe(1);
+    expect(o.calls).toEqual([]);
+    expect(o.env).toBe(o.envBefore);
+    expect(o.out).toContain(`secrets/${NEW_SECRET}`);
+    expect(o.out).toContain("Copy it by hand");
+  });
+
+  it("an already migrated host (new variable + new file) passes with the overlay and copies nothing", () => {
+    const o = deploy({
+      backupOverlay: true,
+      extraEnv: [`${NEW_KEY}=new-reader-key`],
+      secretFiles: { [NEW_SECRET]: { content: otherSecret } },
+    });
+    expect(o.code, o.out).toBe(0);
+    expect(o.out).not.toMatch(/copied (BACKUP_SOURCE|secrets)/);
+    expect(
+      o.calls.some((c) => c.includes("-f compose.backup.yml run --rm object-store-provision")),
+    ).toBe(true);
+  });
+
+  // Review finding 1b: the copy must be atomic, so a partial destination is never mistaken for the real file on a re-run.
+  describe("the secret copy is atomic", () => {
+    it("a copy that dies half way leaves no partial file under the new name or a temp name, and the env unchanged", () => {
+      const o = deploy({
+        backupOverlay: true,
+        failSecretCopy: true,
+        extraEnv: [`${OLD_KEY}=${accessKey}`],
+        secretFiles: { [OLD_SECRET]: { content: secretValue } },
+      });
+      expect(o.code, o.out).toBe(1);
+      expect(o.calls).toEqual([]);
+      expect(o.env).toBe(o.envBefore);
+      expect(Object.keys(o.secrets)).toEqual([OLD_SECRET]); // nothing partial, nothing temporary
+      expect(o.secrets[OLD_SECRET]?.content).toBe(secretValue);
+      expect(o.out).toContain("Copy it by hand");
+      expectNoBackupSecretInOutput(o);
+    });
+
+    it("a re-run after the failed copy migrates normally (the partial was never mistaken for the real file)", () => {
+      const p = prepare({
+        backupOverlay: true,
+        failSecretCopy: true,
+        extraEnv: [`${OLD_KEY}=${accessKey}`],
+        secretFiles: { [OLD_SECRET]: { content: secretValue } },
+      });
+      const failed = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+      expect(failed.status).toBe(1);
+      const rerun = spawnSync("sh", DEPLOY_ARGS, {
+        cwd: p.dir,
+        encoding: "utf8",
+        env: { ...p.env, PATH: `${binDir}:/usr/bin:/bin` }, // the real cp now
+      });
+      expect(rerun.status, `${rerun.stdout}${rerun.stderr}`).toBe(0);
+      const o = collect(p, rerun.status ?? -1, `${rerun.stdout}${rerun.stderr}`);
+      expect(o.secrets[NEW_SECRET]).toEqual({ content: secretValue, mode: 0o400 });
+      expect(Object.keys(o.secrets).sort()).toEqual([NEW_SECRET, OLD_SECRET].sort());
+      expect(envEntry(o.env, NEW_KEY)).toEqual({ value: accessKey, count: 1 });
+    });
+
+    it.skipIf(process.getuid?.() === 0)(
+      "a secrets directory that cannot be written leaves nothing behind and the env unchanged",
+      () => {
+        const o = deploy({
+          backupOverlay: true,
+          extraEnv: [`${OLD_KEY}=${accessKey}`],
+          secretFiles: { [OLD_SECRET]: { content: secretValue } },
+          secretsDirMode: 0o500,
+        });
+        expect(o.code, o.out).toBe(1);
+        expect(o.env).toBe(o.envBefore);
+        expect(Object.keys(o.secrets)).toEqual([OLD_SECRET]);
+        expect(o.out).toContain("Copy it by hand");
+      },
+    );
   });
 });
 
