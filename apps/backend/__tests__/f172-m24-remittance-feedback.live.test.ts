@@ -643,7 +643,10 @@ describe.skipIf(!DB_URL)(
       }
 
       /** The message of a refusal, with the driver's wrapped cause (drizzle puts the Postgres text in `cause`). */
-      async function refusalOf(run: () => Promise<unknown>): Promise<string> {
+      async function refusalOf(
+        run: () => Promise<unknown>,
+        what = "the statement",
+      ): Promise<string> {
         try {
           await run();
         } catch (error) {
@@ -655,7 +658,7 @@ describe.skipIf(!DB_URL)(
           }
           return parts.join(" | ");
         }
-        throw new Error("the statement was expected to be refused but it succeeded");
+        throw new Error(`${what} was expected to be refused but it succeeded`);
       }
 
       type AppTx = Parameters<Parameters<typeof handle.db.transaction>[0]>[0];
@@ -702,33 +705,119 @@ describe.skipIf(!DB_URL)(
           [submissionId],
         );
 
-        // A6: once an attempt is verified the application keeps updating it (result, polling, terminal time).
+        // A6: once an attempt is verified the application keeps updating it: the result, the polling schedule, the
+        // terminal time and the error detail are none of the frozen columns.
         const updated = await asApp((tx) =>
           tx
             .update(schema.medicaidSubmission)
-            .set({ result: "pending_async", errorCode: "SYNTHETIC", terminalAt: new Date() })
+            .set({
+              result: "pending_async",
+              errorCode: "SYNTHETIC",
+              errorMessage: "synthetic polling detail",
+              nextPollAt: new Date(Date.now() + 60_000),
+              terminalAt: new Date(),
+            })
             .where(eq(schema.medicaidSubmission.id, submissionId))
             .returning({ id: schema.medicaidSubmission.id }),
         );
         expect(updated).toHaveLength(1);
+        const settled = await asApp((tx) =>
+          tx
+            .update(schema.medicaidSubmission)
+            .set({ result: "accepted_sync", nextPollAt: null, terminalAt: new Date() })
+            .where(eq(schema.medicaidSubmission.id, submissionId))
+            .returning({ id: schema.medicaidSubmission.id }),
+        );
+        expect(settled).toHaveLength(1);
+      });
 
-        // ...but it cannot rewrite what was verified, nor demote the row.
-        for (const change of [
-          { sourceAccountRef: "another-account" },
-          { sourceEnvironment: "test" },
-          { programAssignmentIdSnapshot: randomUUID() },
-          { submittedClaimVersion: 9 },
-          { sourceProvenanceStatus: "unverified" },
-        ] as const) {
-          const refusal = await refusalOf(() =>
-            asApp((tx) =>
-              tx
-                .update(schema.medicaidSubmission)
-                .set(change)
-                .where(eq(schema.medicaidSubmission.id, submissionId)),
-            ),
+      // Every column the verification stands on or that says which attempt the row IS: rewriting any of them would
+      // keep the row verified while changing what it proves (the seam joins an attempt to its claim by
+      // medicaid_claim_id). The values are otherwise valid for the row (another claim of the same organization and
+      // provider entity, another provider entity of the organization, a free attempt index...), and each case runs
+      // the identical statement as the superuser first-hand, so a refusal can only be the guard.
+      it("the application role cannot rewrite any identity or provenance column of a verified attempt", async () => {
+        const otherClaim = await seedScenario({ attempts: [] });
+        const otherProviderEntity = (
+          await admin.query(
+            `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+             VALUES ($1,'711113','PE three','7111111137','enc','0930') RETURNING id`,
+            [ORG_A],
+          )
+        ).rows[0].id as string;
+        type SubmissionColumns = Partial<typeof schema.medicaidSubmission.$inferInsert>;
+        const frozen: readonly {
+          readonly column: string;
+          readonly key: keyof SubmissionColumns;
+          readonly value: unknown;
+        }[] = [
+          { column: "id", key: "id", value: randomUUID() },
+          { column: "organization_id", key: "organizationId", value: ORG_B },
+          { column: "medicaid_claim_id", key: "medicaidClaimId", value: otherClaim.claimId },
+          { column: "provider_entity_id", key: "providerEntityId", value: otherProviderEntity },
+          { column: "service_state", key: "serviceState", value: "WA" },
+          { column: "channel", key: "channel", value: "direct_mmis" },
+          { column: "mco_id_snapshot", key: "mcoIdSnapshot", value: randomUUID() },
+          {
+            column: "medicaid_claim_control_number",
+            key: "medicaidClaimControlNumber",
+            value: "CN-REWRITTEN",
+          },
+          { column: "attempt_index", key: "attemptIndex", value: 7 },
+          { column: "adapter_vendor", key: "adapterVendor", value: "another-vendor" },
+          { column: "adapter_version", key: "adapterVersion", value: "another" },
+          {
+            column: "source_provenance_status",
+            key: "sourceProvenanceStatus",
+            value: "unverified",
+          },
+          { column: "source_account_ref", key: "sourceAccountRef", value: "another-account" },
+          { column: "source_environment", key: "sourceEnvironment", value: "test" },
+          {
+            column: "canonical_payer_id_snapshot",
+            key: "canonicalPayerIdSnapshot",
+            value: randomUUID(),
+          },
+          {
+            column: "payer_classification_id_snapshot",
+            key: "payerClassificationIdSnapshot",
+            value: randomUUID(),
+          },
+          { column: "program_kind_snapshot", key: "programKindSnapshot", value: "unsupported" },
+          {
+            column: "program_assignment_id_snapshot",
+            key: "programAssignmentIdSnapshot",
+            value: randomUUID(),
+          },
+          {
+            column: "program_assignment_version_snapshot",
+            key: "programAssignmentVersionSnapshot",
+            value: 9,
+          },
+          { column: "submitted_claim_version", key: "submittedClaimVersion", value: 9 },
+          { column: "submitted_at", key: "submittedAt", value: new Date("2020-01-01T00:00:00Z") },
+          { column: "vendor_transaction_id", key: "vendorTransactionId", value: "another-tx" },
+        ];
+        for (const { column, key, value } of frozen) {
+          const { submissionIds } = await seedScenario({ attempts: [{}] });
+          const submissionId = submissionIds[0] as string;
+          const refusal = await refusalOf(
+            () =>
+              asApp((tx) =>
+                tx
+                  .update(schema.medicaidSubmission)
+                  .set({ [key]: value } as SubmissionColumns)
+                  .where(eq(schema.medicaidSubmission.id, submissionId)),
+              ),
+            `rewriting ${column} of a verified attempt`,
           );
-          expect(refusal, JSON.stringify(change)).toMatch(/qualified server-owned path/);
+          expect(refusal, column).toMatch(/qualified server-owned path/);
+          // Control: the same change is valid for a server-owned (non-application) path.
+          const control = await admin.query(
+            `UPDATE medicaid_submission SET ${column}=$2 WHERE id=$1`,
+            [submissionId, value],
+          );
+          expect(control.rowCount, `control: ${column} outside the app role`).toBe(1);
         }
       });
 
