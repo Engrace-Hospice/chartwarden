@@ -185,10 +185,16 @@ CREATE TRIGGER trg_medicaid_enrollment_evidence_provider_entity
 
 -- The application role records a row as candidate or pending and nothing else (a pending row is what the write service
 -- inserts; candidate exists on the assignment only, hence the text comparison, which the other table's enum would refuse
--- to cast). Without this it could INSERT an already verified, rejected, revoked, superseded or expired row: the four-eyes
--- CHECK compares two values the same caller supplies, so a forged verified row passes every CHECK and bypasses the verify
--- path (the M40 classification, the source allow-list, step-up). 1538 and 1539 refuse the same insert by the same role.
+-- to cast). The guard refuses a ONE-statement verified or closed INSERT: without it the role could INSERT an already
+-- verified, rejected, revoked, superseded or expired row in one statement, and the four-eyes CHECK would not stop it (it
+-- compares two values the same caller supplies). 1538 and 1539 refuse the same insert by the same role.
 -- Verification is an UPDATE from an open status, which the update guards below admit.
+-- KNOWN LIMIT: this does not make verification route-only. The database cannot tell the verify route from other
+-- application SQL (a trigger has no caller-bound identity), so the application role can still INSERT a pending row and
+-- UPDATE it to verified in a second statement, naming any verifier but the recorder. Verification itself (the M40
+-- classification match, the source allow-list, step-up) is enforced by the verify service, not by the database. What the
+-- database guarantees is the four-eyes arithmetic (the verifier column differs from the recorder column), the freeze of
+-- identity and verification evidence, and the transition table below: not WHO the verifier is.
 CREATE OR REPLACE FUNCTION guard_m24_readiness_insert_status() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
 BEGIN
@@ -210,9 +216,10 @@ CREATE TRIGGER trg_medicaid_enrollment_evidence_insert_status
 --      program, payer, period, source, recorder, lineage, creation time).
 --   2. A rejected, revoked or superseded row is final.
 --   3. A verified row can only be revoked or superseded: never back to candidate/pending/rejected, and never re-verified.
---   4. The verification evidence (source, reference, time, verifier, the M40 classification relied on) is written by the
---      verify step only: once a row has left candidate/pending it cannot be rewritten, so a verified row cannot have its
---      evidence swapped under the verification.
+--   4. The verification evidence (source, reference, time, verifier, the M40 classification relied on) is frozen once a
+--      row has left candidate/pending, so a verified row cannot have its evidence swapped under the verification. While
+--      the row is still open the application role can write it (the database does not tell the verify route from other
+--      application SQL; see the known limit above).
 -- Verification therefore happens only from candidate/pending, which is also what the write service enforces.
 CREATE OR REPLACE FUNCTION guard_medicaid_program_assignment_update() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
