@@ -18,7 +18,7 @@ No deployment is authorized by this document.
 
 `deploy.yml` deploys every push to `main`, and `deploy.sh` runs its migrate step with `--hold-contract`. With 1546 pending, that step refuses the whole batch and exits 75 **before any DDL**: the job fails with `DEPLOY HELD BEFORE ANY SCHEMA CHANGE`, the previous release keeps running and the database is unchanged. Every later deploy stays held, a security fix included, until an operator applies 1546 by hand with the sections below; then re-run the held deploy (nothing is pending, so `deploy.sh` recreates `api`, `worker` and `web` on the new image). A database whose ledger is empty (a first deploy) is exempt.
 
-The by-hand run applies **every** pending migration, not only 1546, one file at a time, each in its own transaction (see "Apply, verify, start"). The held deploy's output names the whole pending set; drain for any other `contract` migration in it as its own runbook requires. PR #1088's M24 migrations (1535 to 1541) are such a set: read "Applying together with PR #1088's migrations" below before the window.
+The by-hand run applies **every** pending migration, not only 1546, one file at a time, each in its own transaction (see "Apply, verify, start"). The held deploy's output names the whole pending set; drain for any other `contract` migration in it as its own runbook requires. PR #1088's M24 migrations are such a set: read "Applying together with other held migrations" below before the window.
 
 ## Before the maintenance window
 
@@ -79,7 +79,8 @@ The by-hand run applies **every** pending migration, not only 1546, one file at 
    | Row | What it is | What to do |
    | --- | --- | --- |
    | `function <name>` | a function whose text names `minio_object_key` (a rename never rewrites function text; an audit scrub list on the old name silently stops scrubbing) | change it to `object_key` or drop it |
-   | `trigger`, `policy`, `view`, `matview` | a definition that names the old column. A bare column reference on one of the five tables (an `UPDATE OF` list, a policy expression, a view's select list) is rewritten by the rename and will not stop the migration; a mention inside text (a trigger argument, a string literal) is not rewritten | decide which; confirm and ignore the first, fix the second like a function |
+   | `trigger`, `policy` | a definition that names the old column. On one of the five tables, an `UPDATE OF` column list or a policy expression is rewritten by the rename and will not stop the migration; a mention inside text (a trigger argument, a trigger name, a policy on some other table's own `minio_object_key` column) is not rewritten | confirm and ignore the first kind; fix the second like a function |
+   | `view`, `matview` | a view or materialized view whose definition names the old column. One that only **uses** the column inside an expression or under another alias (`length(minio_object_key) AS key_length`, `minio_object_key AS object_key`) is rewritten and will not stop the migration. One that **exposes** it under its old output name (`SELECT id, minio_object_key FROM ...`) is not: after the rename its definition reads `object_key AS minio_object_key`, which still names the old column, so the migration aborts after the drain | drop it and recreate it over the new name (or alias the column to `object_key`) **before** the window; confirm and ignore the other kind |
    | `column <table>.<name>` | an extra column of one of the five tables with `minio` in its name | rename or drop it |
    | `index <name>`, `constraint <table>.<name>` | an index or constraint of one of the five tables named with `minio` | `ALTER INDEX ... RENAME TO` / `ALTER TABLE ... RENAME CONSTRAINT`, or drop it |
 
@@ -112,16 +113,23 @@ The by-hand run applies **every** pending migration, not only 1546, one file at 
 2. Confirm 1546 is in `_chartwarden_migration` with its checksum, then check the catalog on the admin connection (`DATABASE_ADMIN_URL`, loopback tunnel or `sslmode=verify-full`):
 
    ```sql
-   -- five rows, no old names left anywhere
+   -- five rows
    SELECT table_name, column_name FROM information_schema.columns
     WHERE table_schema = 'public' AND column_name IN ('object_key', 'bundle_object_key')
       AND table_name IN ('document_version', 'remittance_advice', 'fhir_bulk_export_artifact', 'dsar_export_job', 'tenant_export_job');
-   SELECT count(*) FROM pg_attribute WHERE attnum > 0 AND NOT attisdropped AND attname ILIKE '%minio%';          -- 0
-   SELECT indexname FROM pg_indexes WHERE tablename = 'document_version' AND indexname LIKE '%object_key%';       -- document_version_object_key_uk
+   -- no row: none of the five tables still has a column named with minio
+   SELECT attrelid::regclass, attname FROM pg_attribute
+    WHERE attrelid IN ('document_version'::regclass, 'remittance_advice'::regclass, 'fhir_bulk_export_artifact'::regclass,
+                       'dsar_export_job'::regclass, 'tenant_export_job'::regclass)
+      AND attnum > 0 AND NOT attisdropped AND attname ILIKE '%minio%';
+   -- document_version_object_key_uk (and any ad hoc index of yours on the column)
+   SELECT indexname FROM pg_indexes WHERE tablename = 'document_version' AND indexdef LIKE '%object_key%';
    -- the audit scrub list names the new column
    SELECT pg_get_functiondef('audit_phi_write_document_version'::regproc) LIKE '%''byte_payload_cipher'', ''object_key''%'  AS scrubs_new_name,
           pg_get_functiondef('audit_phi_write_document_version'::regproc) ILIKE '%minio%'                                  AS still_old_name;  -- t, f
    ```
+
+   The column check looks at the five tables only, so a scratch copy of a table (`document_version_bak`) or an ad hoc index elsewhere does not show up in it. A row from it means a column named with `minio` exists on one of the five tables: 1546's own closing check would have aborted on it, so it was added after the migration, or the file did not run as written. Find out which before starting the application. `still_old_name` must be `f`: `t` means the audit scrub function still names the old column.
 3. Start the compatible `api` and `worker` by immutable digest: re-run the held deploy, then confirm every replica runs that digest.
 4. Verify the audit scrub on live data once a document version is written (an upload, or any render): the newest `document_version.*` audit rows carry `"object_key": "<changed>"` (never the key), and none carries `minio_object_key` as a new key:
 
@@ -133,13 +141,13 @@ The by-hand run applies **every** pending migration, not only 1546, one file at 
    Audit rows written before the migration keep the old image key `minio_object_key: "<changed>"` (the value was scrubbed; audit_event is append-only and is not rewritten).
 5. Smoke the paths that read the renamed columns: open a document, an 835 intake/post, a FHIR bulk export download, a DSAR export fulfilment and a tenant export download. Watch for `42703` ("column ... does not exist") in the API and worker logs: any hit is an old-name reader this release missed.
 
-## Applying together with PR #1088's migrations (1535 to 1541)
+## Applying together with other held migrations (PR #1088's M24 set)
 
-PR #1088 (M24 payer readiness) carries migrations 1535 to 1541: `1536`, `1537` and `1541` are `contract`, `1535`, `1538` and `1539` are `expand` (its runbook, `docs/runbooks/m24-payer-readiness-deployment.md` on that branch until it merges, has the table). The runner applies **every** pending file in file-name order, one transaction each, and has no switch to apply only one. If both sets are pending, one run applies 1535 to 1541 and then 1546.
+PR #1088 (M24 payer readiness) carries several migrations, `contract` ones among them, and it is still moving: do not rely on any list of its ordinals here. Read the held deploy's pending list and each pending file's `-- compat:` header. The runner applies **every** pending file in file-name order, each in its own BEGIN/COMMIT, and has no switch to apply only one; every `contract` file is applied by hand in that single run. A failure at file N therefore leaves all earlier files committed and all later ones, 1546 included, unrun. PR #1088's runbook (`docs/runbooks/m24-payer-readiness-deployment.md` on that branch until it merges) is the authority for its own files.
 
-- **A failure part-way commits everything before it.** `1537` aborts on purpose (`RAISE EXCEPTION`) when two `medicaid_state_rate_schedule` rows share an identity. If it does, 1535 and 1536 are committed; 1537, 1538, 1539, 1541 and 1546 are not; and the old `api` and `worker` are already stopped. The application then stays down: the previous image must not be started (1536 changes how it prices hospice lines, per the M24 runbook) and the new image cannot run before 1546 has applied (it reads the new column names).
-- **Resume.** Fix the cause (for 1537, the duplicate rows, as the M24 runbook describes) and re-run the same migrate command. The committed files are in `_chartwarden_migration` and are skipped; the run continues at the first file that is not. Read the ledger before and after (`SELECT filename, applied_at FROM _chartwarden_migration ORDER BY filename DESC LIMIT 10;`).
-- **Prefer one set per window.** If #1088 merges first, apply its set under its own runbook and run the held deploy; then merge this change and apply 1546 alone. If this change merges first, 1546 is alone in the release image: apply it, then #1088's set. If both ride in one release, also do the M24 runbook's pre-window checks, above all its step 4 (the same duplicate query 1537 runs: it must return no row), and plan for the longer outage.
+- **A failure part-way commits everything before it.** One of #1088's migrations (1537 at the time of writing) aborts on purpose (`RAISE EXCEPTION`) when two `medicaid_state_rate_schedule` rows share an identity. If a file like that fails, everything before it is committed, it and everything after it (1546 included) is not, and the old `api` and `worker` are already stopped. The application then stays down: the previous image must not be started when an applied file is not `expand` (per that runbook, an earlier file there changes how the previous release prices hospice lines), and the new image cannot run before 1546 has applied (it reads the new column names).
+- **Resume.** Fix the cause (for a duplicate-row abort, the rows, as that runbook describes) and re-run the same migrate command. The committed files are in `_chartwarden_migration` and are skipped; the run continues at the first file that is not. Read the ledger before and after (`SELECT filename, applied_at FROM _chartwarden_migration ORDER BY filename DESC LIMIT 10;`).
+- **Prefer one set per window.** If #1088 merges first, apply its set under its own runbook and run the held deploy; then merge this change and apply 1546 alone. If this change merges first, 1546 is alone in the release image: apply it, then #1088's set. If both ride in one release, also do that runbook's pre-window checks, above all its step 4 (the duplicate query its migration 1537 runs: it must return no row), and plan for the longer outage.
 
 ## Names deliberately not renamed
 
@@ -153,7 +161,7 @@ Take a fresh snapshot right after the verification step above, so the next drill
 
 ## Recovery boundary
 
-Before 1546 commits: if 1546 is the only pending file, abandoning the attempt is safe (one transaction, the database is unchanged, the previous image can keep running). If other files precede it in the run they have each committed on their own: read `_chartwarden_migration` for exactly what is applied. The previous image is safe only if every applied file is `expand`; `1536`, `1537` and `1541` are not, so after one of those follow `deploy/production/README.md`'s operator-halt procedure instead.
+Before 1546 commits: if 1546 is the only pending file, abandoning the attempt is safe (one transaction, the database is unchanged, the previous image can keep running). If other files precede it in the run they have each committed on their own: read `_chartwarden_migration` for exactly what is applied. The previous image is safe only if every applied file is `expand` (read each one's `-- compat:` header); after an applied `contract` file follow `deploy/production/README.md`'s operator-halt procedure instead.
 
 Once 1546 commits, an application-only rollback to the previous image is unsafe (`42703` on every renamed column, on the upload, intake, export and remittance paths). If the new release fails after the migration:
 
