@@ -140,7 +140,7 @@ M34 offboarding eraser, **and every per-tenant PHI cipher**) and `DATABASE_DESTR
 affected paths refuse loudly — the boot log says exactly what is off.
 
 **Message attachments (M36 WP 1.5) in the compose stack.** `docker compose up` starts a `clamav` sidecar (clamd on the
-compose network only; config `deploy/clamav/clamd.conf`; signature DB in the `chartwarden-compose-clamav` volume, downloaded on
+compose network only; built from `deploy/clamav/Dockerfile` (Wolfi); config `deploy/clamav/clamd.conf`; signature DB in the `chartwarden-compose-clamav` volume, downloaded on
 first start, a minute or two) and sets `MESSAGING_ATTACHMENT_SCANNER=clamd` on api and worker. api/worker only wait for it to
 *start*: until clamd answers, attachments stay `pending` (nothing is delivered). For a quick run without ClamAV set
 `MESSAGING_ATTACHMENT_SCANNER=builtin ALLOW_BUILTIN_ATTACHMENT_SCANNER=1` in `.env` (EICAR + type check, not an antivirus).
