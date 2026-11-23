@@ -570,12 +570,28 @@ docker compose --env-file .env.production -f compose.yml up -d --no-deps $object
   restore_previous_release
   exit 1
 }
-# Best-effort (download confirmation only, GAP-141): a Fluent Bit that will not start must not fail the release.
-if docker compose --env-file .env.production -f compose.yml up -d --no-deps $object_store_recreate fluent-bit; then
-  echo "$object_store_conf_hash" > .object-store-conf.sha256
-else
-  echo "WARNING: fluent-bit did not start; signed-URL downloads are not confirmed until it does" >&2
+# The audit sink (GAP-141, download confirmation for signed URLs). The new api serves ONLY the canonical audit path (the
+# former /api/v1/webhooks/minio/access-log answers 404), so a fluent-bit that keeps posting to the old path would silently
+# lose every confirmation (the records are dropped after retry_limit) once the api is swapped. This used to be best-effort;
+# it is not any more: fluent-bit must start AND the running container must carry the canonical AUDIT_SINK_PATH (compose.yml),
+# or the deploy stops here, before any migration, with the previous release untouched.
+object_store_audit_path=/api/v1/webhooks/object-store/access-log
+if ! docker compose --env-file .env.production -f compose.yml up -d --no-deps $object_store_recreate fluent-bit; then
+  echo "fluent-bit did not start; the new api serves only $object_store_audit_path, so signed-URL download confirmations would be lost. No migrations were applied and the previous release is untouched." >&2
+  restore_previous_release
+  exit 1
 fi
+fluent_bit_id=$(docker compose --env-file .env.production -f compose.yml ps -q fluent-bit </dev/null) || fluent_bit_id=""
+fluent_bit_env=""
+if [ -n "$fluent_bit_id" ]; then
+  fluent_bit_env=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$fluent_bit_id" </dev/null) || fluent_bit_env=""
+fi
+if ! printf '%s\n' "$fluent_bit_env" | grep -qxF "AUDIT_SINK_PATH=$object_store_audit_path"; then
+  echo "the running fluent-bit is not posting to $object_store_audit_path (it may still be on the removed /api/v1/webhooks/minio/access-log, or it was not found): the new api answers 404 there and every access-log record would be dropped. No migrations were applied and the previous release is untouched." >&2
+  restore_previous_release
+  exit 1
+fi
+echo "$object_store_conf_hash" > .object-store-conf.sha256
 
 # Production migrations are forward-only and commit one file at a time. A code rollback can restore the prior
 # image but cannot reverse a migration, so the ledger is read before and after, and the difference decides what

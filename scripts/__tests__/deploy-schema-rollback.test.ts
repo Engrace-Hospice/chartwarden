@@ -69,6 +69,10 @@ case "$*" in
     exit "\${STUB_PROVISION_EXIT:-0}" ;;
   *"--force-recreate api worker web docling-worker"*) exit "\${STUB_UP_EXIT:-0}" ;;
   *"volume ls"*) [ -z "\${STUB_MINIO_VOLUME:-}" ] || echo "\$STUB_MINIO_VOLUME" ;;
+  *"up -d --no-deps"*"fluent-bit"*) exit "\${STUB_FLUENT_UP_EXIT:-0}" ;;
+  *"ps -q fluent-bit"*) [ -n "\${STUB_FLUENT_NO_CONTAINER:-}" ] || echo cid-fluent ;;
+  *"inspect"*)
+    printf 'PATH=/usr/bin\\nAUDIT_SINK_HOST=api\\nAUDIT_SINK_PATH=%s\\n' "\${STUB_FLUENT_PATH:-/api/v1/webhooks/object-store/access-log}" ;;
 esac
 exit 0
 `;
@@ -137,6 +141,12 @@ interface Scenario {
   readonly secretFiles?: Readonly<
     Record<string, { readonly content: string; readonly mode?: number }>
   >;
+  /** The AUDIT_SINK_PATH the RUNNING fluent-bit container carries (default: the canonical audit path). */
+  readonly fluentPath?: string;
+  /** `up -d fluent-bit` exits with this status. */
+  readonly fluentUpExit?: number;
+  /** `ps -q fluent-bit` finds no container. */
+  readonly fluentNoContainer?: boolean;
   /** Permission bits of the host's `secrets/` directory itself (default 0700), applied after the files are written. */
   readonly secretsDirMode?: number;
   /** The `cp` of the old backup secret dies half way through, leaving a partial destination behind. */
@@ -263,6 +273,9 @@ function prepare(s: Scenario): Prepared {
       STUB_CURL_EXIT: String(s.alert?.curlExit ?? 0),
       STUB_MINIO_VOLUME: s.legacyMinio ? "wardenx_minio-data" : "",
       STUB_SLEEP: s.hangProvisionSeconds ? String(s.hangProvisionSeconds) : "",
+      STUB_FLUENT_PATH: s.fluentPath ?? "/api/v1/webhooks/object-store/access-log",
+      STUB_FLUENT_UP_EXIT: String(s.fluentUpExit ?? 0),
+      STUB_FLUENT_NO_CONTAINER: s.fluentNoContainer ? "1" : "",
       ...(s.alert?.via === "env" && s.alert.url ? { DEPLOY_ALERT_WEBHOOK_URL: s.alert.url } : {}),
     },
   };
@@ -960,6 +973,91 @@ describe.skipIf(BUN === "")("deploy.sh backup-overlay name migration", () => {
         expect(o.out).toContain("Copy it by hand");
       },
     );
+  });
+});
+
+// Audit sink. The new api serves only /api/v1/webhooks/object-store/access-log (the legacy minio path answers 404), so a
+// fluent-bit that keeps posting to the old path silently loses every signed-URL download confirmation once the api is
+// swapped. deploy.sh therefore recreates fluent-bit, verifies the RUNNING container's AUDIT_SINK_PATH is the canonical one,
+// and fails the deploy before any migration (previous release untouched) when it cannot start or is not canonical.
+describe.skipIf(BUN === "")("deploy.sh audit sink (fluent-bit)", () => {
+  const CANONICAL = "/api/v1/webhooks/object-store/access-log";
+  const index = (o: Outcome, needle: string): number =>
+    o.calls.findIndex((c) => c.includes(needle));
+  /** A deploy that stopped at the audit-sink check: nothing migrated, nothing swapped, the previous release is still running. */
+  const expectStoppedBeforeMigrations = (o: Outcome): void => {
+    expect(o.code, o.out).toBe(1);
+    expect(
+      o.calls.some((c) => c.includes("scripts/db/migrate.ts")),
+      "migrate must not run",
+    ).toBe(false);
+    expect(o.calls.some((c) => c.includes("--force-recreate api worker web docling-worker"))).toBe(
+      false,
+    );
+    expect(oldRestarts(o), "the previous release is left running, not recreated").toBe(0);
+    expect(o.env).toContain(`CHARTWARDEN_IMAGE=${OLD_API}`);
+    expect(o.previousReleaseSaved).toBe(false);
+    expect(o.files, "the applied-config hash is only recorded after verification").not.toContain(
+      ".object-store-conf.sha256",
+    );
+  };
+
+  it("a fluent-bit on the canonical path passes: it is recreated, inspected, and only then do migrations run", () => {
+    const o = deploy({});
+    expect(o.code, o.out).toBe(0);
+    const up = index(o, "up -d --no-deps");
+    const ps = index(o, "ps -q fluent-bit");
+    const inspect = index(o, "inspect");
+    const migrate = index(o, "scripts/db/migrate.ts");
+    expect(
+      o.calls.findIndex((c) => c.endsWith("fluent-bit") && c.includes("up -d")),
+    ).toBeGreaterThan(-1);
+    expect(ps).toBeGreaterThan(up);
+    expect(inspect).toBeGreaterThan(ps);
+    expect(migrate).toBeGreaterThan(inspect);
+    expect(o.files).toContain(".object-store-conf.sha256");
+  });
+
+  it("a RUNNING fluent-bit still posting to the removed /api/v1/webhooks/minio/access-log fails the deploy before migrations", () => {
+    const o = deploy({ fluentPath: "/api/v1/webhooks/minio/access-log" });
+    expectStoppedBeforeMigrations(o);
+    expect(o.out).toContain(CANONICAL);
+    expect(o.out).toContain("/api/v1/webhooks/minio/access-log");
+    expect(o.out).toMatch(/no migrations were applied/i);
+  });
+
+  it("`up -d fluent-bit` failing fails the deploy before migrations (it was a warning before)", () => {
+    const o = deploy({ fluentUpExit: 1 });
+    expectStoppedBeforeMigrations(o);
+    expect(o.out).toContain("fluent-bit did not start");
+    expect(o.out).not.toContain("WARNING: fluent-bit");
+  });
+
+  it("an unverifiable fluent-bit (no container found) fails closed", () => {
+    const o = deploy({ fluentNoContainer: true });
+    expectStoppedBeforeMigrations(o);
+    expect(o.out).toContain(CANONICAL);
+  });
+
+  it("a path that merely CONTAINS the canonical one is not accepted (exact match)", () => {
+    const o = deploy({ fluentPath: `${CANONICAL}/../minio/access-log` });
+    expectStoppedBeforeMigrations(o);
+    const prefixed = deploy({ fluentPath: `/legacy${CANONICAL}` });
+    expectStoppedBeforeMigrations(prefixed);
+  });
+
+  it("the failure alerts as a plain failure at the object-store step (exit 1), without values", () => {
+    const o = deploy({ fluentUpExit: 1, alert: { via: "env", url: WEBHOOK } });
+    expect(o.code, o.out).toBe(1);
+    expect(o.alertBody).toMatchObject({ step: "object-store", exit_code: 1 });
+  });
+
+  it("the canonical path deploy.sh verifies is the one compose.yml gives fluent-bit", () => {
+    const compose = readFileSync(join(REPO, "deploy/production/compose.yml"), "utf8");
+    const fromCompose = /AUDIT_SINK_PATH: (\S+)/.exec(compose)?.[1];
+    const fromScript = /^object_store_audit_path=(\S+)$/m.exec(readFileSync(DEPLOY, "utf8"))?.[1];
+    expect(fromCompose).toBe(CANONICAL);
+    expect(fromScript).toBe(CANONICAL);
   });
 });
 

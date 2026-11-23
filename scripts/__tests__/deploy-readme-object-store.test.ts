@@ -56,6 +56,11 @@ describe("deploy/production/README.md documents the object-store contract", () =
     }
   });
 
+  it("says deploy.sh fails the deploy, before migrations, when fluent-bit is not on the canonical audit path", () => {
+    expect(readme).toContain("no longer treats `fluent-bit` as best-effort");
+    expect(readme).toContain("requires the canonical path");
+  });
+
   it("makes the disposal of the retired plaintext volume explicit, irreversible, owner-dated and enforced by preflight", () => {
     const section = readme.slice(
       readme.indexOf("## Object store: removing the retired MinIO data"),

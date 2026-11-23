@@ -174,7 +174,10 @@ timeouts are Go nanoseconds, so `3000000000` is 3 s); `fluent-bit` posts each ba
 is gone (404). The api keeps successful object GETs on `tenant-*` buckets and records them as `signed_url_consumed` in
 `document_access_log`, attributed to the principal the signed URL was issued to (best effort; unattributable fetches are
 dropped). SeaweedFS logs asynchronously: a down `fluent-bit` loses audit records but never blocks an S3 request. The parser
-also reads MinIO's and RustFS's record shapes.
+also reads MinIO's and RustFS's record shapes. Because the new api answers 404 on the old path (and a sender still posting
+there drops every record after `retry_limit`), `deploy.sh` no longer treats `fluent-bit` as best-effort: before it applies
+any migration it recreates `fluent-bit`, then reads the RUNNING container's `AUDIT_SINK_PATH` and requires the canonical path.
+If `fluent-bit` does not start, or is not on that path, the deploy fails there (exit 1) with the previous release untouched.
 
 `deploy.sh` generates `DOCLING_WORKER_TOKEN` and any missing object-store credential (below) into `.env.production`
 the first time it runs (existing values are never touched, and this happens before the rollback backup is taken).

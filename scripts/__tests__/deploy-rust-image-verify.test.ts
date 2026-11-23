@@ -49,6 +49,8 @@ printf 'docker %s\\n' "$*" >> "$STUB_LOG"
 case "$*" in
   *"exec -T postgres psql"*to_regclass*) echo t ;;
   *"exec -T postgres psql"*_chartwarden_migration*) printf '0001_init.sql\\n' ;;
+  *"ps -q fluent-bit"*) echo cid-fluent ;;
+  *"inspect"*) printf 'AUDIT_SINK_PATH=/api/v1/webhooks/object-store/access-log\\n' ;;
 esac
 exit 0
 `;
