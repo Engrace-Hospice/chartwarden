@@ -1063,7 +1063,7 @@ Monitoring captures all three. Distinct from cloud:
 
 Easier than cloud:
 
-- Prior model version still on local infrastructure (Ollama keeps multiple tags; MinIO archives prior versions)
+- Prior model version still on local infrastructure (Ollama keeps multiple tags; the object store is to archive prior versions per SYSTEM_DESIGN §4.8, which is design intent: no code writes model artifacts there today)
 - Rollback = switch Ollama tag, no vendor coordination
 - Calibration verification still required post-rollback
 

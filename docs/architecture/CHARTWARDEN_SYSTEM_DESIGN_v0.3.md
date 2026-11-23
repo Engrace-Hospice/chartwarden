@@ -10,6 +10,7 @@
 **Execution stance:** Local-first development (MacBook Pro + Docker Compose), Proxmox VMs for initial production deployment. All design decisions favor cloud-portability — every component is containerized, every storage interface is portable (S3-compatible, standard PostgreSQL, standard Redis protocol). Cloud migration later is a deployment-target change, not an architecture change.
 
 ## Changelog
+- **2026-11-22 (reconciliation, no version bump)** — Object store: MinIO is no longer named as the store. Production runs SeaweedFS; local development, CI and the separate-host second copy run RustFS (ADR-0050 D6 amendment, 2026-11-05; `deploy/production/README.md`). §2.1 banner and port map follow the real `docker-compose.yml`; §4.4 bucket layout, access control, lifecycle and replication are TARGET with a TODAY line; §10 failure rows and §10.2 backups name the second copy and the off-site Object Lock backup; §8.1 names `/ready`. The v0.3 line below is history and still says MinIO.
 - **2026-11-11 (reconciliation, no version bump)** — §1.4 added: Bun/Rust API ownership matrix, checked by `arch:architecture-sync`. §7.3 notes the M41 (Billing — Commercial, [ADR-0100](../adr/ADR-0100-commercial-billing-module-41.md)) queues.
 - **v0.3** — §2.2 updated: ml-worker VM hardware specs for local AI model serving (CPU minimum / GPU recommended / production-scale GPU). §4.5 updated: MinIO `platform/ml-models/` layout for local model artifact storage. §4.8 new: Local AI Inference Data Flow.
 - **v0.2** — §4.6 added: Platform-shared vs Tenant-scoped data model for Module 40 (Master Data Management). §4.7 added: Feature flag evaluation data flow and cache invalidation.
@@ -55,7 +56,7 @@ flowchart TB
   subgraph data["Data tier"]
     pg[("PostgreSQL 18<br/>+ pgvector + pgcrypto<br/>(primary + read replica)")]
     valkey[("Valkey 8.x<br/>Cache + Socket.IO adapter + BullMQ broker")]
-    minio[("MinIO<br/>S3-compatible object storage<br/>per-tenant buckets")]
+    objstore[("Object store<br/>S3-compatible, per-tenant buckets<br/>SeaweedFS in production; RustFS locally and in CI")]
     mlflow[("MLflow<br/>Model registry")]
   end
 
@@ -79,12 +80,12 @@ flowchart TB
   clients --> pangolin --> backend
   backend <--> pg
   backend <--> valkey
-  backend <--> minio
+  backend <--> objstore
   backend --> bullmq
   backend <--> workers
   bullmq --> workers
   workers <--> pg
-  workers <--> minio
+  workers <--> objstore
   workers --> mlflow
   backend --> external
   workers --> external
@@ -121,12 +122,12 @@ flowchart LR
   subgraph datazone["Data Zone (private, restricted)"]
     pg2[("PostgreSQL")]
     valkey2[("Valkey")]
-    minio2[("MinIO")]
+    objstore2[("Object store")]
   end
 
   subgraph adminzone["Admin Zone (highly restricted)"]
     monitoring["Grafana, Sentry, MLflow"]
-    backups["pgBackRest, MinIO replication"]
+    backups["pgBackRest, object-store second copy and off-site backup"]
   end
 
   clients2 -- TLS 1.3 --> pangolin2
@@ -134,7 +135,7 @@ flowchart LR
   backend2 -- mTLS --> workers2
   backend2 & workers2 -- TLS to private CA --> pg2
   backend2 & workers2 -- TLS --> valkey2
-  backend2 & workers2 -- TLS --> minio2
+  backend2 & workers2 -- TLS --> objstore2
   pangolin2 & backend2 & workers2 -- mTLS --> monitoring
   external2 -- TLS + signed webhooks --> pangolin2
 ```
@@ -249,18 +250,18 @@ sequenceDiagram
 sequenceDiagram
   participant A as Admissions Nurse
   participant B as Backend
-  participant MN as MinIO
+  participant MN as Object store
   participant Q as BullMQ
   participant D as docling-worker
   participant ML as ml-worker
   participant LE as langextract-worker
   participant CL as Anthropic API
   A->>B: POST /api/v1/intake/upload (multipart)
-  B->>MN: Upload PDF(s) → tenant/<org>/intake/<job>/
+  B->>MN: Upload PDF(s) → bucket tenant-<org>, key intake/<batch>/
   B->>DB: INSERT extraction_job
   B->>Q: enqueue('intake.process', {jobId})
   B-->>A: 202 jobId
-  Q->>D: HTTP POST /parse (s3 path)
+  Q->>D: HTTP POST /parse (presigned GET URL)
   D->>MN: GET pdf
   D-->>Q: layout-aware markdown + page coords
   Q->>ML: HTTP POST /classify (markdown per page)
@@ -419,9 +420,11 @@ Adding a bridged route is a reviewed change in four places: `RUST_BRIDGE_ROUTES`
 ### 2.1 Local Development (MacBook Pro)
 
 > **STATUS: TARGET — NOT BUILT.** There is no `infra/` directory and no compose file at the path
-> below. Local dev today is a bare `docker run` of Postgres (production's image, built from `deploy/production/postgres`) plus
-> `bun run dev`; there is no local valkey, minio, mailpit or mlflow. `docs/DEVELOPMENT.md` is the
-> maintained runbook for it.
+> below. The repo-root `docker-compose.yml` is the real local stack: Postgres (production's image,
+> built from `deploy/production/postgres`), Valkey, **RustFS** (the local and CI object store: S3 on
+> `:9000`, console on `:9001`; production runs SeaweedFS, ADR-0050 D6 amendment), clamav, a one-shot
+> `migrate`, api, worker and docling-worker. There is no local mailpit or mlflow.
+> `docs/DEVELOPMENT.md` is the maintained runbook for it.
 
 Single-host Docker Compose. All services run as containers. Services exposed on localhost ports.
 
@@ -440,11 +443,15 @@ services:
     ports: ["6379:6379"]
     volumes: [./data/valkey:/data]
     networks: [chartwarden]
-  minio:
-    image: minio/minio
+  rustfs:                # the real block is in docker-compose.yml
+    image: rustfs/rustfs:1.0.4
+    environment:
+      RUSTFS_ACCESS_KEY: chartwarden
+      RUSTFS_SECRET_KEY: <dev-only secret, see docker-compose.yml>
+      RUSTFS_VOLUMES: /data
+      RUSTFS_CONSOLE_ENABLE: "true"
     ports: ["9000:9000", "9001:9001"]
-    volumes: [./data/minio:/data]
-    command: server /data --console-address ":9001"
+    volumes: [./data/rustfs:/data]
     networks: [chartwarden]
   mailpit:
     image: axllent/mailpit
@@ -507,8 +514,8 @@ services:
 | backend | 3000 | Fastify HTTP (`PORT`); worker role listens on 3001 (`WORKER_PORT`) |
 | postgres | 5432 | DB |
 | valkey | 6379 | Cache + queue |
-| minio | 9000 | S3 API |
-| minio console | 9001 | MinIO web UI |
+| rustfs | 9000 | S3 API (RustFS, local and CI only) |
+| rustfs console | 9001 | RustFS web console (dev only; no production equivalent in the repo) |
 | mailpit SMTP | 1025 | Capture outbound email |
 | mailpit UI | 8025 | View captured email |
 | mlflow | 5000 | Model registry |
@@ -520,7 +527,7 @@ services:
 - All images ARM64 (Apple Silicon)
 - Docker Desktop with file sharing for `./data` directory
 - Postgres tuned for dev (`shared_buffers=256MB`, lower than prod)
-- MinIO mode `single-node` for dev
+- RustFS runs as one node on one data volume (`RUSTFS_VOLUMES=/data`) for dev
 
 ### 2.2 Production Target (Proxmox)
 
@@ -536,9 +543,9 @@ Initial production: Proxmox cluster on user's hardware. VM allocation:
 | chartwarden-db-01 | 8 | 32 GB | 500 GB | PostgreSQL primary + pgBouncer |
 | chartwarden-db-02 | 8 | 32 GB | 500 GB | PostgreSQL streaming replica |
 | chartwarden-data-01 | 4 | 8 GB | 200 GB | Valkey + MLflow |
-| chartwarden-storage-01 | 4 | 8 GB | 4 TB | MinIO (S3-compatible object storage) |
+| chartwarden-storage-01 | 4 | 8 GB | 4 TB | Object store (S3-compatible; SeaweedFS in production, ADR-0050 D6 amendment) |
 | chartwarden-obs-01 | 4 | 16 GB | 500 GB | Grafana + Loki + Prometheus + Tempo + Sentry |
-| chartwarden-backup-01 | 2 | 4 GB | 8 TB | pgBackRest + MinIO replication target |
+| chartwarden-backup-01 | 2 | 4 GB | 8 TB | pgBackRest + the object store's second copy (RustFS, `scripts/object-store-copy.ts`) |
 
 **Total:** ~78 vCPUs, ~200 GB RAM, ~14 TB storage across 11 VMs. Fits in a single Proxmox host with 32 cores / 256 GB RAM, or split across 2-3 hosts for HA.
 
@@ -553,7 +560,7 @@ When ready to move to cloud, each VM maps cleanly to a managed service or contai
 | Worker VMs | Same as backend |
 | PostgreSQL | RDS PostgreSQL / Cloud SQL / Neon (if HIPAA BAA) |
 | Valkey | ElastiCache for Redis / Memorystore / managed Redis |
-| MinIO | S3 / GCS / Cloudflare R2 (BAA required for PHI) |
+| Object store | S3 / GCS / Cloudflare R2 (BAA required for PHI) |
 | MLflow | Same container, mounted volume → managed disk |
 | Observability | Same containers OR managed (Datadog, New Relic) |
 | pgBackRest | Same; backup target → S3 |
@@ -575,12 +582,12 @@ Kubernetes adds operational overhead unjustified for a single-tenant local deplo
 | **Public** | Internet | N/A | N/A |
 | **DMZ** | Pangolin | 443/TCP from Internet | mTLS to Application Zone |
 | **Application** | Backend VMs, Worker VMs | mTLS from DMZ; mTLS from peer apps | TLS to Data; TLS to External over BAA |
-| **Data** | PostgreSQL, Valkey, MinIO | TLS from Application Zone only | No outbound to Internet |
+| **Data** | PostgreSQL, Valkey, the object store | TLS from Application Zone only | No outbound to Internet |
 | **Admin** | Observability, Backups, MLflow | mTLS from Application Zone | No outbound to Internet |
 
 ### 3.2 Local Dev (Single Bridge Network)
 
-Local dev runs on a single Docker bridge network. No zone enforcement — everything talks freely on internal DNS names (`postgres`, `valkey`, `minio`, etc.). This is fine for dev; do not replicate in production.
+Local dev runs on a single Docker bridge network. No zone enforcement — everything talks freely on internal DNS names (`postgres`, `valkey`, `rustfs`, etc.). This is fine for dev; do not replicate in production.
 
 ### 3.3 Proxmox VLAN Segmentation
 
@@ -601,7 +608,7 @@ Local dev runs on a single Docker bridge network. No zone enforcement — everyt
 | Backend → Worker | mTLS | Private CA |
 | Backend → Postgres | TLS with client cert verification | Private CA |
 | Backend → Valkey | TLS (with `requirepass`) | Private CA |
-| Backend → MinIO | TLS | Private CA |
+| Backend → object store | TLS | Private CA |
 | Backend → External | TLS 1.3 with cert pinning | Public CA |
 | Webhook inbound (DoseSpot/Stripe/etc.) | TLS + signed payloads | Public CA + signature verification |
 
@@ -700,10 +707,12 @@ Embeddings generated by `embeddings-worker`. Stored in dedicated `*_embedding` t
 
 Valkey configured with `maxmemory-policy=allkeys-lru` for cache evictions, but BullMQ and Socket.IO data is on a separate Valkey instance OR a separate database number (db 0 = cache+session, db 1 = BullMQ, db 2 = Socket.IO).
 
-### 4.4 MinIO Bucket Layout
+### 4.4 Object-Store Bucket Layout
+
+> **TARGET layout, with a TODAY line (2026-11-22).** TODAY (the code): one bucket per tenant, `tenant-<orgId>` (`deriveTenantBucket`, `apps/backend/src/modules/22-documents/lifecycle/storage.ts`), created at onboarding or by `scripts/backfill-tenant-buckets.ts`. Object keys inside it are opaque ids: `documents/<patientId>/<aggregateType>/<documentId>/<file>` and `intake/<batchId>/<file>` (`deriveObjectKey`), plus the M25 staging prefix `m25-835/`. Platform-wide assets sit in separate `chartwarden-*` buckets (M38's release files use `chartwarden-platform-terminology`). The `tenants/<org_id>/...` tree below is the intended layout; it is not the key layout the code writes.
 
 ```
-<minio>/
+<object store>/
 ├── tenants/
 │   ├── <org_id>/
 │   │   ├── documents/        # User-uploaded clinical documents
@@ -718,19 +727,19 @@ Valkey configured with `maxmemory-policy=allkeys-lru` for cache evictions, but B
     └── ml-models/             # Model artifacts (sync with MLflow)
 ```
 
-**Bucket-level IAM:** Each tenant gets a unique access key/secret that scopes via IAM policy to `tenants/<org_id>/*`. Backend uses platform-level credentials for cross-tenant operations (with audit).
+**Access control.** TARGET: each tenant gets its own access key, scoped by IAM policy to its own bucket. TODAY: no per-tenant key exists. One application credential (the key the api and worker use, rendered by `scripts/storage/seaweedfs-identities.ts`) is bound to `deploy/production/object-store/app-policy.json`: object and bucket operations on `tenant-*` and `chartwarden-*`, lifecycle on `tenant-*`, no bucket delete and no versioning or policy change. Tenant isolation is the adapter deriving the bucket from the organization id. Read-only identities (`reader-policy.json`) serve the backup and the second copy; the admin key is for operators and the one-time migration, not the application. A hard per-tenant size cap is a SeaweedFS bucket quota set with `s3.bucket.quota` through `weed shell` (`deploy/production/README.md`).
 
-**Object lifecycle:**
+**Object lifecycle (TARGET, each with a TODAY line):**
 
-- Versioning: enabled on `documents/`, `generated/`, `claims/`, `cost-reports/`
-- Object lock (compliance mode): on `claims/` and `cost-reports/` for 7-year retention
-- Lifecycle transition: `intake/` artifacts deleted 30 days after job completion
-- Replication: `platform/` and `tenants/<org>/claims/` and `cost-reports/` replicated to backup VM
+- Versioning: enabled on `documents/`, `generated/`, `claims/`, `cost-reports/`. TODAY: the application credential cannot change bucket versioning, and the adapter's D12 erase lists and deletes every version and delete marker of an object.
+- Object lock (compliance mode): on `claims/` and `cost-reports/` for 7-year retention. TODAY: store-side Object Lock exists only on the off-site backup bucket (COMPLIANCE default retention of at least 100 days, written by `cw-backup.sh`, DR/BCP §4.8); it is not provided on the primary or the second copy, so retention comes from partition rotation plus that locked backup.
+- Lifecycle transition: `intake/` artifacts deleted 30 days after job completion. TODAY: design intent; the only lifecycle rule the code applies is the M25 `m25-835/` staging expiry (`scripts/backfill-tenant-buckets.ts`).
+- Replication: `platform/` and `tenants/<org>/claims/` and `cost-reports/` replicated to the backup VM. TODAY: there is no in-store replication (production SeaweedFS is a single node, one volume per bucket). The copy is an hourly one-way sync of every `tenant-*` and `chartwarden-*` bucket to a RustFS on another host (`scripts/object-store-copy.ts --every`, `deploy/production/compose.object-copy.yml`). It is not enabled in production yet, and it is a sync, not an archive: an erasure on the primary reaches the copy on the next run.
 
 ### 4.5 MLflow Storage
 
 - Backend store: PostgreSQL (separate schema, same DB)
-- Artifact store: MinIO `platform/ml-models/`
+- Artifact store: the object store, `platform/ml-models/` (design intent: no code writes that path today)
 - One MLflow tracking server (not per-tenant)
 - Model versioning: per (capability × tenant) when tenant-specific calibration exists; otherwise platform-default
 
@@ -923,7 +932,7 @@ sequenceDiagram
 - No vendor rate limits — only local compute capacity
 - No vendor cost — only ChartWarden infrastructure cost
 
-**Local model storage layout in MinIO:**
+**Local model storage layout in the object store (design intent):**
 
 ```
 platform/ml-models/
@@ -949,7 +958,7 @@ platform/ml-models/
     └── current.yaml                     # Currently-deployed versions per capability
 ```
 
-**Model lifecycle in MinIO:**
+**Model lifecycle in the object store (design intent):**
 
 - New model version uploaded to versioned path
 - `manifests/current.yaml` updated when promoted to production
@@ -1054,6 +1063,8 @@ Content-Type: application/json
 
 { "job_id": "...", "minio_path": "..." }
 ```
+
+The `minio_path` field is the original design and the example is left as written: the built `docling-worker` (`services/docling-worker`) receives a presigned GET URL as `source_url`, not an object path (see the ADR-0048 amendment at §1.3.4).
 
 Worker validates the internal-service-token (mTLS or shared secret rotated regularly) and propagates correlation/org/user IDs into its logs and any downstream calls.
 
@@ -1284,7 +1295,7 @@ Workers must respond within their declared SLO; backend timeouts beyond SLO + 50
 - Backend is **stateless** — no in-memory session, no in-memory locks
 - N instances (N ≥ 2 in production for redundancy) behind Pangolin load balancer
 - Round-robin or least-connections balancing
-- Health endpoint `/health` returns 200 only when: DB reachable, Valkey reachable, MinIO reachable
+- `/health` is liveness. Readiness is `GET /ready`, which returns 200 only when every dependency check passes: database, Valkey, the object store (the `objectStore` check; formerly `minio`) and the outbox backlog; it returns 503 with the same body otherwise
 - Graceful shutdown: SIGTERM → stop accepting new requests → finish in-flight → close DB pool → exit
 
 ### 8.2 Socket.IO Horizontal Scaling
@@ -1401,7 +1412,7 @@ Each Python worker runs N instances (N = 1 in dev, 2-4 in production per worker 
 | Socket.IO | 99.5% | Rolling 30 days |
 | Workers | 99% | Rolling 30 days |
 | Database | 99.95% | Rolling 30 days |
-| MinIO | 99.9% | Rolling 30 days |
+| Object store | 99.9% | Rolling 30 days |
 
 In failure modes, degraded operation continues for many flows (see §10).
 
@@ -1418,7 +1429,7 @@ In failure modes, degraded operation continues for many flows (see §10).
 | PostgreSQL primary | Disk failure, crash | Writes fail; reads continue from replica if configured | Failover to replica with manual promote; pgBackRest PITR if data lost; RTO < 1 hour, RPO < 5 min |
 | PostgreSQL replica | Lag, disconnect | Read replica unavailable; reads route to primary | Primary handles all load; reconfigure or rebuild replica |
 | Valkey | Crash | Sessions invalidate, cache cold-start, BullMQ jobs stall | Recover from snapshot (5-min RPO); sessions force re-login; queues resume |
-| MinIO | Unavailable | Document upload/download fails; new encounters can still draft (texts in DB); PDFs cannot generate | Backend serves "document temporarily unavailable" with retry; recover from backup VM |
+| Object store | Unavailable | Document upload/download fails; new encounters can still draft (texts in DB); PDFs cannot generate | Backend serves "document temporarily unavailable" with retry. Recovery: provision a new SeaweedFS, run `scripts/object-store-copy.ts --restore` from the RustFS second copy (hourly by default, so the loss is up to one interval), then the `tenant-buckets` backfill (`deploy/production/README.md`, second copy; the copy is not enabled in production yet). Promoting the copy to primary is not a procedure the repo has |
 | docling-worker | Down | DocLens stalls at parsing step | Retry queue; user sees "processing" until worker recovers |
 | langextract-worker | Down | DocLens stalls at extraction | Same |
 | x12-worker | Down | Claim submission stalls; NOE submission stalls — risk to 5-day window | High-priority alert; retry queue; if extended, manual file generation fallback |
@@ -1430,7 +1441,7 @@ In failure modes, degraded operation continues for many flows (see §10).
 | Postmark | Down | Email alerts not delivered | In-app + SMS continue |
 | Stripe | Down | Subscription operations defer; tenants not blocked on clinical use | Banner; retry queue |
 | Hospital ADT (HL7) | Disconnect | Inbound feeds stop | Manual entry continues; alert ops |
-| MinIO backup target | Down | Backups fail | Alert; investigate; production data not affected |
+| Object-store second copy or off-site backup target | Down | Copy or backups fail | Alert (the copy job posts `object_copy.failed`); investigate; production data not affected |
 
 ### 10.2 Disaster Recovery (Production, Proxmox)
 
@@ -1448,12 +1459,12 @@ In failure modes, degraded operation continues for many flows (see §10).
 > disposable local cluster. Treat every number here as a target, not a commitment.
 
 **RTO target (Tier 2):** 4 hours
-**RPO target (Tier 2):** 15 minutes for PostgreSQL, 1 hour for MinIO
+**RPO target (Tier 2):** 15 minutes for PostgreSQL, 1 hour for the object store (the second copy's default sync interval)
 
 **Backups:**
 
 - PostgreSQL: pgBackRest with continuous WAL archiving to chartwarden-backup-01 VM; full backup nightly, incremental every 2 hours
-- MinIO: MinIO mirror replication to chartwarden-backup-01 VM; per-bucket policies
+- Object store: an hourly one-way sync to a RustFS second copy on another host (`scripts/object-store-copy.ts --every`; not enabled in production yet; a sync, not an archive), plus the off-site backup, a versioned bucket with Object Lock COMPLIANCE written by `cw-backup.sh` (DR/BCP §4.8). There is no in-store replication
 - Valkey: AOF persistence; snapshot every 15 min to backup VM (sessions and cache are recoverable; queue jobs are best-effort)
 - Application config: SOPS-encrypted in Git
 - VM disk images: weekly Proxmox VM backups to backup VM
@@ -1577,7 +1588,7 @@ push to feature branch
            │
            ▼ all pass
        integration-tests
-       (Testcontainers PG + Valkey + MinIO)
+       (Testcontainers PG + Valkey + object store)
            │
            ▼ pass
        RLS isolation tests
