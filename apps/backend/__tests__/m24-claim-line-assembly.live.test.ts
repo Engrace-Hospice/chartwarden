@@ -638,6 +638,11 @@ describe.skipIf(!DB_URL)(
       expect(after.rows[0]).toEqual(before.rows[0]);
     });
 
+    // The `it.skip` cases below (cadence, 817 replacement, Q5002/Q5006, encounter linking) each assemble a hospice
+    // level-of-care segment, and `rateByLoc` is always empty (no qualified payer-specific rate policy), so
+    // assembly throws 503 MEDICAID_RATE_POLICY_UNRESOLVED before the behaviour under test runs. Unskipped on a
+    // private database every one of them fails with exactly that error, so the skip stays until a rate policy
+    // exists. R&B-only assembly never prices a hospice line and runs.
     it.skip("serializes concurrent original-claim cadence on the M6 admission row (requires qualified pricing)", async () => {
       const admissionId = "40404040-4040-4040-4040-404040404040";
       const locId = "41414141-4141-4141-4141-414141414141";
@@ -1092,7 +1097,7 @@ describe.skipIf(!DB_URL)(
       expect(rows.rows).toEqual([{ id: activeRow.rows[0].id, status: "active" }]);
     });
 
-    it.skip("rb_only with primary Medicaid writes each billable rb_day and links it back (pricing required)", async () => {
+    it("rb_only with primary Medicaid writes each billable rb_day and links it back", async () => {
       await admin.query(
         `INSERT INTO admission (id, organization_id, patient_id, provider_entity_id, service_address_state, status, admission_at)
          VALUES ($1,$2,$3,$4,'OR','active','2026-05-01')`,
