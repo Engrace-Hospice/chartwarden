@@ -21,6 +21,7 @@ import { registerDenialRoutes } from "./denials.routes";
 import type { M25RouteServices } from "./index";
 import { registerInternalRoutes } from "./internal.routes";
 import { registerLaterTierRoutes } from "./later-tier.routes";
+import { registerMedicaidEraReviewRoutes } from "./medicaid-era-review.routes";
 import { registerMedicalReviewReportRoutes } from "./medical-review-report.routes";
 import { registerPayerAppealPathRoutes } from "./payer-appeal-path.routes";
 import { registerPayerAppealRoutes } from "./payer-appeal.routes";
@@ -74,6 +75,8 @@ export function mountM25Routes(app: FastifyInstance, services: M25RouteServices)
   registerRemittanceRoutes(app, { readService, writeService });
   if (services.claimMdEraReviewService)
     registerClaimMdEraReviewRoutes(app, services.claimMdEraReviewService);
+  if (services.medicaidEraReviewService)
+    registerMedicaidEraReviewRoutes(app, services.medicaidEraReviewService);
   if (services.billingOperationsInvestigationService)
     registerBillingOperationsInvestigationRoutes(
       app,

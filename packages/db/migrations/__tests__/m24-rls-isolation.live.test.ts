@@ -622,6 +622,22 @@ describe.skipIf(!DB_URL)(
       ).rejects.toThrow(/separate reviewer path/);
     });
 
+    it("verified 835 enrollment requires a separately recorded freshness bound", async () => {
+      await expect(
+        db.query(
+          `INSERT INTO medicaid_enrollment_evidence (organization_id, provider_entity_id, service_state,
+           program_kind, canonical_payer_id, clearinghouse, vendor_account_ref, source_environment,
+           vendor_payer_id, transaction_type, evidence_kind, status, effective_from, effective_to,
+           verification_source, evidence_reference, verified_at, verified_by_membership_id,
+           recorded_by_membership_id)
+           VALUES ($1,$2,'OR','managed_care',gen_random_uuid(),'claimmd','synthetic-account','test',
+           'synthetic-payer','835','835_era_enrollment','verified','2026-01-01','2026-12-31',
+           'payer_confirmation','approval:synthetic-era',now(),gen_random_uuid(),gen_random_uuid())`,
+          [ORG_A, a.pe],
+        ),
+      ).rejects.toThrow(/medicaid_enrollment_835_source_identity_ck/);
+    });
+
     it("authorization event audit records omit patient and evidence references", async () => {
       const audit = await db.query<{ after: unknown }>(
         `SELECT after FROM audit_event

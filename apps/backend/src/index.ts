@@ -1405,6 +1405,7 @@ import {
 } from "./modules/24-billing-medicaid/index";
 import { m24RouteClasses } from "./modules/24-billing-medicaid/routes/route-classes";
 import { isVoidM24Claim } from "./modules/24-billing-medicaid/void-claim";
+import { createMedicaidEraReviewService } from "./modules/25-remittance/domain/medicaid-era-trusted-review";
 // M25 (Remittance & Denials) boot surface — the §4.5 outbox catalog, the §4.7 ABAC resolvers
 // (`claim_assigned_to_actor`, `appeal_within_deadline`), and the §4.1 route mount over the Drizzle
 // read/write services. The write service binds the catalog-validating transactional outbox publisher
@@ -1413,6 +1414,7 @@ import { isVoidM24Claim } from "./modules/24-billing-medicaid/void-claim";
 // db-less slice).
 import {
   type WorkerAlertPort as M25WorkerAlertPort,
+  M25_MEDICAID_ERA_REVIEW_WRITE_JOB_ID,
   M25_OUTBOX_EVENTS,
   M25_PLATFORM_JOB_ID,
   type RemittanceAiPromptRegistryPort,
@@ -1428,6 +1430,8 @@ import {
   buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
+  buildDrizzleMedicaidEraReviewReaders,
+  buildDrizzleMedicaidEraReviewWorkflow,
   buildDrizzlePayerAppealPathService,
   buildDrizzlePayerAppealService,
   buildDrizzlePlaybookService,
@@ -4079,6 +4083,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     );
   }
   if (platformDbHandle) registerPlatformJob("m35-subscription-admin");
+  if (platformDbHandle) registerPlatformJob(M25_MEDICAID_ERA_REVIEW_WRITE_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M35_JOBS_PLATFORM_JOB_ID); // GAP-059 — M35 worker set's active-org fan-out
   if (platformDbHandle) registerPlatformJob(M8_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M17_PLATFORM_JOB_ID);
@@ -8628,6 +8633,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           withClaimsBillingGate(app, M25_ROUTE_CLASSES, () =>
             mountM25Routes(app, {
               readService: buildDrizzleM25ReadService(dbHandle.db, m25Terminology),
+              medicaidEraReviewService: buildDrizzleMedicaidEraReviewWorkflow(
+                dbHandle.db,
+                createMedicaidEraReviewService(
+                  buildDrizzleMedicaidEraReviewReaders(dbHandle.db, claimMdEraStore),
+                ),
+                {
+                  platformDb: platformDbHandle?.db,
+                  auditBypass: m34PlatformBypassAuditor,
+                },
+              ),
               ...(claimMdEraReviewKeyRing
                 ? {
                     claimMdEraReviewService: buildDrizzleClaimMdEraReviewService(

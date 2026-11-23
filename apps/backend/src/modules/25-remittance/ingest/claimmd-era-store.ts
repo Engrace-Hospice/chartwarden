@@ -765,6 +765,7 @@ export function createClaimMdEraStore(input: {
               usage: I.usage,
               eraId: I.eraId,
               state: I.captureState,
+              capturedAt: I.capturedAt,
               digest: I.original835Digest,
               keyId: I.original835KeyId,
               cipherText: I.original835Cipher,
@@ -818,6 +819,7 @@ export function createClaimMdEraStore(input: {
             accountReference: row.accountReference,
             usage: row.usage as "test" | "production",
             eraId: row.eraId,
+            capturedAt: row.capturedAt,
             originalDigest: row.digest,
             files: files as string[],
           };

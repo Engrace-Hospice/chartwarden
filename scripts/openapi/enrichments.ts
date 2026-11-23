@@ -787,6 +787,16 @@ import {
 } from "../../apps/backend/src/modules/25-remittance/routes/later-tier.routes";
 import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
 import {
+  MedicaidEraDispositionResultSchema as M25MedicaidEraDispositionResultSchema,
+  MedicaidEraDispositionSchema as M25MedicaidEraDispositionSchema,
+  MedicaidEraEvaluateResultSchema as M25MedicaidEraEvaluateResultSchema,
+  MedicaidEraNoteSchema as M25MedicaidEraNoteSchema,
+  MedicaidEraReviewDetailSchema as M25MedicaidEraReviewDetailSchema,
+  MedicaidEraReviewHistorySchema as M25MedicaidEraReviewHistorySchema,
+  MedicaidEraReviewPageSchema as M25MedicaidEraReviewPageSchema,
+  MedicaidEraReviewQuerySchema as M25MedicaidEraReviewQuerySchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/medicaid-era-review.schemas";
+import {
   MedicalReviewReportQuerySchema as M25MedicalReviewReportQuerySchema,
   MedicalReviewReportSchema as M25MedicalReviewReportSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/medical-review-report.routes";
@@ -5102,6 +5112,40 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M32ActivatePromptTemplateBody,
   },
   // --- D11 drift + backend health (R31-R32) ---
+});
+
+// M25 Medicaid ERA — separate nonposting review API; no Claim.MD posting operations are exposed here.
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/remittance/medicaid-era-reviews": {
+    summary: "Tenant- and provider-scoped nonposting Medicaid ERA review worklist",
+    query: M25MedicaidEraReviewQuerySchema,
+    response: M25MedicaidEraReviewPageSchema,
+  },
+  "GET /api/v1/remittance/medicaid-era-reviews/:id": {
+    summary: "Authorized PHI-minimal detail for a nonposting Medicaid ERA review",
+    response: M25MedicaidEraReviewDetailSchema,
+  },
+  "GET /api/v1/remittance/medicaid-era-reviews/:id/history": {
+    summary: "Append-only investigation history for a Medicaid ERA review",
+    response: M25MedicaidEraReviewHistorySchema,
+  },
+  "POST /api/v1/remittance/medicaid-era-artifacts/:artifactId/evaluate": {
+    summary: "Re-evaluate a scoped staged Medicaid ERA without posting or claim transitions",
+    headers: { "Idempotency-Key": { required: true } },
+    response: M25MedicaidEraEvaluateResultSchema,
+  },
+  "POST /api/v1/remittance/medicaid-era-reviews/:id/disposition": {
+    summary: "Record a versioned nonposting Medicaid ERA investigation disposition",
+    headers: { "Idempotency-Key": { required: true } },
+    body: M25MedicaidEraDispositionSchema,
+    response: M25MedicaidEraDispositionResultSchema,
+  },
+  "POST /api/v1/remittance/medicaid-era-reviews/:id/notes": {
+    summary: "Append a coded, PHI-minimal note to a Medicaid ERA investigation",
+    headers: { "Idempotency-Key": { required: true } },
+    body: M25MedicaidEraNoteSchema,
+    response: M25MedicaidEraDispositionResultSchema,
+  },
 });
 
 // ── M6 Admission, Election & Certification (§4.2). All 46 routes published NO request/response contract

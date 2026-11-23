@@ -22,6 +22,36 @@ export interface MedicaidClaimFactsView {
     providerEntityId: string,
     keys: { readonly claimControlNumber: string },
   ): Promise<MedicaidSubmissionEvidenceView[]>;
+  eraEnrollmentEvidence(
+    orgId: string,
+    providerEntityId: string,
+  ): Promise<
+    readonly {
+      readonly organizationId: string;
+      readonly providerEntityId: string;
+      readonly vendor: "claimmd" | "stedi";
+      readonly accountReference: string;
+      readonly environment: "test" | "production";
+      readonly canonicalPayerId: string;
+      readonly programId: string;
+      readonly payerIdentifier: string | null;
+      readonly billingNpi: string;
+      readonly billingTin: null;
+      readonly effectiveFrom: string;
+      readonly effectiveTo: string;
+      readonly evidenceFreshUntil: string;
+      readonly evidenceReference: string;
+      readonly verifiedAt: string;
+    }[]
+  >;
+}
+
+export async function medicaidEraEnrollmentEvidence(
+  organizationId: string,
+  providerEntityId: string,
+  view: () => Pick<MedicaidClaimFactsView, "eraEnrollmentEvidence"> = liveView,
+) {
+  return view().eraEnrollmentEvidence(organizationId, providerEntityId);
 }
 
 export interface MedicaidSubmissionEvidenceView {

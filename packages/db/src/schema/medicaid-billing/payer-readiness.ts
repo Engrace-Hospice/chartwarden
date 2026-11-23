@@ -109,12 +109,17 @@ export const medicaidEnrollmentEvidence = pgTable(
     programKind: m24MedicaidProgramKind("program_kind"),
     canonicalPayerId: uuid("canonical_payer_id"), // logical M40 reference
     clearinghouse: varchar("clearinghouse", { length: 40 }),
+    // Non-secret external account identity. This is not a credential and is populated only when
+    // independently verified ERA enrollment evidence names the vendor account.
+    vendorAccountRef: varchar("vendor_account_ref", { length: 128 }),
+    sourceEnvironment: varchar("source_environment", { length: 16 }),
     vendorPayerId: varchar("vendor_payer_id", { length: 80 }), // candidate/verified vendor-specific mapping
     transactionType: varchar("transaction_type", { length: 8 }),
     evidenceKind: m24EnrollmentEvidenceKind("evidence_kind").notNull(),
     status: m24EnrollmentEvidenceStatus("status").notNull().default("pending"),
     effectiveFrom: date("effective_from", { mode: "string" }).notNull(), // calendar date (1535 creates `date`)
     effectiveTo: date("effective_to", { mode: "string" }),
+    evidenceFreshUntil: date("evidence_fresh_until", { mode: "string" }),
     verificationSource: varchar("verification_source", { length: 80 }),
     evidenceReference: text("evidence_reference"), // secured document pointer; never a secret
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
@@ -155,6 +160,18 @@ export const medicaidEnrollmentEvidence = pgTable(
     verifiedPayerRouteIsMapped: check(
       "medicaid_enrollment_verified_payer_route_is_mapped",
       sql`evidence_kind <> 'clearinghouse_payer_route' OR status <> 'verified' OR (clearinghouse IS NOT NULL AND canonical_payer_id IS NOT NULL AND vendor_payer_id IS NOT NULL AND transaction_type IS NOT NULL)`,
+    ),
+    verifiedEraSourceIsScoped: check(
+      "medicaid_enrollment_835_source_identity_ck",
+      sql`evidence_kind <> '835_era_enrollment' OR status <> 'verified' OR
+        (clearinghouse IN ('claimmd', 'stedi') AND vendor_account_ref IS NOT NULL AND
+         source_environment IN ('test', 'production') AND canonical_payer_id IS NOT NULL AND
+         vendor_payer_id IS NOT NULL AND program_kind IS NOT NULL AND transaction_type = '835' AND
+         effective_to IS NOT NULL AND evidence_fresh_until IS NOT NULL)`,
+    ),
+    eraEvidenceFreshnessRange: check(
+      "medicaid_enrollment_evidence_freshness_ck",
+      sql`evidence_fresh_until IS NULL OR effective_from <= evidence_fresh_until`,
     ),
     evidenceReferenceShape: check(
       "medicaid_enrollment_evidence_reference_shape",

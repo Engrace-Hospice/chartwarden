@@ -2374,6 +2374,69 @@
       "when": 1794221024385,
       "tag": "1508_m25_835_group_identity_dates",
       "breakpoints": true
+    },
+    {
+      "idx": 339,
+      "version": "7",
+      "when": 1794221024386,
+      "tag": "1535_m24_payer_program_readiness",
+      "breakpoints": true
+    },
+    {
+      "idx": 340,
+      "version": "7",
+      "when": 1794221024387,
+      "tag": "1536_m24_hospice_line_span_rate_qualification",
+      "breakpoints": true
+    },
+    {
+      "idx": 341,
+      "version": "7",
+      "when": 1794221024388,
+      "tag": "1537_m24_rate_schedule_null_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 342,
+      "version": "7",
+      "when": 1794221024389,
+      "tag": "1538_m24_payer_authorization_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 343,
+      "version": "7",
+      "when": 1794221024390,
+      "tag": "1539_m24_payer_rate_policy_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 344,
+      "version": "7",
+      "when": 1794221024391,
+      "tag": "1540_m8_encounter_discipline_plan_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 345,
+      "version": "7",
+      "when": 1794221024392,
+      "tag": "1541_m40_medicaid_payer_classification_and_m24_submission_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 346,
+      "version": "7",
+      "when": 1794221024393,
+      "tag": "1542_m24_era_source_account_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 347,
+      "version": "7",
+      "when": 1794221024394,
+      "tag": "1543_m25_medicaid_era_nonposting_reviews",
+      "breakpoints": true
     }
   ]
 }

@@ -211069,6 +211069,28 @@
                       }
                     ]
                   },
+                  "vendorAccountRef": {
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9._:-]+$",
+                    "type": "string"
+                  },
+                  "sourceEnvironment": {
+                    "anyOf": [
+                      {
+                        "const": "test",
+                        "type": "string"
+                      },
+                      {
+                        "const": "production",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "evidenceFreshUntil": {
+                    "format": "date",
+                    "type": "string"
+                  },
                   "vendorPayerId": {
                     "minLength": 1,
                     "maxLength": 80,
@@ -338698,6 +338720,678 @@
                   "reason": {
                     "minLength": 20,
                     "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/medicaid-era-artifacts/{artifactId}/evaluate": {
+      "post": {
+        "operationId": "postApiV1RemittanceMedicaideraartifactsByArtifactIdEvaluate",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Re-evaluate a scoped staged Medicaid ERA without posting or claim transitions",
+        "parameters": [
+          {
+            "name": "artifactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reviewId",
+                        "version",
+                        "replay"
+                      ],
+                      "properties": {
+                        "status": {
+                          "const": "review_saved",
+                          "type": "string"
+                        },
+                        "reviewId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "replay": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reasonCode"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            },
+                            {
+                              "const": "held",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "reasonCode": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/medicaid-era-reviews": {
+      "get": {
+        "operationId": "getApiV1RemittanceMedicaiderareviews",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Tenant- and provider-scoped nonposting Medicaid ERA review worklist",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "pattern": "^[0-9]{1,3}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "providerEntityId",
+                          "vendor",
+                          "sourceEnvironment",
+                          "canonicalPayerId",
+                          "programId",
+                          "decisionStatus",
+                          "reasonCodes",
+                          "claimMatchStatus",
+                          "duplicateStatus",
+                          "workflowState",
+                          "version",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "vendor": {
+                            "const": "claimmd",
+                            "type": "string"
+                          },
+                          "sourceEnvironment": {
+                            "anyOf": [
+                              {
+                                "const": "test",
+                                "type": "string"
+                              },
+                              {
+                                "const": "production",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "canonicalPayerId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "programId": {
+                            "type": "string"
+                          },
+                          "decisionStatus": {
+                            "type": "string"
+                          },
+                          "reasonCodes": {
+                            "maxItems": 32,
+                            "type": "array",
+                            "items": {
+                              "minLength": 2,
+                              "maxLength": 64,
+                              "type": "string"
+                            }
+                          },
+                          "claimMatchStatus": {
+                            "type": "string"
+                          },
+                          "duplicateStatus": {
+                            "type": "string"
+                          },
+                          "workflowState": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/medicaid-era-reviews/{id}": {
+      "get": {
+        "operationId": "getApiV1RemittanceMedicaiderareviewsById",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Authorized PHI-minimal detail for a nonposting Medicaid ERA review",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "providerEntityId",
+                    "vendor",
+                    "accountReference",
+                    "sourceEnvironment",
+                    "sourceDigest",
+                    "canonicalPayerId",
+                    "programId",
+                    "assessmentVersion",
+                    "decisionStatus",
+                    "reasonCodes",
+                    "claimMatchStatus",
+                    "duplicateStatus",
+                    "safeSummary",
+                    "workflowState",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "vendor": {
+                      "const": "claimmd",
+                      "type": "string"
+                    },
+                    "accountReference": {
+                      "type": "string"
+                    },
+                    "sourceEnvironment": {
+                      "anyOf": [
+                        {
+                          "const": "test",
+                          "type": "string"
+                        },
+                        {
+                          "const": "production",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "sourceDigest": {
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "canonicalPayerId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "programId": {
+                      "type": "string"
+                    },
+                    "assessmentVersion": {
+                      "type": "string"
+                    },
+                    "decisionStatus": {
+                      "type": "string"
+                    },
+                    "reasonCodes": {
+                      "maxItems": 32,
+                      "type": "array",
+                      "items": {
+                        "minLength": 2,
+                        "maxLength": 64,
+                        "type": "string"
+                      }
+                    },
+                    "claimMatchStatus": {
+                      "type": "string"
+                    },
+                    "duplicateStatus": {
+                      "type": "string"
+                    },
+                    "safeSummary": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^(.*)$": {}
+                      }
+                    },
+                    "workflowState": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/medicaid-era-reviews/{id}/disposition": {
+      "post": {
+        "operationId": "postApiV1RemittanceMedicaiderareviewsByIdDisposition",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record a versioned nonposting Medicaid ERA investigation disposition",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version",
+                    "workflowState",
+                    "replay"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "workflowState": {
+                      "type": "string"
+                    },
+                    "replay": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "state",
+                  "reasonCode"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "state": {
+                    "anyOf": [
+                      {
+                        "const": "investigating",
+                        "type": "string"
+                      },
+                      {
+                        "const": "follow_up_required",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reviewed_not_posted",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reopened",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reasonCode": {
+                    "minLength": 2,
+                    "maxLength": 64,
+                    "pattern": "^[A-Z0-9_]+$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/medicaid-era-reviews/{id}/history": {
+      "get": {
+        "operationId": "getApiV1RemittanceMedicaiderareviewsByIdHistory",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Append-only investigation history for a Medicaid ERA review",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "version",
+                          "action",
+                          "reasonCode",
+                          "actorMembershipId",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "version": {
+                            "type": "integer"
+                          },
+                          "action": {
+                            "type": "string"
+                          },
+                          "reasonCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "actorMembershipId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/medicaid-era-reviews/{id}/notes": {
+      "post": {
+        "operationId": "postApiV1RemittanceMedicaiderareviewsByIdNotes",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Append a coded, PHI-minimal note to a Medicaid ERA investigation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version",
+                    "workflowState",
+                    "replay"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "workflowState": {
+                      "type": "string"
+                    },
+                    "replay": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "reasonCode"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "reasonCode": {
+                    "minLength": 2,
+                    "maxLength": 64,
+                    "pattern": "^[A-Z0-9_]+$",
                     "type": "string"
                   }
                 }
