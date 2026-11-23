@@ -14,7 +14,8 @@
 # Bump: refresh the base digest (`crane digest cgr.dev/chainguard/wolfi-base:latest`) and the package pins
 # (`apk add -s <pkgs>` in that base shows what resolves); Wolfi keeps old versions, so pins stay buildable.
 # Wolfi's clamav-1.4 stops at 1.4.3 (production's Alpine image had 1.4.6), so this runs the 1.5 line. Moving engine line
-# is an upgrade, not a base bump.
+# is an upgrade, not a base bump. 1.4 is ClamAV's LTS line, 1.5 a feature line: re-pin to the newest
+# 1.5.x/1.6 Wolfi carries (freshclam logs "installation is OUTDATED" once the pin falls behind).
 FROM cgr.dev/chainguard/wolfi-base@sha256:8509ee4351a2e501b7f98201f2e2642396e82020c61a589cacdcfe74b9de46c1
 
 ARG CLAMAV_VERSION=1.5.2-r7
