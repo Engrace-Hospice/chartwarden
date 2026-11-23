@@ -64,6 +64,7 @@ import {
   tradingPartnerCredentialStatus,
 } from "./enrollment-readiness";
 import {
+  previewProgramResponsibility,
   resolveProgramResponsibility,
   resolveProviderPayerRoute,
   verificationSourceAllowed,
@@ -1549,7 +1550,7 @@ export function buildDrizzleM24WriteService(
             actor.organizationId,
             input.admissionId,
           );
-          if (!admissionSnapshot) throw new NotFoundError("admission not found");
+          if (!admissionSnapshot) throw new NotFoundError("admission");
           if (
             admissionSnapshot.patientId !== input.patientId ||
             admissionSnapshot.providerEntityId !== input.providerEntityId
@@ -1712,8 +1713,8 @@ export function buildDrizzleM24WriteService(
                     canonicalPayerName: null,
                     reasonCode: "MEDICAID_COVERAGE_UNRESOLVED",
                   }
-                : {
-                    ...resolveProgramResponsibility(
+                : previewProgramResponsibility(
+                    resolveProgramResponsibility(
                       programRows.map((row) => ({
                         id: row.id,
                         programKind: row.programKind as
@@ -1729,8 +1730,7 @@ export function buildDrizzleM24WriteService(
                       input.serviceFrom,
                       input.serviceTo,
                     ),
-                    canonicalPayerName: null,
-                  };
+                  );
           const verifiedPayerId = projectedProgramResponsibility.canonicalPayerId;
           const verifiedProgramKind = projectedProgramResponsibility.programKind;
           if (projectedProgramResponsibility.status === "verified") {
@@ -2162,7 +2162,7 @@ export function buildDrizzleM24WriteService(
           input.admissionId,
         );
         if (!admission) {
-          throw new NotFoundError("admission not found");
+          throw new NotFoundError("admission");
         }
         if (
           admission.patientId !== input.patientId ||
@@ -3901,9 +3901,9 @@ export function buildDrizzleM24WriteService(
           .limit(1)
           .for("update");
         const row = rows[0];
-        if (!row) throw new NotFoundError("program assignment not found");
+        if (!row) throw new NotFoundError("program assignment");
         if (row.providerEntityId !== input.providerEntityId || row.patientId !== input.patientId)
-          throw new NotFoundError("program assignment not found");
+          throw new NotFoundError("program assignment");
         if (row.version !== input.expectedVersion)
           throw new ConflictError(
             "STALE_VERSION",
@@ -4001,9 +4001,9 @@ export function buildDrizzleM24WriteService(
           .limit(1)
           .for("update");
         const row = rows[0];
-        if (!row) throw new NotFoundError("enrollment evidence not found");
+        if (!row) throw new NotFoundError("enrollment evidence");
         if (row.providerEntityId !== input.providerEntityId)
-          throw new NotFoundError("enrollment evidence not found");
+          throw new NotFoundError("enrollment evidence");
         if (row.version !== input.expectedVersion)
           throw new ConflictError(
             "STALE_VERSION",
@@ -4134,7 +4134,7 @@ export function buildDrizzleM24WriteService(
           row.providerEntityId !== input.providerEntityId ||
           row.patientId !== input.patientId
         )
-          throw new NotFoundError("program assignment not found");
+          throw new NotFoundError("program assignment");
         if (row.version !== input.expectedVersion)
           throw new ConflictError(
             "STALE_VERSION",
@@ -4180,7 +4180,7 @@ export function buildDrizzleM24WriteService(
           .for("update");
         const row = rows[0];
         if (!row || row.providerEntityId !== input.providerEntityId)
-          throw new NotFoundError("enrollment evidence not found");
+          throw new NotFoundError("enrollment evidence");
         if (row.version !== input.expectedVersion)
           throw new ConflictError(
             "STALE_VERSION",
