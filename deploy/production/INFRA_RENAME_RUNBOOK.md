@@ -2,8 +2,9 @@
 
 > **Superseded for the object store (historical runbook).** Every MinIO step below describes a stack that no longer exists:
 > production's object store is SeaweedFS, and `compose.yml` has no `minio` service, `minio-provision`, `minio-data` volume or
-> `MINIO_*` variable (`preflight.sh` and `volumes-copy.sh` no longer look at a `minio-data` volume). Read this for the rename
-> procedure only and do not run its MinIO commands; see `README.md` ("Object store: the environment contract").
+> `MINIO_*` variable (`volumes-copy.sh` does not copy a `minio-data` volume, and `preflight.sh` refuses a host that has one but
+> no `seaweedfs-data`). Read this for the rename procedure only and do not run its MinIO commands; see `README.md`
+> ("Object store: the environment contract"). The audit webhook now posts to `/api/v1/webhooks/object-store/access-log`.
 
 Operator runbook for the infrastructure identifiers that a code merge CANNOT rename safely. The
 product/code rename is already merged. Nothing below is automated; each step is manual, ordered, and
@@ -403,7 +404,8 @@ mc du local/wardenx-platform-terminology; mc du local/chartwarden-platform-termi
 ```
 
 Verification: terminology release job reads/writes the new bucket; `GET /api/ready` (readiness probe)
-healthy; MinIO audit webhook still posts to `/api/v1/webhooks/minio/access-log` for the new bucket
+healthy; MinIO audit webhook still posts to `/api/v1/webhooks/minio/access-log` for the new bucket (historical: that path is
+removed, the sender now posts to `/api/v1/webhooks/object-store/access-log`)
 (`mc admin config get local audit_webhook`; the webhook target is server-wide, buckets need no per-bucket
 hook). Keep the old buckets read-only for at least one release cycle; delete only after the operator
 confirms (`mc rb --force local/wardenx-platform-terminology`). Rollback: revert the code change AND re-add the

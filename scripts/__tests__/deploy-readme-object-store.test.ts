@@ -90,6 +90,19 @@ describe("deploy/production/README.md documents the object-store contract", () =
     expect(readme).not.toContain("| `SEAWEEDFS_ADMIN_ACCESS_KEY` | `MINIO_ROOT_USER` |");
   });
 
+  it("the historical runbook never presents the removed minio audit path as what the audit webhook posts to now", () => {
+    const runbook = read("deploy/production/INFRA_RENAME_RUNBOOK.md");
+    const lines = runbook
+      .split("\n")
+      .filter((l) => l.includes("/api/v1/webhooks/minio/access-log"));
+    expect(lines.length).toBeGreaterThan(0); // the historical line stays, annotated
+    for (const line of lines) expect(line, line).toMatch(/historical|removed|no longer|retired/i);
+    // and it says, once, what replaced it
+    expect(runbook).toContain("/api/v1/webhooks/object-store/access-log");
+    // preflight now looks at a leftover minio-data volume (refuse / warn), so the superseded note must not claim otherwise
+    expect(runbook).not.toContain("no longer look at a `minio-data` volume");
+  });
+
   it("the historical infra-rename runbook carries the superseded note for its MinIO steps", () => {
     expect(read("deploy/production/INFRA_RENAME_RUNBOOK.md")).toContain(
       "**Superseded for the object store (historical runbook).**",
