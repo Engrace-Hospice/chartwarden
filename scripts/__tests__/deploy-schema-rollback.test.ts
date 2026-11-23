@@ -866,7 +866,27 @@ describe.skipIf(BUN === "")("deploy.sh backup-overlay name migration", () => {
       expect(o.out).toContain("Copy it by hand");
       expect(o.out).toContain("No service was touched");
       expect(o.out).toContain("not accessible");
+      expect(o.out, "the loop is named: a hand copy alone does not clear it").toContain("setfacl");
       expectNoBackupSecretInOutput(o);
+    });
+
+    it("a hand copy inside the directory does not clear the stop, only search permission on it does", () => {
+      const p = prepare({
+        backupOverlay: true,
+        extraEnv: [`${OLD_KEY}=${accessKey}`],
+        secretFiles: {
+          [OLD_SECRET]: { content: secretValue },
+          [NEW_SECRET]: { content: secretValue },
+        },
+        secretsDirMode: 0o000,
+      });
+      const stuck = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+      expect(stuck.status, `${stuck.stdout}${stuck.stderr}`).toBe(1); // the new file exists but cannot be seen
+      expect(stuck.stderr).toContain("setfacl");
+      chmodSync(join(p.dir, "secrets"), 0o500); // search permission, which is what the setfacl line grants
+      const cleared = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+      expect(cleared.status, `${cleared.stdout}${cleared.stderr}`).toBe(0);
+      chmodSync(join(p.dir, "secrets"), 0o700); // so the scratch directory can be removed
     });
 
     it("a re-run fails the same way (never a half-migrated env) until the operator copies the file", () => {
@@ -881,7 +901,7 @@ describe.skipIf(BUN === "")("deploy.sh backup-overlay name migration", () => {
         expect(r.status, `${r.stdout}${r.stderr}`).toBe(1);
         expect(readFileSync(join(p.dir, ".env.production"), "utf8")).toBe(p.envBefore);
       }
-      chmodSync(join(p.dir, "secrets"), 0o700); // the operator fixes access (or copies by hand) ...
+      chmodSync(join(p.dir, "secrets"), 0o700); // the operator fixes access ...
       const fixed = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
       expect(fixed.status, `${fixed.stdout}${fixed.stderr}`).toBe(0); // ... and the deploy now migrates
       expect(existsSync(join(p.dir, "secrets", NEW_SECRET))).toBe(true);
