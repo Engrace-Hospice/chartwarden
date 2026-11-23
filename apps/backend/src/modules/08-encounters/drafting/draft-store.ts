@@ -10,8 +10,16 @@ import type { ConfirmationRecord } from "./section-state";
 /** An encounter as the draft routes load it: the draft's projection plus the status and the siting the satellite rows copy. */
 export interface DraftEncounterRow extends DraftEncounter {
   readonly status: EncounterStatus;
+  /** The membership that authored the visit (what the routes' `is_author` rule compares the session's membership to). */
+  readonly authoredByMembershipId: string;
   readonly providerEntityId: string | null;
   readonly locationId: string | null;
+}
+
+/** What the viewer asked of the IDG follow-up's link (S5b): link this M14 action item, with its Part 2 verdict (fails closed). `null` elsewhere is a clear. */
+export interface IdgLinkTarget {
+  readonly actionItemId: string;
+  readonly part2Derived: boolean;
 }
 
 /** One confirmation to keep (an upsert on encounter + section). `sourceRefs` are ids and kinds only, never text (VN-D7). */
@@ -50,6 +58,23 @@ export interface DraftStore extends DraftStorePorts {
     refs: readonly DraftSourceRef[],
     part2Derived: boolean,
   ): Promise<number>;
+  /**
+   * S5b (VN-D64): links the IDG follow-up visit to ONE M14 action item (replacing any other) or clears the link (`null`). Idempotent. `currentPart2Derived`
+   * is the verdict for the live item being left, `true` when it cannot be told (fails closed); returns whether anything changed.
+   */
+  setIdgActionItemLink(
+    encounter: DraftEncounterRow,
+    target: IdgLinkTarget | null,
+    currentPart2Derived: boolean,
+    byMembershipId: string,
+    now: Date,
+  ): Promise<boolean>;
+  /**
+   * S5b: raises to Part 2 the IDG follow-up link rows of this encounter that name `actionItemId` and were filed lower: a recompute (a section's resolution,
+   * finalize, sign) that sees the `idg_followup` section Part 2 derived raises its link row, as a plan section's resolution raises its plan links. Returns whether
+   * any row was raised.
+   */
+  raiseIdgLinkPart2(encounterId: string, actionItemId: string): Promise<boolean>;
   /** S4b: leaves the M15 plan elements among `refs` out of the visit (soft-remove, or an already-removed tombstone); returns how many it changed. */
   removeDisciplinePlan(
     encounter: DraftEncounterRow,
@@ -83,6 +108,12 @@ export interface DraftResolvedEvent {
   readonly carePlanElementsRemoved: number;
 }
 
+/** One refused link of an IDG follow-up visit to an IDG action item (S5b): the reason is an enum, never an item id or a patient. */
+export interface IdgLinkRefusedEvent {
+  readonly encounterId: string;
+  readonly reason: "not_offered" | "link_limit";
+}
+
 /** An addendum of the encounter as the amendment routes load it: its state, its author and the sections it names (VN-D30). */
 export interface AmendmentRef {
   readonly id: string;
@@ -103,6 +134,11 @@ export interface DraftUnit {
   encounter(encounterId: string, forUpdate: boolean): Promise<DraftEncounterRow | null>;
   readonly store: DraftStore;
   recordResolved(event: DraftResolvedEvent): Promise<void>;
+  /**
+   * S5b: the explicit warn-severity audit event of a REFUSED link (`m8.encounter.idg_follow_up_link_refused`, outcome denied, ids and patient left out). The refused
+   * unit rolled back, so the service calls this on a NEW unit, best effort.
+   */
+  recordIdgLinkRefused(event: IdgLinkRefusedEvent): Promise<void>;
   /** The addendum of that encounter, or `null` (absent, another encounter's or another tenant's). */
   amendment(encounterId: string, addendumId: string): Promise<AmendmentRef | null>;
   /** `store` with the addendum's resolutions in place of the note's and no care-plan link changes (`createAmendmentDraftStore`). */

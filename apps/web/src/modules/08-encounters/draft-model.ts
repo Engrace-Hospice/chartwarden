@@ -60,6 +60,9 @@ export const ORIGIN_LABEL: Readonly<Record<DraftOrigin, string>> = {
   // elements instead (`touchesDisciplinePlan`).
   discipline_plan_goal: "the goals of the discipline's plan of care at the visit",
   discipline_plan_intervention: "the interventions of the discipline's plan of care at the visit",
+  // S5b (IDG follow-up visits): the one IDG action item the author linked the visit to (its meeting date, decision kind and due date; never its title or body).
+  idg_action_item:
+    "the IDG action item this visit follows up (the team's decision and its due date)",
 };
 
 export function originsText(origins: readonly DraftOrigin[]): string {
@@ -110,6 +113,13 @@ export const draftsFromDisciplinePlan = (draft: Pick<DraftView, "sections">): bo
  */
 export const isDisciplinePlanVisit = (discipline: string): boolean =>
   discipline === "msw" || discipline === "chaplain";
+
+/**
+ * An IDG follow-up visit (S5b), of any discipline: the one visit whose note drafts a section from an IDG action item the author links. The server decides
+ * (any other visit answers the item list 422); this only keeps every other visit from asking, and holds whatever the draft's sections name.
+ */
+export const isIdgFollowUpVisit = (encounterType: string): boolean =>
+  encounterType === "idg_followup";
 
 /**
  * Whether a section of a social-work or chaplain template is the one the discipline's plan feeds (the server's source map, S4: a social worker's
@@ -247,6 +257,12 @@ export function draftGateRefusal(details: unknown): DraftGateRefusal | null {
   return { issues, others };
 }
 
+/** The section the IDG follow-up's linked action item feeds (S5b). */
+const IDG_FOLLOWUP_SECTION = "idg_followup";
+/** Why that section can go stale at sign and what ends it: the item it states is no longer one the author is handed (reassigned, closed by another hand, Part 2), and the link is the author's to change. */
+const IDG_FOLLOWUP_STALE_HINT =
+  "The IDG action item this visit follows up is no longer available to you: choose another item, or press Clear the follow-up item, in the IDG follow-up item panel beside the note, then confirm the section again.";
+
 /** What the signer reads when the sign is refused 409 `DRAFT_SECTION_STALE`: the sections named (when it named any) and what to do. */
 export function signStaleMessage(
   details: unknown,
@@ -254,7 +270,10 @@ export function signStaleMessage(
 ): string {
   const issues = draftIssuesFrom(details);
   const named = issues.length > 0 ? `: ${describeIssues(issues, headingOf)}` : "";
-  return `Some drafted sections need another look before this note can be signed${named}. Review them in the note editor, then sign again.`;
+  const idgHint = issues.some((issue) => issue.sectionId === IDG_FOLLOWUP_SECTION)
+    ? ` ${IDG_FOLLOWUP_STALE_HINT}`
+    : "";
+  return `Some drafted sections need another look before this note can be signed${named}. Review them in the note editor, then sign again.${idgHint}`;
 }
 
 // ── what a resolve says back ───────────────────────────────────────────────────────────────────────────

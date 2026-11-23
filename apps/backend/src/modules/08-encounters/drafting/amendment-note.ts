@@ -10,7 +10,6 @@
 import type { DraftSourceRef } from "@chartwarden/hearthnote";
 import { assembleBlocks, resolveSelectionTemplate } from "@chartwarden/hearthnote";
 import type { NoteDraft } from "./note-draft";
-import { unresolvedSections } from "./section-state";
 
 /** One section a signed addendum amended: its block as the note carries a section, and what the sealed row records. */
 export interface AmendedSection {
@@ -23,11 +22,19 @@ export interface AmendedSection {
   readonly sourceRefs: readonly DraftSourceRef[];
 }
 
-/** `draft` seen through the sections the addendum names: other sections' states are not its business. Template order. */
+/**
+ * `draft` seen through the sections the addendum names: other sections' states are not its business. Template order. The actions are the draft's own, kept
+ * for the named sections: those a section's state alone gives (unresolved, needs reconfirmation) and those `readNoteDraft` adds beyond the states (S5b: a
+ * confirmed `idg_followup` section that a recompute no longer drafts, which would otherwise be amended by nothing, silently).
+ */
 export function restrictToNamed(draft: NoteDraft, named: readonly string[]): NoteDraft {
   const wanted = new Set(named);
   const states = draft.states.filter((state) => wanted.has(state.sectionId));
-  return { computed: draft.computed, states, actions: unresolvedSections(states) };
+  return {
+    computed: draft.computed,
+    states,
+    actions: draft.actions.filter((action) => wanted.has(action.sectionId)),
+  };
 }
 
 /** The confirmed named sections of a restricted draft, in template order, built exactly as the signed note builds a confirmed section. */

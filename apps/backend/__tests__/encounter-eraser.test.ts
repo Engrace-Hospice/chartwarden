@@ -40,12 +40,13 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
       hearthnoteLlmModifications: 1,
       draftConfirmations: 3,
       disciplinePlanLinks: 2,
+      idgActionItemLinks: 1,
       signedSections: 6,
       amendments: 2,
       addendumCosignatureRequests: 1,
     });
     const { erased, counts } = await eraseEncounterRecord("org_a", "pat_1", store);
-    expect(erased).toBe(41); // 39 satellites + 2 tombstoned roots
+    expect(erased).toBe(42); // 40 satellites + 2 tombstoned roots
     expect(counts.vitals).toBe(4);
     expect(counts.tombstonedRoots).toBe(2);
     // The recorded ADLs and nutrition are counted: the encounter root is only tombstoned, so no cascade would remove them.
@@ -55,6 +56,8 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
     expect(counts.draftConfirmations).toBe(3);
     // ADR-0114 S4b: the links to the M15 goals and interventions a drafted plan kept (live and removed alike) go with it.
     expect(counts.disciplinePlanLinks).toBe(2);
+    // ADR-0114 S5b: the link to the M14 action item an IDG follow-up visit followed up goes with it.
+    expect(counts.idgActionItemLinks).toBe(1);
     expect(counts.signedSections).toBe(6);
     // ADR-0114 VN-D30: an amendment's naming and resolution rows and the cosignature request an amending addendum opened go with the subtree too.
     expect(counts.amendments).toBe(2);
@@ -105,6 +108,7 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
       hearthnoteLlmModifications: 0,
       draftConfirmations: 0,
       disciplinePlanLinks: 0,
+      idgActionItemLinks: 0,
       signedSections: 0,
       amendments: 0,
       addendumCosignatureRequests: 0,
@@ -187,12 +191,13 @@ describe("M8-T12 — m8 audit action catalog (§8.1)", () => {
     }
   });
 
-  it("covers all 22 §8.1 events, the four ADR-0113 closure events (override granted, revoked and denied, policy changed) and the three ADR-0114 draft events (policy changed, section resolved, section amended)", () => {
-    expect(M8_ACTION_CATALOG.length).toBe(29);
+  it("covers all 22 §8.1 events, the four ADR-0113 closure events (override granted, revoked and denied, policy changed) and the four ADR-0114 draft events (policy changed, section resolved, section amended, IDG follow-up link refused)", () => {
+    expect(M8_ACTION_CATALOG.length).toBe(30);
     const actions = M8_ACTION_CATALOG.map((e) => e.action);
     expect(actions).toContain("m8.encounter.draft_policy_changed");
     expect(actions).toContain("m8.encounter.draft_section_resolved");
     expect(actions).toContain("m8.encounter.section_amended");
+    expect(actions).toContain("m8.encounter.idg_follow_up_link_refused");
   });
 
   it("the reason carriers scrub narrative free text", () => {

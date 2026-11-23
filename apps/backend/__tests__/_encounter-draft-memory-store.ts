@@ -18,8 +18,13 @@ import type {
   DraftResolvedEvent,
   DraftStore,
   DraftUnit,
+  IdgLinkRefusedEvent,
   RunInOrg,
 } from "../src/modules/08-encounters/drafting/draft-store";
+import {
+  type IdgLinkRowState,
+  planIdgLink,
+} from "../src/modules/08-encounters/drafting/idg-action-item-links";
 import {
   ADMISSION_ID,
   EMPTY_SELECTION,
@@ -38,6 +43,13 @@ export interface DisciplineLinkRow extends LinkRow {
   readonly part2Derived: boolean;
 }
 
+/** An `encounter_idg_action_item_link` row (S5b): one M14 action item, the member who removed it, the Part 2 flag the writer states. */
+export interface IdgLinkRow extends IdgLinkRowState {
+  readonly removedByMembershipId: string | null;
+  readonly part2Derived: boolean;
+  readonly linkedByMembershipId: string;
+}
+
 export interface MemoryStoreOptions {
   /** The stored selection tree and slots the draft renders (default: nothing selected). */
   readonly selection?: Awaited<ReturnType<DraftStore["loadSelection"]>>;
@@ -49,6 +61,8 @@ export interface MemoryStoreOptions {
   readonly links?: readonly LinkRow[];
   /** S4b: the visit's links to M15 plan elements. */
   readonly disciplineLinks?: readonly DisciplineLinkRow[];
+  /** S5b: the visit's links to M14 action items (at most one live). */
+  readonly idgLinks?: readonly IdgLinkRow[];
 }
 
 export const draftEncounterRow = (over: Partial<DraftEncounterRow> = {}): DraftEncounterRow => ({
@@ -60,6 +74,8 @@ export const draftEncounterRow = (over: Partial<DraftEncounterRow> = {}): DraftE
   discipline: "rn",
   serviceDate: "2026-11-18",
   status: "draft",
+  // the member the draft tests' callers are (`membershipId` of their sessions)
+  authoredByMembershipId: "00000000-0000-4000-8000-0000000000aa",
   providerEntityId: null,
   locationId: null,
   ...over,
@@ -68,6 +84,7 @@ export const draftEncounterRow = (over: Partial<DraftEncounterRow> = {}): DraftE
 export function memoryDraftStore(options: MemoryStoreOptions = {}) {
   const links: LinkRow[] = [...(options.links ?? [])];
   const disciplineLinks: DisciplineLinkRow[] = [...(options.disciplineLinks ?? [])];
+  const idgLinks: IdgLinkRow[] = [...(options.idgLinks ?? [])];
   const saved = new Map<string, ConfirmationWrite>();
   let nextLinkId = links.length + disciplineLinks.length + 1;
   /** Executes link ops against one of the two row sets; `extra` is what that table's rows carry beyond the M7 shape (the Part 2 flag). */
@@ -106,6 +123,8 @@ export function memoryDraftStore(options: MemoryStoreOptions = {}) {
     weightReadings: async () => [],
     removedCarePlanElementIds: async () => removedElementIdsOf(links),
     removedDisciplinePlanElementIds: async () => removedElementIdsOf(disciplineLinks),
+    linkedIdgActionItemId: async () =>
+      idgLinks.find((row) => row.removedAt === null)?.actionItemId ?? null,
     loadSelection: async () => options.selection ?? EMPTY_SELECTION,
     confirmations: async () => {
       if (options.failing?.includes("confirmations")) throw new Error("the store is unreachable");
@@ -127,6 +146,44 @@ export function memoryDraftStore(options: MemoryStoreOptions = {}) {
         new Date(),
         { part2Derived },
       ),
+    raiseIdgLinkPart2: async (_encounterId, actionItemId) => {
+      let raised = false;
+      idgLinks.forEach((row, i) => {
+        if (row.actionItemId === actionItemId && !row.part2Derived) {
+          idgLinks[i] = { ...row, part2Derived: true };
+          raised = true;
+        }
+      });
+      return raised;
+    },
+    // The SAME pure plan the Drizzle store executes (idg-action-item-links.ts); only the row storage is faked.
+    setIdgActionItemLink: async (_encounter, target, currentPart2Derived, by, now) => {
+      const plan = planIdgLink(idgLinks, target, currentPart2Derived);
+      for (const actionItemId of plan.raisePart2OfItems) {
+        idgLinks.forEach((row, i) => {
+          if (row.actionItemId === actionItemId) idgLinks[i] = { ...row, part2Derived: true };
+        });
+      }
+      if (plan.removeRowId !== null) {
+        const i = idgLinks.findIndex((row) => row.id === plan.removeRowId);
+        idgLinks[i] = {
+          ...(idgLinks[i] as IdgLinkRow),
+          removedAt: now,
+          removedByMembershipId: by,
+        };
+      }
+      if (plan.insert !== null) {
+        idgLinks.push({
+          id: `idg-link-${nextLinkId++}`,
+          actionItemId: plan.insert.actionItemId,
+          removedAt: null,
+          removedByMembershipId: null,
+          part2Derived: plan.insert.part2Derived,
+          linkedByMembershipId: by,
+        });
+      }
+      return plan.removeRowId !== null || plan.insert !== null;
+    },
     removeDisciplinePlan: async (_encounter, refs, part2Derived, by, now) =>
       apply(
         disciplineLinks,
@@ -139,21 +196,24 @@ export function memoryDraftStore(options: MemoryStoreOptions = {}) {
   const spied = Object.fromEntries(
     Object.entries(store).map(([name, impl]) => [name, vi.fn(impl as never)]),
   ) as unknown as { [K in keyof DraftStore]: ReturnType<typeof vi.fn> } & DraftStore;
-  return { store: spied, links, disciplineLinks, saved };
+  return { store: spied, links, disciplineLinks, idgLinks, saved };
 }
 
 export interface MemoryUnitOptions extends MemoryStoreOptions {
   /** The addendum the amendment routes find on the encounter (default: none). Its resolutions are kept apart from the note's. */
   readonly amendment?: AmendmentRef;
   readonly enabled?: boolean;
+  /** The refused-link audit write throws (the refusal must still be answered). */
+  readonly refusalAuditFails?: boolean;
   /** `null` is an absent encounter; undefined is the default draft encounter. */
   readonly encounter?: DraftEncounterRow | null;
 }
 
 /** A `RunInOrg` over the in-memory store: records which unit calls were made and every audit event. */
 export function memoryRunInOrg(options: MemoryUnitOptions = {}) {
-  const { store, links, disciplineLinks, saved } = memoryDraftStore(options);
+  const { store, links, disciplineLinks, idgLinks, saved } = memoryDraftStore(options);
   const events: DraftResolvedEvent[] = [];
+  const refusals: IdgLinkRefusedEvent[] = [];
   const encounterCalls: { id: string; forUpdate: boolean }[] = [];
   const found = options.encounter === undefined ? draftEncounterRow() : options.encounter;
   const amendmentSaved = new Map<string, ConfirmationWrite>();
@@ -168,6 +228,8 @@ export function memoryRunInOrg(options: MemoryUnitOptions = {}) {
     // An amendment never changes the visit's links (VN-D62): it reads the note's removed set and writes none of its own.
     linkDisciplinePlan: async () => 0,
     removeDisciplinePlan: async () => 0,
+    setIdgActionItemLink: async () => false,
+    raiseIdgLinkPart2: async () => false,
   };
   const unit: DraftUnit = {
     amendment: async (encounterId, addendumId) =>
@@ -186,6 +248,10 @@ export function memoryRunInOrg(options: MemoryUnitOptions = {}) {
     recordResolved: async (event) => {
       events.push(event);
     },
+    recordIdgLinkRefused: async (event) => {
+      if (options.refusalAuditFails === true) throw new Error("the audit write failed");
+      refusals.push(event);
+    },
   };
   const scopes: Parameters<RunInOrg>[0][] = [];
   const runInOrg: RunInOrg = async (scope, fn) => {
@@ -197,9 +263,11 @@ export function memoryRunInOrg(options: MemoryUnitOptions = {}) {
     store,
     links,
     disciplineLinks,
+    idgLinks,
     saved,
     amendmentSaved,
     events,
+    refusals,
     encounterCalls,
     scopes,
     unit,

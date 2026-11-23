@@ -4,7 +4,8 @@ import { ENCOUNTER_DISCIPLINE_RULES } from "@chartwarden/types";
 //
 // What these pin: a physician or nurse practitioner drafts the recorded vitals and (face-to-face) the orders in effect and the S2 decline evidence,
 // and never a care-plan goal or intervention, a scale reading, a medication change, an assessment or an attestation (their note is their own
-// judgement); the IDG follow-up drafts as the discipline's own visit does; the IDG decision itself is never drafted; fail-closed Part 2.
+// judgement); the IDG follow-up drafts as the discipline's own visit does; its own section is empty unless the author linked an action item (S5b, which
+// draft-idg-follow-up.test.ts pins); fail-closed Part 2.
 import { describe, expect, it } from "vitest";
 import {
   type DraftInputs,
@@ -127,6 +128,7 @@ describe("the face-to-face visit by a physician or nurse practitioner (VN-D52, V
       medicationChanges: false,
       scales: true,
       disciplinePlan: false,
+      idgFollowUp: false,
     });
   });
 
@@ -182,20 +184,24 @@ describe("the face-to-face visit by a physician or nurse practitioner (VN-D52, V
 });
 
 describe("the IDG follow-up drafts as the discipline's own visit does (VN-D52)", () => {
-  it.each(["md", "np"] as const)("%s drafts the recorded vitals and nothing else", (discipline) => {
-    const inputs = inputsFor("idg_followup", discipline);
-    expect(draftedIds(inputs)).toEqual(["vitals_review"]);
-    expect(textOf(inputs, "vitals_review")).toBe(
-      textOf(inputsFor("routine_visit", "rn"), "vitals_review"),
-    );
-    expect(draftSourceNeeds("idg_followup", discipline)).toEqual({
-      carePlan: false,
-      vitals: true,
-      medicationChanges: false,
-      scales: false,
-      disciplinePlan: false,
-    });
-  });
+  it.each(["md", "np"] as const)(
+    "%s drafts the recorded vitals and nothing else of what the visit records (S5b: and the linked IDG decision, which draft-idg-follow-up.test.ts pins)",
+    (discipline) => {
+      const inputs = inputsFor("idg_followup", discipline);
+      expect(draftedIds(inputs)).toEqual(["vitals_review"]);
+      expect(textOf(inputs, "vitals_review")).toBe(
+        textOf(inputsFor("routine_visit", "rn"), "vitals_review"),
+      );
+      expect(draftSourceNeeds("idg_followup", discipline)).toEqual({
+        carePlan: false,
+        vitals: true,
+        medicationChanges: false,
+        scales: false,
+        disciplinePlan: false,
+        idgFollowUp: true,
+      });
+    },
+  );
 
   it("an RN drafts the five sections the routine visit does, with the routine visit's words", () => {
     const idg = inputsFor("idg_followup", "rn");
@@ -226,6 +232,7 @@ describe("the IDG follow-up drafts as the discipline's own visit does (VN-D52)",
       medicationChanges: false,
       scales: false,
       disciplinePlan: true,
+      idgFollowUp: true,
     });
   });
 
@@ -236,13 +243,13 @@ describe("the IDG follow-up drafts as the discipline's own visit does (VN-D52)",
     expect(sectionOf(idg, "spiritual").state).toBe("empty");
   });
 
-  it("never drafts the IDG decision follow-up section, whatever any source carries (VN-D54)", () => {
+  it("drafts nothing in the IDG decision follow-up section without a linked action item, whatever any other source carries (VN-D54)", () => {
     for (const discipline of ["rn", "lpn", "msw", "chaplain", "md", "np"] as const) {
       expect(
         sectionOf(inputsFor("idg_followup", discipline), "idg_followup").state,
         discipline,
       ).toBe("empty");
-      expect(draftedSectionIds("idg_followup", discipline).has("idg_followup")).toBe(false);
+      expect(draftedSectionIds("idg_followup", discipline).has("idg_followup")).toBe(true);
     }
   });
 

@@ -24,6 +24,7 @@ export * from "./orders";
 export * from "./dosespot";
 export * from "./emar";
 export * from "./idg";
+export * from "./idg-follow-up";
 export * from "./discipline-plans";
 export * from "./bereavement";
 export * from "./supplies";

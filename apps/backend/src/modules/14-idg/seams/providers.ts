@@ -8,11 +8,19 @@
 // read-seam provider precedents.
 import type {
   IdgDecisionProvider,
+  IdgFollowUpItem,
+  IdgFollowUpReader,
   IdgPacketProvider,
   IdgPacketRenderPayload,
   IdgScheduleProvider,
+  PatientId,
 } from "@chartwarden/types";
-import type { IdgSeamStore } from "./store";
+import {
+  type PacketDisclosurePort,
+  seamPacketDisclosurePort,
+  sudDisclosureAllowedForPacket,
+} from "../routes/packet-disclosure";
+import type { IdgFollowUpRow, IdgSeamStore } from "./store";
 
 /** The platform 15-day per-patient review floor (§2.2 / M14-F01): a cadence is compliant when no gap between
  * consecutive completed reviews exceeds 15 days. */
@@ -122,6 +130,90 @@ export function createIdgScheduleProvider(store: IdgSeamStore): IdgScheduleProvi
         longestGapDays: rollup.longestGapDays,
         isCompliant: rollup.longestGapDays <= IDG_CADENCE_FLOOR_DAYS,
       };
+    },
+  };
+}
+
+/**
+ * The most follow-up candidates one read hands over: the newest meetings' items first. A person's open encounter-linked items for ONE patient are a
+ * handful; the cap bounds a runaway row count, and the picker and the draft read the same answer.
+ */
+export const MAX_FOLLOW_UP_ITEMS = 50;
+
+/**
+ * §4.8 (S5b) IdgFollowUpReader over the store — the action items a visit's author may follow up, for M8's visit-note draft. Facts only (the store
+ * selects no title, body or payload). W-SUD-01 is decided HERE, per viewer, with the same per-actor verdict every M14 packet read applies
+ * (`sudDisclosureAllowedForPacket`, M39 `evaluateForInternalAccess`; an outage denies): an item whose meeting does not vouch the patient clear of Part 2
+ * is handed only to a viewer M39 clears, and is then flagged `sudRelated`, so the section drafted from it files as Part 2. For anyone else it is not
+ * handed at all, so a count, a date and a decision kind are never learned about a flagged patient. The verdict is asked at most once per read, and only
+ * when a row needs it. A viewer with no membership is assigned nothing.
+ *
+ * Two reads, one rule: `openFollowUpItems` (the candidates: open or in progress, newest meeting first) and `linkedFollowUpItem` (the ONE item a visit is
+ * linked to, by id, in any status: M14's auto-close closes an encounter-kind item when its assignee signs ANY visit, so the item a draft states may have
+ * closed since the author linked and confirmed it).
+ */
+export function createIdgFollowUpReader(
+  store: IdgSeamStore,
+  disclosure: PacketDisclosurePort = seamPacketDisclosurePort,
+): IdgFollowUpReader {
+  const readable = async (
+    rows: ReadonlyArray<IdgFollowUpRow>,
+    organizationId: string,
+    patientId: PatientId,
+    viewer: { readonly roles: readonly string[]; readonly membershipId: string },
+  ): Promise<IdgFollowUpItem[]> => {
+    let allowed: Promise<boolean> | undefined;
+    const mayReadPart2 = (): Promise<boolean> => {
+      allowed ??= sudDisclosureAllowedForPacket(disclosure, {
+        organizationId,
+        patientId,
+        membershipId: viewer.membershipId,
+        roles: viewer.roles,
+      });
+      return allowed;
+    };
+    const items: IdgFollowUpItem[] = [];
+    for (const row of rows) {
+      if (row.needsRelease && !(await mayReadPart2())) continue;
+      items.push({
+        actionItemId: row.actionItemId,
+        meetingAt: row.meetingAt,
+        decisionKind: row.decisionKind,
+        dueAt: row.dueAt,
+        status: row.status,
+        sudRelated: row.needsRelease,
+      });
+    }
+    return items;
+  };
+  return {
+    async openFollowUpItems({ organizationId, patientId, viewer }) {
+      if (viewer.membershipId === null) return [];
+      const rows = await store.followUpRowsFor(
+        organizationId,
+        patientId,
+        viewer.membershipId,
+        MAX_FOLLOW_UP_ITEMS,
+      );
+      return readable(rows, organizationId, patientId, {
+        roles: viewer.roles,
+        membershipId: viewer.membershipId,
+      });
+    },
+    async linkedFollowUpItem({ organizationId, patientId, actionItemId, viewer }) {
+      if (viewer.membershipId === null) return null;
+      const row = await store.followUpRowById(
+        organizationId,
+        patientId,
+        viewer.membershipId,
+        actionItemId,
+      );
+      if (row === null) return null;
+      const [item] = await readable([row], organizationId, patientId, {
+        roles: viewer.roles,
+        membershipId: viewer.membershipId,
+      });
+      return item ?? null;
     },
   };
 }

@@ -10,27 +10,26 @@
 // A box that cannot act says why beside it, because a disabled control cannot be focused to find the reason: while a change is saved the boxes are
 // `aria-disabled` and do nothing (the one pressed would otherwise drop keyboard focus), and a status that was already on the page says "Saving…" and
 // "Saved." for a reader who cannot see the box. A change the server did not take (a refusal, or an answer that is not a list) reads the list again, so a
-// box never stays where the server no longer has it. After a failed read, "Try again" keeps the panel on the page (the focused button is not unmounted
-// for a blank one) and the panel takes the focus when the list arrives.
+// box never stays where the server no longer has it.
 //
-// FOCUS. When an answer replaces the control that held the focus (a retry button that gives way to the list, a box whose item was withdrawn, the list
-// that gives way to the error or the "nothing to show" panel) the panel takes the focus, instead of it dropping to the page. Focus that was already
-// elsewhere, or on a control that is still there, is never moved. A read that finds nothing to show says so while someone waits on it; a retry that
-// fails again says "still", with its attempt number so a reader hears the change; a refusal stays on the page when the re-read fails too.
+// FOCUS, THE RETRY AND THE ORDER OF READS AND CHANGES are `useSerializedListPicker`'s (shared with the IDG action item picker). A read that finds nothing to
+// show says so while someone waits on it; a retry that fails again says "still", with its attempt number so a reader hears the change; a refusal stays
+// on the page when the re-read fails too.
 //
 // NO EMPTY FRAME: a visit with no plan list (not drafted from the discipline's plan, or a viewer who may not read it) or an empty plan shows nothing.
-import { Button, InlineAlert, Panel, useApiClient } from "@chartwarden/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { InlineAlert, Panel, useApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import {
   type DisciplinePlanElement,
+  type DisciplinePlanElementsView,
+  type Outcome,
   describeDraftRefusal,
   loadDisciplinePlanElements,
   setDisciplinePlanElement,
 } from "./draft-api";
 import { disciplinePlanTitle } from "./draft-model";
-import { useFocusRequest } from "./use-focus-request";
-import { useIsMounted } from "./use-is-mounted";
+import { PickerRetryPanel } from "./picker-retry-panel";
+import { useSerializedListPicker } from "./use-serialized-list-picker";
 
 export interface ComposerDisciplinePlanPickerProps {
   readonly encounterId: string;
@@ -44,17 +43,12 @@ export interface ComposerDisciplinePlanPickerProps {
   readonly onChanged: () => void;
 }
 
-type Load =
-  | { readonly status: "loading" }
+type PlanState =
+  /** A visit with no plan list (not drafted from the discipline's plan, or a viewer who may not read it), or an empty plan: the panel takes no room. */
   | { readonly status: "none" }
   /** A read someone was waiting on (a retry, or after a refused change) found nothing to show: the panel stays and says so. */
   | { readonly status: "nothing" }
-  /** `attempt`: 1 for the first failure; a retry that fails again counts up, so its words change and are announced. */
-  | { readonly status: "error"; readonly attempt: number }
   | { readonly status: "ready"; readonly elements: readonly DisciplinePlanElement[] };
-
-/** A read a person is waiting on: "Try again" was pressed, or a change was refused and the list is read again. */
-type WaitedOn = "retry" | "refusal" | null;
 
 /** The statuses that mean "this visit has no plan list for you": the panel then takes no room. */
 const NOT_SHOWN_STATUSES: readonly number[] = [403, 404, 422];
@@ -81,6 +75,18 @@ function refusalWords(failure: { readonly status: number; readonly error: unknow
   return describeDraftRefusal(failure).message;
 }
 
+/** What an answer is: a list to show, "no list" (the panel takes no room, or says so for someone who waited), or a failure to try again. */
+function classifyPlan(
+  outcome: Outcome<DisciplinePlanElementsView>,
+  waited: boolean,
+): PlanState | null {
+  const hidden: PlanState = { status: waited ? "nothing" : "none" };
+  if (!outcome.ok) return NOT_SHOWN_STATUSES.includes(outcome.status) ? hidden : null;
+  const read = outcome.data?.elements;
+  if (!Array.isArray(read)) return null;
+  return read.length > 0 ? { status: "ready", elements: read } : hidden;
+}
+
 export function ComposerDisciplinePlanPicker({
   encounterId,
   discipline,
@@ -89,81 +95,16 @@ export function ComposerDisciplinePlanPicker({
   onChanged,
 }: ComposerDisciplinePlanPickerProps): JSX.Element | null {
   const client = useApiClient();
-  const mounted = useIsMounted();
-  const [load, setLoad] = useState<Load>({ status: "loading" });
-  const [readKey, setReadKey] = useState(0);
-  // A read is out. After a failure the panel stays (waiting) while it is read again; the first read shows nothing.
-  const [reading, setReading] = useState(false);
-  const [pendingId, setPendingId] = useState<string | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [said, setSaid] = useState("");
-  const [anchor, focusAnchor] = useFocusRequest<HTMLFieldSetElement>();
+  const { load, anchor, reading, isSaving, problem, said, retry, save } = useSerializedListPicker<
+    DisciplinePlanElementsView,
+    PlanState
+  >({
+    read: () => loadDisciplinePlanElements(client, encounterId),
+    readOn: [client, encounterId, revision],
+    classify: classifyPlan,
+    onChanged,
+  });
   const title = disciplinePlanTitle(discipline);
-  // Moves when a change begins and again when it settles, so a read that began in between is told apart from the one held.
-  const changeEpoch = useRef(0);
-  const saving = useRef(false);
-  const readOwed = useRef(false);
-  // Set when a read is being waited on, and spent by the read that settles (whatever it finds): a later read that nobody waits on never moves the focus.
-  const waitedOn = useRef<WaitedOn>(null);
-  const failedReads = useRef(0);
-  // Whether the focus sat inside the panel when the answer that replaces its content was taken (see FOCUS above); spent after the commit.
-  const heldInside = useRef(false);
-  const showLoad = useCallback(
-    (next: Load): void => {
-      heldInside.current = anchor.current?.contains(document.activeElement) ?? false;
-      setLoad(next);
-    },
-    [anchor],
-  );
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `load` is the commit this runs after, not read in the body.
-  useEffect(() => {
-    if (!heldInside.current) return;
-    heldInside.current = false;
-    if (!anchor.current?.contains(document.activeElement)) focusAnchor();
-  }, [load, anchor, focusAnchor]);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `revision` and `readKey` are the re-read triggers, not read in the body.
-  useEffect(() => {
-    let active = true;
-    const begunAt = changeEpoch.current;
-    // The list known stays known while it is read again, and so does the failure (its retry button keeps the focus); the first time nothing is known.
-    setLoad((current) =>
-      current.status === "ready" || current.status === "error" ? current : { status: "loading" },
-    );
-    setReading(true);
-    void loadDisciplinePlanElements(client, encounterId).then((outcome) => {
-      if (!active) return;
-      if (saving.current || changeEpoch.current !== begunAt) {
-        // Read before a change committed, answered after it: older than the list held. Read again once the change has settled.
-        if (saving.current) readOwed.current = true;
-        else setReadKey((key) => key + 1);
-        return;
-      }
-      setReading(false);
-      const waited = waitedOn.current;
-      waitedOn.current = null;
-      const read = outcome.ok ? outcome.data?.elements : undefined;
-      const listed = Array.isArray(read) && read.length > 0;
-      const hidden = outcome.ok ? Array.isArray(read) : NOT_SHOWN_STATUSES.includes(outcome.status);
-      if (!listed && !hidden) {
-        failedReads.current = waited === "retry" ? failedReads.current + 1 : 1;
-        showLoad({ status: "error", attempt: failedReads.current });
-        return;
-      }
-      failedReads.current = 0;
-      // A retry that was answered settles a refusal that stood beside the failure: the list shown now is the truth about it.
-      if (waited === "retry") setProblem(null);
-      if (listed) {
-        showLoad({ status: "ready", elements: read });
-        return;
-      }
-      // Someone was waiting for this answer and it is "no list": the panel they were in says so, instead of vanishing with their focus.
-      showLoad(waited === null ? { status: "none" } : { status: "nothing" });
-    });
-    return () => {
-      active = false;
-    };
-  }, [client, encounterId, revision, readKey, showLoad]);
 
   if (load.status === "loading" || load.status === "none") return null;
   if (load.status === "nothing") {
@@ -187,79 +128,27 @@ export function ComposerDisciplinePlanPicker({
   }
   if (load.status === "error") {
     return (
-      <fieldset ref={anchor} tabIndex={-1} className="wx-fieldset-reset">
-        <legend className="wx-sr-only">{title}</legend>
-        <Panel title={title} icon="clipboard-list" stack>
-          {/* One region for the first failure and the next: its text changing is what a reader who cannot see the button is told. */}
-          <InlineAlert tone="warning">
-            {load.attempt > 1 ? stillCouldNotLoadWords(load.attempt) : COULD_NOT_LOAD_WORDS}
-          </InlineAlert>
-          {/* A refused change whose re-read failed too: the person is still told the change was not saved. */}
-          {problem ? <InlineAlert tone="error">{problem}</InlineAlert> : null}
-          <div>
-            <Button
-              tone="secondary"
-              size="sm"
-              aria-disabled={reading || undefined}
-              onClick={() => {
-                if (reading) return;
-                waitedOn.current = "retry";
-                setReadKey((key) => key + 1);
-              }}
-            >
-              {reading ? "Trying again…" : "Try again"}
-            </Button>
-          </div>
-        </Panel>
-      </fieldset>
+      <PickerRetryPanel
+        anchor={anchor}
+        title={title}
+        icon="clipboard-list"
+        words={load.attempt > 1 ? stillCouldNotLoadWords(load.attempt) : COULD_NOT_LOAD_WORDS}
+        problem={problem}
+        reading={reading}
+        onRetry={retry}
+      />
     );
   }
 
   const { elements } = load;
-  if (elements.length === 0) return null;
-  const reason = !editable ? NOT_A_DRAFT_REASON : pendingId !== null ? SAVING_REASON : null;
+  const reason = !editable ? NOT_A_DRAFT_REASON : isSaving ? SAVING_REASON : null;
 
-  const toggle = async (element: DisciplinePlanElement): Promise<void> => {
-    if (!editable || pendingId !== null) return;
-    setPendingId(element.elementId);
-    setProblem(null);
-    setSaid("");
-    changeEpoch.current += 1;
-    saving.current = true;
-    const outcome = await setDisciplinePlanElement(
-      client,
-      encounterId,
-      element.elementId,
-      !element.kept,
+  const toggle = (element: DisciplinePlanElement): void => {
+    if (!editable) return;
+    void save(
+      () => setDisciplinePlanElement(client, encounterId, element.elementId, !element.kept),
+      { refusalWords, notConfirmedWords: NOT_CONFIRMED_WORDS, savedWords: "Saved." },
     );
-    saving.current = false;
-    changeEpoch.current += 1;
-    if (!mounted.current) return;
-    setPendingId(null);
-    if (readOwed.current) {
-      readOwed.current = false;
-      setReadKey((key) => key + 1);
-    }
-    if (!outcome.ok) {
-      // The server did not take the change: what it holds may differ from the box (an item withdrawn since), so the list is read again.
-      setProblem(refusalWords(outcome));
-      waitedOn.current = "refusal";
-      setReadKey((key) => key + 1);
-      return;
-    }
-    if (Array.isArray(outcome.data?.elements)) {
-      // An emptied plan reads as it does on the first read: the panel says so instead of vanishing under the box that was pressed.
-      const { elements: answered } = outcome.data;
-      showLoad(
-        answered.length > 0 ? { status: "ready", elements: answered } : { status: "nothing" },
-      );
-      setSaid("Saved.");
-    } else {
-      setProblem(NOT_CONFIRMED_WORDS);
-      waitedOn.current = "refusal";
-      setReadKey((key) => key + 1);
-    }
-    onChanged();
   };
 
   const group = (legend: string, kind: DisciplinePlanElement["kind"]): JSX.Element | null => {
@@ -277,9 +166,9 @@ export function ComposerDisciplinePlanPicker({
                 type="checkbox"
                 checked={element.kept}
                 disabled={!editable}
-                aria-disabled={pendingId !== null || undefined}
+                aria-disabled={isSaving || undefined}
                 aria-describedby={reason ? REASON_ID : undefined}
-                onChange={() => void toggle(element)}
+                onChange={() => toggle(element)}
               />
               <label htmlFor={inputId}>{element.text}</label>
             </div>
@@ -299,7 +188,7 @@ export function ComposerDisciplinePlanPicker({
         stack
       >
         {/* Always on the page (a region mounted with its text is not announced): says the change is being saved, and that it was. */}
-        <output className="wx-sr-only">{pendingId !== null ? "Saving…" : said}</output>
+        <output className="wx-sr-only">{isSaving ? "Saving…" : said}</output>
         {group("Goals", "goal")}
         {group("Interventions", "intervention")}
         {/* After the lists: it comes and goes with every save, and above them it would move every row under the person's pointer. */}

@@ -15,6 +15,7 @@ import { EncounterStateError } from "../lifecycle/errors";
 import { assertMayReadAdmissionFacts } from "./admission-reads";
 import { type ComputedDraft, computeDraft } from "./compute";
 import type { DraftUnit } from "./draft-store";
+import { settleIdgSection } from "./idg-follow-up";
 import type { DraftEncounter, DraftPorts, DraftReader, DraftSeamPorts } from "./ports";
 import {
   type SectionAction,
@@ -71,8 +72,18 @@ export async function readNoteDraft(
   try {
     const ports: DraftPorts = { ...seams, ...unit.store };
     const computed = await computeDraft(ports, encounter, viewer, now);
-    const states = sectionStates(computed.draft, await unit.store.confirmations(encounter.id));
-    return { computed, states, actions: unresolvedSections(states) };
+    const confirmations = await unit.store.confirmations(encounter.id);
+    const states = sectionStates(computed.draft, confirmations);
+    // S5b: the IDG follow-up's own section (its link row's Part 2 flag, and a confirmed section a recompute no longer drafts: never dropped silently).
+    const idgActions = await settleIdgSection(
+      unit.store,
+      encounter,
+      viewer,
+      computed.draft,
+      states,
+      confirmations,
+    );
+    return { computed, states, actions: [...unresolvedSections(states), ...idgActions] };
   } catch (cause) {
     if (cause instanceof EncounterStateError && KEEPS_ITS_CODE.has(cause.code)) throw cause;
     throw unavailable("the draft could not be computed", cause);

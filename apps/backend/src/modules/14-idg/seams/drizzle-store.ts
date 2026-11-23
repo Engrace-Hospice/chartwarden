@@ -29,13 +29,28 @@ import type {
   IdgMeetingDigest,
   PacketSnapshot,
 } from "@chartwarden/types";
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, notInArray, sql } from "drizzle-orm";
-import type { IdgCadenceAdherence, IdgSeamStore, StoredIdgPacket } from "./store";
+import {
+  type SQL,
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  lt,
+  lte,
+  notInArray,
+  sql,
+} from "drizzle-orm";
+import { meetingsNeedingRelease } from "../minutes-render-context";
+import type { IdgCadenceAdherence, IdgFollowUpRow, IdgSeamStore, StoredIdgPacket } from "./store";
 
 const M = schema.idgMeeting;
 const ATT = schema.idgAttendance;
 const DEC = schema.idgDecision;
 const PKT = schema.idgPatientPacket;
+const ACT = schema.idgActionItem;
 
 /** The actor id the org-level read's withOrgContext envelope carries — an aggregate read has no acting user. */
 const IDG_READER_SYSTEM_USER_ID = "";
@@ -64,6 +79,60 @@ const decisionDto = (r: typeof DEC.$inferSelect): IdgDecisionDto => ({
   emittedAt: isoN(r.emittedAt),
   supersededByDecisionId: r.supersededByDecisionId ?? null,
 });
+
+/**
+ * The follow-up facts of the patient's action items that name a decision and match `extra` (the caller's assignee, status and kind filters), newest meeting
+ * first, at most `limit`, with each meeting's W-SUD-01 fact (two queries however many meetings). The one query behind both follow-up reads.
+ */
+async function selectFollowUpRows(
+  t: DbClient,
+  organizationId: string,
+  patientId: string,
+  extra: SQL | undefined,
+  limit: number,
+): Promise<IdgFollowUpRow[]> {
+  const meetingAt = sql<Date>`coalesce(${M.actualStart}, ${M.scheduledStart})`;
+  const rows = await t
+    .select({
+      actionItemId: ACT.id,
+      meetingId: ACT.idgMeetingId,
+      meetingAt,
+      decisionKind: DEC.decisionKind,
+      dueAt: ACT.dueDate,
+      status: ACT.status,
+    })
+    .from(ACT)
+    .innerJoin(DEC, eq(DEC.id, ACT.idgDecisionId))
+    .innerJoin(M, eq(M.id, ACT.idgMeetingId))
+    .where(
+      and(
+        eq(ACT.organizationId, organizationId),
+        eq(DEC.organizationId, organizationId),
+        eq(M.organizationId, organizationId),
+        eq(ACT.patientId, patientId),
+        extra,
+      ),
+    )
+    .orderBy(desc(meetingAt), desc(ACT.id))
+    .limit(limit);
+  const needing = await meetingsNeedingRelease(
+    t,
+    organizationId,
+    [...new Set(rows.map((r) => r.meetingId))],
+    patientId,
+  );
+  return rows.map(
+    (r): IdgFollowUpRow => ({
+      actionItemId: r.actionItemId,
+      meetingAt: iso(new Date(r.meetingAt)),
+      decisionKind: r.decisionKind,
+      dueAt: isoN(r.dueAt),
+      status: r.status,
+      // Fail closed: every meeting needs a release until its packet vouches the patient clear.
+      needsRelease: needing.has(r.meetingId),
+    }),
+  );
+}
 
 /**
  * Build the production Drizzle-backed {@link IdgSeamStore}. No in-memory fallback: every method —
@@ -304,6 +373,49 @@ export function createDrizzleIdgSeamStore(db: DbClient): IdgSeamStore {
           };
         },
       );
+    },
+
+    /**
+     * ADR-0114 S5b — the patient's open or in-progress, encounter-linked action items assigned to one membership that name a decision, newest meeting
+     * first. Selects the facts only (ids, the meeting instant, the decision KIND, the due date and the status): never `title`, `body_text` or the
+     * decision's `payload`. The W-SUD-01 fact is asked for all the meetings at once (`meetingsNeedingRelease`: the meeting's packet vouches the patient
+     * clear, or a release is needed; a decision of the meeting that marks a care-plan problem SUD related needs it too). Explicit org (`withOrgContext`,
+     * RLS) with `organization_id` as the second wall, on every table read.
+     */
+    followUpRowsFor(organizationId, patientId, assigneeMembershipId, limit) {
+      return withOrgContext(db, { organizationId, userId: IDG_READER_SYSTEM_USER_ID }, (tx) =>
+        selectFollowUpRows(
+          tx as unknown as DbClient,
+          organizationId,
+          patientId,
+          and(
+            eq(ACT.assignedToMembershipId, assigneeMembershipId),
+            inArray(ACT.status, ["open", "in_progress"]),
+            eq(ACT.linkedArtifactKind, "encounter"),
+          ),
+          limit,
+        ),
+      );
+    },
+
+    /**
+     * ADR-0114 S5b — the ONE item a visit is linked to, by id, in ANY status and of any artifact kind (M14's own auto-close may have closed it since the
+     * author linked it): the same facts and the same W-SUD-01 fact as the candidates, for the one assignee and patient, in the explicit org.
+     */
+    async followUpRowById(organizationId, patientId, assigneeMembershipId, actionItemId) {
+      const [row] = await withOrgContext(
+        db,
+        { organizationId, userId: IDG_READER_SYSTEM_USER_ID },
+        (tx) =>
+          selectFollowUpRows(
+            tx as unknown as DbClient,
+            organizationId,
+            patientId,
+            and(eq(ACT.assignedToMembershipId, assigneeMembershipId), eq(ACT.id, actionItemId)),
+            1,
+          ),
+      );
+      return row ?? null;
     },
 
     /**

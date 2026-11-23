@@ -73,6 +73,7 @@ import type {
   HopeTimepointProvider,
   HospitalizationRiskProvider,
   IdgDecisionProvider,
+  IdgFollowUpReader,
   IdgPacketProvider,
   IdgScheduleProvider,
   IntakeMetricsProvider,
@@ -1322,6 +1323,16 @@ export const idgScheduleProviderDenyStub: IdgScheduleProvider = {
   },
   meetingLocation() {
     throw new NotImplementedError("IdgScheduleProvider");
+  },
+};
+
+/** M14 — the open action items a visit's author may follow up (ADR-0114 S5b) M8's visit-note draft consumes. Denies until M14 registers it. */
+export const idgFollowUpReaderDenyStub: IdgFollowUpReader = {
+  openFollowUpItems() {
+    throw new NotImplementedError("IdgFollowUpReader");
+  },
+  linkedFollowUpItem() {
+    throw new NotImplementedError("IdgFollowUpReader");
   },
 };
 

@@ -69,6 +69,7 @@ import type {
 } from "./hope";
 import type { NonCoveredItemsReader } from "./hospice-coverage";
 import type { IdgDecisionProvider, IdgPacketProvider, IdgScheduleProvider } from "./idg";
+import type { IdgFollowUpReader } from "./idg-follow-up";
 import type {
   IpuAdmissionReader,
   IpuBedAssignmentProvider,
@@ -326,6 +327,7 @@ export type SeamName =
   | "IdgPacketProvider" // M14 — packet read seam (snapshot by-id + M22 render payload)
   | "IdgDecisionProvider" // M14 — decision read seam (by-care-plan / by-meeting)
   | "IdgScheduleProvider" // M14 — schedule read seam (meetings-for-location / cadence-adherence)
+  | "IdgFollowUpReader" // M14 — the open action items a visit's author may follow up (ADR-0114 S5b; facts only, Part 2 decided per viewer)
   // M17 (Scheduling & Route Optimization) owned seams (§4.3) — also leaf-typed (interfaces in ./scheduling,
   // this leaf), so they are typed here like M6..M14's seams. All four are READ surfaces over M17's `visit` /
   // `visit_state_history` / `route_segment` rows: `VisitReader` is the visit read path M8 (encounter-authoring
@@ -1352,6 +1354,7 @@ export interface SeamContracts {
   IdgPacketProvider: IdgPacketProvider;
   IdgDecisionProvider: IdgDecisionProvider;
   IdgScheduleProvider: IdgScheduleProvider;
+  IdgFollowUpReader: IdgFollowUpReader;
   // M17's owned seams (§4.3) are LEAF-TYPED too — interfaces live in ./scheduling (this package), so the registry
   // is statically typed against the real contract. M17 registers the real Drizzle-backed impls over the deny-stubs
   // (M17-T05); consumers that list `17` in their manifest `dependsOn` (M8/M18/M19/M20/M30/M31/M33) resolve them

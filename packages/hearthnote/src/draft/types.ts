@@ -27,7 +27,9 @@ export type DraftSourceKind =
   | "recorded_adl"
   // S4 (social-work and chaplain visits): the goals and interventions of the discipline's own plan (M15), which are not M7 care-plan elements:
   | "discipline_plan_goal"
-  | "discipline_plan_intervention";
+  | "discipline_plan_intervention"
+  // S5b (IDG follow-up visits): the ONE M14 IDG action item the author linked the visit to. The ref id is the action item's id (audit only, VN-D7):
+  | "idg_action_item";
 
 // A `type`, not an `interface`: the canonical serializer takes plain data, and only an alias is
 // assignable to its index-signature shape.
@@ -77,7 +79,20 @@ export interface DisciplinePlanDraftInput {
 }
 
 /**
- * Which of the five sources a template's draft is built from (S3, S4): the four S1 sources and the discipline's own plan. A source no drafted
+ * The IDG action item an IDG follow-up visit follows up (S5b, VN-D64 to VN-D68): FACTS ONLY. The item's title, its body and the decision's payload are
+ * never an input: the sentence states when the team met, a fixed label for the KIND of decision, and the due date.
+ */
+export interface IdgFollowUpDraftInput extends DraftSourceBase {
+  /** The org-local calendar date (YYYY-MM-DD) of the meeting the decision was made at. */
+  readonly meetingOn: string;
+  /** The decision kind (`idg_decision_kind`); a value the corpus has no label for is a malformed input. */
+  readonly decisionKind: string;
+  /** The org-local calendar date (YYYY-MM-DD) the item is due, or `null` when it has none (the sentence then states no due date). */
+  readonly dueOn: string | null;
+}
+
+/**
+ * Which of the six sources a template's draft is built from (S3, S4, S5b): the four S1 sources, the discipline's own plan and the linked IDG action item. A source no drafted
  * section uses is never read, so a note's author needs the read key of only the domains behind what is drafted for them. The S2 and S2b records
  * (benefit period, weight, orders in effect, caregivers, acknowledgment) are decided separately, by encounter type.
  */
@@ -88,6 +103,8 @@ export interface DraftSourceNeeds {
   readonly scales: boolean;
   /** S4: the social-work and chaplain templates' plan sections are drafted from the discipline's own plan, not the M7 care plan. */
   readonly disciplinePlan: boolean;
+  /** S5b: the IDG follow-up template's `idg_followup` section is drafted from the one M14 action item the author linked the visit to. */
+  readonly idgFollowUp: boolean;
 }
 
 /** The care-plan goals and interventions relevant to this visit (those the author has not removed), in the plan version in effect at `asOf`. */
@@ -246,6 +263,8 @@ export interface DraftInputs {
   readonly advanceDirective?: AdvanceDirectiveAcknowledgmentInput | null;
   /** S4: the discipline's own plan in effect at the visit time; absent or `null` for none. Read by the social-work and chaplain templates only. */
   readonly disciplinePlan?: DisciplinePlanDraftInput | null;
+  /** S5b: the IDG action item the author linked this visit to, in the facts above; absent or `null` for none. Read by the IDG follow-up templates only. */
+  readonly idgFollowUp?: IdgFollowUpDraftInput | null;
 }
 
 export interface DraftDeps {

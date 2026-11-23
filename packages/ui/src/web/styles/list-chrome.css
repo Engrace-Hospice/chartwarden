@@ -1664,7 +1664,8 @@
   font-size: 0.8125rem;
   line-height: 1.4;
 }
-.wx-draft-rail .wx-action-check > input[type="checkbox"] {
+.wx-draft-rail .wx-action-check > input[type="checkbox"],
+.wx-draft-rail .wx-action-check > input[type="radio"] {
   margin-block-start: 0.125rem;
 }
 

@@ -88,6 +88,12 @@ export const M8_ERROR_STATUS = {
   /** A visit's per-goal keep and leave-out (ADR-0114 S4b) already holds as many link rows as one encounter may: a removed row is never revived, so each
    *  re-keep adds one, and the table is bounded per encounter. Nothing was changed; the message names no goal or intervention. */
   DISCIPLINE_PLAN_LINK_LIMIT: 409,
+  /** An IDG follow-up visit (ADR-0114 S5b) already holds as many link changes to an IDG action item as one encounter may: a removed row is never revived, so
+   *  each re-link adds one, and the table is bounded per encounter. Nothing was changed; the message names no action item. Clearing the link is never refused. */
+  IDG_ACTION_ITEM_LINK_LIMIT: 409,
+  /** The IDG follow-up's picker (the list, and a link to an item) needs M14's `idg.act`, and the caller does not hold it (ADR-0114 S5b, VN-D66). A stable code so a
+   *  client need not read the message; clearing a link never raises it. The draft routes never answer it: they leave the section not drafted instead. */
+  IDG_ACTION_PERMISSION_REQUIRED: 403,
   /** An addendum names a section whose original is 42 CFR Part 2 derived and its author may not read Part 2 content: their redraft would silently
    *  shorten the note's current view (VN-D30). Refused at naming and again at sign; the error names no section. */
   AMENDMENT_PART2_NOT_ENTITLED: 422,
