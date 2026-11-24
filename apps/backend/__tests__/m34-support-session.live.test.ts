@@ -617,6 +617,28 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
       const grantId = await grantRow(TENANT_ORG, TENANT_ACCOUNT);
       const sessionId = await sessionRow(TENANT_ORG, grantId);
       await asApp(TENANT_ORG, async (c) => {
+        // a revoke must carry a reason; migration 1487 lets the session close as grant_revoked only after it. This runs before the
+        // temp traps below because the grant's own audit trigger (migration 0053, search_path pg_catalog, public) is not what this
+        // test pins: the traps cover the session and ledger evidence.
+        await expect(
+          c.query("UPDATE support_consent_grant SET revoked_at = now() WHERE id = $1", [grantId]),
+        ).rejects.toThrow(
+          /row-level security|support consent grant revocation is incomplete or has an invalid timestamp/,
+        );
+        await expect(
+          c.query(
+            "UPDATE support_session SET closed_at = now(), close_reason = 'grant_revoked' WHERE id = $1",
+            [sessionId],
+          ),
+        ).rejects.toThrow(/grant_revoked close requires a revoked support consent grant/);
+        expect(
+          (
+            await c.query(
+              "UPDATE support_consent_grant SET revoked_at = now(), revoked_by_membership_id = $2, revocation_reason = 'done' WHERE id = $1",
+              [grantId, ADMIN.membership],
+            )
+          ).rowCount,
+        ).toBe(1);
         await c.query(
           "CREATE TEMP TABLE support_session_event (LIKE public.support_session_event INCLUDING DEFAULTS)",
         );
@@ -635,6 +657,7 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
             [sessionId],
           ),
         ).rejects.toThrow(/row-level security|invalid support session close transition/);
+        // the grant is already revoked (above), so the session may close as grant_revoked
         expect(
           (
             await c.query(
@@ -671,20 +694,7 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
           (await c.query("UPDATE support_session SET closed_at = NULL WHERE id = $1", [sessionId]))
             .rowCount,
         ).toBe(0);
-        // a revoke must carry a reason; then it is final
-        await expect(
-          c.query("UPDATE support_consent_grant SET revoked_at = now() WHERE id = $1", [grantId]),
-        ).rejects.toThrow(
-          /row-level security|support consent grant revocation is incomplete or has an invalid timestamp/,
-        );
-        expect(
-          (
-            await c.query(
-              "UPDATE support_consent_grant SET revoked_at = now(), revoked_by_membership_id = $2, revocation_reason = 'done' WHERE id = $1",
-              [grantId, ADMIN.membership],
-            )
-          ).rowCount,
-        ).toBe(1);
+        // the revoke is final
         expect(
           (
             await c.query(

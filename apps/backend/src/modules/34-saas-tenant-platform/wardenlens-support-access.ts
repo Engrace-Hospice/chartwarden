@@ -101,7 +101,9 @@ async function accessFacts(
     )
     .where(eq(schema.organizations.id, input.organizationId))
     .limit(1)
-    .for("share");
+    // Lock only the session and grant rows: a row lock needs UPDATE privilege, which the platform role holds
+    // (column-level) on these two tables but not on organization or tenant_account.
+    .for("share", { of: [schema.supportSession, schema.supportConsentGrant] });
 
   if (!row || row.scope === "assist" || row.sessionGrantId !== row.grantId) {
     throw new ForbiddenError(ACCESS_DENIED);
