@@ -790,7 +790,7 @@ FROM pg_stat_progress_create_index;
 
 ### 5.7 Backups and Restore Drills (single-host stack, #857)
 
-The design, variables and key handling are in DR/BCP §4.8; this is the operating loop. Everything runs from the
+The design, variables and key handling are in DR/BCP §4.8; this is the operating loop. Per the owner the sidecar runs in production and the off-site mirror is enabled; the repo holds no evidence of it. Everything runs from the
 deploy directory with the overlay: `docker compose --env-file .env.production -f compose.yml -f compose.backup.yml`
 (below: `dc`).
 
@@ -879,7 +879,7 @@ Reading a bucket's lifecycle rules back from an operator shell (the former month
 
 TARGET: the `claims` and `cost-reports` data under COMPLIANCE-mode Object Lock with a 7-year default retention, so that not even an admin can delete an object until retention passes.
 
-TODAY: no store-side object-retention control is evidenced in production. The off-site Object-Lock mirror is built but not enabled until the operator steps in DR/BCP §4.8.7, and there is no evidence it runs on the VPS. When it is enabled, the operator creates the bucket's lock (COMPLIANCE, default retention >= 100 days, noncurrent versions expire at 120 days) and `cw-backup.sh` only verifies it on every snapshot, refusing a non-COMPLIANCE or shorter default (a failing snapshot raises `backup.snapshot_failed`, §5.7); it is not a 7-year control. Nothing is locked on the primary or on the second copy, so there is no lock to verify on a `tenant-*` bucket. Partition rotation (§5.2) covers database rows, not object bytes: objects persist on the primary until M22's eraser removes them.
+TODAY the primary and the second copy have no Object Lock, so there is no lock to verify on a `tenant-*` bucket. The off-site bucket (enabled in production per the owner; the repo holds no evidence of it) carries a COMPLIANCE lock, default retention >= 100 days, that the operator creates and `cw-backup.sh` verifies on every snapshot: the snapshot fails (`backup.snapshot_failed`, §5.7) when the mode is not COMPLIANCE or the days are below `BACKUP_OFFSITE_MIN_LOCK_DAYS` (default 100). Its 120-day noncurrent-version lifecycle is operator-set and unchecked, and the lock is not a 7-year control. Partition rotation (§5.2) covers database rows, not object bytes: objects persist on the primary until M22's eraser removes them.
 
 ### 6.4 Replication Health
 
@@ -891,12 +891,12 @@ docker compose --env-file .env.production -f compose.yml -f compose.object-copy.
 ```
 
 - Expected: a clean JSON summary per run and a `healthy` container. A failed run posts `object_copy.failed` to `OPS_ALERT_WEBHOOK_URL` (counts and bucket/key ids, never content); the container turns unhealthy when no run has been clean for three intervals.
-- Exposure: the data-loss window of the copy equals the copy interval (hourly by default).
-- It is a sync, not an archive: an erasure on the primary reaches the copy on the next run, with three limits: a large erasure is held by the mass-delete guard until an operator names the bucket, a bucket dropped on the primary is never removed from the copy, and `--restore` after an erasure resurrects the destroyed objects. The Object-Lock off-site mirror never uses `--remove` and keeps erased documents: no D12 shred or DEK destruction reaches it.
+- Exposure: the data-loss window of the copy equals the copy interval (hourly by default). In production the object RPO is the off-site mirror's snapshot interval (default 15 minutes, plus the snapshot's run time), because the mirror runs inside every sidecar snapshot.
+- It is a sync, not an archive: an erasure on the primary reaches the copy on the next run, with three limits: a large erasure is held by the mass-delete guard until an operator names the bucket, a bucket dropped on the primary is never removed from the copy, and `--restore` after an erasure resurrects the destroyed objects. A D12 shred or DEK destruction does not reach the off-site mirror (enabled in production per the owner): its objects are SSE-C encrypted under one platform backup key, not the tenant's DEK, so destroying a DEK does not make them unreadable; erased objects stay there because nothing deletes them (no `--remove`, the backup key cannot delete under `objects/`, the lifecycle expires only noncurrent versions and delete markers); and the COMPLIANCE lock blocks even the bucket owner until it expires.
 - The guard is narrow: it refuses a bucket's deletions only when the source bucket is empty or a run would delete more than max(10, 10% of the target count) (refused and paged; `ALLOW_MASS_DELETE` names a bucket to let one through). A loss under that threshold, such as a primary missing a few percent of its objects, propagates to the copy on the next run.
 - Per-bucket lag or pending counts: **not available in the repo today.**
 
-Recovery from the copy has no promote-the-copy procedure in the repo. The documented path is: provision a new SeaweedFS, run `scripts/object-store-copy.ts --restore` (`SOURCE_S3_*` = the replica, `TARGET_S3_*` = the new primary's admin; it never deletes), then run the `tenant-buckets` backfill (the copy carries objects, not bucket versioning or expiry rules). Stop `object-copy` first (`restart: unless-stopped`, it syncs hourly and deletes from the target) and keep it stopped until `--restore` and the per-bucket object-count checks finish; after the restore, re-run the D12 erasures, because a restore resurrects destroyed objects (DR/BCP §6.3). The only archive the repo builds is the off-site Object-Lock mirror (§5.7), not enabled until the DR/BCP §4.8.7 operator steps.
+Recovery from the copy has no promote-the-copy procedure in the repo. The documented path is: provision a new SeaweedFS, run `scripts/object-store-copy.ts --restore` (`SOURCE_S3_*` = the replica, `TARGET_S3_*` = the new primary's admin; it never deletes), then run the `tenant-buckets` backfill (the copy carries objects, not bucket versioning or expiry rules). Stop `object-copy` first (`restart: unless-stopped`, it syncs hourly and deletes from the target) and keep it stopped until `--restore` and the per-bucket object-count checks finish; after the restore, re-run the D12 erasures, because a restore resurrects destroyed objects (DR/BCP §6.3). The only archive the repo builds is the off-site Object-Lock mirror (§5.7), enabled in production per the owner; loading it into a new SeaweedFS is not scripted (DR/BCP §4.8.6). The second copy described here is not enabled in production, so today's live recovery source is that mirror.
 
 ### 6.5 Capacity Management
 

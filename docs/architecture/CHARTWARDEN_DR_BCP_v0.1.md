@@ -102,7 +102,7 @@ Incidents are classified at declaration and may be reclassified as conditions ch
 >
 > **The infrastructure this document operates on does not exist yet.** There is no Proxmox VM fleet,
 > no Pangolin edge, no PgBouncer, no Proxmox Backup Server, no replicated object-store cluster, and no PagerDuty /
-> Grafana / Sentry. No streaming replica and no WAL archiving are running.
+> Grafana / Sentry. No streaming replica is running. Per the owner, the single-host backup of §4.8 (the `backup` sidecar with pgBackRest WAL archiving, and the off-site object mirror) runs in production; the repo holds no evidence of it.
 > `ops/pgbackrest/pgbackrest.conf.template` is a placeholder whose own header states it is "NOT
 > wired to any real host/credentials".
 >
@@ -112,8 +112,10 @@ Incidents are classified at declaration and may be reclassified as conditions ch
 > **Built for the real single-host topology (#857, 2026-10-27): §4.8.** pgBackRest with WAL archiving (PITR) to a
 > local and an off-site encrypted repository, an SSE-C encrypted, object-locked off-site object mirror, a coordinated
 > DB/object snapshot marker, an isolated restore script and a restored-schema verifier (RLS smoke included), proven
-> end to end by `bun run backup:coordinated-drill`. It is shipped as an opt-in compose overlay and is **not enabled
-> on the VPS until the operator steps in §4.8.7 are done**; until then the production RPO is still undefined.
+> end to end by `bun run backup:coordinated-drill`. It is shipped as an opt-in compose overlay and, per the owner,
+> is **enabled in production** (the sidecar runs and the off-site mirror is enabled; §4.8.7 are the operator steps, and the
+> repo holds no evidence of them). The production RPO is the snapshot interval of §4.8.3, which no witnessed production
+> drill has confirmed.
 >
 > Every RTO/RPO figure, failover procedure and host name below is therefore a **target**, not a
 > commitment, and the `ssh chartwarden-app-01`-style commands name hosts that do not exist. The
@@ -257,8 +259,8 @@ Every backup is verified within 1 hour of completion:
 
 > **TARGET, with a TODAY line per subsection.** §4.2.1-§4.2.3 are the multi-VM design. Today the repo ships two
 > object-store protections and neither is what the table below describes: (1) the off-site, Object-Locked, SSE-C
-> mirror that `cw-backup.sh` writes (§4.8, the archive; built, not enabled until the operator steps in §4.8.7, with no
-> evidence it runs on the VPS); (2) an optional one-way sync, hourly by default, to a RustFS
+> mirror that `cw-backup.sh` writes (§4.8, the archive; enabled in production per the owner, the repo holds no evidence of
+> it running, §4.8.7 are the operator steps); (2) an optional one-way sync, hourly by default, to a RustFS
 > on another host (`compose.object-copy.yml`, `scripts/object-store-copy.ts --every`), not enabled in production.
 > Production's primary is a single-node SeaweedFS with one volume per bucket and no in-store replication.
 
@@ -278,10 +280,12 @@ Every backup is verified within 1 hour of completion:
 
 **TODAY.** A tenant's real bucket is `tenant-<orgId>` (created by the `tenant-buckets` backfill and on demand by the
 upload path), next to the `chartwarden-*` platform buckets; the `tenants/<org>/...` and `platform/...` prefixes above
-are the design's logical layout. TODAY no store-side object-retention control is evidenced in production: Object Lock
-is not provided on the primary or the second copy, and the off-site Object-Lock mirror (COMPLIANCE, at least 100 days,
-noncurrent versions expire at 120 days, operator-set and unchecked, §4.8.3) is built but not enabled until the operator steps in §4.8.7 and is not
-a 7-year control, so the "Compliance, 7 years" rows are a requirement, not a control. Partition rotation covers
+are the design's logical layout. TODAY the primary and the second copy have no Object Lock. The off-site
+bucket (enabled in production per the owner; the repo holds no evidence of it) carries a COMPLIANCE lock, default
+retention at least 100 days, that `cw-backup.sh` verifies on every snapshot: the snapshot fails when the mode is not
+COMPLIANCE or the days are below `BACKUP_OFFSITE_MIN_LOCK_DAYS` (default 100). The operator creates the lock, and the
+120-day lifecycle for noncurrent versions (§4.8.3) is operator-set and unchecked. That lock is not a 7-year control, so
+the "Compliance, 7 years" rows are a requirement, not a control. Partition rotation covers
 database rows, not object bytes: objects persist on the primary until M22's eraser removes them. The application credential has no bucket delete and no versioning or policy change
 (`object-store/app-policy.json`), and the repo has no production procedure that enables bucket versioning on the primary. The
 only lifecycle rule the code applies is M25's `m25-835/` expiry; the 30-day intake expiry and the other expiry rows
@@ -298,15 +302,21 @@ and every object is re-put with its SHA-256 and verified on the target. The mass
 empty or a run would delete more than max(10, 10% of the target count), so a smaller loss on the primary propagates
 on the next run. An erasure reaching the copy has three limits (a large erasure is held by the guard until an operator
 names the bucket via `ALLOW_MASS_DELETE`; a bucket dropped on the primary is never removed from the copy; `--restore`
-after an erasure brings the destroyed objects back), and the COMPLIANCE-locked off-site mirror (§4.8) never uses
-`--remove` and keeps erased documents: no D12 shred or DEK destruction reaches it. The copy target must be `https://`
+after an erasure brings the destroyed objects back). The copy target must be `https://`
 (the copy carries PHI between hosts; `OBJECT_COPY_ALLOW_PLAINTEXT_TARGET=1` overrides). A failed run posts `object_copy.failed` to `OPS_ALERT_WEBHOOK_URL`, and the
 container turns unhealthy when no run has been clean for three intervals. **Not enabled in production**: the replica
 host needs a BAA (CW-BA-01), disk encryption on both hosts (CW-AC-05) and a D12 shred that reaches the copy (CW-DS-01)
 first (`deploy/production/README.md`, "Object store: second copy"). Know the access-log limits too (CW-AU-01): ingest of
 the object-store access log is best-effort, any successful GET on a document's key within 15 minutes of a signed-URL
-issue is attributed to that issue (the copy's and the backup's own reads included, so they can falsely appear as a
-signed-URL download), and no live test drives the chain end to end.
+issue is attributed to that issue (the copy's and the backup sidecar's own reads included, so they can falsely appear as a
+signed-URL download; the sidecar's are live in production per the owner), and no live test drives the chain end to end.
+
+**TODAY: the off-site mirror's exposure (§4.8; enabled in production per the owner).** A D12 shred or DEK destruction
+does not reach the off-site mirror. Its objects are SSE-C encrypted under one platform backup key, not the tenant's DEK,
+so destroying a DEK does not make them unreadable. Erased objects stay there because nothing deletes them: the sidecar
+never uses `--remove`, the backup key cannot delete under `objects/`, and the lifecycle expires only noncurrent versions
+and delete markers; the COMPLIANCE lock then blocks even the bucket owner until it expires. Only the mirror is encrypted:
+the objects on the primary and on the second copy are plaintext (§4.6).
 
 **TARGET: store-side replication** (active-active site replication between a primary and a backup store, managed with
 `mc replicate`, with a daily replication-status check). Not available in the repo today: SeaweedFS runs as one node,
@@ -319,9 +329,12 @@ TARGET: an off-site target (initially TBD per ADR-002) receives a daily incremen
 `cost-reports/` (compliance-critical, low volume), a weekly full copy of `documents/` and a monthly full copy of
 `platform/`.
 
-TODAY (§4.8.2-§4.8.3): every coordinated snapshot (default every 15 minutes) mirrors every bucket to an off-site
-S3-compatible bucket with Object Lock in COMPLIANCE mode (default retention at least 100 days), SSE-C encrypted, and
-records a sha256 manifest. There is no per-prefix schedule. The repo names no off-site vendor.
+TODAY (§4.8.2-§4.8.3; enabled in production per the owner): every coordinated snapshot (default every 15 minutes)
+mirrors every bucket to an off-site S3-compatible bucket with Object Lock in COMPLIANCE mode (default retention at least
+100 days), SSE-C encrypted, and records a sha256 manifest. There is no per-prefix schedule. The repo names no off-site
+vendor and holds no BAA record for it: the bucket holds both streams (this object mirror and the pgBackRest repo2, the
+whole database, client-side encrypted), so a BAA must cover the bucket for both, and CW-BA-01 names only the second
+copy's replica host.
 
 ### 4.3 Valkey Backups
 
@@ -372,14 +385,14 @@ Weekly full VM backups to chartwarden-backup-01 via Proxmox Backup Server (PBS):
 | Backup VM (backup-01)       | Snapshot mirrored to off-site monthly         | 3 months                                       |
 | Edge, Obs VMs               | Weekly                                        | 4 weeks                                        |
 
-**VM-level backups exist for fast bare-metal recovery; PostgreSQL pgBackRest and the object store's replication are the authoritative data backups (TARGET; TODAY the only object archive the repo builds is the off-site Object-Locked mirror of §4.8, not enabled until the operator steps in §4.8.7).**
+**VM-level backups exist for fast bare-metal recovery; PostgreSQL pgBackRest and the object store's replication are the authoritative data backups (TARGET; TODAY the only object archive the repo builds is the off-site Object-Locked mirror of §4.8, enabled in production per the owner).**
 
 ### 4.6 Backup Encryption
 
 All backups are encrypted at rest:
 
 - pgBackRest: AES-256-CBC with stanza-specific keys
-- Object-store replication and second copy: TLS in transit (the copy job refuses a plain `http://` target unless `OBJECT_COPY_ALLOW_PLAINTEXT_TARGET=1`). Objects at rest: TARGET server-side encryption with KMS-managed keys (or AES-256 with locally-managed keys initially). TODAY the objects on the primary and on the RustFS copy are plaintext at rest and rely on host disk encryption, which no gate checks (compliance/controls.yaml CW-AC-05, partial); only the off-site mirror is encrypted (SSE-C under one platform key, §4.8.4), and it is built but not enabled until the operator steps in §4.8.7. A host that went through the SeaweedFS cutover and has not removed the retired `<prefix>_minio-data` volume also holds a plaintext copy of every document outside the backups, with no recorded removal deadline (the owner decides; `preflight.sh` warns on every deploy; `deploy/production/README.md`, "Object store: removing the retired MinIO data")
+- Object-store replication and second copy: TLS in transit (the copy job refuses a plain `http://` target unless `OBJECT_COPY_ALLOW_PLAINTEXT_TARGET=1`). Objects at rest: TARGET server-side encryption with KMS-managed keys (or AES-256 with locally-managed keys initially). TODAY the objects on the primary and on the RustFS copy are plaintext at rest and rely on host disk encryption, which no gate checks (compliance/controls.yaml CW-AC-05, partial); only the off-site mirror is encrypted (SSE-C under one platform key, §4.8.4), and it is enabled in production per the owner (§4.8.7 are the operator steps). A host that went through the SeaweedFS cutover and has not removed the retired `<prefix>_minio-data` volume also holds a plaintext copy of every document outside the backups, with no recorded removal deadline (the owner decides; `preflight.sh` warns on every deploy; `deploy/production/README.md`, "Object store: removing the retired MinIO data")
 - Proxmox PBS: native encryption with site key
 - Off-site: separate key not held on production hosts
 
@@ -464,7 +477,10 @@ reports it as `not-in-snapshot`.
 Targets (§3): coordinated RPO = snapshot interval (15 min, the Tier 2 target); database-only RPO = last archived WAL
 segment (about 60 s, inside the Tier 1 5 min target) via a manual `--type=time` restore; RTO target 1 h (Tier 1).
 Measured so far only at synthetic scale (`audit/restore-drill/2026-10-27-coordinated-backup-drill.md`: 7.0 s restore of 6 objects and 50k rows);
-production figures come from the first witnessed drill.
+Per the owner the sidecar runs in production, so this cadence is live: the object mirror runs inside every snapshot, so
+the object RPO is the snapshot interval plus the snapshot's own run time (the hourly interval of the second copy,
+`OBJECT_COPY_INTERVAL_S`, does not apply). The repo holds no evidence of it, and production figures still come from the
+first witnessed drill.
 
 #### 4.8.4 Configuration: environment (`.env.production`) and secret files (`./secrets/`)
 
@@ -565,10 +581,13 @@ before anything reads the restored database.
 
 #### 4.8.7 What is operational, not code (tracked in the #857 follow-up issue)
 
+Per the owner these steps are done in production (the sidecar runs and the off-site mirror is enabled); the repo holds no
+evidence of them, and they remain the procedure for a new host.
+
 0. Before enabling the backup or the second copy, accept the access-log false-attribution limit (CW-AU-01): the sidecar's
    and the copy's reads of a document key within 15 minutes of a signed-URL issue are recorded as that signed-URL
-   download in `document_access_log`, ingest is best-effort, and no live test drives the chain end to end. The enabled
-   readers add that noise to the audit trail; they do not remove it.
+   download in `document_access_log`, ingest is best-effort, and no live test drives the chain end to end. The sidecar's
+   reads add that noise to the audit trail in production today; they do not remove it.
 1. Provision the off-site bucket: Object Lock + versioning at creation, default retention COMPLIANCE >= 100 days,
    lifecycle: noncurrent versions and delete markers after 120 days, incomplete multipart uploads after 7 days. Create
    its three scoped keys (§4.8.5); generate and escrow the encryption keys; write `./secrets/`; set the mandatory
@@ -620,7 +639,8 @@ restore_command = 'pgbackrest --stanza=chartwarden archive-get %f %p'
 **TODAY: not available in the repo.** Production's primary is a single-node SeaweedFS with no in-store replication, and
 nothing in the repo reconfigures the application to read from a second store or validates write-through behaviour in
 a drill. What exists is the one-way second copy of §4.2.2 (RustFS on another host, hourly by default, not enabled in
-production), so once it is enabled the RPO for a failover is the copy interval (hourly by default), not 30 seconds.
+production), so once it is enabled the RPO for a failover from it is the copy interval (hourly by default), not 30 seconds.
+In production the object RPO is the off-site mirror's snapshot interval (default 15 minutes, plus the snapshot's run time).
 The recovery path is §6.3.
 
 ### 5.3 What Is NOT Replicated
@@ -766,12 +786,12 @@ done
 ### 6.3 Object Store Loss and Recovery
 
 This section used to fail over to a live replica. There is none, and the repo has no procedure that promotes the
-second copy to serve production traffic, so that procedure is withdrawn. Recovery is a rebuild from the copy.
+second copy to serve production traffic, so that procedure is withdrawn. Recovery is a rebuild from a copy: the second copy, which is not enabled in production, or the off-site mirror, which is enabled in production per the owner and is the live path today (below).
 
 **Symptoms:** Object upload/download failures from backend; document UI shows errors; PDF generation queues backing
 up; the api `/ready` reports the object store unreachable; `GET /healthz` on `seaweedfs` fails.
 
-**Procedure (TODAY; applies once the second copy is enabled, `deploy/production/README.md` "Object store: second copy"):**
+**Procedure for a rebuild from the second copy (not enabled in production, so not available there today; `deploy/production/README.md` "Object store: second copy"; the live path is the off-site mirror, below):**
 
 0. Stop `object-copy` (`docker compose ... stop object-copy`) and keep it stopped until step 2's `--restore` and the
    per-bucket object-count checks have finished. The service is `restart: unless-stopped`, syncs hourly and deletes from
@@ -799,14 +819,23 @@ up; the api `/ready` reports the object store unreachable; `GET /healthz` on `se
    plaintext and `--restore` never deletes, so destroying a DEK does not hide them. Replay every erasure completed
    since the restored set was last in sync.
 
-**Data loss expectation (RPO):** everything written after the last clean copy run, that is up to the copy interval
-(hourly by default; `OBJECT_COPY_INTERVAL_S`). The off-site Object-Locked mirror (§4.8) holds objects as of its last
-snapshot (default 15 minutes), but loading it into a new SeaweedFS is not scripted (§4.8.6). **Time:** no target is
-set for this path; it scales with the size of the store.
+**Live path today: the off-site mirror (§4.8).** Per the owner the mirror is enabled in production, so a rebuild today
+starts from it, hand-loaded and not scripted (§4.8.6): `restore.sh` restores a snapshot only into the isolated drill
+stand-in, and the only repo tool that writes objects into a SeaweedFS primary is `scripts/object-store-copy.ts
+--restore`, whose documented source is the second copy. Steps 1, 3, 4 and 5 apply unchanged; step 0 applies only if the
+second copy is running. Any hand load must follow the snapshot's manifest and keep each object's SHA-256 (generic copy
+tools drop it), and step 5 covers everything erased after the snapshot being loaded.
+
+**Data loss expectation (RPO):** from the off-site mirror (live), everything written after the last completed snapshot:
+the snapshot interval (`BACKUP_SNAPSHOT_INTERVAL_S`, default 900 s = 15 minutes, plus the snapshot's own run time; the
+mirror runs inside every snapshot), which matches the 15-minute Tier 2 target of §3; loading it into a new SeaweedFS is
+not scripted (§4.8.6). From the second copy (not enabled in production), everything written after the last clean copy
+run, that is up to the copy interval (hourly by default; `OBJECT_COPY_INTERVAL_S`). **Time:** no target is set for this
+path; it scales with the size of the store.
 
 **Not available in the repo today:** promoting the second copy to serve traffic (and the application reconfiguration
-that would require); a live replica and replication-lag check; a measured restore time for step 2. If the second
-copy is not enabled, step 2 has no source and recovery is whatever §4.8 can supply.
+that would require); a live replica and replication-lag check; a measured restore time for step 2. In production the
+second copy is not enabled, so step 2 has no source there and recovery is a hand load from the off-site mirror (§4.8).
 
 ### 6.4 Backend Instance Loss
 
@@ -917,15 +946,16 @@ no operator command for a version-level read on the primary (no production `mc` 
 **A delete on the primary reaches the second copy on its next run** (a sync, not an archive; §4.2.2), so once that run
 has happened the copy is not a source for the deleted object (the §4.2.2 limits apply: a guard-held erasure and a
 dropped bucket stay on the copy, and `--restore` resurrects destroyed objects). The only archive the repo builds is the
-off-site mirror (§4.8): versioned, Object-Locked (COMPLIANCE, at least 100 days, noncurrent versions expire at 120
-days; not a 7-year control), SSE-C encrypted, an `objects/<bucket>/` tree plus a manifest per snapshot, built but not
-enabled until the operator steps in §4.8.7, with no evidence it runs on the VPS. It never uses `--remove`, so it keeps
-documents erased on the primary. The repo restores it only
+off-site mirror (§4.8), enabled in production per the owner (the repo holds no evidence of it): versioned,
+COMPLIANCE-locked (at least 100 days; the operator creates the lock and `cw-backup.sh` verifies it on every snapshot;
+noncurrent versions expire at 120 days, operator-set and unchecked; not a 7-year control), SSE-C encrypted, an
+`objects/<bucket>/` tree plus a manifest per snapshot. It never uses `--remove`, so it keeps documents erased on the
+primary (§4.2.2). The repo restores it only
 as a whole snapshot: `restore.sh` + `bun run backup:verify-restore` write it into the isolated drill stand-in (§4.8.6).
 There is no single-object restore command, and loading a restored snapshot into a production SeaweedFS is not
 scripted in the repo today.
 
-If the whole primary is lost (disk loss, ransomware encryption of the host): §6.3, a rebuild from the second copy.
+If the whole primary is lost (disk loss, ransomware encryption of the host): §6.3. The second copy is not enabled in production, so today the live source is the off-site mirror, whose load into SeaweedFS is not scripted.
 
 If both the primary and the copy are affected (e.g., ransomware encrypted both, which shouldn't happen with proper
 segmentation): restore from the off-site mirror as above; the provider-specific part (access to the off-site bucket)
@@ -1365,7 +1395,7 @@ The off-site DR target is flagged in Architecture v0.9 as ADR-002. Options under
 
 - pgBackRest backups encrypted with keys not on primary infrastructure
 - Off-site backups not accessible from primary network
-- Object Lock on compliance buckets (claims, cost reports) — cannot be overwritten or deleted for 7 years (TARGET). TODAY: no store-side object-retention control is evidenced in production. Object Lock is not provided on the primary or the second copy, and the off-site mirror (COMPLIANCE, at least 100 days, noncurrent versions expire at 120 days, §4.8.3) is built but not enabled until the operator steps in §4.8.7, with no evidence it runs on the VPS; once enabled it can recover an encrypted or deleted primary, but the primary is not itself immutable and the mirror is not a 7-year control
+- Object Lock on compliance buckets (claims, cost reports) — cannot be overwritten or deleted for 7 years (TARGET). TODAY: Object Lock is not provided on the primary or the second copy. The off-site mirror (enabled in production per the owner; COMPLIANCE, at least 100 days, verified by `cw-backup.sh` on every snapshot; noncurrent versions expire at 120 days, operator-set and unchecked, §4.8.3) can recover an encrypted or deleted primary (loading it is not scripted, §4.8.6), but the primary is not itself immutable and the mirror is not a 7-year control
 - RLS prevents one tenant's compromised account from accessing another tenant's data
 - Audit log is INSERT-only via chartwarden_app role — UPDATE/DELETE require chartwarden_admin (separate credential)
 - Separate backup VM with its own credentials
@@ -1599,7 +1629,7 @@ Module 34's tables map onto the §3.1 service tiers as below. The governing prin
 | `tenant_signup_intent`, `tenant_signup_token`                                                                                                                                                                                  | **Tier 3**               | Pre-provisioning self-serve state; loss re-requests the signup.                                                                                                |
 | `onboarding_task_template`                                                                                                                                                                                                       | **Tier 3 (rebuildable)** | Platform reference data;`compliance`-retained but re-seedable from `onboarding_task_template` seed — restore from backup or re-seed, whichever is faster. |
 
-**Key-ring / KEK split across DR.** The DEK ciphertext rides in the Tier-1 PostgreSQL backup (§4.1); TODAY the wrapping KEK is a platform key the process holds from the environment or the deployment's secret manager (`M34_TENANT_KEK`, retired keys in `M34_TENANT_KEK_RETIRED`; ADR-0045), escrowed offline with the other backup secrets (§4.8.5) and never in the database or the backup; an HSM with a vendor backup procedure is TARGET (Security Hardening §4 / §8.4). A restore reunites ciphertext + KEK. A **destroyed** tenant's DEK is `NULL` in Tier-1 backups taken after Phase 3, once `tenant_key_ring` has been vacuumed (the UPDATE leaves the old tuple on its heap page until then) — no such backup resurrects the envelope-encrypted database columns. A backup taken before Phase 3 still holds the KEK-wrapped DEK, and the platform KEK survives the shred, so a pre-shred snapshot still decrypts until it ages out of retention: the local repo keeps 2 full sets, and once the off-site mirror is enabled (§4.8.7; not enabled today) it keeps 13 weekly fulls (about 91 days) plus noncurrent versions for up to 120 days after expiry, so up to about 7 months. This is the cryptographic-shred property holding across DR (module spec §8.6) for post-shred backups and for those columns only: document objects are plaintext, so the DEK shred does not seal them and `--restore` can bring them back (Phase 2 row above, §4.2.2).
+**Key-ring / KEK split across DR.** The DEK ciphertext rides in the Tier-1 PostgreSQL backup (§4.1); TODAY the wrapping KEK is a platform key the process holds from the environment or the deployment's secret manager (`M34_TENANT_KEK`, retired keys in `M34_TENANT_KEK_RETIRED`; ADR-0045), escrowed offline with the other backup secrets (§4.8.5) and never in the database or the backup; an HSM with a vendor backup procedure is TARGET (Security Hardening §4 / §8.4). A restore reunites ciphertext + KEK. A **destroyed** tenant's DEK is `NULL` in Tier-1 backups taken after Phase 3, once `tenant_key_ring` has been vacuumed (the UPDATE leaves the old tuple on its heap page until then) — no such backup resurrects the envelope-encrypted database columns. A backup taken before Phase 3 still holds the KEK-wrapped DEK, and the platform KEK survives the shred, so a pre-shred snapshot still decrypts until it ages out of retention: the local repo keeps 2 full sets, and the off-site repo (enabled in production per the owner) keeps 13 weekly fulls (about 91 days) plus noncurrent versions for up to 120 days after expiry (operator-set, unchecked), so a pre-shred snapshot can decrypt for up to about 7 months today. This is the cryptographic-shred property holding across DR (module spec §8.6) for post-shred backups and for those columns only: document objects are plaintext, so the DEK shred does not seal them, `--restore` can bring them back, and the off-site mirror's SSE-C key is a platform backup key, not the DEK, so the shred does not seal that copy either (Phase 2 row above, §4.2.2).
 
 ### 14A.2 Cryptographic Shred Worker — Recovery & Resumption
 
@@ -1609,7 +1639,7 @@ The `tenant.shred` worker executes a four-phase sequence (module spec §3.5 / §
 | ----------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | **Phase 1** | `module_erasers_complete`: one row written after every eraseFn has fired, carrying each receipt (rows-erased + sha256,**or** `refused_part_two_retention`) | every M4-registered eraseFn called (each deletes or redacts rows)                                                                                            | Re-runnable; rows already erased stay erased                                                                               |
 | **Gate**    | `dek_destruction_aborted_part_two_retention` (only if any refusal)                           | abort before Phase 2 (objects kept) and Phase 3; re-defer tenant`destruction_pending → retained`                                                      | Yes — DEK preserved                                                                                       |
-| **Phase 2** | `minio_scope_destroyed`                                                                      | per-tenant object-store scope destroyed (M1 helper; the receipt name keeps its historical `minio_` prefix)                    | Objects gone from the primary. They were plaintext, never sealed under the DEK (CW-AC-05), and the second copy and the off-site mirror (SSE-C under one platform key) do not depend on it either, so Phase 3 seals none of them; a copy may still hold them (§4.2.2, §4.8) |
+| **Phase 2** | `minio_scope_destroyed`                                                                      | per-tenant object-store scope destroyed (M1 helper; the receipt name keeps its historical `minio_` prefix)                    | Objects gone from the primary. They were plaintext, never sealed under the DEK (CW-AC-05). The off-site mirror (enabled in production per the owner) holds them SSE-C encrypted under one platform backup key, not the tenant's DEK, so Phase 3 seals none of them, and nothing deletes them there (§4.2.2); the second copy (not enabled in production) would receive the erasure on its next run |
 | **Phase 3** | `deks_zeroized`                                                                              | DEK zeroed via`m34_destroy_tenant_key_ring` (`current_dek_kek_wrapped_ciphertext = NULL`, `prior_dek_versions` cleared) | **NO — irreversible boundary**                                                                      |
 | **Phase 4** | `certificate_filed`                                                                      | M4 certificate finalized;`tenant_account.status → destroyed`; `m34.tenant.destroyed` outbox                              | Yes — idempotent certificate filing                                                                       |
 
@@ -1659,7 +1689,7 @@ curl -sf -X POST https://chartwarden-app-01:3000/api/v1/platform/tenants/<orgSlu
 > Confirm the Phase markers again (step 1) before and after — they, not the queue, are the record of
 > what has actually happened to the tenant's key material.
 
-**The irreversible boundary is Phase 3.** Before Phase 3 a re-run completes cleanly, but Phase 1 has already deleted or redacted rows and Phase 2, if reached, has deleted the objects; only the DEK-sealed columns are still intact. After Phase 3, the DEK is gone; a Tier-1 backup restore of a post-Phase-3 backup cannot resurrect the envelope-encrypted database columns (a pre-shred snapshot still can until it ages out of retention, and document objects are plaintext and can come back from a copy: Phase 2 row above, §4.2.2), and a Phase-4-only crash leaves you with destroyed data and an unfiled certificate — re-running files it.
+**The irreversible boundary is Phase 3.** Before Phase 3 a re-run completes cleanly, but Phase 1 has already deleted or redacted rows and Phase 2, if reached, has deleted the objects; only the DEK-sealed columns are still intact. After Phase 3, the DEK is gone; a Tier-1 backup restore of a post-Phase-3 backup cannot resurrect the envelope-encrypted database columns (a pre-shred snapshot still can until it ages out of retention, and document objects are plaintext on the primary and can come back from a copy, the off-site mirror's SSE-C copy included: Phase 2 row above, §4.2.2), and a Phase-4-only crash leaves you with destroyed data and an unfiled certificate — re-running files it.
 
 **Eraser-refusal gate — do not override.** If any eraseFn returns `refused_part_two_retention` (a 42 CFR Part 2 record under a retention obligation, M4 D8), the worker aborts before Phase 2 (the objects are kept) and Phase 3, records refused-row counts on the destruction certificate, writes the `dek_destruction_aborted_part_two_retention` marker, and re-defers the tenant to `retained`. The DEK is **preserved** — it is the only key for the legally-retained Part 2 ciphertext. The daily `tenant.shred_eligibility_check` re-fires once the Part 2 obligation lapses. **An operator must never manually destroy the DEK to "finish" a shred the gate aborted** — that permanently destroys legally-retained Part 2 records and is a compliance violation, not a recovery action.
 

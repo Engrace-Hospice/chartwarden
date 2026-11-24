@@ -732,9 +732,9 @@ Valkey configured with `maxmemory-policy=allkeys-lru` for cache evictions, but B
 **Object lifecycle (TARGET, each with a TODAY line):**
 
 - Versioning: enabled on `documents/`, `generated/`, `claims/`, `cost-reports/`. TODAY: the application credential cannot change bucket versioning, and the adapter's D12 erase lists and deletes every version and delete marker of an object.
-- Object lock (compliance mode): on `claims/` and `cost-reports/` for 7-year retention. TODAY: no store-side object-retention control is evidenced in production. The off-site Object-Lock mirror (COMPLIANCE default retention of at least 100 days, noncurrent versions expire at 120 days (operator-set, unchecked); the operator creates the lock and `cw-backup.sh` only verifies it, DR/BCP §4.8) is built but not enabled until the operator steps in DR/BCP §4.8.7, with no evidence it runs on the VPS, and it is not a 7-year control. Nothing is locked on the primary or the second copy, and partition rotation covers database rows, not object bytes: objects persist on the primary until M22's eraser removes them.
+- Object lock (compliance mode): on `claims/` and `cost-reports/` for 7-year retention. TODAY nothing is locked on the primary or the second copy. The off-site bucket (enabled in production per the owner; the repo holds no evidence of it, DR/BCP §4.8.7 are the operator steps) carries a COMPLIANCE lock, default retention at least 100 days, that the operator creates and `cw-backup.sh` verifies on every snapshot (the snapshot fails when the mode is not COMPLIANCE or the days are below `BACKUP_OFFSITE_MIN_LOCK_DAYS`, default 100; noncurrent versions expire at 120 days, operator-set, unchecked), and it is not a 7-year control. Partition rotation covers database rows, not object bytes: objects persist on the primary until M22's eraser removes them.
 - Lifecycle transition: `intake/` artifacts deleted 30 days after job completion. TODAY: design intent; the only lifecycle rule the code applies is the M25 `m25-835/` staging expiry (`scripts/backfill-tenant-buckets.ts`).
-- Replication: `platform/` and `tenants/<org>/claims/` and `cost-reports/` replicated to the backup VM. TODAY: there is no in-store replication (production SeaweedFS is a single node, one volume per bucket). The copy is an hourly one-way sync of every `tenant-*` and `chartwarden-*` bucket to a RustFS on another host (`scripts/object-store-copy.ts --every`, `deploy/production/compose.object-copy.yml`). It is not enabled in production yet, and it is a sync, not an archive: an erasure on the primary reaches the copy on the next run, with three limits (a large erasure is held by the mass-delete guard until an operator names the bucket; a bucket dropped on the primary is never removed from the copy; `--restore` after an erasure brings the destroyed objects back). The Object-Lock off-site mirror never uses `--remove` and keeps erased documents: no D12 shred or DEK destruction reaches it.
+- Replication: `platform/` and `tenants/<org>/claims/` and `cost-reports/` replicated to the backup VM. TODAY: there is no in-store replication (production SeaweedFS is a single node, one volume per bucket). The copy is an hourly one-way sync of every `tenant-*` and `chartwarden-*` bucket to a RustFS on another host (`scripts/object-store-copy.ts --every`, `deploy/production/compose.object-copy.yml`). It is not enabled in production yet, and it is a sync, not an archive: an erasure on the primary reaches the copy on the next run, with three limits (a large erasure is held by the mass-delete guard until an operator names the bucket; a bucket dropped on the primary is never removed from the copy; `--restore` after an erasure brings the destroyed objects back). A D12 shred or DEK destruction does not reach the off-site mirror (see above): its objects are SSE-C encrypted under one platform backup key, not the tenant's DEK, so destroying a DEK does not make them unreadable; erased objects stay there because nothing deletes them (no `--remove`, the backup key cannot delete under `objects/`, the lifecycle expires only noncurrent versions and delete markers); and the COMPLIANCE lock blocks even the bucket owner until it expires.
 
 ### 4.5 MLflow Storage
 
@@ -1452,19 +1452,21 @@ In failure modes, degraded operation continues for many flows (see §10).
 > already said "RTO < 1 hour, RPO < 5 min" for the PostgreSQL primary, contradicting this header.
 > DR/BCP §3.1 is the single source; do not restate targets here.
 >
-> **STATUS: TARGET — NOT BUILT.** No mechanism implements either figure today: there is no streaming
-> replica, no WAL archiving running, and no restore automation. `ops/pgbackrest/pgbackrest.conf.template`
-> is a placeholder config whose own header says it is "NOT wired to any real host/credentials". What
-> IS exercised is `bun run backup:restore-drill`, which proves the backup/restore mechanics against a
-> disposable local cluster. Treat every number here as a target, not a commitment.
+> **STATUS: TARGET — NOT BUILT for the multi-VM topology.** There is no streaming replica. Per the owner, the
+> single-host backup of DR/BCP §4.8 (the `backup` sidecar with pgBackRest WAL archiving, an off-site repo and the
+> off-site object mirror) runs in production; the repo holds no evidence of it, and no witnessed production restore is
+> recorded. `ops/pgbackrest/pgbackrest.conf.template` is a placeholder config whose own header says it is "NOT wired to
+> any real host/credentials". What IS exercised in the repo is `bun run backup:restore-drill` and
+> `bun run backup:coordinated-drill`, which prove the backup/restore mechanics against disposable local clusters.
+> Treat every number here as a target, not a commitment.
 
 **RTO target (Tier 2):** 4 hours
-**RPO target (Tier 2):** 15 minutes for PostgreSQL, 1 hour for the object store (the second copy's default sync interval)
+**RPO target (Tier 2):** 15 minutes for PostgreSQL, 15 minutes for the object store in production (the off-site mirror runs inside every sidecar snapshot, default interval 15 minutes, DR/BCP §4.8.3; the second copy's hourly sync interval applies only if it is enabled, and it is not)
 
 **Backups:**
 
-- PostgreSQL: pgBackRest with continuous WAL archiving to chartwarden-backup-01 VM; full backup nightly, incremental every 2 hours
-- Object store: an hourly one-way sync to a RustFS second copy on another host (`scripts/object-store-copy.ts --every`; not enabled in production yet; a sync, not an archive), plus the off-site backup (DR/BCP §4.8): a versioned bucket the operator creates with Object Lock COMPLIANCE (at least 100 days, noncurrent versions expire at 120 days; `cw-backup.sh` only verifies the lock and refuses a non-COMPLIANCE or shorter one), built but not enabled until the operator steps in DR/BCP §4.8.7, with no evidence it runs on the VPS, and not a 7-year control. There is no in-store replication
+- PostgreSQL: pgBackRest with continuous WAL archiving to chartwarden-backup-01 VM; full backup nightly, incremental every 2 hours (TARGET; as built, DR/BCP §4.8.3: local and off-site repositories, a daily base backup, full on Sunday)
+- Object store: an hourly one-way sync to a RustFS second copy on another host (`scripts/object-store-copy.ts --every`; not enabled in production yet; a sync, not an archive), plus the off-site backup (DR/BCP §4.8): a versioned bucket the operator creates with Object Lock COMPLIANCE (at least 100 days, noncurrent versions expire at 120 days; `cw-backup.sh` verifies the lock on every snapshot and the snapshot fails on a non-COMPLIANCE or shorter one), enabled in production per the owner (the repo holds no evidence of it; DR/BCP §4.8.7 are the operator steps), and not a 7-year control. There is no in-store replication
 - Valkey: AOF persistence; snapshot every 15 min to backup VM (sessions and cache are recoverable; queue jobs are best-effort)
 - Application config: SOPS-encrypted in Git
 - VM disk images: weekly Proxmox VM backups to backup VM

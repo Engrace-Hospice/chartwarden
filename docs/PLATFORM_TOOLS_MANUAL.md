@@ -435,7 +435,7 @@ SeaweedFS stores files: signed consent forms, scanned documents, PDFs, attachmen
 
 - **All-in-one server:** production runs `weed server -s3`: master, volume server, filer and the S3 gateway in one process. Only the S3 gateway (port 8333) listens on the network; master, volume and filer bind to the container's loopback, because the filer's API is unauthenticated and would bypass S3 authentication.
 - **One volume per bucket:** volume growth is set to 1, which keeps file handles bounded as tenants (and so buckets) grow.
-- **No in-store replication:** the single node holds one copy. TODAY no durability beyond that node is evidenced in production: the separate-host second copy (RustFS) is built but not enabled in production, and the off-site Object-Lock backup is built but not enabled until the operator steps in DR/BCP §4.8.7, with no evidence it runs on the VPS.
+- **No in-store replication:** the single node holds one copy. TODAY the separate-host second copy (RustFS) is built but not enabled in production. Per the owner the backup sidecar runs in production and the off-site Object-Lock mirror is enabled, so snapshots are taken (the repo holds no evidence of it; DR/BCP §4.8.7 are the operator steps); loading the mirror into a new SeaweedFS is not scripted, and the restore drill itself still targets a MinIO stand-in, not SeaweedFS.
 - **Identities and policies:** `object-store-provision` renders `s3.json` with `scripts/storage/seaweedfs-identities.ts`: an admin identity (a standing credential on the host, used only by operators and `--restore`), the app identity bound to the IAM policy document `deploy/production/object-store/app-policy.json`, and read-only identities bound to `deploy/production/object-store/reader-policy.json` for the backup and the second copy. SeaweedFS reads its identities at start only, so a credential change recreates the container.
 - **Buckets:** `tenant-<orgId>` per tenant, plus `chartwarden-*` platform buckets. The app key may create buckets (`tenant-*`, `chartwarden-*`) and manage lifecycle on `tenant-*`; it cannot delete a bucket or change versioning or bucket policy.
 
@@ -448,7 +448,7 @@ SeaweedFS stores files: signed consent forms, scanned documents, PDFs, attachmen
   (`apps/backend/src/modules/22-documents/seams/renderer.ts`, `putObject`), so the store holds **plaintext PHI**. TODAY
   that data is protected only by host disk encryption (no gate checks it; `compliance/controls.yaml` CW-AC-05, partial) and access control; on the TARGET cluster, by Talos disk encryption. A host that went through the SeaweedFS cutover and has not removed the retired `<prefix>_minio-data` volume also holds a plaintext copy of every document outside the backups, with no recorded removal deadline (the owner decides; `deploy/production/README.md`). Envelope-encrypting blobs before upload,
   under the per-tenant DEK (ADR-0038), is an open gap to close before stage 1.
-- TODAY no store-side object-retention control is evidenced in production. The off-site Object-Lock mirror (COMPLIANCE, default retention of at least 100 days, noncurrent versions expire at 120 days, operator-set and unchecked) is built but not enabled until the operator steps in DR/BCP §4.8.7, with no evidence it runs on the VPS, and it is not a 7-year control. The operator creates the lock; `cw-backup.sh` only verifies it and refuses a non-COMPLIANCE or shorter one. Nothing is locked on the primary or on the second copy, and objects persist on the primary until M22's eraser removes them.
+- TODAY nothing is locked on the primary or on the second copy, and objects persist on the primary until M22's eraser removes them. The off-site bucket (enabled in production per the owner) carries a COMPLIANCE lock, default retention of at least 100 days, that the operator creates and `cw-backup.sh` verifies on every snapshot: the snapshot fails when the mode is not COMPLIANCE or the days are below `BACKUP_OFFSITE_MIN_LOCK_DAYS` (default 100). Noncurrent versions expire at 120 days (operator-set and unchecked), and the lock is not a 7-year control.
 
 ### Day-2 operations
 
@@ -477,7 +477,7 @@ SeaweedFS stores files: signed consent forms, scanned documents, PDFs, attachmen
 
 ### Do not
 
-- Treat the primary as the only copy of anything: the only archive the repo builds is the off-site Object-Lock mirror (not enabled until the DR/BCP §4.8.7 operator steps), and the second copy is a sync, not an archive: an erasure on the primary reaches it on the next run, and `--restore` resurrects destroyed objects.
+- Treat the primary as the only copy of anything: the only archive the repo builds is the off-site Object-Lock mirror (enabled in production per the owner), and the second copy is a sync, not an archive: an erasure on the primary reaches it on the next run, and `--restore` resurrects destroyed objects. A D12 shred or DEK destruction never reaches the mirror: its objects are SSE-C encrypted under one platform backup key, not the tenant's DEK, and nothing deletes them there.
 - Copy objects with `rclone` or `mc mirror`: they drop the stored SHA-256, and the app's verified reads then refuse the objects.
 - Give the application the admin identity, or expose buckets publicly, or use long-lived presigned URLs.
 
