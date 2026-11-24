@@ -354,7 +354,7 @@ const PERSONAS: Record<string, Persona> = {
 
 function makeServer(
   sudStatus: ReviewWorkspace["sud"]["status"] = "detected",
-  opts: { supportAllowed?: boolean } = {},
+  opts: { supportAllowed?: boolean; workspaceFails?: boolean; renderFails?: boolean } = {},
 ) {
   const calls = {
     consentPatients: [] as string[],
@@ -392,6 +392,7 @@ function makeServer(
       return PATIENT;
     },
     async getWorkspace(_org: string, _id: string, _membership: string, access?: SudContentAccess) {
+      if (opts.workspaceFails) throw new Error("synthetic workspace failure");
       const ws = workspaceFixture(sudStatus);
       const allowed = await resolveSudContentAccess(access, {
         sudStatus,
@@ -406,6 +407,7 @@ function makeServer(
       _correlationId: string,
       access?: SudContentAccess,
     ) {
+      if (opts.renderFails) throw new Error("synthetic render failure");
       assertSudPageReadable(
         sudStatus,
         await resolveSudContentAccess(access, { sudStatus, patientId: PATIENT }),
@@ -416,19 +418,17 @@ function makeServer(
   } as unknown as ReviewWorkspaceService;
 
   const platformSupportAccess: WardenLensPlatformSupportAccess = {
-    async resolveOrganization(input) {
+    async runAuthorizedRead(input, resolvePatient, read) {
       calls.supportResolutions.push(input.supportSessionId);
       if (opts.supportAllowed === false) throw new Error("support session denied");
-      return ORG;
-    },
-    async authorizeAndAuditRead(input) {
-      if (opts.supportAllowed === false) throw new Error("support session denied");
+      const patientId = await resolvePatient(ORG);
+      const result = await read(ORG, patientId);
       calls.supportAudits.push({
-        patientId: input.patientId,
+        patientId,
         resourceKind: input.resourceKind,
         ...(input.pageNumber === undefined ? {} : { pageNumber: input.pageNumber }),
       });
-      return ORG;
+      return result;
     },
   };
 
@@ -562,6 +562,23 @@ describe("GAP-067 — DocLens review routes compose the Part 2 need-to-know chec
       { patientId: PATIENT, resourceKind: "intake_page_image", pageNumber: 1 },
     ]);
   });
+
+  it.each([
+    ["workspace", platformWorkspaceUrl, { workspaceFails: true }],
+    ["page image", platformImageUrl, { renderFails: true }],
+  ] as const)(
+    "does not record a successful support %s read when preparation fails",
+    async (_kind, url, opts) => {
+      const { app, calls } = makeServer("confirmed", opts);
+      const response = await app.inject({
+        method: "GET",
+        url,
+        headers: as("platform_superadmin"),
+      });
+      expect(response.statusCode).toBe(500);
+      expect(calls.supportAudits).toEqual([]);
+    },
+  );
 
   it.each(["tenant_administrator", "tenant_org_admin", "platform_operator", "ai_superadmin"])(
     "%s cannot enter the dedicated superadmin support-session path",

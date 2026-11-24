@@ -369,23 +369,21 @@ function sudContentAccessOf(request: FastifyRequest): SudContentAccess {
 
 /** M34-owned narrow port: the route never reads support-session tables or trusts a client tenant claim. */
 export interface WardenLensPlatformSupportAccess {
-  resolveOrganization(input: {
-    actorMembershipId: string;
-    organizationId: string;
-    supportSessionId: string;
-  }): Promise<string>;
-  authorizeAndAuditRead(input: {
-    actorMembershipId: string;
-    organizationId: string;
-    supportSessionId: string;
-    patientId: string | null;
-    resourceKind: "intake_review_workspace" | "intake_page_image";
-    resourceId: string;
-    correlationId: string;
-    actorIp: string | null;
-    route: string;
-    pageNumber?: number;
-  }): Promise<string>;
+  runAuthorizedRead<T>(
+    input: {
+      actorMembershipId: string;
+      organizationId: string;
+      supportSessionId: string;
+      resourceKind: "intake_review_workspace" | "intake_page_image";
+      resourceId: string;
+      correlationId: string;
+      actorIp: string | null;
+      route: string;
+      pageNumber?: number;
+    },
+    resolvePatient: (organizationId: string) => Promise<string | null>,
+    read: (organizationId: string, patientId: string | null) => Promise<T>,
+  ): Promise<T>;
 }
 
 const SUPPORT_SESSION_SUD_ACCESS: SudContentAccess = {
@@ -425,7 +423,19 @@ export function registerDocLensReviewWorkspaceRoutes(
   if (platformSupportAccess) {
     app.get(
       "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
-      { preHandler: [REQUIRE_HUMAN_SUPPORT_ACTOR, SUPERADMIN, INTAKE_REVIEW] },
+      {
+        preHandler: [REQUIRE_HUMAN_SUPPORT_ACTOR, SUPERADMIN, INTAKE_REVIEW],
+        config: {
+          auditRead: {
+            resourceKind: "intake_review_workspace",
+            resourceIdParam: "id",
+            organizationIdParam: "organizationId",
+            patientIdContextAttribute: "readAuditPatientId",
+            severity: "critical",
+            failClosed: true,
+          },
+        },
+      },
       async (request, reply) => {
         const { membershipId } = writeActorOf(request);
         const { organizationId: requestedOrganizationId, id } = parse(
@@ -433,36 +443,50 @@ export function registerDocLensReviewWorkspaceRoutes(
           request.params,
         );
         const { supportSessionId } = parse(PlatformSupportQuery, request.query ?? {});
-        const organizationId = await platformSupportAccess.resolveOrganization({
-          actorMembershipId: membershipId,
-          organizationId: requestedOrganizationId,
-          supportSessionId,
-        });
-        const patientId = await service.getBatchPatientId(organizationId, id);
-        await platformSupportAccess.authorizeAndAuditRead({
-          actorMembershipId: membershipId,
-          organizationId: requestedOrganizationId,
-          supportSessionId,
-          patientId,
-          resourceKind: "intake_review_workspace",
-          resourceId: id,
-          correlationId: request.id,
-          actorIp: request.ip ?? null,
-          route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
-        });
-        const workspace = await service.getWorkspace(
-          organizationId,
-          id,
-          membershipId,
-          SUPPORT_SESSION_SUD_ACCESS,
+        let auditedPatientId: string | null = null;
+        const workspace = await platformSupportAccess.runAuthorizedRead(
+          {
+            actorMembershipId: membershipId,
+            organizationId: requestedOrganizationId,
+            supportSessionId,
+            resourceKind: "intake_review_workspace",
+            resourceId: id,
+            correlationId: request.id,
+            actorIp: request.ip ?? null,
+            route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+          },
+          async (authorizedOrganizationId) => {
+            auditedPatientId = await service.getBatchPatientId(authorizedOrganizationId, id);
+            return auditedPatientId;
+          },
+          (authorizedOrganizationId) =>
+            service.getWorkspace(
+              authorizedOrganizationId,
+              id,
+              membershipId,
+              SUPPORT_SESSION_SUD_ACCESS,
+            ),
         );
+        request.context.attributes.readAuditPatientId = auditedPatientId;
         return reply.header("cache-control", "no-store").send(workspace);
       },
     );
 
     app.get(
       "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/pages/:page/image",
-      { preHandler: [REQUIRE_HUMAN_SUPPORT_ACTOR, SUPERADMIN, INTAKE_REVIEW] },
+      {
+        preHandler: [REQUIRE_HUMAN_SUPPORT_ACTOR, SUPERADMIN, INTAKE_REVIEW],
+        config: {
+          auditRead: {
+            resourceKind: "intake_page_image",
+            resourceIdParam: "id",
+            organizationIdParam: "organizationId",
+            patientIdContextAttribute: "readAuditPatientId",
+            severity: "critical",
+            failClosed: true,
+          },
+        },
+      },
       async (request, reply) => {
         const { membershipId } = writeActorOf(request);
         const {
@@ -474,32 +498,34 @@ export function registerDocLensReviewWorkspaceRoutes(
           page: Number((request.params as { page?: string }).page),
         });
         const { supportSessionId } = parse(PlatformSupportQuery, request.query ?? {});
-        const organizationId = await platformSupportAccess.resolveOrganization({
-          actorMembershipId: membershipId,
-          organizationId: requestedOrganizationId,
-          supportSessionId,
-        });
-        const patientId = await service.getBatchPatientId(organizationId, id);
-        await platformSupportAccess.authorizeAndAuditRead({
-          actorMembershipId: membershipId,
-          organizationId: requestedOrganizationId,
-          supportSessionId,
-          patientId,
-          resourceKind: "intake_page_image",
-          resourceId: id,
-          correlationId: request.id,
-          actorIp: request.ip ?? null,
-          route:
-            "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/pages/:page/image",
-          pageNumber: page,
-        });
-        const out = await service.renderPage(
-          organizationId,
-          id,
-          page,
-          request.id,
-          SUPPORT_SESSION_SUD_ACCESS,
+        let auditedPatientId: string | null = null;
+        const out = await platformSupportAccess.runAuthorizedRead(
+          {
+            actorMembershipId: membershipId,
+            organizationId: requestedOrganizationId,
+            supportSessionId,
+            resourceKind: "intake_page_image",
+            resourceId: id,
+            correlationId: request.id,
+            actorIp: request.ip ?? null,
+            route:
+              "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/pages/:page/image",
+            pageNumber: page,
+          },
+          async (authorizedOrganizationId) => {
+            auditedPatientId = await service.getBatchPatientId(authorizedOrganizationId, id);
+            return auditedPatientId;
+          },
+          (authorizedOrganizationId) =>
+            service.renderPage(
+              authorizedOrganizationId,
+              id,
+              page,
+              request.id,
+              SUPPORT_SESSION_SUD_ACCESS,
+            ),
         );
+        request.context.attributes.readAuditPatientId = auditedPatientId;
         return (
           reply
             .header("content-type", "image/png")

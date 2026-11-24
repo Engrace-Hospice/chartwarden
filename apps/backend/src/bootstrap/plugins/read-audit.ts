@@ -100,6 +100,7 @@ function resolvePatientId(
   query: unknown,
   body: unknown,
   payload: unknown,
+  attributes: Record<string, unknown>,
 ): string | undefined {
   const fromParam = cfg.patientIdParam ? params[cfg.patientIdParam] : undefined;
   if (fromParam) return fromParam;
@@ -107,6 +108,10 @@ function resolvePatientId(
     ? (query as Record<string, unknown> | undefined)?.[cfg.patientIdQueryParam]
     : undefined;
   if (typeof fromQuery === "string" && fromQuery.length > 0) return fromQuery;
+  const fromContext = cfg.patientIdContextAttribute
+    ? attributes[cfg.patientIdContextAttribute]
+    : undefined;
+  if (typeof fromContext === "string" && fromContext.length > 0) return fromContext;
   if (cfg.patientIdBodyPath) {
     const fromBody = atPath(body, cfg.patientIdBodyPath);
     if (fromBody) return fromBody;
@@ -206,7 +211,11 @@ export function applyReadAuditCoverage(
       if (!cfg) return; // non-PHI route, or a justified waiver → nothing to emit
       if (reply.statusCode < 200 || reply.statusCode >= 300) return; // only successful reads
       const ctx = request.context;
-      if (!ctx?.organizationId) return; // unauthenticated/no-org — the route denied anyway
+      const params = (request.params ?? {}) as Record<string, string>;
+      const auditOrganizationId = cfg.organizationIdParam
+        ? params[cfg.organizationIdParam]
+        : ctx?.organizationId;
+      if (!ctx || !auditOrganizationId) return; // unauthenticated/no-org — the route denied anyway
       if (binary && (cfg.list || cfg.patientIdPayloadPath || cfg.patientIdsPayload)) {
         // A non-JSON body has no rows/fields to read: such a config on this route is a coding error.
         request.log.error(
@@ -215,18 +224,18 @@ export function applyReadAuditCoverage(
         );
         return;
       }
-      const params = (request.params ?? {}) as Record<string, string>;
       const patientId = resolvePatientId(
         cfg,
         params,
         request.query,
         request.body,
         binary ? undefined : payload,
+        ctx.attributes ?? {},
       );
       // The service principal's userId is the literal "system", not a uuid: audit it as no user (#680).
       const actorUserId = ctx.attributes?.actorKind === "system" ? "" : ctx.userId || "";
       const auditCtx: AuditContext = {
-        organizationId: ctx.organizationId,
+        organizationId: auditOrganizationId,
         userId: actorUserId || null,
         ...(ctx.attributes?.actorKind === "system" ? { actorKind: "system" as const } : {}),
         correlationId: ctx.correlationId,
@@ -236,7 +245,7 @@ export function applyReadAuditCoverage(
       };
       await withOrgContext(
         db,
-        { organizationId: ctx.organizationId, userId: actorUserId },
+        { organizationId: auditOrganizationId, userId: actorUserId },
         async (tx) => {
           if (cfg.list) {
             const rawListId =
@@ -282,12 +291,15 @@ export function applyReadAuditCoverage(
                 resourceId,
                 patientId: attributedPatientId,
                 fields: cfg.fields,
+                severity: cfg.severity,
               });
             }
           }
         },
       );
     } catch (err) {
+      const cfg = emissionConfig(request.routeOptions?.config?.auditRead);
+      if (cfg?.failClosed) throw err;
       // Best-effort: a read-audit write failure is logged, never fatal (a hiccup must not 500 a read).
       request.log.error({ err }, "read-audit emission failed");
     }

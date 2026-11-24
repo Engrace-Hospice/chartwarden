@@ -3,8 +3,9 @@
  *
  * The preSerialization hook writes the actual read event on a successful response: `<kind>.viewed`
  * for a single chart open, `<kind>.list_viewed` (count) for a list — through withOrgContext so the row
- * is org-scoped. A justified waiver emits nothing; a non-2xx emits nothing; a failure is best-effort
- * (logged, never fatal). Here a fake transactional DB captures the audit rows the hook inserts.
+ * is org-scoped. A justified waiver emits nothing; a non-2xx emits nothing; an ordinary failure is
+ * best-effort. Routes that opt into fail-closed auditing withhold the response when the audit write
+ * fails. Here a fake transactional DB captures the audit rows the hook inserts.
  */
 import type { DbClient } from "@chartwarden/db";
 import type { FastifyRequest } from "fastify";
@@ -12,6 +13,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 
 interface CapturedRow {
+  organizationId?: string;
+  actorUserId?: string;
+  severity?: string;
   eventType: string;
   resourceKind: string;
   resourceId?: string;
@@ -39,9 +43,9 @@ function auth(request: FastifyRequest): void {
   request.context.organizationId = "org_a";
 }
 
-function makeApp() {
+function makeApp(db: DbClient = fakeDb) {
   return buildServer({
-    db: fakeDb,
+    db,
     authenticate: auth,
     readAuditPrefixes: ["/api/v1/patients"],
     security: { rateLimitEnabled: false },
@@ -66,6 +70,103 @@ describe("read-audit emission (preSerialization)", () => {
     expect(captured[0].eventType).toBe("patient.viewed");
     expect(captured[0].resourceKind).toBe("patient");
     expect(captured[0].resourceId).toBe("p1");
+  });
+
+  it("attributes a privileged platform read to the authorized target tenant and server-derived patient", async () => {
+    const app = makeApp();
+    app.get(
+      "/api/v1/patients/platform/:organizationId/:id",
+      {
+        config: {
+          auditRead: {
+            resourceKind: "intake_review_workspace",
+            resourceIdParam: "id",
+            organizationIdParam: "organizationId",
+            patientIdContextAttribute: "readAuditPatientId",
+            severity: "critical",
+            failClosed: true,
+          },
+        },
+      },
+      async (request) => {
+        request.context.attributes.readAuditPatientId = "patient-1";
+        return { ok: true };
+      },
+    );
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/patients/platform/tenant-target/batch-1",
+    });
+    expect(res.statusCode).toBe(200);
+    expect(captured).toHaveLength(1);
+    expect(captured[0]).toMatchObject({
+      organizationId: "tenant-target",
+      actorUserId: "u_1",
+      severity: "critical",
+      resourceKind: "intake_review_workspace",
+      resourceId: "batch-1",
+      context: { patientId: "patient-1" },
+    });
+  });
+
+  it("withholds a privileged platform response when its fail-closed audit write fails", async () => {
+    const failingDb = {
+      transaction: async () => {
+        throw new Error("synthetic audit outage");
+      },
+    } as unknown as DbClient;
+    const app = makeApp(failingDb);
+    app.get(
+      "/api/v1/patients/platform/:organizationId/:id",
+      {
+        config: {
+          auditRead: {
+            resourceKind: "intake_review_workspace",
+            resourceIdParam: "id",
+            organizationIdParam: "organizationId",
+            failClosed: true,
+          },
+        },
+      },
+      async () => ({ protectedValue: "must not be disclosed" }),
+    );
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/patients/platform/tenant-target/batch-1",
+    });
+    expect(res.statusCode).toBe(500);
+    expect(res.body).not.toContain("must not be disclosed");
+  });
+
+  it("withholds binary page bytes when the fail-closed onSend audit write fails", async () => {
+    const failingDb = {
+      transaction: async () => {
+        throw new Error("synthetic binary audit outage");
+      },
+    } as unknown as DbClient;
+    const app = makeApp(failingDb);
+    app.get(
+      "/api/v1/patients/platform-page/:organizationId/:id",
+      {
+        config: {
+          auditRead: {
+            resourceKind: "intake_page_image",
+            resourceIdParam: "id",
+            organizationIdParam: "organizationId",
+            failClosed: true,
+          },
+        },
+      },
+      async (_request, reply) => reply.type("image/png").send(Buffer.from("protected-binary-page")),
+    );
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/patients/platform-page/tenant-target/batch-1",
+    });
+    expect(res.statusCode).toBe(500);
+    expect(res.body).not.toContain("protected-binary-page");
   });
 
   describe("list events and resourceIdParam (fix round 4)", () => {

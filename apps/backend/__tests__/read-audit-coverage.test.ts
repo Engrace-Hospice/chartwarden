@@ -115,6 +115,18 @@ describe("read-audit coverage gate (onRoute, via buildServer)", () => {
 });
 
 describe("DEFAULT_READ_AUDIT_PREFIXES — the governed PHI surface", () => {
+  it("governs tenant-consented platform WardenLens reads", () => {
+    expect(DEFAULT_READ_AUDIT_PREFIXES).toContain(
+      "/api/v1/platform/organizations/:organizationId/intake",
+    );
+    expect(
+      isGovernedReadRoute(
+        "GET",
+        "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+        DEFAULT_READ_AUDIT_PREFIXES,
+      ),
+    ).toBe(true);
+  });
   // The default was ["/api/v1/patients"] and `readAuditPrefixes` was never passed by the composition
   // root, so the gate governed ~9 of ~150 mounted PHI read routes: M30's incident/abuse-allegation/
   // mortality/infection queues and the M23/M24/M25 claim, denial and remittance surfaces all

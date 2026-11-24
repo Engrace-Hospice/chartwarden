@@ -28,7 +28,11 @@ export function UnifiedReviewWorkspace(): JSX.Element {
   const supportOrganizationId = searchParams.get("supportOrganizationId");
   if (searchParams.get("mode") === "detailed" && !supportSessionId && !supportOrganizationId)
     return <DocLensReviewWorkspace />;
-  return <UnifiedReviewSummary />;
+  return (
+    <UnifiedReviewSummary
+      key={`${supportOrganizationId ?? "tenant"}:${supportSessionId ?? "tenant"}`}
+    />
+  );
 }
 
 function UnifiedReviewSummary(): JSX.Element {
@@ -63,6 +67,7 @@ function UnifiedReviewSummary(): JSX.Element {
     new Set(),
   );
   const taskFocusRef = useRef<HTMLElement | null>(null);
+  const refreshGenerationRef = useRef(0);
   const focusTask = useCallback((): void => {
     const task = taskFocusRef.current;
     if (!task) return;
@@ -81,13 +86,26 @@ function UnifiedReviewSummary(): JSX.Element {
     task.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
   }, []);
 
+  const clearSupportWorkspace = useCallback((): void => {
+    setWorkspace(null);
+    setCompleteOpen(false);
+    setSelectedSafeguardPage(null);
+    setNextCandidateId(null);
+    setSourceUnavailablePages(new Set());
+  }, []);
+
   const refresh = useCallback(async (): Promise<Workspace | null> => {
     if (!batchId) return null;
+    const generation = ++refreshGenerationRef.current;
     if (incompleteSupportContext) {
+      clearSupportWorkspace();
       setLoadError("This support-session link is incomplete. Return to platform administration.");
       return null;
     }
     if (supportAccess) {
+      // Support authorization is evaluated on every read. Remove previously disclosed PHI before
+      // revalidation so an expired or revoked session fails closed instead of leaving stale data.
+      clearSupportWorkspace();
       const response = await client
         .GET("/api/v1/platform/organizations/{organizationId}/intake/uploads/{id}/workspace", {
           params: {
@@ -96,7 +114,9 @@ function UnifiedReviewSummary(): JSX.Element {
           },
         })
         .catch(() => null);
+      if (generation !== refreshGenerationRef.current) return null;
       if (!response || response.error || !response.data) {
+        clearSupportWorkspace();
         setLoadError(
           response?.response?.status === 403
             ? "This support session does not authorize access to the requested intake batch."
@@ -132,6 +152,7 @@ function UnifiedReviewSummary(): JSX.Element {
     const response = await client
       .GET("/api/v1/intake/uploads/{id}/workspace", { params: { path: { id: batchId } } })
       .catch(() => null);
+    if (generation !== refreshGenerationRef.current) return null;
     if (!response || response.error || !response.data) {
       setLoadError(
         response?.response?.status === 404
@@ -169,11 +190,24 @@ function UnifiedReviewSummary(): JSX.Element {
       );
     });
     return data;
-  }, [batchId, client, incompleteSupportContext, supportAccess]);
+  }, [batchId, clearSupportWorkspace, client, incompleteSupportContext, supportAccess]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!supportAccess) return;
+    const revalidate = (): void => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    window.addEventListener("focus", revalidate);
+    document.addEventListener("visibilitychange", revalidate);
+    return () => {
+      window.removeEventListener("focus", revalidate);
+      document.removeEventListener("visibilitychange", revalidate);
+    };
+  }, [refresh, supportAccess]);
 
   useEffect(() => {
     const candidate = workspace?.candidates.find((item) => item.id === selectedCandidateId);
@@ -562,7 +596,7 @@ function UnifiedReviewSummary(): JSX.Element {
         <ReviewExceptionPanel summary={exceptionSummary} onSelect={selectException} />
       </div>
 
-      {completeOpen && workspace.review ? (
+      {!supportAccess && completeOpen && workspace.review ? (
         <CompleteDialog
           ws={completionWorkspace}
           onClose={() => setCompleteOpen(false)}

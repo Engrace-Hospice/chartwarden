@@ -5,6 +5,7 @@
 // route-registration time and refuses any governed PHI read route that omits it (§2.5 completeness,
 // fail-closed at boot). This leaf-level shape lets both the host plugin and the route modules speak
 // the same contract without a cross-module edge.
+import type { AuditSeverity } from "../audit";
 import type { ReadAuditMode } from "./require-read-audit";
 
 /** Emission intent: the route surfaces PHI, so it must emit a read event. Names only, never values. */
@@ -18,6 +19,11 @@ export interface RouteReadAuditEmit {
    * query rather than the path (`/consents/eval-audit/by-patient?patientId=…`).
    */
   readonly patientIdQueryParam?: string;
+  /**
+   * Request-context attribute populated by an authorized handler with the server-derived patient id.
+   * Intended for binary reads whose patient cannot be recovered from the response payload.
+   */
+  readonly patientIdContextAttribute?: string;
   /** Dot path into the REQUEST body holding the touched patient's id, for a read-only POST preview. */
   readonly patientIdBodyPath?: string;
   /**
@@ -49,6 +55,16 @@ export interface RouteReadAuditEmit {
    * resource (`POST /handoffs` answers the new handoff). Used only when `resourceIdParam` yields nothing.
    */
   readonly resourceIdPayloadPath?: string;
+  /**
+   * Route param naming the tenant that owns the disclosed PHI. Use only on a platform route whose
+   * handler authorizes that target tenant before returning; the read event is then written under
+   * that tenant rather than the platform actor's home organization.
+   */
+  readonly organizationIdParam?: string;
+  /** Severity override for heightened reads such as tenant-consented platform support access. */
+  readonly severity?: AuditSeverity;
+  /** Refuse the response when the required read-audit event cannot be persisted. */
+  readonly failClosed?: boolean;
   /**
    * For a LIST read only: record `resourceIdParam`'s value (when it is a uuid) as the event's resource id. Opt-in, because
    * most list routes' param is a PARENT id under a CHILD `resourceKind`, which would mislabel the row; set it only when the

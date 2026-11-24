@@ -18,7 +18,6 @@ export interface WardenLensSupportAccessInput {
 }
 
 export interface WardenLensSupportReadInput extends WardenLensSupportAccessInput {
-  readonly patientId: string | null;
   readonly resourceKind: "intake_review_workspace" | "intake_page_image";
   readonly resourceId: string;
   readonly correlationId: string;
@@ -29,10 +28,15 @@ export interface WardenLensSupportReadInput extends WardenLensSupportAccessInput
 
 /** The narrow M34 port M22 consumes; no support-session row or grant detail crosses the boundary. */
 export interface WardenLensSupportAccess {
-  /** Resolve the tenant only after verifying the actor owns an open PHI-capable support session. */
-  resolveOrganization(input: WardenLensSupportAccessInput): Promise<string>;
-  /** Re-verify patient scope and durably audit the read before M22 may disclose the response. */
-  authorizeAndAuditRead(input: WardenLensSupportReadInput): Promise<string>;
+  /**
+   * Hold the session and consent rows stable while M22 resolves patient scope and prepares the
+   * disclosure, then append the support ledger and critical authorization audit.
+   */
+  runAuthorizedRead<T>(
+    input: WardenLensSupportReadInput,
+    resolvePatient: (organizationId: string) => Promise<string | null>,
+    read: (organizationId: string, patientId: string | null) => Promise<T>,
+  ): Promise<T>;
 }
 
 export interface WardenLensSupportAccessDeps {
@@ -48,6 +52,8 @@ interface AccessFacts {
   readonly supportConsentGrantId: string;
   readonly scope: "organization_scoped" | "patient_scoped" | "assist";
   readonly patientIdsInScope: readonly string[] | null;
+  readonly sessionExpiresAt: Date;
+  readonly grantExpiresAt: Date;
 }
 
 async function accessFacts(
@@ -65,6 +71,8 @@ async function accessFacts(
       grantId: schema.supportConsentGrant.id,
       scope: schema.supportConsentGrant.scope,
       patientIdsInScope: schema.supportConsentGrant.patientIdsInScope,
+      sessionExpiresAt: schema.supportSession.expiresAt,
+      grantExpiresAt: schema.supportConsentGrant.expiresAt,
     })
     .from(schema.organizations)
     .innerJoin(
@@ -92,7 +100,8 @@ async function accessFacts(
       ),
     )
     .where(eq(schema.organizations.id, input.organizationId))
-    .limit(1);
+    .limit(1)
+    .for("share");
 
   if (!row || row.scope === "assist" || row.sessionGrantId !== row.grantId) {
     throw new ForbiddenError(ACCESS_DENIED);
@@ -103,6 +112,8 @@ async function accessFacts(
     supportConsentGrantId: row.grantId,
     scope: row.scope,
     patientIdsInScope: row.patientIdsInScope,
+    sessionExpiresAt: row.sessionExpiresAt,
+    grantExpiresAt: row.grantExpiresAt,
   };
 }
 
@@ -127,18 +138,31 @@ export function createWardenLensSupportAccess(
     );
 
   return {
-    async resolveOrganization(input) {
-      return run("m34 WardenLens support read: resolve tenant", async (tx) => {
-        const facts = await accessFacts(tx, input, now());
-        return facts.organizationId;
-      });
-    },
-
-    async authorizeAndAuditRead(input) {
+    async runAuthorizedRead(input, resolvePatient, read) {
       return run("m34 WardenLens support read: authorize and audit", async (tx) => {
         const at = now();
         const facts = await accessFacts(tx, input, at);
-        assertPatientScope(facts, input.patientId);
+
+        // accessFacts holds the session/grant rows FOR SHARE until this platform transaction ends.
+        // Resolve patient scope inside the same locked authorization window, then prepare the read.
+        let patientId: string | null;
+        try {
+          patientId = await resolvePatient(facts.organizationId);
+        } catch (error) {
+          // A patient-scoped session must not become a batch-existence oracle: an unknown batch and
+          // an existing out-of-scope batch both fail with the same authorization response.
+          if (facts.scope === "patient_scoped") throw new ForbiddenError(ACCESS_DENIED);
+          throw error;
+        }
+        assertPatientScope(facts, patientId);
+        const result = await read(facts.organizationId, patientId);
+        const completedAt = now();
+        if (
+          facts.sessionExpiresAt.getTime() <= completedAt.getTime() ||
+          facts.grantExpiresAt.getTime() <= completedAt.getTime()
+        ) {
+          throw new ForbiddenError(ACCESS_DENIED);
+        }
 
         await new SupportRepository(tx).appendSessionEvent({
           organizationId: facts.organizationId,
@@ -146,12 +170,13 @@ export function createWardenLensSupportAccess(
           eventKind: "ops.read",
           resourceKind: input.resourceKind,
           resourceId: input.resourceId,
-          patientId: input.patientId,
-          occurredAt: at,
+          patientId,
+          occurredAt: completedAt,
           actorIp: input.actorIp,
           context: {
             route: input.route,
             method: "GET",
+            disclosureState: "prepared_before_response",
             ...(input.pageNumber === undefined ? {} : { pageNumber: input.pageNumber }),
           },
         });
@@ -170,10 +195,21 @@ export function createWardenLensSupportAccess(
             supportSessionId: input.supportSessionId,
             supportConsentGrantId: facts.supportConsentGrantId,
             authorizationBasis: "superadmin_support_session",
+            disclosureState: "prepared_before_response",
+            patientId,
             ...(input.pageNumber === undefined ? {} : { pageNumber: input.pageNumber }),
           },
         });
-        return facts.organizationId;
+        const returnAt = now();
+        if (
+          facts.sessionExpiresAt.getTime() <= returnAt.getTime() ||
+          facts.grantExpiresAt.getTime() <= returnAt.getTime()
+        ) {
+          // The platform transaction rolls both preparation audit records back if authority expires
+          // during their writes; no prepared PHI is returned outside the authorized time window.
+          throw new ForbiddenError(ACCESS_DENIED);
+        }
+        return result;
       });
     },
   };
