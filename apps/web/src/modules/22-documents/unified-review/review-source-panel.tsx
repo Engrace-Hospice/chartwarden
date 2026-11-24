@@ -2,7 +2,7 @@ import { Glyph, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { Link } from "react-router-dom";
-import type { Candidate, Workspace } from "../doclens-api";
+import type { Candidate, PlatformSupportAccess, Workspace } from "../doclens-api";
 import { decide, pageImageUrl } from "../doclens-api";
 import {
   MIN_REASON,
@@ -34,6 +34,7 @@ export function ReviewSourcePanel({
   onDecisionSaved,
   nextCandidate,
   onNext,
+  supportAccess,
 }: {
   batchId: string;
   workspace: Workspace;
@@ -45,6 +46,7 @@ export function ReviewSourcePanel({
   onDecisionSaved: (workspace: Workspace, candidateId: string) => void;
   nextCandidate: Candidate | null;
   onNext: () => void;
+  supportAccess?: PlatformSupportAccess | null;
 }): JSX.Element {
   const client = useApiClient();
   const [attempt, setAttempt] = useState(0);
@@ -95,7 +97,7 @@ export function ReviewSourcePanel({
   };
   const onImageError = (): void => {
     const generation = sourceGeneration.current;
-    fetch(pageImageUrl(batchId, candidate.page))
+    fetch(pageImageUrl(batchId, candidate.page, supportAccess))
       .then((response) => {
         if (sourceGeneration.current !== generation) return;
         unavailable(response.status === 403 ? "forbidden" : "unavailable");
@@ -215,7 +217,7 @@ export function ReviewSourcePanel({
             <div className="wx-unified-source-page">
               <img
                 key={`${candidate.id}:${attempt}`}
-                src={pageImageUrl(batchId, candidate.page)}
+                src={pageImageUrl(batchId, candidate.page, supportAccess)}
                 alt={`Page ${candidate.page} of the source document for ${fieldLabel(candidate.fieldPath)}`}
                 onLoad={() => {
                   setImageState("ready");
@@ -252,7 +254,12 @@ export function ReviewSourcePanel({
             {error}
           </p>
         ) : null}
-        {candidate.redacted ? (
+        {supportAccess ? (
+          <p className="wx-row-sub">
+            Support-session access is read-only. Candidate decisions remain with an authorized
+            tenant reviewer.
+          </p>
+        ) : candidate.redacted ? (
           <p>{PART2_WITHHELD_MESSAGE} No candidate decision is available from this view.</p>
         ) : !canOwnDecision || complete ? (
           <p className="wx-row-sub">
@@ -390,12 +397,14 @@ export function ReviewSourcePanel({
           Opening this preview does not confirm the source. A decision is sent only after the source
           is visible and the comparison checkbox is selected.
         </p>
-        <details className="wx-unified-advanced-tools">
-          <summary>Advanced tools</summary>
-          <Link className="wx-btn-secondary" to={detailPath(batchId, candidate.id, returnTo)}>
-            Leave unified workspace for legacy reviewer <Glyph name="arrow-right" size={16} />
-          </Link>
-        </details>
+        {!supportAccess ? (
+          <details className="wx-unified-advanced-tools">
+            <summary>Advanced tools</summary>
+            <Link className="wx-btn-secondary" to={detailPath(batchId, candidate.id, returnTo)}>
+              Leave unified workspace for legacy reviewer <Glyph name="arrow-right" size={16} />
+            </Link>
+          </details>
+        ) : null}
         {candidate.decision ? (
           <StatusPill label={decisionLabel(candidate.decision.decision)} tone="success" />
         ) : null}

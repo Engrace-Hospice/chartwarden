@@ -40,6 +40,13 @@ export {
 } from "./abac-predicates";
 export { buildDrizzleTenantPlatformAbacResolver } from "./abac-resolver-drizzle";
 export { buildFeatureFlagKillSwitchPorts } from "./feature-flag-kill-switch-ports";
+export {
+  type WardenLensSupportAccess,
+  type WardenLensSupportAccessDeps,
+  type WardenLensSupportAccessInput,
+  type WardenLensSupportReadInput,
+  createWardenLensSupportAccess,
+} from "./wardenlens-support-access";
 
 // §4.9 — M34's outbox event catalog (the eighteen typed `m34.*` alert payloads). Merged into the
 // platform outbox-event catalog by the composition root; the dispatcher validates each publish against

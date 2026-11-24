@@ -266,6 +266,11 @@ export interface ReviewWorkspaceService {
     },
   ): Promise<CursorPage<ReviewQueueItem>>;
   /**
+   * Internal authorization fact for the support-session platform read. It runs under the target tenant's
+   * RLS context and is never returned directly to the caller. A missing/cross-tenant batch is a 404.
+   */
+  getBatchPatientId(organizationId: string, batchId: string): Promise<string | null>;
+  /**
    * `sudAccess` is the caller's Part 2 need-to-know decision (GAP-067). OMITTED MEANS DENIED: SUD-detected
    * values and the SUD evidence come back redacted.
    */
@@ -357,6 +362,18 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
   };
 
   return {
+    async getBatchPatientId(organizationId, batchId) {
+      return read(organizationId, async (tx) => {
+        const [batch] = await tx
+          .select({ patientId: BATCH.patientId })
+          .from(BATCH)
+          .where(eq(BATCH.id, batchId))
+          .limit(1);
+        if (!batch) throw new NotFoundError("intake upload batch");
+        return batch.patientId;
+      });
+    },
+
     async listQueue(organizationId, q) {
       const rows = await read(organizationId, async (tx) => {
         const batches = await tx

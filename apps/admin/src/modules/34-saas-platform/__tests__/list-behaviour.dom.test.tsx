@@ -123,6 +123,39 @@ const rowShown = (): void => expect(rows().length).toBeGreaterThan(0);
 
 afterEach(() => cleanup());
 
+it("launches an open support session into the read-only WardenLens workspace", async () => {
+  const organizationId = "11111111-1111-4111-8111-111111111111";
+  const sessionId = "22222222-2222-4222-8222-222222222222";
+  const batchId = "33333333-3333-4333-8333-333333333333";
+  mount(<SupportSessions />, `/support/sessions?session=${sessionId}`, {
+    "/api/v1/platform/support-sessions": page([
+      {
+        id: sessionId,
+        organizationId,
+        supportConsentGrantId: "44444444-4444-4444-8444-444444444444",
+        tenantAccountId: "55555555-5555-4555-8555-555555555555",
+        actorMembershipId: "66666666-6666-4666-8666-666666666666",
+        startedAt: NOW,
+        expiresAt: "2027-01-01T00:00:00.000Z",
+        closedAt: null,
+        closeReason: null,
+        status: "open",
+      },
+    ]),
+    [`/api/v1/platform/support-sessions/${sessionId}/events`]: page([]),
+  });
+
+  const input = await screen.findByRole("textbox", { name: "Intake batch id" });
+  fireEvent.change(input, { target: { value: batchId } });
+  const link = screen.getByRole("link", { name: /Open read-only WardenLens/ });
+  const url = new URL(link.getAttribute("href") ?? "");
+  expect(url.origin).toBe("http://localhost:5173");
+  expect(url.pathname).toBe(`/intake/${batchId}/review`);
+  expect(url.searchParams.get("supportOrganizationId")).toBe(organizationId);
+  expect(url.searchParams.get("supportSessionId")).toBe(sessionId);
+  expect(link.getAttribute("target")).toBe("_blank");
+});
+
 interface ParamCase {
   name: string;
   element: JSX.Element;

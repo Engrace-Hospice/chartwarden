@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 2127,
-    "coveredRoutes": 2127,
-    "directRoutesReferenced": 1930
+    "routes": 2129,
+    "coveredRoutes": 2129,
+    "directRoutesReferenced": 1932
   },
   "modules": [
     {
@@ -419,7 +419,7 @@
     },
     {
       "module": "22-documents",
-      "routes": 59,
+      "routes": 61,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/document-doclens.test.ts",
@@ -447,7 +447,7 @@
         "apps/backend/__tests__/m6-nomnc-expedited.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 54
+      "directRoutesReferenced": 56
     },
     {
       "module": "23-billing-medicare",

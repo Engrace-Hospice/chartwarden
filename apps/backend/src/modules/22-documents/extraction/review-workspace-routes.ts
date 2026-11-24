@@ -3,6 +3,7 @@ import {
   isReservedPlatformRoleKey,
   requireAbac,
   requirePermission,
+  requireRole,
 } from "@chartwarden/auth";
 // apps/backend/src/modules/22-documents/extraction/review-workspace-routes.ts — the DocLens review screen's
 // routes (§5.1 INTAKE.ReviewSideBySide; F-237).
@@ -26,7 +27,7 @@ import {
   requireIdempotencyKey,
   writeActorOf,
 } from "@chartwarden/shared/route-kit";
-import { UnauthorizedError } from "@chartwarden/types";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import { type Static, Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "../routes/documents-typebox";
@@ -273,6 +274,18 @@ const PageParams = Type.Object({
   id: Type.String({ format: "uuid" }),
   page: Type.Integer({ minimum: 1, maximum: 10_000 }),
 });
+const PlatformBatchParams = Type.Object({
+  organizationId: Type.String({ format: "uuid" }),
+  id: Type.String({ format: "uuid" }),
+});
+const PlatformPageParams = Type.Object({
+  organizationId: Type.String({ format: "uuid" }),
+  id: Type.String({ format: "uuid" }),
+  page: Type.Integer({ minimum: 1, maximum: 10_000 }),
+});
+export const PlatformSupportQuery = Type.Object({
+  supportSessionId: Type.String({ format: "uuid" }),
+});
 
 // Compile-time pins: the published schema matches what the service returns.
 type Conforms<T extends V, V> = T;
@@ -283,9 +296,17 @@ type _Workspace = Conforms<
 
 const INTAKE_READ = requirePermission("intake.read") as PreHandler;
 const INTAKE_REVIEW = requirePermission("intake.review") as PreHandler;
+const SUPERADMIN = requireRole("superadmin") as PreHandler;
 const REJECT_AI = rejectAiActor(
   "AI principals cannot commit a WardenLens extraction review",
 ) as PreHandler;
+const REQUIRE_HUMAN_SUPPORT_ACTOR: PreHandler = async (request) => {
+  if (request.context.attributes.actorKind !== "user") {
+    throw new ForbiddenError(
+      "WardenLens support-session access requires an authenticated human superadmin",
+    );
+  }
+};
 const IDEMPOTENT = requireIdempotencyKey() as PreHandler;
 // §7.4 W4 — confirming or rejecting a Part 2 detection is a high-risk act: RN-or-above, like a
 // medication field. The target is a constant flag; nothing about it comes from the request.
@@ -346,9 +367,37 @@ function sudContentAccessOf(request: FastifyRequest): SudContentAccess {
   };
 }
 
+/** M34-owned narrow port: the route never reads support-session tables or trusts a client tenant claim. */
+export interface WardenLensPlatformSupportAccess {
+  resolveOrganization(input: {
+    actorMembershipId: string;
+    organizationId: string;
+    supportSessionId: string;
+  }): Promise<string>;
+  authorizeAndAuditRead(input: {
+    actorMembershipId: string;
+    organizationId: string;
+    supportSessionId: string;
+    patientId: string | null;
+    resourceKind: "intake_review_workspace" | "intake_page_image";
+    resourceId: string;
+    correlationId: string;
+    actorIp: string | null;
+    route: string;
+    pageNumber?: number;
+  }): Promise<string>;
+}
+
+const SUPPORT_SESSION_SUD_ACCESS: SudContentAccess = {
+  administratorOverride: async () => true,
+  reviewerEligible: async () => false,
+  consentPresent: async () => false,
+};
+
 export function registerDocLensReviewWorkspaceRoutes(
   app: FastifyInstance,
   service: ReviewWorkspaceService,
+  platformSupportAccess?: WardenLensPlatformSupportAccess,
 ): void {
   app.get(
     "/api/v1/intake/uploads",
@@ -368,6 +417,102 @@ export function registerDocLensReviewWorkspaceRoutes(
       });
     },
   );
+
+  // ADR-0115 / ADR-0112 — the platform-owned superadmin is never admitted through the generic tenant
+  // route. This dedicated read-only path composes an exact superadmin role with M34's actor-bound,
+  // tenant-consented support session. M34 resolves the tenant, enforces grant/patient scope and writes
+  // the durable support-session + critical audit records before this handler returns any PHI.
+  if (platformSupportAccess) {
+    app.get(
+      "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+      { preHandler: [REQUIRE_HUMAN_SUPPORT_ACTOR, SUPERADMIN, INTAKE_REVIEW] },
+      async (request, reply) => {
+        const { membershipId } = writeActorOf(request);
+        const { organizationId: requestedOrganizationId, id } = parse(
+          PlatformBatchParams,
+          request.params,
+        );
+        const { supportSessionId } = parse(PlatformSupportQuery, request.query ?? {});
+        const organizationId = await platformSupportAccess.resolveOrganization({
+          actorMembershipId: membershipId,
+          organizationId: requestedOrganizationId,
+          supportSessionId,
+        });
+        const patientId = await service.getBatchPatientId(organizationId, id);
+        await platformSupportAccess.authorizeAndAuditRead({
+          actorMembershipId: membershipId,
+          organizationId: requestedOrganizationId,
+          supportSessionId,
+          patientId,
+          resourceKind: "intake_review_workspace",
+          resourceId: id,
+          correlationId: request.id,
+          actorIp: request.ip ?? null,
+          route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+        });
+        const workspace = await service.getWorkspace(
+          organizationId,
+          id,
+          membershipId,
+          SUPPORT_SESSION_SUD_ACCESS,
+        );
+        return reply.header("cache-control", "no-store").send(workspace);
+      },
+    );
+
+    app.get(
+      "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/pages/:page/image",
+      { preHandler: [REQUIRE_HUMAN_SUPPORT_ACTOR, SUPERADMIN, INTAKE_REVIEW] },
+      async (request, reply) => {
+        const { membershipId } = writeActorOf(request);
+        const {
+          organizationId: requestedOrganizationId,
+          id,
+          page,
+        } = parse(PlatformPageParams, {
+          ...(request.params as Record<string, unknown>),
+          page: Number((request.params as { page?: string }).page),
+        });
+        const { supportSessionId } = parse(PlatformSupportQuery, request.query ?? {});
+        const organizationId = await platformSupportAccess.resolveOrganization({
+          actorMembershipId: membershipId,
+          organizationId: requestedOrganizationId,
+          supportSessionId,
+        });
+        const patientId = await service.getBatchPatientId(organizationId, id);
+        await platformSupportAccess.authorizeAndAuditRead({
+          actorMembershipId: membershipId,
+          organizationId: requestedOrganizationId,
+          supportSessionId,
+          patientId,
+          resourceKind: "intake_page_image",
+          resourceId: id,
+          correlationId: request.id,
+          actorIp: request.ip ?? null,
+          route:
+            "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/pages/:page/image",
+          pageNumber: page,
+        });
+        const out = await service.renderPage(
+          organizationId,
+          id,
+          page,
+          request.id,
+          SUPPORT_SESSION_SUD_ACCESS,
+        );
+        return (
+          reply
+            .header("content-type", "image/png")
+            // A revoked/expired support session must not leave a reusable Part 2 page in browser or
+            // intermediary caches. Tenant review keeps its existing short private cache below.
+            .header("cache-control", "no-store")
+            .header("x-page-width", String(out.pageWidth))
+            .header("x-page-height", String(out.pageHeight))
+            .send(Buffer.from(out.png))
+        );
+      },
+    );
+  }
 
   app.get(
     "/api/v1/intake/uploads/:id/workspace",

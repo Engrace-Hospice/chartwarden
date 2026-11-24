@@ -365,12 +365,34 @@ function SessionDrawer({
   const client = useApiClient();
   const [events, setEvents] = useState<SupportSessionEventView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [wardenLensBatchId, setWardenLensBatchId] = useState("");
   const drawer = useDrawerA11y<HTMLElement>(onClose);
+  const batchId = wardenLensBatchId.trim();
+  const validBatchId =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(batchId);
+  const clinicalOrigin = (() => {
+    const url = new URL(window.location.href);
+    if (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1") {
+      url.port = "5173";
+      return url.origin;
+    }
+    if (url.hostname.startsWith("platform")) {
+      url.hostname = `app.${url.hostname.split(".").slice(1).join(".")}`;
+    }
+    return url.origin;
+  })();
+  const wardenLensUrl = validBatchId
+    ? `${clinicalOrigin}/intake/${encodeURIComponent(batchId)}/review?${new URLSearchParams({
+        supportOrganizationId: session.organizationId,
+        supportSessionId: session.id,
+      }).toString()}`
+    : null;
 
   useEffect(() => {
     let active = true;
     setEvents(null);
     setError(null);
+    setWardenLensBatchId("");
     (async () => {
       const { data, error: err } = await client.GET(
         "/api/v1/platform/support-sessions/{id}/events",
@@ -424,6 +446,32 @@ function SessionDrawer({
               {new Date(session.expiresAt).toLocaleString()}
             </dd>
           </dl>
+        </section>
+        <section className="wx-drawer-card" aria-labelledby="wardenlens-support-title">
+          <h3 id="wardenlens-support-title">WardenLens evidence</h3>
+          <p className="wx-row-sub">
+            Open one intake batch in a read-only workspace bound to this support session. Candidate
+            decisions and review lifecycle actions remain unavailable.
+          </p>
+          <label className="wx-field">
+            <span>Intake batch id</span>
+            <input
+              value={wardenLensBatchId}
+              placeholder="00000000-0000-4000-8000-000000000000"
+              onChange={(event) => setWardenLensBatchId(event.target.value)}
+            />
+          </label>
+          {wardenLensUrl && session.status === "open" ? (
+            <a className="wx-btn-secondary" href={wardenLensUrl} target="_blank" rel="noreferrer">
+              <Glyph name="eye" size={16} /> Open read-only WardenLens
+            </a>
+          ) : (
+            <span className="wx-row-sub">
+              {session.status === "open"
+                ? "Enter a valid batch UUID."
+                : "Only an open support session can launch WardenLens."}
+            </span>
+          )}
         </section>
         <section className="wx-drawer-card">
           <h3>

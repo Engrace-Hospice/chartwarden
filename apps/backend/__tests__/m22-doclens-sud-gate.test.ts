@@ -23,7 +23,10 @@ import type {
   ReviewWorkspace,
   ReviewWorkspaceService,
 } from "../src/modules/22-documents/extraction/review-workspace";
-import { registerDocLensReviewWorkspaceRoutes } from "../src/modules/22-documents/extraction/review-workspace-routes";
+import {
+  type WardenLensPlatformSupportAccess,
+  registerDocLensReviewWorkspaceRoutes,
+} from "../src/modules/22-documents/extraction/review-workspace-routes";
 import {
   type SudContentAccess,
   type SudStatus,
@@ -35,6 +38,8 @@ import {
 const ORG = "org_a";
 const BATCH = "b0000000-0000-4000-8000-0000000000aa";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
+const SUPPORT_SESSION = "22222222-2222-4222-8222-222222222222";
+const PLATFORM_ORG = "33333333-3333-4333-8333-333333333333";
 
 function workspaceFixture(sudStatus: ReviewWorkspace["sud"]["status"]): ReviewWorkspace {
   return {
@@ -347,8 +352,20 @@ const PERSONAS: Record<string, Persona> = {
   },
 };
 
-function makeServer(sudStatus: ReviewWorkspace["sud"]["status"] = "detected") {
-  const calls = { consentPatients: [] as string[], renders: 0 };
+function makeServer(
+  sudStatus: ReviewWorkspace["sud"]["status"] = "detected",
+  opts: { supportAllowed?: boolean } = {},
+) {
+  const calls = {
+    consentPatients: [] as string[],
+    renders: 0,
+    supportResolutions: [] as string[],
+    supportAudits: [] as Array<{
+      patientId: string | null;
+      resourceKind: string;
+      pageNumber?: number;
+    }>,
+  };
   const store = createInMemoryEffectivePermissionStore(
     Object.keys(PERSONAS).map((userId) => ({
       orgId: ORG,
@@ -371,6 +388,9 @@ function makeServer(sudStatus: ReviewWorkspace["sud"]["status"] = "detected") {
   registerAbacRegistry(reg);
 
   const service = {
+    async getBatchPatientId() {
+      return PATIENT;
+    },
     async getWorkspace(_org: string, _id: string, _membership: string, access?: SudContentAccess) {
       const ws = workspaceFixture(sudStatus);
       const allowed = await resolveSudContentAccess(access, {
@@ -395,14 +415,33 @@ function makeServer(sudStatus: ReviewWorkspace["sud"]["status"] = "detected") {
     },
   } as unknown as ReviewWorkspaceService;
 
+  const platformSupportAccess: WardenLensPlatformSupportAccess = {
+    async resolveOrganization(input) {
+      calls.supportResolutions.push(input.supportSessionId);
+      if (opts.supportAllowed === false) throw new Error("support session denied");
+      return ORG;
+    },
+    async authorizeAndAuditRead(input) {
+      if (opts.supportAllowed === false) throw new Error("support session denied");
+      calls.supportAudits.push({
+        patientId: input.patientId,
+        resourceKind: input.resourceKind,
+        ...(input.pageNumber === undefined ? {} : { pageNumber: input.pageNumber }),
+      });
+      return ORG;
+    },
+  };
+
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerDocLensReviewWorkspaceRoutes(app, service);
+  registerDocLensReviewWorkspaceRoutes(app, service, platformSupportAccess);
   return { app, calls };
 }
 
 const as = (user: string) => ({ "x-test-user": user });
 const workspaceUrl = `/api/v1/intake/uploads/${BATCH}/workspace`;
 const imageUrl = `/api/v1/intake/uploads/${BATCH}/pages/1/image`;
+const platformWorkspaceUrl = `/api/v1/platform/organizations/${PLATFORM_ORG}/intake/uploads/${BATCH}/workspace?supportSessionId=${SUPPORT_SESSION}`;
+const platformImageUrl = `/api/v1/platform/organizations/${PLATFORM_ORG}/intake/uploads/${BATCH}/pages/1/image?supportSessionId=${SUPPORT_SESSION}`;
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -495,6 +534,47 @@ describe("GAP-067 — DocLens review routes compose the Part 2 need-to-know chec
       const page = await app.inject({ method: "GET", url: imageUrl, headers: as(user) });
       expect(page.statusCode).toBe(403);
       expect(calls.renders).toBe(0);
+    },
+  );
+
+  it("a human superadmin uses only the dedicated support-session path for workspace and image reads", async () => {
+    const { app, calls } = makeServer("confirmed");
+    const workspace = await app.inject({
+      method: "GET",
+      url: platformWorkspaceUrl,
+      headers: as("platform_superadmin"),
+    });
+    expect(workspace.statusCode).toBe(200);
+    expect(workspace.headers["cache-control"]).toBe("no-store");
+    expect(workspace.json().sud.contentRedacted).toBe(false);
+    expect(workspace.json().candidates[1].value).toBe("Methadone 20 mg");
+
+    const page = await app.inject({
+      method: "GET",
+      url: platformImageUrl,
+      headers: as("platform_superadmin"),
+    });
+    expect(page.statusCode).toBe(200);
+    expect(page.headers["cache-control"]).toBe("no-store");
+    expect(calls.supportResolutions).toEqual([SUPPORT_SESSION, SUPPORT_SESSION]);
+    expect(calls.supportAudits).toEqual([
+      { patientId: PATIENT, resourceKind: "intake_review_workspace" },
+      { patientId: PATIENT, resourceKind: "intake_page_image", pageNumber: 1 },
+    ]);
+  });
+
+  it.each(["tenant_administrator", "tenant_org_admin", "platform_operator", "ai_superadmin"])(
+    "%s cannot enter the dedicated superadmin support-session path",
+    async (user) => {
+      const { app, calls } = makeServer("confirmed");
+      const response = await app.inject({
+        method: "GET",
+        url: platformWorkspaceUrl,
+        headers: as(user),
+      });
+      expect(response.statusCode).toBe(403);
+      expect(calls.supportResolutions).toEqual([]);
+      expect(calls.supportAudits).toEqual([]);
     },
   );
 

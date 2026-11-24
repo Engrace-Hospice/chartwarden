@@ -91,7 +91,10 @@ let failWorkspaceRefresh = false;
 let workspaceReadCount = 0;
 const decisionRequests: unknown[] = [];
 const fetchStub = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
-  const request = input instanceof Request ? input : new Request(String(input));
+  const request =
+    input instanceof Request
+      ? input
+      : new Request(new URL(String(input), "http://localhost").toString());
   const path = new URL(request.url, "http://localhost").pathname;
   if (path.endsWith("/workspace")) {
     workspaceReadCount += 1;
@@ -180,8 +183,12 @@ beforeEach(() => {
   workspaceReadCount = 0;
   decisionRequests.length = 0;
   fetchStub.mockClear();
+  vi.stubGlobal("fetch", fetchStub);
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("UnifiedReviewWorkspace", () => {
   it("renders six accessible sections and opens candidate review inline", async () => {
@@ -201,6 +208,47 @@ describe("UnifiedReviewWorkspace", () => {
     expect(task.scrollTop).toBe(0);
     expect(screen.getByRole("heading", { name: "Mobile phone", level: 2 })).toBeTruthy();
     expect(document.querySelector(".wx-unified-layout")).toBeTruthy();
+  });
+
+  it("uses the tenant-consented platform read path without exposing tenant review actions", async () => {
+    const supportSessionId = "dddddddd-4444-4444-8444-dddddddddddd";
+    const supportOrganizationId = "eeeeeeee-5555-4555-8555-eeeeeeeeeeee";
+    mount(
+      `/intake/${BATCH}/review?supportOrganizationId=${supportOrganizationId}&supportSessionId=${supportSessionId}`,
+    );
+
+    expect(await screen.findByText("Tenant-consented platform support access")).toBeTruthy();
+    expect(screen.getAllByText("Read-only support session").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Release review" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Complete review" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Start review" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Legacy detailed reviewer/ })).toBeNull();
+
+    const workspaceRequest = fetchStub.mock.calls.find(([input]) =>
+      String(input instanceof Request ? input.url : input).includes(
+        "/api/v1/platform/organizations/",
+      ),
+    );
+    expect(workspaceRequest).toBeTruthy();
+    const workspaceUrl = new URL(
+      String(
+        workspaceRequest?.[0] instanceof Request ? workspaceRequest[0].url : workspaceRequest?.[0],
+      ),
+      "http://localhost",
+    );
+    expect(workspaceUrl.pathname).toBe(
+      `/api/v1/platform/organizations/${supportOrganizationId}/intake/uploads/${BATCH}/workspace`,
+    );
+    expect(workspaceUrl.searchParams.get("supportSessionId")).toBe(supportSessionId);
+
+    const image = screen.getByRole("img", { name: /Page 1 of the source document/ });
+    const imageUrl = new URL(image.getAttribute("src") ?? "", "http://localhost");
+    expect(imageUrl.pathname).toBe(
+      `/api/v1/platform/organizations/${supportOrganizationId}/intake/uploads/${BATCH}/pages/1/image`,
+    );
+    expect(imageUrl.searchParams.get("supportSessionId")).toBe(supportSessionId);
+    expect(screen.getByText(/Support-session access is read-only/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Accept extracted value" })).toBeNull();
   });
 
   it("offers server-backed release and completion from the unified workspace", async () => {
