@@ -1143,6 +1143,32 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
         [["wardenlens-live-cross-org", "wardenlens-live-expired-at-entry"]],
       );
       expect(refused?.count).toBe("0");
+      // Each refusal is recorded on its own, with identifiers only, because the authorization transaction rolled back.
+      const denials = await q<{
+        correlation_id: string;
+        outcome: string;
+        severity: string;
+        context: Record<string, unknown>;
+      }>(
+        `SELECT correlation_id, outcome, severity, context FROM audit_event
+          WHERE event_type = 'support_session.wardenlens_read_denied'
+            AND correlation_id = ANY($1::text[])
+          ORDER BY correlation_id`,
+        [["wardenlens-live-cross-org", "wardenlens-live-expired-at-entry"]],
+      );
+      expect(denials).toHaveLength(2);
+      expect(denials[0]).toMatchObject({
+        correlation_id: "wardenlens-live-cross-org",
+        outcome: "denied",
+        severity: "warn",
+        context: {
+          requestedOrganizationId: OTHER_ORG,
+          actorMembershipId: OPERATOR.membership,
+          supportSessionId: sessionId,
+          reason: "authorization_denied",
+        },
+      });
+      expect(denials[1]?.correlation_id).toBe("wardenlens-live-expired-at-entry");
 
       const revokedGrant = await issue(ADMIN, "organization_scoped");
       const revokedSession = await start(revokedGrant.body.id);

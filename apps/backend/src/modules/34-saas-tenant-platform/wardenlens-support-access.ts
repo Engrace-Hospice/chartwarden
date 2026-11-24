@@ -144,80 +144,120 @@ export function createWardenLensSupportAccess(
       fn,
     );
 
+  // The authorization transaction rolls back on a refusal, taking its own audit rows with it, so a denied read
+  // is recorded in a transaction of its own. Identifiers only; the requested organization is a client value.
+  const recordDenial = (input: WardenLensSupportReadInput): Promise<void> =>
+    run("m34 WardenLens support read: record denial", (tx) =>
+      auditPlatformEvent(tx, {
+        eventType: "support_session.wardenlens_read_denied",
+        resourceKind: input.resourceKind,
+        resourceId: input.resourceId,
+        outcome: "denied",
+        severity: "warn",
+        correlationId: input.correlationId,
+        context: {
+          requestedOrganizationId: input.organizationId,
+          actorMembershipId: input.actorMembershipId,
+          supportSessionId: input.supportSessionId,
+          authorizationBasis: "superadmin_support_session",
+          reason: "authorization_denied",
+          ...(input.pageNumber === undefined ? {} : { pageNumber: input.pageNumber }),
+        },
+      }),
+    );
+
   return {
     async runAuthorizedRead(input, resolvePatient, read) {
-      return run("m34 WardenLens support read: authorize and audit", async (tx) => {
-        const at = now();
-        const facts = await accessFacts(tx, input, at);
-
-        // accessFacts holds the session/grant rows FOR SHARE until this platform transaction ends.
-        // Resolve patient scope inside the same locked authorization window, then prepare the read.
-        let patientId: string | null;
-        try {
-          patientId = await resolvePatient(facts.organizationId);
-        } catch (error) {
-          // A patient-scoped session must not become a batch-existence oracle: an unknown batch and
-          // an existing out-of-scope batch both fail with the same authorization response.
-          if (facts.scope === "patient_scoped") throw new ForbiddenError(ACCESS_DENIED);
-          throw error;
-        }
-        assertPatientScope(facts, patientId);
-        const result = await read(facts.organizationId, patientId, facts.scope);
-        const completedAt = now();
-        if (
-          facts.sessionExpiresAt.getTime() <= completedAt.getTime() ||
-          facts.grantExpiresAt.getTime() <= completedAt.getTime()
-        ) {
-          throw new ForbiddenError(ACCESS_DENIED);
-        }
-
-        await new SupportRepository(tx).appendSessionEvent({
-          organizationId: facts.organizationId,
-          supportSessionId: input.supportSessionId,
-          eventKind: "ops.read",
-          resourceKind: input.resourceKind,
-          resourceId: input.resourceId,
-          patientId,
-          occurredAt: completedAt,
-          actorIp: input.actorIp,
-          context: {
-            route: input.route,
-            method: "GET",
-            disclosureState: "prepared_before_response",
-            ...(input.pageNumber === undefined ? {} : { pageNumber: input.pageNumber }),
-          },
-        });
-        await auditPlatformEvent(tx, {
-          eventType: "support_session.wardenlens_read",
-          resourceKind: input.resourceKind,
-          resourceId: input.resourceId,
-          outcome: "success",
-          severity: "critical",
-          correlationId: input.correlationId,
-          context: {
-            organizationId: facts.organizationId,
-            tenantAccountId: facts.tenantAccountId,
-            actorMembershipId: input.actorMembershipId,
-            actorKind: "superadmin_via_support_session",
-            supportSessionId: input.supportSessionId,
-            supportConsentGrantId: facts.supportConsentGrantId,
-            authorizationBasis: "superadmin_support_session",
-            disclosureState: "prepared_before_response",
-            patientId,
-            ...(input.pageNumber === undefined ? {} : { pageNumber: input.pageNumber }),
-          },
-        });
-        const returnAt = now();
-        if (
-          facts.sessionExpiresAt.getTime() <= returnAt.getTime() ||
-          facts.grantExpiresAt.getTime() <= returnAt.getTime()
-        ) {
-          // The platform transaction rolls both preparation audit records back if authority expires
-          // during their writes; no prepared PHI is returned outside the authorized time window.
-          throw new ForbiddenError(ACCESS_DENIED);
-        }
-        return result;
-      });
+      try {
+        return await authorizeAndRead(input, resolvePatient, read);
+      } catch (error) {
+        // If the denial record cannot be written the read is still refused; that failure surfaces as a 500.
+        if (error instanceof ForbiddenError) await recordDenial(input);
+        throw error;
+      }
     },
   };
+
+  function authorizeAndRead<T>(
+    input: WardenLensSupportReadInput,
+    resolvePatient: (organizationId: string) => Promise<string | null>,
+    read: (
+      organizationId: string,
+      patientId: string | null,
+      scope: "organization_scoped" | "patient_scoped",
+    ) => Promise<T>,
+  ): Promise<T> {
+    return run("m34 WardenLens support read: authorize and audit", async (tx) => {
+      const at = now();
+      const facts = await accessFacts(tx, input, at);
+
+      // accessFacts holds the session/grant rows FOR SHARE until this platform transaction ends.
+      // Resolve patient scope inside the same locked authorization window, then prepare the read.
+      let patientId: string | null;
+      try {
+        patientId = await resolvePatient(facts.organizationId);
+      } catch (error) {
+        // A patient-scoped session must not become a batch-existence oracle: an unknown batch and
+        // an existing out-of-scope batch both fail with the same authorization response.
+        if (facts.scope === "patient_scoped") throw new ForbiddenError(ACCESS_DENIED);
+        throw error;
+      }
+      assertPatientScope(facts, patientId);
+      const result = await read(facts.organizationId, patientId, facts.scope);
+      const completedAt = now();
+      if (
+        facts.sessionExpiresAt.getTime() <= completedAt.getTime() ||
+        facts.grantExpiresAt.getTime() <= completedAt.getTime()
+      ) {
+        throw new ForbiddenError(ACCESS_DENIED);
+      }
+
+      await new SupportRepository(tx).appendSessionEvent({
+        organizationId: facts.organizationId,
+        supportSessionId: input.supportSessionId,
+        eventKind: "ops.read",
+        resourceKind: input.resourceKind,
+        resourceId: input.resourceId,
+        patientId,
+        occurredAt: completedAt,
+        actorIp: input.actorIp,
+        context: {
+          route: input.route,
+          method: "GET",
+          disclosureState: "prepared_before_response",
+          ...(input.pageNumber === undefined ? {} : { pageNumber: input.pageNumber }),
+        },
+      });
+      await auditPlatformEvent(tx, {
+        eventType: "support_session.wardenlens_read",
+        resourceKind: input.resourceKind,
+        resourceId: input.resourceId,
+        outcome: "success",
+        severity: "critical",
+        correlationId: input.correlationId,
+        context: {
+          organizationId: facts.organizationId,
+          tenantAccountId: facts.tenantAccountId,
+          actorMembershipId: input.actorMembershipId,
+          actorKind: "superadmin_via_support_session",
+          supportSessionId: input.supportSessionId,
+          supportConsentGrantId: facts.supportConsentGrantId,
+          authorizationBasis: "superadmin_support_session",
+          disclosureState: "prepared_before_response",
+          patientId,
+          ...(input.pageNumber === undefined ? {} : { pageNumber: input.pageNumber }),
+        },
+      });
+      const returnAt = now();
+      if (
+        facts.sessionExpiresAt.getTime() <= returnAt.getTime() ||
+        facts.grantExpiresAt.getTime() <= returnAt.getTime()
+      ) {
+        // The platform transaction rolls both preparation audit records back if authority expires
+        // during their writes; no prepared PHI is returned outside the authorized time window.
+        throw new ForbiddenError(ACCESS_DENIED);
+      }
+      return result;
+    });
+  }
 }
