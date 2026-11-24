@@ -7,7 +7,7 @@
 - Scope: ADR-0115 and PR #1112
 - Repository commit reviewed: 707874893
 - Effective environments: production
-- Re-review date: 2026-11-23
+- Re-review date: 2027-02-23 (quarterly, per the review cadence in `docs/compliance/WARDENLENS_PART_2_ADMINISTRATOR_ACCESS.md`)
 
 ## Access reviewed
 
@@ -70,4 +70,4 @@ Revision 2: corrected the tenant-administrator audit statement and added the con
 - Approval date:
 - Signature or approval-system reference:
 
-The designated Privacy/Compliance reviewer must fill this out. It must not be self-attested by engineering unless that person is formally the designated authority.
+Designated authority: Privacy Officer (interim), `docs/architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md`.

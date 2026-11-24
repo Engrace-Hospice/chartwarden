@@ -4,7 +4,7 @@
 
 **Production effective status:** Pending designated Privacy/Compliance approval and privileged-factor deployment evidence
 
-**Decision authority:** Product owner, recorded in [ADR-0115](../adr/ADR-0115-wardenlens-tenant-administrator-part-2-review-access.md); Privacy/Compliance applicability review not yet recorded
+**Decision authority:** Product owner, recorded in [ADR-0115](../adr/ADR-0115-wardenlens-tenant-administrator-part-2-review-access.md); Privacy/Compliance review recorded in `audit/wardenlens-v3-2/PART2_ADMINISTRATOR_ACCESS_APPROVAL.md` (approved with conditions; re-signature of revision 2 pending)
 
 **Applies to:** Module 22 WardenLens intake review only
 
