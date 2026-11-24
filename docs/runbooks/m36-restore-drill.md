@@ -1,7 +1,7 @@
 # Runbook: M36 restore drill ("restore consistency")
 
 Phase 1 gate: *a restore drill proves DB + object-store consistency within the recorded RPO/RTO.* This runbook is
-what the drill does, how to run it, what production backs up today (not much), and how to read the numbers.
+what the drill does, how to run it, what production backed up at design time and what the sidecar adds per the owner, and how to read the numbers.
 
 > **Object store in this drill: a MinIO stand-in, today.** Production's object store is SeaweedFS (ADR-0050 D6
 > amendment, 2026-11-05). This drill still starts a throwaway MinIO container as its source and scratch store
@@ -21,7 +21,7 @@ cluster or the local Docker compose stack, and it is not wired into CI (a live, 
 > **Update 2026-10-27 (#857).** The table below is the state this drill was designed against. The repository now ships a coordinated backup: pgBackRest with WAL archiving (PITR) to a local and an off-site encrypted repository, a versioned SSE-C object mirror to an object-locked off-site bucket, and a snapshot marker tying a DB LSN to an object manifest (`deploy/production/backup/`, `compose.backup.yml`, DR/BCP §4.8), proven end to end by `bun run backup:coordinated-drill` (`audit/restore-drill/2026-10-27-coordinated-backup-drill.md`). Per the owner the `backup` sidecar runs in production and the off-site mirror is enabled; the repo holds no evidence of it (DR/BCP §4.8.7 are the operator steps, and no witnessed production restore is recorded). The rows below describe the state this drill was designed against; the owner's statement covers only the sidecar and the mirror running, and the second copy remains not enabled.
 
 Read from `deploy/production/`, `ops/pgbackrest/`, `.github/workflows/` and the DR/BCP + ADR-0050 text. The DR/BCP
-document's own banner says the same: every backup topology in it is a target, not a build.
+document's banner calls its multi-VM topology a target; its single-host backup (§4.8) is built and, per the owner, enabled.
 
 | Asset | What exists today | What does not |
 |---|---|---|
@@ -32,7 +32,7 @@ document's own banner says the same: every backup topology in it is a target, no
 | Roles | Created by migrations and `provision-runtime-roles.ts` | `pg_dump` of one database carries **no roles**. See section 3: a naive restore fails |
 
 Consequence at design time: the only RPO that could be stated for production was "everything since the last manual pre-reseed dump
-(possibly never)", and the only RTO "a person improvising". Per the owner the sidecar now runs, so production's RPO is the snapshot interval (15 minutes by default) plus the snapshot's run time, and no production restore time is recorded; the repo holds no evidence of either.
+(possibly never)", and the only RTO "a person improvising". Per the owner the sidecar now runs, so production's RPO is the snapshot interval (15 minutes by default) plus up to two snapshot run times, and no production restore time is recorded; the repo holds no evidence of either.
 The drill therefore exercises the closest real mechanisms: the production `pg_dump | gzip` command for the DB, and a copy
 of the stand-in MinIO's data volume for the object store (flagged as an assumption, not as production behaviour: production runs SeaweedFS).
 
@@ -118,6 +118,6 @@ append-only and immutability triggers. Last run: all six reported `DETECTED`.
 ## 6. Open decisions (need a person)
 
 - Approve the RPO/RTO that apply to M36 (Tier 1: 5 min / 1 h, or Tier 2: 15 min / 4 h). Per the owner the sidecar's cadence now applies; no production figure is recorded.
-- Backups are built (DR/BCP §4.8; per the owner enabled, and the snapshot marker takes the two consistently); what
-  remains is the first witnessed production restore and the recurring drills (DR/BCP §4.8.7 steps 3-4).
+- Backups are built (DR/BCP §4.8) and, per the owner, enabled; the snapshot marker ties the database to the object
+  manifest. What remains is the first witnessed production restore and the recurring drills (DR/BCP §4.8.7 steps 3-4).
 - Decide where `MESSAGING_ENCRYPTION_KEY` / `M34_TENANT_KEK` are escrowed.

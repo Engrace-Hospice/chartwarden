@@ -1461,7 +1461,7 @@ In failure modes, degraded operation continues for many flows (see §10).
 > Treat every number here as a target, not a commitment.
 
 **RTO target (Tier 2):** 4 hours
-**RPO target (Tier 2):** 15 minutes for PostgreSQL, 15 minutes for the object store in production (the off-site mirror runs inside every sidecar snapshot, default interval 15 minutes plus the snapshot's run time, so the target is not shown to be met, DR/BCP §4.8.3; the second copy's hourly sync interval applies only if it is enabled, and it is not)
+**RPO target (Tier 2):** 15 minutes for PostgreSQL, 15 minutes for the object store in production (the off-site mirror runs inside every sidecar snapshot, default interval 15 minutes plus up to two snapshot run times, so the target is exceeded at the default interval, DR/BCP §4.8.3; the second copy's hourly sync interval applies only if it is enabled, and it is not)
 
 **Backups:**
 

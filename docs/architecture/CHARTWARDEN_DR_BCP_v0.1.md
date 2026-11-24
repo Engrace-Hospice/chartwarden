@@ -114,7 +114,7 @@ Incidents are classified at declaration and may be reclassified as conditions ch
 > DB/object snapshot marker, an isolated restore script and a restored-schema verifier (RLS smoke included), proven
 > end to end by `bun run backup:coordinated-drill`. It is shipped as an opt-in compose overlay and, per the owner,
 > is **enabled in production** (the sidecar runs and the off-site mirror is enabled; §4.8.7 are the operator steps, and the
-> repo holds no evidence of them). The production RPO is the snapshot interval of §4.8.3 plus the snapshot's run time, which no witnessed production
+> repo holds no evidence of them). The production RPO is the snapshot interval of §4.8.3 plus up to two snapshot run times, which no witnessed production
 > drill has confirmed.
 >
 > Every RTO/RPO figure, failover procedure and host name below is therefore a **target**, not a
@@ -330,7 +330,7 @@ TARGET: an off-site target (initially TBD per ADR-002) receives a daily incremen
 `cost-reports/` (compliance-critical, low volume), a weekly full copy of `documents/` and a monthly full copy of
 `platform/`.
 
-TODAY (§4.8.2-§4.8.3; enabled in production per the owner): every coordinated snapshot (default every 15 minutes)
+TODAY (§4.8.2-§4.8.3; enabled in production per the owner): every coordinated snapshot (default 15 minutes after the previous one ends)
 mirrors every bucket to an off-site S3-compatible bucket with Object Lock in COMPLIANCE mode (default retention at least
 100 days), SSE-C encrypted, and records a sha256 manifest. There is no per-prefix schedule. The repo names no off-site
 vendor and holds no BAA record for it: the bucket holds both streams (this object mirror and the pgBackRest repo2, the
@@ -442,7 +442,7 @@ and WAL expiry handled together, multi-repository archiving (local fast-restore 
 
 #### 4.8.2 What a snapshot is
 
-`cw-backup.sh snapshot` (every `BACKUP_SNAPSHOT_INTERVAL_S`, default 15 min; plus a daily base backup):
+`cw-backup.sh snapshot` (`BACKUP_SNAPSHOT_INTERVAL_S` after the previous snapshot ends, default 15 min; plus a daily base backup):
 
 1. optional pgBackRest base backup to repo1 (local volume) and repo2 (off-site S3, path `/pgbackrest`);
 2. capture `pg_current_wal_lsn()`, the schema fingerprint (`backup/schema-fingerprint.sql`) and the migrations ledger
@@ -465,7 +465,7 @@ reports it as `not-in-snapshot`.
 | Item | Default | Variable |
 | --- | --- | --- |
 | WAL archiving | continuous, `archive_timeout=60` | compose.backup.yml |
-| Coordinated snapshot | every 15 min | `BACKUP_SNAPSHOT_INTERVAL_S` |
+| Coordinated snapshot | 15 min after the previous one ends | `BACKUP_SNAPSHOT_INTERVAL_S` |
 | Base backup | daily from `BACKUP_DB_BACKUP_HOUR_UTC` (2), full on `BACKUP_FULL_BACKUP_WEEKDAY` (7 = Sunday), else differential | |
 | Local repo retention | 2 full sets (+ their WAL) | `BACKUP_PG_RETENTION_FULL_LOCAL` |
 | Off-site repo retention | 13 full sets, about 90 days | `BACKUP_PG_RETENTION_FULL_OFFSITE` |
@@ -474,12 +474,13 @@ reports it as `not-in-snapshot`.
 | Stale alert | no successful snapshot for 45 min | `BACKUP_MAX_AGE_S` |
 | WAL health alert | `archive_command` failing, or `pg_wal` above 8 GiB, checked every snapshot tick | `BACKUP_PG_WAL_ALERT_BYTES` |
 
-Targets (§3): coordinated RPO = the snapshot interval (15 min by default) plus the snapshot's run time, and a little more in the
-worst case; the Tier 2 target is 15 min and is not shown to be met; database-only RPO = last archived WAL
+Targets (§3): coordinated RPO = the snapshot interval (15 min by default) plus up to two snapshot run times (the loop sleeps the
+interval after each snapshot ends; a snapshot lists its objects at the start and writes its marker at the end), so it
+exceeds the 15 min Tier 2 target at the default interval; database-only RPO = last archived WAL
 segment (about 60 s, inside the Tier 1 5 min target) via a manual `--type=time` restore; RTO target 1 h (Tier 1).
 Measured so far only at synthetic scale (`audit/restore-drill/2026-10-27-coordinated-backup-drill.md`: 7.0 s restore of 6 objects and 50k rows).
 Per the owner the sidecar runs in production, so this cadence is live: the object mirror runs inside every snapshot, so
-the object RPO is the snapshot interval plus the snapshot's own run time (the hourly interval of the second copy,
+the object RPO is the snapshot interval plus up to two snapshot run times (the hourly interval of the second copy,
 `OBJECT_COPY_INTERVAL_S`, does not apply). The repo holds no evidence of it, and production figures still come from the
 first witnessed drill.
 
@@ -834,9 +835,9 @@ must follow the snapshot's manifest and keep each object's SHA-256 (generic copy
 everything erased after the snapshot being loaded.
 
 **Data loss expectation (RPO):** from the off-site mirror (live), everything written after the last completed snapshot:
-the snapshot interval (`BACKUP_SNAPSHOT_INTERVAL_S`, default 900 s = 15 minutes unless `.env.production` overrides it)
-plus the snapshot's own run time (the mirror runs inside every snapshot), measured against the 15-minute Tier 2 target
-of §3 but not shown to meet it; loading it into a new SeaweedFS is not a tested procedure (§4.8.6). From the second copy (not enabled in production), everything written after the last clean copy
+the snapshot interval (`BACKUP_SNAPSHOT_INTERVAL_S`, default 900 s = 15 minutes unless the production environment file overrides it)
+plus up to two snapshot run times (the mirror runs inside every snapshot), which exceeds the 15-minute Tier 2 target
+of §3 at the default interval (the production value is not recorded); loading it into a new SeaweedFS is not a tested procedure (§4.8.6). From the second copy (not enabled in production), everything written after the last clean copy
 run, that is up to the copy interval (hourly by default; `OBJECT_COPY_INTERVAL_S`). **Time:** no target is set for this
 path; it scales with the size of the store.
 

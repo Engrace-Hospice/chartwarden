@@ -796,10 +796,10 @@ deploy directory with the overlay: `docker compose --env-file .env.production -f
 
 | When | What | Pass |
 | --- | --- | --- |
-| Continuous | `backup` sidecar: WAL archiving, a coordinated snapshot every 15 min, a base backup daily (full on Sunday) | no `backup.*` ops notice on `OPS_ALERT_WEBHOOK_URL`; heartbeat (`BACKUP_HEARTBEAT_URL`) not overdue |
+| Continuous | `backup` sidecar: WAL archiving, a coordinated snapshot 15 min after the previous one ends, a base backup daily (full on Sunday) | no `backup.*` ops notice on `OPS_ALERT_WEBHOOK_URL`; heartbeat (`BACKUP_HEARTBEAT_URL`) not overdue |
 | Daily (08:30 check) | `dc ps backup` is `healthy`; `dc exec backup cw-backup.sh marker` shows a snapshot under 45 min old; `dc exec -u postgres backup pgbackrest --stanza=chartwarden info` lists today's base backup on repo1 and repo2 | all three |
 | Monthly (first Saturday) | isolated restore + verify (DR/BCP §4.8.6): `backup/restore.sh latest`, `backup:verify-restore`, record under `audit/restore-drill/<date>-production-restore.md`, `restore.sh destroy` | verifier exit 0; restore wall time inside the 1 h RTO target |
-| Quarterly | the monthly drill restoring from the OFF-SITE copy only, on a host other than production, with the escrowed keys (not the host's `.env.production`) | as monthly, and the keys open the backup |
+| Quarterly | the monthly drill restoring from the OFF-SITE copy only, on a host other than production, with the escrowed keys (not the host's `./secrets/` files or its environment file) | as monthly, and the keys open the backup |
 | Every change to `deploy/production/backup/` | `bun run backup:coordinated-drill` on a workstation (private containers) | the new `audit/restore-drill/<date>-coordinated-backup-drill.md` reads PASS |
 
 **Alerts** (mandatory https `OPS_ALERT_WEBHOOK_URL`; the sidecar will not start without it).
@@ -891,7 +891,7 @@ docker compose --env-file .env.production -f compose.yml -f compose.object-copy.
 ```
 
 - Expected: a clean JSON summary per run and a `healthy` container. A failed run posts `object_copy.failed` to `OPS_ALERT_WEBHOOK_URL` (counts and bucket/key ids, never content); the container turns unhealthy when no run has been clean for three intervals.
-- Exposure: the data-loss window of the copy equals the copy interval (hourly by default). In production the object RPO is the off-site mirror's snapshot interval (default 15 minutes, plus the snapshot's run time), because the mirror runs inside every sidecar snapshot.
+- Exposure: the data-loss window of the copy equals the copy interval (hourly by default). In production the object RPO is the off-site mirror's snapshot interval (default 15 minutes, plus up to two snapshot run times), because the mirror runs inside every sidecar snapshot.
 - It is a sync, not an archive: an erasure on the primary reaches the copy on the next run, with three limits: a large erasure is held by the mass-delete guard until an operator names the bucket, a bucket dropped on the primary is never removed from the copy, and `--restore` after an erasure resurrects the destroyed objects. A D12 shred or DEK destruction does not reach the off-site mirror (enabled in production per the owner): its objects are SSE-C encrypted under one platform backup key, not the tenant's DEK, so destroying a DEK does not make them unreadable; erased objects stay there because nothing deletes them (no `--remove`, the backup key cannot delete under `objects/`, the lifecycle expires only noncurrent versions and delete markers); and the COMPLIANCE lock blocks even the bucket owner until it expires.
 - The guard is narrow: it refuses a bucket's deletions only when the source bucket is empty or a run would delete more than max(10, 10% of the target count) (refused and paged; `ALLOW_MASS_DELETE` names a bucket to let one through). A loss under that threshold, such as a primary missing a few percent of its objects, propagates to the copy on the next run.
 - Per-bucket lag or pending counts: **not available in the repo today.**
