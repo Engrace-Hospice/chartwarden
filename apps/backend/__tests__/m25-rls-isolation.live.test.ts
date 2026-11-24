@@ -18,26 +18,26 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { auditPlatformEvent } from "@chartwarden/audit";
+import type { DbClient } from "@chartwarden/db";
+import { createDbClient } from "@chartwarden/db";
 import { type PlatformBypassAuditor, registerPlatformJob } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createClaimMdProtectedPayloadCipher } from "../../../../apps/backend/src/bootstrap/claimmd-payload-cipher";
-import { registerM24PublishedSeams } from "../../../../apps/backend/src/modules/24-billing-medicaid/wiring";
-import { createMedicaidEraReviewService } from "../../../../apps/backend/src/modules/25-remittance/domain/medicaid-era-trusted-review";
+import { createClaimMdProtectedPayloadCipher } from "../src/bootstrap/claimmd-payload-cipher";
+import { registerM24PublishedSeams } from "../src/modules/24-billing-medicaid/wiring";
+import { createMedicaidEraReviewService } from "../src/modules/25-remittance/domain/medicaid-era-trusted-review";
 import {
   CLAIMMD_ERA_RESOLUTION_JOB_ID,
   createClaimMdEraStore,
-} from "../../../../apps/backend/src/modules/25-remittance/ingest/claimmd-era-store";
-import { buildDrizzleMedicaidEraReviewReaders } from "../../../../apps/backend/src/modules/25-remittance/ingest/medicaid-era-review-readers";
-import { buildDrizzleMedicaidEraReviewWorkflow } from "../../../../apps/backend/src/modules/25-remittance/ingest/medicaid-era-review-service";
-import { createDbMdmStore } from "../../../../apps/backend/src/modules/40-mdm/mdm-store-db";
-import { registerMdmSeams } from "../../../../apps/backend/src/modules/40-mdm/seams";
-import type { DbClient } from "../../src/client";
-import { createDbClient } from "../../src/client";
-import { dropLiveRoles } from "./_live-roles";
+} from "../src/modules/25-remittance/ingest/claimmd-era-store";
+import { buildDrizzleMedicaidEraReviewReaders } from "../src/modules/25-remittance/ingest/medicaid-era-review-readers";
+import { buildDrizzleMedicaidEraReviewWorkflow } from "../src/modules/25-remittance/ingest/medicaid-era-review-service";
+import { createDbMdmStore } from "../src/modules/40-mdm/mdm-store-db";
+import { registerMdmSeams } from "../src/modules/40-mdm/seams";
+import { dropLiveRoles } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
-const MIGRATIONS_DIR = join(__dirname, "..");
+const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 
@@ -576,10 +576,7 @@ describe.skipIf(!DB_URL)(
       const accountReference = "synthetic-l6b-integration";
       const eraId = "76001";
       const rawX12 = readFileSync(
-        join(
-          __dirname,
-          "../../../../packages/x12-835-client/samples/01-clean-routine-home-care.835",
-        ),
+        join(__dirname, "../../../packages/x12-835-client/samples/01-clean-routine-home-care.835"),
         "utf8",
       )
         .trim()
