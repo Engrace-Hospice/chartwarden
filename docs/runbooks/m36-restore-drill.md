@@ -26,13 +26,13 @@ document's own banner says the same: every backup topology in it is a target, no
 | Asset | What exists today | What does not |
 |---|---|---|
 | Postgres | `pg_dump -U postgres -d chartwarden \| gzip` into `backups/pre-reseed-<ts>.sql.gz` on the VPS, **only** when an operator runs `reseed-demo.sh reseed` (`deploy/production/reseed-demo.sh`) | Design-time state (per the owner the sidecar now provides scheduled snapshots, WAL archiving, PITR and an off-site repo; see the update above): no scheduled backup, no WAL archiving, no PITR, no off-host copy, no retention, no restore script. pgBackRest was `ops/pgbackrest/pgbackrest.conf.template` ("NOT wired to any real host/credentials"). `deploy.sh` backs up only `.env.production` |
-| Object store (SeaweedFS) | Data lives in the `seaweedfs-data` Docker volume on the same host (single node, one volume per tenant bucket, no in-store replication). The backup overlay (`compose.backup.yml`, DR/BCP §4.8) runs per the owner; the second-copy overlay (`compose.object-copy.yml`) exists but is not enabled | **Object snapshots are taken, per the owner** (the repo holds no evidence): the sidecar's snapshot mirrors every bucket to the off-site Object-Lock bucket. The second copy is built but not enabled (`deploy/production/README.md`). The restore drill itself still targets a MinIO stand-in, not SeaweedFS, and loading the mirror into a new SeaweedFS is not scripted (DR/BCP §4.8.6). DR/BCP section 4.2 (store-side replication to a backup VM, per-prefix Object Lock) is unbuilt. Before the 2026-11-05 cutover this row described MinIO and its `minio-data` volume. A host that went through the cutover and has not removed `<prefix>_minio-data` still holds a plaintext copy of every document there, outside the backups, with no recorded removal deadline (the owner decides). The README's removal procedure asks for a successful snapshot of the SeaweedFS store first, which per the owner can be met; the removal deadline is still the owner's decision and none is recorded; `preflight.sh` warns on every deploy that the volume exists and exits 67 on a host that has it and no `*_seaweedfs-data` volume (`deploy/production/README.md`, "Object store: removing the retired MinIO data") |
-| Cross-store coordination | none (design-time state: the sidecar's snapshot marker now ties a DB LSN to an object manifest, DR/BCP §4.8) | Nothing relates a DB backup to an object-store backup. A DB restore with no matching object restore leaves attachment rows pointing at missing objects |
+| Object store (SeaweedFS) | Data lives in the `seaweedfs-data` Docker volume on the same host (single node, one volume per tenant bucket, no in-store replication). The backup overlay (`compose.backup.yml`, DR/BCP §4.8) runs per the owner; the second-copy overlay (`compose.object-copy.yml`) exists but is not enabled | **Object snapshots are taken, per the owner** (the repo holds no evidence): the sidecar's snapshot mirrors every bucket to the off-site Object-Lock bucket. The second copy is built but not enabled (`deploy/production/README.md`). The restore drill itself still targets a MinIO stand-in, not SeaweedFS, and loading the mirror into a new SeaweedFS is not a tested procedure (DR/BCP §4.8.6). DR/BCP section 4.2 (store-side replication to a backup VM, per-prefix Object Lock) is unbuilt. Before the 2026-11-05 cutover this row described MinIO and its `minio-data` volume. A host that went through the cutover and has not removed `<prefix>_minio-data` still holds a plaintext copy of every document there, outside the backups, with no recorded removal deadline (the owner decides). The README's removal procedure asks for a successful snapshot of the SeaweedFS store first, which per the owner can be met; the removal deadline is still the owner's decision and none is recorded; `preflight.sh` warns on every deploy that the volume exists and exits 67 on a host that has it and no `*_seaweedfs-data` volume (`deploy/production/README.md`, "Object store: removing the retired MinIO data") |
+| Cross-store coordination | none (design-time state: the sidecar's snapshot marker now ties a DB LSN to an object manifest, DR/BCP §4.8) | Design-time: nothing relates a DB backup to an object-store backup. A DB restore with no matching object restore leaves attachment rows pointing at missing objects |
 | Secrets | `.env.production` copy beside each deploy | `MESSAGING_ENCRYPTION_KEY` (and `M34_TENANT_KEK`) are not in any backup; a DB restored without the same key cannot decrypt a single message body, and `messaging.hash_verify` reports every row as a mismatch |
 | Roles | Created by migrations and `provision-runtime-roles.ts` | `pg_dump` of one database carries **no roles**. See section 3: a naive restore fails |
 
 Consequence at design time: the only RPO that could be stated for production was "everything since the last manual pre-reseed dump
-(possibly never)", and the only RTO "a person improvising". Per the owner the sidecar now runs, so production's RPO is the snapshot interval (15 minutes by default) and no production restore time is recorded; the repo holds no evidence of either.
+(possibly never)", and the only RTO "a person improvising". Per the owner the sidecar now runs, so production's RPO is the snapshot interval (15 minutes by default) plus the snapshot's run time, and no production restore time is recorded; the repo holds no evidence of either.
 The drill therefore exercises the closest real mechanisms: the production `pg_dump | gzip` command for the DB, and a copy
 of the stand-in MinIO's data volume for the object store (flagged as an assumption, not as production behaviour: production runs SeaweedFS).
 
@@ -94,9 +94,9 @@ after the backup). An earlier session on the same class of hardware recorded 9.2
 load). Those numbers are not production figures: the backup is 1.0 MB gzip, mostly the schema of ~480 migrations (dump load and roles
 bootstrap dominate, not data), so they show the procedure works and where the time goes, not what a production-sized restore would
 take. RPO here is `failure instant - backup instant`: the drill's window is seconds because it is told to fail seconds after the
-backup; with `pg_dump` the real window is the gap between dumps, which today is "since the last manual pre-reseed dump". So the
-RTO check can pass against the 1 h Tier 1 target at demo scale, while the RPO target (5 min or 15 min) is **not** met by anything
-that runs in production.
+backup; with `pg_dump` the real window is the gap between dumps (at design time "since the last manual pre-reseed dump"). So the
+RTO check can pass against the 1 h Tier 1 target at demo scale, while the RPO target (5 min or 15 min) is not shown to be met: per the owner the sidecar's snapshot cadence now
+applies, unmeasured.
 
 ## 5. Detection proof
 
@@ -117,7 +117,7 @@ append-only and immutability triggers. Last run: all six reported `DETECTED`.
 
 ## 6. Open decisions (need a person)
 
-- Approve the RPO/RTO that apply to M36 (Tier 1: 5 min / 1 h, or Tier 2: 15 min / 4 h). Today's reality does not meet either.
-- Build the missing backup: scheduled `pg_dump` at minimum, WAL archiving + PITR to meet any minutes-scale RPO, an
-  off-host object-store backup, and a way to take the two consistently (DB first, then objects, so every row's object exists).
+- Approve the RPO/RTO that apply to M36 (Tier 1: 5 min / 1 h, or Tier 2: 15 min / 4 h). Per the owner the sidecar's cadence now applies; no production figure is recorded.
+- Backups are built (DR/BCP §4.8; per the owner enabled, and the snapshot marker takes the two consistently); what
+  remains is the first witnessed production restore and the recurring drills (DR/BCP §4.8.7 steps 3-4).
 - Decide where `MESSAGING_ENCRYPTION_KEY` / `M34_TENANT_KEK` are escrowed.
