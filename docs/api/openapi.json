@@ -339560,6 +339560,101 @@
         }
       }
     },
+    "/api/v1/remittance/medicaid-era-reviews/{id}/reassess": {
+      "post": {
+        "operationId": "postApiV1RemittanceMedicaiderareviewsByIdReassess",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Reassess an evaluator-qualified Medicaid ERA review using its server-resolved source",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reviewId",
+                        "version",
+                        "replay"
+                      ],
+                      "properties": {
+                        "status": {
+                          "const": "review_saved",
+                          "type": "string"
+                        },
+                        "reviewId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "replay": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reasonCode"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            },
+                            {
+                              "const": "held",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "reasonCode": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/remittance/revenue-cycle-summary": {
       "get": {
         "operationId": "getApiV1RemittanceRevenuecyclesummary",

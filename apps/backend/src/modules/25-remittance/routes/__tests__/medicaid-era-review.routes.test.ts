@@ -36,6 +36,7 @@ function setup(permissions: string[]) {
       throw new Error("not found");
     }),
     history: vi.fn(async () => []),
+    reassessmentArtifactReference: vi.fn(async () => "40000000-0000-4000-8000-000000000004"),
     evaluate: vi.fn(async () => ({
       status: "held" as const,
       reasonCode: "SOURCE_ACCOUNT_UNVERIFIED",
@@ -91,6 +92,38 @@ describe("Medicaid ERA nonposting review API", () => {
       "30000000-0000-4000-8000-000000000001",
       "synthetic-review-key-0002",
     );
+    await allowed.app.close();
+  });
+
+  it("reassesses only through a server-resolved source reference", async () => {
+    const denied = setup([]);
+    const deniedResponse = await denied.app.inject({
+      method: "POST",
+      url: "/api/v1/remittance/medicaid-era-reviews/30000000-0000-4000-8000-000000000001/reassess",
+      headers: { "idempotency-key": "synthetic-reassess-key-1" },
+    });
+    expect(deniedResponse.statusCode).toBe(403);
+    expect(denied.service.reassessmentArtifactReference).not.toHaveBeenCalled();
+    await denied.app.close();
+
+    const allowed = setup(["remittance.match_review"]);
+    const response = await allowed.app.inject({
+      method: "POST",
+      url: "/api/v1/remittance/medicaid-era-reviews/30000000-0000-4000-8000-000000000001/reassess",
+      headers: { "idempotency-key": "synthetic-reassess-key-2" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ status: "held", reasonCode: "SOURCE_ACCOUNT_UNVERIFIED" });
+    expect(allowed.service.reassessmentArtifactReference).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: ORG }),
+      "30000000-0000-4000-8000-000000000001",
+    );
+    expect(allowed.service.evaluate).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: ORG }),
+      "40000000-0000-4000-8000-000000000004",
+      "synthetic-reassess-key-2",
+    );
+    expect(JSON.stringify(response.json())).not.toContain("40000000-0000-4000-8000-000000000004");
     await allowed.app.close();
   });
 

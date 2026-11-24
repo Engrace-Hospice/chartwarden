@@ -27231,6 +27231,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/remittance/medicaid-era-reviews/{id}/reassess": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reassess an evaluator-qualified Medicaid ERA review using its server-resolved source */
+        post: operations["postApiV1RemittanceMedicaiderareviewsByIdReassess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/remittance/revenue-cycle-summary": {
         parameters: {
             query?: never;
@@ -114949,6 +114966,42 @@ export interface operations {
                         version: number;
                         workflowState: string;
                         replay: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RemittanceMedicaiderareviewsByIdReassess: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "review_saved";
+                        /** Format: uuid */
+                        reviewId: string;
+                        version: number;
+                        replay: boolean;
+                    } | {
+                        status: "unavailable" | "held";
+                        reasonCode: string;
                     };
                 };
             };

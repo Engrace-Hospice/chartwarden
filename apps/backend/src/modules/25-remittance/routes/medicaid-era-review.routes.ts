@@ -101,6 +101,28 @@ export function registerMedicaidEraReviewRoutes(
   );
 
   app.post(
+    "/api/v1/remittance/medicaid-era-reviews/:id/reassess",
+    {
+      schema: {
+        params: ReviewParams,
+        response: { 200: MedicaidEraEvaluateResultSchema },
+      },
+      preHandler: [MATCH_REVIEW, IDEMPOTENT],
+      config: {
+        auditRead: { resourceKind: "medicaid_era_review", resourceIdParam: "id" },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const actor = writeActorOf(request);
+      const artifactReference = await service.reassessmentArtifactReference(actor, id);
+      if (!artifactReference)
+        return reply.send({ status: "held", reasonCode: "REASSESSMENT_SOURCE_UNAVAILABLE" });
+      return reply.send(await service.evaluate(actor, artifactReference, idempotencyKey(request)));
+    },
+  );
+
+  app.post(
     "/api/v1/remittance/medicaid-era-reviews/:id/disposition",
     {
       schema: {

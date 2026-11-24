@@ -531,6 +531,28 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
         };
       });
     },
+    /**
+     * Resolve the staged reference for a reassessment only from an evaluator-attested review row.
+     * The opaque artifact reference stays inside the server composition; callers expose only the
+     * review id and the evaluator re-reads the staged bytes and current evidence before writing.
+     * Legacy rows intentionally cannot be promoted through this path.
+     */
+    async reassessmentArtifactReference(actor: M25ReadActor, id: string): Promise<string | null> {
+      return withOrgContext(db, actor, async (tx) => {
+        const review = await find(actor, id, tx);
+        if (
+          review.assessmentTrustStatus !== "isolated_evaluator" ||
+          !review.stageId ||
+          !review.sourceDigest ||
+          !review.accountReference ||
+          !review.sourceEnvironment ||
+          !review.canonicalPayerId ||
+          !review.programId
+        )
+          return null;
+        return review.stageId;
+      });
+    },
     async detail(actor: M25ReadActor, id: string) {
       return withOrgContext(db, actor, async (tx) => {
         const {

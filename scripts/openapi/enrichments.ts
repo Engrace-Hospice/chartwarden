@@ -5134,6 +5134,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     headers: { "Idempotency-Key": { required: true } },
     response: M25MedicaidEraEvaluateResultSchema,
   },
+  "POST /api/v1/remittance/medicaid-era-reviews/:id/reassess": {
+    summary: "Reassess an evaluator-qualified Medicaid ERA review using its server-resolved source",
+    headers: { "Idempotency-Key": { required: true } },
+    response: M25MedicaidEraEvaluateResultSchema,
+  },
   "POST /api/v1/remittance/medicaid-era-reviews/:id/disposition": {
     summary: "Record a versioned nonposting Medicaid ERA investigation disposition",
     headers: { "Idempotency-Key": { required: true } },
