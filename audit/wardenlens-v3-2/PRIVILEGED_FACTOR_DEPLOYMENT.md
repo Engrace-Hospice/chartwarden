@@ -6,27 +6,31 @@ before merging.
 
 ## Steps (run on the production host, in a quiet window, with one admin session left open)
 
+0. **Go to the deploy directory on the host.** It is `/opt/chartwarden` unless the host overrode `DEPLOY_DIR`; it holds
+   `compose.yml`, `deploy.sh` and `.env.production`. `docker compose ls` shows the real path of the running project.
+   Every `docker compose` command below needs `--env-file .env.production -f compose.yml` (the image reference is
+   required from that file), exactly as `deploy.sh` runs them.
 1. **Enrol second factors first.** Every staff member registers a second factor, and every `superadmin` holder registers a
-   passkey, on the passkey page of the web app (the only enrolment path today). Enforcement locks out anyone without a
-   factor (`packages/auth/src/identity/mfa-policy.ts`).
-2. **Turn it on.** In `deploy/production/.env.production` (the file next to `compose.yml`), add this line exactly. Only
-   lowercase `true` enables it; `True` or `1` silently does nothing:
+   passkey, on the passkey page of the web app: `https://app.chartwarden.cloud/security/passkeys` (the only enrolment path
+   today). Enforcement locks out anyone without a factor (`packages/auth/src/identity/mfa-policy.ts`).
+2. **Turn it on.** In `/opt/chartwarden/.env.production`, add this line exactly. Only lowercase `true` enables it; `True`
+   or `1` silently does nothing. Do not print or paste the rest of that file; it holds secrets:
 
    ```
    CHARTWARDEN_MFA_ENFORCEMENT=true
    ```
 
-3. **Restart the API so it reads the file:**
+3. **Restart only the API so it reads the file:**
 
    ```sh
-   cd deploy/production
-   docker compose up -d --force-recreate api
+   cd /opt/chartwarden
+   docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate api
    ```
 
 4. **Verify the variable.** It must print `MFA enforcement enabled`:
 
    ```sh
-   docker compose exec -T api sh -lc \
+   docker compose --env-file .env.production -f compose.yml exec -T api sh -lc \
      'test "$CHARTWARDEN_MFA_ENFORCEMENT" = "true" && echo "MFA enforcement enabled"'
    ```
 
