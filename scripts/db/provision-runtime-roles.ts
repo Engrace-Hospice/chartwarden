@@ -50,19 +50,46 @@
  * platform login (table-wide SELECT on `claimmd_era_m25_stage`, so across tenants), which is what `m23-claimmd-webhook.live`
  * proves is present after migrate-then-provision; compliance/controls.yaml CW-AC-10 names it.
  */
+import { readFileSync } from "node:fs";
 import { Client } from "pg";
+
+function runtimePassword(name: string): string | undefined {
+  const inline = process.env[name];
+  const file = process.env[`${name}_FILE`];
+  if (inline !== undefined && file) {
+    throw new Error(
+      `${name} and ${name}_FILE cannot both be set; keep the password out of env_file`,
+    );
+  }
+  if (!file) return inline;
+  const value = readFileSync(file, "utf8").trimEnd();
+  if (!value) throw new Error(`${name}_FILE is empty`);
+  return value;
+}
 
 const url = process.env.PROVISION_DATABASE_URL ?? process.env.DATABASE_SUPERUSER_URL;
 const platformPassword = process.env.CHARTWARDEN_PLATFORM_PASSWORD;
 const destructionPassword = process.env.CHARTWARDEN_DESTRUCTION_PASSWORD;
 // M36 WP 2.13: the only login that may call m36_reseal_message_revision (migration 1090). Operator-held, never an app credential.
 const bodyBackfillPassword = process.env.CHARTWARDEN_BODY_BACKFILL_PASSWORD;
+const m25EvaluatorPassword = runtimePassword("CHARTWARDEN_M25_EVALUATOR_PASSWORD");
+const revokeM25Evaluator = process.env.CHARTWARDEN_M25_EVALUATOR_REVOKE === "true";
+const m25EraSourcePassword = runtimePassword("CHARTWARDEN_M25_ERA_SOURCE_PASSWORD");
+const revokeM25EraSource = process.env.CHARTWARDEN_M25_ERA_SOURCE_REVOKE === "true";
 
 if (!url) {
   console.error("PROVISION_DATABASE_URL (superuser/owner) is required");
   process.exit(1);
 }
-if (!platformPassword && !destructionPassword && !bodyBackfillPassword) {
+if (
+  !platformPassword &&
+  !destructionPassword &&
+  !bodyBackfillPassword &&
+  !m25EvaluatorPassword &&
+  !revokeM25Evaluator &&
+  !m25EraSourcePassword &&
+  !revokeM25EraSource
+) {
   console.error(
     "set CHARTWARDEN_PLATFORM_PASSWORD, CHARTWARDEN_DESTRUCTION_PASSWORD and/or CHARTWARDEN_BODY_BACKFILL_PASSWORD (≥16 chars) — nothing to provision otherwise",
   );
@@ -72,6 +99,8 @@ for (const [name, pw] of [
   ["CHARTWARDEN_PLATFORM_PASSWORD", platformPassword],
   ["CHARTWARDEN_DESTRUCTION_PASSWORD", destructionPassword],
   ["CHARTWARDEN_BODY_BACKFILL_PASSWORD", bodyBackfillPassword],
+  ["CHARTWARDEN_M25_EVALUATOR_PASSWORD", m25EvaluatorPassword],
+  ["CHARTWARDEN_M25_ERA_SOURCE_PASSWORD", m25EraSourcePassword],
 ] as const) {
   if (pw !== undefined && pw.length < 16) {
     console.error(`${name} must be ≥16 characters`);
@@ -338,7 +367,139 @@ async function main(): Promise<void> {
   };
   const quoteLiteral = (v: string): string => `'${v.replaceAll("'", "''")}'`;
 
+  const quoteIdentifier = (v: string): string => `"${v.replaceAll('"', '""')}"`;
+  const terminateRoleSessions = async (roleName: string): Promise<void> => {
+    await db.query(
+      "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = $1 AND pid <> pg_backend_pid()",
+      [roleName],
+    );
+  };
+  const clearMemberships = async (loginName: string): Promise<void> => {
+    const memberships = await db.query<{ role_name: string }>(
+      "SELECT granted.rolname AS role_name FROM pg_auth_members membership " +
+        "JOIN pg_roles granted ON granted.oid = membership.roleid " +
+        "JOIN pg_roles member ON member.oid = membership.member " +
+        "WHERE member.rolname = $1",
+      [loginName],
+    );
+    for (const { role_name } of memberships.rows) {
+      await run(`REVOKE ${quoteIdentifier(role_name)} FROM ${quoteIdentifier(loginName)};`);
+    }
+    // Also clear reverse memberships. A role that is a member OF this login inherits
+    // its carrier grants even though the login itself has no unexpected memberships.
+    const reverseMemberships = await db.query<{ member_name: string }>(
+      "SELECT member.rolname AS member_name FROM pg_auth_members membership " +
+        "JOIN pg_roles granted ON granted.oid = membership.roleid " +
+        "JOIN pg_roles member ON member.oid = membership.member " +
+        "WHERE granted.rolname = $1 AND member.rolname <> $1",
+      [loginName],
+    );
+    for (const { member_name } of reverseMemberships.rows) {
+      await run(`REVOKE ${quoteIdentifier(loginName)} FROM ${quoteIdentifier(member_name)};`);
+    }
+  };
+  const assertNoOwnedObjects = async (roleName: string): Promise<void> => {
+    const owned = await db.query<{ count: string }>(
+      "SELECT count(*)::text AS count FROM pg_shdepend " +
+        "WHERE refclassid = 'pg_authid'::regclass " +
+        "AND refobjid = (SELECT oid FROM pg_roles WHERE rolname = $1) AND deptype = 'o'",
+      [roleName],
+    );
+    if (Number(owned.rows[0]?.count ?? "0") > 0)
+      throw new Error(`${roleName} owns database objects; refusing runtime-role provisioning`);
+  };
+  const assertSafeCarrier = async (roleName: string, approvedLogin: string): Promise<void> => {
+    const { rows } = await db.query<{
+      rolcanlogin: boolean;
+      rolsuper: boolean;
+      rolcreatedb: boolean;
+      rolcreaterole: boolean;
+      rolreplication: boolean;
+      rolbypassrls: boolean;
+      rolinherit: boolean;
+      has_memberships: boolean;
+    }>(
+      "SELECT r.rolcanlogin,r.rolsuper,r.rolcreatedb,r.rolcreaterole,r.rolreplication," +
+        "r.rolbypassrls,r.rolinherit,(EXISTS(SELECT 1 FROM pg_auth_members m WHERE m.member=r.oid) " +
+        "OR EXISTS(SELECT 1 FROM pg_auth_members m JOIN pg_roles member ON member.oid=m.member " +
+        "WHERE m.roleid=r.oid AND member.rolname<>$2)) AS has_memberships " +
+        "FROM pg_roles r WHERE r.rolname=$1",
+      [roleName, approvedLogin],
+    );
+    const role = rows[0];
+    if (
+      !role ||
+      role.rolcanlogin ||
+      role.rolsuper ||
+      role.rolcreatedb ||
+      role.rolcreaterole ||
+      role.rolreplication ||
+      role.rolbypassrls ||
+      role.rolinherit ||
+      role.has_memberships
+    )
+      throw new Error(
+        `${roleName} has unexpected attributes or memberships; refusing runtime-role provisioning`,
+      );
+  };
+  const provisionIsolatedLogin = async (
+    loginName: string,
+    carrierName: string,
+    password: string,
+  ): Promise<void> => {
+    await assertSafeCarrier(carrierName, loginName);
+    await assertNoOwnedObjects(carrierName);
+    await run(
+      `DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = ${quoteLiteral(loginName)}) THEN CREATE ROLE ${quoteIdentifier(loginName)}; END IF; END $$;`,
+    );
+    await assertNoOwnedObjects(loginName);
+    // Revoke even the approved membership first so an old ADMIN OPTION cannot survive rotation.
+    await clearMemberships(loginName);
+    await run(
+      `ALTER ROLE ${quoteIdentifier(loginName)} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT PASSWORD ${quoteLiteral(password)};`,
+    );
+    await run(`GRANT ${quoteIdentifier(carrierName)} TO ${quoteIdentifier(loginName)};`);
+  };
+  const revokeIsolatedLogin = async (loginName: string): Promise<void> => {
+    await run(
+      `ALTER ROLE ${quoteIdentifier(loginName)} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT PASSWORD NULL;`,
+    );
+    await clearMemberships(loginName);
+    // Keep revocation explicit even if a future ALTER ROLE normalization changes its option list.
+    await run(`ALTER ROLE ${quoteIdentifier(loginName)} PASSWORD NULL;`);
+    await terminateRoleSessions(loginName);
+  };
+
   try {
+    if (revokeM25Evaluator) {
+      await revokeIsolatedLogin("chartwarden_m25_evaluator_login");
+      console.log("✓ chartwarden_m25_evaluator_login disabled and active sessions terminated");
+    } else if (m25EvaluatorPassword) {
+      const carrier = await db.query(
+        "SELECT 1 FROM pg_roles WHERE rolname = 'chartwarden_m25_evaluator'",
+      );
+      if (carrier.rowCount === 0)
+        throw new Error("chartwarden_m25_evaluator is missing — apply migration 1546 first");
+      await provisionIsolatedLogin(
+        "chartwarden_m25_evaluator_login",
+        "chartwarden_m25_evaluator",
+        m25EvaluatorPassword,
+      );
+      console.log(
+        "✓ chartwarden_m25_evaluator_login provisioned (least-privilege, isolated carrier)",
+      );
+    }
+    if (revokeM25EraSource) {
+      await revokeIsolatedLogin("chartwarden_m25_era_source_login");
+      console.log("✓ chartwarden_m25_era_source_login disabled and active sessions terminated");
+    } else if (m25EraSourcePassword) {
+      await provisionIsolatedLogin(
+        "chartwarden_m25_era_source_login",
+        "chartwarden_m25_era_source",
+        m25EraSourcePassword,
+      );
+      console.log("✓ chartwarden_m25_era_source_login provisioned (function-only source reader)");
+    }
     if (platformPassword) {
       // ── the chartwarden_platform carrier + its enumerated grants ─────────────────────────────────
       await run(`DO $$ BEGIN

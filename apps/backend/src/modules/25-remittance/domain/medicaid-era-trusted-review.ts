@@ -5,6 +5,8 @@ import type { MedicaidEraDuplicateDecision } from "./medicaid-era-duplicate-scan
 import type { MedicaidEraObservation } from "./medicaid-era-observation";
 import { observeParsedMedicaidEra } from "./medicaid-era-observation";
 
+const MAX_835_ARTIFACT_BYTES = 5 * 1024 * 1024;
+
 /** Server-owned source account facts. This must be loaded from authenticated account configuration. */
 export interface MedicaidEraAccountEvidence {
   readonly organizationId: string;
@@ -753,6 +755,8 @@ export function createMedicaidEraReviewService(
           reasonCode: "SOURCE_ARTIFACT_REFERENCE_CONFLICT",
           postingAuthorized: false,
         };
+      if (Buffer.byteLength(staged.rawX12, "utf8") > MAX_835_ARTIFACT_BYTES)
+        return { status: "held", reasonCode: "ERA_ARTIFACT_TOO_LARGE", postingAuthorized: false };
       const actualDigest = createHash("sha256").update(staged.rawX12, "utf8").digest("hex");
       if (actualDigest !== staged.source.artifactDigest.toLowerCase())
         return {

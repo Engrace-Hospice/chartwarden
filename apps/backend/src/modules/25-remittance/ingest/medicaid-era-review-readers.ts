@@ -9,7 +9,7 @@ import {
   medicaidSubmissionEvidence,
 } from "../routes/medicaid-claim-facts";
 import { providerEntityScopeCondition } from "../routes/scope";
-import { CLAIMMD_ERA_RESOLUTION_JOB_ID, type createClaimMdEraStore } from "./claimmd-era-store";
+import type { createClaimMdEraStore } from "./claimmd-era-store";
 
 const STAGE = schema.claimmdEraM25Stage;
 const REVIEW = schema.medicaidEraReview;
@@ -66,15 +66,26 @@ export function buildDrizzleMedicaidEraReviewReaders(
           !actor.providerEntityScope.includes(stage.providerEntityId))
       )
         return null;
-      const captured = await store.readCapturedEra({
-        inboxId: stage.sourceInboxId,
-        accountReference: stage.accountReference,
-        usage: stage.usage as "test" | "production",
-        executionJobId: CLAIMMD_ERA_RESOLUTION_JOB_ID,
+      const sourceFacts = await store.readStagedEra({
+        stageId: stage.id,
+        organizationId: actor.organizationId,
+        providerEntityId: stage.providerEntityId,
       });
-      if (captured.vendor !== "claimmd" || captured.eraId !== stage.eraId || !captured.capturedAt)
+      if (
+        !sourceFacts ||
+        sourceFacts.stage.sourceInboxId !== stage.sourceInboxId ||
+        sourceFacts.stage.accountReference !== stage.accountReference ||
+        sourceFacts.stage.usage !== stage.usage ||
+        sourceFacts.stage.eraId !== stage.eraId ||
+        sourceFacts.stage.fileIndex !== stage.fileIndex ||
+        sourceFacts.stage.sourceFileDigest !== stage.fileDigest ||
+        sourceFacts.captured.vendor !== "claimmd" ||
+        sourceFacts.captured.eraId !== stage.eraId ||
+        !sourceFacts.captured.capturedAt
+      )
         return null;
-      const rawX12 = captured.files[stage.fileIndex];
+      const captured = sourceFacts.captured;
+      const rawX12 = captured.files[sourceFacts.stage.fileIndex];
       if (typeof rawX12 !== "string") return null;
       const digest = createHash("sha256").update(rawX12, "utf8").digest("hex");
       if (digest !== stage.fileDigest || digest !== stage.fileDigest.toLowerCase()) return null;

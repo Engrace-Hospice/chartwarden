@@ -19,7 +19,10 @@ export const MedicaidEraReviewQuerySchema = Type.Object(
 const Item = Type.Object({
   id: Id,
   providerEntityId: Id,
-  assessmentTrustStatus: Type.Literal("legacy_unverified"),
+  assessmentTrustStatus: Type.Union([
+    Type.Literal("legacy_unverified"),
+    Type.Literal("isolated_evaluator"),
+  ]),
   vendor: Type.Literal("claimmd"),
   sourceEnvironment: Type.Union([Type.Literal("test"), Type.Literal("production"), Type.Null()]),
   canonicalPayerId: Type.Union([Id, Type.Null()]),
@@ -40,7 +43,10 @@ export const MedicaidEraReviewDetailSchema = Type.Object({
   id: Id,
   organizationId: Id,
   providerEntityId: Id,
-  assessmentTrustStatus: Type.Literal("legacy_unverified"),
+  assessmentTrustStatus: Type.Union([
+    Type.Literal("legacy_unverified"),
+    Type.Literal("isolated_evaluator"),
+  ]),
   vendor: Type.Literal("claimmd"),
   accountReference: Type.Union([Type.String(), Type.Null()]),
   sourceEnvironment: Type.Union([Type.Literal("test"), Type.Literal("production"), Type.Null()]),
@@ -67,7 +73,7 @@ export const MedicaidEraReviewHistorySchema = Type.Object({
       actorMembershipId: Type.Union([Id, Type.Null()]),
       trustStatus: Type.Union([
         Type.Literal("legacy_unverified"),
-        Type.Literal("evaluator_attested"),
+        Type.Literal("isolated_evaluator"),
       ]),
       createdAt: Type.String({ format: "date-time" }),
     }),

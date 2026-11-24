@@ -1,0 +1,82 @@
+# L6C2 opt-in overlay. The base topology remains disabled and does not require these secret files.
+services:
+  provision:
+    environment:
+      CHARTWARDEN_M25_EVALUATOR_PASSWORD_FILE: /run/secrets/ep
+      CHARTWARDEN_M25_ERA_SOURCE_PASSWORD_FILE: /run/secrets/sp
+    secrets:
+      - source: m25_evaluator_login_password
+        target: ep
+      - source: m25_era_source_login_password
+        target: sp
+
+  api:
+    environment:
+      M25_EVALUATOR_ENABLED: "true"
+    secrets:
+      - m25_evaluator_command_private_key
+    networks: [default, scan, audit, m25-evaluator-internal]
+
+  postgres:
+    networks: [default, rust-db, m25-evaluator-internal]
+
+  m25-evaluator:
+    profiles: ["m25-evaluator"]
+    image: ${CHARTWARDEN_IMAGE:?set immutable GHCR image in .env.production}
+    pull_policy: always
+    mem_limit: 768m
+    cpus: 1
+    mem_reservation: 256m
+    pids_limit: 64
+    init: true
+    restart: unless-stopped
+    command: ["bun", "run", "apps/backend/src/m25-evaluator.ts"]
+    environment:
+      M25_EVALUATOR_PORT: "3012"
+      M25_EVALUATOR_SIGNING_KEY_ID: m25-evaluator-v1
+      M25_EVALUATOR_PUBLIC_KEY_FILE: /run/secrets/m25_evaluator_command_public_key
+      M25_EVALUATOR_DATABASE_URL_FILE: /run/secrets/m25_evaluator_database_url
+      M25_EVALUATOR_APP_DATABASE_URL_FILE: /run/secrets/m25_evaluator_app_database_url
+      M25_EVALUATOR_ERA_SOURCE_DATABASE_URL_FILE: /run/secrets/m25_evaluator_era_source_database_url
+      M25_EVALUATOR_CLAIMMD_KEYRING_FILE: /run/secrets/m25_evaluator_claimmd_keyring
+    secrets:
+      - m25_evaluator_command_public_key
+      - m25_evaluator_database_url
+      - m25_evaluator_app_database_url
+      - m25_evaluator_era_source_database_url
+      - m25_evaluator_claimmd_keyring
+    networks: [m25-evaluator-internal]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      provision:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "bun", "-e", "process.exit((await fetch('http://localhost:3012/ready')).ok ? 0 : 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+
+secrets:
+  m25_evaluator_login_password:
+    file: ${M25_EVALUATOR_LOGIN_PASSWORD_FILE:?set evaluator login-password secret file}
+  m25_era_source_login_password:
+    file: ${M25_ERA_SOURCE_LOGIN_PASSWORD_FILE:?set ERA source-reader login-password secret file}
+  m25_evaluator_command_private_key:
+    file: ${M25_EVALUATOR_COMMAND_PRIVATE_KEY_FILE:?set evaluator private-key file}
+  m25_evaluator_command_public_key:
+    file: ${M25_EVALUATOR_COMMAND_PUBLIC_KEY_FILE:?set evaluator public-key file}
+  m25_evaluator_database_url:
+    file: ${M25_EVALUATOR_DATABASE_URL_FILE:?set evaluator database-url file}
+  m25_evaluator_app_database_url:
+    file: ${M25_EVALUATOR_APP_DATABASE_URL_FILE:?set evaluator app database-url file}
+  m25_evaluator_era_source_database_url:
+    file: ${M25_EVALUATOR_ERA_SOURCE_DATABASE_URL_FILE:?set evaluator source-reader database-url file}
+  m25_evaluator_claimmd_keyring:
+    file: ${M25_EVALUATOR_CLAIMMD_KEYRING_FILE:?set protected Claim.MD artifact keyring file}
+
+networks:
+  m25-evaluator-internal:
+    internal: true

@@ -5,6 +5,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   timestamp,
   unique,
   uuid,
@@ -88,6 +89,8 @@ export const medicaidEraReviewHistory = pgTable(
     note: varchar("note", { length: 1000 }),
     actorMembershipId: uuid("actor_membership_id").notNull(),
     idempotencyKeyHash: varchar("idempotency_key_hash", { length: 64 }),
+    trustStatus: varchar("trust_status", { length: 24 }).notNull().default("legacy_unverified"),
+    operationFingerprint: varchar("operation_fingerprint", { length: 64 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -101,6 +104,47 @@ export const medicaidEraReviewHistory = pgTable(
       t.providerEntityId,
       t.reviewId,
       t.version,
+    ),
+  }),
+);
+
+/** Durable request-key reservations; unlike review history, an identical no-op assessment needs no event. */
+export const medicaidEraReviewIdempotency = pgTable(
+  "medicaid_era_review_idempotency",
+  {
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    providerEntityId: uuid("provider_entity_id").notNull(),
+    reviewId: uuid("review_id")
+      .notNull()
+      .references(() => medicaidEraReview.id, { onDelete: "restrict" }),
+    idempotencyKeyHash: varchar("idempotency_key_hash", { length: 64 }).notNull(),
+    operation: varchar("operation", { length: 16 }).notNull(),
+    operationFingerprint: varchar("operation_fingerprint", { length: 64 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    key: primaryKey({
+      name: "medicaid_era_review_idempotency_pkey",
+      columns: [t.organizationId, t.idempotencyKeyHash],
+    }),
+    keyHash: check(
+      "medicaid_era_review_idempotency_key_hash_ck",
+      sql`idempotency_key_hash ~ '^[0-9a-f]{64}$'`,
+    ),
+    operation: check(
+      "medicaid_era_review_idempotency_operation_ck",
+      sql`operation IN ('evaluate','note','transition')`,
+    ),
+    fingerprint: check(
+      "medicaid_era_review_idempotency_fingerprint_ck",
+      sql`operation_fingerprint ~ '^[0-9a-f]{64}$'`,
+    ),
+    review: index("medicaid_era_review_idempotency_review_ix").on(
+      t.organizationId,
+      t.providerEntityId,
+      t.reviewId,
     ),
   }),
 );

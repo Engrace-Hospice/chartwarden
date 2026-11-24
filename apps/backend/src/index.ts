@@ -1418,6 +1418,7 @@ import {
   M25_PLATFORM_JOB_ID,
   type RemittanceAiPromptRegistryPort,
   type TerminologyLookupPort,
+  bindConfiguredRemoteEvaluatorWrites,
   buildDrizzleAdrReadinessService,
   buildDrizzleAdrService,
   buildDrizzleAuditRequestService,
@@ -8631,11 +8632,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           withClaimsBillingGate(app, M25_ROUTE_CLASSES, () =>
             mountM25Routes(app, {
               readService: buildDrizzleM25ReadService(dbHandle.db, m25Terminology),
-              medicaidEraReviewService: buildDrizzleMedicaidEraReviewWorkflow(
-                dbHandle.db,
-                createMedicaidEraReviewService(
-                  buildDrizzleMedicaidEraReviewReaders(dbHandle.db, claimMdEraStore),
+              medicaidEraReviewService: bindConfiguredRemoteEvaluatorWrites(
+                buildDrizzleMedicaidEraReviewWorkflow(
+                  dbHandle.db,
+                  createMedicaidEraReviewService(
+                    buildDrizzleMedicaidEraReviewReaders(dbHandle.db, claimMdEraStore),
+                  ),
                 ),
+                process.env,
               ),
               ...(claimMdEraReviewKeyRing
                 ? {

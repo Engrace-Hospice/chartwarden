@@ -14,7 +14,7 @@ export type M25ReadActor = Pick<RouteActor, "organizationId" | "userId" | "roles
   readonly providerEntityScope?: readonly string[];
 };
 export type M25WriteActor = M25ReadActor &
-  Pick<RouteActor, "stepUpRecent"> & { readonly membershipId: string };
+  Pick<RouteActor, "stepUpRecent"> & { readonly membershipId: string; readonly sessionId?: string };
 
 function providerEntityScopeOf(
   request: ContextCarrier,
@@ -39,12 +39,14 @@ export function actorOf(request: ContextCarrier): M25ReadActor {
 export function writeActorOf(request: ContextCarrier): M25WriteActor {
   const actor = kitWriteActorOf(request);
   const { organizationId, userId, roles, membershipId, stepUpRecent } = actor;
+  const sessionId = request.context?.attributes?.sessionId;
   return {
     organizationId,
     userId,
     roles,
     membershipId,
     stepUpRecent,
+    ...(typeof sessionId === "string" && sessionId.length > 0 ? { sessionId } : {}),
     providerEntityScope: providerEntityScopeOf(request, actor),
   };
 }

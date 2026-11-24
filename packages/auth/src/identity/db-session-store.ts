@@ -15,7 +15,7 @@ import type {
   OrgScope,
   StepUpFactor,
 } from "@chartwarden/types";
-import { eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import {
   SESSION_CLASSES,
   type SessionClass,
@@ -193,6 +193,7 @@ export function createDbSessionContextStore(
         .select({
           userId: schema.sessions.userId,
           activeOrganizationId: schema.sessions.activeOrganizationId,
+          expiresAt: schema.sessions.expiresAt,
           lastStepUpAt: schema.sessions.lastStepUpAt,
           lastStepUpFactor: schema.sessions.lastStepUpFactor,
           sessionClass: schema.sessions.sessionClass,
@@ -212,7 +213,7 @@ export function createDbSessionContextStore(
           schema.deviceAttestations,
           eq(schema.deviceAttestations.id, schema.sessions.deviceAttestationId),
         )
-        .where(eq(schema.sessions.id, sessionId))
+        .where(and(eq(schema.sessions.id, sessionId), gt(schema.sessions.expiresAt, new Date())))
         .limit(1);
       const row = rows[0];
       if (!row) return null;

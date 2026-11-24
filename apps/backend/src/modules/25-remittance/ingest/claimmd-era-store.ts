@@ -51,10 +51,11 @@ export interface ClaimMdEraLease {
   readonly cursor: string;
 }
 
-/** Central source rows are accessed only through the audited platform context and dedicated grants. */
+/** Central source rows are accessed through audited source-reader or existing platform capabilities. */
 export function createClaimMdEraStore(input: {
-  readonly platformDb: DbClient;
-  readonly auditBypass: PlatformBypassAuditor<Tx>;
+  readonly platformDb?: DbClient;
+  readonly sourceReaderDb?: DbClient;
+  readonly auditBypass?: PlatformBypassAuditor<Tx>;
   readonly keyRing: ClaimMdPayloadKeyRing;
 }) {
   const cipher = createClaimMdProtectedPayloadCipher(input.keyRing, "claimmd-era:v1");
@@ -67,14 +68,73 @@ export function createClaimMdEraStore(input: {
     fn: (tx: Tx) => Promise<T>,
     jobId = CLAIMMD_ERA_CAPTURE_JOB_ID,
     options?: { readonly isolation?: "repeatable read" },
-  ) =>
-    withPlatformContext(
+  ): Promise<T> => {
+    if (!input.platformDb || !input.auditBypass)
+      throw new Error("CLAIMMD_ERA_PLATFORM_STORE_UNAVAILABLE");
+    return withPlatformContext(
       input.platformDb,
       { jobId, reason, crossTenant: true },
       input.auditBypass,
       fn,
       options,
     );
+  };
+  type StagedEraSourceRow = {
+    stage_id: string;
+    source_inbox_id: string;
+    stream_id: string;
+    vendor: string;
+    account_reference: string;
+    usage: string;
+    era_id: string;
+    file_index: number;
+    stage_digest: string;
+    stage_state: string;
+    safe_reason_code: string | null;
+    captured_at: Date | string;
+    inbox_digest: string;
+    key_id: string;
+    cipher_text: string;
+    file_count: number;
+    delivery_state: string;
+  };
+  const readStagedEraRow = async (
+    stageId: string,
+    organizationId: string,
+    providerEntityId: string,
+  ) => {
+    if (!input.sourceReaderDb) return null;
+    const { rows } = await input.sourceReaderDb.execute(sql`
+      SELECT * FROM m25_read_staged_claimmd_era(
+        ${stageId}::uuid, ${organizationId}::uuid, ${providerEntityId}::uuid
+      )
+    `);
+    return (rows[0] as StagedEraSourceRow | undefined) ?? null;
+  };
+  const decryptStagedEra = (row: StagedEraSourceRow): string[] => {
+    const sealed = Buffer.from(row.cipher_text, "base64");
+    const marker = sealed.indexOf(46, 3);
+    if (
+      sealed.subarray(0, 3).toString() !== "v1." ||
+      marker < 4 ||
+      sealed.subarray(3, marker).toString() !== row.key_id
+    )
+      throw new Error("CLAIMMD_ERA_SOURCE_INVALID");
+    let files: unknown;
+    try {
+      files = JSON.parse(cipher.open(row.stream_id, `${row.era_id}:835`, sealed));
+    } catch {
+      throw new Error("CLAIMMD_ERA_SOURCE_INVALID");
+    }
+    if (
+      !Array.isArray(files) ||
+      files.length !== row.file_count ||
+      files.some((file) => typeof file !== "string") ||
+      createHash("sha256").update(JSON.stringify(files), "utf8").digest("hex") !== row.inbox_digest
+    )
+      throw new Error("CLAIMMD_ERA_SOURCE_INTEGRITY_FAILED");
+    return files as string[];
+  };
   const leasePredicate = (lease: ClaimMdEraLease) =>
     and(
       eq(S.id, lease.streamId),
@@ -94,6 +154,23 @@ export function createClaimMdEraStore(input: {
       readonly accountReference: string;
       readonly usage: "test" | "production";
     }): Promise<"exact_duplicate" | "possible_duplicate" | "none" | "conflict"> {
+      if (input.sourceReaderDb) {
+        const row = await readStagedEraRow(
+          inputStage.stageId,
+          inputStage.organizationId,
+          inputStage.providerEntityId,
+        );
+        if (
+          !row ||
+          row.vendor !== "claimmd" ||
+          row.account_reference !== inputStage.accountReference ||
+          row.usage !== inputStage.usage
+        )
+          return "conflict";
+        if (row.delivery_state === "exact_duplicate") return "exact_duplicate";
+        if (row.delivery_state === "possible_duplicate") return "possible_duplicate";
+        return row.delivery_state === "delivered" ? "none" : "conflict";
+      }
       return run(
         "Claim.MD ERA duplicate state for authorized Medicaid review stage",
         async (tx) => {
@@ -120,6 +197,48 @@ export function createClaimMdEraStore(input: {
         CLAIMMD_ERA_RESOLUTION_JOB_ID,
         { isolation: "repeatable read" },
       );
+    },
+    /** One audited database function returns only the ERA bound to this exact tenant stage. */
+    async readStagedEra(inputRead: {
+      readonly stageId: string;
+      readonly organizationId: string;
+      readonly providerEntityId: string;
+    }) {
+      const row = await readStagedEraRow(
+        inputRead.stageId,
+        inputRead.organizationId,
+        inputRead.providerEntityId,
+      );
+      if (!row) return null;
+      const capturedAt =
+        row.captured_at instanceof Date ? row.captured_at : new Date(row.captured_at);
+      if (!Number.isFinite(capturedAt.getTime())) throw new Error("CLAIMMD_ERA_SOURCE_INVALID");
+      return {
+        stage: {
+          id: row.stage_id,
+          sourceInboxId: row.source_inbox_id,
+          vendor: row.vendor,
+          accountReference: row.account_reference,
+          usage: row.usage as "test" | "production",
+          eraId: row.era_id,
+          fileIndex: row.file_index,
+          sourceFileDigest: row.stage_digest,
+          state: row.stage_state,
+          safeReasonCode: row.safe_reason_code,
+        },
+        captured: {
+          inboxId: row.source_inbox_id,
+          streamId: row.stream_id,
+          vendor: row.vendor,
+          accountReference: row.account_reference,
+          usage: row.usage as "test" | "production",
+          eraId: row.era_id,
+          capturedAt,
+          originalDigest: row.inbox_digest,
+          files: decryptStagedEra(row),
+        },
+        deliveryState: row.delivery_state,
+      };
     },
     /**
      * Tenant history is projected only after the M25 stage has been authorized and loaded. The exact

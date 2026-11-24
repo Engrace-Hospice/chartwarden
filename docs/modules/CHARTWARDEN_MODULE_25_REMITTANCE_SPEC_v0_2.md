@@ -2169,3 +2169,7 @@ Patch against `module-manifest.ts`:
 
 **End of M25 Lock-Grade Spec v0.2**
 
+
+## Implementation note — isolated Medicaid ERA review evaluator (2026-11-24)
+
+[ADR-0115](../adr/ADR-0115-isolated-m25-medicaid-era-evaluator.md) places nonposting Medicaid ERA assessment and investigation writes in a separate, default-disabled evaluator process. Tenant API reads remain on the application role. Mutations are minimal signed commands, current operator authority is revalidated in the evaluator, and only its NOBYPASSRLS role may write `medicaid_era_review` and append history. This does not enable ERA retrieval, financial posting, Medicaid claim transitions or outbound submission.

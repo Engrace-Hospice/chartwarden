@@ -9,6 +9,7 @@ import { providerEntityScopeCondition } from "../routes/scope";
 
 const REVIEW = schema.medicaidEraReview;
 const HISTORY = schema.medicaidEraReviewHistory;
+const IDEMPOTENCY = schema.medicaidEraReviewIdempotency;
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 type State =
   | "needs_review"
@@ -24,16 +25,39 @@ const allowed = new Set<State>([
   "reopened",
 ]);
 
-export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: Evaluator) {
-  // No database client may be injected here until a dedicated evaluator identity is isolated from
-  // the API and general workers. In particular, DATABASE_PLATFORM_URL is not a trusted writer.
-  const write = <T>(_reason: string, _fn: (tx: Tx) => Promise<T>): Promise<T> =>
-    Promise.reject(
-      new DegradedError(
-        "MEDICAID_ERA_REVIEW_WRITER_UNAVAILABLE",
-        "nonposting review writes are unavailable",
-      ),
-    );
+function actorOperationIdentity(actor: M25WriteActor) {
+  return {
+    organizationId: actor.organizationId,
+    userId: actor.userId,
+    membershipId: actor.membershipId,
+    sessionId: actor.sessionId ?? null,
+    roles: [...actor.roles].sort(),
+    providerEntityScope:
+      actor.providerEntityScope === undefined ? null : [...actor.providerEntityScope].sort(),
+    stepUpRecent: actor.stepUpRecent,
+  };
+}
+
+export function buildDrizzleMedicaidEraReviewWorkflow(
+  db: DbClient,
+  evaluator: Evaluator,
+  isolatedWriterDb?: DbClient,
+) {
+  // The API and general workers intentionally omit isolatedWriterDb. Only the separately deployed
+  // evaluator process receives the chartwarden_m25_evaluator credential.
+  const write = <T>(
+    actor: M25WriteActor,
+    _reason: string,
+    fn: (tx: Tx) => Promise<T>,
+  ): Promise<T> =>
+    isolatedWriterDb
+      ? withOrgContext(isolatedWriterDb, actor, fn)
+      : Promise.reject(
+          new DegradedError(
+            "MEDICAID_ERA_REVIEW_WRITER_UNAVAILABLE",
+            "nonposting review writes are unavailable",
+          ),
+        );
   const find = async (
     actor: M25ReadActor,
     id: string,
@@ -74,6 +98,9 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
       const accountReference = attribution.accountReference;
       const sourceEnvironment = attribution.usage;
       const artifactDigest = result.artifactDigest;
+      const evaluationSnapshotFingerprint = createHash("sha256")
+        .update(JSON.stringify(result))
+        .digest("hex");
       if (
         attribution.organizationId !== actor.organizationId ||
         !providerEntityId ||
@@ -104,6 +131,8 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
           reasonCode: item.reasonCode,
           matchStatus: item.matchStatus,
           matchedClaim: item.matchedClaim,
+          attribution: item.attribution,
+          evidenceReferences: item.evidenceReferences,
           amounts: item.amounts,
           unresolvedRequirements: item.unresolvedRequirements,
           postingAuthorized: false,
@@ -125,6 +154,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
         .update(
           JSON.stringify({
             version: "l5-v1",
+            actor: actorOperationIdentity(actor),
             decisionStatus,
             reasonCodes,
             claimMatchStatus,
@@ -133,10 +163,36 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
           }),
         )
         .digest("hex");
-      return write("Authorized M25 nonposting Medicaid ERA assessment", async (tx) => {
+      const operationFingerprint = createHash("sha256")
+        .update(
+          JSON.stringify({
+            operation: "evaluate",
+            actor: actorOperationIdentity(actor),
+            artifactId,
+            assessmentFingerprint,
+          }),
+        )
+        .digest("hex");
+      return write(actor, "Authorized M25 nonposting Medicaid ERA assessment", async (tx) => {
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.organizationId}:${artifactId}:${artifactDigest}`}, 1))`,
         );
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.organizationId}:idempotency:${digestKey}`}, 2))`,
+        );
+        // Assessment inputs are read through M24/M40/M25 owners before the restricted writer transaction.
+        // Re-read them after acquiring the per-artifact lock so an evaluation that waited behind a newer
+        // assessment cannot overwrite it with stale account, claim, duplicate or submission evidence.
+        const currentEvaluation = await evaluator.inspect(actor, artifactId);
+        if (
+          currentEvaluation.status !== "review_only" ||
+          currentEvaluation.artifactDigest !== artifactDigest ||
+          createHash("sha256").update(JSON.stringify(currentEvaluation)).digest("hex") !==
+            evaluationSnapshotFingerprint
+        )
+          throw new ConflictError(
+            "authoritative ERA evidence changed; evaluate the artifact again",
+          );
         const [existing] = await tx
           .select()
           .from(REVIEW)
@@ -149,31 +205,51 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
             ),
           )
           .limit(1);
-        if (existing?.assessmentFingerprint === assessmentFingerprint)
+        const [priorOperation] = await tx
+          .select({
+            reviewId: IDEMPOTENCY.reviewId,
+            operation: IDEMPOTENCY.operation,
+            operationFingerprint: IDEMPOTENCY.operationFingerprint,
+          })
+          .from(IDEMPOTENCY)
+          .where(
+            and(
+              eq(IDEMPOTENCY.organizationId, actor.organizationId),
+              eq(IDEMPOTENCY.idempotencyKeyHash, digestKey),
+            ),
+          )
+          .limit(1);
+        if (
+          priorOperation &&
+          (priorOperation.reviewId !== existing?.id ||
+            priorOperation.operation !== "evaluate" ||
+            priorOperation.operationFingerprint !== operationFingerprint)
+        )
+          throw new ConflictError("this idempotency key was used for another review operation");
+        if (priorOperation && existing)
           return {
             status: "review_saved" as const,
             reviewId: existing.id,
             version: existing.version,
             replay: true,
           };
+        if (existing?.assessmentFingerprint === assessmentFingerprint) {
+          await tx.insert(IDEMPOTENCY).values({
+            organizationId: actor.organizationId,
+            providerEntityId,
+            reviewId: existing.id,
+            idempotencyKeyHash: digestKey,
+            operation: "evaluate",
+            operationFingerprint,
+          });
+          return {
+            status: "review_saved" as const,
+            reviewId: existing.id,
+            version: existing.version,
+            replay: true,
+          };
+        }
         if (existing) {
-          const [priorAction] = await tx
-            .select({ id: HISTORY.id })
-            .from(HISTORY)
-            .where(
-              and(
-                eq(HISTORY.organizationId, actor.organizationId),
-                eq(HISTORY.idempotencyKeyHash, digestKey),
-              ),
-            )
-            .limit(1);
-          if (priorAction)
-            return {
-              status: "review_saved" as const,
-              reviewId: existing.id,
-              version: existing.version,
-              replay: true,
-            };
           const version = existing.version + 1;
           const [updated] = await tx
             .update(REVIEW)
@@ -185,6 +261,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
               claimMatchStatus,
               duplicateStatus,
               safeSummary,
+              assessmentTrustStatus: "isolated_evaluator",
               version,
               updatedAt: new Date(),
             })
@@ -197,6 +274,14 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
             )
             .returning({ id: REVIEW.id, version: REVIEW.version });
           if (!updated) throw new ConflictError("the review changed during reassessment");
+          await tx.insert(IDEMPOTENCY).values({
+            organizationId: actor.organizationId,
+            providerEntityId,
+            reviewId: existing.id,
+            idempotencyKeyHash: digestKey,
+            operation: "evaluate",
+            operationFingerprint,
+          });
           await tx.insert(HISTORY).values({
             organizationId: actor.organizationId,
             providerEntityId,
@@ -206,6 +291,8 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
             reasonCode: "CURRENT_SOURCE_FACTS_REASSESSED",
             actorMembershipId: actor.membershipId,
             idempotencyKeyHash: digestKey,
+            operationFingerprint,
+            trustStatus: "isolated_evaluator",
           });
           return {
             status: "review_saved" as const,
@@ -233,8 +320,17 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
             claimMatchStatus,
             duplicateStatus,
             safeSummary,
+            assessmentTrustStatus: "isolated_evaluator",
           })
           .returning({ id: REVIEW.id, version: REVIEW.version });
+        await tx.insert(IDEMPOTENCY).values({
+          organizationId: actor.organizationId,
+          providerEntityId,
+          reviewId: row!.id,
+          idempotencyKeyHash: digestKey,
+          operation: "evaluate",
+          operationFingerprint,
+        });
         await tx.insert(HISTORY).values({
           organizationId: actor.organizationId,
           providerEntityId,
@@ -244,6 +340,8 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
           reasonCode: "NONPOSTING_ASSESSMENT",
           actorMembershipId: actor.membershipId,
           idempotencyKeyHash: digestKey,
+          operationFingerprint,
+          trustStatus: "isolated_evaluator",
         });
         return {
           status: "review_saved" as const,
@@ -368,6 +466,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
             action: HISTORY.action,
             reasonCode: HISTORY.reasonCode,
             actorMembershipId: HISTORY.actorMembershipId,
+            trustStatus: HISTORY.trustStatus,
             createdAt: HISTORY.createdAt,
           })
           .from(HISTORY)
@@ -379,15 +478,17 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
             ),
           )
           .orderBy(HISTORY.version);
-        if (review.assessmentTrustStatus === "legacy_unverified")
-          return items.map((item) => ({
-            ...item,
-            action: "legacy_unverified",
-            reasonCode: null,
-            actorMembershipId: null,
-            trustStatus: "legacy_unverified" as const,
-          }));
-        return items.map((item) => ({ ...item, trustStatus: "evaluator_attested" as const }));
+        return items.map((item) =>
+          item.trustStatus === "legacy_unverified"
+            ? {
+                ...item,
+                action: "legacy_unverified",
+                reasonCode: null,
+                actorMembershipId: null,
+                trustStatus: "legacy_unverified" as const,
+              }
+            : { ...item, trustStatus: "isolated_evaluator" as const },
+        );
       });
     },
     async addNote(
@@ -400,22 +501,40 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
       if (!/^[A-Z0-9_]{2,64}$/.test(reasonCode))
         throw new ValidationError("invalid review note code", []);
       const keyHash = createHash("sha256").update(idempotencyKey).digest("hex");
-      return write("Authorized M25 Medicaid ERA investigation note", async (tx) => {
+      const operationFingerprint = createHash("sha256")
+        .update(
+          JSON.stringify({
+            operation: "note",
+            actor: actorOperationIdentity(actor),
+            id,
+            expectedVersion,
+            reasonCode,
+          }),
+        )
+        .digest("hex");
+      return write(actor, "Authorized M25 Medicaid ERA investigation note", async (tx) => {
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.organizationId}:${id}`}, 1))`,
         );
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.organizationId}:idempotency:${keyHash}`}, 2))`,
+        );
         const [prior] = await tx
           .select()
-          .from(HISTORY)
+          .from(IDEMPOTENCY)
           .where(
             and(
-              eq(HISTORY.organizationId, actor.organizationId),
-              eq(HISTORY.idempotencyKeyHash, keyHash),
+              eq(IDEMPOTENCY.organizationId, actor.organizationId),
+              eq(IDEMPOTENCY.idempotencyKeyHash, keyHash),
             ),
           )
           .limit(1);
         if (prior) {
-          if (prior.reviewId !== id || prior.action !== "note" || prior.reasonCode !== reasonCode)
+          if (
+            prior.reviewId !== id ||
+            prior.operation !== "note" ||
+            prior.operationFingerprint !== operationFingerprint
+          )
             throw new ConflictError("this idempotency key was used for another review action");
           const current = await find(actor, id, tx);
           return {
@@ -429,6 +548,14 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
         if (current.version !== expectedVersion)
           throw new ConflictError("reload the review before adding a note");
         const version = current.version + 1;
+        await tx.insert(IDEMPOTENCY).values({
+          organizationId: actor.organizationId,
+          providerEntityId: current.providerEntityId,
+          reviewId: id,
+          idempotencyKeyHash: keyHash,
+          operation: "note",
+          operationFingerprint,
+        });
         await tx
           .update(REVIEW)
           .set({ version, updatedAt: new Date() })
@@ -448,6 +575,8 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
           reasonCode,
           actorMembershipId: actor.membershipId,
           idempotencyKeyHash: keyHash,
+          operationFingerprint,
+          trustStatus: "isolated_evaluator",
         });
         return { id, version, workflowState: current.workflowState, replay: false };
       });
@@ -463,22 +592,41 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
       if (!allowed.has(state) || !/^[A-Z0-9_]{2,64}$/.test(reasonCode))
         throw new ValidationError("invalid nonposting review disposition", []);
       const keyHash = createHash("sha256").update(idempotencyKey).digest("hex");
-      return write("Authorized M25 Medicaid ERA review disposition", async (tx) => {
+      const operationFingerprint = createHash("sha256")
+        .update(
+          JSON.stringify({
+            operation: "transition",
+            actor: actorOperationIdentity(actor),
+            id,
+            expectedVersion,
+            state,
+            reasonCode,
+          }),
+        )
+        .digest("hex");
+      return write(actor, "Authorized M25 Medicaid ERA review disposition", async (tx) => {
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.organizationId}:${id}`}, 1))`,
         );
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.organizationId}:idempotency:${keyHash}`}, 2))`,
+        );
         const [prior] = await tx
           .select()
-          .from(HISTORY)
+          .from(IDEMPOTENCY)
           .where(
             and(
-              eq(HISTORY.organizationId, actor.organizationId),
-              eq(HISTORY.idempotencyKeyHash, keyHash),
+              eq(IDEMPOTENCY.organizationId, actor.organizationId),
+              eq(IDEMPOTENCY.idempotencyKeyHash, keyHash),
             ),
           )
           .limit(1);
         if (prior) {
-          if (prior.reviewId !== id || prior.action !== state || prior.reasonCode !== reasonCode)
+          if (
+            prior.reviewId !== id ||
+            prior.operation !== "transition" ||
+            prior.operationFingerprint !== operationFingerprint
+          )
             throw new ConflictError("this idempotency key was used for another review action");
           const current = await find(actor, id, tx);
           return {
@@ -494,6 +642,14 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
         if (current.workflowState === "reviewed_not_posted" && state !== "reopened")
           throw new ConflictError("reopen the investigation before changing its disposition");
         const version = current.version + 1;
+        await tx.insert(IDEMPOTENCY).values({
+          organizationId: actor.organizationId,
+          providerEntityId: current.providerEntityId,
+          reviewId: id,
+          idempotencyKeyHash: keyHash,
+          operation: "transition",
+          operationFingerprint,
+        });
         const [updated] = await tx
           .update(REVIEW)
           .set({ workflowState: state, version, updatedAt: new Date() })
@@ -519,6 +675,8 @@ export function buildDrizzleMedicaidEraReviewWorkflow(db: DbClient, evaluator: E
           reasonCode,
           actorMembershipId: actor.membershipId,
           idempotencyKeyHash: keyHash,
+          operationFingerprint,
+          trustStatus: "isolated_evaluator",
         });
         return { ...updated, replay: false };
       });

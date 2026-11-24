@@ -114763,8 +114763,7 @@ export interface operations {
                             id: string;
                             /** Format: uuid */
                             providerEntityId: string;
-                            /** @constant */
-                            assessmentTrustStatus: "legacy_unverified";
+                            assessmentTrustStatus: "legacy_unverified" | "isolated_evaluator";
                             /** @constant */
                             vendor: "claimmd";
                             sourceEnvironment: "test" | "production" | null;
@@ -114811,8 +114810,7 @@ export interface operations {
                         organizationId: string;
                         /** Format: uuid */
                         providerEntityId: string;
-                        /** @constant */
-                        assessmentTrustStatus: "legacy_unverified";
+                        assessmentTrustStatus: "legacy_unverified" | "isolated_evaluator";
                         /** @constant */
                         vendor: "claimmd";
                         accountReference: string | null;
@@ -114904,7 +114902,7 @@ export interface operations {
                             action: string;
                             reasonCode: string | null;
                             actorMembershipId: string | null;
-                            trustStatus: "legacy_unverified" | "evaluator_attested";
+                            trustStatus: "legacy_unverified" | "isolated_evaluator";
                             /** Format: date-time */
                             createdAt: string;
                         }[];

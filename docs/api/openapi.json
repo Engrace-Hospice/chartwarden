@@ -338894,8 +338894,16 @@
                             "type": "string"
                           },
                           "assessmentTrustStatus": {
-                            "const": "legacy_unverified",
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "const": "legacy_unverified",
+                                "type": "string"
+                              },
+                              {
+                                "const": "isolated_evaluator",
+                                "type": "string"
+                              }
+                            ]
                           },
                           "vendor": {
                             "const": "claimmd",
@@ -339052,8 +339060,16 @@
                       "type": "string"
                     },
                     "assessmentTrustStatus": {
-                      "const": "legacy_unverified",
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "const": "legacy_unverified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "isolated_evaluator",
+                          "type": "string"
+                        }
+                      ]
                     },
                     "vendor": {
                       "const": "claimmd",
@@ -339367,7 +339383,7 @@
                                 "type": "string"
                               },
                               {
-                                "const": "evaluator_attested",
+                                "const": "isolated_evaluator",
                                 "type": "string"
                               }
                             ]

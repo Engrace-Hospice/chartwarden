@@ -106,3 +106,7 @@ External Claim.MD/EOCCO source account enrollment, real production submission pr
 ## L. GitHub and safety
 
 PR #1088 remains Draft and issue #1075 remains open. No production/shared migration, deployment, merge, live vendor call, ERA retrieval, payment posting, M24 financial transition, financial outbox event, or secondary Medicaid Room & Board activation occurred. Medicaid electronic submission remains disabled.
+
+## Historical follow-up (2026-11-24)
+
+L6C2 implements the isolated evaluator architecture that was missing when this report was issued. The blocked disposition above remains the accurate historical L6C result. See `M24_1075_L6C2_ISOLATED_EVALUATOR_QUALIFICATION_20261124.md` for the new implementation and its independently recorded qualification limits.

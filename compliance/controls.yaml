@@ -112,8 +112,19 @@ controls:
       - file: packages/db/migrations/1543_m25_medicaid_era_nonposting_reviews.sql
       # L6C: the general platform login has no table or column writes on Medicaid ERA assessment/history tables;
       # existing assessment rows remain legacy_unverified and tenant detail reads redact their financial summary.
-      # The positive writer is deliberately unavailable until a genuinely isolated evaluator runtime exists.
+      # L6C2 restores assessment/history writes only for the NOBYPASSRLS isolated evaluator login, scoped by
+      # app.org_id and source-stage ownership; the shared platform login cannot write, read, or assume that role.
+      # Migration 1547 adds a separate restricted source reader for staged Claim.MD artifacts and durable
+      # idempotency reservations. The live suite runs the actual evaluator entrypoint in container mode, tests
+      # the restricted writer/source reader, and verifies review persistence, replay, history, isolation and
+      # direct-SQL refusal on disposable PostgreSQL.
       - file: packages/db/migrations/1544_m25_medicaid_era_assessment_writer_lockdown.sql
+      - file: packages/db/migrations/1546_m25_isolated_medicaid_era_evaluator.sql
+      - file: packages/db/migrations/1547_m25_medicaid_era_integrity_and_source_reader.sql
+      - file: scripts/db/provision-runtime-roles.ts
+      - file: apps/backend/src/m25-evaluator.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/isolated-evaluator-server.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/claimmd-era-store.ts
       - file: apps/backend/__tests__/m25-rls-isolation.live.test.ts
 
   - id: CW-AC-02
@@ -130,6 +141,11 @@ controls:
       # requires match-review permission, and the public API exposes no posting operation.
       - file: apps/backend/src/modules/25-remittance/routes/medicaid-era-review.routes.ts
       - file: apps/backend/src/modules/25-remittance/routes/__tests__/medicaid-era-review.routes.test.ts
+      # L6C2 signs a bounded command from the authenticated API session; the isolated runtime re-resolves the
+      # current session, membership, effective permission and provider scope before invoking the review workflow.
+      - file: apps/backend/src/modules/25-remittance/ingest/isolated-evaluator-command.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/isolated-evaluator-server.ts
+      - file: apps/backend/src/m25-evaluator.ts
       - script: test:m10:s04-override:live
       # WardenLens review ownership is enforced server-side across decisions, SUD/identity resolution,
       # relink, completion, release and discard. The batch is locked before its active review, and a

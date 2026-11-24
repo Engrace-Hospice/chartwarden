@@ -1,3 +1,4 @@
+import { spawn, spawnSync } from "node:child_process";
 /**
  * M25 Remittance & Denials — RLS cross-tenant denial: the LIVE Postgres proof (§3.5 / ADR-0010).
  *
@@ -14,22 +15,22 @@
  *   - Local: `CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:rls:live` (SUPERUSER to a THROWAWAY db;
  *     for a local PG without pgvector, set CHARTWARDEN_TEST_NO_PGVECTOR=1).
  */
-import { createHash, randomUUID } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
+import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { auditPlatformEvent } from "@chartwarden/audit";
-import type { DbClient } from "@chartwarden/db";
 import { createDbClient } from "@chartwarden/db";
-import { type PlatformBypassAuditor, registerPlatformJob } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClaimMdProtectedPayloadCipher } from "../src/bootstrap/claimmd-payload-cipher";
 import { registerM24PublishedSeams } from "../src/modules/24-billing-medicaid/wiring";
 import { createMedicaidEraReviewService } from "../src/modules/25-remittance/domain/medicaid-era-trusted-review";
+import { createClaimMdEraStore } from "../src/modules/25-remittance/ingest/claimmd-era-store";
 import {
-  CLAIMMD_ERA_RESOLUTION_JOB_ID,
-  createClaimMdEraStore,
-} from "../src/modules/25-remittance/ingest/claimmd-era-store";
+  M25_EVALUATOR_ASSERTION_HEADER,
+  createEvaluatorCommandSigner,
+  createHttpEvaluatorTransport,
+} from "../src/modules/25-remittance/ingest/isolated-evaluator-command";
 import { buildDrizzleMedicaidEraReviewReaders } from "../src/modules/25-remittance/ingest/medicaid-era-review-readers";
 import { buildDrizzleMedicaidEraReviewWorkflow } from "../src/modules/25-remittance/ingest/medicaid-era-review-service";
 import { createDbMdmStore } from "../src/modules/40-mdm/mdm-store-db";
@@ -40,6 +41,61 @@ const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
+
+function containerDatabaseUrl(url: URL): URL {
+  const result = new URL(url);
+  result.hostname = "postgres";
+  result.port = "5432";
+  return result;
+}
+
+async function evaluatorContainerFetch(
+  containerName: string,
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const target = new URL(input.toString());
+  target.protocol = "http:";
+  target.hostname = "127.0.0.1";
+  target.port = "3012";
+  const payload = JSON.stringify({
+    url: target.toString(),
+    method: init?.method ?? "GET",
+    headers: Object.fromEntries(new Headers(init?.headers).entries()),
+    body: typeof init?.body === "string" ? init.body : null,
+  });
+  const script = [
+    "const chunks=[];for await(const chunk of process.stdin)chunks.push(Buffer.from(chunk));",
+    'const input=JSON.parse(Buffer.concat(chunks).toString("utf8"));',
+    "const response=await fetch(input.url,{method:input.method,headers:input.headers,...(input.body===null?{}:{body:input.body})});",
+    "process.stdout.write(JSON.stringify({status:response.status,body:await response.text()}));",
+  ].join("");
+  const result = spawnSync("docker", ["exec", "-i", containerName, "bun", "-e", script], {
+    input: payload,
+    encoding: "utf8",
+    timeout: 20_000,
+    maxBuffer: 64 * 1024,
+  });
+  if (result.status !== 0 || !result.stdout)
+    throw new Error("isolated evaluator internal command transport failed");
+  const response = JSON.parse(result.stdout) as { status: number; body: string };
+  return new Response(response.body, { status: response.status });
+}
+
+function provisionM25RuntimeRoles(values: Readonly<Record<string, string>>): void {
+  const result = spawnSync("bun", ["run", "scripts/db/provision-runtime-roles.ts"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      PATH: process.env.PATH ?? "",
+      HOME: process.env.HOME ?? tmpdir(),
+      PROVISION_DATABASE_URL: DB_URL ?? "",
+      ...values,
+    },
+  });
+  if (result.status !== 0)
+    throw new Error("isolated M25 runtime role provisioner failed (output suppressed)");
+}
 
 type SeedIds = {
   advice: string;
@@ -83,6 +139,7 @@ describe.skipIf(!DB_URL)(
   () => {
     let db: Client;
     let a: SeedIds;
+    let b: SeedIds;
 
     async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
       await db.query("SET ROLE chartwarden_app");
@@ -292,7 +349,7 @@ describe.skipIf(!DB_URL)(
         [ORG_A, ORG_B],
       );
       a = await seedOrg(ORG_A, "A");
-      await seedOrg(ORG_B, "B");
+      b = await seedOrg(ORG_B, "B");
     }, 120_000);
 
     afterAll(async () => {
@@ -568,10 +625,12 @@ describe.skipIf(!DB_URL)(
       }
     });
 
-    it("evaluates a synthetic Claim.MD 835 through production readers but fails closed without an isolated writer", async () => {
+    it("persists a synthetic Claim.MD 835 through the isolated evaluator runtime and restricted writer", async () => {
       const providerEntityId = "33333333-3333-4333-8333-333333333390";
       const payerId = "44444444-4444-4444-8444-444444444490";
       const actorMembershipId = "66666666-6666-4666-8666-666666666690";
+      const actorUserId = "55555555-5555-4555-8555-555555555590";
+      const actorSessionId = "77777777-7777-4777-8777-777777777790";
       const reviewerMembershipId = "66666666-6666-4666-8666-666666666691";
       const accountReference = "synthetic-l6b-integration";
       const eraId = "76001";
@@ -600,6 +659,32 @@ describe.skipIf(!DB_URL)(
         `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
          VALUES ($1,$2,'0000390','Synthetic Review Provider','1234567893','synthetic-cipher','0930')`,
         [providerEntityId, ORG_A],
+      );
+      await db.query(
+        `INSERT INTO "user" (id,email,name) VALUES ($1,'synthetic-l6c2@example.test','Synthetic L6C2 Reviewer')`,
+        [actorUserId],
+      );
+      await db.query(
+        `INSERT INTO membership (id,user_id,organization_id,status,default_provider_entity_id) VALUES ($1,$2,$3,'active',$4)`,
+        [actorMembershipId, actorUserId, ORG_A, providerEntityId],
+      );
+      const evaluatorRoleId = (
+        await db.query(
+          `INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'billing_specialist','Synthetic billing specialist','billing_finance',true) RETURNING id`,
+          [ORG_A],
+        )
+      ).rows[0].id as string;
+      await db.query(
+        `INSERT INTO role_permission (organization_id,role_id,permission_key) VALUES ($1,$2,'remittance.match_review'),($1,$2,'remittance.financial_review')`,
+        [ORG_A, evaluatorRoleId],
+      );
+      await db.query(
+        `INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)`,
+        [ORG_A, actorMembershipId, evaluatorRoleId],
+      );
+      await db.query(
+        `INSERT INTO "session" (id,user_id,active_organization_id,token,expires_at) VALUES ($1,$2,$3,'synthetic-l6c2-token',now()+interval '1 day')`,
+        [actorSessionId, actorUserId, ORG_A],
       );
       await db.query(
         `INSERT INTO payer (id,kind,state_code,payer_id,name,status)
@@ -726,43 +811,642 @@ describe.skipIf(!DB_URL)(
       platformUrl.password = "synthetic-platform-l6b";
       const platformSql = new Client({ connectionString: platformUrl.toString() });
       await platformSql.connect();
-      const platformHandle = createDbClient({ connectionString: platformUrl.toString(), max: 1 });
-      type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
-      const platformAudit: PlatformBypassAuditor<Tx> = async (tx, event) => {
-        await auditPlatformEvent(tx, {
-          eventType: "platform.bypass_invoked",
-          resourceKind: "tenant",
-          outcome: "success",
-          severity: event.severity,
-          correlationId: `platform-bypass:${event.jobId}:${randomUUID()}`,
-          context: { jobId: event.jobId, reason: event.reason },
+      await db.query(
+        "CREATE ROLE chartwarden_m25_evaluator_login LOGIN SUPERUSER CREATEDB CREATEROLE REPLICATION BYPASSRLS PASSWORD 'synthetic-evaluator-overprivileged'",
+      );
+      await db.query(
+        "GRANT chartwarden_platform TO chartwarden_m25_evaluator_login WITH ADMIN OPTION",
+      );
+      await db.query(
+        "CREATE ROLE chartwarden_m25_era_source_login LOGIN SUPERUSER CREATEDB CREATEROLE REPLICATION BYPASSRLS PASSWORD 'synthetic-source-overprivileged'",
+      );
+      await db.query(
+        "GRANT chartwarden_platform TO chartwarden_m25_era_source_login WITH ADMIN OPTION",
+      );
+      await db.query("GRANT chartwarden_m25_evaluator_login TO chartwarden_platform_login");
+      await db.query("GRANT chartwarden_m25_era_source_login TO chartwarden_platform_login");
+      provisionM25RuntimeRoles({
+        CHARTWARDEN_M25_EVALUATOR_PASSWORD: "synthetic-m25-evaluator-first",
+        CHARTWARDEN_M25_ERA_SOURCE_PASSWORD: "synthetic-m25-era-source-first",
+      });
+      const normalizedRoles = await db.query<{
+        rolname: string;
+        rolsuper: boolean;
+        rolcreatedb: boolean;
+        rolcreaterole: boolean;
+        rolreplication: boolean;
+        rolbypassrls: boolean;
+        rolcanlogin: boolean;
+        rolinherit: boolean;
+        carrier_member: boolean;
+        carrier_admin: boolean;
+        platform_member: boolean;
+        has_unexpected_membership: boolean;
+        reverse_platform_membership: boolean;
+        reverse_member_count: number;
+      }>(
+        `SELECT r.rolname,r.rolsuper,r.rolcreatedb,r.rolcreaterole,r.rolreplication,r.rolbypassrls,r.rolcanlogin,r.rolinherit,
+                pg_has_role(r.rolname,CASE WHEN r.rolname='chartwarden_m25_evaluator_login'
+                  THEN 'chartwarden_m25_evaluator' ELSE 'chartwarden_m25_era_source' END,'member') AS carrier_member,
+                COALESCE((SELECT membership.admin_option FROM pg_auth_members membership
+                  JOIN pg_roles granted ON granted.oid=membership.roleid
+                  WHERE membership.member=r.oid AND granted.rolname=CASE WHEN r.rolname='chartwarden_m25_evaluator_login'
+                    THEN 'chartwarden_m25_evaluator' ELSE 'chartwarden_m25_era_source' END),false) AS carrier_admin,
+                pg_has_role(r.rolname,'chartwarden_platform','member') AS platform_member,
+                EXISTS(SELECT 1 FROM pg_auth_members membership JOIN pg_roles granted ON granted.oid=membership.roleid
+                  WHERE membership.member=r.oid AND granted.rolname NOT IN ('chartwarden_m25_evaluator','chartwarden_m25_era_source'))
+                  AS has_unexpected_membership,
+                pg_has_role('chartwarden_platform_login',r.rolname,'member') AS reverse_platform_membership,
+                (SELECT count(*)::int FROM pg_auth_members reverse_membership
+                  WHERE reverse_membership.roleid=r.oid) AS reverse_member_count
+           FROM pg_roles r WHERE r.rolname IN ('chartwarden_m25_evaluator_login','chartwarden_m25_era_source_login')
+           ORDER BY r.rolname`,
+      );
+      expect(normalizedRoles.rows).toHaveLength(2);
+      for (const role of normalizedRoles.rows) {
+        expect(role).toMatchObject({
+          rolsuper: false,
+          rolcreatedb: false,
+          rolcreaterole: false,
+          rolreplication: false,
+          rolbypassrls: false,
+          rolcanlogin: true,
+          rolinherit: true,
+          carrier_member: true,
+          carrier_admin: false,
+          platform_member: false,
+          has_unexpected_membership: false,
+          reverse_platform_membership: false,
+          reverse_member_count: 0,
         });
-      };
+      }
+      const sourceUrl = new URL(DB_URL as string);
+      sourceUrl.username = "chartwarden_m25_era_source_login";
+      sourceUrl.password = "synthetic-m25-era-source-first";
+      const sourceSql = new Client({ connectionString: sourceUrl.toString() });
+      sourceSql.on("error", () => undefined);
+      await sourceSql.connect();
+      expect(
+        (await sourceSql.query<{ current_user: string }>("SELECT current_user")).rows[0]
+          ?.current_user,
+      ).toBe("chartwarden_m25_era_source_login");
+      await db.query("GRANT chartwarden_m25_era_source_login TO chartwarden_platform_login");
+      provisionM25RuntimeRoles({ CHARTWARDEN_M25_ERA_SOURCE_REVOKE: "true" });
+      const revokedSource = await db.query<{
+        login: boolean;
+        inherit_memberships: boolean;
+        password_cleared: boolean;
+        member: boolean;
+        reverse_platform_membership: boolean;
+        reverse_member_count: number;
+        sessions: number;
+      }>(
+        `SELECT role.rolcanlogin AS login,role.rolinherit AS inherit_memberships,
+                (SELECT auth.rolpassword IS NULL FROM pg_authid auth WHERE auth.oid=role.oid) AS password_cleared,
+                pg_has_role('chartwarden_m25_era_source_login','chartwarden_m25_era_source','member') AS member,
+                pg_has_role('chartwarden_platform_login','chartwarden_m25_era_source_login','member') AS reverse_platform_membership,
+                (SELECT count(*)::int FROM pg_auth_members reverse_membership WHERE reverse_membership.roleid=role.oid) AS reverse_member_count,
+                (SELECT count(*)::int FROM pg_stat_activity WHERE usename='chartwarden_m25_era_source_login') AS sessions
+           FROM pg_roles role WHERE role.rolname='chartwarden_m25_era_source_login'`,
+      );
+      expect(revokedSource.rows[0]).toEqual({
+        login: false,
+        inherit_memberships: false,
+        password_cleared: true,
+        member: false,
+        reverse_platform_membership: false,
+        reverse_member_count: 0,
+        sessions: 0,
+      });
+      await sourceSql.end().catch(() => undefined);
+      provisionM25RuntimeRoles({
+        CHARTWARDEN_M25_EVALUATOR_PASSWORD: "synthetic-m25-evaluator-rotated",
+        CHARTWARDEN_M25_ERA_SOURCE_PASSWORD: "synthetic-m25-era-source-rotated",
+      });
+      sourceUrl.password = "synthetic-m25-era-source-rotated";
+      const sourceReaderSql = new Client({ connectionString: sourceUrl.toString() });
+      await sourceReaderSql.connect();
+      await expect(
+        sourceReaderSql.query("SELECT original_835_cipher FROM claimmd_era_inbox"),
+      ).rejects.toThrow(/permission denied/);
+      const sourceProjection = await sourceReaderSql.query<{
+        stage_id: string;
+        stage_digest: string;
+      }>("SELECT stage_id,stage_digest FROM m25_read_staged_claimmd_era($1,$2,$3)", [
+        stageId,
+        ORG_A,
+        providerEntityId,
+      ]);
+      expect(sourceProjection.rows).toEqual([{ stage_id: stageId, stage_digest: rawFileDigest }]);
+      const foreignSourceProjection = await sourceReaderSql.query(
+        "SELECT * FROM m25_read_staged_claimmd_era($1,$2,$3)",
+        [stageId, ORG_B, providerEntityId],
+      );
+      expect(foreignSourceProjection.rows).toEqual([]);
+      const evaluatorUrl = new URL(DB_URL as string);
+      evaluatorUrl.username = "chartwarden_m25_evaluator_login";
+      evaluatorUrl.password = "synthetic-m25-evaluator-rotated";
+      let runtimeProcess: ReturnType<typeof spawn> | null = null;
+      let runtimeDirectory: string | null = null;
+      let sourceReaderHandle: ReturnType<typeof createDbClient> | null = null;
+      const runtimeContainerName = `m25-l6c2-${randomUUID().slice(0, 8)}`;
+      const runtimeNetworkName = `m25-l6c2-net-${randomUUID().slice(0, 8)}`;
+      const repositoryRoot = join(__dirname, "../../..");
+      const postgresContainerName = process.env.M25_TEST_POSTGRES_CONTAINER;
+      const useRuntimeContainer = process.env.M25_TEST_EVALUATOR_CONTAINER === "1";
       try {
         registerMdmSeams({ store: createDbMdmStore(appHandle.db) });
         registerM24PublishedSeams(appHandle.db);
-        registerPlatformJob(CLAIMMD_ERA_RESOLUTION_JOB_ID);
+        const sourceReaderClient = createDbClient({
+          connectionString: sourceUrl.toString(),
+          max: 1,
+        });
+        sourceReaderHandle = sourceReaderClient;
         const store = createClaimMdEraStore({
-          platformDb: platformHandle.db,
-          auditBypass: platformAudit,
+          sourceReaderDb: sourceReaderClient.db,
           keyRing: sourceKeyRing,
         });
         const actor = {
           organizationId: ORG_A,
-          userId: "55555555-5555-4555-8555-555555555590",
+          userId: actorUserId,
           roles: ["billing_specialist"],
           providerEntityScope: [providerEntityId, "33333333-3333-3333-3333-333333333333"],
           membershipId: actorMembershipId,
+          sessionId: actorSessionId,
           stepUpRecent: true,
         } as const;
         const readers = buildDrizzleMedicaidEraReviewReaders(appHandle.db, store);
-        const workflow = buildDrizzleMedicaidEraReviewWorkflow(
-          appHandle.db,
-          createMedicaidEraReviewService(readers),
+        const evaluator = createMedicaidEraReviewService(readers);
+        expect((await evaluator.inspect(actor, stageId)).status).toBe("review_only");
+        const workflow = buildDrizzleMedicaidEraReviewWorkflow(appHandle.db, evaluator);
+        runtimeDirectory = mkdtempSync(join(tmpdir(), "cw-l6c2-"));
+        const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+        writeFileSync(
+          join(runtimeDirectory, "db-url"),
+          (useRuntimeContainer ? containerDatabaseUrl(evaluatorUrl) : evaluatorUrl).toString(),
+          { mode: 0o600 },
         );
-        await expect(workflow.evaluate(actor, stageId, "synthetic-l6c-eval-0001")).rejects.toThrow(
-          /MEDICAID_ERA_REVIEW_WRITER_UNAVAILABLE/,
+        writeFileSync(
+          join(runtimeDirectory, "app-db-url"),
+          (useRuntimeContainer ? containerDatabaseUrl(appUrl) : appUrl).toString(),
+          { mode: 0o600 },
         );
+        writeFileSync(
+          join(runtimeDirectory, "source-db-url"),
+          (useRuntimeContainer ? containerDatabaseUrl(sourceUrl) : sourceUrl).toString(),
+          { mode: 0o600 },
+        );
+        writeFileSync(
+          join(runtimeDirectory, "keyring"),
+          JSON.stringify({
+            activeId: "synthetic-l6b",
+            keys: { "synthetic-l6b": sourceKey.toString("base64url") },
+          }),
+          { mode: 0o600 },
+        );
+        writeFileSync(
+          join(runtimeDirectory, "public"),
+          publicKey.export({ format: "der", type: "spki" }).toString("base64url"),
+          { mode: 0o600 },
+        );
+        if (useRuntimeContainer) {
+          if (!postgresContainerName)
+            throw new Error("M25_TEST_POSTGRES_CONTAINER is required for isolated runtime testing");
+          const network = spawnSync(
+            "docker",
+            ["network", "create", "--internal", runtimeNetworkName],
+            { stdio: "ignore" },
+          );
+          if (network.status !== 0)
+            throw new Error("could not create isolated evaluator test network");
+          const connected = spawnSync(
+            "docker",
+            [
+              "network",
+              "connect",
+              "--alias",
+              "postgres",
+              runtimeNetworkName,
+              postgresContainerName,
+            ],
+            { stdio: "ignore" },
+          );
+          if (connected.status !== 0)
+            throw new Error("could not attach disposable PostgreSQL to evaluator test network");
+        }
+        const childProcess = useRuntimeContainer
+          ? spawn(
+              "docker",
+              [
+                "run",
+                "--name",
+                runtimeContainerName,
+                "--network",
+                runtimeNetworkName,
+                "--read-only",
+                "--tmpfs",
+                "/tmp:rw,noexec,nosuid,size=16m",
+                "--tmpfs",
+                "/run/secrets:rw,noexec,nosuid,size=1m",
+                "--cap-drop=ALL",
+                "--security-opt=no-new-privileges",
+                "--pids-limit=64",
+                "--memory=1536m",
+                "--cpus=1",
+                "--user=1000:1000",
+                "--mount",
+                `type=bind,src=${join(runtimeDirectory, "public")},dst=/run/secrets/public,readonly`,
+                "--mount",
+                `type=bind,src=${join(runtimeDirectory, "db-url")},dst=/run/secrets/db-url,readonly`,
+                "--mount",
+                `type=bind,src=${join(runtimeDirectory, "app-db-url")},dst=/run/secrets/app-db-url,readonly`,
+                "--mount",
+                `type=bind,src=${join(runtimeDirectory, "source-db-url")},dst=/run/secrets/source-db-url,readonly`,
+                "--mount",
+                `type=bind,src=${join(runtimeDirectory, "keyring")},dst=/run/secrets/keyring,readonly`,
+                "--mount",
+                `type=bind,src=${join(repositoryRoot, "apps/backend/src")},dst=/app/apps/backend/src,readonly`,
+                "--mount",
+                `type=bind,src=${join(repositoryRoot, "packages")},dst=/app/packages,readonly`,
+                "--mount",
+                `type=bind,src=${join(repositoryRoot, "node_modules")},dst=/app/node_modules,readonly`,
+                "--env",
+                "M25_EVALUATOR_DATABASE_URL_FILE=/run/secrets/db-url",
+                "--env",
+                "M25_EVALUATOR_APP_DATABASE_URL_FILE=/run/secrets/app-db-url",
+                "--env",
+                "M25_EVALUATOR_ERA_SOURCE_DATABASE_URL_FILE=/run/secrets/source-db-url",
+                "--env",
+                "M25_EVALUATOR_CLAIMMD_KEYRING_FILE=/run/secrets/keyring",
+                "--env",
+                "M25_EVALUATOR_PUBLIC_KEY_FILE=/run/secrets/public",
+                "--env",
+                "M25_EVALUATOR_SIGNING_KEY_ID=synthetic-l6c2",
+                "--env",
+                "M25_EVALUATOR_PORT=3012",
+                process.env.M25_EVALUATOR_TEST_IMAGE ?? "wardenx-api:latest",
+                "bun",
+                "run",
+                "apps/backend/src/m25-evaluator.ts",
+              ],
+              { stdio: ["ignore", "pipe", "pipe"] },
+            )
+          : spawn("bun", ["run", "apps/backend/src/m25-evaluator.ts"], {
+              cwd: join(__dirname, "../../.."),
+              stdio: ["ignore", "pipe", "pipe"],
+              env: {
+                PATH: process.env.PATH ?? "",
+                HOME: process.env.HOME ?? tmpdir(),
+                TMPDIR: process.env.TMPDIR ?? tmpdir(),
+                M25_EVALUATOR_DATABASE_URL_FILE: join(runtimeDirectory, "db-url"),
+                M25_EVALUATOR_APP_DATABASE_URL_FILE: join(runtimeDirectory, "app-db-url"),
+                M25_EVALUATOR_ERA_SOURCE_DATABASE_URL_FILE: join(runtimeDirectory, "source-db-url"),
+                M25_EVALUATOR_CLAIMMD_KEYRING_FILE: join(runtimeDirectory, "keyring"),
+                M25_EVALUATOR_PUBLIC_KEY_FILE: join(runtimeDirectory, "public"),
+                M25_EVALUATOR_SIGNING_KEY_ID: "synthetic-l6c2",
+                M25_EVALUATOR_PORT: "39125",
+              },
+            });
+        runtimeProcess = childProcess;
+        let runtimeOutput = "";
+        childProcess.stderr.on("data", (chunk) => {
+          runtimeOutput += String(chunk);
+        });
+        childProcess.on("error", (error) => {
+          runtimeOutput += `runtime spawn failed (${error.name})`;
+        });
+        for (let attempt = 0; attempt < 80; attempt++) {
+          const isReady = useRuntimeContainer
+            ? await evaluatorContainerFetch(runtimeContainerName, "http://evaluator/ready")
+                .then((response) => response.ok)
+                .catch(() => false)
+            : await fetch("http://127.0.0.1:39125/ready")
+                .then((response) => response.ok)
+                .catch(() => false);
+          if (isReady) break;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          if (childProcess.exitCode !== null)
+            throw new Error(`isolated evaluator exited: ${runtimeOutput}`);
+        }
+        if (useRuntimeContainer) {
+          const envInspection = spawnSync(
+            "docker",
+            ["inspect", "--format", "{{json .Config.Env}}", runtimeContainerName],
+            { encoding: "utf8" },
+          );
+          expect(envInspection.status).toBe(0);
+          const runtimeEnv = JSON.parse(envInspection.stdout.trim()) as string[];
+          expect(runtimeEnv.some((entry) => entry.startsWith("DATABASE_PLATFORM_URL="))).toBe(
+            false,
+          );
+          expect(runtimeEnv.some((entry) => entry.startsWith("DATABASE_URL="))).toBe(false);
+          expect(
+            runtimeEnv.some((entry) => entry.startsWith("CLAIMMD_RESPONSE_INBOX_KEYRING=")),
+          ).toBe(false);
+          expect(
+            runtimeEnv.every(
+              (entry) =>
+                !entry.includes("synthetic-m25-evaluator-rotated") &&
+                !entry.includes("synthetic-m25-era-source-rotated") &&
+                !entry.includes(sourceKey.toString("base64url")),
+            ),
+          ).toBe(true);
+          const mountsInspection = spawnSync(
+            "docker",
+            ["inspect", "--format", "{{json .Mounts}}", runtimeContainerName],
+            { encoding: "utf8" },
+          );
+          expect(mountsInspection.status).toBe(0);
+          const secretMounts = JSON.parse(mountsInspection.stdout.trim()) as {
+            Destination: string;
+            RW: boolean;
+          }[];
+          for (const destination of [
+            "/run/secrets/public",
+            "/run/secrets/db-url",
+            "/run/secrets/app-db-url",
+            "/run/secrets/source-db-url",
+            "/run/secrets/keyring",
+          ])
+            expect(secretMounts).toContainEqual(
+              expect.objectContaining({ Destination: destination, RW: false }),
+            );
+          expect(
+            secretMounts.some(
+              (mount) =>
+                mount.Destination === "/var/run/docker.sock" ||
+                mount.Destination === "/app/.env.production",
+            ),
+          ).toBe(false);
+          const networkInspection = spawnSync(
+            "docker",
+            ["network", "inspect", "--format", "{{.Internal}}", runtimeNetworkName],
+            { encoding: "utf8" },
+          );
+          expect(networkInspection.status).toBe(0);
+          expect(networkInspection.stdout.trim()).toBe("true");
+          const containerInspection = spawnSync(
+            "docker",
+            ["inspect", "--format", "{{.HostConfig.ReadonlyRootfs}}", runtimeContainerName],
+            { encoding: "utf8" },
+          );
+          expect(containerInspection.status).toBe(0);
+          expect(containerInspection.stdout.trim()).toBe("true");
+          const publishedPorts = spawnSync(
+            "docker",
+            ["inspect", "--format", "{{json .HostConfig.PortBindings}}", runtimeContainerName],
+            { encoding: "utf8" },
+          );
+          expect(publishedPorts.status).toBe(0);
+          expect(JSON.parse(publishedPorts.stdout.trim())).toEqual({});
+        }
+        const signCommand = createEvaluatorCommandSigner({
+          kid: "synthetic-l6c2",
+          key: privateKey,
+        });
+        const transport = createHttpEvaluatorTransport({
+          url: "http://127.0.0.1:39125",
+          signer: signCommand,
+          ...(useRuntimeContainer
+            ? { fetchImpl: (url, init) => evaluatorContainerFetch(runtimeContainerName, url, init) }
+            : {}),
+        });
+        const forgedActor = { ...actor, userId: "55555555-5555-4555-8555-555555555599" };
+        const forgedActorCommand = {
+          operation: "evaluate" as const,
+          artifactId: stageId,
+          idempotencyKey: "synthetic-l6c2-forged-actor-0001",
+        };
+        const forgedUrl = useRuntimeContainer
+          ? "http://evaluator/internal/m25/commands"
+          : "http://127.0.0.1:39125/internal/m25/commands";
+        const forgedActorResponse = await (useRuntimeContainer
+          ? evaluatorContainerFetch(runtimeContainerName, forgedUrl, {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                [M25_EVALUATOR_ASSERTION_HEADER]: signCommand(forgedActor, forgedActorCommand),
+              },
+              body: JSON.stringify(forgedActorCommand),
+            })
+          : fetch(forgedUrl, {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                [M25_EVALUATOR_ASSERTION_HEADER]: signCommand(forgedActor, forgedActorCommand),
+              },
+              body: JSON.stringify(forgedActorCommand),
+            }));
+        expect(forgedActorResponse.status).toBe(403);
+        expect(await forgedActorResponse.json()).toEqual({ error: "authority_denied" });
+        expect(
+          (
+            await (useRuntimeContainer
+              ? evaluatorContainerFetch(runtimeContainerName, "http://evaluator/ready")
+              : fetch("http://127.0.0.1:39125/ready"))
+          ).status,
+        ).toBe(200);
+        await db.query(`UPDATE "session" SET expires_at=now()-interval '1 minute' WHERE id=$1`, [
+          actorSessionId,
+        ]);
+        const expiredSessionCommand = {
+          operation: "evaluate" as const,
+          artifactId: stageId,
+          idempotencyKey: "synthetic-l6c2-expired-session-0001",
+        };
+        const expiredSessionUrl = useRuntimeContainer
+          ? "http://evaluator/internal/m25/commands"
+          : "http://127.0.0.1:39125/internal/m25/commands";
+        const expiredSessionInit = {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            [M25_EVALUATOR_ASSERTION_HEADER]: signCommand(actor, expiredSessionCommand),
+          },
+          body: JSON.stringify(expiredSessionCommand),
+        };
+        const expiredSessionResponse = await (useRuntimeContainer
+          ? evaluatorContainerFetch(runtimeContainerName, expiredSessionUrl, expiredSessionInit)
+          : fetch(expiredSessionUrl, expiredSessionInit));
+        expect(expiredSessionResponse.status).toBe(403);
+        expect(await expiredSessionResponse.json()).toEqual({ error: "authority_denied" });
+        expect(
+          (
+            await (useRuntimeContainer
+              ? evaluatorContainerFetch(runtimeContainerName, "http://evaluator/ready")
+              : fetch("http://127.0.0.1:39125/ready"))
+          ).status,
+        ).toBe(200);
+        await db.query(`UPDATE "session" SET expires_at=now()+interval '1 day' WHERE id=$1`, [
+          actorSessionId,
+        ]);
+        expect(
+          await transport.execute(actor, {
+            operation: "evaluate",
+            artifactId: b.eraStage,
+            idempotencyKey: "synthetic-l6c2-foreign-stage-0001",
+          }),
+        ).toEqual({ status: "unavailable", reasonCode: "SOURCE_ARTIFACT_UNAVAILABLE" });
+        const concurrentEvaluationResults = (await Promise.all([
+          transport.execute(actor, {
+            operation: "evaluate",
+            artifactId: stageId,
+            idempotencyKey: "synthetic-l6c2-eval-0001",
+          }),
+          transport.execute(actor, {
+            operation: "evaluate",
+            artifactId: stageId,
+            idempotencyKey: "synthetic-l6c2-eval-0002",
+          }),
+        ])) as Awaited<ReturnType<typeof workflow.evaluate>>[];
+        expect(concurrentEvaluationResults).toHaveLength(2);
+        expect(
+          concurrentEvaluationResults.filter(
+            (item) => item.status === "review_saved" && item.replay === false,
+          ),
+        ).toHaveLength(1);
+        expect(
+          concurrentEvaluationResults.filter(
+            (item) => item.status === "review_saved" && item.replay === true,
+          ),
+        ).toHaveLength(1);
+        const persisted = concurrentEvaluationResults.find(
+          (item) => item.status === "review_saved" && item.replay === false,
+        )!;
+        expect(persisted).toMatchObject({ status: "review_saved", version: 1, replay: false });
+        if (persisted.status !== "review_saved")
+          throw new Error("synthetic evaluation was not persisted");
+        const trusted = await workflow.detail(actor, persisted.reviewId);
+        expect(trusted).toMatchObject({
+          assessmentTrustStatus: "isolated_evaluator",
+          sourceDigest: rawFileDigest,
+        });
+        expect(
+          await transport.execute(actor, {
+            operation: "evaluate",
+            artifactId: stageId,
+            idempotencyKey: "synthetic-l6c2-eval-0003",
+          }),
+        ).toMatchObject({
+          status: "review_saved",
+          replay: true,
+        });
+        await expect(
+          transport.execute(actor, {
+            operation: "note",
+            reviewId: persisted.reviewId,
+            expectedVersion: 1,
+            reasonCode: "REUSE_EVALUATION_KEY",
+            idempotencyKey: "synthetic-l6c2-eval-0003",
+          }),
+        ).rejects.toThrow(/conflicts with current state/);
+        expect(
+          await transport.execute(actor, {
+            operation: "note",
+            reviewId: persisted.reviewId,
+            expectedVersion: 1,
+            reasonCode: "INVESTIGATION_STARTED",
+            idempotencyKey: "synthetic-l6c2-note-0001",
+          }),
+        ).toMatchObject({ version: 2, replay: false });
+        expect(
+          await transport.execute(actor, {
+            operation: "note",
+            reviewId: persisted.reviewId,
+            expectedVersion: 1,
+            reasonCode: "INVESTIGATION_STARTED",
+            idempotencyKey: "synthetic-l6c2-note-0001",
+          }),
+        ).toMatchObject({ version: 2, replay: true });
+        await expect(
+          transport.execute(actor, {
+            operation: "note",
+            reviewId: persisted.reviewId,
+            expectedVersion: 2,
+            reasonCode: "DIFFERENT_NOTE",
+            idempotencyKey: "synthetic-l6c2-note-0001",
+          }),
+        ).rejects.toThrow(/conflicts with current state/);
+        await expect(
+          transport.execute(actor, {
+            operation: "transition",
+            reviewId: persisted.reviewId,
+            expectedVersion: 1,
+            state: "reviewed_not_posted",
+            reasonCode: "REVIEW_COMPLETE",
+            idempotencyKey: "synthetic-l6c2-disposition-0001",
+          }),
+        ).rejects.toThrow(/conflicts with current state/);
+        expect(
+          await transport.execute(actor, {
+            operation: "transition",
+            reviewId: persisted.reviewId,
+            expectedVersion: 2,
+            state: "reviewed_not_posted",
+            reasonCode: "REVIEW_COMPLETE",
+            idempotencyKey: "synthetic-l6c2-disposition-0001",
+          }),
+        ).toMatchObject({ version: 3, workflowState: "reviewed_not_posted", replay: false });
+        expect(await workflow.history(actor, persisted.reviewId)).toMatchObject([
+          { version: 1, action: "assessed", trustStatus: "isolated_evaluator" },
+          { version: 2, action: "note", trustStatus: "isolated_evaluator" },
+          { version: 3, action: "reviewed_not_posted", trustStatus: "isolated_evaluator" },
+        ]);
+        await db.query(
+          `UPDATE claimmd_era_delivery
+              SET state='possible_duplicate', safe_error_code='POSSIBLE_CROSS_SOURCE_DUPLICATE', updated_at=now()
+            WHERE inbox_id=$1`,
+          [inboxId],
+        );
+        const revalidationWriter = createDbClient({
+          connectionString: evaluatorUrl.toString(),
+          max: 1,
+        });
+        try {
+          let inspections = 0;
+          const changingEvaluator = {
+            async inspect(reviewActor: typeof actor, artifactReference: string) {
+              const assessment = await evaluator.inspect(reviewActor, artifactReference);
+              inspections += 1;
+              if (inspections === 1)
+                await db.query(
+                  `UPDATE claimmd_era_delivery
+                      SET state='exact_duplicate', safe_error_code='EXACT_CROSS_SOURCE_DUPLICATE', updated_at=now()
+                    WHERE inbox_id=$1`,
+                  [inboxId],
+                );
+              return assessment;
+            },
+          };
+          const staleWorkflow = buildDrizzleMedicaidEraReviewWorkflow(
+            appHandle.db,
+            changingEvaluator,
+            revalidationWriter.db,
+          );
+          await expect(
+            staleWorkflow.evaluate(actor, stageId, "synthetic-l6c2-stale-eval-0001"),
+          ).rejects.toThrow(/authoritative ERA evidence changed/);
+          expect(await workflow.detail(actor, persisted.reviewId)).toMatchObject({ version: 3 });
+        } finally {
+          await revalidationWriter.close();
+        }
+        expect(
+          await transport.execute(actor, {
+            operation: "evaluate",
+            artifactId: stageId,
+            idempotencyKey: "synthetic-l6c2-eval-0004",
+          }),
+        ).toMatchObject({ status: "review_saved", version: 4, replay: false });
+        expect(await workflow.detail(actor, persisted.reviewId)).toMatchObject({
+          version: 4,
+          duplicateStatus: "exact",
+        });
+        expect(await workflow.history(actor, persisted.reviewId)).toMatchObject([
+          { version: 1, action: "assessed", trustStatus: "isolated_evaluator" },
+          { version: 2, action: "note", trustStatus: "isolated_evaluator" },
+          { version: 3, action: "reviewed_not_posted", trustStatus: "isolated_evaluator" },
+          { version: 4, action: "reassessed", trustStatus: "isolated_evaluator" },
+        ]);
         const legacyDetail = await workflow.detail(actor, a.medicaidEraReview);
         expect(legacyDetail).toMatchObject({
           organizationId: ORG_A,
@@ -839,8 +1523,8 @@ describe.skipIf(!DB_URL)(
             [ORG_A, providerEntityId, a.medicaidEraReview],
           ),
         ).rejects.toThrow(/permission denied/);
-        await expect(platformSql.query("SET ROLE chartwarden_medicaid_era_writer")).rejects.toThrow(
-          /role .* does not exist/,
+        await expect(platformSql.query("SET ROLE chartwarden_m25_evaluator")).rejects.toThrow(
+          /permission denied/,
         );
         const platformPrivilege = await db.query<{
           can_insert: boolean;
@@ -865,16 +1549,107 @@ describe.skipIf(!DB_URL)(
           can_update_summary_column: false,
           can_insert_history_actor_column: false,
         });
+        const evaluatorPrivilege = await db.query<{
+          superuser: boolean;
+          create_role: boolean;
+          create_database: boolean;
+          bypass_rls: boolean;
+          can_assume: boolean;
+          platform_can_assume: boolean;
+          app_can_assume: boolean;
+          can_post_financials: boolean;
+        }>(
+          `SELECT role.rolsuper AS superuser,
+                  role.rolcreaterole AS create_role,
+                  role.rolcreatedb AS create_database,
+                  role.rolbypassrls AS bypass_rls,
+                  pg_has_role('chartwarden_m25_evaluator_login','chartwarden_m25_evaluator','member') AS can_assume,
+                  pg_has_role('chartwarden_platform_login','chartwarden_m25_evaluator','member') AS platform_can_assume,
+                  pg_has_role('chartwarden_app','chartwarden_m25_evaluator','member') AS app_can_assume,
+                  has_table_privilege('chartwarden_m25_evaluator_login','patient_responsibility_ledger','INSERT') AS can_post_financials
+             FROM pg_roles role WHERE role.rolname='chartwarden_m25_evaluator_login'`,
+        );
+        expect(evaluatorPrivilege.rows[0]).toEqual({
+          superuser: false,
+          create_role: false,
+          create_database: false,
+          bypass_rls: false,
+          can_assume: true,
+          platform_can_assume: false,
+          app_can_assume: false,
+          can_post_financials: false,
+        });
+        const sourceReaderPrivilege = await db.query<{
+          superuser: boolean;
+          bypass_rls: boolean;
+          platform_member: boolean;
+          direct_inbox_read: boolean;
+          direct_delivery_read: boolean;
+          function_execute: boolean;
+        }>(
+          `SELECT role.rolsuper AS superuser,role.rolbypassrls AS bypass_rls,
+                  pg_has_role('chartwarden_m25_era_source_login','chartwarden_platform','member') AS platform_member,
+                  has_table_privilege('chartwarden_m25_era_source_login','claimmd_era_inbox','SELECT') AS direct_inbox_read,
+                  has_table_privilege('chartwarden_m25_era_source_login','claimmd_era_delivery','SELECT') AS direct_delivery_read,
+                  has_function_privilege('chartwarden_m25_era_source_login',
+                    'm25_read_staged_claimmd_era(uuid,uuid,uuid)','EXECUTE') AS function_execute
+             FROM pg_roles role WHERE role.rolname='chartwarden_m25_era_source_login'`,
+        );
+        expect(sourceReaderPrivilege.rows[0]).toEqual({
+          superuser: false,
+          bypass_rls: false,
+          platform_member: false,
+          direct_inbox_read: false,
+          direct_delivery_read: false,
+          function_execute: true,
+        });
+        await expect(
+          platformSql.query(
+            "ALTER TABLE medicaid_era_review DISABLE TRIGGER medicaid_era_review_identity_immutable",
+          ),
+        ).rejects.toThrow(/must be owner|permission denied/);
+        await expect(
+          platformSql.query(
+            "UPDATE medicaid_era_review_history SET trust_status='isolated_evaluator' WHERE review_id=$1",
+            [persisted.reviewId],
+          ),
+        ).rejects.toThrow(/permission denied/);
+        await expect(
+          platformSql.query("DELETE FROM medicaid_era_review_history WHERE review_id=$1", [
+            persisted.reviewId,
+          ]),
+        ).rejects.toThrow(/permission denied/);
         const bypassAuditRows = await db.query<{ n: number }>(
           `SELECT count(*)::int AS n FROM audit_event
              WHERE event_type='platform.bypass_invoked'
                AND context->>'jobId' = $1`,
-          [CLAIMMD_ERA_RESOLUTION_JOB_ID],
+          ["m25-evaluator-source-reader"],
         );
         expect(bypassAuditRows.rows[0]?.n).toBeGreaterThanOrEqual(2);
       } finally {
+        if (useRuntimeContainer)
+          spawnSync("docker", ["rm", "--force", runtimeContainerName], { stdio: "ignore" });
+        if (runtimeProcess && runtimeProcess.exitCode === null) {
+          const exited = new Promise<void>((resolve) =>
+            runtimeProcess?.once("exit", () => resolve()),
+          );
+          runtimeProcess.kill("SIGTERM");
+          const killTimer = setTimeout(() => runtimeProcess?.kill("SIGKILL"), 3_000);
+          await Promise.race([exited, new Promise<void>((resolve) => setTimeout(resolve, 3_500))]);
+          clearTimeout(killTimer);
+        }
+        if (useRuntimeContainer && postgresContainerName) {
+          spawnSync(
+            "docker",
+            ["network", "disconnect", "--force", runtimeNetworkName, postgresContainerName],
+            { stdio: "ignore" },
+          );
+          spawnSync("docker", ["network", "rm", runtimeNetworkName], { stdio: "ignore" });
+        }
+        if (runtimeDirectory) rmSync(runtimeDirectory, { recursive: true, force: true });
+        await sourceReaderSql.end().catch(() => undefined);
+        await sourceReaderHandle?.close();
         await platformSql.end();
-        await platformHandle.close();
         await appHandle.close();
       }
     }, 30_000);
@@ -922,14 +1697,46 @@ describe.skipIf(!DB_URL)(
              source_file_digest=$2 WHERE id=$1`,
           [a.eraStage, digest],
         );
+        const [duplicateStage] = await db
+          .query<{
+            source_inbox_id: string;
+            account_reference: string;
+            usage: string;
+            era_id: string;
+            file_index: number;
+            source_file_digest: string;
+            state: string;
+            safe_reason_code: string;
+          }>(
+            `SELECT source_inbox_id,account_reference,usage,era_id,file_index,source_file_digest,state,safe_reason_code
+             FROM claimmd_era_m25_stage WHERE id=$1`,
+            [a.eraStage],
+          )
+          .then((result) => result.rows);
         const duplicateStageReader = buildDrizzleMedicaidEraReviewReaders(handle.db, {
-          readCapturedEra: async () => ({
-            vendor: "claimmd",
-            accountReference: "synthetic-m25-rls",
-            usage: "test",
-            eraId: "71",
-            capturedAt: new Date("2026-11-22T00:00:00.000Z"),
-            files: [raw],
+          readStagedEra: async () => ({
+            stage: {
+              id: a.eraStage,
+              sourceInboxId: duplicateStage!.source_inbox_id,
+              vendor: "claimmd",
+              accountReference: duplicateStage!.account_reference,
+              usage: duplicateStage!.usage as "test" | "production",
+              eraId: duplicateStage!.era_id,
+              fileIndex: duplicateStage!.file_index,
+              sourceFileDigest: duplicateStage!.source_file_digest,
+              state: duplicateStage!.state,
+              safeReasonCode: duplicateStage!.safe_reason_code,
+            },
+            captured: {
+              inboxId: duplicateStage!.source_inbox_id,
+              streamId: "synthetic-stream",
+              vendor: "claimmd",
+              accountReference: duplicateStage!.account_reference,
+              usage: duplicateStage!.usage,
+              eraId: duplicateStage!.era_id,
+              capturedAt: new Date("2026-11-22T00:00:00.000Z"),
+              files: [raw],
+            },
           }),
         } as never);
         await expect(

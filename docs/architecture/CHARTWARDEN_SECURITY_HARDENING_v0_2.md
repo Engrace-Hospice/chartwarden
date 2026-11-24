@@ -2153,3 +2153,8 @@ M33 is the tenant-facing reporting plane. Its governing security rule is **minim
 
 **End of CHARTWARDEN_SECURITY_HARDENING v0.2.**
 <!-- verified-against: 6a6eb454a12a · 2026-08-14 -->
+
+
+## M25 isolated Medicaid ERA evaluator
+
+[ADR-0115](../adr/ADR-0115-isolated-m25-medicaid-era-evaluator.md) isolates derived Medicaid ERA assessment writes in a separate process and NOBYPASSRLS database identity. The API signs minimal commands and the evaluator revalidates current operator authority; the shared platform credential has no review-table mutation privilege. This boundary is nonposting and disabled by default.
