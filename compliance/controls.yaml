@@ -1227,6 +1227,27 @@ controls:
       - file: apps/backend/src/modules/07-care-plan/routes/change-proposal-routes.ts
       - file: apps/backend/__tests__/care-plan-change-proposal-routes.test.ts
 
+  - id: CW-AC-55
+    title: >-
+      A human tenant administrator or org_admin may read the Part 2 (42 CFR Part 2) content of a WardenLens intake batch that the ordinary reviewer gate (the licensed-reviewer and patient-consent predicates extraction_reviewer_eligible and sud_consent_present) would redact, only on the two workspace and source-page-image read routes, only as a human actor who holds intake.review and an active organization-bound membership under tenant RLS, and never for an AI or system principal or for any platform role (the generic route denies every reserved platform role; platform superadmin has its own consented support-session path, CW-AC-40). The override reaches no export, portal view, external disclosure, signed URL, writeback or other write path, and it does not take review ownership or decide a candidate, the SUD status, completion or release; patient consent stays authoritative for every downstream disclosure. The widening is the product owner's recorded decision (ADR-0115) with a Privacy/Compliance approval record in audit/wardenlens-v3-2/PART2_ADMINISTRATOR_ACCESS_APPROVAL.md.
+    hipaa: ["164.312(a)(1)", "164.308(a)(4)", "164.502(b)"]
+    soc2: ["CC6.1", "CC6.3"]
+    status: partial
+    evidence:
+      # Tenant RLS, review ownership, decision controls and the standard non-admin SUD gate; the override itself is not driven here.
+      - script: test:f237:doclens-review:live
+      - file: apps/backend/__tests__/m22-doclens-sud-gate.test.ts
+      - file: apps/backend/__tests__/read-audit-emission.test.ts
+      - file: apps/backend/src/modules/22-documents/extraction/review-workspace-routes.ts
+      - file: apps/backend/src/modules/22-documents/extraction/sud-content-gate.ts
+      - file: docs/adr/ADR-0115-wardenlens-tenant-administrator-part-2-review-access.md
+      - file: docs/compliance/WARDENLENS_PART_2_ADMINISTRATOR_ACCESS.md
+      - file: audit/wardenlens-v3-2/PART2_ADMINISTRATOR_ACCESS_APPROVAL.md
+    gap:
+      reason: The Privacy/Compliance approval is recorded as approved with conditions, but revision 2 of the record is awaiting re-signature, and production enablement is held until the privileged-factor deployment evidence (audit/wardenlens-v3-2/PRIVILEGED_FACTOR_DEPLOYMENT.md) is filled in; CHARTWARDEN_MFA_ENFORCEMENT is opt-in (CW-AC-45), so until it is on a tenant administrator needs only the ordinary sign-in. The two tenant routes set no failClosed, so a failed M4 read-audit write still returns the pages and only logs the failure (the platform routes fail closed), and the audit records neither the authorization basis nor the page number, so the override is reconstructed from role history. The quarterly review of the administrator and org_admin population and a sample of Part 2 reads is policy that no job runs and that has not yet been performed. The role matrix is pinned by a unit suite over a fake service; no live suite drives the override through the real route, M4 hook and RLS as chartwarden_app. The tenant page-image response keeps a five-minute private cache.
+      owner: privacy-officer
+      review_by: 2027-02-23
+
   - id: CW-AC-54
     title: >-
       A record that names a visit is tied only to the author's own open visit note. M7 change proposals and M9 wound observations carry a logical
