@@ -435,33 +435,33 @@ SeaweedFS stores files: signed consent forms, scanned documents, PDFs, attachmen
 
 - **All-in-one server:** production runs `weed server -s3`: master, volume server, filer and the S3 gateway in one process. Only the S3 gateway (port 8333) listens on the network; master, volume and filer bind to the container's loopback, because the filer's API is unauthenticated and would bypass S3 authentication.
 - **One volume per bucket:** volume growth is set to 1, which keeps file handles bounded as tenants (and so buckets) grow.
-- **No in-store replication:** the single node holds one copy. Durability comes from the separate-host second copy (RustFS, not enabled in production yet) and the off-site Object Lock backup, not from the store itself.
-- **Identities and policies:** `object-store-provision` renders `s3.json` with `scripts/storage/seaweedfs-identities.ts`: an admin identity (operators and the one-time migration only), the app identity bound to the IAM policy document `deploy/production/object-store/app-policy.json`, and read-only identities bound to `deploy/production/object-store/reader-policy.json` for the backup and the second copy. SeaweedFS reads its identities at start only, so a credential change recreates the container.
+- **No in-store replication:** the single node holds one copy. TODAY no durability beyond that node is evidenced in production: the separate-host second copy (RustFS) is built but not enabled in production, and the off-site Object-Lock backup is built but not enabled until the operator steps in DR/BCP §4.8.7, with no evidence it runs on the VPS.
+- **Identities and policies:** `object-store-provision` renders `s3.json` with `scripts/storage/seaweedfs-identities.ts`: an admin identity (a standing credential on the host, used only by operators and `--restore`), the app identity bound to the IAM policy document `deploy/production/object-store/app-policy.json`, and read-only identities bound to `deploy/production/object-store/reader-policy.json` for the backup and the second copy. SeaweedFS reads its identities at start only, so a credential change recreates the container.
 - **Buckets:** `tenant-<orgId>` per tenant, plus `chartwarden-*` platform buckets. The app key may create buckets (`tenant-*`, `chartwarden-*`) and manage lifecycle on `tenant-*`; it cannot delete a bucket or change versioning or bucket policy.
 
 ### Deployment baseline
 
 - TODAY: a single SeaweedFS container (pinned by digest) with its data in the `seaweedfs-data` volume. The S3 gateway is on the Compose network, and `127.0.0.1:9000` on the host maps to it as the storage vhost's nginx upstream (presigned URLs). Health: `GET /healthz`. The api and worker hold the scoped app key, never the admin pair.
-- TODAY: every S3 call writes an audit record (Fluent forward protocol) that `fluent-bit` posts to the api, which records successful object GETs on `tenant-*` buckets as `signed_url_consumed` in `document_access_log`.
+- TODAY: every S3 call writes an audit record (Fluent forward protocol) that `fluent-bit` posts to the api, which records successful object GETs on `tenant-*` buckets as `signed_url_consumed` in `document_access_log`. Known limits (CW-AU-01): ingest is best-effort; any GET on a key within 15 minutes of a signed-URL issue is attributed to that issue, including the backup and second-copy readers' GETs; and no live test drives the chain end to end.
 - TARGET: three nodes on three distinct physical hosts in namespace `storage`, S3 reachable only inside the cluster, the admin surface only on the management network. The repo has no SeaweedFS topology, volume-placement or replication settings for it.
 - **Application-level encryption is not built yet.** M22's renderer uploads document bytes as-is
   (`apps/backend/src/modules/22-documents/seams/renderer.ts`, `putObject`), so the store holds **plaintext PHI**. TODAY
-  that data is protected only by host disk encryption (`compliance/controls.yaml` CW-AC-05, partial) and access control; on the TARGET cluster, by Talos disk encryption. Envelope-encrypting blobs before upload,
+  that data is protected only by host disk encryption (no gate checks it; `compliance/controls.yaml` CW-AC-05, partial) and access control; on the TARGET cluster, by Talos disk encryption. A host that went through the SeaweedFS cutover and has not removed the retired `<prefix>_minio-data` volume also holds a plaintext copy of every document outside the backups, with no recorded removal deadline (the owner decides; `deploy/production/README.md`). Envelope-encrypting blobs before upload,
   under the per-tenant DEK (ADR-0038), is an open gap to close before stage 1.
-- Store-side Object Lock exists only on the off-site backup bucket (COMPLIANCE, default retention of at least 100 days, written by `cw-backup.sh`). It is not provided on the primary or on the second copy. Immutable backup copies therefore go to that external, BAA-covered object storage.
+- TODAY no store-side object-retention control is evidenced in production. The off-site Object-Lock mirror (COMPLIANCE, default retention of at least 100 days, noncurrent versions expire at 120 days) is built but not enabled until the operator steps in DR/BCP §4.8.7, with no evidence it runs on the VPS, and it is not a 7-year control. The operator creates the lock; `cw-backup.sh` only verifies it and refuses a non-COMPLIANCE or shorter one. Nothing is locked on the primary or on the second copy, and objects persist on the primary until M22's eraser removes them.
 
 ### Day-2 operations
 
 - **Health:** the `seaweedfs` container healthcheck (`/healthz`) and the api's `/ready` object-store check; also keep `fluent-bit` running, because a down `fluent-bit` loses audit records without blocking any S3 request.
 - **Upgrades:** the image is pinned by digest. On a bump, re-run `test:object-store:conformance:live` and `test:object-store:resilience:live` (CI job `object-store-conformance-live`) against the same image and the same `deploy/production/object-store/` files.
-- **Credentials:** rotate the app secret by setting `SEAWEEDFS_APP_SECRET_KEY` and its temporary rollback alias to the same new value and deploying; `object-store-provision` rewrites `s3.json` and `deploy.sh` recreates `seaweedfs` (a few seconds of storage downtime). Ops Runbook §8.1.
+- **Credentials:** rotate the app secret by setting `SEAWEEDFS_APP_SECRET_KEY` to the new value and deploying (the old `MINIO_*` names are no longer read and may be deleted); `object-store-provision` rewrites `s3.json` and `deploy.sh` recreates `seaweedfs` (a few seconds of storage downtime). Ops Runbook §8.1.
 - **Capacity:** the host disk behind `seaweedfs-data`; an optional hard per-tenant cap is a bucket quota set with `s3.bucket.quota` through `weed shell` (Ops Runbook §6.5).
 - **Second copy and recovery:** `scripts/object-store-copy.ts` syncs every `tenant-*` / `chartwarden-*` bucket to RustFS on another host, and back with `--restore`; it keeps each object's SHA-256. Ops Runbook §6.4.
 - **Not available in the repo today:** the Garage-specific steps this chapter used to carry (layout and zones, replication factor, adding a node, resync and repair tasks, quorum recovery) were removed with the Garage text, and the repo has no SeaweedFS equivalent for adding nodes, rebalancing or repairing a multi-node cluster.
 
 ### Security and HIPAA notes
 
-- Documents are PHI. Never put patient identifiers in object keys (the code uses opaque, PHI-free keys), log every
+- Documents are PHI. Object keys carry no name, DOB or MRN, but they do carry internal patient and document UUIDs (`documents/<patientId>/...`, `deriveObjectKey`): never add free text or a clinical identifier to a key. Log every
   access through the ChartWarden audit ledger, and close the encrypt-before-upload gap above.
 - Download URLs given to browsers are short-lived presigned URLs, issued only after an authorization check.
 - The admin identity is not an application credential; the app key is scoped by `app-policy.json`.
@@ -477,7 +477,7 @@ SeaweedFS stores files: signed consent forms, scanned documents, PDFs, attachmen
 
 ### Do not
 
-- Treat the primary as the only copy of anything: the off-site Object Lock backup is the archive, and the second copy is a sync, not an archive.
+- Treat the primary as the only copy of anything: the only archive the repo builds is the off-site Object-Lock mirror (not enabled until the DR/BCP §4.8.7 operator steps), and the second copy is a sync, not an archive: an erasure on the primary reaches it on the next run, and `--restore` resurrects destroyed objects.
 - Copy objects with `rclone` or `mc mirror`: they drop the stored SHA-256, and the app's verified reads then refuse the objects.
 - Give the application the admin identity, or expose buckets publicly, or use long-lived presigned URLs.
 
