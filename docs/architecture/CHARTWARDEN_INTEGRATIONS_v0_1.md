@@ -618,7 +618,7 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
 ### 6.25 Object Storage Egress — Presigned URLs (Module 22; §7.6)
 
 - **Purpose:** Scoped document delivery to external collaborators (attending physicians, hospital staff, funeral homes via the External Collaborator magic-link pattern) and patient/family portal document shares.
-- **Direction & protocol:** Outbound HTTPS presigned URLs from the object store; one bucket per tenant, `tenant-<orgId>`, derived from the organization id inside the adapter so a key cannot address another tenant's objects (architecture §8(3)).
+- **Direction & protocol:** Outbound HTTPS presigned URLs from the object store; one bucket per tenant, `tenant-<orgId>`, derived from the organization id inside the adapter (the adapter derives the bucket; the credential itself spans all tenant buckets, so isolation is application-layer; architecture §8(3)).
 - **Credential model:** Per-tenant bucket scope under one application credential bound to `deploy/production/object-store/app-policy.json` (no per-tenant key); short-lived presigned URLs minted per authorized access.
 - **BAA / PHI:** Scoped PHI documents; access governed by Module 39 consent + §7.6 collaborator scoping; magic-link sessions are short-lived and view-audited.
 - **Failure handling:** Tier 2; storage availability is covered in DR_BCP (the object store, SeaweedFS in production, is a ChartWarden-operated service, not a third party — included here only because it is the egress mechanism for external sharing).

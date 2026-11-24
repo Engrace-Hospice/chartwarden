@@ -475,7 +475,7 @@ Four Accepted ADRs change what this guide describes and were not reflected in it
 |PostgreSQL data files                                   |LUKS full-disk encryption on VM disks                               |Key in TPM (Proxmox); break-glass copy sealed offline           |
 |PostgreSQL backups (pgBackRest)                         |AES-256-CBC                                                         |Three independent keys per backup repo (Ops Runbook §8.3.1)     |
 |Object store objects (SeaweedFS; RustFS second copy)    |TARGET: server-side encryption. TODAY: plaintext objects, host disk encryption only, not asserted by any gate (compliance/controls.yaml CW-AC-05 gap)|Per host (LUKS or provider volume encryption)                   |
-|Off-site object backups (Object Lock bucket)            |SSE-C per object (`BACKUP_OBJECT_SSE_C_KEY`) + object lock prevents tampering|Docker secret on the production host, never sent to the store at rest|
+|Off-site object backups (Object Lock bucket)            |SSE-C per object (`BACKUP_OBJECT_SSE_C_KEY`, one platform key for every tenant's objects) + object lock prevents tampering. Built; not enabled until the operator steps in DR/BCP §4.8.7; no evidence it runs on the VPS|Docker secret on the production host, never sent to the store at rest|
 |Valkey AOF and snapshots                                |Filesystem-level encryption (LUKS)                                  |Per VM                                                          |
 |Application secrets in Git                              |SOPS with age                                                       |Age key per environment; backups in sealed envelopes            |
 |TLS private keys                                        |Owned by edge / per-service; not encrypted at rest beyond filesystem|Strict filesystem ACL (mode 0400 owned by service user)         |
@@ -996,10 +996,10 @@ For any bulk export (>10 records):
 1. Approving authority recorded (per type above)
 1. Export operation rate-limited (1 per hour per user)
 1. Export size limit (default 10,000 records; exceeding requires elevated approval)
-1. Generated file kept in the object store (design path `tenants/<org>/exports/`; the real bucket is `tenant-<orgId>`). TARGET: encrypted at rest. TODAY: plaintext at rest, host disk encryption only (compliance/controls.yaml CW-AC-05)
+1. Generated file kept in the object store (design path `tenants/<org>/exports/`; the real bucket is `tenant-<orgId>`). TARGET: encrypted at rest. TODAY: plaintext at rest, host disk encryption only (no gate checks it; compliance/controls.yaml CW-AC-05). A host that went through the SeaweedFS cutover and has not removed the retired `<prefix>_minio-data` volume also holds a plaintext copy of every document outside the backups, with no recorded removal deadline (the owner decides; `deploy/production/README.md`)
 1. Download tracked: who downloaded, when, from where (IP)
 1. Time-limited download URL (24 hours)
-1. File auto-deleted from the object store after 7 days. TARGET: a 7-day expiry rule on the exports prefix. TODAY: the only lifecycle rule the code applies is M25's `m25-835/` rule, so the 7-day expiry is design intent with no rule behind it
+1. File auto-deleted from the object store after 7 days. TARGET: a 7-day expiry rule on the exports prefix. TODAY: the only lifecycle rule the code applies is M25's `m25-835/` rule, so there is no store-side 7-day rule: the application expires the file itself (M34 `tenant.bundle_expiry_sweep` for DSAR and tenant-export bundles; M28 `fhir.bulk-export-sweeper` for FHIR bulk exports)
 1. Audit entry with severity=warn for moderate exports, severity=critical for >1000 records
 
 ### 8.6 Cross-Tenant Data Isolation
@@ -1792,7 +1792,7 @@ Use of credentials or access patterns reserved for emergency:
 
 - `postgres` superuser role
 - `chartwarden_admin` outside of normal migration runner context
-- Object-store admin credentials (SeaweedFS `SEAWEEDFS_ADMIN_ACCESS_KEY` / `SEAWEEDFS_ADMIN_SECRET_KEY`; not an application credential)
+- Object-store admin credentials (SeaweedFS `SEAWEEDFS_ADMIN_ACCESS_KEY` / `SEAWEEDFS_ADMIN_SECRET_KEY`; not an application credential). It is a standing credential on the host, not a sealed one: `deploy.sh` generates it into the host's production env file when absent and `object-store-provision` renders it into `s3.json` on every deploy; only operators and `scripts/object-store-copy.ts --restore` use it
 - SSH directly to production VM bypassing bastion
 - Off-site age key for SOPS decryption
 - pgBackRest off-site repo credentials
@@ -1803,7 +1803,7 @@ Use of credentials or access patterns reserved for emergency:
 |---------------------------------|-----------------------------------------------------|------------------------------------------|
 |`postgres` superuser             |Security Owner + Incident Commander (during incident)|Reason; expected duration; planned actions|
 |`chartwarden_admin` for non-migration|Security Owner                                       |Same                                      |
-|Object-store admin (SeaweedFS)   |Security Owner                                       |Same                                      |
+|Object-store admin (SeaweedFS; standing credential on the host, not sealed)|Security Owner                                       |Same                                      |
 |SSH bypassing bastion            |Security Owner (during incident only)                |Same                                      |
 |Off-site age key                 |Security Owner + secondary holder                    |Reason; sealed envelope inventory check   |
 

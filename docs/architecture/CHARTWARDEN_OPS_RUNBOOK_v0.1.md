@@ -596,35 +596,32 @@ the detached table into the parent (they route correctly now), then re-attach an
 `ACCESS EXCLUSIVE` lock is held for the whole thing, so do this at the first opportunity rather than the
 convenient one — the table is still accepting writes into DEFAULT while you wait.
 
-#### 5.2.3 Manual Partition Operations
+#### 5.2.3 Archiving Audit Partitions (never by hand)
 
-Detach an expired partition for archival:
+A partition is never detached, exported or dropped by hand. The built path is the monthly `audit.archive` job
+(`apps/backend/src/bootstrap/jobs/audit-archive.ts`, cron `30 3 2 * *`, M01 spec §4.8):
 
-```sql
--- Detach Jan 2026 audit partition (compliance class) for archival
-ALTER TABLE audit_event DETACH PARTITION audit_event_2026_01;
-
--- Export to Parquet for cold storage
-COPY audit_event_2026_01 TO '/tmp/audit_2026_01.parquet' WITH (FORMAT 'parquet');
-
--- Upload the export to cold storage: TARGET. Not available in the repo today (no cold-storage bucket or upload tool
--- exists; the app key's scope is `tenant-*` and `chartwarden-*`). Keep the export somewhere you can restore it from
--- before the next statement.
-
--- Drop the partition
-DROP TABLE audit_event_2026_01;
-
--- Audit the destruction
-INSERT INTO audit_event (event_type, resource_kind, ..., context)
-VALUES ('audit.partition_archived', 'partition', ..., '{"partition": "audit_event_2026_01"}');
-```
+- For each CLOSED `audit_event` partition older than `AUDIT_ARCHIVE_HOT_MONTHS` (default 13) it writes gzip NDJSON parts
+  plus a checksummed `manifest.json` to `AUDIT_ARCHIVE_BUCKET` (under `AUDIT_ARCHIVE_PREFIX`, default `audit-archive`),
+  verifies every object back from the store (server-enforced SHA-256 plus an inspect), and checks that the archived row
+  total equals the partition's row count.
+- It detaches a verified partition from the hot table only when `AUDIT_ARCHIVE_DETACH=true` (off by default), through
+  `audit_archive_detach`, which re-counts and refuses on any mismatch. A detached range is no longer searched through
+  `audit_event`.
+- With `AUDIT_ARCHIVE_BUCKET` unset it reports `skipped: "unconfigured"` and touches nothing, so the hot tier keeps every
+  partition. TODAY the production compose sets no `AUDIT_ARCHIVE_BUCKET`, so the job archives nothing in production. The
+  bucket must already exist, and the app key reaches only `tenant-*` and `chartwarden-*` buckets.
+- It never drops a partition. Destruction is M4's certificate-driven act (an approved destruction certificate, M4 spec
+  §2.4.2): never `DROP TABLE` a partition by hand, which bypasses the certificate, the legal-hold overlay and the 42 CFR
+  Part 2 refusal.
+- The Parquet export to `platform/cold-storage/<table>/<year>/<month>.parquet` (M01 D5) is the original design, not what
+  was built: the archive format is gzip NDJSON, and the repo has no command that loads an archived range back into
+  `audit_event`.
 
 For partitions in `operational` retention class (1-year retention):
 
-- Detach 13 months after creation
-- Cold storage in the object store at `platform/cold-storage/<table>/<year>/<month>.parquet` (TARGET: no upload tool exists today, see above)
-- Original partition dropped
-- Restorable on-demand if needed for investigation
+- Become archivable 13 months after creation (`AUDIT_ARCHIVE_HOT_MONTHS`); the archive copy is not itself a destruction
+- Destruction waits for an approved M4 destruction certificate (the partition is not dropped by the archive job)
 
 For `legal_hold` retention class:
 
@@ -854,7 +851,7 @@ production repository.
 
 ## 6. Storage Operations (object store)
 
-**Which store.** Production's object store is **SeaweedFS**: compose service `seaweedfs` (pinned image in `deploy/production/compose.yml`), a single-node all-in-one `weed server -s3` with one volume per bucket and no in-store replication (ADR-0050 D6, amendment 2026-11-05). Local development and CI run **RustFS**. The second copy, not enabled in production yet, is RustFS on another host (§6.4). The application reaches every one of them through the vendor-neutral `OBJECT_STORE_*` variables (formerly `MINIO_*`; the old names survive only as temporary rollback aliases in `.env.production`, see `deploy/production/README.md`, "Object store: the environment contract").
+**Which store.** Production's object store is **SeaweedFS**: compose service `seaweedfs` (pinned image in `deploy/production/compose.yml`), a single-node all-in-one `weed server -s3` with one volume per bucket and no in-store replication (ADR-0050 D6, amendment 2026-11-05). Local development and CI run **RustFS**. The second copy, not enabled in production yet, is RustFS on another host (§6.4). The application reaches every one of them through the vendor-neutral `OBJECT_STORE_*` variables (formerly `MINIO_*`; the backend no longer reads any `MINIO_*` name, so the old lines may be deleted from `.env.production`; a pre-SeaweedFS commit must not be redeployed, see `deploy/production/README.md`, "Retired: the MinIO rollback window").
 
 The `mc` commands this chapter used to carry (`mc admin info`, `mc du`, `mc replicate`, `mc ilm`, `mc retention`, `mc admin policy`) have no SeaweedFS equivalent in the repo, so they were removed, not translated. Each section below gives what the repo does provide; anything else is marked "not available in the repo today". All commands run from the production deploy directory.
 
@@ -884,7 +881,7 @@ Reading a bucket's lifecycle rules back from an operator shell (the former month
 
 TARGET: the `claims` and `cost-reports` data under COMPLIANCE-mode Object Lock with a 7-year default retention, so that not even an admin can delete an object until retention passes.
 
-TODAY: store-side Object Lock exists only on the off-site backup bucket (COMPLIANCE, default retention >= 100 days, written by `cw-backup.sh`; every snapshot checks it, and a failing snapshot raises `backup.snapshot_failed`, §5.7). It is not provided on the primary or on the second copy, so there is no lock to verify on a `tenant-*` bucket. Retention for the 7-year classes comes from partition rotation (§5.2) plus that locked off-site backup.
+TODAY: no store-side object-retention control is evidenced in production. The off-site Object-Lock mirror is built but not enabled until the operator steps in DR/BCP §4.8.7, and there is no evidence it runs on the VPS. When it is enabled, the operator creates the bucket's lock (COMPLIANCE, default retention >= 100 days, noncurrent versions expire at 120 days) and `cw-backup.sh` only verifies it on every snapshot, refusing a non-COMPLIANCE or shorter default (a failing snapshot raises `backup.snapshot_failed`, §5.7); it is not a 7-year control. Nothing is locked on the primary or on the second copy, so there is no lock to verify on a `tenant-*` bucket. Partition rotation (§5.2) covers database rows, not object bytes: objects persist on the primary until M22's eraser removes them.
 
 ### 6.4 Replication Health
 
@@ -897,10 +894,11 @@ docker compose --env-file .env.production -f compose.yml -f compose.object-copy.
 
 - Expected: a clean JSON summary per run and a `healthy` container. A failed run posts `object_copy.failed` to `OPS_ALERT_WEBHOOK_URL` (counts and bucket/key ids, never content); the container turns unhealthy when no run has been clean for three intervals.
 - Exposure: the data-loss window of the copy equals the copy interval (hourly by default).
-- It is a sync, not an archive: an erasure on the primary reaches the copy on the next run. Deletions are guarded: a bucket whose source is empty, or a run that would delete more than max(10, 10%) of a bucket, is refused and paged (`ALLOW_MASS_DELETE` names a bucket to let one through).
+- It is a sync, not an archive: an erasure on the primary reaches the copy on the next run, with three limits: a large erasure is held by the mass-delete guard until an operator names the bucket, a bucket dropped on the primary is never removed from the copy, and `--restore` after an erasure resurrects the destroyed objects. The Object-Lock off-site mirror never uses `--remove` and keeps erased documents: no D12 shred or DEK destruction reaches it.
+- The guard is narrow: it refuses a bucket's deletions only when the source bucket is empty or a run would delete more than max(10, 10%) of the target bucket (refused and paged; `ALLOW_MASS_DELETE` names a bucket to let one through). A loss under that threshold, such as a primary missing a few percent of its objects, propagates to the copy on the next run.
 - Per-bucket lag or pending counts: **not available in the repo today.**
 
-Recovery from the copy has no promote-the-copy procedure in the repo. The documented path is: provision a new SeaweedFS, run `scripts/object-store-copy.ts --restore` (`SOURCE_S3_*` = the replica, `TARGET_S3_*` = the new primary's admin; it never deletes), then run the `tenant-buckets` backfill (the copy carries objects, not bucket versioning or expiry rules). The archive for point-in-time recovery stays the off-site Object Lock backup (§5.7).
+Recovery from the copy has no promote-the-copy procedure in the repo. The documented path is: provision a new SeaweedFS, run `scripts/object-store-copy.ts --restore` (`SOURCE_S3_*` = the replica, `TARGET_S3_*` = the new primary's admin; it never deletes), then run the `tenant-buckets` backfill (the copy carries objects, not bucket versioning or expiry rules). Stop `object-copy` first (`restart: unless-stopped`, it syncs hourly and deletes from the target) and keep it stopped until `--restore` and the per-bucket object-count checks finish; after the restore, re-run the D12 erasures, because a restore resurrects destroyed objects (DR/BCP §6.3). The only archive the repo builds is the off-site Object-Lock mirror (§5.7), not enabled until the DR/BCP §4.8.7 operator steps.
 
 ### 6.5 Capacity Management
 
@@ -1029,7 +1027,7 @@ Maintained in `infra/secrets/inventory.yaml` (encrypted via SOPS):
 | `BETTER_AUTH_SECRET` | Backend | Annual | | |
 | `VALKEY_PASSWORD` | All services | Annual | | |
 | `SEAWEEDFS_ADMIN_ACCESS_KEY` / `SEAWEEDFS_ADMIN_SECRET_KEY` (object store admin) | Operators and the one-time migration only, never the application | Annual; same alias rule as the next row | | |
-| `SEAWEEDFS_APP_ACCESS_KEY` / `SEAWEEDFS_APP_SECRET_KEY` (compose hands them to api and worker as `OBJECT_STORE_ACCESS_KEY` / `OBJECT_STORE_SECRET_KEY`) | api and worker data plane: one key for all tenants, scoped to `tenant-*` and `chartwarden-*` by `deploy/production/object-store/app-policy.json` (there is no per-tenant store credential) | On suspicion or annual. Set the secret and its temporary `MINIO_APP_SECRET_KEY` rollback alias to the same new value, then deploy: `object-store-provision` rewrites `s3.json` and `deploy.sh` recreates `seaweedfs` (a few seconds of storage downtime); a deploy refuses a mismatch (`deploy/production/README.md`) | | |
+| `SEAWEEDFS_APP_ACCESS_KEY` / `SEAWEEDFS_APP_SECRET_KEY` (compose hands them to api and worker as `OBJECT_STORE_ACCESS_KEY` / `OBJECT_STORE_SECRET_KEY`) | api and worker data plane: one key for all tenants, scoped to `tenant-*` and `chartwarden-*` by `deploy/production/object-store/app-policy.json` (there is no per-tenant store credential) | On suspicion or annual. Set `SEAWEEDFS_APP_SECRET_KEY` to the new value, then deploy: `object-store-provision` rewrites `s3.json` and `deploy.sh` recreates `seaweedfs` (a few seconds of storage downtime). The old `MINIO_*` names are no longer read and may be deleted (`deploy/production/README.md`, "Retired: the MinIO rollback window") | | |
 | `ANTHROPIC_API_KEY` | Backend, ml-worker | Quarterly or on suspicion | | |
 | `DOSESPOT_CLIENT_ID` / `_SECRET` / per-clinic creds | Backend | Per DoseSpot contract | | |
 | `TWILIO_ACCOUNT_SID` / `_AUTH_TOKEN` | Backend (notifications) | Annual | | |
@@ -1355,7 +1353,7 @@ done
 For emergency admin access when normal channels unavailable:
 
 - One break-glass `chartwarden_admin` PostgreSQL credential, password sealed in offline envelope
-- One break-glass object-store admin credential (the SeaweedFS admin pair, §8.1), similarly sealed
+- The object-store admin credential (the SeaweedFS admin pair, §8.1) is not sealed and not break-glass in the strict sense: it is a standing credential on the host (`deploy.sh` generates it into `.env.production` and `object-store-provision` renders it into `s3.json` on every deploy), used only by operators and `scripts/object-store-copy.ts --restore`
 - One break-glass SSH key for `chartwarden-edge-01` (host of last resort), sealed
 
 **Usage triggers:**

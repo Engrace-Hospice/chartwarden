@@ -135,7 +135,7 @@ flowchart LR
   backend2 -- mTLS --> workers2
   backend2 & workers2 -- TLS to private CA --> pg2
   backend2 & workers2 -- TLS --> valkey2
-  backend2 & workers2 -- TLS --> objstore2
+  backend2 & workers2 -- "TARGET TLS; TODAY plain HTTP on the Compose network" --> objstore2
   pangolin2 & backend2 & workers2 -- mTLS --> monitoring
   external2 -- TLS + signed webhooks --> pangolin2
 ```
@@ -582,7 +582,7 @@ Kubernetes adds operational overhead unjustified for a single-tenant local deplo
 | **Public** | Internet | N/A | N/A |
 | **DMZ** | Pangolin | 443/TCP from Internet | mTLS to Application Zone |
 | **Application** | Backend VMs, Worker VMs | mTLS from DMZ; mTLS from peer apps | TLS to Data; TLS to External over BAA |
-| **Data** | PostgreSQL, Valkey, the object store | TLS from Application Zone only | No outbound to Internet |
+| **Data** | PostgreSQL, Valkey, the object store | TARGET: TLS from Application Zone only (TODAY the Backend → object store hop is plain HTTP on the Compose network, §3.4) | No outbound to Internet |
 | **Admin** | Observability, Backups, MLflow | mTLS from Application Zone | No outbound to Internet |
 
 ### 3.2 Local Dev (Single Bridge Network)
@@ -608,7 +608,7 @@ Local dev runs on a single Docker bridge network. No zone enforcement — everyt
 | Backend → Worker | mTLS | Private CA |
 | Backend → Postgres | TLS with client cert verification | Private CA |
 | Backend → Valkey | TLS (with `requirepass`) | Private CA |
-| Backend → object store | TLS | Private CA |
+| Backend → object store | TARGET: TLS. TODAY: plain `http://seaweedfs:8333` on the Compose network (TLS ends at the host Nginx storage vhost that fronts presigned URLs; see SECURITY_HARDENING §4.3) | Private CA (TARGET) |
 | Backend → External | TLS 1.3 with cert pinning | Public CA |
 | Webhook inbound (DoseSpot/Stripe/etc.) | TLS + signed payloads | Public CA + signature verification |
 
@@ -732,9 +732,9 @@ Valkey configured with `maxmemory-policy=allkeys-lru` for cache evictions, but B
 **Object lifecycle (TARGET, each with a TODAY line):**
 
 - Versioning: enabled on `documents/`, `generated/`, `claims/`, `cost-reports/`. TODAY: the application credential cannot change bucket versioning, and the adapter's D12 erase lists and deletes every version and delete marker of an object.
-- Object lock (compliance mode): on `claims/` and `cost-reports/` for 7-year retention. TODAY: store-side Object Lock exists only on the off-site backup bucket (COMPLIANCE default retention of at least 100 days, written by `cw-backup.sh`, DR/BCP §4.8); it is not provided on the primary or the second copy, so retention comes from partition rotation plus that locked backup.
+- Object lock (compliance mode): on `claims/` and `cost-reports/` for 7-year retention. TODAY: no store-side object-retention control is evidenced in production. The off-site Object-Lock mirror (COMPLIANCE default retention of at least 100 days, noncurrent versions expire at 120 days; the operator creates the lock and `cw-backup.sh` only verifies it, DR/BCP §4.8) is built but not enabled until the operator steps in DR/BCP §4.8.7, with no evidence it runs on the VPS, and it is not a 7-year control. Nothing is locked on the primary or the second copy, and partition rotation covers database rows, not object bytes: objects persist on the primary until M22's eraser removes them.
 - Lifecycle transition: `intake/` artifacts deleted 30 days after job completion. TODAY: design intent; the only lifecycle rule the code applies is the M25 `m25-835/` staging expiry (`scripts/backfill-tenant-buckets.ts`).
-- Replication: `platform/` and `tenants/<org>/claims/` and `cost-reports/` replicated to the backup VM. TODAY: there is no in-store replication (production SeaweedFS is a single node, one volume per bucket). The copy is an hourly one-way sync of every `tenant-*` and `chartwarden-*` bucket to a RustFS on another host (`scripts/object-store-copy.ts --every`, `deploy/production/compose.object-copy.yml`). It is not enabled in production yet, and it is a sync, not an archive: an erasure on the primary reaches the copy on the next run.
+- Replication: `platform/` and `tenants/<org>/claims/` and `cost-reports/` replicated to the backup VM. TODAY: there is no in-store replication (production SeaweedFS is a single node, one volume per bucket). The copy is an hourly one-way sync of every `tenant-*` and `chartwarden-*` bucket to a RustFS on another host (`scripts/object-store-copy.ts --every`, `deploy/production/compose.object-copy.yml`). It is not enabled in production yet, and it is a sync, not an archive: an erasure on the primary reaches the copy on the next run, with three limits (a large erasure is held by the mass-delete guard until an operator names the bucket; a bucket dropped on the primary is never removed from the copy; `--restore` after an erasure brings the destroyed objects back). The Object-Lock off-site mirror never uses `--remove` and keeps erased documents: no D12 shred or DEK destruction reaches it.
 
 ### 4.5 MLflow Storage
 
@@ -1464,7 +1464,7 @@ In failure modes, degraded operation continues for many flows (see §10).
 **Backups:**
 
 - PostgreSQL: pgBackRest with continuous WAL archiving to chartwarden-backup-01 VM; full backup nightly, incremental every 2 hours
-- Object store: an hourly one-way sync to a RustFS second copy on another host (`scripts/object-store-copy.ts --every`; not enabled in production yet; a sync, not an archive), plus the off-site backup, a versioned bucket with Object Lock COMPLIANCE written by `cw-backup.sh` (DR/BCP §4.8). There is no in-store replication
+- Object store: an hourly one-way sync to a RustFS second copy on another host (`scripts/object-store-copy.ts --every`; not enabled in production yet; a sync, not an archive), plus the off-site backup (DR/BCP §4.8): a versioned bucket the operator creates with Object Lock COMPLIANCE (at least 100 days, noncurrent versions expire at 120 days; `cw-backup.sh` only verifies the lock and refuses a non-COMPLIANCE or shorter one), built but not enabled until the operator steps in DR/BCP §4.8.7, with no evidence it runs on the VPS, and not a 7-year control. There is no in-store replication
 - Valkey: AOF persistence; snapshot every 15 min to backup VM (sessions and cache are recoverable; queue jobs are best-effort)
 - Application config: SOPS-encrypted in Git
 - VM disk images: weekly Proxmox VM backups to backup VM
