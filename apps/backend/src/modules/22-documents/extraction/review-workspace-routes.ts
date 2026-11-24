@@ -31,7 +31,7 @@ import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import { type Static, Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "../routes/documents-typebox";
-import type { ReviewWorkspaceService } from "./review-workspace";
+import type { ReviewWorkspaceService, SupportReadScope } from "./review-workspace";
 import type { SudContentAccess } from "./sud-content-gate";
 
 const Box = Type.Tuple([Type.Number(), Type.Number(), Type.Number(), Type.Number()]);
@@ -382,9 +382,18 @@ export interface WardenLensPlatformSupportAccess {
       pageNumber?: number;
     },
     resolvePatient: (organizationId: string) => Promise<string | null>,
-    read: (organizationId: string, patientId: string | null) => Promise<T>,
+    read: (
+      organizationId: string,
+      patientId: string | null,
+      scope: "organization_scoped" | "patient_scoped",
+    ) => Promise<T>,
   ): Promise<T>;
 }
+
+/** A patient-scoped consent grant covers the batch's filed patient only (see `SupportReadScope`). */
+const supportReadScopeOf = (scope: "organization_scoped" | "patient_scoped"): SupportReadScope => ({
+  patientContentOnly: scope === "patient_scoped",
+});
 
 const SUPPORT_SESSION_SUD_ACCESS: SudContentAccess = {
   administratorOverride: async () => true,
@@ -459,12 +468,13 @@ export function registerDocLensReviewWorkspaceRoutes(
             auditedPatientId = await service.getBatchPatientId(authorizedOrganizationId, id);
             return auditedPatientId;
           },
-          (authorizedOrganizationId) =>
+          (authorizedOrganizationId, _patientId, scope) =>
             service.getWorkspace(
               authorizedOrganizationId,
               id,
               membershipId,
               SUPPORT_SESSION_SUD_ACCESS,
+              supportReadScopeOf(scope),
             ),
         );
         request.context.attributes.readAuditPatientId = auditedPatientId;
@@ -516,13 +526,14 @@ export function registerDocLensReviewWorkspaceRoutes(
             auditedPatientId = await service.getBatchPatientId(authorizedOrganizationId, id);
             return auditedPatientId;
           },
-          (authorizedOrganizationId) =>
+          (authorizedOrganizationId, _patientId, scope) =>
             service.renderPage(
               authorizedOrganizationId,
               id,
               page,
               request.id,
               SUPPORT_SESSION_SUD_ACCESS,
+              supportReadScopeOf(scope),
             ),
         );
         request.context.attributes.readAuditPatientId = auditedPatientId;

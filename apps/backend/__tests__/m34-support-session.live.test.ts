@@ -993,9 +993,9 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
             route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
           },
           async () => TENANT_PATIENT,
-          async (organizationId) => organizationId,
+          async (organizationId, _patientId, scope) => `${organizationId}:${scope}`,
         ),
-      ).resolves.toBe(TENANT_ORG);
+      ).resolves.toBe(`${TENANT_ORG}:organization_scoped`);
 
       const [ledger] = await q<{ patient_id: string; context: Record<string, unknown> }>(
         `SELECT patient_id, context FROM support_session_event
@@ -1066,6 +1066,20 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
           async () => undefined,
         ),
       ).rejects.toThrow(/active tenant-consented support session/);
+      await expect(
+        access.runAuthorizedRead(
+          {
+            ...patientBase,
+            resourceKind: "intake_review_workspace",
+            resourceId: "88888888-8888-4888-8888-888888888885",
+            correlationId: "wardenlens-live-in-scope",
+            actorIp: null,
+            route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+          },
+          async () => TENANT_PATIENT,
+          async (_organizationId, _patientId, scope) => scope,
+        ),
+      ).resolves.toBe("patient_scoped");
       const closed = await send(
         "POST",
         `/api/v1/platform/support-sessions/${patientSession.body.sessionId}/close`,
@@ -1087,6 +1101,47 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
           async () => undefined,
         ),
       ).rejects.toThrow(/active tenant-consented support session/);
+
+      // A session of one organization cannot read another, and a session already expired at entry cannot read
+      // at all; neither refusal runs the read or leaves a critical audit behind.
+      await expect(
+        access.runAuthorizedRead(
+          {
+            ...base,
+            organizationId: OTHER_ORG,
+            resourceKind: "intake_review_workspace",
+            resourceId: "88888888-8888-4888-8888-888888888884",
+            correlationId: "wardenlens-live-cross-org",
+            actorIp: null,
+            route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+          },
+          async () => TENANT_PATIENT,
+          async () => "must-not-run",
+        ),
+      ).rejects.toThrow(/active tenant-consented support session/);
+      accessClock = new Date(clock.getTime() + 9 * HOUR);
+      await expect(
+        access.runAuthorizedRead(
+          {
+            ...base,
+            resourceKind: "intake_review_workspace",
+            resourceId: "88888888-8888-4888-8888-888888888883",
+            correlationId: "wardenlens-live-expired-at-entry",
+            actorIp: null,
+            route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+          },
+          async () => TENANT_PATIENT,
+          async () => "must-not-run",
+        ),
+      ).rejects.toThrow(/active tenant-consented support session/);
+      accessClock = clock;
+      const [refused] = await q<{ count: string }>(
+        `SELECT count(*)::text AS count FROM audit_event
+          WHERE event_type = 'support_session.wardenlens_read'
+            AND correlation_id = ANY($1::text[])`,
+        [["wardenlens-live-cross-org", "wardenlens-live-expired-at-entry"]],
+      );
+      expect(refused?.count).toBe("0");
 
       const revokedGrant = await issue(ADMIN, "organization_scoped");
       const revokedSession = await start(revokedGrant.body.id);

@@ -19,9 +19,10 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
-import type {
-  ReviewWorkspace,
-  ReviewWorkspaceService,
+import {
+  type ReviewWorkspace,
+  type ReviewWorkspaceService,
+  batchHoldsForeignPatientContent,
 } from "../src/modules/22-documents/extraction/review-workspace";
 import {
   type WardenLensPlatformSupportAccess,
@@ -354,9 +355,15 @@ const PERSONAS: Record<string, Persona> = {
 
 function makeServer(
   sudStatus: ReviewWorkspace["sud"]["status"] = "detected",
-  opts: { supportAllowed?: boolean; workspaceFails?: boolean; renderFails?: boolean } = {},
+  opts: {
+    supportAllowed?: boolean;
+    workspaceFails?: boolean;
+    renderFails?: boolean;
+    supportScope?: "organization_scoped" | "patient_scoped";
+  } = {},
 ) {
   const calls = {
+    contentScopes: [] as Array<{ readonly patientContentOnly: boolean } | undefined>,
     consentPatients: [] as string[],
     renders: 0,
     supportResolutions: [] as string[],
@@ -391,7 +398,14 @@ function makeServer(
     async getBatchPatientId() {
       return PATIENT;
     },
-    async getWorkspace(_org: string, _id: string, _membership: string, access?: SudContentAccess) {
+    async getWorkspace(
+      _org: string,
+      _id: string,
+      _membership: string,
+      access?: SudContentAccess,
+      scope?: { readonly patientContentOnly: boolean },
+    ) {
+      calls.contentScopes.push(scope);
       if (opts.workspaceFails) throw new Error("synthetic workspace failure");
       const ws = workspaceFixture(sudStatus);
       const allowed = await resolveSudContentAccess(access, {
@@ -406,7 +420,9 @@ function makeServer(
       _page: number,
       _correlationId: string,
       access?: SudContentAccess,
+      scope?: { readonly patientContentOnly: boolean },
     ) {
+      calls.contentScopes.push(scope);
       if (opts.renderFails) throw new Error("synthetic render failure");
       assertSudPageReadable(
         sudStatus,
@@ -422,7 +438,7 @@ function makeServer(
       calls.supportResolutions.push(input.supportSessionId);
       if (opts.supportAllowed === false) throw new Error("support session denied");
       const patientId = await resolvePatient(ORG);
-      const result = await read(ORG, patientId);
+      const result = await read(ORG, patientId, opts.supportScope ?? "organization_scoped");
       calls.supportAudits.push({
         patientId,
         resourceKind: input.resourceKind,
@@ -561,6 +577,62 @@ describe("GAP-067 — DocLens review routes compose the Part 2 need-to-know chec
       { patientId: PATIENT, resourceKind: "intake_review_workspace" },
       { patientId: PATIENT, resourceKind: "intake_page_image", pageNumber: 1 },
     ]);
+  });
+
+  it.each([
+    ["patient_scoped", true],
+    ["organization_scoped", false],
+  ] as const)(
+    "a %s support session asks the service for patient-only content: %s",
+    async (supportScope, patientContentOnly) => {
+      const { app, calls } = makeServer("confirmed", { supportScope });
+      for (const url of [platformWorkspaceUrl, platformImageUrl]) {
+        const response = await app.inject({
+          method: "GET",
+          url,
+          headers: as("platform_superadmin"),
+        });
+        expect(response.statusCode).toBe(200);
+      }
+      expect(calls.contentScopes).toEqual([{ patientContentOnly }, { patientContentOnly }]);
+    },
+  );
+
+  it("the tenant administrator routes never ask for patient-only content", async () => {
+    const { app, calls } = makeServer("confirmed");
+    for (const url of [workspaceUrl, imageUrl]) {
+      const response = await app.inject({
+        method: "GET",
+        url,
+        headers: as("tenant_administrator"),
+      });
+      expect(response.statusCode).toBe(200);
+    }
+    expect(calls.contentScopes).toEqual([undefined, undefined]);
+  });
+
+  it.each([
+    [
+      "another patient's document",
+      [{ identityStatus: "match", identityResolution: "other_patient" }],
+    ],
+    ["an unresolved mismatch", [{ identityStatus: "mismatch", identityResolution: null }]],
+    ["an unresolved possible match", [{ identityStatus: "possible", identityResolution: null }]],
+  ] as const)("a batch holding %s is foreign patient content", (_name, pages) => {
+    expect(batchHoldsForeignPatientContent(pages)).toBe(true);
+  });
+
+  it.each([
+    ["no pages", []],
+    ["a matching document", [{ identityStatus: "match", identityResolution: null }]],
+    [
+      "a reviewer-confirmed mismatch",
+      [{ identityStatus: "mismatch", identityResolution: "same_patient" }],
+    ],
+    ["an unverified document", [{ identityStatus: "unverified", identityResolution: null }]],
+    ["a document with no identity check", [{ identityStatus: null, identityResolution: null }]],
+  ] as const)("a batch holding %s is the filed patient's content", (_name, pages) => {
+    expect(batchHoldsForeignPatientContent(pages)).toBe(false);
   });
 
   it.each([

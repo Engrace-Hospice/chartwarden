@@ -35,7 +35,11 @@ export interface WardenLensSupportAccess {
   runAuthorizedRead<T>(
     input: WardenLensSupportReadInput,
     resolvePatient: (organizationId: string) => Promise<string | null>,
-    read: (organizationId: string, patientId: string | null) => Promise<T>,
+    read: (
+      organizationId: string,
+      patientId: string | null,
+      scope: "organization_scoped" | "patient_scoped",
+    ) => Promise<T>,
   ): Promise<T>;
 }
 
@@ -50,7 +54,8 @@ interface AccessFacts {
   readonly organizationId: string;
   readonly tenantAccountId: string;
   readonly supportConsentGrantId: string;
-  readonly scope: "organization_scoped" | "patient_scoped" | "assist";
+  /** An "assist" grant is non-PHI and is refused before facts are built. */
+  readonly scope: "organization_scoped" | "patient_scoped";
   readonly patientIdsInScope: readonly string[] | null;
   readonly sessionExpiresAt: Date;
   readonly grantExpiresAt: Date;
@@ -157,7 +162,7 @@ export function createWardenLensSupportAccess(
           throw error;
         }
         assertPatientScope(facts, patientId);
-        const result = await read(facts.organizationId, patientId);
+        const result = await read(facts.organizationId, patientId, facts.scope);
         const completedAt = now();
         if (
           facts.sessionExpiresAt.getTime() <= completedAt.getTime() ||

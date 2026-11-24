@@ -253,6 +253,36 @@ export interface ReviewWorkspaceDeps {
 
 export type IdentityResolution = "same_patient" | "other_patient";
 
+/**
+ * How far a support-session read may reach. `patientContentOnly` is set for a patient-scoped consent grant:
+ * the grant names the batch's filed patient, so a batch that also carries another patient's pages is refused.
+ */
+export interface SupportReadScope {
+  readonly patientContentOnly: boolean;
+}
+
+const FOREIGN_PATIENT_CONTENT_DENIED =
+  "this intake batch holds another patient's documents; a patient-scoped support session cannot read it";
+
+/**
+ * A patient-scoped grant covers one patient. A batch holds foreign content when a reviewer marked a document
+ * as another patient's, or the identity check flagged a mismatch or a possible match that nobody has confirmed
+ * as the filed patient's. An unverified document or one with no check proves nothing against the filed patient.
+ */
+export function batchHoldsForeignPatientContent(
+  pages: readonly {
+    readonly identityStatus: string | null;
+    readonly identityResolution: string | null;
+  }[],
+): boolean {
+  return pages.some(
+    (p) =>
+      p.identityResolution === "other_patient" ||
+      ((p.identityStatus === "mismatch" || p.identityStatus === "possible") &&
+        p.identityResolution !== "same_patient"),
+  );
+}
+
 export interface ReviewWorkspaceService {
   listQueue(
     organizationId: string,
@@ -279,6 +309,7 @@ export interface ReviewWorkspaceService {
     batchId: string,
     viewerMembershipId: string,
     sudAccess?: SudContentAccess,
+    scope?: SupportReadScope,
   ): Promise<ReviewWorkspace>;
   /** A page of a Part 2 batch is a 403 unless `sudAccess` allows it (omitted ⇒ denied). */
   renderPage(
@@ -287,6 +318,7 @@ export interface ReviewWorkspaceService {
     page: number,
     correlationId: string,
     sudAccess?: SudContentAccess,
+    scope?: SupportReadScope,
   ): Promise<{ png: Uint8Array; pageWidth: number; pageHeight: number }>;
   resolveSud(
     organizationId: string,
@@ -487,7 +519,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
       return paginate(organizationId, items, q.cursor, q.limit);
     },
 
-    async getWorkspace(organizationId, batchId, viewerMembershipId, sudAccess) {
+    async getWorkspace(organizationId, batchId, viewerMembershipId, sudAccess, scope) {
       // F-238 — records filed against a referral adopt its patient once M6 has resolved one, and are
       // re-checked against that patient (M22 writes only its own rows here).
       if (deps.identity && deps.cipher) {
@@ -551,6 +583,10 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
         return { b, pages, jobs, cands, review, decisions, conflict };
       });
       const { b, pages, jobs, cands, review, decisions, conflict } = loaded;
+      // A patient-scoped support grant covers the filed patient only: refused before any decryption.
+      if (scope?.patientContentOnly && batchHoldsForeignPatientContent(pages)) {
+        throw new ForbiddenError(FOREIGN_PATIENT_CONTENT_DENIED);
+      }
       // GAP-067 — decided BEFORE any decryption, so a denied viewer's request never holds Part 2 plaintext.
       const sudAllowed = await resolveSudContentAccess(sudAccess, {
         sudStatus: b.sudStatus,
@@ -712,7 +748,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
       return sudAllowed ? workspace : redactSudWorkspace(workspace);
     },
 
-    async renderPage(organizationId, batchId, page, correlationId, sudAccess) {
+    async renderPage(organizationId, batchId, page, correlationId, sudAccess, scope) {
       const source = await read(organizationId, async (tx) => {
         const [row] = await tx
           .select({
@@ -726,9 +762,23 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           .innerJoin(DV, eq(DV.id, DOC.activeVersionId))
           .where(eq(BATCH.id, batchId))
           .limit(1);
-        return row ?? null;
+        if (!row) return null;
+        // The image is the whole source page, so a patient-scoped grant needs the same batch-level check.
+        const identity = scope?.patientContentOnly
+          ? await tx
+              .select({
+                identityStatus: CP.identityStatus,
+                identityResolution: CP.identityResolution,
+              })
+              .from(CP)
+              .where(eq(CP.intakeUploadBatchId, batchId))
+          : [];
+        return { ...row, holdsForeignPatientContent: batchHoldsForeignPatientContent(identity) };
       });
       if (!source) throw new NotFoundError("intake batch");
+      if (source.holdsForeignPatientContent) {
+        throw new ForbiddenError(FOREIGN_PATIENT_CONTENT_DENIED);
+      }
       const geometry = (Array.isArray(source.geometry) ? source.geometry : []) as {
         page: number;
       }[];
