@@ -194,10 +194,11 @@ ensure_secret DOCLING_WORKER_TOKEN "$(openssl rand -hex 32)"
 # An existing new value or file is never changed, output names the variables and files only (never a value), and the old
 # variable and file stay in place, unused, until an operator deletes them. A host with neither old name, or one that has
 # migrated already, is left alone; an old name still present never fails a deploy.
-# Fail closed BEFORE the backup-name migration touches .env.production: when the overlay is configured (compose.backup.yml present and either
-# variable set) the new secret file must exist once the copy is done. A secrets/ directory this user cannot enter makes the
-# old file invisible (`[ -f ]` is false on EACCES), so the copy is skipped; without this check the variable would still
-# migrate, the overlay would be enabled and provisioning would die later on a missing bind-mount file, on every re-run.
+# Fail closed BEFORE the backup-name migration touches .env.production: when the overlay is configured (compose.backup.yml
+# present and either variable set) the new secret file must exist once the copy is done. A secrets/ directory this user
+# cannot enter makes the old file invisible (`[ -f ]` is false on EACCES), so the copy is skipped; without this check the
+# variable would still migrate, the overlay would be enabled and provisioning would die later on a missing bind-mount
+# file, on every re-run.
 env_raw() { sed -n "s/^$1=//p" .env.production | tail -n 1; }
 backup_secret_old=secrets/backup_source_minio_secret_key
 backup_secret_new=secrets/backup_source_object_store_secret_key
@@ -224,7 +225,8 @@ fi
 if [ "$backup_overlay_configured" -eq 1 ] && [ ! -e "$backup_secret_new" ]; then
   if [ -d secrets ] && [ ! -x secrets ]; then
     echo "$deploy_dir/secrets is not accessible to this user, so $backup_secret_new cannot be confirmed to exist (the backup overlay is configured)." >&2
-    echo "Copying the file by hand does not clear this: this user needs search (x) permission on the directory, for example: sudo setfacl -m u:$(id -un):x $deploy_dir/secrets (names become visible, contents stay protected by the files' own mode)." >&2
+    echo "A hand copy alone does not clear this: this user also needs search (x) permission on the directory, for example: sudo setfacl -m u:$(id -un):x $deploy_dir/secrets (names become visible, contents stay protected by the files' own mode)." >&2
+    echo "Without setfacl (the acl package), chmod o+x on the directory does the same but opens search to every local user. If this user cannot read $backup_secret_old either, copy it by hand as root too." >&2
   else
     echo "the backup overlay is configured but $deploy_dir/$backup_secret_new does not exist (and there is no old file to copy)." >&2
   fi

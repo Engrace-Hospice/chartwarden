@@ -880,13 +880,16 @@ describe.skipIf(BUN === "")("deploy.sh backup-overlay name migration", () => {
         },
         secretsDirMode: 0o000,
       });
-      const stuck = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
-      expect(stuck.status, `${stuck.stdout}${stuck.stderr}`).toBe(1); // the new file exists but cannot be seen
-      expect(stuck.stderr).toContain("setfacl");
-      chmodSync(join(p.dir, "secrets"), 0o500); // search permission, which is what the setfacl line grants
-      const cleared = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
-      expect(cleared.status, `${cleared.stdout}${cleared.stderr}`).toBe(0);
-      chmodSync(join(p.dir, "secrets"), 0o700); // so the scratch directory can be removed
+      try {
+        const stuck = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+        expect(stuck.status, `${stuck.stdout}${stuck.stderr}`).toBe(1); // the new file exists but cannot be seen
+        expect(stuck.stderr).toContain("setfacl");
+        chmodSync(join(p.dir, "secrets"), 0o500); // search permission, which is what the setfacl line grants
+        const cleared = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+        expect(cleared.status, `${cleared.stdout}${cleared.stderr}`).toBe(0);
+      } finally {
+        chmodSync(join(p.dir, "secrets"), 0o700); // so the scratch directory can be removed even when an assertion threw
+      }
     });
 
     it("a re-run fails the same way (never a half-migrated env) until the operator copies the file", () => {
@@ -896,14 +899,17 @@ describe.skipIf(BUN === "")("deploy.sh backup-overlay name migration", () => {
         secretFiles: { [OLD_SECRET]: { content: secretValue } },
         secretsDirMode: 0o000,
       });
-      for (let i = 0; i < 2; i += 1) {
-        const r = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
-        expect(r.status, `${r.stdout}${r.stderr}`).toBe(1);
-        expect(readFileSync(join(p.dir, ".env.production"), "utf8")).toBe(p.envBefore);
+      try {
+        for (let i = 0; i < 2; i += 1) {
+          const r = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+          expect(r.status, `${r.stdout}${r.stderr}`).toBe(1);
+          expect(readFileSync(join(p.dir, ".env.production"), "utf8")).toBe(p.envBefore);
+        }
+      } finally {
+        chmodSync(join(p.dir, "secrets"), 0o700); // the operator fixes access (and a failed assertion cannot strand the scratch dir)
       }
-      chmodSync(join(p.dir, "secrets"), 0o700); // the operator fixes access ...
       const fixed = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
-      expect(fixed.status, `${fixed.stdout}${fixed.stderr}`).toBe(0); // ... and the deploy now migrates
+      expect(fixed.status, `${fixed.stdout}${fixed.stderr}`).toBe(0); // the deploy now migrates
       expect(existsSync(join(p.dir, "secrets", NEW_SECRET))).toBe(true);
     });
 
