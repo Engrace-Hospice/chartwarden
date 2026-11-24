@@ -1521,7 +1521,7 @@ The audit log is mostly machinery; the visible surfaces serve Compliance, survey
 | Cross-tenant audit read without break-glass | denied; attempt audited |
 | Accounting requested beyond 6-year right (HIPAA scope) | clamped to 6 years with a note; Part 2 scope is lifetime, no clamp |
 | High-volume list view | aggregate event recorded; individual chart opens still individual |
-| Partition archived to the object store then queried | query transparently spans hot + warm tiers |
+| Partition archived to the object store then queried | query transparently spans hot + warm tiers (TARGET: no code reads a warm tier, and a detached range is no longer searched through `audit_event`, Ops Runbook §5.2.3) |
 | Action used in code with no catalog entry | runtime audit-write fails; boot fails if discovered at startup |
 | Module registers an action outside its `mN.` prefix | M4 boot refuses startup (namespace violation) |
 | Destruction batch reaches a Part 2 row while patient alive | eraser refuses; certificate → `partial_refused`; non-Part-2 rows still erased |
@@ -1601,7 +1601,7 @@ The audit log is mostly machinery; the visible surfaces serve Compliance, survey
 
 ### 12.4 RLS Isolation
 
-- Org A's audit events invisible under Org B context, including across warm-tier (object store) reads.
+- Org A's audit events invisible under Org B context, including across warm-tier (object store) reads (TARGET: no warm-tier read is built).
 - Cross-tenant audit read requires break-glass; denied otherwise; denial audited.
 
 ### 12.5 E2E (Playwright)
@@ -1631,7 +1631,7 @@ The audit log is mostly machinery; the visible surfaces serve Compliance, survey
 | 2 | Write-audit trigger generator (`packages/audit/triggers`) | M | 1 |
 | 3 | Read-audit helper + route `auditRead` config + `require-read-audit` lint | M | M3 |
 | 4 | Schema: legal_hold/destruction_certificate/state_retention_override/audit_export + migration `0004` + RLS | M | M1 |
-| 5 | Audit query/search API (faceted, cursor-paginated, hot+warm spanning) | L | 4 |
+| 5 | Audit query/search API (faceted, cursor-paginated, hot+warm spanning; TARGET: no warm-tier read is built) | L | 4 |
 | 6 | Patient access history + Accounting of Disclosures (§164.528) | M | 5 |
 | 7 | Retention scan + class lifecycle + state override resolution | M | 4 |
 | 8 | Destruction certificate workflow (pending→approve/hold→execute→cert PDF) | L | 7, M22(pdf) |

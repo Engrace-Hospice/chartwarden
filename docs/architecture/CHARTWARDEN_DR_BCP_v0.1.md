@@ -295,7 +295,7 @@ synced by the `object-copy` service (`scripts/object-store-copy.ts --every`, hou
 current versions, not an archive and not active-active: an erasure on the primary reaches the copy on the next run,
 and every object is re-put with its SHA-256 and verified on the target. The mass-delete guard
 (`scripts/object-store-copy.ts`) is narrow: it refuses a bucket's deletions (and pages) only when the source bucket is
-empty or a run would delete more than max(10, 10%) of the target bucket, so a smaller loss on the primary propagates
+empty or a run would delete more than max(10, 10% of the target count), so a smaller loss on the primary propagates
 on the next run. An erasure reaching the copy has three limits (a large erasure is held by the guard until an operator
 names the bucket via `ALLOW_MASS_DELETE`; a bucket dropped on the primary is never removed from the copy; `--restore`
 after an erasure brings the destroyed objects back), and the COMPLIANCE-locked off-site mirror (§4.8) never uses
@@ -457,7 +457,7 @@ reports it as `not-in-snapshot`.
 | Local repo retention | 2 full sets (+ their WAL) | `BACKUP_PG_RETENTION_FULL_LOCAL` |
 | Off-site repo retention | 13 full sets, about 90 days | `BACKUP_PG_RETENTION_FULL_OFFSITE` |
 | Off-site Object Lock | default retention COMPLIANCE, >= 100 days (covers the 13-week pgBackRest window); every snapshot refuses a shorter or non-COMPLIANCE default and records the mode in its marker | `BACKUP_OFFSITE_MIN_LOCK_DAYS` |
-| Off-site lifecycle | noncurrent versions and delete markers expire after 120 days (always LONGER than the lock); incomplete multipart uploads aborted after 7 days | target configuration |
+| Off-site lifecycle | noncurrent versions and delete markers expire after 120 days (must be longer than the lock; operator-set, unchecked, and the check has no upper bound: `cw-backup.sh` checks COMPLIANCE mode and a minimum only); incomplete multipart uploads aborted after 7 days | target configuration |
 | Stale alert | no successful snapshot for 45 min | `BACKUP_MAX_AGE_S` |
 | WAL health alert | `archive_command` failing, or `pg_wal` above 8 GiB, checked every snapshot tick | `BACKUP_PG_WAL_ALERT_BYTES` |
 
@@ -794,7 +794,7 @@ up; the api `/ready` reports the object store unreachable; `GET /healthz` on `se
    on the new primary matches the copy's. Only then start `object-copy` again.
 5. Re-run the D12 erasures (the M22 eraser and the Phase 2 object-scope destruction of §14A.2). A restore resurrects
    destroyed objects: those erased after the copy's last clean run, those whose deletion the guard held, those in a
-   bucket dropped on the primary, and, when the source is the off-site mirror, everything erased after the snapshot being
+   bucket dropped on the primary, and, when the source is the off-site mirror (hand-loaded; not scripted, §4.8.6), everything erased after the snapshot being
    loaded (`restore-objects` uploads only that snapshot's manifest entries). The objects are
    plaintext and `--restore` never deletes, so destroying a DEK does not hide them. Replay every erasure completed
    since the restored set was last in sync.
@@ -1599,7 +1599,7 @@ Module 34's tables map onto the §3.1 service tiers as below. The governing prin
 | `tenant_signup_intent`, `tenant_signup_token`                                                                                                                                                                                  | **Tier 3**               | Pre-provisioning self-serve state; loss re-requests the signup.                                                                                                |
 | `onboarding_task_template`                                                                                                                                                                                                       | **Tier 3 (rebuildable)** | Platform reference data;`compliance`-retained but re-seedable from `onboarding_task_template` seed — restore from backup or re-seed, whichever is faster. |
 
-**Key-ring / KEK split across DR.** The DEK ciphertext rides in the Tier-1 PostgreSQL backup (§4.1); the wrapping KEK lives in the HSM and is backed up separately via the HSM vendor procedure (Security Hardening §4 / §8.4). A restore reunites ciphertext + KEK. A **destroyed** tenant's DEK is `NULL` in Tier-1 backups too — once shredded, no backup resurrects the envelope-encrypted database columns. This is the cryptographic-shred property holding across DR (module spec §8.6) for those columns only: document objects are plaintext, so the DEK shred does not seal them and `--restore` can bring them back (Phase 2 row above, §4.2.2).
+**Key-ring / KEK split across DR.** The DEK ciphertext rides in the Tier-1 PostgreSQL backup (§4.1); the wrapping KEK lives in the HSM and is backed up separately via the HSM vendor procedure (Security Hardening §4 / §8.4). A restore reunites ciphertext + KEK. A **destroyed** tenant's DEK is `NULL` in Tier-1 backups taken after Phase 3 — no such backup resurrects the envelope-encrypted database columns. A backup taken before Phase 3 still holds the KEK-wrapped DEK, and the platform KEK survives the shred, so a pre-shred snapshot still decrypts until it ages out of retention (the off-site repo keeps 13 fulls, about 90 days, under a COMPLIANCE lock). This is the cryptographic-shred property holding across DR (module spec §8.6) for post-shred backups and for those columns only: document objects are plaintext, so the DEK shred does not seal them and `--restore` can bring them back (Phase 2 row above, §4.2.2).
 
 ### 14A.2 Cryptographic Shred Worker — Recovery & Resumption
 
@@ -1659,7 +1659,7 @@ curl -sf -X POST https://chartwarden-app-01:3000/api/v1/platform/tenants/<orgSlu
 > Confirm the Phase markers again (step 1) before and after — they, not the queue, are the record of
 > what has actually happened to the tenant's key material.
 
-**The irreversible boundary is Phase 3.** Before Phase 3, a crash is fully recoverable — no data has been destroyed, and a re-run completes cleanly. After Phase 3, the DEK is gone; even a Tier-1 backup restore cannot resurrect the envelope-encrypted database columns (document objects are plaintext and can come back from a copy: Phase 2 row above, §4.2.2), and a Phase-4-only crash leaves you with destroyed data and an unfiled certificate — re-running files it.
+**The irreversible boundary is Phase 3.** Before Phase 3, a crash is fully recoverable — no database data has been destroyed (Phase 2 has already removed the objects from the primary), and a re-run completes cleanly. After Phase 3, the DEK is gone; a Tier-1 backup restore of a post-Phase-3 backup cannot resurrect the envelope-encrypted database columns (a pre-shred snapshot still can until it ages out of retention, and document objects are plaintext and can come back from a copy: Phase 2 row above, §4.2.2), and a Phase-4-only crash leaves you with destroyed data and an unfiled certificate — re-running files it.
 
 **Eraser-refusal gate — do not override.** If any eraseFn returns `refused_part_two_retention` (a 42 CFR Part 2 record under a retention obligation, M4 D8), the worker aborts before Phase 3, records refused-row counts on the destruction certificate, writes the `dek_destruction_aborted_part_two_retention` marker, and re-defers the tenant to `retained`. The DEK is **preserved** — it is the only key for the legally-retained Part 2 ciphertext. The daily `tenant.shred_eligibility_check` re-fires once the Part 2 obligation lapses. **An operator must never manually destroy the DEK to "finish" a shred the gate aborted** — that permanently destroys legally-retained Part 2 records and is a compliance violation, not a recovery action.
 

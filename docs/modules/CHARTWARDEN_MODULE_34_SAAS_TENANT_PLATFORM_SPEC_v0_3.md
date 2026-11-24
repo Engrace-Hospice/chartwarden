@@ -2200,7 +2200,7 @@ Live updates via M36 Socket.IO rooms `platform_ops` and `org:<orgId>` — any st
    - Phase 2 — per-tenant object-store scope destroyed via M1 helper (reached only when no eraser refused)
    - Phase 3 — DEK destroyed (`m34_destroy_tenant_key_ring` SECURITY DEFINER; `current_dek_kek_wrapped_ciphertext = NULL`; `prior_dek_versions` cleared)
    - Phase 4 — M4 certificate finalized with destruction timestamps; `tenant_account` status → `destroyed`; outbox `m34.tenant.destroyed`
-6. **Acceptance:** A post-shred query of any envelope-encrypted column for this tenant raises `TenantKeyDestroyed`. A query of `tenant_key_ring` shows `destroyed_at IS NOT NULL AND current_dek_kek_wrapped_ciphertext IS NULL`. A restore of a backup containing the encrypted ciphertext is **still cryptographically inaccessible** because the wrapping KEK has no DEK to decrypt — this is the "cryptographic shred" property.
+6. **Acceptance:** A post-shred query of any envelope-encrypted column for this tenant raises `TenantKeyDestroyed`. A query of `tenant_key_ring` shows `destroyed_at IS NOT NULL AND current_dek_kek_wrapped_ciphertext IS NULL`. A restore of a backup taken after Phase 3 is **still cryptographically inaccessible** because the wrapping KEK has no DEK to decrypt — this is the "cryptographic shred" property; a backup taken before the shred still holds the KEK-wrapped DEK and decrypts until it ages out of retention.
 7. **Failure path:** If any phase fails, the worker is re-runnable; per-phase receipts in `tenant_key_destruction_log` resume from the last completed phase. Phase 3 (DEK destruction) is the irreversible point — after phase 3, even if phase 4 fails, the data is destroyed; phase 4 retry just files the certificate.
 
 ### 7.3 DSAR Export (HIPAA §164.524 — D9, D17)
@@ -2347,7 +2347,7 @@ Per architecture §15 (DR/BCP):
 - Onboarding tables, support session tables, DSAR/export job rows are **tier-2** (RPO 1h, RTO 4h)
 - Signup intent / signup token tables are **tier-3** (RPO 24h, RTO 24h)
 
-The DEK ciphertext is part of the tier-1 backup. A backup restore restores the ciphertext; the KEK in the HSM is separately backed-up via the HSM vendor's documented procedure. A destroyed tenant's DEK is `NULL` in tier-1 backups too — once destroyed, no backup can resurrect the data; this is the cryptographic-shred property holding across DR.
+The DEK ciphertext is part of the tier-1 backup. A backup restore restores the ciphertext; the KEK in the HSM is separately backed-up via the HSM vendor's documented procedure. A destroyed tenant's DEK is `NULL` in tier-1 backups taken after Phase 3 — no such backup can resurrect the envelope-encrypted data; a pre-shred snapshot still holds the KEK-wrapped DEK, and the platform KEK survives the shred, so it still decrypts until it ages out of retention; this is the cryptographic-shred property holding across DR for post-shred backups.
 
 -----
 
