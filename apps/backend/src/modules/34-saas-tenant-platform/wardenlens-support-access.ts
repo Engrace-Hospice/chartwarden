@@ -146,7 +146,7 @@ export function createWardenLensSupportAccess(
 
   // The authorization transaction rolls back on a refusal, taking its own audit rows with it, so a denied read
   // is recorded in a transaction of its own. Identifiers only; the requested organization is a client value.
-  const recordDenial = (input: WardenLensSupportReadInput): Promise<void> =>
+  const recordDenial = (input: WardenLensSupportReadInput, error: ForbiddenError): Promise<void> =>
     run("m34 WardenLens support read: record denial", (tx) =>
       auditPlatformEvent(tx, {
         eventType: "support_session.wardenlens_read_denied",
@@ -160,7 +160,9 @@ export function createWardenLensSupportAccess(
           actorMembershipId: input.actorMembershipId,
           supportSessionId: input.supportSessionId,
           authorizationBasis: "superadmin_support_session",
-          reason: "authorization_denied",
+          // The session or grant does not authorize the read, or M22 refused the batch's content for the scope.
+          reason:
+            error.message === ACCESS_DENIED ? "authorization_denied" : "content_scope_refused",
           ...(input.pageNumber === undefined ? {} : { pageNumber: input.pageNumber }),
         },
       }),
@@ -172,7 +174,7 @@ export function createWardenLensSupportAccess(
         return await authorizeAndRead(input, resolvePatient, read);
       } catch (error) {
         // If the denial record cannot be written the read is still refused; that failure surfaces as a 500.
-        if (error instanceof ForbiddenError) await recordDenial(input);
+        if (error instanceof ForbiddenError) await recordDenial(input, error);
         throw error;
       }
     },

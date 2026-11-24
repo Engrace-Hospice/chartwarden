@@ -275,25 +275,47 @@ export function assertBatchStillFiledUnder(
   }
 }
 
-const FOREIGN_PATIENT_CONTENT_DENIED =
-  "this intake batch holds another patient's documents; a patient-scoped support session cannot read it";
+const FILED_PATIENT_NOT_PROVEN_DENIED =
+  "this intake batch is not proven to hold only the filed patient's documents; a patient-scoped support session cannot read it";
+
+/** The identity evidence of one classified page (document segment) of a batch. */
+export interface PageIdentityEvidence {
+  readonly identityStatus: string | null;
+  readonly identityResolution: string | null;
+  readonly duplicateOfPage: number | null;
+  readonly pageRangeStart: number;
+  readonly pageRangeEnd: number;
+}
 
 /**
- * A patient-scoped grant covers one patient. A batch holds foreign content when a reviewer marked a document
- * as another patient's, or the identity check flagged a mismatch or a possible match that nobody has confirmed
- * as the filed patient's. An unverified document or one with no check proves nothing against the filed patient.
+ * Fail-closed proof for a patient-scoped grant, which covers one patient. A batch is readable only when its
+ * identity check has run and is positive: the batch status is `match` (so it is neither null, `no_target` nor
+ * `unverified`), no records-request code names another patient, there is at least one classified document, every
+ * document is `match` or was confirmed by a reviewer as the filed patient's (a re-sent copy is judged through its
+ * original), and a requested page lies inside a classified document. Missing or unverified evidence is a refusal.
  */
-export function batchHoldsForeignPatientContent(
-  pages: readonly {
+export function batchProvenFiledPatientOnly(
+  batch: {
     readonly identityStatus: string | null;
-    readonly identityResolution: string | null;
-  }[],
+    readonly recordsRequestConflictKind: string | null;
+  },
+  pages: readonly PageIdentityEvidence[],
+  page?: number,
 ): boolean {
-  return pages.some(
+  if (batch.identityStatus !== "match") return false;
+  if (batch.recordsRequestConflictKind === "code_names_another_patient") return false;
+  if (pages.length === 0) return false;
+  if (
+    page !== undefined &&
+    !pages.some((p) => p.pageRangeStart <= page && page <= p.pageRangeEnd)
+  ) {
+    return false;
+  }
+  return pages.every(
     (p) =>
-      p.identityResolution === "other_patient" ||
-      ((p.identityStatus === "mismatch" || p.identityStatus === "possible") &&
-        p.identityResolution !== "same_patient"),
+      p.duplicateOfPage !== null ||
+      p.identityResolution === "same_patient" ||
+      (p.identityResolution === null && p.identityStatus === "match"),
   );
 }
 
@@ -599,10 +621,11 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
       });
       const { b, pages, jobs, cands, review, decisions, conflict } = loaded;
       // A support read is authorized against one patient: that must still be the filed patient, and a
-      // patient-scoped grant covers the filed patient only. Both are refused before any decryption.
+      // patient-scoped grant covers the filed patient only, which must be proven. Both are refused before any
+      // decryption.
       assertBatchStillFiledUnder(scope, b.patientId);
-      if (scope?.patientContentOnly && batchHoldsForeignPatientContent(pages)) {
-        throw new ForbiddenError(FOREIGN_PATIENT_CONTENT_DENIED);
+      if (scope?.patientContentOnly && !batchProvenFiledPatientOnly(b, pages)) {
+        throw new ForbiddenError(FILED_PATIENT_NOT_PROVEN_DENIED);
       }
       // GAP-067 — decided BEFORE any decryption, so a denied viewer's request never holds Part 2 plaintext.
       const sudAllowed = await resolveSudContentAccess(sudAccess, {
@@ -773,6 +796,8 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
             geometry: BATCH.pageGeometry,
             sudStatus: BATCH.sudStatus,
             patientId: BATCH.patientId,
+            identityStatus: BATCH.identityStatus,
+            recordsRequestConflictKind: BATCH.recordsRequestConflictKind,
           })
           .from(BATCH)
           .innerJoin(DOC, eq(DOC.id, BATCH.initialDocumentId))
@@ -780,22 +805,30 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           .where(eq(BATCH.id, batchId))
           .limit(1);
         if (!row) return null;
-        // The image is the whole source page, so a patient-scoped grant needs the same batch-level check.
-        const identity = scope?.patientContentOnly
+        // The image is the whole source page, so a patient-scoped grant needs the same proof, and the page
+        // must lie inside a classified document whose identity was judged.
+        const evidence = scope?.patientContentOnly
           ? await tx
               .select({
                 identityStatus: CP.identityStatus,
                 identityResolution: CP.identityResolution,
+                duplicateOfPage: CP.duplicateOfPage,
+                pageRangeStart: CP.pageRangeStart,
+                pageRangeEnd: CP.pageRangeEnd,
               })
               .from(CP)
               .where(eq(CP.intakeUploadBatchId, batchId))
           : [];
-        return { ...row, holdsForeignPatientContent: batchHoldsForeignPatientContent(identity) };
+        return {
+          ...row,
+          filedPatientProven:
+            !scope?.patientContentOnly || batchProvenFiledPatientOnly(row, evidence, page),
+        };
       });
       if (!source) throw new NotFoundError("intake batch");
       assertBatchStillFiledUnder(scope, source.patientId);
-      if (source.holdsForeignPatientContent) {
-        throw new ForbiddenError(FOREIGN_PATIENT_CONTENT_DENIED);
+      if (!source.filedPatientProven) {
+        throw new ForbiddenError(FILED_PATIENT_NOT_PROVEN_DENIED);
       }
       const geometry = (Array.isArray(source.geometry) ? source.geometry : []) as {
         page: number;

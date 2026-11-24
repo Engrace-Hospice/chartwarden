@@ -948,6 +948,137 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
     }
   });
 
+  // ADR-0115 — a support-session read passes a scope. A patient-scoped grant covers the filed patient only, so the
+  // real service reads the batch only when that patient's identity is PROVEN (the check ran and is positive), and the
+  // batch must still be filed under the patient the grant was authorized against.
+  describe("support-session scope on the real service", () => {
+    const supportAccess: SudContentAccess = {
+      administratorOverride: async () => true,
+      reviewerEligible: async () => false,
+      consentPresent: async () => false,
+    };
+    const patientScope = () => ({ patientContentOnly: true, expectedPatientId: patient });
+    const orgScope = () => ({ patientContentOnly: false, expectedPatientId: patient });
+
+    async function withIdentity(
+      batchStatus: string | null,
+      pages: { status: string | null; resolution: string | null },
+      run: () => Promise<void>,
+    ) {
+      const batch = (
+        await admin.query("SELECT identity_status FROM intake_upload_batch WHERE id=$1", [batchId])
+      ).rows[0];
+      const before = (
+        await admin.query(
+          `SELECT id, identity_status, identity_resolution, identity_resolved_by_membership_id,
+                  identity_resolved_at, identity_resolution_reason
+             FROM classified_page WHERE intake_upload_batch_id=$1`,
+          [batchId],
+        )
+      ).rows;
+      try {
+        await admin.query("UPDATE intake_upload_batch SET identity_status=$1 WHERE id=$2", [
+          batchStatus,
+          batchId,
+        ]);
+        await admin.query(
+          `UPDATE classified_page SET identity_status=$1, identity_resolution=$2,
+             identity_resolved_by_membership_id = CASE WHEN $2::text IS NULL THEN NULL ELSE $4::uuid END,
+             identity_resolved_at = CASE WHEN $2::text IS NULL THEN NULL ELSE now() END,
+             identity_resolution_reason = CASE WHEN $2::text IS NULL THEN NULL ELSE 'live test' END
+           WHERE intake_upload_batch_id=$3`,
+          [pages.status, pages.resolution, batchId, membership],
+        );
+        await run();
+      } finally {
+        await admin.query("UPDATE intake_upload_batch SET identity_status=$1 WHERE id=$2", [
+          batch.identity_status,
+          batchId,
+        ]);
+        for (const p of before) {
+          await admin.query(
+            `UPDATE classified_page SET identity_status=$1, identity_resolution=$2,
+               identity_resolved_by_membership_id=$3, identity_resolved_at=$4,
+               identity_resolution_reason=$5 WHERE id=$6`,
+            [
+              p.identity_status,
+              p.identity_resolution,
+              p.identity_resolved_by_membership_id,
+              p.identity_resolved_at,
+              p.identity_resolution_reason,
+              p.id,
+            ],
+          );
+        }
+      }
+    }
+
+    it("refuses a patient-scoped read until the filed patient's identity is proven, before any decryption", async () => {
+      const unproven: Array<[string | null, string | null, string | null]> = [
+        [null, null, null],
+        ["no_target", null, null],
+        ["unverified", "unverified", null],
+        ["possible", "possible", null],
+        ["mismatch", "mismatch", null],
+        ["match", "match", "other_patient"],
+      ];
+      for (const [batchStatus, status, resolution] of unproven) {
+        await withIdentity(batchStatus, { status, resolution }, async () => {
+          await expect(
+            workspace.getWorkspace(ORG, batchId, membership, supportAccess, patientScope()),
+          ).rejects.toMatchObject({ code: "FORBIDDEN" });
+          await expect(
+            workspace.renderPage(ORG, batchId, 1, "corr-support", supportAccess, patientScope()),
+          ).rejects.toMatchObject({ code: "FORBIDDEN" });
+        });
+      }
+    });
+
+    it("reads a proven batch under a patient-scoped grant, refuses a page no classified document covers, and needs no proof for an organization-scoped grant", async () => {
+      await withIdentity("match", { status: "match", resolution: null }, async () => {
+        const ws = await workspace.getWorkspace(
+          ORG,
+          batchId,
+          membership,
+          supportAccess,
+          patientScope(),
+        );
+        expect(ws.sud.contentRedacted).toBe(false);
+        expect(ws.batch.patientId).toBe(patient);
+        // The render proceeds past the scope checks; it may stop at an unconfigured renderer, never at the scope.
+        const rendered = await workspace
+          .renderPage(ORG, batchId, 1, "corr-support", supportAccess, patientScope())
+          .catch((error: unknown) => error);
+        expect((rendered as { code?: string }).code).not.toBe("FORBIDDEN");
+        await expect(
+          workspace.renderPage(ORG, batchId, 9, "corr-support", supportAccess, patientScope()),
+        ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      });
+      await withIdentity(null, { status: null, resolution: null }, async () => {
+        const ws = await workspace.getWorkspace(
+          ORG,
+          batchId,
+          membership,
+          supportAccess,
+          orgScope(),
+        );
+        expect(ws.batch.patientId).toBe(patient);
+      });
+    });
+
+    it("fails as a retryable conflict when the batch is no longer filed under the authorized patient", async () => {
+      await withIdentity("match", { status: "match", resolution: null }, async () => {
+        const stale = { patientContentOnly: false, expectedPatientId: randomUUID() };
+        await expect(
+          workspace.getWorkspace(ORG, batchId, membership, supportAccess, stale),
+        ).rejects.toThrow(/re-filed/);
+        await expect(
+          workspace.renderPage(ORG, batchId, 1, "corr-support", supportAccess, stale),
+        ).rejects.toThrow(/re-filed/);
+      });
+    });
+  });
+
   it("serves the workspace (decrypted for the reviewer) and the queue (counts only)", async () => {
     const ws = await workspace.getWorkspace(ORG, batchId, membership, sudAllowed);
     expect(ws.sud.contentRedacted).toBe(false);

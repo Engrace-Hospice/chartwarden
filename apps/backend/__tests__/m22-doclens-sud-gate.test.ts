@@ -23,7 +23,7 @@ import {
   type ReviewWorkspace,
   type ReviewWorkspaceService,
   assertBatchStillFiledUnder,
-  batchHoldsForeignPatientContent,
+  batchProvenFiledPatientOnly,
 } from "../src/modules/22-documents/extraction/review-workspace";
 import {
   type WardenLensPlatformSupportAccess,
@@ -626,28 +626,72 @@ describe("GAP-067 — DocLens review routes compose the Part 2 need-to-know chec
     expect(calls.contentScopes).toEqual([undefined, undefined]);
   });
 
-  it.each([
-    [
-      "another patient's document",
-      [{ identityStatus: "match", identityResolution: "other_patient" }],
-    ],
-    ["an unresolved mismatch", [{ identityStatus: "mismatch", identityResolution: null }]],
-    ["an unresolved possible match", [{ identityStatus: "possible", identityResolution: null }]],
-  ] as const)("a batch holding %s is foreign patient content", (_name, pages) => {
-    expect(batchHoldsForeignPatientContent(pages)).toBe(true);
-  });
+  describe("a patient-scoped grant reads a batch only when the filed patient is proven", () => {
+    const page = (
+      identityStatus: string | null,
+      identityResolution: string | null = null,
+      extra: {
+        duplicateOfPage?: number | null;
+        pageRangeStart?: number;
+        pageRangeEnd?: number;
+      } = {},
+    ) => ({
+      identityStatus,
+      identityResolution,
+      duplicateOfPage: extra.duplicateOfPage ?? null,
+      pageRangeStart: extra.pageRangeStart ?? 1,
+      pageRangeEnd: extra.pageRangeEnd ?? 2,
+    });
+    const batch = { identityStatus: "match", recordsRequestConflictKind: null as string | null };
 
-  it.each([
-    ["no pages", []],
-    ["a matching document", [{ identityStatus: "match", identityResolution: null }]],
-    [
-      "a reviewer-confirmed mismatch",
-      [{ identityStatus: "mismatch", identityResolution: "same_patient" }],
-    ],
-    ["an unverified document", [{ identityStatus: "unverified", identityResolution: null }]],
-    ["a document with no identity check", [{ identityStatus: null, identityResolution: null }]],
-  ] as const)("a batch holding %s is the filed patient's content", (_name, pages) => {
-    expect(batchHoldsForeignPatientContent(pages)).toBe(false);
+    it.each([
+      ["no classified document yet", batch, []],
+      ["no identity check yet", { ...batch, identityStatus: null }, [page("match")]],
+      ["no identity target", { ...batch, identityStatus: "no_target" }, [page(null)]],
+      ["an unverified batch", { ...batch, identityStatus: "unverified" }, [page("unverified")]],
+      ["a possible match", { ...batch, identityStatus: "possible" }, [page("possible")]],
+      ["a mismatch", { ...batch, identityStatus: "mismatch" }, [page("mismatch")]],
+      ["another patient's document", batch, [page("match"), page("match", "other_patient")]],
+      ["an unresolved mismatch page", batch, [page("match"), page("mismatch")]],
+      ["an unverified page", batch, [page("unverified")]],
+      ["a page with no identity check", batch, [page(null)]],
+      [
+        "a records-request code naming another patient",
+        { ...batch, recordsRequestConflictKind: "code_names_another_patient" },
+        [page("match")],
+      ],
+    ] as const)("refuses %s", (_name, b, pages) => {
+      expect(batchProvenFiledPatientOnly(b, pages)).toBe(false);
+    });
+
+    it("refuses an image page that no classified document covers", () => {
+      const pages = [page("match", null, { pageRangeStart: 1, pageRangeEnd: 2 })];
+      expect(batchProvenFiledPatientOnly(batch, pages, 2)).toBe(true);
+      expect(batchProvenFiledPatientOnly(batch, pages, 3)).toBe(false);
+    });
+
+    it.each([
+      [
+        "matching documents",
+        batch,
+        [page("match"), page("match", null, { pageRangeStart: 3, pageRangeEnd: 3 })],
+      ],
+      [
+        "a reviewer-confirmed mismatch",
+        batch,
+        [page("match"), page("mismatch", "same_patient", { pageRangeStart: 3, pageRangeEnd: 3 })],
+      ],
+      [
+        "a re-sent copy judged through its original",
+        batch,
+        [
+          page("match"),
+          page(null, null, { duplicateOfPage: 1, pageRangeStart: 3, pageRangeEnd: 3 }),
+        ],
+      ],
+    ] as const)("allows %s", (_name, b, pages) => {
+      expect(batchProvenFiledPatientOnly(b, pages)).toBe(true);
+    });
   });
 
   it.each([
