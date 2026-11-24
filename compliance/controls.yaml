@@ -114,7 +114,7 @@ controls:
       # existing assessment rows remain legacy_unverified and tenant detail reads redact their financial summary.
       # The positive writer is deliberately unavailable until a genuinely isolated evaluator runtime exists.
       - file: packages/db/migrations/1544_m25_medicaid_era_assessment_writer_lockdown.sql
-      - file: packages/db/migrations/__tests__/m25-rls-isolation.live.test.ts
+      - file: apps/backend/__tests__/m25-rls-isolation.live.test.ts
 
   - id: CW-AC-02
     title: Unique user identification and authorization at the route (RBAC + ABAC predicates)
