@@ -1024,8 +1024,8 @@ sudo -u postgres pgbackrest --config=/etc/pgbackrest/pgbackrest.conf --stanza=ch
 
 # 3. Start sandbox PostgreSQL
 # 4. Run validation queries:
-psql -d wardenx -c "SELECT COUNT(*) FROM organization;"  # Expect: nonzero
-psql -d wardenx -c "SELECT COUNT(*) FROM audit_event WHERE created_at > NOW() - INTERVAL '1 day';"  # Expect: matches production
+psql -d chartwarden -c "SELECT COUNT(*) FROM organization;"  # Expect: nonzero
+psql -d chartwarden -c "SELECT COUNT(*) FROM audit_event WHERE created_at > NOW() - INTERVAL '1 day';"  # Expect: matches production
 
 # 5. Run the restored-schema checks, RLS smoke included — IMPLEMENTED (#857): on the single-host stack,
 #    deploy/production/backup/restore.sh + `bun run backup:verify-restore` (scripts/backup/verify-restore.ts):
@@ -1617,7 +1617,7 @@ The `tenant.shred` worker executes a four-phase sequence (module spec §3.5 / §
 
 ```bash
 # 1. Find the last completed phase for the tenant
-psql -h chartwarden-db-01 -U postgres -d wardenx -c "
+psql -h chartwarden-db-01 -U postgres -d chartwarden -c "
 SELECT destruction_certificate_id, destruction_phase, occurred_at
 FROM tenant_key_destruction_log
 WHERE organization_id = '<orgId>'
