@@ -1,12 +1,12 @@
 import { EmptyState, Glyph, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { safeIntakeReturnTo } from "../../../shell/intake-return";
 import type { Workspace } from "../doclens-api";
-import { startReview } from "../doclens-api";
-import { batchStatusLabel, sourceLabel } from "../doclens-model";
-import { DocLensReviewWorkspace } from "../doclens-review-workspace";
+import { completeReview, releaseReview, startReview } from "../doclens-api";
+import { batchStatusLabel, identityNeedsAnswer, sourceLabel } from "../doclens-model";
+import { CompleteDialog, DocLensReviewWorkspace } from "../doclens-review-workspace";
 import { ReviewExceptionPanel } from "./review-exception-panel";
 import { type ReviewExceptionTask, projectExceptionSummary } from "./review-exception-tasks";
 import { exceptionCountsBySection, projectReviewExceptions } from "./review-exceptions";
@@ -18,7 +18,7 @@ import {
 } from "./review-projection";
 import { ReviewSafeguardPanel } from "./review-safeguard-panel";
 import { ReviewSectionList } from "./review-section-list";
-import type { ReviewSectionId } from "./review-sections";
+import { type ReviewSectionId, sectionForField } from "./review-sections";
 import { ReviewSourcePanel } from "./review-source-panel";
 import "./unified-review.css";
 
@@ -30,6 +30,7 @@ export function UnifiedReviewWorkspace(): JSX.Element {
 
 function UnifiedReviewSummary(): JSX.Element {
   const client = useApiClient();
+  const navigate = useNavigate();
   const { batchId = "" } = useParams<{ batchId: string }>();
   const [searchParams] = useSearchParams();
   const returnTo = safeIntakeReturnTo(searchParams.get("returnTo"));
@@ -37,6 +38,9 @@ function UnifiedReviewSummary(): JSX.Element {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
+  const [refreshRequired, setRefreshRequired] = useState(false);
+  const [completeOpen, setCompleteOpen] = useState(false);
   const [selectedSectionId, setSelectedSectionId] =
     useState<ReviewSectionId>("identity-demographics");
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
@@ -45,7 +49,24 @@ function UnifiedReviewSummary(): JSX.Element {
   const [sourceUnavailablePages, setSourceUnavailablePages] = useState<ReadonlySet<number>>(
     new Set(),
   );
-  const taskFocusRef = useRef<HTMLDivElement | null>(null);
+  const taskFocusRef = useRef<HTMLElement | null>(null);
+  const focusTask = useCallback((): void => {
+    const task = taskFocusRef.current;
+    if (!task) return;
+    task.scrollTop = 0;
+    task.focus({ preventScroll: true });
+    const scrollport = task.closest<HTMLElement>(".wx-main");
+    if (!scrollport) return;
+    const taskBounds = task.getBoundingClientRect();
+    const scrollportBounds = scrollport.getBoundingClientRect();
+    const taskIsOutsideScrollport =
+      taskBounds.top < scrollportBounds.top || taskBounds.top >= scrollportBounds.bottom;
+    if (!taskIsOutsideScrollport) return;
+    const reduceMotion =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    task.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+  }, []);
 
   const refresh = useCallback(async (): Promise<Workspace | null> => {
     if (!batchId) return null;
@@ -63,6 +84,7 @@ function UnifiedReviewSummary(): JSX.Element {
     const data = response.data;
     setWorkspace(data);
     setLoadError(null);
+    setRefreshRequired(false);
     setSelectedCandidateId((current) => {
       if (
         current &&
@@ -95,8 +117,9 @@ function UnifiedReviewSummary(): JSX.Element {
   }, [refresh]);
 
   useEffect(() => {
-    if (selectedCandidateId || selectedSafeguardPage !== null) taskFocusRef.current?.focus();
-  }, [selectedCandidateId, selectedSafeguardPage]);
+    const candidate = workspace?.candidates.find((item) => item.id === selectedCandidateId);
+    if (candidate) setSelectedSectionId(sectionForField(candidate.fieldPath));
+  }, [selectedCandidateId, workspace]);
 
   const groups = useMemo(() => (workspace ? projectReviewGroups(workspace) : []), [workspace]);
   const exceptions = useMemo(
@@ -132,9 +155,9 @@ function UnifiedReviewSummary(): JSX.Element {
       setSelectedSafeguardPage(null);
       setSelectedCandidateId(candidateId);
       setNextCandidateId(null);
-      taskFocusRef.current?.focus();
+      focusTask();
     },
-    [groups, workspace],
+    [focusTask, groups, workspace],
   );
 
   const selectException = (task: ReviewExceptionTask): void => {
@@ -146,7 +169,7 @@ function UnifiedReviewSummary(): JSX.Element {
     setSelectedCandidateId(null);
     setSelectedSafeguardPage(task.page);
     setNextCandidateId(null);
-    taskFocusRef.current?.focus();
+    focusTask();
   };
 
   const onDecisionSaved = (latest: Workspace, candidateId: string): void => {
@@ -195,6 +218,33 @@ function UnifiedReviewSummary(): JSX.Element {
   const selectedSection = projection.sections.find((section) => section.id === selectedSectionId);
   const complete =
     workspace.review?.status === "complete" || workspace.batch.status === "writeback_complete";
+  const reviewMine = workspace.review?.status === "in_progress" && workspace.review.isMine;
+  const reviewIncomplete = projection.decidedCount < projection.candidateCount;
+  const identityStatus = workspace.batch.identityStatus;
+  const identityNotChecked = Boolean(
+    (workspace.batch.patientId || workspace.batch.referralId) &&
+      (identityStatus === null || identityStatus === "no_target"),
+  );
+  const identityCompletionBlocked =
+    identityNotChecked ||
+    identityStatus === "possible" ||
+    identityStatus === "mismatch" ||
+    workspace.documents.some(identityNeedsAnswer);
+  const completionBlocked =
+    reviewIncomplete || workspace.sud.status === "detected" || identityCompletionBlocked;
+  const completionBlockedReason = reviewIncomplete
+    ? `${projection.candidateCount - projection.decidedCount} observation(s) still need a decision.`
+    : workspace.sud.status === "detected"
+      ? "Resolve the Part 2 / SUD safeguard before completing the review."
+      : identityCompletionBlocked
+        ? "Resolve every patient identity safeguard before completing the review."
+        : null;
+  const completionWorkspace: Workspace = {
+    ...workspace,
+    candidates: workspace.candidates.filter(
+      (candidate) => !candidateIsOtherPatient(workspace, candidate),
+    ),
+  };
   const reviewTone = complete
     ? "success"
     : exceptions.some((item) => item.priority === 0)
@@ -220,7 +270,7 @@ function UnifiedReviewSummary(): JSX.Element {
             label={complete ? "Review complete" : batchStatusLabel(workspace.batch.status)}
             tone={reviewTone}
           />
-          {!workspace.review && !complete ? (
+          {!refreshRequired && workspace.review?.status !== "in_progress" && !complete ? (
             <button
               type="button"
               className="wx-btn-primary"
@@ -238,6 +288,55 @@ function UnifiedReviewSummary(): JSX.Element {
               {starting ? "Starting…" : "Start review"}
             </button>
           ) : null}
+          {reviewMine ? (
+            <>
+              <button
+                type="button"
+                className="wx-btn-secondary"
+                disabled={lifecycleBusy}
+                onClick={async () => {
+                  const review = workspace.review;
+                  if (!review) return;
+                  setLifecycleBusy(true);
+                  setActionError(null);
+                  try {
+                    const result = await releaseReview(client, review.id);
+                    if (!result.ok) {
+                      setActionError(result.message);
+                      return;
+                    }
+                    // Release succeeded authoritatively. Fail closed immediately so a failed
+                    // follow-up read cannot leave stale owner-only actions enabled.
+                    setRefreshRequired(true);
+                    setWorkspace((current) => (current ? { ...current, review: null } : current));
+                    const latest = await refresh();
+                    if (!latest)
+                      setActionError("Review released. Refresh the workspace before continuing.");
+                  } catch {
+                    setActionError("The review could not be released. Try again.");
+                  } finally {
+                    setLifecycleBusy(false);
+                  }
+                }}
+              >
+                Release review
+              </button>
+              <button
+                type="button"
+                className="wx-btn-primary"
+                disabled={lifecycleBusy || completionBlocked}
+                aria-describedby={completionBlockedReason ? "unified-completion-help" : undefined}
+                onClick={() => setCompleteOpen(true)}
+              >
+                <Glyph name="file-check" size={16} /> Complete review
+              </button>
+              {completionBlockedReason ? (
+                <span id="unified-completion-help" className="wx-unified-completion-help">
+                  {completionBlockedReason}
+                </span>
+              ) : null}
+            </>
+          ) : null}
           {returnTo ? (
             <Link className="wx-btn-secondary" to={returnTo}>
               Back to referral intake
@@ -247,15 +346,22 @@ function UnifiedReviewSummary(): JSX.Element {
             className="wx-btn-secondary"
             to={`/intake/${encodeURIComponent(batchId)}/review?${detailQuery.toString()}`}
           >
-            <Glyph name="eye" size={16} /> Detailed reviewer
+            <Glyph name="eye" size={16} /> Legacy detailed reviewer
           </Link>
         </div>
       </header>
 
       {actionError ? (
-        <p role="alert" className="wx-doclens-error">
-          {actionError}
-        </p>
+        <div className="wx-unified-action-error">
+          <p role="alert" className="wx-doclens-error">
+            {actionError}
+          </p>
+          {refreshRequired ? (
+            <button type="button" className="wx-btn-secondary" onClick={() => void refresh()}>
+              Retry workspace refresh
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       <section className="wx-unified-progress" aria-labelledby="unified-progress-title">
@@ -376,6 +482,27 @@ function UnifiedReviewSummary(): JSX.Element {
 
         <ReviewExceptionPanel summary={exceptionSummary} onSelect={selectException} />
       </div>
+
+      {completeOpen && workspace.review ? (
+        <CompleteDialog
+          ws={completionWorkspace}
+          onClose={() => setCompleteOpen(false)}
+          onComplete={() => completeReview(client, workspace.review?.id ?? "")}
+          doneLabel={
+            returnTo || workspace.batch.referralId
+              ? "Return to referral intake"
+              : "Back to intake review"
+          }
+          onDone={() =>
+            navigate(
+              returnTo ??
+                (workspace.batch.referralId
+                  ? `/referrals/${workspace.batch.referralId}/intake?step=verify`
+                  : "/intake"),
+            )
+          }
+        />
+      ) : null}
     </div>
   );
 }

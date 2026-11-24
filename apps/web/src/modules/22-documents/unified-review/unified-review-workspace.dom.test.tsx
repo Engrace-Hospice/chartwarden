@@ -85,13 +85,19 @@ const workspace: Workspace = {
 let pageStatus = 200;
 let workspaceStatus = 200;
 let decisionStatus = 200;
+let releaseRejects = false;
+let completionRejects = false;
+let failWorkspaceRefresh = false;
+let workspaceReadCount = 0;
 const decisionRequests: unknown[] = [];
 const fetchStub = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
   const request = input instanceof Request ? input : new Request(String(input));
   const path = new URL(request.url, "http://localhost").pathname;
   if (path.endsWith("/workspace")) {
-    return new Response(workspaceStatus === 200 ? JSON.stringify(workspace) : "unavailable", {
-      status: workspaceStatus,
+    workspaceReadCount += 1;
+    const status = failWorkspaceRefresh && workspaceReadCount > 1 ? 503 : workspaceStatus;
+    return new Response(status === 200 ? JSON.stringify(workspace) : "unavailable", {
+      status,
       headers: { "content-type": "application/json" },
     });
   }
@@ -118,6 +124,16 @@ const fetchStub = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
         partOfBulkApprove: false,
         decidedAt: "2026-11-22T11:00:00.000Z",
       };
+    return new Response(JSON.stringify({}), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  if (request.method === "POST" && path.endsWith("/abandon") && releaseRejects)
+    throw new Error("synthetic release transport failure");
+  if (request.method === "POST" && path.endsWith("/complete") && completionRejects)
+    throw new Error("synthetic completion transport failure");
+  if (request.method === "POST" && (path.endsWith("/abandon") || path.endsWith("/complete"))) {
     return new Response(JSON.stringify({}), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -158,6 +174,10 @@ beforeEach(() => {
   pageStatus = 200;
   workspaceStatus = 200;
   decisionStatus = 200;
+  releaseRejects = false;
+  completionRejects = false;
+  failWorkspaceRefresh = false;
+  workspaceReadCount = 0;
   decisionRequests.length = 0;
   fetchStub.mockClear();
 });
@@ -173,10 +193,123 @@ describe("UnifiedReviewWorkspace", () => {
     expect(sectionButtons).toHaveLength(6);
     expect(sectionButtons[0]?.getAttribute("aria-expanded")).toBe("true");
 
+    const task = document.querySelector<HTMLElement>(".wx-unified-task-column");
+    if (!task) throw new Error("Expected the unified task column");
+    task.scrollTop = 180;
     fireEvent.click(screen.getByRole("button", { name: /Review decision/ }));
     expect(screen.getByRole("region", { name: /Review task/ })).toBeTruthy();
+    expect(task.scrollTop).toBe(0);
     expect(screen.getByRole("heading", { name: "Mobile phone", level: 2 })).toBeTruthy();
     expect(document.querySelector(".wx-unified-layout")).toBeTruthy();
+  });
+
+  it("offers server-backed release and completion from the unified workspace", async () => {
+    const candidate = workspace.candidates[0];
+    if (!candidate) throw new Error("Expected the synthetic phone candidate");
+    candidate.decision = {
+      id: "decision-complete",
+      decision: "approve",
+      editedValue: null,
+      reason: null,
+      partOfBulkApprove: false,
+      decidedAt: "2026-11-22T11:00:00.000Z",
+    };
+    try {
+      mount();
+      const release = await screen.findByRole("button", { name: "Release review" });
+      const complete = screen.getByRole("button", { name: "Complete review" });
+      expect(release).toBeEnabled();
+      expect(complete).toBeEnabled();
+
+      fireEvent.click(complete);
+      const dialog = screen.getByRole("dialog", { name: "Complete review" });
+      fireEvent.click(
+        within(dialog).getByRole("checkbox", { name: /I reviewed each accepted field/ }),
+      );
+      fireEvent.click(within(dialog).getByRole("button", { name: "Complete review" }));
+      expect(await screen.findByRole("heading", { name: "Review complete" })).toBeTruthy();
+      expect(
+        fetchStub.mock.calls.some(([input]) =>
+          String(input instanceof Request ? input.url : input).endsWith("/complete"),
+        ),
+      ).toBe(true);
+    } finally {
+      candidate.decision = null;
+    }
+  });
+
+  it("releases the current review without opening the detailed reviewer", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Release review" }));
+    await waitFor(() =>
+      expect(
+        fetchStub.mock.calls.some(([input]) =>
+          String(input instanceof Request ? input.url : input).endsWith("/abandon"),
+        ),
+      ).toBe(true),
+    );
+    expect(screen.queryByText("Legacy detailed reviewer")).toBeTruthy();
+  });
+
+  it("fails closed after release succeeds when the authoritative refresh fails", async () => {
+    failWorkspaceRefresh = true;
+    try {
+      mount();
+      fireEvent.click(await screen.findByRole("button", { name: "Release review" }));
+      expect(
+        await screen.findByText("Review released. Refresh the workspace before continuing."),
+      ).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Release review" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Complete review" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Accept extracted value" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Start review" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Retry workspace refresh" })).toBeTruthy();
+    } finally {
+      failWorkspaceRefresh = false;
+    }
+  });
+
+  it("recovers release controls after a transport rejection", async () => {
+    releaseRejects = true;
+    try {
+      mount();
+      fireEvent.click(await screen.findByRole("button", { name: "Release review" }));
+      expect(await screen.findByText("The review could not be released. Try again.")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Release review" })).toBeEnabled();
+    } finally {
+      releaseRejects = false;
+    }
+  });
+
+  it("keeps completion retryable after a transport rejection", async () => {
+    const candidate = workspace.candidates[0];
+    if (!candidate) throw new Error("Expected the synthetic phone candidate");
+    candidate.decision = {
+      id: "decision-completion-retry",
+      decision: "approve",
+      editedValue: null,
+      reason: null,
+      partOfBulkApprove: false,
+      decidedAt: "2026-11-22T11:00:00.000Z",
+    };
+    completionRejects = true;
+    try {
+      mount();
+      fireEvent.click(await screen.findByRole("button", { name: "Complete review" }));
+      const dialog = screen.getByRole("dialog", { name: "Complete review" });
+      fireEvent.click(
+        within(dialog).getByRole("checkbox", { name: /I reviewed each accepted field/ }),
+      );
+      fireEvent.click(within(dialog).getByRole("button", { name: "Complete review" }));
+      expect(
+        await within(dialog).findByText("The review could not be completed. Try again."),
+      ).toBeTruthy();
+      expect(within(dialog).getByRole("button", { name: "Complete review" })).toBeEnabled();
+      expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeEnabled();
+    } finally {
+      completionRejects = false;
+      candidate.decision = null;
+    }
   });
 
   it("displays an approved correction without misrepresenting the extracted value", async () => {
@@ -213,12 +346,15 @@ describe("UnifiedReviewWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: /Review decision/ }));
     expect(screen.getByRole("region", { name: /Review task/ })).toBeTruthy();
 
-    const detailed = screen.getByRole("link", { name: /Detailed reviewer/ });
+    const detailed = screen.getByRole("link", { name: /Legacy detailed reviewer/ });
     const detailedUrl = new URL(detailed.getAttribute("href") ?? "", "http://localhost");
     expect(detailedUrl.searchParams.get("returnTo")).toBe(returnTo);
 
     fireEvent.click(screen.getByRole("button", { name: /Preview source/ }));
-    const sourceReview = screen.getByRole("link", { name: /Open advanced detailed review/ });
+    fireEvent.click(screen.getByText("Advanced tools"));
+    const sourceReview = screen.getByRole("link", {
+      name: /Leave unified workspace for legacy reviewer/,
+    });
     const sourceReviewUrl = new URL(sourceReview.getAttribute("href") ?? "", "http://localhost");
     expect(sourceReviewUrl.searchParams.get("returnTo")).toBe(returnTo);
   });

@@ -390,9 +390,12 @@ export function ReviewSourcePanel({
           Opening this preview does not confirm the source. A decision is sent only after the source
           is visible and the comparison checkbox is selected.
         </p>
-        <Link className="wx-btn-secondary" to={detailPath(batchId, candidate.id, returnTo)}>
-          Open advanced detailed review <Glyph name="arrow-right" size={16} />
-        </Link>
+        <details className="wx-unified-advanced-tools">
+          <summary>Advanced tools</summary>
+          <Link className="wx-btn-secondary" to={detailPath(batchId, candidate.id, returnTo)}>
+            Leave unified workspace for legacy reviewer <Glyph name="arrow-right" size={16} />
+          </Link>
+        </details>
         {candidate.decision ? (
           <StatusPill label={decisionLabel(candidate.decision.decision)} tone="success" />
         ) : null}

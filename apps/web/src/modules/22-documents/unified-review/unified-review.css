@@ -18,6 +18,23 @@
   flex-wrap: wrap;
   gap: 0.625rem;
 }
+.wx-unified-completion-help {
+  flex-basis: 100%;
+  max-width: 32rem;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+}
+.wx-unified-action-error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.wx-unified-action-error .wx-doclens-error {
+  flex: 1 1 20rem;
+  margin: 0;
+}
 
 .wx-unified-progress {
   display: grid;
@@ -91,6 +108,11 @@
 }
 .wx-unified-task-column {
   grid-area: task;
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100dvh - var(--wx-app-header-height, 0px) - 2rem);
+  overflow: auto;
+  scrollbar-gutter: stable;
   outline: none;
 }
 .wx-unified-task-column:focus-visible {
@@ -267,10 +289,8 @@
   list-style: none;
 }
 .wx-unified-observations > li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  display: grid;
+  gap: 0.75rem;
   padding: 0.75rem;
   border-radius: var(--radius-lg);
   background: var(--color-surface-container-low);
@@ -289,8 +309,11 @@
   font-size: 0.75rem;
 }
 .wx-unified-observation-actions {
-  justify-content: flex-end;
-  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.wx-unified-observation-actions > * {
+  width: 100%;
 }
 
 .wx-unified-exceptions {
@@ -507,6 +530,15 @@
   color: var(--color-muted);
   font-size: 0.8125rem;
 }
+.wx-unified-advanced-tools {
+  display: grid;
+  gap: 0.5rem;
+}
+.wx-unified-advanced-tools summary {
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
 
 @container (max-width: 72rem) {
   .wx-unified-layout {
@@ -557,7 +589,12 @@
     flex-direction: column;
   }
   .wx-unified-observation-actions {
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wx-unified-task-column {
+    position: static;
+    max-height: none;
+    overflow: visible;
   }
   .wx-unified-source footer {
     align-items: stretch;
