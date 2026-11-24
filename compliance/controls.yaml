@@ -121,6 +121,14 @@ controls:
       - file: packages/db/migrations/1544_m25_medicaid_era_assessment_writer_lockdown.sql
       - file: packages/db/migrations/1546_m25_isolated_medicaid_era_evaluator.sql
       - file: packages/db/migrations/1547_m25_medicaid_era_integrity_and_source_reader.sql
+      # L6D adds a point-in-time evidence fingerprint (not current authorization) and runs the mounted Fastify API
+      # and isolated evaluator as separate disposable containers over the internal runtime network, with current
+      # source mounted read-only into the existing local wardenx-api:latest image. This proves source-level runtime
+      # topology, not immutable release-image qualification. The focused live case covers authenticated routes,
+      # provider scoping, real overlapping evaluations, durable history, evaluator restart/refusal, and the
+      # no-financial-side-effect invariant on private PostgreSQL.
+      - file: packages/db/migrations/1548_m25_medicaid_era_point_in_time_assessments.sql
+      - file: apps/backend/__tests__/m25-review-api-runtime.ts
       - file: scripts/db/provision-runtime-roles.ts
       - file: apps/backend/src/m25-evaluator.ts
       - file: apps/backend/src/modules/25-remittance/ingest/isolated-evaluator-server.ts

@@ -16,9 +16,10 @@
 // against M23's `claim` table, or the reverse). The seam interfaces are declared locally (the
 // medicaid-adapters pure package owns no seam-DTO module) — they ship to @chartwarden/types at the M24 lock,
 // the subscription contract in §4.11.
+import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getMdmEntityProvider } from "../40-mdm/seams";
 import type { M24Actor } from "./routes/actor";
@@ -32,6 +33,10 @@ const systemActor = (orgId: string): M24Actor => ({
   providerEntityIds: [],
 });
 const cents = (n: number | null | undefined): string => String(n ?? 0);
+
+/** Hash a fixed, owner-side projection; raw payer/provider references stay inside the M24 seam. */
+const evidenceFingerprint = (value: unknown): string =>
+  createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
 
 // ── locally-declared seam contracts (PHI-free; cents-as-string) ─────────────────────────────────────────
 export interface DaysByLevelOfCare {
@@ -194,6 +199,8 @@ export interface MedicaidEraEnrollmentEvidence {
   readonly environment: "test" | "production";
   readonly canonicalPayerId: string;
   readonly programId: string;
+  readonly evidenceId: string;
+  readonly evidenceVersion: number;
   readonly payerIdentifier: string | null;
   readonly billingNpi: string;
   readonly billingTin: null;
@@ -202,6 +209,9 @@ export interface MedicaidEraEnrollmentEvidence {
   readonly evidenceReference: string;
   readonly verifiedAt: string;
   readonly evidenceFreshUntil: string;
+  readonly classificationRecordedAt: string;
+  /** Owner-computed digest of enrollment, M40 classification, freshness and provider identity inputs. */
+  readonly sourceEvidenceFingerprint: string;
 }
 
 export interface MedicaidClaimSubmissionEvidence {
@@ -210,7 +220,7 @@ export interface MedicaidClaimSubmissionEvidence {
   readonly claimId: string | null;
   readonly organizationId: string;
   readonly providerEntityId: string;
-  readonly claimControlNumber: string;
+  readonly claimControlNumber: string | null;
   readonly canonicalPayerId: string | null;
   readonly programKind: string | null;
   readonly serviceState: string;
@@ -218,6 +228,8 @@ export interface MedicaidClaimSubmissionEvidence {
   readonly serviceTo: string;
   readonly claimState: string;
   readonly claimVersion: number;
+  /** Digest of exact M24 claim, assignment, submission-attempt and acknowledgment evidence versions. */
+  readonly sourceEvidenceFingerprint: string;
   /** Hidden (null) unless the result is proven, like every identifier below it. */
   readonly replacesClaimId: string | null;
   readonly replacedByClaimId: string | null;
@@ -248,6 +260,7 @@ export interface MedicaidClaimSubmissionEvidence {
       /** Hidden (null) unless the result is proven (a payer-side reference). */
       readonly payerClaimControlNumber: string | null;
       readonly receivedAt: string;
+      readonly id: string | null;
     }[];
   }[];
 }
@@ -487,11 +500,15 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
             effectiveFrom: EE.effectiveFrom,
             effectiveTo: EE.effectiveTo,
             evidenceFreshUntil: EE.evidenceFreshUntil,
+            evidenceId: EE.id,
+            evidenceVersion: EE.version,
             evidenceReference: EE.evidenceReference,
             verifiedAt: EE.verifiedAt,
             status: EE.status,
             transactionType: EE.transactionType,
             evidenceKind: EE.evidenceKind,
+            verificationSource: EE.verificationSource,
+            updatedAt: EE.updatedAt,
           })
           .from(EE)
           .where(
@@ -513,8 +530,11 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
             !row.canonicalPayerId ||
             !row.effectiveTo ||
             !row.evidenceFreshUntil ||
+            !row.evidenceId ||
+            !Number.isSafeInteger(row.evidenceVersion) ||
             !row.evidenceReference ||
             !row.verifiedAt ||
+            !row.verificationSource ||
             row.status !== "verified" ||
             row.transactionType !== "835" ||
             !row.vendorPayerId ||
@@ -544,6 +564,48 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
                   classification.classification === "other_managed_care")),
           );
           if (compatible.length !== 1) continue;
+          const classification = compatible[0]!;
+          const providerIdentityFingerprint = evidenceFingerprint({
+            organizationId: orgId,
+            providerEntityId,
+            billingNpi: site.npi,
+          });
+          const sourceEvidenceFingerprint = evidenceFingerprint({
+            enrollment: {
+              id: row.evidenceId,
+              version: row.evidenceVersion,
+              status: row.status,
+              evidenceKind: row.evidenceKind,
+              transactionType: row.transactionType,
+              verificationSource: row.verificationSource,
+              effectiveFrom: row.effectiveFrom,
+              effectiveTo: row.effectiveTo,
+              evidenceFreshUntil: row.evidenceFreshUntil,
+              evidenceReference: row.evidenceReference,
+              verifiedAt: row.verifiedAt.toISOString(),
+              updatedAt: row.updatedAt.toISOString(),
+              vendorPayerId: row.vendorPayerId,
+              accountReference: row.accountReference,
+              environment: row.environment,
+              canonicalPayerId: row.canonicalPayerId,
+              programKind: row.programKind,
+            },
+            classification: {
+              id: classification.id,
+              classification: classification.classification,
+              stateCode: classification.stateCode,
+              effectiveFrom: classification.effectiveFrom,
+              effectiveTo: classification.effectiveTo,
+              verificationStatus: classification.verificationStatus,
+              sourceKind: classification.sourceKind,
+              sourceReference: classification.sourceReference,
+              verifiedAt: classification.verifiedAt,
+              verifiedBy: classification.verifiedBy,
+              supersedesId: classification.supersedesId,
+              recordedAt: classification.recordedAt,
+            },
+            providerIdentityFingerprint,
+          });
           output.push({
             organizationId: orgId,
             providerEntityId,
@@ -551,7 +613,9 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
             accountReference: row.accountReference,
             environment: row.environment as "test" | "production",
             canonicalPayerId: row.canonicalPayerId,
-            programId: compatible[0]!.id,
+            programId: classification.id,
+            evidenceId: row.evidenceId,
+            evidenceVersion: row.evidenceVersion,
             payerIdentifier: row.vendorPayerId,
             billingNpi: site.npi,
             billingTin: null,
@@ -560,6 +624,8 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
             evidenceReference: row.evidenceReference,
             verifiedAt: row.verifiedAt.toISOString(),
             evidenceFreshUntil: row.evidenceFreshUntil,
+            classificationRecordedAt: classification.recordedAt,
+            sourceEvidenceFingerprint,
           });
         }
         return output;
@@ -604,6 +670,7 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
             providerEntityId: C.providerEntityId,
             claimControlNumber: C.medicaidClaimControlNumber,
             canonicalPayerId: C.canonicalPayerId,
+            claimMcoId: C.mcoId,
             programAssignmentId: C.programAssignmentId,
             programKind: C.medicaidProgramKind,
             serviceState: C.serviceState,
@@ -616,6 +683,10 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
             submissionId: S.id,
             attemptIndex: S.attemptIndex,
             submittedClaimVersion: S.submittedClaimVersion,
+            submittedServiceState: S.serviceState,
+            submittedChannel: S.channel,
+            submittedMcoIdSnapshot: S.mcoIdSnapshot,
+            submittedClaimControlNumber: S.medicaidClaimControlNumber,
             sourceAccountRef: S.sourceAccountRef,
             environment: S.sourceEnvironment,
             vendor: S.adapterVendor,
@@ -632,12 +703,21 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
             ackOutcome: A.outcome,
             payerClaimControlNumber: A.payerClaimControlNumber,
             ackReceivedAt: A.receivedAt,
+            ackAcceptedLineNumbers: A.acceptedLineNumbers,
+            ackRejectedLineNumbers: A.rejectedLineNumbers,
+            ackErrorCodes: A.errorCodes,
             assignmentStatus: schema.medicaidProgramAssignment.status,
             assignmentVersion: schema.medicaidProgramAssignment.version,
             assignmentPayerId: schema.medicaidProgramAssignment.canonicalPayerId,
             assignmentClassificationId:
               schema.medicaidProgramAssignment.canonicalPayerClassificationId,
             assignmentState: schema.medicaidProgramAssignment.serviceState,
+            assignmentEffectiveFrom: schema.medicaidProgramAssignment.effectiveFrom,
+            assignmentEffectiveTo: schema.medicaidProgramAssignment.effectiveTo,
+            assignmentUpdatedAt: schema.medicaidProgramAssignment.updatedAt,
+            submissionCreatedAt: S.createdAt,
+            adapterVersion: S.adapterVersion,
+            ackId: A.id,
           })
           .from(C)
           .leftJoin(
@@ -671,7 +751,7 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
               eq(C.medicaidClaimControlNumber, keys.claimControlNumber),
             ),
           )
-          .orderBy(desc(S.attemptIndex), desc(A.receivedAt));
+          .orderBy(asc(C.id), desc(S.attemptIndex), desc(A.receivedAt));
 
         const byClaim = new Map<
           string,
@@ -686,6 +766,10 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
                   outcome: string;
                   payerClaimControlNumber: string | null;
                   receivedAt: string;
+                  id: string;
+                  acceptedLineNumbers: unknown;
+                  rejectedLineNumbers: unknown;
+                  errorCodes: unknown;
                 }>;
               }
             >;
@@ -703,18 +787,86 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
             attempt = { base: row, acknowledgments: [] };
             claim.attempts.set(row.submissionId, attempt);
           }
-          if (row.ackKind && row.ackOutcome && row.ackReceivedAt) {
+          if (row.ackId && row.ackKind && row.ackOutcome && row.ackReceivedAt) {
             attempt.acknowledgments.push({
               kind: row.ackKind,
               outcome: row.ackOutcome,
               payerClaimControlNumber: row.payerClaimControlNumber,
               receivedAt: row.ackReceivedAt.toISOString(),
+              id: row.ackId,
+              acceptedLineNumbers: row.ackAcceptedLineNumbers,
+              rejectedLineNumbers: row.ackRejectedLineNumbers,
+              errorCodes: row.ackErrorCodes,
             });
           }
         }
 
         return [...byClaim.values()].map(({ base, attempts }): MedicaidClaimSubmissionEvidence => {
           const attemptRows = [...attempts.values()];
+          const attemptEvidence = attemptRows.map(({ base: s, acknowledgments }) => ({
+            submissionId: s.submissionId,
+            attemptIndex: s.attemptIndex,
+            claimVersion: s.submittedClaimVersion,
+            serviceState: s.submittedServiceState,
+            channel: s.submittedChannel,
+            mcoIdSnapshot: s.submittedMcoIdSnapshot,
+            claimControlNumber: s.submittedClaimControlNumber,
+            sourceAccountRef: s.sourceAccountRef,
+            environment: s.environment,
+            vendor: s.vendor,
+            vendorTransactionId: s.vendorTransactionId,
+            payerId: s.payerId,
+            payerClassificationId: s.payerClassificationId,
+            programKind: s.programKindSnapshot,
+            assignmentId: s.assignmentId,
+            assignmentVersion: s.assignmentVersionSnapshot,
+            provenanceStatus: s.provenanceStatus,
+            result: s.result,
+            submittedAt: s.submittedAt?.toISOString() ?? null,
+            createdAt: s.submissionCreatedAt?.toISOString() ?? null,
+            adapterVersion: s.adapterVersion,
+            acknowledgments: acknowledgments.map((ack) => ({
+              id: ack.id,
+              kind: ack.kind,
+              outcome: ack.outcome,
+              payerClaimControlNumber: ack.payerClaimControlNumber,
+              receivedAt: ack.receivedAt,
+              acceptedLineNumbers: ack.acceptedLineNumbers,
+              rejectedLineNumbers: ack.rejectedLineNumbers,
+              errorCodes: ack.errorCodes,
+            })),
+          }));
+          const sourceEvidenceFingerprint = evidenceFingerprint({
+            claim: {
+              claimId: base.claimId,
+              organizationId: base.organizationId,
+              providerEntityId: base.providerEntityId,
+              claimControlNumber: base.claimControlNumber,
+              canonicalPayerId: base.canonicalPayerId,
+              programAssignmentId: base.programAssignmentId,
+              programKind: base.programKind,
+              serviceState: base.serviceState,
+              serviceFrom: base.serviceFrom.toISOString(),
+              serviceTo: base.serviceTo.toISOString(),
+              claimState: base.claimState,
+              claimVersion: base.claimVersion,
+              mcoId: base.claimMcoId,
+              replacesClaimId: base.replacesClaimId,
+              replacedByClaimId: base.replacedByClaimId,
+            },
+            assignment: {
+              id: base.programAssignmentId,
+              status: base.assignmentStatus,
+              version: base.assignmentVersion,
+              canonicalPayerId: base.assignmentPayerId,
+              classificationId: base.assignmentClassificationId,
+              serviceState: base.assignmentState,
+              effectiveFrom: base.assignmentEffectiveFrom,
+              effectiveTo: base.assignmentEffectiveTo,
+              updatedAt: base.assignmentUpdatedAt?.toISOString() ?? null,
+            },
+            attempts: attemptEvidence,
+          });
           const qualified = attemptRows.filter(
             ({ base: s }) =>
               s.provenanceStatus === "verified" &&
@@ -732,6 +884,13 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
               // the surviving payer).
               base.assignmentPayerId === base.canonicalPayerId &&
               base.assignmentState === base.serviceState &&
+              s.submittedServiceState === base.serviceState &&
+              s.submittedClaimControlNumber === base.claimControlNumber &&
+              s.submittedMcoIdSnapshot === base.claimMcoId &&
+              // The current M24 routing boundary derives these two channels from the claim's server-owned
+              // MCO identity. Compare the persisted route snapshot to that same boundary; this check does not
+              // treat a null MCO as FFS program evidence (the verified assignment/classification above does).
+              s.submittedChannel === (base.claimMcoId ? "cco_clearinghouse" : "direct_mmis") &&
               s.assignmentVersionSnapshot === base.assignmentVersion &&
               s.programKindSnapshot === base.programKind &&
               !!s.assignmentId &&
@@ -752,18 +911,17 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
             claimId: proven ? base.claimId : null,
             organizationId: base.organizationId,
             providerEntityId: base.providerEntityId,
-            claimControlNumber: base.claimControlNumber,
-            canonicalPayerId: base.canonicalPayerId,
-            programKind: base.programKind,
+            claimControlNumber: proven ? base.claimControlNumber : null,
+            canonicalPayerId: proven ? base.canonicalPayerId : null,
+            programKind: proven ? base.programKind : null,
             serviceState: base.serviceState,
             serviceFrom: base.serviceFrom.toISOString().slice(0, 10),
             serviceTo: base.serviceTo.toISOString().slice(0, 10),
             claimState: base.claimState,
             claimVersion: base.claimVersion,
-            // An unproven result carries no identity a caller could follow: not the claim, its lineage (a REPLACED
-            // claim would otherwise leak its successor's id), the submission, the assignment, nor a vendor- or
-            // payer-side reference of an attempt (vendor transaction id, classification id, source account, the
-            // payer claim control number of an acknowledgment). Only non-identifying status stays.
+            sourceEvidenceFingerprint,
+            // An unproven result carries no claim control, payer, lineage, submission, assignment, account or
+            // transaction reference. Scoped vendor/environment status and an opaque evidence digest remain.
             replacesClaimId: proven ? base.replacesClaimId : null,
             replacedByClaimId: proven ? base.replacedByClaimId : null,
             attempts: attemptRows.map(({ base: s, acknowledgments }) => ({
@@ -774,17 +932,29 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
               environment: s.environment,
               vendor: s.vendor!,
               vendorTransactionId: proven ? s.vendorTransactionId : null,
-              payerId: s.payerId,
+              payerId: proven ? s.payerId : null,
               payerClassificationId: proven ? s.payerClassificationId : null,
-              programKind: s.programKindSnapshot,
+              programKind: proven ? s.programKindSnapshot : null,
               assignmentId: proven ? s.assignmentId : null,
               assignmentVersion: s.assignmentVersionSnapshot,
               provenanceStatus: s.provenanceStatus!,
               result: s.result!,
               submittedAt: s.submittedAt?.toISOString() ?? null,
               acknowledgments: proven
-                ? acknowledgments
-                : acknowledgments.map((ack) => ({ ...ack, payerClaimControlNumber: null })),
+                ? acknowledgments.map((ack) => ({
+                    id: ack.id,
+                    kind: ack.kind,
+                    outcome: ack.outcome,
+                    payerClaimControlNumber: ack.payerClaimControlNumber,
+                    receivedAt: ack.receivedAt,
+                  }))
+                : acknowledgments.map((ack) => ({
+                    id: null,
+                    kind: ack.kind,
+                    outcome: ack.outcome,
+                    payerClaimControlNumber: null,
+                    receivedAt: ack.receivedAt,
+                  })),
             })),
           };
         });

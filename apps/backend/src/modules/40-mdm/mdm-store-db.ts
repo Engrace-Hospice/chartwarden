@@ -194,6 +194,10 @@ export function createDbMdmStore(db: DbClient): MdmStore {
         sourceKind: r.sourceKind,
         sourceReference: r.sourceReference,
         supersedesId: r.supersedesId,
+        verifiedAt:
+          typeof r.verifiedAt === "string" ? r.verifiedAt : (r.verifiedAt?.toISOString() ?? null),
+        verifiedBy: r.verifiedBy,
+        recordedAt: typeof r.recordedAt === "string" ? r.recordedAt : r.recordedAt.toISOString(),
       }));
     },
 

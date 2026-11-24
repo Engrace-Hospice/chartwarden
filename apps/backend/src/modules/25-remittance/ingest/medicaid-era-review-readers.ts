@@ -154,6 +154,7 @@ export function buildDrizzleMedicaidEraReviewReaders(
             evidenceReference: row.evidenceReference,
             verifiedAt: row.verifiedAt,
             evidenceFreshUntil: row.evidenceFreshUntil,
+            sourceEvidenceFingerprint: row.sourceEvidenceFingerprint,
           },
         ];
       });
@@ -211,9 +212,15 @@ export function buildDrizzleMedicaidEraReviewReaders(
         providerEntityId,
         claimControlNumber,
       );
+      if (facts.some((fact) => !/^[0-9a-f]{64}$/i.test(fact.sourceEvidenceFingerprint)))
+        throw new Error("M24 submission evidence snapshot unavailable");
+      const sourceEvidenceFingerprint = createHash("sha256")
+        .update(JSON.stringify(facts.map((fact) => fact.sourceEvidenceFingerprint).sort()), "utf8")
+        .digest("hex");
       const result = [];
       for (const fact of facts) {
-        if (fact.disposition !== "SUBMISSION_EVIDENCE" || !fact.claimId) continue;
+        if (fact.disposition !== "SUBMISSION_EVIDENCE" || !fact.claimId || !fact.claimControlNumber)
+          continue;
         const attempts = fact.attempts.filter((attempt) => attempt.provenanceStatus === "verified");
         const attempt = attempts.length === 1 ? attempts[0] : null;
         if (!attempt) continue;
@@ -250,9 +257,10 @@ export function buildDrizzleMedicaidEraReviewReaders(
             accountReference: attempt.sourceAccountRef,
             transactionReference: attempt.vendorTransactionId,
           },
+          sourceEvidenceFingerprint: fact.sourceEvidenceFingerprint,
         });
       }
-      return result;
+      return { candidates: result, sourceEvidenceFingerprint };
     },
   };
 }

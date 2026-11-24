@@ -34,6 +34,8 @@ export interface MedicaidClaimFactsView {
       readonly environment: "test" | "production";
       readonly canonicalPayerId: string;
       readonly programId: string;
+      readonly evidenceId: string;
+      readonly evidenceVersion: number;
       readonly payerIdentifier: string | null;
       readonly billingNpi: string;
       readonly billingTin: null;
@@ -42,6 +44,8 @@ export interface MedicaidClaimFactsView {
       readonly evidenceFreshUntil: string;
       readonly evidenceReference: string;
       readonly verifiedAt: string;
+      readonly classificationRecordedAt: string;
+      readonly sourceEvidenceFingerprint: string;
     }[]
   >;
 }
@@ -59,7 +63,7 @@ export interface MedicaidSubmissionEvidenceView {
   readonly claimId: string | null;
   readonly organizationId: string;
   readonly providerEntityId: string;
-  readonly claimControlNumber: string;
+  readonly claimControlNumber: string | null;
   readonly canonicalPayerId: string | null;
   readonly programKind: string | null;
   readonly serviceState: string;
@@ -67,6 +71,7 @@ export interface MedicaidSubmissionEvidenceView {
   readonly serviceTo: string;
   readonly claimState: string;
   readonly claimVersion: number;
+  readonly sourceEvidenceFingerprint: string;
   readonly replacesClaimId: string | null;
   readonly replacedByClaimId: string | null;
   readonly attempts: readonly {
@@ -90,6 +95,7 @@ export interface MedicaidSubmissionEvidenceView {
       readonly outcome: string;
       readonly payerClaimControlNumber: string | null;
       readonly receivedAt: string;
+      readonly id: string;
     }[];
   }[];
 }

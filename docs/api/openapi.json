@@ -338872,6 +338872,8 @@
                           "id",
                           "providerEntityId",
                           "assessmentTrustStatus",
+                          "assessmentSemantics",
+                          "assessmentObservedAt",
                           "vendor",
                           "sourceEnvironment",
                           "canonicalPayerId",
@@ -338902,6 +338904,33 @@
                               {
                                 "const": "isolated_evaluator",
                                 "type": "string"
+                              }
+                            ]
+                          },
+                          "assessmentSemantics": {
+                            "anyOf": [
+                              {
+                                "const": "point_in_time_nonposting",
+                                "type": "string"
+                              },
+                              {
+                                "const": "snapshot_unavailable",
+                                "type": "string"
+                              },
+                              {
+                                "const": "legacy_unverified",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "assessmentObservedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
                               }
                             ]
                           },
@@ -339029,6 +339058,8 @@
                     "organizationId",
                     "providerEntityId",
                     "assessmentTrustStatus",
+                    "assessmentSemantics",
+                    "assessmentObservedAt",
                     "vendor",
                     "accountReference",
                     "sourceEnvironment",
@@ -339068,6 +339099,33 @@
                         {
                           "const": "isolated_evaluator",
                           "type": "string"
+                        }
+                      ]
+                    },
+                    "assessmentSemantics": {
+                      "anyOf": [
+                        {
+                          "const": "point_in_time_nonposting",
+                          "type": "string"
+                        },
+                        {
+                          "const": "snapshot_unavailable",
+                          "type": "string"
+                        },
+                        {
+                          "const": "legacy_unverified",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "assessmentObservedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     },

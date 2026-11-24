@@ -4,6 +4,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { ConflictError, DegradedError, NotFoundError, ValidationError } from "@chartwarden/types";
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import type { MedicaidEraReviewService as Evaluator } from "../domain/medicaid-era-trusted-review";
+import { consistentMedicaidEraReviewAttribution } from "../domain/medicaid-era-trusted-review";
 import type { M25ReadActor, M25WriteActor } from "../routes/actor";
 import { providerEntityScopeCondition } from "../routes/scope";
 
@@ -24,6 +25,77 @@ const allowed = new Set<State>([
   "reviewed_not_posted",
   "reopened",
 ]);
+
+/** Deterministic JSON for fingerprints; object key insertion order never changes assessment identity. */
+function canonicalJson(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("non-finite assessment value");
+    return JSON.stringify(Object.is(value, -0) ? 0 : value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (typeof value === "object") {
+    const row = value as Record<string, unknown>;
+    const fields = Object.keys(row)
+      .filter((key) => row[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(row[key])}`);
+    return `{${fields.join(",")}}`;
+  }
+  throw new TypeError("assessment contains a non-JSON value");
+}
+
+const fingerprint = (value: unknown): string =>
+  createHash("sha256").update(canonicalJson(value), "utf8").digest("hex");
+
+type ImmutableReviewIdentity = Pick<
+  typeof REVIEW.$inferSelect,
+  | "organizationId"
+  | "providerEntityId"
+  | "stageId"
+  | "vendor"
+  | "accountReference"
+  | "sourceEnvironment"
+  | "canonicalPayerId"
+  | "programId"
+  | "sourceDigest"
+>;
+
+export function sameImmutableIdentity(
+  existing: ImmutableReviewIdentity,
+  expected: ImmutableReviewIdentity,
+): boolean {
+  return (
+    existing.organizationId === expected.organizationId &&
+    existing.providerEntityId === expected.providerEntityId &&
+    existing.stageId === expected.stageId &&
+    existing.vendor === expected.vendor &&
+    existing.accountReference === expected.accountReference &&
+    existing.sourceEnvironment === expected.sourceEnvironment &&
+    existing.canonicalPayerId === expected.canonicalPayerId &&
+    existing.programId === expected.programId &&
+    existing.sourceDigest === expected.sourceDigest
+  );
+}
+
+type AssessmentReplayIdentity = Pick<
+  typeof REVIEW.$inferSelect,
+  "assessmentTrustStatus" | "assessmentFingerprint" | "assessmentEvidenceFingerprint"
+>;
+
+/** A fingerprint can identify a replay only after evaluator provenance has independently qualified the row. */
+export function isTrustedAssessmentReplay(
+  existing: AssessmentReplayIdentity | undefined,
+  assessmentFingerprint: string,
+  evidenceFingerprint: string,
+): boolean {
+  return (
+    existing?.assessmentTrustStatus === "isolated_evaluator" &&
+    existing.assessmentFingerprint === assessmentFingerprint &&
+    existing.assessmentEvidenceFingerprint === evidenceFingerprint
+  );
+}
 
 function actorOperationIdentity(actor: M25WriteActor) {
   return {
@@ -62,8 +134,9 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
     actor: M25ReadActor,
     id: string,
     tx: Parameters<Parameters<DbClient["transaction"]>[0]>[0],
+    forUpdate = false,
   ) => {
-    const rows = await tx
+    let query = tx
       .select()
       .from(REVIEW)
       .where(
@@ -72,8 +145,9 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
           eq(REVIEW.organizationId, actor.organizationId),
           providerEntityScopeCondition(REVIEW.providerEntityId, actor.providerEntityScope),
         ),
-      )
-      .limit(1);
+      );
+    if (forUpdate) query = query.for("update") as typeof query;
+    const rows = await query.limit(1);
     if (!rows[0]) throw new NotFoundError("Medicaid ERA review not found");
     return rows[0];
   };
@@ -85,12 +159,10 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
         return { status: "unavailable" as const, reasonCode: result.reasonCode };
       if (result.status === "held")
         return { status: "held" as const, reasonCode: result.reasonCode };
-      if (result.claims.length === 0)
-        return { status: "held" as const, reasonCode: "ERA_NO_CLAIMS" };
-      const first = result.claims[0]!;
-      if (result.claims.some((item) => item.attributionStatus !== "verified"))
-        return { status: "held" as const, reasonCode: "SOURCE_ACCOUNT_UNVERIFIED" };
-      const attribution = first.attribution;
+      const attributionResult = consistentMedicaidEraReviewAttribution(result.claims);
+      if (attributionResult.status !== "verified")
+        return { status: "held" as const, reasonCode: attributionResult.reasonCode };
+      const attribution = attributionResult.attribution;
       const providerEntityId = attribution.providerEntityId;
       const canonicalPayerId = attribution.canonicalPayerId;
       const programId = attribution.programId;
@@ -98,9 +170,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
       const accountReference = attribution.accountReference;
       const sourceEnvironment = attribution.usage;
       const artifactDigest = result.artifactDigest;
-      const evaluationSnapshotFingerprint = createHash("sha256")
-        .update(JSON.stringify(result))
-        .digest("hex");
+      const evaluationSnapshotFingerprint = fingerprint(result);
       if (
         attribution.organizationId !== actor.organizationId ||
         !providerEntityId ||
@@ -115,15 +185,6 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
           !actor.providerEntityScope.includes(providerEntityId))
       )
         return { status: "held" as const, reasonCode: "SOURCE_ACCOUNT_SCOPE_CONFLICT" };
-      if (
-        result.claims.some(
-          (item) =>
-            item.attribution.organizationId !== attribution.organizationId ||
-            item.attribution.providerEntityId !== attribution.providerEntityId ||
-            item.attribution.accountReference !== attribution.accountReference,
-        )
-      )
-        return { status: "held" as const, reasonCode: "SOURCE_ACCOUNT_AMBIGUOUS" };
       const safeSummary = {
         transactionSetCount: result.transactionSetCount,
         claims: result.claims.map((item) => ({
@@ -152,20 +213,20 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
           : "none";
       const assessmentFingerprint = createHash("sha256")
         .update(
-          JSON.stringify({
-            version: "l5-v1",
-            actor: actorOperationIdentity(actor),
+          canonicalJson({
+            version: "l6d-v2",
             decisionStatus,
             reasonCodes,
             claimMatchStatus,
             duplicateStatus,
+            evidenceSnapshotFingerprint: evaluationSnapshotFingerprint,
             safeSummary,
           }),
         )
         .digest("hex");
       const operationFingerprint = createHash("sha256")
         .update(
-          JSON.stringify({
+          canonicalJson({
             operation: "evaluate",
             actor: actorOperationIdentity(actor),
             artifactId,
@@ -184,11 +245,13 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
         // Re-read them after acquiring the per-artifact lock so an evaluation that waited behind a newer
         // assessment cannot overwrite it with stale account, claim, duplicate or submission evidence.
         const currentEvaluation = await evaluator.inspect(actor, artifactId);
+        // Record when this authoritative evaluator snapshot was observed, before persistence work.
+        // This remains a point-in-time nonposting observation, not a transaction-time authorization.
+        const assessmentObservedAt = new Date();
         if (
           currentEvaluation.status !== "review_only" ||
           currentEvaluation.artifactDigest !== artifactDigest ||
-          createHash("sha256").update(JSON.stringify(currentEvaluation)).digest("hex") !==
-            evaluationSnapshotFingerprint
+          fingerprint(currentEvaluation) !== evaluationSnapshotFingerprint
         )
           throw new ConflictError(
             "authoritative ERA evidence changed; evaluate the artifact again",
@@ -204,6 +267,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
               eq(REVIEW.sourceDigest, artifactDigest),
             ),
           )
+          .for("update")
           .limit(1);
         const [priorOperation] = await tx
           .select({
@@ -220,20 +284,50 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
           )
           .limit(1);
         if (
-          priorOperation &&
-          (priorOperation.reviewId !== existing?.id ||
-            priorOperation.operation !== "evaluate" ||
-            priorOperation.operationFingerprint !== operationFingerprint)
+          existing &&
+          !sameImmutableIdentity(existing, {
+            organizationId: actor.organizationId,
+            providerEntityId,
+            stageId: artifactId,
+            vendor,
+            accountReference,
+            sourceEnvironment,
+            canonicalPayerId,
+            programId,
+            sourceDigest: artifactDigest,
+          })
         )
-          throw new ConflictError("this idempotency key was used for another review operation");
-        if (priorOperation && existing)
           return {
-            status: "review_saved" as const,
-            reviewId: existing.id,
-            version: existing.version,
-            replay: true,
+            status: "held" as const,
+            reasonCode: "REVIEW_IMMUTABLE_SOURCE_IDENTITY_CONFLICT",
           };
-        if (existing?.assessmentFingerprint === assessmentFingerprint) {
+        if (priorOperation) {
+          if (
+            priorOperation.reviewId !== existing?.id ||
+            priorOperation.operation !== "evaluate" ||
+            priorOperation.operationFingerprint !== operationFingerprint
+          )
+            throw new ConflictError("this idempotency key was used for another review operation");
+          if (
+            isTrustedAssessmentReplay(
+              existing,
+              assessmentFingerprint,
+              evaluationSnapshotFingerprint,
+            )
+          )
+            return {
+              status: "review_saved" as const,
+              reviewId: existing.id,
+              version: existing.version,
+              replay: true,
+            };
+          throw new ConflictError(
+            "the prior evaluation is not a trusted replay of current evidence",
+          );
+        }
+        if (
+          isTrustedAssessmentReplay(existing, assessmentFingerprint, evaluationSnapshotFingerprint)
+        ) {
           await tx.insert(IDEMPOTENCY).values({
             organizationId: actor.organizationId,
             providerEntityId,
@@ -255,7 +349,9 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
             .update(REVIEW)
             .set({
               assessmentFingerprint,
-              assessmentVersion: "l5-v1",
+              assessmentEvidenceFingerprint: evaluationSnapshotFingerprint,
+              assessmentObservedAt,
+              assessmentVersion: "l6d-v2",
               decisionStatus,
               reasonCodes,
               claimMatchStatus,
@@ -314,7 +410,9 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
             programId,
             sourceDigest: artifactDigest,
             assessmentFingerprint,
-            assessmentVersion: "l5-v1",
+            assessmentEvidenceFingerprint: evaluationSnapshotFingerprint,
+            assessmentObservedAt,
+            assessmentVersion: "l6d-v2",
             decisionStatus,
             reasonCodes,
             claimMatchStatus,
@@ -378,6 +476,8 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
             claimMatchStatus: REVIEW.claimMatchStatus,
             duplicateStatus: REVIEW.duplicateStatus,
             assessmentTrustStatus: REVIEW.assessmentTrustStatus,
+            assessmentEvidenceFingerprint: REVIEW.assessmentEvidenceFingerprint,
+            assessmentObservedAt: REVIEW.assessmentObservedAt,
             workflowState: REVIEW.workflowState,
             version: REVIEW.version,
             createdAt: REVIEW.createdAt,
@@ -401,10 +501,19 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
         const items = hasMore ? rows.slice(0, bounded) : rows;
         const last = items.at(-1);
         return {
-          items: items.map((item) =>
-            item.assessmentTrustStatus === "legacy_unverified"
+          items: items.map((item) => {
+            const assessmentSemantics =
+              item.assessmentTrustStatus === "legacy_unverified"
+                ? "legacy_unverified"
+                : item.assessmentEvidenceFingerprint && item.assessmentObservedAt
+                  ? "point_in_time_nonposting"
+                  : "snapshot_unavailable";
+            const { assessmentEvidenceFingerprint: _evidenceFingerprint, ...safeItem } = item;
+            return item.assessmentTrustStatus === "legacy_unverified"
               ? {
-                  ...item,
+                  ...safeItem,
+                  assessmentSemantics,
+                  assessmentObservedAt: null,
                   sourceEnvironment: null,
                   canonicalPayerId: null,
                   programId: null,
@@ -413,8 +522,8 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
                   claimMatchStatus: "UNVERIFIED",
                   duplicateStatus: "unverified",
                 }
-              : item,
-          ),
+              : { ...safeItem, assessmentSemantics };
+          }),
           nextCursor:
             hasMore && last
               ? Buffer.from(`${last.createdAt.toISOString()}|${last.id}`).toString("base64url")
@@ -424,11 +533,20 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
     },
     async detail(actor: M25ReadActor, id: string) {
       return withOrgContext(db, actor, async (tx) => {
-        const { assessmentFingerprint: _assessmentFingerprint, ...detail } = await find(
-          actor,
-          id,
-          tx,
-        );
+        const {
+          assessmentFingerprint: _assessmentFingerprint,
+          assessmentEvidenceFingerprint,
+          ...storedDetail
+        } = await find(actor, id, tx);
+        const detail = {
+          ...storedDetail,
+          assessmentSemantics:
+            storedDetail.assessmentTrustStatus === "legacy_unverified"
+              ? "legacy_unverified"
+              : assessmentEvidenceFingerprint && storedDetail.assessmentObservedAt
+                ? "point_in_time_nonposting"
+                : "snapshot_unavailable",
+        };
         if (detail.assessmentTrustStatus === "legacy_unverified")
           // Historical rows predate evaluator attestation. Their stored source identity is not
           // trustworthy evidence, so do not expose it as if the account/artifact were verified.
@@ -445,6 +563,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
             sourceEnvironment: null,
             sourceDigest: null,
             stageId: null,
+            assessmentObservedAt: null,
             canonicalPayerId: null,
             programId: null,
             assessmentVersion: "legacy_unverified",
@@ -503,7 +622,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
       const keyHash = createHash("sha256").update(idempotencyKey).digest("hex");
       const operationFingerprint = createHash("sha256")
         .update(
-          JSON.stringify({
+          canonicalJson({
             operation: "note",
             actor: actorOperationIdentity(actor),
             id,
@@ -536,7 +655,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
             prior.operationFingerprint !== operationFingerprint
           )
             throw new ConflictError("this idempotency key was used for another review action");
-          const current = await find(actor, id, tx);
+          const current = await find(actor, id, tx, true);
           return {
             id,
             version: current.version,
@@ -544,7 +663,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
             replay: true,
           };
         }
-        const current = await find(actor, id, tx);
+        const current = await find(actor, id, tx, true);
         if (current.version !== expectedVersion)
           throw new ConflictError("reload the review before adding a note");
         const version = current.version + 1;
@@ -556,7 +675,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
           operation: "note",
           operationFingerprint,
         });
-        await tx
+        const [updated] = await tx
           .update(REVIEW)
           .set({ version, updatedAt: new Date() })
           .where(
@@ -565,7 +684,9 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
               eq(REVIEW.organizationId, actor.organizationId),
               eq(REVIEW.version, expectedVersion),
             ),
-          );
+          )
+          .returning({ id: REVIEW.id });
+        if (!updated) throw new ConflictError("the review changed during the note update");
         await tx.insert(HISTORY).values({
           organizationId: actor.organizationId,
           providerEntityId: current.providerEntityId,
@@ -594,7 +715,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
       const keyHash = createHash("sha256").update(idempotencyKey).digest("hex");
       const operationFingerprint = createHash("sha256")
         .update(
-          JSON.stringify({
+          canonicalJson({
             operation: "transition",
             actor: actorOperationIdentity(actor),
             id,
@@ -628,7 +749,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
             prior.operationFingerprint !== operationFingerprint
           )
             throw new ConflictError("this idempotency key was used for another review action");
-          const current = await find(actor, id, tx);
+          const current = await find(actor, id, tx, true);
           return {
             id,
             version: current.version,
@@ -636,7 +757,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
             replay: true,
           };
         }
-        const current = await find(actor, id, tx);
+        const current = await find(actor, id, tx, true);
         if (current.version !== expectedVersion)
           throw new ConflictError("reload the review before updating it");
         if (current.workflowState === "reviewed_not_posted" && state !== "reopened")

@@ -114764,6 +114764,8 @@ export interface operations {
                             /** Format: uuid */
                             providerEntityId: string;
                             assessmentTrustStatus: "legacy_unverified" | "isolated_evaluator";
+                            assessmentSemantics: "point_in_time_nonposting" | "snapshot_unavailable" | "legacy_unverified";
+                            assessmentObservedAt: string | null;
                             /** @constant */
                             vendor: "claimmd";
                             sourceEnvironment: "test" | "production" | null;
@@ -114811,6 +114813,8 @@ export interface operations {
                         /** Format: uuid */
                         providerEntityId: string;
                         assessmentTrustStatus: "legacy_unverified" | "isolated_evaluator";
+                        assessmentSemantics: "point_in_time_nonposting" | "snapshot_unavailable" | "legacy_unverified";
+                        assessmentObservedAt: string | null;
                         /** @constant */
                         vendor: "claimmd";
                         accountReference: string | null;

@@ -28,6 +28,8 @@ export interface MedicaidEraAccountEvidence {
   readonly evidenceReference: string;
   readonly verifiedAt: string;
   readonly evidenceFreshUntil: string;
+  /** M24 owner digest binding enrollment row/version, M40 classification and provider NPI evidence. */
+  readonly sourceEvidenceFingerprint: string;
 }
 
 export interface AuthenticatedMedicaidEraSource {
@@ -51,6 +53,7 @@ export type MedicaidEraAttribution =
       readonly canonicalPayerId: string;
       readonly programId: string;
       readonly evidenceReference: string;
+      readonly sourceEvidenceFingerprint: string;
       readonly artifactReference: string;
       readonly artifactDigest: string;
     }
@@ -159,6 +162,8 @@ export function resolveMedicaidEraAttribution(input: {
     (account.effectiveTo !== null && !isIsoCalendarDate(account.effectiveTo))
   )
     return { status: "held", reason: "SOURCE_EVIDENCE_STALE" };
+  if (!/^[0-9a-f]{64}$/i.test(account.sourceEvidenceFingerprint))
+    return { status: "held", reason: "SOURCE_EVIDENCE_STALE" };
   if (
     account.enrollment !== "verified_active" ||
     account.effectiveFrom > date ||
@@ -203,6 +208,7 @@ export function resolveMedicaidEraAttribution(input: {
     canonicalPayerId: account.canonicalPayerId,
     programId: account.programId,
     evidenceReference: account.evidenceReference,
+    sourceEvidenceFingerprint: account.sourceEvidenceFingerprint,
     artifactReference: input.source.artifactReference,
     artifactDigest: input.source.artifactDigest,
   };
@@ -231,6 +237,8 @@ export interface MedicaidEraClaimCandidate {
     readonly accountReference: string | null;
     readonly transactionReference: string | null;
   };
+  /** Owner-produced digest for the exact claim/submission/acknowledgment source rows. */
+  readonly sourceEvidenceFingerprint: string;
 }
 
 export type MedicaidEraMatchStatus =
@@ -523,7 +531,80 @@ export interface MedicaidEraReviewAssessment {
   readonly remarks: readonly { readonly kind: string; readonly code: string }[];
   readonly unresolvedRequirements: readonly string[];
   readonly evidenceReferences: readonly string[];
+  /** Private digest only; it contains no source identifiers or PHI and is persisted only inside the final assessment hash. */
+  readonly evidenceSnapshotFingerprint: string | null;
   readonly postingAuthorized: false;
+}
+
+export interface VerifiedMedicaidEraReviewAttribution {
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  readonly vendor: "claimmd" | "stedi";
+  readonly accountReference: string;
+  readonly usage: "test" | "production";
+  readonly canonicalPayerId: string;
+  readonly programId: string;
+  readonly evidenceReference: string;
+}
+
+/** A single durable review row can describe a multi-claim artifact only when every claim has identical source identity. */
+export function consistentMedicaidEraReviewAttribution(
+  claims: readonly MedicaidEraReviewAssessment[],
+):
+  | { readonly status: "verified"; readonly attribution: VerifiedMedicaidEraReviewAttribution }
+  | { readonly status: "held"; readonly reasonCode: string } {
+  if (claims.length === 0) return { status: "held", reasonCode: "ERA_NO_CLAIMS" };
+  const first = claims[0]!.attribution;
+  const statuses = new Set(claims.map((claim) => claim.attributionStatus));
+  if (statuses.size !== 1)
+    return { status: "held", reasonCode: "MULTI_CLAIM_ATTRIBUTION_CONFLICT" };
+  if (statuses.has("held")) return { status: "held", reasonCode: "SOURCE_ACCOUNT_UNVERIFIED" };
+  if (
+    claims.some(
+      (claim) =>
+        claim.attribution.organizationId !== first.organizationId ||
+        claim.attribution.providerEntityId !== first.providerEntityId ||
+        claim.attribution.vendor !== first.vendor ||
+        claim.attribution.accountReference !== first.accountReference ||
+        claim.attribution.usage !== first.usage ||
+        claim.attribution.canonicalPayerId !== first.canonicalPayerId ||
+        claim.attribution.programId !== first.programId,
+    )
+  )
+    return { status: "held", reasonCode: "MULTI_CLAIM_ATTRIBUTION_CONFLICT" };
+  if (
+    first.organizationId === null ||
+    first.providerEntityId === null ||
+    first.vendor === null ||
+    first.accountReference === null ||
+    first.usage === null ||
+    first.canonicalPayerId === null ||
+    first.programId === null
+  )
+    return { status: "held", reasonCode: "SOURCE_ACCOUNT_SCOPE_CONFLICT" };
+  const references = claims[0]!.evidenceReferences;
+  const evidenceReference = references.length === 1 ? references[0] : undefined;
+  if (
+    !evidenceReference ||
+    claims.some(
+      (claim) =>
+        claim.evidenceReferences.length !== 1 || claim.evidenceReferences[0] !== evidenceReference,
+    )
+  )
+    return { status: "held", reasonCode: "MULTI_CLAIM_ATTRIBUTION_CONFLICT" };
+  return {
+    status: "verified",
+    attribution: {
+      organizationId: first.organizationId,
+      providerEntityId: first.providerEntityId,
+      vendor: first.vendor,
+      accountReference: first.accountReference,
+      usage: first.usage,
+      canonicalPayerId: first.canonicalPayerId,
+      programId: first.programId,
+      evidenceReference,
+    },
+  };
 }
 
 /** Nonposting financial review projection. It never infers allowed amounts or posts a claim. */
@@ -533,6 +614,7 @@ export function assessMedicaidEraReview(input: {
   readonly match: MedicaidEraMatchDecision;
   readonly duplicate: MedicaidEraDuplicateDecision;
   readonly claimIndex?: number;
+  readonly evidenceSnapshotFingerprint?: string | null;
 }): MedicaidEraReviewAssessment {
   const claim = input.observation.claims[input.claimIndex ?? 0];
   const attributed = input.attribution.status === "verified";
@@ -691,6 +773,7 @@ export function assessMedicaidEraReview(input: {
     ],
     evidenceReferences:
       input.attribution.status === "verified" ? [input.attribution.evidenceReference] : [],
+    evidenceSnapshotFingerprint: input.evidenceSnapshotFingerprint ?? null,
     postingAuthorized: false,
   };
 }
@@ -717,7 +800,62 @@ export interface MedicaidEraReviewReaders {
     readonly organizationId: string;
     readonly providerEntityId: string;
     readonly claimControlNumber: string;
-  }): Promise<readonly MedicaidEraClaimCandidate[]>;
+  }): Promise<{
+    readonly candidates: readonly MedicaidEraClaimCandidate[];
+    /** Digest of all scoped candidate evidence, including incomplete attempts, from the M24 owner seam. */
+    readonly sourceEvidenceFingerprint: string;
+  }>;
+}
+
+/**
+ * API-side fallback when the isolated evaluator is disabled or unavailable. It deliberately has
+ * no staged-source, account, duplicate, or M24 claim access; a public API process can never fall
+ * back to evaluating or decrypting an ERA locally.
+ */
+export const unavailableMedicaidEraReviewReaders: MedicaidEraReviewReaders = Object.freeze({
+  async readAuthenticatedArtifact() {
+    return null;
+  },
+  async accountEvidence() {
+    return [];
+  },
+  async duplicateDecision() {
+    return "none" as const;
+  },
+  async claimCandidates() {
+    return {
+      candidates: [],
+      sourceEvidenceFingerprint: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    };
+  },
+});
+
+const EMPTY_SOURCE_EVIDENCE_FINGERPRINT =
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+function reviewEvidenceSnapshotFingerprint(input: {
+  readonly source: AuthenticatedMedicaidEraSource;
+  readonly attribution: Extract<MedicaidEraAttribution, { status: "verified" }>;
+  readonly submissionEvidenceFingerprint: string;
+}): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        version: "m25-era-evidence-snapshot-v2",
+        source: {
+          vendor: input.source.vendor,
+          accountReference: input.source.accountReference,
+          usage: input.source.usage,
+          artifactReference: input.source.artifactReference,
+          artifactDigest: input.source.artifactDigest,
+          receivedAt: input.source.receivedAt,
+        },
+        attribution: input.attribution.sourceEvidenceFingerprint,
+        submission: input.submissionEvidenceFingerprint,
+      }),
+      "utf8",
+    )
+    .digest("hex");
 }
 
 export interface MedicaidEraReviewService {
@@ -814,7 +952,7 @@ export function createMedicaidEraReviewService(
           observation,
         });
         for (const claim of observation.claims) {
-          const candidates =
+          const candidateEvidence =
             attribution.status === "verified" &&
             attribution.usage === "production" &&
             claim.patientControlNumber
@@ -824,7 +962,11 @@ export function createMedicaidEraReviewService(
                   providerEntityId: attribution.providerEntityId,
                   claimControlNumber: claim.patientControlNumber,
                 })
-              : [];
+              : {
+                  candidates: [],
+                  sourceEvidenceFingerprint: EMPTY_SOURCE_EVIDENCE_FINGERPRINT,
+                };
+          const candidates = candidateEvidence.candidates;
           const match = matchMedicaidEraClaim({
             attribution,
             patientControlNumber: claim.patientControlNumber,
@@ -840,6 +982,11 @@ export function createMedicaidEraReviewService(
               match,
               duplicate,
               claimIndex: observation.claims.indexOf(claim),
+              evidenceSnapshotFingerprint: reviewEvidenceSnapshotFingerprint({
+                source: staged.source,
+                attribution,
+                submissionEvidenceFingerprint: candidateEvidence.sourceEvidenceFingerprint,
+              }),
             }),
           );
         }

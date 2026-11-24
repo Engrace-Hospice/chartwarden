@@ -67,6 +67,9 @@ export interface MedicaidPayerProgramClassification {
   readonly sourceKind: string;
   readonly sourceReference: string | null;
   readonly supersedesId: string | null;
+  readonly verifiedAt: string | null;
+  readonly verifiedBy: string | null;
+  readonly recordedAt: string;
 }
 
 /** Per-kind canonical payload map. Phase 1 materializes physician/facility/payer concretely; the

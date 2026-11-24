@@ -33,6 +33,9 @@ export const medicaidEraReview = pgTable(
     programId: varchar("program_id", { length: 80 }).notNull(),
     sourceDigest: varchar("source_digest", { length: 64 }).notNull(),
     assessmentFingerprint: varchar("assessment_fingerprint", { length: 64 }).notNull(),
+    /** Hash of the complete server-owned evaluator snapshot; this is provenance, not a signature/current authorization. */
+    assessmentEvidenceFingerprint: varchar("assessment_evidence_fingerprint", { length: 64 }),
+    assessmentObservedAt: timestamp("assessment_observed_at", { withTimezone: true }),
     assessmentVersion: varchar("assessment_version", { length: 32 }).notNull(),
     assessmentTrustStatus: varchar("assessment_trust_status", { length: 24 })
       .notNull()
@@ -57,6 +60,13 @@ export const medicaidEraReview = pgTable(
     fingerprint: check(
       "medicaid_era_review_assessment_fingerprint_ck",
       sql`assessment_fingerprint ~ '^[0-9a-f]{64}$'`,
+    ),
+    evidenceFingerprint: check(
+      "medicaid_era_review_evidence_fingerprint_ck",
+      sql`(assessment_evidence_fingerprint IS NULL AND assessment_observed_at IS NULL)
+          OR (assessment_evidence_fingerprint IS NOT NULL
+              AND assessment_evidence_fingerprint ~ '^[0-9a-f]{64}$'
+              AND assessment_observed_at IS NOT NULL)`,
     ),
     decisionStatus: check(
       "medicaid_era_review_decision_status_ck",

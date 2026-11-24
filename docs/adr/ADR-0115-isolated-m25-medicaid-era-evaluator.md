@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (2026-11-24)
 - **Date:** 2026-11-24
-- **Related:** issue #1075, ADR-0033, ADR-0110, migrations 1543–1547
+- **Related:** issue #1075, ADR-0033, ADR-0110, migrations 1543–1548
 
 ## Context
 
@@ -24,4 +24,5 @@ Migration 1547 adds a separate source-reader login whose only stage access is th
 - API and generic worker compromise does not disclose the writer credential. A compromised command signing key still cannot supply evaluator-owned facts, and current database authority is checked again at execution.
 - Database owner and infrastructure administrators remain trusted. Claim.MD source capture, M24 submission evidence and M40 classification remain independent authoritative inputs; unresolved evidence produces a nonposting hold.
 - The assessment records evidence observed during evaluation. A final reinspection under the review lock prevents a waiting stale evaluation from replacing a newer review, but upstream source, enrollment, payer or claim evidence is not locked through the restricted writer commit. A narrow change-after-reinspection window can leave a stale nonposting snapshot; re-evaluate before any future downstream use.
+- Migration 1548 stores a deterministic fingerprint of the complete evaluator snapshot and its observation timestamp. API projections call this `point_in_time_nonposting`; it records what the evaluator observed and is not proof of current enrollment, active authorization, payer acceptance, or posting authority. Any future financial use still requires a fresh assessment and its own transaction-time authorization. The general platform SQL credential remains unable to write the review rows; a database owner or superuser can still change schema, disable triggers, or rewrite data and remains trusted.
 - Stedi JSON is still unsupported by the raw X12 path. Medicaid submission, ERA retrieval, payment posting and claim-state transitions remain disabled.

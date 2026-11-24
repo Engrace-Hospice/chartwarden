@@ -11,6 +11,7 @@ import type { MedicaidEraObservation } from "./medicaid-era-observation";
 import {
   type AuthenticatedMedicaidEraSource,
   type MedicaidEraAccountEvidence,
+  type MedicaidEraAttribution,
   type MedicaidEraClaimCandidate,
   type MedicaidEraReviewAssessment,
   assessMedicaidEraReview,
@@ -42,7 +43,10 @@ export interface MedicaidEraReviewReaders {
     readonly organizationId: string;
     readonly providerEntityId: string;
     readonly claimControlNumber: string;
-  }): Promise<readonly MedicaidEraClaimCandidate[]>;
+  }): Promise<{
+    readonly candidates: readonly MedicaidEraClaimCandidate[];
+    readonly sourceEvidenceFingerprint: string;
+  }>;
 }
 
 export interface MedicaidEraReviewService {
@@ -61,6 +65,38 @@ export interface MedicaidEraReviewService {
 }
 
 const UNAVAILABLE = { status: "unavailable", reasonCode: "SOURCE_ARTIFACT_UNAVAILABLE" } as const;
+const EMPTY_SOURCE_EVIDENCE_FINGERPRINT =
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+/** Hash only allowlisted owner snapshots; raw account, claim and member identifiers never leave the evaluator. */
+function evidenceSnapshotFingerprint(input: {
+  readonly source: AuthenticatedMedicaidEraSource;
+  readonly attribution: MedicaidEraAttribution;
+  readonly submissionEvidenceFingerprint: string;
+}): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        version: "m25-era-evidence-snapshot-v2",
+        source: {
+          vendor: input.source.vendor,
+          accountReference: input.source.accountReference,
+          usage: input.source.usage,
+          artifactReference: input.source.artifactReference,
+          artifactDigest: input.source.artifactDigest,
+          receivedAt: input.source.receivedAt,
+        },
+        attributionStatus: input.attribution.status,
+        accountEvidence:
+          input.attribution.status === "verified"
+            ? input.attribution.sourceEvidenceFingerprint
+            : null,
+        submissionEvidence: input.submissionEvidenceFingerprint,
+      }),
+      "utf8",
+    )
+    .digest("hex");
+}
 
 /** The account evidence one actor may reason about: their own organization, inside their provider-entity scope. */
 function inActorScope(actor: M25ReadActor, account: MedicaidEraAccountEvidence): boolean {
@@ -128,11 +164,16 @@ async function assessTransactionSet(input: {
             claimVersion: null,
           },
           duplicate,
+          evidenceSnapshotFingerprint: evidenceSnapshotFingerprint({
+            source,
+            attribution,
+            submissionEvidenceFingerprint: EMPTY_SOURCE_EVIDENCE_FINGERPRINT,
+          }),
         }),
       );
       continue;
     }
-    const candidates =
+    const candidateEvidence =
       attribution.usage === "production" && claim.patientControlNumber
         ? await readers.claimCandidates({
             actor,
@@ -140,7 +181,11 @@ async function assessTransactionSet(input: {
             providerEntityId: attribution.providerEntityId,
             claimControlNumber: claim.patientControlNumber,
           })
-        : [];
+        : {
+            candidates: [],
+            sourceEvidenceFingerprint: EMPTY_SOURCE_EVIDENCE_FINGERPRINT,
+          };
+    const candidates: readonly MedicaidEraClaimCandidate[] = candidateEvidence.candidates;
     reviews.push(
       assessMedicaidEraReview({
         observation,
@@ -155,6 +200,11 @@ async function assessTransactionSet(input: {
         }),
         duplicate,
         claimIndex,
+        evidenceSnapshotFingerprint: evidenceSnapshotFingerprint({
+          source,
+          attribution,
+          submissionEvidenceFingerprint: candidateEvidence.sourceEvidenceFingerprint,
+        }),
       }),
     );
   }

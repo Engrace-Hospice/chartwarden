@@ -22,6 +22,7 @@ const PAYER_CCN = "PCN-SYNTHETIC-0001";
 
 /** The acknowledgment columns of a joined row, for a claim whose submission was acknowledged by the payer. */
 const acknowledged = {
+  ackId: "e9000000-0000-4000-8000-000000000001",
   ackKind: "277CA",
   ackOutcome: "accepted",
   payerClaimControlNumber: PAYER_CCN,
@@ -44,6 +45,7 @@ const provenRow = (extra: Record<string, unknown> = {}) => ({
   providerEntityId: PE,
   claimControlNumber: CCN,
   canonicalPayerId: PAYER,
+  claimMcoId: null,
   programAssignmentId: ASSIGNMENT,
   programKind: "ffs_open_card",
   serviceState: "OR",
@@ -56,6 +58,10 @@ const provenRow = (extra: Record<string, unknown> = {}) => ({
   submissionId: SUBMISSION,
   attemptIndex: 0,
   submittedClaimVersion: 4,
+  submittedServiceState: "OR",
+  submittedChannel: "direct_mmis",
+  submittedMcoIdSnapshot: null,
+  submittedClaimControlNumber: CCN,
   sourceAccountRef: "account:synthetic-1",
   environment: "production",
   vendor: "synthetic-vendor",
@@ -72,6 +78,9 @@ const provenRow = (extra: Record<string, unknown> = {}) => ({
   ackOutcome: null,
   payerClaimControlNumber: null,
   ackReceivedAt: null,
+  ackAcceptedLineNumbers: null,
+  ackRejectedLineNumbers: null,
+  ackErrorCodes: null,
   assignmentStatus: "verified",
   assignmentVersion: 2,
   assignmentPayerId: PAYER,
@@ -122,16 +131,27 @@ describe("submissionEvidenceForLine", () => {
     expect(result).toMatchObject({
       disposition: "SUBMISSION_UNVERIFIED",
       claimId: null,
+      claimControlNumber: null,
+      canonicalPayerId: null,
+      programKind: null,
       replacesClaimId: null,
       replacedByClaimId: null,
       attempts: [HIDDEN_REFERENCES],
     });
+    expect(result?.attempts[0]).toMatchObject({ payerId: null, programKind: null });
   });
 
   it.each([
     ["a non-production environment", { environment: "test" }],
     ["unverified provenance", { provenanceStatus: "unverified" }],
     ["a claim version mismatch", { submittedClaimVersion: 3 }],
+    ["a submitted service state mismatch", { submittedServiceState: "WA" }],
+    ["a submitted claim control mismatch", { submittedClaimControlNumber: "OTHER-CONTROL" }],
+    [
+      "a submitted MCO identity mismatch",
+      { submittedMcoIdSnapshot: "e8000000-0000-4000-8000-000000000001" },
+    ],
+    ["a submitted channel mismatch", { submittedChannel: "cco_clearinghouse" }],
     ["an assignment that is no longer verified", { assignmentStatus: "revoked" }],
     // the attempt's payer snapshot differs from the claim's payer
     ["an attempt sent to another payer", { payerId: "b0000000-0000-4000-8000-0000000000ff" }],
@@ -149,6 +169,7 @@ describe("submissionEvidenceForLine", () => {
     // the acknowledgment survives as status only: its payer claim control number is a payer-side reference
     expect(result?.attempts[0]?.acknowledgments).toEqual([
       {
+        id: null,
         kind: "277CA",
         outcome: "accepted",
         payerClaimControlNumber: null,
@@ -179,5 +200,28 @@ describe("submissionEvidenceForLine", () => {
     expect(result?.attempts.map((a) => a.vendorTransactionId)).toEqual([null, null]);
     expect(result?.attempts.map((a) => a.payerClassificationId)).toEqual([null, null]);
     expect(result?.attempts.map((a) => a.sourceAccountRef)).toEqual([null, null]);
+  });
+
+  it("changes the source fingerprint when persisted acknowledgment line facts change", async () => {
+    const [accepted] = await evidenceFor([
+      provenRow({
+        ...acknowledged,
+        ackAcceptedLineNumbers: [1],
+        ackRejectedLineNumbers: [],
+        ackErrorCodes: [],
+      }),
+    ]);
+    const [rejected] = await evidenceFor([
+      provenRow({
+        ...acknowledged,
+        ackAcceptedLineNumbers: [],
+        ackRejectedLineNumbers: [1],
+        ackErrorCodes: [{ code: "SYNTHETIC" }],
+      }),
+    ]);
+
+    expect(accepted?.disposition).toBe("SUBMISSION_EVIDENCE");
+    expect(rejected?.disposition).toBe("SUBMISSION_EVIDENCE");
+    expect(accepted?.sourceEvidenceFingerprint).not.toBe(rejected?.sourceEvidenceFingerprint);
   });
 });

@@ -550,11 +550,16 @@ describe.skipIf(!DB_URL)(
       // statement is otherwise valid by running it as the superuser, which the guard lets through.
       const PAYER = "00000000-0000-0000-0000-0000000fa701";
       const CLASSIFICATION = "00000000-0000-0000-0000-0000000fc701";
+      const MCO = "00000000-0000-0000-0000-0000000fd701";
       const REVIEWER = "33333333-3333-3333-3333-3333333333aa";
       let scenarioSeq = 0;
 
       /** One attempt: every field defaults to the fully qualified value, and a key breaks exactly that value. */
       type AttemptOptions = {
+        readonly serviceState?: string;
+        readonly channel?: string;
+        readonly mcoIdSnapshot?: string | null;
+        readonly claimControlNumber?: string;
         readonly environment?: string;
         readonly submittedClaimVersion?: number;
         readonly provenance?: "verified" | "unverified";
@@ -641,7 +646,7 @@ describe.skipIf(!DB_URL)(
         await admin.query(
           `UPDATE medicaid_claim
            SET canonical_payer_id=$2, program_assignment_id=$3, medicaid_program_kind='managed_care',
-               replaced_by_claim_id=$4, tob='817', replaces_claim_id=$5
+               replaced_by_claim_id=$4, tob='817', replaces_claim_id=$5, mco_id=$6
            WHERE id=$1`,
           [
             claimId,
@@ -649,6 +654,7 @@ describe.skipIf(!DB_URL)(
             assignmentId,
             options.claimReplacedBy ?? null,
             replacesClaimId,
+            MCO,
           ],
         );
         const submissionIds: string[] = [];
@@ -658,12 +664,12 @@ describe.skipIf(!DB_URL)(
           await admin.query(
             `INSERT INTO medicaid_submission
                (id, organization_id, medicaid_claim_id, provider_entity_id, service_state, channel,
-                medicaid_claim_control_number, attempt_index, adapter_vendor, adapter_version,
+                mco_id_snapshot, medicaid_claim_control_number, attempt_index, adapter_vendor, adapter_version,
                 source_account_ref, source_environment, canonical_payer_id_snapshot,
                 payer_classification_id_snapshot, program_kind_snapshot, program_assignment_id_snapshot,
                 program_assignment_version_snapshot, submitted_claim_version, source_provenance_status,
                 result, vendor_transaction_id, submitted_at)
-             VALUES ($1,$2,$3,$4,'OR','cco_clearinghouse',$5,$6,'synthetic-vendor','test',
+             VALUES ($1,$2,$3,$4,$19,$20,$21,COALESCE($22::varchar,$5::varchar),$6,'synthetic-vendor','test',
                      $14,$7,$8,$9,$15,$10,$16,$11,$12,$17,$13,$18)`,
             [
               submissionId,
@@ -684,6 +690,10 @@ describe.skipIf(!DB_URL)(
               attempt.assignmentVersionSnapshot ?? 1,
               attempt.result ?? "accepted_sync",
               orDefault(attempt.submittedAt, new Date()),
+              attempt.serviceState ?? "OR",
+              attempt.channel ?? "cco_clearinghouse",
+              orDefault(attempt.mcoIdSnapshot, MCO),
+              attempt.claimControlNumber ?? null,
             ],
           );
           if (options.acknowledged !== false) {
@@ -770,6 +780,9 @@ describe.skipIf(!DB_URL)(
         // lineage, the submission, the assignment, the vendor transaction, the payer classification or the payer
         // claim control number of an acknowledgment. Every scenario seeds each of them, so a null is a hidden value.
         expect(result?.claimId, why).toBeNull();
+        expect(result?.claimControlNumber, why).toBeNull();
+        expect(result?.canonicalPayerId, why).toBeNull();
+        expect(result?.programKind, why).toBeNull();
         expect(result?.replacesClaimId, why).toBeNull();
         expect(result?.replacedByClaimId, why).toBeNull();
         expect(result?.attempts.length, why).toBeGreaterThan(0);
@@ -778,6 +791,8 @@ describe.skipIf(!DB_URL)(
           expect(attempt.assignmentId, why).toBeNull();
           expect(attempt.vendorTransactionId, why).toBeNull();
           expect(attempt.payerClassificationId, why).toBeNull();
+          expect(attempt.payerId, why).toBeNull();
+          expect(attempt.programKind, why).toBeNull();
           expect(attempt.acknowledgments.length, why).toBeGreaterThan(0);
           for (const acknowledgment of attempt.acknowledgments) {
             expect(acknowledgment.payerClaimControlNumber, why).toBeNull();
@@ -1029,7 +1044,8 @@ describe.skipIf(!DB_URL)(
       // Each case builds the fully qualified scenario (the test above proves it is SUBMISSION_EVIDENCE) and breaks
       // exactly one thing. The predicates, in the order of the seam's `qualified` filter and then its claim tests:
       //   attempt: provenance verified, production environment, source account, result accepted or pending_async,
-      //     submitted time, vendor transaction id, submitted at the claim version, assignment snapshot present and
+      //     submitted time, vendor transaction id, service state/channel/MCO/control snapshots exact, submitted at
+      //     the claim version, assignment snapshot present and
       //     equal to the claim's assignment, assignment version equal to the assignment's, program kind snapshot
       //     equal to the claim's, payer snapshot equal to the claim's payer, classification snapshot present and
       //     equal to the assignment's
@@ -1050,6 +1066,22 @@ describe.skipIf(!DB_URL)(
         readonly dropsVerifiedCheck?: true;
       };
       const REFUSALS: readonly RefusalCase[] = [
+        {
+          predicate: "attempt service state matches the claim",
+          options: { attempts: [{ serviceState: "WA" }] },
+        },
+        {
+          predicate: "attempt channel matches the claim program route",
+          options: { attempts: [{ channel: "direct_mmis" }] },
+        },
+        {
+          predicate: "attempt MCO snapshot matches the claim",
+          options: { attempts: [{ mcoIdSnapshot: "00000000-0000-0000-0000-00000000ffff" }] },
+        },
+        {
+          predicate: "attempt control number matches the claim",
+          options: { attempts: [{ claimControlNumber: "CN-OTHER" }] },
+        },
         {
           predicate: "attempt provenance is verified",
           options: { attempts: [{ provenance: "unverified" }] },

@@ -9,6 +9,12 @@ const NonPostingState = Type.Union([
 ]);
 const ReasonCodes = Type.Array(Type.String({ minLength: 2, maxLength: 64 }), { maxItems: 32 });
 const Summary = Type.Record(Type.String(), Type.Any());
+const AssessmentSemantics = Type.Union([
+  Type.Literal("point_in_time_nonposting"),
+  Type.Literal("snapshot_unavailable"),
+  Type.Literal("legacy_unverified"),
+]);
+const NullableDateTime = Type.Union([Type.String({ format: "date-time" }), Type.Null()]);
 export const MedicaidEraReviewQuerySchema = Type.Object(
   {
     limit: Type.Optional(Type.String({ pattern: "^[0-9]{1,3}$" })),
@@ -23,6 +29,8 @@ const Item = Type.Object({
     Type.Literal("legacy_unverified"),
     Type.Literal("isolated_evaluator"),
   ]),
+  assessmentSemantics: AssessmentSemantics,
+  assessmentObservedAt: NullableDateTime,
   vendor: Type.Literal("claimmd"),
   sourceEnvironment: Type.Union([Type.Literal("test"), Type.Literal("production"), Type.Null()]),
   canonicalPayerId: Type.Union([Id, Type.Null()]),
@@ -47,6 +55,8 @@ export const MedicaidEraReviewDetailSchema = Type.Object({
     Type.Literal("legacy_unverified"),
     Type.Literal("isolated_evaluator"),
   ]),
+  assessmentSemantics: AssessmentSemantics,
+  assessmentObservedAt: NullableDateTime,
   vendor: Type.Literal("claimmd"),
   accountReference: Type.Union([Type.String(), Type.Null()]),
   sourceEnvironment: Type.Union([Type.Literal("test"), Type.Literal("production"), Type.Null()]),

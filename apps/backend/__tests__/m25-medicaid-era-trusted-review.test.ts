@@ -54,6 +54,7 @@ const account: MedicaidEraAccountEvidence = {
   evidenceReference: "synthetic:evidence-1",
   verifiedAt: "2026-11-20T00:00:00.000Z",
   evidenceFreshUntil: "2026-12-20T00:00:00.000Z",
+  sourceEvidenceFingerprint: "a".repeat(64),
 };
 
 describe("trusted Medicaid ERA review contract", () => {
@@ -150,6 +151,7 @@ describe("trusted Medicaid ERA review contract", () => {
       claimVersion: 1,
       claimState: "READY",
       replacementLineage: "original",
+      sourceEvidenceFingerprint: "b".repeat(64),
       submission: {
         status: "missing",
         submissionId: null,
@@ -224,7 +226,11 @@ describe("trusted Medicaid ERA review contract", () => {
         return "none";
       },
       async claimCandidates() {
-        return [];
+        return {
+          candidates: [],
+          sourceEvidenceFingerprint:
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        };
       },
     });
     expect(await service.inspect(actor, source.artifactReference)).toEqual({
@@ -302,7 +308,11 @@ describe("trusted Medicaid ERA review contract", () => {
       },
       async claimCandidates() {
         candidateReads++;
-        return [];
+        return {
+          candidates: [],
+          sourceEvidenceFingerprint:
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        };
       },
     });
     const result = await service.inspect(actor, "synthetic:artifact-1");

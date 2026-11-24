@@ -4,7 +4,13 @@ import {
   type MedicaidEraReviewReaders,
   createMedicaidEraReviewService,
 } from "../src/modules/25-remittance/domain/medicaid-era-review-service";
+import { createMedicaidEraReviewService as createTrustedReviewService } from "../src/modules/25-remittance/domain/medicaid-era-trusted-review";
+import { consistentMedicaidEraReviewAttribution } from "../src/modules/25-remittance/domain/medicaid-era-trusted-review";
 import type { MedicaidEraAccountEvidence } from "../src/modules/25-remittance/domain/medicaid-era-trusted-review";
+import {
+  isTrustedAssessmentReplay,
+  sameImmutableIdentity,
+} from "../src/modules/25-remittance/ingest/medicaid-era-review-service";
 import {
   header,
   multiSet,
@@ -26,6 +32,8 @@ const serviceFor = (
     readonly duplicate?: Duplicate;
     readonly onDuplicateRead?: () => void;
     readonly onCandidateRead?: () => void;
+    readonly accountEvidenceFingerprint?: string;
+    readonly submissionEvidenceFingerprint?: string;
   } = {},
 ) =>
   createMedicaidEraReviewService({
@@ -33,7 +41,15 @@ const serviceFor = (
       return { source: { ...sourceFor(raw), artifactReference: reference }, rawX12: raw };
     },
     async accountEvidence() {
-      return options.accounts ?? [productionAccount];
+      return (
+        options.accounts ?? [
+          {
+            ...productionAccount,
+            sourceEvidenceFingerprint:
+              options.accountEvidenceFingerprint ?? productionAccount.sourceEvidenceFingerprint,
+          },
+        ]
+      );
     },
     async duplicateDecision() {
       options.onDuplicateRead?.();
@@ -44,18 +60,23 @@ const serviceFor = (
       const suffix = claimControlNumber.slice(-1);
       const claimId = `claim-synthetic-${suffix}`;
       const base = submittedCandidate();
-      return [
-        submittedCandidate({
-          claimControlNumber,
-          claimId,
-          submission: {
-            ...base.submission,
-            claimId,
+      return {
+        candidates: [
+          submittedCandidate({
             claimControlNumber,
-            payerClaimControlNumber: `ICN-A${suffix}`,
-          },
-        }),
-      ];
+            claimId,
+            sourceEvidenceFingerprint:
+              options.submissionEvidenceFingerprint ?? base.sourceEvidenceFingerprint,
+            submission: {
+              ...base.submission,
+              claimId,
+              claimControlNumber,
+              payerClaimControlNumber: `ICN-A${suffix}`,
+            },
+          }),
+        ],
+        sourceEvidenceFingerprint: options.submissionEvidenceFingerprint ?? "c".repeat(64),
+      };
     },
   });
 
@@ -79,6 +100,77 @@ describe("production-account review service", () => {
     });
   });
 
+  it("changes the snapshot digest when source evidence versions change but the decision is unchanged", async () => {
+    const { raw } = singleSet();
+    const original = await reviewOnly(serviceFor(raw));
+    const updatedAccount = await reviewOnly(
+      serviceFor(raw, { accountEvidenceFingerprint: "d".repeat(64) }),
+    );
+    const updatedSubmission = await reviewOnly(
+      serviceFor(raw, { submissionEvidenceFingerprint: "e".repeat(64) }),
+    );
+
+    expect(updatedAccount.claims[0]?.decision).toBe(original.claims[0]?.decision);
+    expect(updatedAccount.claims[0]?.matchStatus).toBe(original.claims[0]?.matchStatus);
+    expect(updatedSubmission.claims[0]?.decision).toBe(original.claims[0]?.decision);
+    expect(updatedSubmission.claims[0]?.matchStatus).toBe(original.claims[0]?.matchStatus);
+    expect(updatedAccount.claims[0]?.evidenceSnapshotFingerprint).not.toBe(
+      original.claims[0]?.evidenceSnapshotFingerprint,
+    );
+    expect(updatedSubmission.claims[0]?.evidenceSnapshotFingerprint).not.toBe(
+      original.claims[0]?.evidenceSnapshotFingerprint,
+    );
+  });
+
+  it("binds the production evaluator snapshot to account and M24 submission evidence digests", async () => {
+    const { raw } = singleSet();
+    const buildTrusted = (accountFingerprint: string, submissionFingerprint: string) =>
+      createTrustedReviewService({
+        async readAuthenticatedArtifact(_actor, reference) {
+          return { source: { ...sourceFor(raw), artifactReference: reference }, rawX12: raw };
+        },
+        async accountEvidence() {
+          return [{ ...productionAccount, sourceEvidenceFingerprint: accountFingerprint }];
+        },
+        async duplicateDecision() {
+          return "none" as const;
+        },
+        async claimCandidates({ claimControlNumber }) {
+          const base = submittedCandidate();
+          return {
+            candidates: [
+              submittedCandidate({
+                claimControlNumber,
+                sourceEvidenceFingerprint: submissionFingerprint,
+                submission: {
+                  ...base.submission,
+                  claimControlNumber,
+                  payerClaimControlNumber: "ICN-A1",
+                },
+              }),
+            ],
+            sourceEvidenceFingerprint: submissionFingerprint,
+          };
+        },
+      });
+    const original = await buildTrusted("a".repeat(64), "b".repeat(64)).inspect(
+      productionActor,
+      "synthetic:artifact-prod-1",
+    );
+    const newSourceVersion = await buildTrusted("c".repeat(64), "d".repeat(64)).inspect(
+      productionActor,
+      "synthetic:artifact-prod-1",
+    );
+    expect(original.status).toBe("review_only");
+    expect(newSourceVersion.status).toBe("review_only");
+    if (original.status !== "review_only" || newSourceVersion.status !== "review_only") return;
+    expect(newSourceVersion.claims[0]?.decision).toBe(original.claims[0]?.decision);
+    expect(newSourceVersion.claims[0]?.matchStatus).toBe(original.claims[0]?.matchStatus);
+    expect(newSourceVersion.claims[0]?.evidenceSnapshotFingerprint).not.toBe(
+      original.claims[0]?.evidenceSnapshotFingerprint,
+    );
+  });
+
   it("surfaces a reader-reported duplicate decision on every verified claim", async () => {
     const { raw } = singleSet();
     for (const [duplicate, decision, reasonCode] of [
@@ -89,6 +181,111 @@ describe("production-account review service", () => {
       const result = await reviewOnly(serviceFor(raw, { duplicate }));
       expect(result.claims[0]).toMatchObject({ decision, reasonCode, postingAuthorized: false });
     }
+  });
+});
+
+describe("durable review attribution identity", () => {
+  it("accepts only claims sharing organization, provider, vendor, account, environment and payer program", async () => {
+    const { raw } = singleSet();
+    const result = await reviewOnly(serviceFor(raw));
+    const first = result.claims[0]!;
+    expect(consistentMedicaidEraReviewAttribution([first, first]).status).toBe("verified");
+    for (const changed of [
+      { organizationId: "other-org" },
+      { providerEntityId: "other-provider" },
+      { vendor: "stedi" },
+      { accountReference: "other-account" },
+      { usage: "test" },
+      { canonicalPayerId: "other-payer" },
+      { programId: "other-program" },
+    ]) {
+      const conflicting = {
+        ...first,
+        attribution: { ...first.attribution, ...changed },
+      } as typeof first;
+      expect(consistentMedicaidEraReviewAttribution([first, conflicting])).toEqual({
+        status: "held",
+        reasonCode: "MULTI_CLAIM_ATTRIBUTION_CONFLICT",
+      });
+    }
+  });
+
+  it("does not convert an unverified single-claim source into an attribution conflict", async () => {
+    const { raw } = singleSet();
+    const held = await reviewOnly(serviceFor(raw, { accounts: [] }));
+    expect(consistentMedicaidEraReviewAttribution(held.claims)).toEqual({
+      status: "held",
+      reasonCode: "SOURCE_ACCOUNT_UNVERIFIED",
+    });
+  });
+});
+
+describe("persisted assessment integrity", () => {
+  const identity = {
+    organizationId: "synthetic-org",
+    providerEntityId: "synthetic-provider",
+    stageId: "synthetic-stage",
+    vendor: "claimmd",
+    accountReference: "synthetic-account",
+    sourceEnvironment: "test",
+    canonicalPayerId: "synthetic-payer",
+    programId: "synthetic-program",
+    sourceDigest: "a".repeat(64),
+  } as const;
+
+  it("rejects legacy fingerprint replay even when both assessment fingerprints match", () => {
+    expect(
+      isTrustedAssessmentReplay(
+        {
+          assessmentTrustStatus: "legacy_unverified",
+          assessmentFingerprint: "b".repeat(64),
+          assessmentEvidenceFingerprint: "c".repeat(64),
+        },
+        "b".repeat(64),
+        "c".repeat(64),
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts only an evaluator-trusted row with both current fingerprints", () => {
+    expect(
+      isTrustedAssessmentReplay(
+        {
+          assessmentTrustStatus: "isolated_evaluator",
+          assessmentFingerprint: "b".repeat(64),
+          assessmentEvidenceFingerprint: "c".repeat(64),
+        },
+        "b".repeat(64),
+        "c".repeat(64),
+      ),
+    ).toBe(true);
+    expect(
+      isTrustedAssessmentReplay(
+        {
+          assessmentTrustStatus: "isolated_evaluator",
+          assessmentFingerprint: "b".repeat(64),
+          assessmentEvidenceFingerprint: "old-snapshot",
+        },
+        "b".repeat(64),
+        "c".repeat(64),
+      ),
+    ).toBe(false);
+  });
+
+  it("compares every immutable identity dimension before legacy reassessment", () => {
+    expect(sameImmutableIdentity(identity, identity)).toBe(true);
+    for (const changed of [
+      { organizationId: "other-org" },
+      { providerEntityId: "other-provider" },
+      { stageId: "other-stage" },
+      { vendor: "stedi" },
+      { accountReference: "other-account" },
+      { sourceEnvironment: "production" },
+      { canonicalPayerId: "other-payer" },
+      { programId: "other-program" },
+      { sourceDigest: "d".repeat(64) },
+    ])
+      expect(sameImmutableIdentity(identity, { ...identity, ...changed })).toBe(false);
   });
 });
 

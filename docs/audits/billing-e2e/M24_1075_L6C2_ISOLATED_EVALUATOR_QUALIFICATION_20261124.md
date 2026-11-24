@@ -57,3 +57,7 @@ There is still no verified production EOCCO enrollment, authenticated production
 ## Safety confirmation
 
 Medicaid submission remains disabled. No Stedi, Claim.MD, OHA, or EOCCO request occurred. No real ERA was retrieved, no payment was posted, no M24 financial state transition or financial outbox event was produced, no unverified payer/enrollment/rate/authorization evidence was promoted, and no production migration or deployment occurred.
+
+## L6D follow-up
+
+The earlier residual observation window is now represented as an explicit point-in-time, nonposting snapshot: migration 1548 stores a deterministic evaluator-evidence fingerprint and observation timestamp, while API projections do not expose the internal fingerprint or describe the snapshot as current readiness. The API-to-evaluator route path, provider scoping, and same-artifact concurrency are separately exercised by the L6D qualification report. These changes do not make a snapshot usable for financial authorization and do not alter the L6C2 results above. See [L6D final technical qualification](./M24_1075_L6D_FINAL_TECHNICAL_QUALIFICATION_20261124.md).
