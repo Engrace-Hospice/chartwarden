@@ -1,8 +1,10 @@
 # Isolated PostgreSQL proof — `test:m34:support-session:live`
 
-- Run at: 2026-11-24T06:04Z
-- Commit under test: `707874893` (on top of `92a36c073`, the commit named in the approval record)
-- Result: PASS — 1 file, 29 of 29 tests passed, 0 unhandled errors, about 10 s
+- Run at: 2026-11-24T06:56Z, after the commit below was made, on a clean working tree (tree `85bfcf48954a486df77c70488b78121d17d7f298`)
+- Commit under test: `eefb6ea3d` (on top of `92a36c073`, where the failures below were first found). The same suite also passed
+  29 of 29 on `707874893` at 2026-11-24T06:04Z; `eefb6ea3d` adds the patient-scope refusal and the cross-organization and
+  expired-at-entry cases.
+- Result: PASS — 1 file, 29 of 29 tests passed, 0 unhandled errors, 38 s
 - Database: private container `cw-pr1112-m34-live` from `chartwarden-postgres:dev` (built from `deploy/production/postgres`, PostgreSQL 18.6)
   on `127.0.0.1:55432`, started with `-c max_locks_per_transaction=1024`, removed after the run. The shared Docker cluster on 5432
   was not touched.

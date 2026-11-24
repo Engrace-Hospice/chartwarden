@@ -43,6 +43,8 @@ The reviewer considered:
 - A compromised `superadmin` can do the same only while it owns an open, tenant-consented support session whose grant covers the patient.
 - The read audit does not record the page number or a separate `administrator_override` basis field. Role history and the deterministic policy reconstruct the basis. A dedicated non-PHI marker is a follow-up, not a condition of access.
 - Tenant-administrator reads are audited best-effort: if the M4 audit write fails, the pages are still returned and the failure is only logged. Only the platform superadmin routes fail closed. Accepted as a known gap; the follow-up is to set `failClosed` on the two tenant workspace and page routes. Review by 2027-01-31.
+- The target-tenant read audit records the ChartWarden operator's identity, source IP and user agent, so the tenant can see who read its Part 2 data.
+- Reads carry no Part 2 marker on the support-session ledger or the critical audit, and no per-read grantor alert names Part 2 sensitivity. The access does not rely on a Part 2 elevation guard.
 - Mitigations relied on: privileged-role assignment, passkey/MFA, tenant and support-session isolation, route scoping, read auditing, and the quarterly access review in `docs/compliance/WARDENLENS_PART_2_ADMINISTRATOR_ACCESS.md`.
 
 ## Conditions
