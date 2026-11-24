@@ -305,7 +305,9 @@ Each failed run posts `object_copy.failed` to `OPS_ALERT_WEBHOOK_URL` (counts an
 container turns unhealthy when no run has been clean for three intervals. Restore from the copy into a primary with
 `--restore` (never deletes): run `scripts/object-store-copy.ts --restore` with `SOURCE_S3_*` = the replica and
 `TARGET_S3_*` = the primary's admin, then the `tenant-buckets` backfill (the copy carries objects, not bucket
-versioning or expiry rules).
+versioning or expiry rules). Stop `object-copy` first and keep it stopped until the restore and the per-bucket object
+counts check out (a nearly restored primary can sit under the sync's mass-delete guard, which would then delete the
+rest from the copy), and re-run any D12 erasure made since the snapshot (`docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md` §6.3).
 
 ## Backups and restore (`compose.backup.yml`, `backup/`, #857)
 
