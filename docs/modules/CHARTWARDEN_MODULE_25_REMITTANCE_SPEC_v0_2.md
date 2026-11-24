@@ -207,7 +207,7 @@ erDiagram
       numeric total_payment_amount
       timestamptz production_date
       timestamptz received_at
-      string minio_object_key
+      string object_key
       string file_sha256
       enum parse_status "queued|parsing|parsed|posted|partial_posted|failed"
       jsonb parse_summary
@@ -691,7 +691,7 @@ export const remittanceAdvice = pgTable('remittance_advice', {
   totalPaymentAmount: numeric('total_payment_amount', { precision: 12, scale: 2 }).notNull(),
   productionDate: timestamp('production_date', { withTimezone: true }).notNull(),
   receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
-  minioObjectKey: varchar('minio_object_key', { length: 500 }).notNull(),
+  objectKey: varchar('object_key', { length: 500 }).notNull(),
   fileSha256: varchar('file_sha256', { length: 64 }).notNull(),
   parseStatus: parseStatusEnum('parse_status').notNull().default('queued'),
   parseSummary: jsonb('parse_summary'),
@@ -944,7 +944,7 @@ Audit triggers (installed by M4 generator) capture row diffs on UPDATE for compl
 | `appeal_case` | `appeal_narrative` (jsonb argument text) |
 | `appeal_case_event` | `event_payload` (jsonb may carry free-text) |
 
-The raw 835 file in the object store is *not* a database column — it's a blob keyed by `remittance_advice.object_key` (formerly `minio_object_key`; the DDL, Drizzle and event-union blocks in this proposal still show the old names, including `minioObjectKey` in the `m25.edi.835_received` payload). TARGET: read access to the raw file goes through `auditRead(...)` per the architecture §17 audit-read convention so every download of a raw 835 produces an `audit_event` row with retention class `compliance`. TODAY: the staged object is deleted once the advice is posted (§1.1) and the M25 route code makes no presigned download URL for it.
+The raw 835 file in the object store is *not* a database column — it's a blob keyed by `remittance_advice.object_key` (formerly `minio_object_key`; the `m25.edi.835_received` payload keeps the wire name `minioObjectKey`). TARGET: read access to the raw file goes through `auditRead(...)` per the architecture §17 audit-read convention so every download of a raw 835 produces an `audit_event` row with retention class `compliance`. TODAY: the staged object is deleted once the advice is posted (§1.1) and the M25 route code makes no presigned download URL for it.
 
 ### 3.7 Eraser Registration (M4 Destruction Workflow)
 

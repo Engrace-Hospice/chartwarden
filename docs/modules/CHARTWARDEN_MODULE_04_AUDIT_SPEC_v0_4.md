@@ -465,7 +465,7 @@ export const destructionCertificates = pgTable('destruction_certificate', {
   status: destructionStatus('status').notNull().default('pending'),
   approvedBy: uuid('approved_by').references(() => users.id),
   executedAt: timestamp('executed_at',{withTimezone:true}),
-  certificatePdfRef: uuid('certificate_pdf_ref'),  // MinIO doc id
+  certificatePdfRef: uuid('certificate_pdf_ref'),  // object-store doc id
   createdAt: timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
 }, (t) => ({ orgIdx: index('destruction_cert_org_idx').on(t.organizationId) }))
 
@@ -485,7 +485,7 @@ export const auditExports = pgTable('audit_export', {
   scope: jsonb('scope').notNull(),              // {patientIds?, actorIds?, resourceKinds?, eventTypes?, from, to}
   format: auditExportFormat('format').notNull(),
   watermarked: boolean('watermarked').notNull().default(true),
-  fileRef: uuid('file_ref'),                    // MinIO object id (null until job completes)
+  fileRef: uuid('file_ref'),                    // object-store object id (null until job completes)
   recordCount: integer('record_count'),
   status: text('status').notNull().default('pending'), // pending|building|ready|failed
   requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
@@ -866,7 +866,7 @@ Type.Object({
 **GET /api/v1/audit/exports/:id** — `audit.export`
 ```typescript
 // Params {id:uuid}  200 -> { id, status, format, recordCount, downloadUrl?:string, expiresAt }
-// downloadUrl is a short-lived presigned MinIO URL; only present when status='ready'. 404 if not owner-org.
+// downloadUrl is a short-lived presigned object-store URL; only present when status='ready'. 404 if not owner-org.
 ```
 
 **GET /api/v1/legal-holds** — `legalhold.read`

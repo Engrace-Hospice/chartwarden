@@ -658,7 +658,7 @@ CREATE TABLE clinical_assessment (
 ) PARTITION BY RANGE (captured_at);
 
 -- 13 forward partitions pre-built (current + 12 months) at migration time.
--- M1's partition-rotation worker maintains rolling forward; closed partitions tier to MinIO per the retention class.
+-- M1's partition-rotation worker maintains rolling forward; closed partitions tier to the object store per the retention class.
 
 -- Indexes (defined on the partitioned table; cascade to partitions).
 CREATE INDEX clinical_assessment_patient_scale_captured_idx

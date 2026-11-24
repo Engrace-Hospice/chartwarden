@@ -47,7 +47,7 @@ names (`document.status`, `document.retention_class`, …) are unchanged. (Prior
   - **Extended consumer behavior** for `m6.discharge.created` — when the payload's source field is `m29_proposal_accept` (per M6 W-M6-31), M22 renders the **`discharge_summary_v2_external_source`** template variant. The variant includes: source facility name (from M40 `BaaStatusProvider` / `FacilityReader`), the M29 proposal ID for surveys-readiness traceability, the medical-director cosign requirement banner (per M6 §5.3 cosign_required flag), and the bereavement-eligibility status (resolved via M16 when M16 lands). Critically, the `discharge_summary_v2_external_source` does NOT print the actual cause-of-death — the external ADT notification doesn't carry it; the rendering shows "Cause of death: pending medical director attestation."
   - **New form templates seeded** — `lab_results_pdf` (versions: standard, critical-variant), `discharge_summary_v2_external_source`, `discharge_summary_v2_external_source_cosigned` (rendered when the medical director cosigns the external death). Total form template count goes from 28 to 31.
   - **M4 Part 2 retention alignment** — M22 documents whose underlying clinical content is SUD-class (e.g., a `lab_results_pdf` for a methadone-related observation) carry `retention_class='compliance_42cfr_part2'` rather than the default `clinical_record`. The eraser refusal semantic from M4 D8 applies — M22's destruction worker passes through to M4's `eraseAuditRows` which refuses Part 2 during patient lifetime.
-  - **M40 `BaaStatusProvider` seam consumption** — M22's signed-URL service calls `BaaStatusProvider.baaStatusByMdmEntity` (with `asOf: new Date()`) before generating any presigned MinIO URL targeting an external partner. The `MdmEntityProvider.baaStatus` call path is preserved via the M40 compatibility shim; M22's existing call sites work unchanged. New disclosure paths (lab results to partner labs, etc.) use the focused seam directly.
+  - **M40 `BaaStatusProvider` seam consumption** — M22's signed-URL service calls `BaaStatusProvider.baaStatusByMdmEntity` (with `asOf: new Date()`) before generating any presigned object-store URL targeting an external partner. The `MdmEntityProvider.baaStatus` call path is preserved via the M40 compatibility shim; M22's existing call sites work unchanged. New disclosure paths (lab results to partner labs, etc.) use the focused seam directly.
   - **Four new decisions** — D20 (lab results PDF template + SUD-aware redaction), D21 (external-source discharge variant), D22 (critical results priority routing), D23 (Part 2 retention auto-tagging on render).
   - **Four new workflow acceptance criteria** — W-M22-22 (lab results PDF rendered + back-ref linked), W-M22-23 (SUD-class result renders redacted placeholder), W-M22-24 (external-source discharge summary rendered with M29 traceability), W-M22-25 (critical results PDF priority-routed to M14).
   - **Four new implementation tasks** — T-M22-27 through T-M22-30.
@@ -64,7 +64,7 @@ names (`document.status`, `document.retention_class`, …) are unchanged. (Prior
 
 Module 22 is **the single rendering, storage, and intake-extraction surface for every document the ChartWarden platform creates, receives, or stores.** It is the terminal renderer of any PDF the chart shows or any letter the agency mails, and the gatekeeper between intake-fax-bundles and chart-data. Three functional pillars share one module boundary:
 
-**Pillar 1 — Document Storage & Versioning.** The platform's canonical store for binary documents (PDFs, scanned images, signed forms, vendor-print artifacts). Per-tenant bucket scope on the S3-compatible object store (SeaweedFS in production; RustFS in local dev, CI and the second copy; ADR-0050 D6 amendment). Immutable-version model: every "edit" inserts a new `document_version` row pointing at a new object (key column `document_version.object_key`, formerly `minio_object_key`; the ER diagram and DDL in this spec still show the former name); the original is preserved for audit and statement-of-disagreement workflows. Per-version sha256 integrity hash, mime type, byte size, uploader membership, and source classification. Signed URL generation with short-lived presigned object-store URLs (configurable TTL, default 5 minutes, capped at 60 minutes by platform-floor policy). Retention-class assignment (`compliance` / `clinical_record` / `bereavement` / `operational` / `intake_artifact` / `compliance_42cfr_part2`) drives partition lifecycle and destruction-cert eligibility. Cross-module `document_id` FKs land on the originating module's row (M6 `election_statement.document_id`, M8 `encounter_signed_document_id`, M11 `order_record.document_id`, etc.); M22 holds the authoritative `document` row and the per-tenant stored object; the cross-module FK is **app-side**, never enforced as a DB constraint (preserves the outbox-only-cross-module boundary).
+**Pillar 1 — Document Storage & Versioning.** The platform's canonical store for binary documents (PDFs, scanned images, signed forms, vendor-print artifacts). Per-tenant bucket scope on the S3-compatible object store (SeaweedFS in production; RustFS in local dev, CI and the second copy; ADR-0050 D6 amendment). Immutable-version model: every "edit" inserts a new `document_version` row pointing at a new object (key column `document_version.object_key`, formerly `minio_object_key`); the original is preserved for audit and statement-of-disagreement workflows. Per-version sha256 integrity hash, mime type, byte size, uploader membership, and source classification. Signed URL generation with short-lived presigned object-store URLs (configurable TTL, default 5 minutes, capped at 60 minutes by platform-floor policy). Retention-class assignment (`compliance` / `clinical_record` / `bereavement` / `operational` / `intake_artifact` / `compliance_42cfr_part2`) drives partition lifecycle and destruction-cert eligibility. Cross-module `document_id` FKs land on the originating module's row (M6 `election_statement.document_id`, M8 `encounter_signed_document_id`, M11 `order_record.document_id`, etc.); M22 holds the authoritative `document` row and the per-tenant stored object; the cross-module FK is **app-side**, never enforced as a DB constraint (preserves the outbox-only-cross-module boundary).
 
 **Pillar 2 — Form Rendering (the canonical renderer).** M22 owns the FormTemplate library and is the *terminal* PDF/letter renderer for the platform. M6 (election, CTI, F2F, revocation, discharge, NOR, external-source discharge variant), M8 (encounter PDF), M11 (signed order PDF, lab results PDF), M12 (signed Rx PDF, patient med list), M13 (eMAR snapshot, medication reconciliation worksheet, comfort-kit receipt), M14 (IDG patient packet, IDG minutes), M15 (Aide POC, MSW Plan, Spiritual Plan, Volunteer Plan PDFs), M16 (sympathy/anniversary/closeout/complicated-grief-referral letters), M17 (visit-confirmation letter), M18 (EVV aggregator verification PDF), M23 (ABN), M39 (signed consent docs), and M5 (patient amendment statement of disagreement) all emit typed outbox payloads; M22's render workers consume, materialize the document via `packages/forms/`, persist a `document_version`, and emit `m22.document.rendered` (and optionally `m22.document.delivered`) with a back-ref `{aggregateType, aggregateId, documentId, versionId}`. Every consuming module owns a small `consumers/m22-document-backref.ts` that applies the `document_id` to the originating row. The handshake is identical across all source modules — the *form template* differs but the *boundary protocol* is one. Two consumer roles within Pillar 2 render downstream artifacts:
 
@@ -204,7 +204,7 @@ erDiagram
         uuid document_id FK
         int version_number "1, 2, 3..."
         uuid replaces_version_id "nullable; null for v1"
-        text minio_object_key "tenant-bucket scoped"
+        text object_key "tenant-bucket scoped"
         text mime_type
         bigint byte_size
         text sha256_hex "integrity hash"
@@ -493,7 +493,7 @@ stateDiagram-v2
 
 ```mermaid
 stateDiagram-v2
-    [*] --> uploaded: PDF lands in MinIO; intake_upload_batch row inserted
+    [*] --> uploaded: PDF lands in the object store; intake_upload_batch row inserted
     uploaded --> docling_complete: docling-worker pass complete
     uploaded --> parse_failed: docling terminal failure (W1 AC / §8.10)
     docling_complete --> classifier_complete: classifier pass + human confirmation done
@@ -755,7 +755,7 @@ apps/backend/src/modules/22-documents/         # Routes + services + consumers
 │   ├── m39-consent-document-render-requested.ts # forward seam; deny-stub until M39 lands real path
 │   ├── m4-legal-hold-applied.ts
 │   ├── m4-legal-hold-released.ts
-│   └── minio-access-log.ts                     # MinIO access-log webhook for download confirmation  [built, GAP-141]
+│   └── minio-access-log.ts                     # object-store access-log webhook for download confirmation  [built, GAP-141; file keeps its historical name]
 ├── db/
 │   ├── schema/
 │   │   ├── documents.ts
@@ -964,7 +964,7 @@ export const documentVersions = pgTable('document_version', {
   documentId: uuid('document_id').notNull().references(() => documents.id),
   versionNumber: text('version_number').notNull(),                // app-side serial within document
   replacesVersionId: uuid('replaces_version_id'),
-  minioObjectKey: text('minio_object_key').notNull(),
+  objectKey: text('object_key').notNull(),
   mimeType: text('mime_type').notNull(),
   byteSize: text('byte_size').notNull(),                          // bigint stored as text per M1 convention
   sha256Hex: text('sha256_hex').notNull(),
@@ -976,7 +976,7 @@ export const documentVersions = pgTable('document_version', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   byDocumentVersion: uniqueIndex('document_version_doc_version_uk').on(t.documentId, t.versionNumber),
-  byMinioKey: uniqueIndex('document_version_minio_key_uk').on(t.minioObjectKey),
+  byObjectKey: uniqueIndex('document_version_object_key_uk').on(t.objectKey),
   bySha256: index('document_version_sha256_idx').on(t.sha256Hex),
   byOrgCreated: index('document_version_org_created_idx').on(t.organizationId, t.createdAt.desc()),
   uploaderShape: check('document_version_uploader_shape',
@@ -1344,7 +1344,7 @@ registerEraser({
   fn: async ({ patientId, organizationId, certificateId, retentionAsOf }) => {
     // 1) Find every document with patient_id = patientId AND status != 'legal_hold' AND created_at < retentionAsOf.
     // 2) For each, cryptographic-shred the per-tenant DEK for byte_payload_cipher columns (DEK-shred per ARCH-085).
-    // 3) Delete ALL MinIO object versions + delete markers for each document_version.minio_object_key
+    // 3) Delete ALL object-store object versions + delete markers for each document_version.object_key
     //    (version-aware S3 DeleteObjects covering every version ID and delete marker — DR-019 / ARCH-085 DEK-shred).
     // 4) Insert tombstone: UPDATE document SET status='destroyed_tombstone', active_version_id=NULL,
     //    where retention has elapsed; preserve the row + retention_class + aggregate_type/id for FK integrity.
@@ -1378,7 +1378,7 @@ registerEraser({
   dataClass: 'documents', // ARCH-234: same boot-validated key; tenant-scope variant
   scope: 'tenant',
   fn: async ({ organizationId, certificateId }) => {
-    // Tenant-offboarding path: version-aware MinIO object deletion (all object versions + delete markers per
+    // Tenant-offboarding path: version-aware object-store object deletion (all object versions + delete markers per
     // DR-019 / ARCH-085 DEK-shred) for every M22 object under the tenant bucket; cryptographic-shred the
     // tenant DEK after dropping rows to render any backup-tape-recoverable data unreadable.
     // document_access_log rows within the §164.528 accounting-retention floor are NOT deleted (ADR-0013).
@@ -2202,7 +2202,7 @@ async function renderLabResultsPdf(
         sha256: rendered.sha256,
         byteSize: rendered.byteSize,
         mimeType: 'application/pdf',
-        minioObjectKey: rendered.minioObjectKey,
+        objectKey: rendered.objectKey,
       })
       .returning()
 

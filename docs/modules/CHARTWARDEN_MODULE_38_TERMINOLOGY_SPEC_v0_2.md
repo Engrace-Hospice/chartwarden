@@ -172,7 +172,7 @@ erDiagram
         date released_on
         date effective_from
         date effective_to "nullable; null = current"
-        text source_file_ref "MinIO ref"
+        text source_file_ref "object-store ref"
         text checksum "sha256"
         timestamptz loaded_at
         uuid loaded_by FK
@@ -459,7 +459,7 @@ export const codeSystemVersions = pgTable('code_system_version', {
   releasedOn: date('released_on').notNull(),
   effectiveFrom: date('effective_from').notNull(),
   effectiveTo: date('effective_to'),                     // nullable; null = current
-  sourceFileRef: text('source_file_ref').notNull(),      // MinIO object id
+  sourceFileRef: text('source_file_ref').notNull(),      // object-store object id
   checksum: text('checksum').notNull(),                  // sha256 of source
   status: versionLoadStatus('status').notNull().default('loading'),
   loadedAt: timestamp('loaded_at', { withTimezone: true }).notNull().defaultNow(),
@@ -968,7 +968,7 @@ INSERT INTO value_set (id, name, description, scope) VALUES
 **POST /api/v1/admin/terminology/:system/load** — `terminology.admin.load` *(step-up re-auth)*
 ```typescript
 // Params { system }
-// Body  { version: Type.String(), sourceFileRef: Type.String(),    // MinIO id from upload step
+// Body  { version: Type.String(), sourceFileRef: Type.String(),    // object-store id from upload step
 //         reauthToken: Type.String() }
 // 200 -> { versionId, status: 'loading' }       // enqueues terminology.load_version
 // 401 REAUTH_REQUIRED; 409 VERSION_ALREADY_LOADED (idempotent on (system, version)) — returns existing versionId

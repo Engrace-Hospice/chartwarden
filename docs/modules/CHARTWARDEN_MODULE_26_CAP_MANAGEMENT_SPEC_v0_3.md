@@ -282,7 +282,7 @@ Cap management in hospice EMRs is a known weak link. Most competitors handle it 
 │                       'first_coast','novitas')                           │
 │  psr_period_from DATE                                                    │
 │  psr_period_to   DATE                                                    │
-│  file_storage_key TEXT      (MinIO object key)                           │
+│  file_storage_key TEXT      (object-store key)                           │
 │  file_sha256     CHAR(64)                                                │
 │  imported_at     TIMESTAMPTZ                                             │
 │  imported_by     UUID                                                    │
@@ -858,7 +858,7 @@ export const capPsrImport = pgTable('cap_psr_import', {
   macRegion: capMacRegion('mac_region').notNull(),
   psrPeriodFrom: date('psr_period_from').notNull(),
   psrPeriodTo: date('psr_period_to').notNull(),
-  fileStorageKey: text('file_storage_key').notNull(),                           // MinIO object key
+  fileStorageKey: text('file_storage_key').notNull(),                           // object-store key
   fileSha256: char('file_sha256', { length: 64 }).notNull(),
   importedAt: timestamp('imported_at', { withTimezone: true }).notNull().defaultNow(),
   importedBy: uuid('imported_by').notNull(),

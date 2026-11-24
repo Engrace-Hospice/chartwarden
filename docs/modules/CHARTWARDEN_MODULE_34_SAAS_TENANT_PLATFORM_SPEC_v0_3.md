@@ -296,7 +296,7 @@ erDiagram
         timestamptz fulfilled_at
         text denial_reason "if status=denied; permitted-denial-reasons enumerated"
         uuid bundle_document_id FK "M22 document_id of the PDF rendering"
-        text bundle_minio_object_key "MinIO key of the FHIR Bundle archive"
+        text bundle_object_key "object-store key of the FHIR Bundle archive"
         text bundle_sha256
         timestamptz bundle_presigned_url_expires_at
         timestamptz bundle_downloaded_at "single-download triggers deletion timer"
@@ -320,7 +320,7 @@ erDiagram
         text status "requested|generating|fulfilled|expired|cancelled"
         timestamptz requested_at
         timestamptz fulfilled_at
-        text bundle_minio_object_key
+        text bundle_object_key
         text bundle_sha256
         integer bundle_size_bytes
         text bundle_module_inventory "JSON of {module,tableCount,rowCount,sha256}[]"
@@ -990,8 +990,8 @@ export async function executeShred(args: ShredArgs) {
     return // DEK survives; no Phase 2/3/4.
   }
 
-  // Phase 2: per-tenant MinIO scope destroyed via M1 helper.
-  const minioReceipt = await m1MinioClient.destroyTenantPrefix(args.orgId)
+  // Phase 2: per-tenant object-store scope destroyed through the destructive port (the receipt keeps its historical `minio` name).
+  const minioReceipt = await ports.destructive.destroyTenantStorageScope({ orgId: args.orgId })
   await insertLog(tenantKeyRingId, 'minio_scope_destroyed', { minioReceipt })
 
   // Phase 3: cryptographic shred — DEK destroyed. This is the irreversible event.
@@ -1176,7 +1176,7 @@ export const dsarExportJob = pgTable(
     fulfilledAt: timestamp('fulfilled_at', { withTimezone: true }),
     deniedReason: text('denied_reason'),
     bundleDocumentId: uuid('bundle_document_id'), // FK to M22; app-side
-    bundleMinioObjectKey: text('bundle_minio_object_key'),
+    bundleObjectKey: text('bundle_object_key'),
     bundleSha256: text('bundle_sha256'),
     bundlePresignedUrlExpiresAt: timestamp('bundle_presigned_url_expires_at', { withTimezone: true }),
     bundleDownloadedAt: timestamp('bundle_downloaded_at', { withTimezone: true }),
@@ -1249,7 +1249,7 @@ export const tenantExportJob = pgTable(
     status: tenantExportJobStatus('status').notNull().default('requested'),
     requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
     fulfilledAt: timestamp('fulfilled_at', { withTimezone: true }),
-    bundleMinioObjectKey: text('bundle_minio_object_key'),
+    bundleObjectKey: text('bundle_object_key'),
     bundleSha256: text('bundle_sha256'),
     bundleSizeBytes: integer('bundle_size_bytes'),
     bundleModuleInventory: jsonb('bundle_module_inventory'),
@@ -1315,7 +1315,7 @@ dsar-export-2026-06-10T15-30-00Z-{patientId}.tar.gz
 └── sha256.txt
 ```
 
-The bundle is uploaded to the object store, in the tenant's bucket `tenant-<orgId>`, under `exports/{dsar|tenant}/<job-id>.tar.gz` (as built the org is in the bucket name, not in a `tenants/<orgId>/` key prefix, and the DSAR key ends `.ndjson.gz`); its key is stored in `bundle_object_key` (formerly `bundle_minio_object_key`, still the name in the ER diagram and DDL in this spec; the shred phase value `minio_scope_destroyed` also keeps its name in code). The object auto-deletes after **7 days** from fulfillment (`bundle_presigned_url_expires_at` records this deadline; the deletion is the app-side `tenant.bundle_expiry_sweep` job (`apps/backend/src/modules/34-saas-tenant-platform/jobs/bundle-expiry-worker.ts`, GAP-163), not a store lifecycle rule). Each call to the download route generates a fresh **24-hour presigned URL** (SEC-052 / M34-F06, SD-052) — the caller cannot share or bookmark a URL that stays valid for days. The `bundleDownloadedAt` is set on first download and the 7-day object expiry ticks from `fulfilled_at` per Security Hardening §8.5.2; a single download starts the deletion timer, but subsequent calls produce new 24-hour URLs until the object itself is deleted at the 7-day mark.
+The bundle is uploaded to the object store, in the tenant's bucket `tenant-<orgId>`, under `exports/{dsar|tenant}/<job-id>.tar.gz` (as built the org is in the bucket name, not in a `tenants/<orgId>/` key prefix, and the DSAR key ends `.ndjson.gz`); its key is stored in `bundle_object_key` (formerly `bundle_minio_object_key`; the persisted `tenant_export_job_event.shard_receipt` keeps the wire name `bundleMinioObjectKey`, and the shred phase value `minio_scope_destroyed` also keeps its name in code). The object auto-deletes after **7 days** from fulfillment (`bundle_presigned_url_expires_at` records this deadline; the deletion is the app-side `tenant.bundle_expiry_sweep` job (`apps/backend/src/modules/34-saas-tenant-platform/jobs/bundle-expiry-worker.ts`, GAP-163), not a store lifecycle rule). Each call to the download route generates a fresh **24-hour presigned URL** (SEC-052 / M34-F06, SD-052) — the caller cannot share or bookmark a URL that stays valid for days. The `bundleDownloadedAt` is set on first download and the 7-day object expiry ticks from `fulfilled_at` per Security Hardening §8.5.2; a single download starts the deletion timer, but subsequent calls produce new 24-hour URLs until the object itself is deleted at the 7-day mark.
 
 > **SEC-052 bulk-export controls** (applies to every call to `GET .../download` for both DSAR and tenant-export bundles):
 >

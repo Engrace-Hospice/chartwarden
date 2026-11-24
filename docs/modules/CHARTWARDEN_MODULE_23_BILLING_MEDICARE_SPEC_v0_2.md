@@ -310,7 +310,7 @@ A run records its outcome and is terminal — runs are append-only. The claim ro
 
 ```
 queued (outbox dispatch picked up by claim.submit worker)
-  ├── x12-worker.POST /generate-837i → 837I bytes returned, persisted to MinIO ──> generated
+  ├── x12-worker.POST /generate-837i → 837I bytes returned, persisted to the object store ──> generated
   ├── x12-worker call fails ──> failed_worker (retry per BullMQ policy)
 generated
   ├── MAC portal upload via packages/x12-worker-client → portal accepts ──> submitted
@@ -882,7 +882,7 @@ export const claimSubmission = pgTable('claim_submission', {
   outcome: claimSubmissionOutcome('outcome').notNull().default('queued'),
   outcomeReason: text('outcome_reason'),  // populated for failed_* outcomes
 
-  generatedFileUri: text('generated_file_uri'),     // MinIO path to the 837I/NOE/NOTR file
+  generatedFileUri: text('generated_file_uri'),     // object-store path to the 837I/NOE/NOTR file
   submittedAt: timestamp('submitted_at', { withTimezone: true }),
   workerCorrelationId: text('worker_correlation_id'),    // x12-worker request id
 
@@ -917,7 +917,7 @@ export const claimAcknowledgment = pgTable('claim_acknowledgment', {
   kind: claimAcknowledgmentKind('kind').notNull(),
   macJurisdiction: macJurisdiction('mac_jurisdiction').notNull(),
 
-  ackFileUri: text('ack_file_uri').notNull(),       // MinIO path to the raw 999/277CA/835 file
+  ackFileUri: text('ack_file_uri').notNull(),       // object-store path to the raw 999/277CA/835 file
   ackReceivedAt: timestamp('ack_received_at', { withTimezone: true }).notNull(),
   parsedAt: timestamp('parsed_at', { withTimezone: true }).notNull().defaultNow(),
 
@@ -1355,7 +1355,7 @@ export const eligibilityCheck = pgTable('eligibility_check', {
   // Parsed response payload (typed; MBI is NEVER persisted here):
   parsedPayload: jsonb('parsed_payload').notNull(),  // { partAActive, planEffective, planEnd, otherCoverages, raw271Ref }
 
-  rawResponseFileUri: text('raw_response_file_uri'),  // MinIO path; not always present (some responses are inline)
+  rawResponseFileUri: text('raw_response_file_uri'),  // object-store path; not always present (some responses are inline)
   workerCorrelationId: text('worker_correlation_id'),
 
   checkedAt: timestamp('checked_at', { withTimezone: true }).notNull().defaultNow(),
