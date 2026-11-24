@@ -55,20 +55,22 @@ BEGIN
     EXECUTE format('ALTER TABLE %s RENAME CONSTRAINT %I TO %I', r.table_name, r.conname, replace(r.conname, 'minio_object_key', 'object_key'));
   END LOOP;
 END $$;--> statement-breakpoint
+-- The body is 0049's with the new key name; the one other change is the 1062 convention (as in 1499): pg_temp LAST on the search_path of this SECURITY DEFINER
+-- function, and the helper and the table schema-qualified. Owner, event and images are as they were.
 CREATE OR REPLACE FUNCTION audit_phi_write_document_version() RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, public
+SET search_path = pg_catalog, public, pg_temp
 AS $$
 DECLARE
   v_before jsonb;
   v_after jsonb;
 BEGIN
   v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE')
-    THEN audit_scrub(to_jsonb(OLD), ARRAY['byte_payload_cipher', 'object_key']::text[]) ELSE NULL END;
+    THEN public.audit_scrub(to_jsonb(OLD), ARRAY['byte_payload_cipher', 'object_key']::text[]) ELSE NULL END;
   v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE')
-    THEN audit_scrub(to_jsonb(NEW), ARRAY['byte_payload_cipher', 'object_key']::text[]) ELSE NULL END;
-  INSERT INTO audit_event (
+    THEN public.audit_scrub(to_jsonb(NEW), ARRAY['byte_payload_cipher', 'object_key']::text[]) ELSE NULL END;
+  INSERT INTO public.audit_event (
     organization_id, actor_user_id, actor_kind, event_type, resource_kind,
     resource_id, correlation_id, outcome, severity, before, after,
     context, retention_class

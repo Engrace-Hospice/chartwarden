@@ -173,6 +173,8 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
     }
   }, 600_000);
 
+  // Lives in this suite on purpose: it reuses the suite's fresh-chain and previous-state helpers (resetSchema, a migrations
+  // directory without one file) and is already registered in package.json (test:db:migrate:live) and the migration-gate CI job.
   describe("migration 1546 (object-key column rename) over a populated previous schema", () => {
     const OBJECT_KEY_MIGRATION = "1546_object_key_column_rename.sql";
     const ORG = "91000000-0000-4000-8000-000000000001";
@@ -507,6 +509,20 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
         "fhir_bulk_export_artifact_object_key_not_null",
         "remittance_advice_object_key_not_null",
       ]);
+
+      // The replaced SECURITY DEFINER audit function keeps its definer settings and ends its search_path with pg_temp (the 1062 convention).
+      const fn = await db.query<{ prosecdef: boolean; proconfig: string[] }>(
+        `SELECT prosecdef, proconfig FROM pg_proc WHERE proname = 'audit_phi_write_document_version'`,
+      );
+      expect(fn.rows).toHaveLength(1);
+      expect(fn.rows[0]!.prosecdef).toBe(true);
+      const searchPath = fn.rows[0]!.proconfig.find((c) => c.startsWith("search_path="));
+      expect(
+        searchPath
+          ?.slice("search_path=".length)
+          .split(",")
+          .map((p) => p.trim()),
+      ).toEqual(["pg_catalog", "public", "pg_temp"]);
 
       // The audit scrub list names the new column: a new INSERT and an UPDATE both audit `object_key` as scrubbed.
       await db.query(
