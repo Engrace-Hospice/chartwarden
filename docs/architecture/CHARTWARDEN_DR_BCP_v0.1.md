@@ -133,7 +133,7 @@ Incidents are classified at declaration and may be reclassified as conditions ch
 > isolated stand-in (drill stand-in, today; §4.8.6). The only object backup built is the off-site, Object-Locked
 > mirror of §4.8; the second copy (`compose.object-copy.yml`) is built but not enabled in production. Store-side
 > replication, per-prefix Object Lock and per-bucket versioning (§4.2, §5.2, §6.3) are TARGET. Failover (§6.3) is a
-> rebuild from the second copy, not a promotion.
+> rebuild (from the off-site mirror today, from the second copy only if it is enabled), not a promotion.
 
 ## 3. Recovery Objectives
 
@@ -315,8 +315,9 @@ signed-URL download; the sidecar's are live in production per the owner), and no
 does not reach the off-site mirror. Its objects are SSE-C encrypted under one platform backup key, not the tenant's DEK,
 so destroying a DEK does not make them unreadable. Erased objects stay there because nothing deletes them: the sidecar
 never uses `--remove`, the backup key cannot delete under `objects/`, and the lifecycle expires only noncurrent versions
-and delete markers; the COMPLIANCE lock then blocks even the bucket owner until it expires. Only the mirror is encrypted:
-the objects on the primary and on the second copy are plaintext (§4.6).
+and delete markers; the COMPLIANCE lock then blocks even the bucket owner until it expires. Nothing in the repo purges an
+erased object after the lock lapses; only a manual owner action could, and no procedure exists. Only the mirror is
+encrypted: the objects on the primary and on the second copy are plaintext (§4.6).
 
 **TARGET: store-side replication** (active-active site replication between a primary and a backup store, managed with
 `mc replicate`, with a daily replication-status check). Not available in the repo today: SeaweedFS runs as one node,
@@ -333,8 +334,7 @@ TODAY (§4.8.2-§4.8.3; enabled in production per the owner): every coordinated 
 mirrors every bucket to an off-site S3-compatible bucket with Object Lock in COMPLIANCE mode (default retention at least
 100 days), SSE-C encrypted, and records a sha256 manifest. There is no per-prefix schedule. The repo names no off-site
 vendor and holds no BAA record for it: the bucket holds both streams (this object mirror and the pgBackRest repo2, the
-whole database, client-side encrypted), so a BAA must cover the bucket for both, and CW-BA-01 names only the second
-copy's replica host.
+whole database, client-side encrypted), so a BAA must cover the bucket for both; no gate checks that it does.
 
 ### 4.3 Valkey Backups
 
@@ -394,7 +394,7 @@ All backups are encrypted at rest:
 - pgBackRest: AES-256-CBC with stanza-specific keys
 - Object-store replication and second copy: TLS in transit (the copy job refuses a plain `http://` target unless `OBJECT_COPY_ALLOW_PLAINTEXT_TARGET=1`). Objects at rest: TARGET server-side encryption with KMS-managed keys (or AES-256 with locally-managed keys initially). TODAY the objects on the primary and on the RustFS copy are plaintext at rest and rely on host disk encryption, which no gate checks (compliance/controls.yaml CW-AC-05, partial); only the off-site mirror is encrypted (SSE-C under one platform key, §4.8.4), and it is enabled in production per the owner (§4.8.7 are the operator steps). A host that went through the SeaweedFS cutover and has not removed the retired `<prefix>_minio-data` volume also holds a plaintext copy of every document outside the backups, with no recorded removal deadline (the owner decides; `preflight.sh` warns on every deploy; `deploy/production/README.md`, "Object store: removing the retired MinIO data")
 - Proxmox PBS: native encryption with site key
-- Off-site: separate key not held on production hosts
+- Off-site: TARGET a separate key not held on production hosts. TODAY the keys are held on the host in `.env.production` and mounted into the backup sidecar and the WAL container (§4.8.5)
 
 **Key management:**
 
@@ -474,9 +474,10 @@ reports it as `not-in-snapshot`.
 | Stale alert | no successful snapshot for 45 min | `BACKUP_MAX_AGE_S` |
 | WAL health alert | `archive_command` failing, or `pg_wal` above 8 GiB, checked every snapshot tick | `BACKUP_PG_WAL_ALERT_BYTES` |
 
-Targets (§3): coordinated RPO = snapshot interval (15 min, the Tier 2 target); database-only RPO = last archived WAL
+Targets (§3): coordinated RPO = the snapshot interval plus the snapshot's run time (15 min by default, the Tier 2
+target); database-only RPO = last archived WAL
 segment (about 60 s, inside the Tier 1 5 min target) via a manual `--type=time` restore; RTO target 1 h (Tier 1).
-Measured so far only at synthetic scale (`audit/restore-drill/2026-10-27-coordinated-backup-drill.md`: 7.0 s restore of 6 objects and 50k rows);
+Measured so far only at synthetic scale (`audit/restore-drill/2026-10-27-coordinated-backup-drill.md`: 7.0 s restore of 6 objects and 50k rows).
 Per the owner the sidecar runs in production, so this cadence is live: the object mirror runs inside every snapshot, so
 the object RPO is the snapshot interval plus the snapshot's own run time (the hourly interval of the second copy,
 `OBJECT_COPY_INTERVAL_S`, does not apply). The repo holds no evidence of it, and production figures still come from the
@@ -506,8 +507,9 @@ key ids and settings are environment variables. (`<NAME>` env values still work,
 
 The three backup secrets (`BACKUP_PG_LOCAL_CIPHER_PASS`, `BACKUP_PG_OFFSITE_CIPHER_PASS`, `BACKUP_OBJECT_SSE_C_KEY`)
 are held on the host in `.env.production` (the backup must encrypt) and ALSO escrowed offline (password manager plus a
-sealed copy, §4.6). Losing them loses every backup: the off-site provider never holds any of them (client-side
-pgBackRest encryption; SSE-C). Restores additionally need `MESSAGING_ENCRYPTION_KEY` and `M34_TENANT_KEK` from the same
+sealed copy, §4.6). Losing them loses every backup. The off-site provider never holds the two pgBackRest passphrases
+(client-side encryption); the SSE-C key is sent over TLS with every request and the provider does not persist it, but
+its servers see it and the plaintext transiently. Restores additionally need `MESSAGING_ENCRYPTION_KEY` and `M34_TENANT_KEK` from the same
 escrow, or restored message bodies cannot be decrypted. Rotation: a new pgBackRest passphrase needs a new stanza (old
 backups stay readable with the old passphrase until they expire); a new SSE-C key applies to new copies only, so keep
 the old key until its last object expires.
@@ -572,17 +574,20 @@ column that looks like one) has it, retrievable through the app's own S3 adapter
 the row; M4 audit seals link and every sealed month recomputes. `restore.sh` writes the restored objects into a throwaway MinIO container (drill stand-in, today: it reads the snapshot
 from the off-site mirror and never touches the production SeaweedFS). For a real recovery (not a drill) the
 database side is to point a fresh stack at the restored volume and then re-take a full backup. Loading the
-restored objects into a new production SeaweedFS is not scripted in the repo today: the only repo tool that writes
-objects into a SeaweedFS primary is `scripts/object-store-copy.ts --restore`, whose documented source is the RustFS
-second copy (§6.3).
+restored objects into a new production SeaweedFS is not a tested procedure: `scripts/object-store-copy.ts --restore`
+loads the RustFS second copy (§6.3), and `cw-backup.sh restore-objects <snapshot>` is the candidate loader for the
+off-site mirror (it uploads the snapshot's manifest entries, checks each sha256 and keeps it with `--checksum SHA256`,
+into whatever `RESTORE_OBJECT_STORE_URL` names), but it has only been run against the MinIO drill stand-in, never a
+SeaweedFS primary.
 A snapshot taken on the Debian image (before the Wolfi switch, glibc 2.36) carries text indexes in that glibc's order:
 after restoring one onto the current image, run `cw-refresh-collation` (deploy/production/README.md, "Postgres image")
 before anything reads the restored database.
 
 #### 4.8.7 What is operational, not code (tracked in the #857 follow-up issue)
 
-Per the owner these steps are done in production (the sidecar runs and the off-site mirror is enabled); the repo holds no
-evidence of them, and they remain the procedure for a new host.
+Per the owner steps 1-2 are done in production (the sidecar runs and the off-site mirror is enabled); the repo holds no
+evidence of them. Step 0 (the CW-AU-01 acceptance), step 3 (the first witnessed restore) and step 4 (the recurring drill
+cadence) are not recorded as done. All of them remain the procedure for a new host.
 
 0. Before enabling the backup or the second copy, accept the access-log false-attribution limit (CW-AU-01): the sidecar's
    and the copy's reads of a document key within 15 minutes of a signed-URL issue are recorded as that signed-URL
@@ -820,16 +825,18 @@ up; the api `/ready` reports the object store unreachable; `GET /healthz` on `se
    since the restored set was last in sync.
 
 **Live path today: the off-site mirror (§4.8).** Per the owner the mirror is enabled in production, so a rebuild today
-starts from it, hand-loaded and not scripted (§4.8.6): `restore.sh` restores a snapshot only into the isolated drill
-stand-in, and the only repo tool that writes objects into a SeaweedFS primary is `scripts/object-store-copy.ts
---restore`, whose documented source is the second copy. Steps 1, 3, 4 and 5 apply unchanged; step 0 applies only if the
-second copy is running. Any hand load must follow the snapshot's manifest and keep each object's SHA-256 (generic copy
-tools drop it), and step 5 covers everything erased after the snapshot being loaded.
+starts from it, not a tested procedure (§4.8.6): `restore.sh` restores a snapshot only into the isolated drill
+stand-in, and `scripts/object-store-copy.ts --restore` takes the second copy as its source. The candidate loader is
+`cw-backup.sh restore-objects <snapshot>`, untested against SeaweedFS. Steps 1, 3 and 5 apply unchanged; step 0 applies
+only if the second copy is running. In step 4 compare each bucket's count with the snapshot marker's `objects.count`,
+never with the mirror's `objects/<bucket>/` tree, which also holds objects erased before the snapshot. Any hand load
+must follow the snapshot's manifest and keep each object's SHA-256 (generic copy tools drop it), and step 5 covers
+everything erased after the snapshot being loaded.
 
 **Data loss expectation (RPO):** from the off-site mirror (live), everything written after the last completed snapshot:
-the snapshot interval (`BACKUP_SNAPSHOT_INTERVAL_S`, default 900 s = 15 minutes, plus the snapshot's own run time; the
-mirror runs inside every snapshot), which matches the 15-minute Tier 2 target of §3; loading it into a new SeaweedFS is
-not scripted (§4.8.6). From the second copy (not enabled in production), everything written after the last clean copy
+the snapshot interval (`BACKUP_SNAPSHOT_INTERVAL_S`, default 900 s = 15 minutes unless `.env.production` overrides it,
+plus the snapshot's own run time; the mirror runs inside every snapshot), measured against the 15-minute Tier 2 target
+of §3 but not shown to meet it; loading it into a new SeaweedFS is not a tested procedure (§4.8.6). From the second copy (not enabled in production), everything written after the last clean copy
 run, that is up to the copy interval (hourly by default; `OBJECT_COPY_INTERVAL_S`). **Time:** no target is set for this
 path; it scales with the size of the store.
 
@@ -991,7 +998,7 @@ If all VMs lost but data backups intact:
 1. Reprovision Proxmox cluster (or alternate hypervisor)
 2. Restore VM images from PBS or rebuild from Ansible/Terraform (if used)
 3. Restore PostgreSQL from pgBackRest (§7.1 procedure)
-4. Restore the object-store buckets into a new SeaweedFS (§6.3: from the second copy; loading the off-site mirror is not scripted, §4.8.6)
+4. Restore the object-store buckets into a new SeaweedFS (§6.3: the live source is the off-site mirror, whose load is not a tested procedure, §4.8.6; the second copy is not enabled in production)
 5. Pull latest container images from GHCR (or backup mirror if GHCR unreachable)
 6. Decrypt secrets from SOPS using off-site age keys
 7. Bring services up in dependency order: PG → Valkey → object store → Backend → Workers → Edge

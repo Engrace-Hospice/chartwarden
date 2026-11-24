@@ -44,8 +44,9 @@ Deploys run from `deploy.yml`'s `deploy` job, on a self-hosted runner. It SSHes 
 **What that topology cannot do:**
 
 - **Every component is a single point of failure.** There is no second API instance, no database
-  replica and no WAL archiving. DR/BCP itself says "no streaming replica and no WAL archiving are
-  running", so its Tier-1 target (1 h RTO / 5 min RPO) is aspirational.
+  replica and (when this was written) no WAL archiving; the owner states (2026-11-23) that the backup sidecar now
+  archives WAL in production, with no evidence of it in the repo (DR/BCP §4.8). DR/BCP records that no streaming
+  replica is running, so the Tier-1 target (1 h RTO / 5 min RPO) is aspirational.
 - **Deploys are push-over-SSH.** The deploy host holds a shell key, and the self-hosted runner's
   availability gates every release.
 - **There is no declarative record of the running state.** The production configuration lives in an
