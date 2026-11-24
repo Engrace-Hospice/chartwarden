@@ -1023,6 +1023,7 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
           supportSessionId: sessionId,
           supportConsentGrantId: grantId,
           authorizationBasis: "superadmin_support_session",
+          actorKind: "superadmin_via_support_session",
         },
       });
       await expect(

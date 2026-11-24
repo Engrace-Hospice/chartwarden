@@ -22,6 +22,7 @@ import { buildServer } from "../src/bootstrap/index";
 import {
   type ReviewWorkspace,
   type ReviewWorkspaceService,
+  assertBatchStillFiledUnder,
   batchHoldsForeignPatientContent,
 } from "../src/modules/22-documents/extraction/review-workspace";
 import {
@@ -363,7 +364,10 @@ function makeServer(
   } = {},
 ) {
   const calls = {
-    contentScopes: [] as Array<{ readonly patientContentOnly: boolean } | undefined>,
+    contentScopes: [] as Array<
+      | { readonly patientContentOnly: boolean; readonly expectedPatientId: string | null }
+      | undefined
+    >,
     consentPatients: [] as string[],
     renders: 0,
     supportResolutions: [] as string[],
@@ -403,7 +407,7 @@ function makeServer(
       _id: string,
       _membership: string,
       access?: SudContentAccess,
-      scope?: { readonly patientContentOnly: boolean },
+      scope?: { readonly patientContentOnly: boolean; readonly expectedPatientId: string | null },
     ) {
       calls.contentScopes.push(scope);
       if (opts.workspaceFails) throw new Error("synthetic workspace failure");
@@ -420,7 +424,7 @@ function makeServer(
       _page: number,
       _correlationId: string,
       access?: SudContentAccess,
-      scope?: { readonly patientContentOnly: boolean },
+      scope?: { readonly patientContentOnly: boolean; readonly expectedPatientId: string | null },
     ) {
       calls.contentScopes.push(scope);
       if (opts.renderFails) throw new Error("synthetic render failure");
@@ -594,9 +598,20 @@ describe("GAP-067 — DocLens review routes compose the Part 2 need-to-know chec
         });
         expect(response.statusCode).toBe(200);
       }
-      expect(calls.contentScopes).toEqual([{ patientContentOnly }, { patientContentOnly }]);
+      expect(calls.contentScopes).toEqual([
+        { patientContentOnly, expectedPatientId: PATIENT },
+        { patientContentOnly, expectedPatientId: PATIENT },
+      ]);
     },
   );
+
+  it("a support read stays valid only while the batch is filed under the authorized patient", () => {
+    const scope = { patientContentOnly: false, expectedPatientId: PATIENT };
+    expect(() => assertBatchStillFiledUnder(scope, PATIENT)).not.toThrow();
+    expect(() => assertBatchStillFiledUnder(scope, "another-patient")).toThrow(/re-filed/);
+    expect(() => assertBatchStillFiledUnder(scope, null)).toThrow(/re-filed/);
+    expect(() => assertBatchStillFiledUnder(undefined, "anything")).not.toThrow();
+  });
 
   it("the tenant administrator routes never ask for patient-only content", async () => {
     const { app, calls } = makeServer("confirmed");

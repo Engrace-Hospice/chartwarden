@@ -22,6 +22,7 @@ import {
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
+  ConflictError,
   DOCLENS_M5_WRITEBACK_FIELDS,
   DegradedError,
   ForbiddenError,
@@ -254,11 +255,24 @@ export interface ReviewWorkspaceDeps {
 export type IdentityResolution = "same_patient" | "other_patient";
 
 /**
- * How far a support-session read may reach. `patientContentOnly` is set for a patient-scoped consent grant:
- * the grant names the batch's filed patient, so a batch that also carries another patient's pages is refused.
+ * Passing a scope marks a read as a support-session read. Such a read never writes (no identity refresh), and
+ * the batch must still be filed under `expectedPatientId`, the patient the grant was authorized against: a
+ * re-link between the authorization and the read is a retryable conflict, not a disclosure under the wrong
+ * patient. `patientContentOnly` is set for a patient-scoped consent grant: the grant names the batch's filed
+ * patient, so a batch that also carries another patient's pages is refused.
  */
 export interface SupportReadScope {
   readonly patientContentOnly: boolean;
+  readonly expectedPatientId: string | null;
+}
+
+export function assertBatchStillFiledUnder(
+  scope: SupportReadScope | undefined,
+  batchPatientId: string | null,
+): void {
+  if (scope && scope.expectedPatientId !== batchPatientId) {
+    throw new ConflictError("the intake batch was re-filed while it was being read; retry");
+  }
 }
 
 const FOREIGN_PATIENT_CONTENT_DENIED =
@@ -522,7 +536,8 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
     async getWorkspace(organizationId, batchId, viewerMembershipId, sudAccess, scope) {
       // F-238 — records filed against a referral adopt its patient once M6 has resolved one, and are
       // re-checked against that patient (M22 writes only its own rows here).
-      if (deps.identity && deps.cipher) {
+      // A support-session read (a scope is passed) is read-only: it never refreshes or relinks the batch.
+      if (deps.identity && deps.cipher && !scope) {
         const identity = deps.identity;
         const cipher = deps.cipher;
         await withOrgContext(deps.db, { organizationId, userId: "" }, async (scoped) => {
@@ -583,7 +598,9 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
         return { b, pages, jobs, cands, review, decisions, conflict };
       });
       const { b, pages, jobs, cands, review, decisions, conflict } = loaded;
-      // A patient-scoped support grant covers the filed patient only: refused before any decryption.
+      // A support read is authorized against one patient: that must still be the filed patient, and a
+      // patient-scoped grant covers the filed patient only. Both are refused before any decryption.
+      assertBatchStillFiledUnder(scope, b.patientId);
       if (scope?.patientContentOnly && batchHoldsForeignPatientContent(pages)) {
         throw new ForbiddenError(FOREIGN_PATIENT_CONTENT_DENIED);
       }
@@ -776,6 +793,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
         return { ...row, holdsForeignPatientContent: batchHoldsForeignPatientContent(identity) };
       });
       if (!source) throw new NotFoundError("intake batch");
+      assertBatchStillFiledUnder(scope, source.patientId);
       if (source.holdsForeignPatientContent) {
         throw new ForbiddenError(FOREIGN_PATIENT_CONTENT_DENIED);
       }

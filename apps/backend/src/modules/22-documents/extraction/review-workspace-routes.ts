@@ -391,8 +391,12 @@ export interface WardenLensPlatformSupportAccess {
 }
 
 /** A patient-scoped consent grant covers the batch's filed patient only (see `SupportReadScope`). */
-const supportReadScopeOf = (scope: "organization_scoped" | "patient_scoped"): SupportReadScope => ({
+const supportReadScopeOf = (
+  scope: "organization_scoped" | "patient_scoped",
+  authorizedPatientId: string | null,
+): SupportReadScope => ({
   patientContentOnly: scope === "patient_scoped",
+  expectedPatientId: authorizedPatientId,
 });
 
 const SUPPORT_SESSION_SUD_ACCESS: SudContentAccess = {
@@ -468,13 +472,13 @@ export function registerDocLensReviewWorkspaceRoutes(
             auditedPatientId = await service.getBatchPatientId(authorizedOrganizationId, id);
             return auditedPatientId;
           },
-          (authorizedOrganizationId, _patientId, scope) =>
+          (authorizedOrganizationId, authorizedPatientId, scope) =>
             service.getWorkspace(
               authorizedOrganizationId,
               id,
               membershipId,
               SUPPORT_SESSION_SUD_ACCESS,
-              supportReadScopeOf(scope),
+              supportReadScopeOf(scope, authorizedPatientId),
             ),
         );
         request.context.attributes.readAuditPatientId = auditedPatientId;
@@ -526,14 +530,14 @@ export function registerDocLensReviewWorkspaceRoutes(
             auditedPatientId = await service.getBatchPatientId(authorizedOrganizationId, id);
             return auditedPatientId;
           },
-          (authorizedOrganizationId, _patientId, scope) =>
+          (authorizedOrganizationId, authorizedPatientId, scope) =>
             service.renderPage(
               authorizedOrganizationId,
               id,
               page,
               request.id,
               SUPPORT_SESSION_SUD_ACCESS,
-              supportReadScopeOf(scope),
+              supportReadScopeOf(scope, authorizedPatientId),
             ),
         );
         request.context.attributes.readAuditPatientId = auditedPatientId;

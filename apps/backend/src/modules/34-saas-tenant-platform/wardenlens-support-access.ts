@@ -198,7 +198,7 @@ export function createWardenLensSupportAccess(
             organizationId: facts.organizationId,
             tenantAccountId: facts.tenantAccountId,
             actorMembershipId: input.actorMembershipId,
-            actorKind: "platform_ops_via_support_session",
+            actorKind: "superadmin_via_support_session",
             supportSessionId: input.supportSessionId,
             supportConsentGrantId: facts.supportConsentGrantId,
             authorizationBasis: "superadmin_support_session",
