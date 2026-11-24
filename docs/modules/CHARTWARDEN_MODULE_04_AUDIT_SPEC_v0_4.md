@@ -72,7 +72,7 @@ Module 1 created the *place* audit lives (the append-only partitioned table and 
 - **Accounting of Disclosures (HIPAA §164.528).** A patient's right to an accounting of disclosures of their PHI. Module 4 turns the read/disclosure trail into the regulated report.
 - **Audit query & reporting surface.** Permissioned search across actor, patient, resource, time, event type, outcome, severity — for Compliance, surveys, and incident investigation. Includes the data behind Module 3's auditor-engagement summaries.
 - **Integrity & tamper-evidence.** Verifies the append-only GRANT model holds; emits the **audit-of-audit** meta-event on any elevated read of the audit table; cross-references against backups; provides an optional hash-chain seal (Phase 2) so any post-hoc modification is detectable.
-- **Retention, destruction & legal hold.** Enforces the retention matrix (architecture §24) for the audit classes (`operational` 1 yr, `compliance` 6+ yr, `legal_hold` indefinite), drives partition hot→warm→cold tiering, runs the Certificate-of-Destruction workflow (§24.2), and applies/releases legal holds (§24.3) with state-variation overrides (§24.4).
+- **Retention, destruction & legal hold.** Enforces the retention matrix (architecture §24) for the audit classes (`operational` 1 yr, `compliance` 6+ yr, `legal_hold` indefinite), drives partition hot→warm→cold tiering (as built, M1's class-agnostic `audit.archive` job: Ops Runbook §5.2.3), runs the Certificate-of-Destruction workflow (§24.2), and applies/releases legal holds (§24.3) with state-variation overrides (§24.4).
 - **42 CFR Part 2 audit retention enforcement.** Audit rows tagged with the `compliance_42cfr_part2` retention class follow stricter rules than HIPAA `compliance`: indefinite retention during patient lifetime, lifetime + 6 years afterward, and erasure refused even with an approved destruction certificate while the patient is alive. The Part 2 patient-accounting right (42 CFR §2.13) is broader than HIPAA's §164.528 — the accounting endpoint serves Part 2 disclosures over the patient's lifetime (no 6-year clamp), and Part 2 accounting requests themselves are audited at `compliance_42cfr_part2`.
 
 ### 1.2 What This Module Does Not Do
@@ -939,7 +939,7 @@ Type.Object({
 
 | Queue | Trigger | Work |
 |---|---|---|
-| `audit.archive` (M1) | scheduled | tier closed partitions hot→warm (object store) per class |
+| `audit.archive` (M1) | scheduled | tier closed partitions hot→warm (object store) per class. As built the job is class-agnostic: it archives every closed partition older than the hot window and detaches only when `AUDIT_ARCHIVE_DETACH=true`; a partition holding held rows may detach after a verified manifest, held rows are never destroyed (M4 destruction skips them), and destruction waits for an approved certificate (Ops Runbook §5.2.3) |
 | `audit.retention_scan` | scheduled (daily) | find expired partitions/objects by class + state override → create pending destruction certs; skip `legal_hold` and `compliance_42cfr_part2` rows whose patient is alive / <6yr post-death |
 | `audit.execute_destruction` | on cert approval | partition detach + cryptographic erasure; emit cert + audit; Part 2 rows refused → `partial_refused` |
 | `audit.seal_partition` (phase 2) | on partition close | compute + store chain hash |

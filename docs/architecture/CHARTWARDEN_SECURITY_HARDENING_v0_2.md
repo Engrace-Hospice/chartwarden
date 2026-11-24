@@ -999,7 +999,7 @@ For any bulk export (>10 records):
 1. Generated file kept in the object store (design path `tenants/<org>/exports/`; the real bucket is `tenant-<orgId>`). TARGET: encrypted at rest. TODAY: plaintext at rest, host disk encryption only (no gate checks it; compliance/controls.yaml CW-AC-05). A host that went through the SeaweedFS cutover and has not removed the retired `<prefix>_minio-data` volume also holds a plaintext copy of every document outside the backups, with no recorded removal deadline (the owner decides; `deploy/production/README.md`)
 1. Download tracked: who downloaded, when, from where (IP)
 1. Time-limited download URL (24 hours)
-1. File auto-deleted from the object store after 7 days. TARGET: a 7-day expiry rule on the exports prefix. TODAY: the only lifecycle rule the code applies is M25's `m25-835/` rule, so there is no store-side 7-day rule: the application expires the file itself (M34 `tenant.bundle_expiry_sweep` for DSAR and tenant-export bundles; M28 `fhir.bulk-export-sweeper` for FHIR bulk exports)
+1. File auto-deleted from the object store after 7 days. TARGET: a 7-day expiry rule on the exports prefix. TODAY: the only lifecycle rule the code applies is M25's `m25-835/` rule, so there is no store-side expiry rule: the application expires the file itself (M34 `tenant.bundle_expiry_sweep` after 7 days for DSAR and tenant-export bundles; M28 `fhir.bulk-export-sweeper` after `FHIR_BULK_EXPORT_TTL_HOURS` = 24 hours for FHIR bulk exports)
 1. Audit entry with severity=warn for moderate exports, severity=critical for >1000 records
 
 ### 8.6 Cross-Tenant Data Isolation

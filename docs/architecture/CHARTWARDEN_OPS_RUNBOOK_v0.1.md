@@ -601,32 +601,30 @@ convenient one — the table is still accepting writes into DEFAULT while you wa
 A partition is never detached, exported or dropped by hand. The built path is the monthly `audit.archive` job
 (`apps/backend/src/bootstrap/jobs/audit-archive.ts`, cron `30 3 2 * *`, M01 spec §4.8):
 
-- For each CLOSED `audit_event` partition older than `AUDIT_ARCHIVE_HOT_MONTHS` (default 13) it writes gzip NDJSON parts
+- For each CLOSED `audit_event` partition older than `AUDIT_ARCHIVE_HOT_MONTHS` (default 13; the partition's upper bound is at
+  least that many months before the start of the current month) it writes gzip NDJSON parts
   plus a checksummed `manifest.json` to `AUDIT_ARCHIVE_BUCKET` (under `AUDIT_ARCHIVE_PREFIX`, default `audit-archive`),
   verifies every object back from the store (server-enforced SHA-256 plus an inspect), and checks that the archived row
-  total equals the partition's row count.
+  total equals the partition's row count. A run takes at most `DEFAULT_MAX_PARTITIONS_PER_RUN` = 3 partitions, oldest first,
+  and skips empty ones, so a backlog drains over months.
 - It detaches a verified partition from the hot table only when `AUDIT_ARCHIVE_DETACH=true` (off by default), through
   `audit_archive_detach`, which re-counts and refuses on any mismatch. A detached range is no longer searched through
-  `audit_event`.
+  `audit_event`; the detached table is kept, and `ALTER TABLE audit_event ATTACH PARTITION` re-attaches it (migration 0432).
 - With `AUDIT_ARCHIVE_BUCKET` unset it reports `skipped: "unconfigured"` and touches nothing, so the hot tier keeps every
-  partition. TODAY the production compose sets no `AUDIT_ARCHIVE_BUCKET`, so the job archives nothing in production. The
+  partition. TODAY the repo sets no `AUDIT_ARCHIVE_BUCKET`; whether the production env file sets one is unevidenced. The
   bucket must already exist, and the app key reaches only `tenant-*` and `chartwarden-*` buckets.
 - It never drops a partition. Destruction is M4's certificate-driven act (an approved destruction certificate, M4 spec
   §2.4.2): never `DROP TABLE` a partition by hand, which bypasses the certificate, the legal-hold overlay and the 42 CFR
   Part 2 refusal.
 - The Parquet export to `platform/cold-storage/<table>/<year>/<month>.parquet` (M01 D5) is the original design, not what
-  was built: the archive format is gzip NDJSON, and the repo has no command that loads an archived range back into
-  `audit_event`.
+  was built: the archive format is gzip NDJSON, and no command loads an archived range back into `audit_event` (re-attach
+  the kept table instead).
 
-For partitions in `operational` retention class (1-year retention):
-
-- Become archivable 13 months after creation (`AUDIT_ARCHIVE_HOT_MONTHS`); the archive copy is not itself a destruction
-- Destruction waits for an approved M4 destruction certificate (the partition is not dropped by the archive job)
-
-For `legal_hold` retention class:
-
-- Never detach
-- Skip in retention job
+The job is class-agnostic: it has no retention-class logic and treats every closed partition older than the hot window the
+same, whether its rows are `operational`, `compliance` or held. A partition holding actively-held rows may detach once its
+manifest is verified (migration 1053; the job always passes the attestation after verifying), because detach is not
+destruction. Held rows are never destroyed: M4 destruction skips them (ADR-0051: `audit_event` has no `legal_hold` class
+flip, a hold is an overlay), and destruction of any class waits for an approved M4 destruction certificate.
 
 ### 5.3 Connection Pool Management
 
@@ -829,7 +827,7 @@ the sidecar, read-only for restores; DR/BCP §4.8.5). Example, the WAL key (`BAC
 ```
 
 The bucket's default retention is COMPLIANCE for >= 100 days (each snapshot checks it); its lifecycle expires
-noncurrent versions and delete markers after 120 days (longer than the lock) and aborts incomplete multipart uploads
+noncurrent versions and delete markers after 120 days (longer than the lock; operator-set, unchecked) and aborts incomplete multipart uploads
 after 7 days. The backup key adds bucket-wide get/put/list and `s3:DeleteObject` ONLY under `pgbackrest/backup/*`
 and `pgbackrest/archive/*` (pgBackRest expire; never `objects/` or `snapshots/`); it never has
 `s3:DeleteObjectVersion`, `s3:BypassGovernanceRetention`, `s3:PutObjectRetention` or any `s3:PutBucket*`. The restore
