@@ -14,6 +14,10 @@ export interface ObjectRefSource {
   /**
    * The column's name before migration 1546 renamed it (the "minio" vendor name). A restore of an older snapshot still
    * has it; {@link resolveObjectRefSource} reads it when the new name is absent.
+   *
+   * Temporary: delete this field, `resolveObjectRefSource` and its tests once no pre-1546 snapshot is within backup retention
+   * (the pgBackRest full-backup counts `BACKUP_PG_RETENTION_FULL_LOCAL` / `BACKUP_PG_RETENTION_FULL_OFFSITE` in
+   * deploy/production/compose.backup.yml, and the off-site bucket's lock days `BACKUP_OFFSITE_MIN_LOCK_DAYS`).
    */
   readonly legacyKeyColumn?: string;
   /** Column holding the sha256 of the stored bytes, when the table records one. */
@@ -99,6 +103,8 @@ export const OBJECT_REF_COLUMN_PATTERN =
  * finds): the registered one, or, on a restore of a snapshot taken before migration 1546, the same source over the
  * legacy column name (the key column and every mention of it in `liveWhere`). When neither column exists the registered
  * name is kept, so the query fails loudly rather than reading nothing.
+ *
+ * Remove with `legacyKeyColumn` once no pre-1546 snapshot is within backup retention (see that field).
  */
 export function resolveObjectRefSource(
   source: ObjectRefSource,
