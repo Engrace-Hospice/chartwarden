@@ -3,7 +3,7 @@
 - Review date: 2026-11-23
 - Reviewer: Fabrice Adjam
 - Reviewer role: Privacy Officer / Compliance Officer
-- Decision: APPROVED
+- Decision: APPROVED WITH CONDITIONS
 - Scope: ADR-0115 and PR #1112
 - Repository commit reviewed: 707874893
 - Effective environments: production
@@ -16,7 +16,7 @@ The reviewer considered:
 - Tenant `administrator` and `org_admin` access to Part 2/SUD evidence in the WardenLens workspace and page-image routes.
 - Platform `superadmin` access through an active, actor-bound, tenant-consented M34 support session.
 - The exclusion of exports, external disclosure, writeback, candidate decisions, completion, release and other write operations.
-- Fail-closed target-tenant M4 read auditing.
+- Target-tenant M4 read auditing: fail-closed on the platform superadmin routes, best-effort on the tenant administrator routes.
 - Passkey/MFA requirements for privileged roles.
 - The accepted risks documented in ADR-0115 and `docs/compliance/WARDENLENS_PART_2_ADMINISTRATOR_ACCESS.md`.
 
@@ -24,7 +24,7 @@ The reviewer considered:
 
 > Drafted by engineering from ADR-0115; adopted by the reviewer on signing (2026-11-23).
 
-- Tenant `administrator` / `org_admin`: needs to inspect Part 2 evidence to route and administer the intake queue. Without it the source packet is redacted and the intake workflow is blocked. Scope is the WardenLens workspace and source-page image routes only: no exports, portal, external disclosure, writeback, candidate decisions, completion or release. Requires `intake.review`, an active org-bound membership, tenant RLS, a human actor and a fail-closed M4 read audit.
+- Tenant `administrator` / `org_admin`: needs to inspect Part 2 evidence to route and administer the intake queue. Without it the source packet is redacted and the intake workflow is blocked. Scope is the WardenLens workspace and source-page image routes only: no exports, portal, external disclosure, writeback, candidate decisions, completion or release. Requires `intake.review`, an active org-bound membership, tenant RLS, a human actor and an M4 read audit (best-effort on this path; see Accepted risk).
 - Platform `superadmin`: no standing access. Reads only through the dedicated read-only platform routes, with an actor-bound open support session, an active unrevoked tenant-consented grant covering the organization or patient, a passkey-protected session start, and per-read audit (`ops.read` ledger event, critical `support_session.wardenlens_read`, and the target-tenant M4 event).
 - Not minimized: administrators reach every WardenLens intake packet in their tenant (org-wide patient scope, ADR-0090). The audit does not record the page number.
 
@@ -42,11 +42,13 @@ The reviewer considered:
 - A compromised tenant-administrator account can read Part 2 content in every WardenLens intake packet of its tenant.
 - A compromised `superadmin` can do the same only while it owns an open, tenant-consented support session whose grant covers the patient.
 - The read audit does not record the page number or a separate `administrator_override` basis field. Role history and the deterministic policy reconstruct the basis. A dedicated non-PHI marker is a follow-up, not a condition of access.
+- Tenant-administrator reads are audited best-effort: if the M4 audit write fails, the pages are still returned and the failure is only logged. Only the platform superadmin routes fail closed. Accepted as a known gap; the follow-up is to set `failClosed` on the two tenant workspace and page routes. Review by 2027-01-31.
 - Mitigations relied on: privileged-role assignment, passkey/MFA, tenant and support-session isolation, route scoping, read auditing, and the quarterly access review in `docs/compliance/WARDENLENS_PART_2_ADMINISTRATOR_ACCESS.md`.
 
 ## Conditions
 
-- None.
+- This branch is not merged, and access is not enabled in production, until `PRIVILEGED_FACTOR_DEPLOYMENT.md` records a completed verification of the privileged-factor prerequisite below.
+- Staff second factors are enrolled before `CHARTWARDEN_MFA_ENFORCEMENT=true` is set, so enforcement does not lock anyone out.
 
 ## Privileged-factor prerequisite
 
@@ -61,9 +63,11 @@ Production access is conditioned on:
 
 I approve the access policy described above subject to the recorded conditions.
 
+Revision 2: corrected the tenant-administrator audit statement and added the conditions. Re-signature pending; the first signature is in commit `08bbadf51`.
+
 - Reviewer name: Fabrice Adjam
-- Reviewer role: CEO/ Privacy/Compliance
-- Approval date: 2026-11-23
-- Signature or approval-system reference: I approve
+- Reviewer role: CEO / Privacy/Compliance
+- Approval date:
+- Signature or approval-system reference:
 
 The designated Privacy/Compliance reviewer must fill this out. It must not be self-attested by engineering unless that person is formally the designated authority.

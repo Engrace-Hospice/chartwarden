@@ -1,7 +1,14 @@
 # Privileged-factor deployment evidence
 
-Status: PENDING. Nothing below has been verified against a production deployment. An operator fills this in after setting
-`CHARTWARDEN_MFA_ENFORCEMENT=true` in the real production environment and running the check in `deploy/production`:
+Status: PENDING. Nothing below has been verified against a production deployment. The branch is not merged until an
+operator fills this in. `CHARTWARDEN_MFA_ENFORCEMENT` is read by the release already in production, so verify it there,
+before merging.
+
+Before setting it, enrol every staff member's second factor: enforcement locks out anyone without one
+(`packages/auth/src/identity/mfa-policy.ts`). Rollback: remove the variable (or set it to anything but `true`) and recreate
+the `api` container.
+
+Set `CHARTWARDEN_MFA_ENFORCEMENT=true` in the real production environment, then run the check in `deploy/production`:
 
 ```sh
 cd deploy/production
@@ -13,7 +20,7 @@ Record only the deployment identifier, verification time, operator and sanitized
 passkey material or PHI in this file.
 
 - Deployment/release:
-- Commit: 707874893
+- Release/commit verified:
 - Environment:
 - Verified at:
 - Verified by:
