@@ -7,7 +7,7 @@
 - Scope: ADR-0115 and PR #1112
 - Repository commit reviewed: 9a8740733
 - Effective environments: production
-- Re-review date: 2027-02-23 (quarterly, per the review cadence in `docs/compliance/WARDENLENS_PART_2_ADMINISTRATOR_ACCESS.md`)
+- Re-review date: 2027-02-24 (quarterly, per the review cadence in `docs/compliance/WARDENLENS_PART_2_ADMINISTRATOR_ACCESS.md`)
 
 ## Access reviewed
 
@@ -65,11 +65,11 @@ Production access is conditioned on:
 
 I approve the access policy described above subject to the recorded conditions.
 
-Revision 2: corrected the tenant-administrator audit statement, added the conditions, and moved the reviewed commit to `9a8740733`, which adds: a patient-scoped grant reads a batch only when the filed patient is proven; the platform read writes no intake or clinical row; a 403 refusal writes its own denial audit; the target-tenant read audit shows the ChartWarden operator's identity; reads carry no Part 2 marker. Re-signature pending; the first signature is in commit `08bbadf51`.
+Revision 2: corrected the tenant-administrator audit statement, added the conditions, and moved the reviewed commit to `9a8740733`, which adds: a patient-scoped grant reads a batch only when the filed patient is proven; the platform read writes no intake or clinical row; a 403 refusal writes its own denial audit; the target-tenant read audit shows the ChartWarden operator's identity; reads carry no Part 2 marker. Signed 2026-11-24; the first signature is in commit `08bbadf51`.
 
 - Reviewer name: Fabrice Adjam
 - Reviewer role: CEO / Privacy/Compliance
-- Approval date:
-- Signature or approval-system reference:
+- Approval date: 2026-11-24
+- Signature or approval-system reference: Fabrice Adjam, Privacy Officer (interim), 2026-11-24
 
 Designated authority: Privacy Officer (interim), `docs/architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md`.

@@ -4,17 +4,37 @@ Status: PENDING. Nothing below has been verified against a production deployment
 operator fills this in. `CHARTWARDEN_MFA_ENFORCEMENT` is read by the release already in production, so verify it there,
 before merging.
 
-Before setting it, enrol every staff member's second factor: enforcement locks out anyone without one
-(`packages/auth/src/identity/mfa-policy.ts`). Rollback: remove the variable (or set it to anything but `true`) and recreate
-the `api` container.
+## Steps (run on the production host, in a quiet window, with one admin session left open)
 
-Set `CHARTWARDEN_MFA_ENFORCEMENT=true` in the real production environment, then run the check in `deploy/production`:
+1. **Enrol second factors first.** Every staff member registers a second factor, and every `superadmin` holder registers a
+   passkey, on the passkey page of the web app (the only enrolment path today). Enforcement locks out anyone without a
+   factor (`packages/auth/src/identity/mfa-policy.ts`).
+2. **Turn it on.** In `deploy/production/.env.production` (the file next to `compose.yml`), add this line exactly. Only
+   lowercase `true` enables it; `True` or `1` silently does nothing:
 
-```sh
-cd deploy/production
-docker compose exec -T api sh -lc \
-  'test "$CHARTWARDEN_MFA_ENFORCEMENT" = "true" && echo "MFA enforcement enabled"'
-```
+   ```
+   CHARTWARDEN_MFA_ENFORCEMENT=true
+   ```
+
+3. **Restart the API so it reads the file:**
+
+   ```sh
+   cd deploy/production
+   docker compose up -d --force-recreate api
+   ```
+
+4. **Verify the variable.** It must print `MFA enforcement enabled`:
+
+   ```sh
+   docker compose exec -T api sh -lc \
+     'test "$CHARTWARDEN_MFA_ENFORCEMENT" = "true" && echo "MFA enforcement enabled"'
+   ```
+
+5. **Check by hand, as a `superadmin`.** A password-only sign-in must be refused. A passkey sign-in must then start a
+   support session successfully.
+6. **If anyone is locked out,** remove the variable (or set it to anything but `true`) and repeat step 3.
+7. **Fill in the fields below,** commit this file, push, then tell Claude so it can update the CW-AC-45 gap text. The merge
+   still needs an explicit go-ahead.
 
 Record only the deployment identifier, verification time, operator and sanitized output. Do not place credentials, cookies,
 passkey material or PHI in this file.
