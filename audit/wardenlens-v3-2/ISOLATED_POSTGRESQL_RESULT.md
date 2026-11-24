@@ -1,13 +1,18 @@
 # Isolated PostgreSQL proof — `test:m34:support-session:live`
 
-- Run at: 2026-11-24T16:48Z, after the commit below was made (tree `7fb264ee9e66c40c1482825d891ec101ad8f61c5`; only
-  documentation files were edited while it ran)
-- Commit under test: `822089796` (on top of `92a36c073`, where the failures below were first found). The same suite also
-  passed 29 of 29 on `707874893` (06:04Z), `eefb6ea3d` (06:56Z) and `0b2827a01` (07:11Z). `eefb6ea3d` adds the patient-scope
-  refusal and the cross-organization and expired-at-entry cases; `0b2827a01` makes the support read strictly read-only,
-  re-checks the filed patient with the read, and names the audit actor `superadmin_via_support_session`; `822089796` records
-  a refused read as `support_session.wardenlens_read_denied`.
-- Result: PASS — 1 file, 29 of 29 tests passed, 0 unhandled errors, 9 s
+- Run at: 2026-11-24T17:14Z, after the commit below was made, on a clean working tree (tree
+  `21014fba4175c77fa20551097ef399cee06c01a4`)
+- Commit under test: `9a8740733` (on top of `92a36c073`, where the failures below were first found). The same suite also
+  passed 29 of 29 on `707874893`, `eefb6ea3d`, `0b2827a01` and `822089796`. `eefb6ea3d` adds the patient-scope refusal and the
+  cross-organization and expired-at-entry cases; `0b2827a01` makes the support read strictly read-only, re-checks the filed
+  patient with the read, and names the audit actor `superadmin_via_support_session`; `822089796` records a refused read as
+  `support_session.wardenlens_read_denied`; `9a8740733` makes the patient-scoped read fail closed (the filed patient must be
+  proven) and gives a content refusal its own denial reason code.
+- Result: PASS — 1 file, 29 of 29 tests passed, 0 unhandled errors
+- Also run on the same private container: `test:f237:doclens-review:live`, PASS, 19 of 19, including three cases that drive the
+  real review-workspace service with a support-session scope (the filed-patient proof, the page-coverage refusal and the
+  re-file conflict). It ran on the tree whose only later change is the denial reason code in `wardenlens-support-access.ts`,
+  which that suite does not import.
 - Database: private container `cw-pr1112-m34-live` from `chartwarden-postgres:dev` (built from `deploy/production/postgres`, PostgreSQL 18.6)
   on `127.0.0.1:55432`, started with `-c max_locks_per_transaction=1024`, removed after the run. The shared Docker cluster on 5432
   was not touched.
