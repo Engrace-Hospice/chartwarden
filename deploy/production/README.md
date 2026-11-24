@@ -221,15 +221,16 @@ MinIO with stale data.
   `secrets/backup_source_object_store_secret_key` is missing and the old file exists, it is copied (`cp -p`: same mode and
   owner); if `BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY` is unset or empty and the old variable has a value, the new variable is
   appended with that exact value. An existing new value or file is never changed, the old ones stay where they are, and a
-  host that still has only the old names never fails the deploy. When the backup overlay is configured (`compose.backup.yml`
+  host that still has only the old names never fails the deploy merely for having them (a copy that fails, because the
+  deploy user cannot read the old file, does stop it, overlay or not). When the backup overlay is configured (`compose.backup.yml`
   present and either variable set) the new secret file must exist once that step ends, otherwise the deploy stops before
   this step changes `.env.production` and says so (steps that ran earlier in the deploy may already have appended the
   object-store and DOCLING names). On the documented layout two things usually hold at once, so expect to do both: the
   deploy user cannot read the old file (mode 0400, owner 999, and `deploy` is not root), so copy it by hand as root, same
   mode and owner; and the deploy user cannot enter `secrets/` (mode 0700, owner 999), where a hand copy alone never
   clears the stop because the file cannot be seen, so give the deploy user search permission (`sudo setfacl -m u:deploy:x
-  secrets`, which needs the `acl` package; without it `chmod o+x secrets` does the same but opens search to every local
-  user; names become visible, contents stay protected by each file's own mode). Then re-run.
+  secrets`, which needs the `acl` package; without it `sudo chmod o+x secrets` does the same but opens search to every
+  local user; names become visible, contents stay protected by each file's own mode). Then re-run.
   `preflight.sh`, which the workflows run before `deploy.sh`, treats either name as enabling the backup-image digest check.
 - **After the first deploy of this release**, the operator may delete from the host what nothing reads any more: the
   `MINIO_*` lines in `.env.production`, `BACKUP_SOURCE_MINIO_ACCESS_KEY`, `secrets/backup_source_minio_secret_key`, the

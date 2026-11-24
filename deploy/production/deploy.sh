@@ -226,7 +226,7 @@ if [ "$backup_overlay_configured" -eq 1 ] && [ ! -e "$backup_secret_new" ]; then
   if [ -d secrets ] && [ ! -x secrets ]; then
     echo "$deploy_dir/secrets is not accessible to this user, so $backup_secret_new cannot be confirmed to exist (the backup overlay is configured)." >&2
     echo "A hand copy alone does not clear this: this user also needs search (x) permission on the directory, for example: sudo setfacl -m u:$(id -un):x $deploy_dir/secrets (names become visible, contents stay protected by the files' own mode)." >&2
-    echo "Without setfacl (the acl package), chmod o+x on the directory does the same but opens search to every local user. If this user cannot read $backup_secret_old either, copy it by hand as root too." >&2
+    echo "Without setfacl (the acl package), sudo chmod o+x $deploy_dir/secrets does the same but opens search to every local user. If this user cannot read $deploy_dir/$backup_secret_old either, copy it by hand as root too." >&2
   else
     echo "the backup overlay is configured but $deploy_dir/$backup_secret_new does not exist (and there is no old file to copy)." >&2
   fi
