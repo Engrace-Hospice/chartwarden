@@ -1158,7 +1158,7 @@ The polymorphic discriminator (`target_kind` on `order_signature` / `verbal_orde
 
 ### 3.7 Partition Strategy
 
-`order_record` is partitioned by month on `created_at` (matching M4's PHI convention and the M9 D11 / M10 D11 precedent). The M1 partition-rotation worker maintains 12 months forward. Closed partitions tier hot→warm per the `compliance` retention class (7-year retention floor, M4 D1; state overrides via `state_retention_override`; TARGET: the built `audit.archive` job covers `audit_event` only, so no tiering of this table is built).
+`order_record` is partitioned by month on `created_at` (matching M4's PHI convention and the M9 D11 / M10 D11 precedent). The M1 partition-rotation worker maintains the current month plus 3 months forward (`PARTITION_MONTHS_AHEAD`). Closed partitions tier hot→warm per the `compliance` retention class (7-year retention floor, M4 D1; state overrides via `state_retention_override`; TARGET: the built `audit.archive` job covers `audit_event` only, so no tiering of this table is built).
 
 **Expected partition size** at one tenant of ~5,000 active admissions averaging 30 orders/month/patient: ~150k rows per partition.
 

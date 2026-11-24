@@ -2035,12 +2035,12 @@ M34's threat surface differs qualitatively from a clinical module: the actors mo
 |**Denial of service** — repeated public signup POSTs|`POST /api/v1/public/signup-intents`|Rate limit 5/IP/hour + `m34.self_serve_signup` flag (deny-default in Phase 1) + edge WAF.|
 |**Elevation of privilege** — a tenant org_admin reads another tenant's data via DSAR|DSAR job|RLS scopes `dsar_export_job` to `organization_id`; ABAC `dsar_export_patient_caseload_or_org_admin` re-checks each action; patient_id resolved through M5 (itself RLS-scoped).|
 |**Elevation of privilege** — a compliance officer issues a fraudulent self-grant|Tenant route|Distinct-actor rule (D16): grantor ≠ session actor. Grants are M4-audited; anomalous grant patterns surface in M33.|
-|**Cryptographic compromise** — KEK leak unwraps historical DEKs|KEK storage|KEK lives in the HSM-backed store (§4 / §8.4), not in DB or env. KEK rotation re-wraps every DEK without changing the DEK — application-transparent; `current_dek_kek_id` tracks which KEK wrapped each DEK.|
-|**Forensic evasion** — a destroyed DEK is unrecoverable; prove the destruction was lawful|Post-shred|The M22-stored, M4-audited destruction certificate references the per-module eraseFn receipts and the DEK destruction log. The DEK's absence *is* the proof; the certificate reconstructs the story without the DEK.|
+|**Cryptographic compromise** — KEK leak unwraps historical DEKs|KEK storage|TARGET: KEK lives in an HSM-backed store (§4 / §8.4), not in DB or env. TODAY: an env/secret-manager key (`M34_TENANT_KEK`, ADR-0045), not in the DB. KEK rotation re-wraps every DEK without changing the DEK — application-transparent; `current_dek_kek_id` tracks which KEK wrapped each DEK.|
+|**Forensic evasion** — a destroyed DEK is unrecoverable in post-shred backups (a pre-shred snapshot still holds it until it ages out); prove the destruction was lawful|Post-shred|The M22-stored, M4-audited destruction certificate references the per-module eraseFn receipts and the DEK destruction log. The DEK's absence in post-shred backups *is* the proof; the certificate reconstructs the story without the DEK.|
 
 ### 22.2 Encryption Boundaries — Per-Tenant DEK Lifecycle (M34 §8.2)
 
-M34 owns the **per-tenant Data Encryption Key (DEK)** that every other module's envelope-encrypted PHI is sealed under. The DEK is wrapped by a KEK held in the HSM (§4.4); only the wrapped ciphertext lives in the database, in `tenant_key_ring.current_dek_kek_wrapped_ciphertext`.
+M34 owns the **per-tenant Data Encryption Key (DEK)** that every other module's envelope-encrypted PHI is sealed under. The DEK is wrapped by a KEK (TARGET: held in an HSM, §4.4; TODAY an env/secret-manager key, `M34_TENANT_KEK`, ADR-0045); only the wrapped ciphertext lives in the database, in `tenant_key_ring.current_dek_kek_wrapped_ciphertext`.
 
 **DEK lifecycle — three SECURITY DEFINER transitions:**
 

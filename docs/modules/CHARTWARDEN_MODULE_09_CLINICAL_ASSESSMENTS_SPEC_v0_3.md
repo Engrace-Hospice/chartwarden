@@ -738,7 +738,7 @@ Every M9 table is org-scoped per the M1 RLS generator pattern. M9 introduces no 
 
 ### 3.6 Partition Strategy
 
-`clinical_assessment` is partitioned by month on `captured_at` (matching M4's PHI convention). The M1 partition-rotation worker maintains 12 months forward. Closed partitions tier hot→warm per the `compliance` retention class (7-year retention, M4 D1; TARGET: the built `audit.archive` job covers `audit_event` only, so no tiering of this table is built). Expected partition size at one tenant of ~5,000 active admissions: ~50k–200k rows per partition (scales completed at ~10–40 per admission per month average — heavy ESAS-r weight).
+`clinical_assessment` is partitioned by month on `captured_at` (matching M4's PHI convention). The M1 partition-rotation worker maintains the current month plus 3 months forward (`PARTITION_MONTHS_AHEAD`). Closed partitions tier hot→warm per the `compliance` retention class (7-year retention, M4 D1; TARGET: the built `audit.archive` job covers `audit_event` only, so no tiering of this table is built). Expected partition size at one tenant of ~5,000 active admissions: ~50k–200k rows per partition (scales completed at ~10–40 per admission per month average — heavy ESAS-r weight).
 
 -----
 
