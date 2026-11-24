@@ -1,4 +1,9 @@
-import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
+import {
+  type GuardRequest,
+  isReservedPlatformRoleKey,
+  requireAbac,
+  requirePermission,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/22-documents/extraction/review-workspace-routes.ts — the DocLens review screen's
 // routes (§5.1 INTAKE.ReviewSideBySide; F-237).
 //
@@ -11,8 +16,9 @@ import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/
 //
 // Authorization is the server's: `intake.read` for the queue, `intake.review` for everything that shows
 // values or decides; the SUD resolution additionally needs the high-risk licence (the
-// `extraction_reviewer_eligible` predicate's `sudReview` arm) and refuses AI principals. Every PHI read
-// carries an `auditRead` declaration, so the host's read-audit hook records who looked at which batch.
+// `extraction_reviewer_eligible` predicate's `sudReview` arm) and refuses AI principals. ADR-0115 permits a
+// human tenant administrator to read SUD evidence on the workspace/page routes only. Every PHI read carries
+// an `auditRead` declaration, so the host's read-audit hook records who looked at which batch.
 import {
   type PreHandler,
   pageQuery,
@@ -296,7 +302,10 @@ const ABAC_SUD_REVIEWER = requireAbac("intake.review", "extraction_reviewer_elig
 // is captured later), a CONFIRMED batch needs both. `requireAbac` throws on denial; for a READ a denial
 // is not a refusal of the whole request but a redaction, so the throw is the answer, caught here and turned
 // into `false`. Any error (an unregistered predicate, a down consent seam) is a `false` too: fail closed.
-// Not break-glass-bypassable: an emergency grant is not a Part 2 need-to-know.
+// ADR-0115 adds a separate, explicit human tenant-administrator read probe; it is not break glass and never
+// admits a reserved platform role. The policy approves a future superadmin path only after M34's consented,
+// PHI-elevated support session is composed server-side; this generic tenant route has no such context. The
+// underlying ABAC checks remain non-break-glass-bypassable.
 const SUD_READ_ELIGIBLE = requireAbac("intake.review", "extraction_reviewer_eligible", {
   getTarget: () => ({ sudReview: true }),
   breakGlassBypassable: false,
@@ -312,6 +321,20 @@ function sudContentAccessOf(request: FastifyRequest): SudContentAccess {
   // Each probe is a registered ABAC predicate; a denial or a throw reaches the gate as a rejection, which it
   // turns into `false` (fail closed). Which probes a batch needs depends on its state: see sud-content-gate.
   return {
+    // ADR-0115 — a human tenant administrator is admitted only without reserved platform authority. A
+    // platform-owned superadmin is deliberately denied here: ADR-0112 prevents tenant membership, and this
+    // route has no server-derived support-session identity/elevation. The ordinary RBAC permission, tenant
+    // context/RLS, AI refusal on decisions, review ownership and every candidate-level rule continue to apply.
+    administratorOverride: async () => {
+      const roles = request.context.roles;
+      const tenantAdministrator = roles.includes("administrator") || roles.includes("org_admin");
+      const carriesPlatformAuthority = roles.some(isReservedPlatformRoleKey);
+      return (
+        request.context.attributes.actorKind === "user" &&
+        tenantAdministrator &&
+        !carriesPlatformAuthority
+      );
+    },
     reviewerEligible: async () => {
       await SUD_READ_ELIGIBLE(guardRequest);
       return true;

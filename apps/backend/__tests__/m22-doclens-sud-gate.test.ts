@@ -9,6 +9,7 @@
 import {
   createInMemoryEffectivePermissionStore,
   createPredicateRegistry,
+  expandSuperadminRoles,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAbacRegistry,
@@ -111,7 +112,12 @@ function workspaceFixture(sudStatus: ReviewWorkspace["sud"]["status"]): ReviewWo
   };
 }
 
-const access = (o: { eligible: boolean; consent: boolean }): SudContentAccess => ({
+const access = (o: {
+  eligible: boolean;
+  consent: boolean;
+  administratorOverride?: boolean;
+}): SudContentAccess => ({
+  administratorOverride: async () => o.administratorOverride === true,
   reviewerEligible: async () => o.eligible,
   consentPresent: async () => o.consent,
 });
@@ -195,6 +201,44 @@ describe("GAP-067 — pure SUD content gate", () => {
     expect(seen).toEqual([PATIENT]);
   });
 
+  it("admits an explicit tenant-administrator override before licence or consent probes", async () => {
+    const probes: string[] = [];
+    const allowed = await resolveSudContentAccess(
+      {
+        administratorOverride: async () => {
+          probes.push("administrator");
+          return true;
+        },
+        reviewerEligible: async () => {
+          probes.push("licence");
+          return false;
+        },
+        consentPresent: async () => {
+          probes.push("consent");
+          return false;
+        },
+      },
+      { sudStatus: "confirmed", patientId: PATIENT },
+    );
+    expect(allowed).toBe(true);
+    expect(probes).toEqual(["administrator"]);
+  });
+
+  it("fails closed when the administrator-override probe throws", async () => {
+    expect(
+      await resolveSudContentAccess(
+        {
+          administratorOverride: async () => {
+            throw new Error("role resolution failed");
+          },
+          reviewerEligible: async () => false,
+          consentPresent: async () => true,
+        },
+        { sudStatus: "confirmed", patientId: PATIENT },
+      ),
+    ).toBe(false);
+  });
+
   // The behaviour matrix (status x licensed-eligible x consent). `true` = Part 2 content readable.
   const MATRIX: ReadonlyArray<readonly [SudStatus, boolean, boolean, boolean]> = [
     // status, eligible, consent, readable
@@ -256,6 +300,8 @@ describe("GAP-067 — pure SUD content gate", () => {
 interface Persona {
   readonly licensed: boolean;
   readonly consent: boolean;
+  readonly roles?: readonly string[];
+  readonly actorKind?: "user" | "ai" | "system";
 }
 
 function headerAuth(request: FastifyRequest): void {
@@ -263,8 +309,9 @@ function headerAuth(request: FastifyRequest): void {
   if (typeof user !== "string" || user.length === 0) return;
   request.context.userId = user;
   request.context.attributes.membershipId = user;
+  request.context.attributes.actorKind = PERSONAS[user]?.actorKind ?? "user";
   request.context.organizationId = ORG;
-  request.context.roles = ["rn"];
+  request.context.roles = PERSONAS[user]?.roles ? [...PERSONAS[user]!.roles!] : ["rn"];
 }
 
 const PERSONAS: Record<string, Persona> = {
@@ -272,6 +319,32 @@ const PERSONAS: Record<string, Persona> = {
   rn_no_consent: { licensed: true, consent: false },
   aide_consent: { licensed: false, consent: true },
   rn_seam_down: { licensed: true, consent: true },
+  tenant_administrator: { licensed: false, consent: false, roles: ["administrator"] },
+  tenant_org_admin: { licensed: false, consent: false, roles: ["org_admin"] },
+  platform_superadmin: {
+    licensed: false,
+    consent: false,
+    roles: expandSuperadminRoles(["superadmin"]),
+  },
+  platform_operator: { licensed: false, consent: false, roles: ["platform_ops"] },
+  ai_administrator: {
+    licensed: false,
+    consent: false,
+    roles: ["administrator"],
+    actorKind: "ai",
+  },
+  ai_superadmin: {
+    licensed: false,
+    consent: false,
+    roles: expandSuperadminRoles(["superadmin"]),
+    actorKind: "ai",
+  },
+  system_administrator: {
+    licensed: false,
+    consent: false,
+    roles: ["administrator"],
+    actorKind: "system",
+  },
 };
 
 function makeServer(sudStatus: ReviewWorkspace["sud"]["status"] = "detected") {
@@ -393,6 +466,54 @@ describe("GAP-067 — DocLens review routes compose the Part 2 need-to-know chec
     const res = await app.inject({ method: "GET", url: workspaceUrl, headers: as("aide_consent") });
     expect(res.statusCode).toBe(200);
     expect(res.json().candidates[1].value).toBeNull();
+  });
+
+  it.each(["tenant_administrator", "tenant_org_admin"])(
+    "%s reads a confirmed batch and its page without a clinical licence or patient consent",
+    async (user) => {
+      const { app, calls } = makeServer("confirmed");
+      const workspace = await app.inject({ method: "GET", url: workspaceUrl, headers: as(user) });
+      expect(workspace.statusCode).toBe(200);
+      expect(workspace.json().sud.contentRedacted).toBe(false);
+      expect(workspace.json().candidates[1].value).toBe("Methadone 20 mg");
+      expect(calls.consentPatients).toEqual([]);
+
+      const page = await app.inject({ method: "GET", url: imageUrl, headers: as(user) });
+      expect(page.statusCode).toBe(200);
+      expect(calls.renders).toBe(1);
+    },
+  );
+
+  it.each(["platform_superadmin", "platform_operator", "ai_administrator", "ai_superadmin"])(
+    "%s cannot use the tenant-administrator Part 2 bypass",
+    async (user) => {
+      const { app, calls } = makeServer("confirmed");
+      const workspace = await app.inject({ method: "GET", url: workspaceUrl, headers: as(user) });
+      expect(workspace.statusCode).toBe(200);
+      expect(workspace.json().sud.contentRedacted).toBe(true);
+
+      const page = await app.inject({ method: "GET", url: imageUrl, headers: as(user) });
+      expect(page.statusCode).toBe(403);
+      expect(calls.renders).toBe(0);
+    },
+  );
+
+  it("a system principal carrying an administrator key is denied the PHI read routes", async () => {
+    const { app, calls } = makeServer("confirmed");
+    const workspace = await app.inject({
+      method: "GET",
+      url: workspaceUrl,
+      headers: as("system_administrator"),
+    });
+    expect(workspace.statusCode).toBe(403);
+
+    const page = await app.inject({
+      method: "GET",
+      url: imageUrl,
+      headers: as("system_administrator"),
+    });
+    expect(page.statusCode).toBe(403);
+    expect(calls.renders).toBe(0);
   });
 
   it("fails closed (redacts a confirmed batch) when the consent seam throws", async () => {
