@@ -16,7 +16,7 @@ No deployment is authorized by this document.
 | `1541_m40_medicaid_payer_classification_and_m24_submission_provenance` | contract | New global table `mdm_medicaid_payer_program_classification`; nine new columns on `medicaid_submission` (`source_provenance_status` NOT NULL DEFAULT `unverified`), four CHECKs, two partial indexes (one UNIQUE), and a BEFORE INSERT OR UPDATE guard trigger on `medicaid_submission`. | `ADD CONSTRAINT` on an existing table, `CREATE UNIQUE INDEX`, a new trigger on a table the previous release writes. |
 | `1542_m24_era_source_account_evidence` | contract | Three nullable columns on `medicaid_enrollment_evidence` (`vendor_account_ref`, `source_environment`, `evidence_fresh_until`), four CHECKs added `NOT VALID` (so no table scan; existing rows are not checked), one partial index. | `ADD CONSTRAINT` on an existing table. Historical rows stay NULL and unqualified; no account or environment is inferred. |
 | `1543_m25_medicaid_era_nonposting_reviews` | contract | New tables `medicaid_era_review` and `medicaid_era_review_history` (RLS enabled and FORCEd, SELECT grant for `chartwarden_app`, append-only history, identity guard trigger, audit triggers); a conditional `chartwarden_platform` grant when that role exists. Never a ledger or posting record. | New tables with their guards and grants. |
-| `1544_m25_medicaid_era_assessment_writer_lockdown` | contract | `medicaid_era_review.assessment_trust_status` (default `legacy_unverified`) and a non-posting CHECK; every INSERT, UPDATE and REFERENCES privilege on both review tables is revoked from `PUBLIC`, `chartwarden_app` and the platform roles; `chartwarden_app` keeps SELECT. | `REVOKE` and `ADD CONSTRAINT`. After it no application or platform role can write a review row until a separately isolated evaluator writer exists. |
+| `1544_m25_medicaid_era_assessment_writer_lockdown` | contract | `medicaid_era_review.assessment_trust_status` (default `legacy_unverified`) and a non-posting CHECK; every privilege on both review tables is revoked from `PUBLIC`, `chartwarden_app` and the platform roles (`chartwarden_platform`, `chartwarden_platform_login`); SELECT is re-granted to `chartwarden_app` only, so a platform role that exists when 1544 runs ends with no access. | `REVOKE` and `ADD CONSTRAINT`. After it no application or platform role can write a review row until a separately isolated evaluator writer exists. |
 
 1542 to 1544 are `contract` only because the compat heuristic reads `ADD CONSTRAINT` and `REVOKE` as contracting. Every table they change is created by this batch (`medicaid_enrollment_evidence` by 1535; `medicaid_era_review` and `medicaid_era_review_history` by 1543), and `main`, the previous release, has no code that reads or writes any of them (`git grep` for the three table names on `main` finds nothing outside migrations). They add no drain reason of their own; the previous-release drain below is for 1536, 1537 and 1541. That holds only when 1535 and 1543 are in the same batch: if the ledger shows 1535 already applied by an earlier release, read what that release does with `medicaid_enrollment_evidence` before applying 1542.
 
@@ -109,7 +109,7 @@ Do not restart an old application image against the migrated schema.
           has_table_privilege('chartwarden_app', 'medicaid_era_review', 'UPDATE') AS review_update,
           has_table_privilege('chartwarden_app', 'medicaid_era_review_history', 'INSERT') AS history_insert;
 
-   -- Guards installed and enabled (tgenabled = 'O'): 11 rows.
+   -- Guards installed and enabled (tgenabled = 'O'): 13 rows.
    SELECT tgrelid::regclass AS tbl, tgname, tgenabled FROM pg_trigger
     WHERE tgname IN ('trg_medicaid_program_assignment_provider_entity', 'trg_medicaid_program_assignment_insert_status',
                      'trg_medicaid_program_assignment_update_guard',
@@ -117,7 +117,8 @@ Do not restart an old application image against the migrated schema.
                      'trg_medicaid_enrollment_evidence_update_guard',
                      'trg_medicaid_payer_authorization_evidence_status', 'trg_medicaid_payer_authorization_event_append_only',
                      'trg_medicaid_payer_rate_policy_status', 'trg_medicaid_payer_rate_policy_append_only',
-                     'trg_medicaid_submission_provenance') ORDER BY tgname;
+                     'trg_medicaid_submission_provenance',
+                     'medicaid_era_review_identity_immutable', 'medicaid_era_review_history_immutable') ORDER BY tgname;
 
    -- Unique keys: both NULLS NOT DISTINCT; the rate-policy key ends with supersedes_id.
    SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
