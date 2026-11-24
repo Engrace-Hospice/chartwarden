@@ -10658,7 +10658,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/internal/remittance/advices": {
     summary:
-      "Receive a raw 835 already staged in MinIO; dedups + emits m25.edi.835_received (§17 system principal, WX-PR-012)",
+      "Receive a raw 835 already staged in the object store; dedups + emits m25.edi.835_received (§17 system principal, WX-PR-012)",
     body: M25ReceiveAdviceRequestSchema,
     response: M25ReceiveAdviceResponseSchema,
   },

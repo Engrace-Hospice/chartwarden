@@ -15136,7 +15136,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Receive a raw 835 already staged in MinIO; dedups + emits m25.edi.835_received (§17 system principal, WX-PR-012) */
+        /** Receive a raw 835 already staged in the object store; dedups + emits m25.edi.835_received (§17 system principal, WX-PR-012) */
         post: operations["postApiV1InternalRemittanceAdvices"];
         delete?: never;
         options?: never;

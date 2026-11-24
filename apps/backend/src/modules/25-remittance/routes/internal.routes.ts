@@ -85,7 +85,7 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
     },
   );
 
-  // WX-PR-012 (route #32) — receive a raw 835 already staged in MinIO by the (unbuilt) clearinghouse-pull
+  // WX-PR-012 (route #32) — receive a raw 835 already staged in the object store by the (unbuilt) clearinghouse-pull
   // transport. Only mounted when a real ingest service is supplied (M25RouteServices.ingestService) —
   // never a deny-stub 501, simply absent, matching the "not wired yet" posture the rest of the module
   // already documents for its other unwired forward seams.
