@@ -188,7 +188,8 @@ mc_setup() { # aliases: offsite (always), source / target when configured
     mc_host target "${RESTORE_OBJECT_STORE_URL:?}" "$RESTORE_OBJECT_STORE_ACCESS_KEY" "${RESTORE_OBJECT_STORE_SECRET_KEY:?}"
   fi
   OFFSITE="offsite/$BACKUP_OFFSITE_S3_BUCKET"
-  # SSE-C: every off-site object (copies, manifests, markers) is encrypted with a key the off-site provider never holds.
+  # SSE-C: every off-site object (copies, manifests, markers) is encrypted with a key the off-site provider does not
+  # store; it travels over TLS with every request, so the provider's servers see it (and the plaintext) transiently.
   # mc's --enc-c wants base64 without padding.
   ENC="$OFFSITE/=${BACKUP_OBJECT_SSE_C_KEY%%=*}"
 }
