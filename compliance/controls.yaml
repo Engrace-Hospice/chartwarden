@@ -1443,6 +1443,13 @@ controls:
       - file: apps/backend/src/modules/07-care-plan/routes/change-proposal-routes.ts
       - file: apps/backend/src/modules/08-encounters/routes/encounters-routes.ts
       - file: packages/db/migrations/1532_m7_care_plan_change_proposal.sql
+      # Migration 1546 renames document_version.minio_object_key to object_key and, in the same transaction, re-points that table's
+      # write-audit scrub (audit_phi_write_document_version, first written in 0049) at the new name; the db-migrate live suite asserts the
+      # audit images read "<changed>" for object_key and that the function keeps its SECURITY DEFINER and pinned search_path. Known limit:
+      # no arch gate checks that a scrub-list name is a real column, so a later rename that misses a trigger would leave the value in the
+      # images; the live suite is the only guard. Parity with before: the M25, M28 and M34 audit functions scrub no object keys.
+      - file: packages/db/migrations/1546_object_key_column_rename.sql
+      - script: test:db:migrate:live
 
   - id: CW-AU-02
     title: External auditor access is staged behind BAA acceptance and a second factor
