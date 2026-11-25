@@ -415,8 +415,8 @@ CREATE TRIGGER trg_audit_<table>
 >    — `audit_event` has RLS enabled (M1) with policies only `TO chartwarden_app`, so without this the
 >    definer's inserts are **denied**. (No `BYPASSRLS` — the targeted INSERT policy is the least-privilege
 >    path; if `BYPASSRLS` is ever used it requires explicit SEC-006 Security-Owner justification.)
-> 3. Harden every definer function with `SET search_path = pg_catalog, public` (standard PG
->    SECURITY DEFINER hardening). The same applies to `audit_scrub`.
+> 3. Harden every definer function with `SET search_path = pg_catalog, public, pg_temp` (standard PG
+>    SECURITY DEFINER hardening; `pg_temp` last, so a temp table can never shadow `audit_event`). The same applies to `audit_scrub`.
 > 4. Route to Security-Owner review per SEC-006/SEC-056.
 
 The `denylist` baked into a generated trigger is the union of the explicit column-name list and the columns resolved from `denylistCategories` against `audit_denylist_catalog` (§5.1). The `sud_value` category resolves to a **row-conditional** scrub expression rather than a static column (§5.2).

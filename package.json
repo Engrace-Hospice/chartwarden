@@ -452,6 +452,7 @@
     "test:m10:sfv-sign-binding:live": "vitest run apps/backend/__tests__/m10-hope-sfv-sign-binding.live.test.ts",
     "test:m10:g3:live": "vitest run apps/backend/__tests__/m10-hope-g3-lock-canonical.live.test.ts",
     "test:fk-indexes:live": "vitest run packages/db/migrations/__tests__/fk-index-coverage.live.test.ts",
+    "test:definer:search-path:live": "vitest run apps/backend/__tests__/definer-search-path.live.test.ts",
     "test:rls:live:m11": "vitest run packages/db/migrations/__tests__/m11-rls-isolation.live.test.ts",
     "test:rls:live:m12": "vitest run packages/db/migrations/__tests__/m12-rls-isolation.live.test.ts",
     "test:rls:live:m13": "vitest run packages/db/migrations/__tests__/m13-rls-isolation.live.test.ts",

@@ -1586,7 +1586,7 @@ export async function withPlatformContext<T>(
 > + the `organization_self` RLS policy the trigger would see only the caller's own org row, so a
 > tenant-context settings write would silently pass the collision check. The trigger function is
 > therefore declared **`SECURITY DEFINER`, owned by a role that can read all orgs**, hardened with
-> `SET search_path = pg_catalog, public`. **In addition**, every `uniqueAcrossTenants` key is backed
+> `SET search_path = pg_catalog, public, pg_temp`. **In addition**, every `uniqueAcrossTenants` key is backed
 > by a **partial `UNIQUE` index** on `((settings->>'<key>'))` so the database enforces uniqueness
 > even if the trigger is bypassed (defense in depth). The acceptance suite adds a tenant-context
 > (org_admin path) collision test, not only the platform-admin path (W-M1-08).

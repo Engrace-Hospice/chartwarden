@@ -15,7 +15,7 @@
 > code set); **each owning module subscribes and runs its own code-usage scan within its RLS
 > boundary**, returning affected-record counts via its own reader/outbox — or M38 consults an
 > owner-published `CodeUsageReader` seam. M38 never scans another module's tables. The SECURITY DEFINER
-> `terminology_loader` function is hardened with `SET search_path = pg_catalog, public` (S12).
+> `terminology_loader` function is hardened with `SET search_path = pg_catalog, public, pg_temp` (S12).
 
 ## Changelog
 

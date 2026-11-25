@@ -34,7 +34,7 @@ describe("generateAuditTrigger — §3.3 DDL shape", () => {
 
   it("is SECURITY DEFINER with a hardened search_path (M04-F06 #1, #3)", () => {
     expect(ddl).toContain("SECURITY DEFINER");
-    expect(ddl).toContain("SET search_path = pg_catalog, public");
+    expect(ddl).toContain("SET search_path = pg_catalog, public, pg_temp");
   });
 
   it("writes a scrubbed before/after diff into audit_event keyed on the row's organization_id", () => {
