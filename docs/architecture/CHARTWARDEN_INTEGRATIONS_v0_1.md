@@ -19,7 +19,7 @@
 > **Actually wired:**
 > - **Inbound webhooks** — Twilio and Postmark receivers are the most complete external surface.
 > - **NPPES** (`packages/mdm`) — the provider-registry sync, with a nightly cron.
-> - **S3/MinIO** — the zero-dependency SigV4 adapter (`22-documents/seams/s3-object-store.ts`).
+> - **S3-compatible object store** — the zero-dependency SigV4 adapter (`22-documents/seams/s3-object-store.ts`); SeaweedFS in production, RustFS locally and in CI (ADR-0050 D6 amendment, 2026-11-05).
 > - **Better Auth** — the only installed third-party SDK. **It has no inventory row below**, which
 >   is an INT-002 violation by this document's own rule; add one.
 > - **Claim submission through the clearinghouse transport** (re-verified 2026-11-11, replacing the
@@ -157,7 +157,7 @@ The master list. Every external connection appears here exactly once. New integr
 |22|Map / routing (Mapbox vs OSRM — ADR-007)|Outbound|REST|No (addresses are PHI-adjacent — see §6.22)|Conditional (see §6.22)|platform|17|`packages/routing-client`|Tier 4|
 |23|Terminology source feeds (CMS ICD-10, NLM/UMLS SNOMED, Regenstrief LOINC, RxNorm)|Inbound (scheduled)|File download / API + license|No|No (reference data)|platform (license creds)|38|`packages/terminology`|Tier 4|
 |24|FHIR Gateway (outbound/inbound interop)|Bidirectional|FHIR R4 REST + bulk NDJSON|Yes|Per-recipient (varies)|per-tenant / per-recipient|28|`packages/fhir`|Tier 3|
-|25|Object storage egress (MinIO presigned URLs for external collaborators)|Outbound (scoped)|HTTPS presigned|Yes (scoped docs)|n/a (internal store)|per-tenant bucket prefix|22, §7.6 external collaborator|`apps/backend/src/modules/22-documents/seams/s3-object-store.ts`|Tier 2|
+|25|Object storage egress (object-store presigned URLs for external collaborators)|Outbound (scoped)|HTTPS presigned|Yes (scoped docs)|n/a (internal store)|per-tenant bucket (`tenant-<orgId>`)|22, §7.6 external collaborator|`apps/backend/src/modules/22-documents/seams/s3-object-store.ts`|Tier 2|
 |26|EVV state aggregators (**Sandata** + open-model — what `packages/evv-aggregators` actually implements; OR-PTC DCI is NOT built)|Outbound + poll|REST / SFTP per state|Yes|**Yes** (trading-partner agmt / BAA) — *ADR-0020*|per-provider-entity per-state|18|`packages/evv-aggregators`|Tier 3|
 |27|DME vendors|Outbound + confirmation|portal/email/fax (Phase 1); EDI X12 (Phase 2)|Yes (name, address, items)|**Yes**|per-tenant per-vendor|21|not built — M21 deny-stub port (`packages/vendor-edi` never created)|Tier 3|
 |28|Partner pharmacy (comfort-kit fulfillment)|Bidirectional|vendor API / portal|Yes|**Yes**|per-tenant|21|not built (`packages/pharmacy-client` never created)|Tier 3|
@@ -538,7 +538,7 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
 - **Direction & protocol:** **Internal** HTTP to the `ml-worker`/`llm-worker` sidecar (loopback/VPC). **No traffic leaves the ChartWarden perimeter.**
 - **Credential model:** No external credential. Service-to-service auth within the perimeter (mTLS internal per architecture §14).
 - **BAA / PHI:** PHI stays in-perimeter; **no third party, no BAA** — ChartWarden is the model operator (AI Governance §15).
-- **Sandbox vs prod:** Same model artifacts in dev (MinIO-stored GGUF/safetensors per §10.7.8); deterministic eval harness.
+- **Sandbox vs prod:** Same model artifacts in dev (GGUF/safetensors held in the object store per §10.7.8); deterministic eval harness.
 - **Retry/idempotency:** Local retry; safe to retry.
 - **Rate-limit posture:** Bounded by local hardware (GPU/CPU); routing accepts lower quality / higher latency per-backend calibration thresholds (§10.7.4).
 - **Failure handling:** Tier 3; if the local backend is down and a cloud fallback is allowed for the capability and tenant, route to cloud; else degrade to deterministic path. `local_only` tenants degrade to deterministic — they accepted that trade.
@@ -608,7 +608,7 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
 
 ### 6.24 FHIR Gateway — Interop (Module 28)
 
-- **Purpose:** Standards-based interop — outbound FHIR R4 (Patient, Encounter, Observation, MedicationRequest/Administration, Condition, CarePlan, Goal, DocumentReference, Practitioner(Role), Organization), `$everything`, bulk export (NDJSON to MinIO); inbound import of selected resources (demographics from ADT, medication history). Also exposes Module 38 terminology as FHIR CodeSystem/ValueSet.
+- **Purpose:** Standards-based interop — outbound FHIR R4 (Patient, Encounter, Observation, MedicationRequest/Administration, Condition, CarePlan, Goal, DocumentReference, Practitioner(Role), Organization), `$everything`, bulk export (NDJSON to the object store); inbound import of selected resources (demographics from ADT, medication history). Also exposes Module 38 terminology as FHIR CodeSystem/ValueSet.
 - **Direction & protocol:** Bidirectional FHIR R4 REST + bulk NDJSON. US Core v6 (R4) conformance; v10 (R6) when published. Version-pluggable mappers (`packages/fhir` — R4 shipped; R5/R6 are pluggable targets).
 - **Credential model:** Per-tenant / per-recipient — SMART-on-FHIR or API-key auth per consuming partner (varies). 42 CFR Part 2 SUD records excluded from export by default (Module 5 / Module 39 consent gating).
 - **BAA / PHI:** PHI-bearing; per-recipient agreement (varies by recipient and use).
@@ -618,10 +618,10 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
 ### 6.25 Object Storage Egress — Presigned URLs (Module 22; §7.6)
 
 - **Purpose:** Scoped document delivery to external collaborators (attending physicians, hospital staff, funeral homes via the External Collaborator magic-link pattern) and patient/family portal document shares.
-- **Direction & protocol:** Outbound HTTPS presigned URLs from MinIO; bucket prefix `tenant/<org_id>/` with IAM policies preventing cross-tenant signing (architecture §8(3)).
-- **Credential model:** Per-tenant bucket scope; short-lived presigned URLs minted per authorized access.
+- **Direction & protocol:** Outbound HTTPS presigned URLs from the object store; one bucket per tenant, `tenant-<orgId>`, derived from the organization id inside the adapter (the adapter derives the bucket; the credential itself spans all tenant buckets, so isolation is application-layer; architecture §8(3)).
+- **Credential model:** Per-tenant bucket scope under one application credential bound to `deploy/production/object-store/app-policy.json` (no per-tenant key); short-lived presigned URLs minted per authorized access.
 - **BAA / PHI:** Scoped PHI documents; access governed by Module 39 consent + §7.6 collaborator scoping; magic-link sessions are short-lived and view-audited.
-- **Failure handling:** Tier 2; storage availability is covered in DR_BCP (MinIO is a ChartWarden-operated service, not a third party — included here only because it is the egress mechanism for external sharing).
+- **Failure handling:** Tier 2; storage availability is covered in DR_BCP (the object store, SeaweedFS in production, is a ChartWarden-operated service, not a third party — included here only because it is the egress mechanism for external sharing).
 
 ### 6.26 Claims Clearinghouse — submission, eligibility, acknowledgments (Modules 23, 25, 41)
 

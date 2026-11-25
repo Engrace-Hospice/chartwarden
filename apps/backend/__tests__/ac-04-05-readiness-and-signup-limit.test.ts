@@ -1,6 +1,6 @@
 // apps/backend/__tests__/ac-04-05-readiness-and-signup-limit.test.ts
 //
-// AC-04 — `/ready` advertised `minio` as a checked dependency (`routes/health.ts` types it into
+// AC-04 — `/ready` advertised `objectStore` as a checked dependency (`routes/health.ts` types it into
 // `ReadinessChecks` and folds it into `allOk`) while `buildReadinessProbe` hard-coded it "ok", so
 // the probe stayed green through a total object-storage outage. DR/BCP §6.3's storage-failover
 // detection reads exactly this signal.
@@ -32,25 +32,25 @@ import {
 import { buildReadinessProbe } from "../src/bootstrap/readiness-probe";
 
 describe("AC-04 — /ready reaches the object store it advertises", () => {
-  it("reports minio 'ok' when no object store is configured (optional infra)", async () => {
+  it("reports objectStore 'ok' when no object store is configured (optional infra)", async () => {
     const probe = buildReadinessProbe({});
-    expect((await probe()).minio).toBe("ok");
+    expect((await probe()).objectStore).toBe("ok");
   });
 
-  it("reports minio 'fail' when a CONFIGURED store is unreachable — and /ready 503s", async () => {
+  it("reports objectStore 'fail' when a CONFIGURED store is unreachable — and /ready 503s", async () => {
     const probe = buildReadinessProbe({
       pingObjectStore: async () => {
         throw new Error("connect ECONNREFUSED 10.0.0.5:9000");
       },
       log: () => {},
     });
-    expect((await probe()).minio).toBe("fail");
+    expect((await probe()).objectStore).toBe("fail");
 
     // The whole point: the advertised dependency now moves `/ready` off 200.
     const app = buildServer({ readinessProbe: probe, security: { rateLimitEnabled: false } });
     const res = await app.inject({ method: "GET", url: "/ready" });
     expect(res.statusCode).toBe(503);
-    expect(res.json()).toMatchObject({ status: "not_ready", checks: { minio: "fail" } });
+    expect(res.json()).toMatchObject({ status: "not_ready", checks: { objectStore: "fail" } });
     await app.close();
   });
 
@@ -60,7 +60,7 @@ describe("AC-04 — /ready reaches the object store it advertises", () => {
       timeoutMs: 25,
       log: () => {},
     });
-    expect((await probe()).minio).toBe("fail");
+    expect((await probe()).objectStore).toBe("fail");
   });
 
   it("a reachable store keeps /ready green", async () => {
@@ -68,7 +68,7 @@ describe("AC-04 — /ready reaches the object store it advertises", () => {
     const app = buildServer({ readinessProbe: probe, security: { rateLimitEnabled: false } });
     const res = await app.inject({ method: "GET", url: "/ready" });
     expect(res.statusCode).toBe(200);
-    expect(res.json().checks.minio).toBe("ok");
+    expect(res.json().checks.objectStore).toBe("ok");
     await app.close();
   });
 });

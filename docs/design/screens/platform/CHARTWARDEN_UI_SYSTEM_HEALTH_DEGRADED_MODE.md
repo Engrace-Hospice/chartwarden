@@ -39,7 +39,7 @@ Degraded Mode Banner Controls
 - Backend
 - Database
 - Valkey
-- MinIO
+- Object store
 - Workers
 - AI
 - DoseSpot

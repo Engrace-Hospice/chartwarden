@@ -44,8 +44,9 @@ Deploys run from `deploy.yml`'s `deploy` job, on a self-hosted runner. It SSHes 
 **What that topology cannot do:**
 
 - **Every component is a single point of failure.** There is no second API instance, no database
-  replica and no WAL archiving. DR/BCP itself says "no streaming replica and no WAL archiving are
-  running", so its Tier-1 target (1 h RTO / 5 min RPO) is aspirational.
+  replica and (when this was written) no WAL archiving; the owner states (2026-11-23) that the backup sidecar now
+  archives WAL in production, with no evidence of it in the repo (DR/BCP §4.8). DR/BCP records that no streaming
+  replica is running, so the Tier-1 target (1 h RTO / 5 min RPO) is aspirational.
 - **Deploys are push-over-SSH.** The deploy host holds a shell key, and the self-hosted runner's
   availability gates every release.
 - **There is no declarative record of the running state.** The production configuration lives in an
@@ -258,10 +259,9 @@ OS with no SSH and no shell.
 >   store resumes, so callers treat a timed-out write as unknown and verify it.
 > - **Status:** the production cutover is built (`deploy/production/compose.yml`, `deploy.sh`): `seaweedfs`,
 >   `object-store-provision` (identities rendered by `scripts/storage/seaweedfs-identities.ts`, the code the CI
->   store also runs), `fluent-bit` (on its own `audit` network with seaweedfs and api), and a one-time
->   `object-store-migrate` mirror from MinIO with checksums, run with the api/worker stopped; the marker is written
->   only after it succeeds, and a failure restores MinIO on its port (README, "Object store: the SeaweedFS cutover").
->   It takes effect on the first deploy after merge.
+>   store also runs), and `fluent-bit` (on its own `audit` network with seaweedfs and api). The cutover is done:
+>   the one-time `object-store-migrate` mirror and the MinIO rollback path were removed (README, "Object store: the
+>   environment contract").
 >   Not yet moved: the coordinated backup drill and `restore.sh` still stand up MinIO for their isolated
 >   environments (they read MinIO's on-disk layout); the backup's object restore keeps the SHA-256 on any store.
 

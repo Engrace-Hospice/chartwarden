@@ -1470,7 +1470,7 @@ These are **cross-module** events written transactionally to the outbox via the 
 
 | Event | Published when | Payload (shape) | Consumers |
 |---|---|---|---|
-| `m2.organization.created` *(TARGET — never cataloged; M35's shipped M2 inputs are `m2.organization.activated` / `.suspended` / `.closed` + `m2.session.created`, see packages/types/src/subscription-billing.ts)* | an organization/tenant is first provisioned (org row insert) | `{ organizationId, name, createdAt, createdByMembershipId }` | M22 (per-tenant MinIO bucket provisioning), M35 (subscription billing onboarding) |
+| `m2.organization.created` *(TARGET — never cataloged; M35's shipped M2 inputs are `m2.organization.activated` / `.suspended` / `.closed` + `m2.session.created`, see packages/types/src/subscription-billing.ts)* | an organization/tenant is first provisioned (org row insert) | `{ organizationId, name, createdAt, createdByMembershipId }` | M22 (per-tenant object-store bucket provisioning), M35 (subscription billing onboarding) |
 | `m2.membership.updated` | a membership row mutates (role, status, or other membership attributes change) | `{ membershipId, organizationId, userId, changedFields, updatedAt }` | M33 (predicate-cache invalidation) |
 | `m2.session.created` | a new session row is issued (login / session establishment) | `{ sessionId, userId, organizationId, createdAt }` | M35 (subscription billing) |
 

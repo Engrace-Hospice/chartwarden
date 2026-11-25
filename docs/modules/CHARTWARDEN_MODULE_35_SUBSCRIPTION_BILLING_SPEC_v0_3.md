@@ -2641,7 +2641,7 @@ These tests are CI-gated and must remain green. A regression to 403 or 200 on a 
 15 named end-to-end scenarios mapping 1:1 to §7 workflows (W-SB-01 through W-SB-15). Each scenario instantiates:
 - PostgreSQL with M35 migrations applied
 - Valkey (BullMQ backend)
-- MinIO (no M35 use, but the test substrate)
+- An S3-compatible object store, RustFS as in local dev and CI (no M35 use, but the test substrate)
 - A Stripe test-mode mock (using Stripe's test clock for time-dependent scenarios like trial conversion, dunning advancement)
 - M1 + M2 + M3 + M4 + M5 + M28 + M29 + M36 + M38 minimal stubs (matched seams)
 
@@ -3177,7 +3177,7 @@ M35 (Subscription Billing) is classified as **DR Tier 3** per `CHARTWARDEN_DR_BC
 
 The customer-facing SLA (48h RTO / 4h RPO) applies to tenants' ability to view invoices, update payment methods, and have subscriptions reflect their current status. Stripe itself is the authoritative billing system; even if ChartWarden M35 is fully unavailable, tenants can access Stripe-hosted invoice URLs and the Stripe Customer Portal directly. The ChartWarden SLA covers ChartWarden-side access and the Stripe-dispatching pipeline.
 
-**Recovery sequencing:** M35 is recovered after Tier-1 and Tier-2 services in the DR sequencing order: `PostgreSQL primary → Valkey → MinIO → Backend API (Tier 1) → Tier-2 modules → M35 workers + crons`. M35 does not participate in the critical-path startup that enables patient care.
+**Recovery sequencing:** M35 is recovered after Tier-1 and Tier-2 services in the DR sequencing order: `PostgreSQL primary → Valkey → object store → Backend API (Tier 1) → Tier-2 modules → M35 workers + crons`. M35 does not participate in the critical-path startup that enables patient care.
 
 #### 14.2 Degraded-Mode Behavior
 

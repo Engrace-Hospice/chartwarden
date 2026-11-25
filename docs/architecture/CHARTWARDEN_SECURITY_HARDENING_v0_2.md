@@ -475,7 +475,7 @@ Four Accepted ADRs change what this guide describes and were not reflected in it
 |PostgreSQL data files                                   |LUKS full-disk encryption on VM disks                               |Key in TPM (Proxmox); break-glass copy sealed offline           |
 |PostgreSQL backups (pgBackRest)                         |AES-256-CBC                                                         |Three independent keys per backup repo (Ops Runbook §8.3.1)     |
 |Object store objects (SeaweedFS; RustFS second copy)    |TARGET: server-side encryption. TODAY: plaintext objects, host disk encryption only, not asserted by any gate (compliance/controls.yaml CW-AC-05 gap)|Per host (LUKS or provider volume encryption)                   |
-|Off-site object backups (Object Lock bucket)            |SSE-C per object (`BACKUP_OBJECT_SSE_C_KEY`) + object lock prevents tampering|Docker secret on the production host, never sent to the store at rest|
+|Off-site object backups (Object Lock bucket)            |SSE-C per object (`BACKUP_OBJECT_SSE_C_KEY`, one platform key for every tenant's objects) + object lock prevents tampering. Enabled in production per the owner (the repo holds no evidence of it; DR/BCP §4.8.7 are the operator steps). Destroying a tenant's DEK does not make these objects unreadable|Docker secret on the production host; sent over TLS with every request; an S3-compatible store is specified to discard it, which the repo cannot verify for the unnamed vendor, and its servers see it transiently|
 |Valkey AOF and snapshots                                |Filesystem-level encryption (LUKS)                                  |Per VM                                                          |
 |Application secrets in Git                              |SOPS with age                                                       |Age key per environment; backups in sealed envelopes            |
 |TLS private keys                                        |Owned by edge / per-service; not encrypted at rest beyond filesystem|Strict filesystem ACL (mode 0400 owned by service user)         |
@@ -490,7 +490,7 @@ Four Accepted ADRs change what this guide describes and were not reflected in it
 |Edge → Backend                                |mTLS 1.3                                                      |Private CA         |
 |Backend → DB                                  |TLS 1.3 with cert verification                                |Private CA         |
 |Backend → Valkey                              |TLS with `requirepass`                                        |Private CA         |
-|Backend → MinIO                               |TLS 1.3                                                       |Private CA         |
+|Backend → object store (S3 gateway)           |TARGET: TLS 1.3. TODAY: HTTP over the Compose network (`http://seaweedfs:8333`); TLS ends at the host Nginx storage vhost that fronts presigned URLs (`deploy/production/README.md`)|Private CA (TARGET)|
 |Backend → Workers                             |mTLS 1.3                                                      |Private CA         |
 |Backend → External (Anthropic, DoseSpot, etc.)|TLS 1.3; certificate pinning where vendor supports stable cert|Public CA + pinning|
 |Replication PG primary → replica              |TLS 1.3                                                       |Private CA         |
@@ -529,7 +529,7 @@ Root keys (offline, sealed):
 
 Operational keys (online, in secret stores):
   ├── Database encryption keys (LUKS keyslots)
-  ├── Per-tenant MinIO access keys
+  ├── Object-store keys (TODAY: one app key scoped to tenant-* by app-policy.json, read-only reader keys, one admin key; per-tenant keys are TARGET)
   ├── Per-service mTLS certs and keys
   ├── Session signing secret (Better Auth)
   ├── JWT signing keys (if used for service tokens)
@@ -818,7 +818,7 @@ All privileged operations:
 |**Public**         |Internet                      |n/a                           |n/a                                            |
 |**DMZ (VLAN 10)**  |Edge (Pangolin)               |443/TCP from Internet         |TLS to App zone                                |
 |**App (VLAN 20)**  |Backend, Workers              |mTLS from DMZ; mTLS from peers|TLS to Data; TLS to Internet (external vendors)|
-|**Data (VLAN 30)** |DB, Valkey, MinIO             |TLS from App only             |No Internet egress                             |
+|**Data (VLAN 30)** |DB, Valkey, object store      |TLS from App only             |No Internet egress                             |
 |**Admin (VLAN 40)**|Observability, Backups, MLflow|mTLS from App                 |No Internet egress                             |
 |**Mgmt (VLAN 99)** |VM management interfaces      |SSH/Proxmox admin only        |No Internet egress                             |
 
@@ -996,10 +996,10 @@ For any bulk export (>10 records):
 1. Approving authority recorded (per type above)
 1. Export operation rate-limited (1 per hour per user)
 1. Export size limit (default 10,000 records; exceeding requires elevated approval)
-1. Generated file encrypted at rest in MinIO (`tenants/<org>/exports/`)
+1. Generated file kept in the object store (design path `tenants/<org>/exports/`; the real bucket is `tenant-<orgId>`). TARGET: encrypted at rest. TODAY: plaintext at rest, host disk encryption only (no gate checks it; compliance/controls.yaml CW-AC-05). A host that went through the SeaweedFS cutover and has not removed the retired `<prefix>_minio-data` volume also holds a plaintext copy of every document outside the backups, with no recorded removal deadline (the owner decides; `deploy/production/README.md`)
 1. Download tracked: who downloaded, when, from where (IP)
 1. Time-limited download URL (24 hours)
-1. File auto-deleted from MinIO after 7 days
+1. File auto-deleted from the object store after 7 days. TARGET: a 7-day expiry rule on the exports prefix. TODAY: the only lifecycle rule the code applies is M25's `m25-835/` rule, so there is no store-side expiry rule: the application expires the file itself (M34 `tenant.bundle_expiry_sweep` after 7 days for DSAR and tenant-export bundles; M28 `fhir.bulk-export-sweeper` after `FHIR_BULK_EXPORT_TTL_HOURS` = 24 hours for FHIR bulk exports)
 1. Audit entry with severity=warn for moderate exports, severity=critical for >1000 records
 
 ### 8.6 Cross-Tenant Data Isolation
@@ -1792,7 +1792,7 @@ Use of credentials or access patterns reserved for emergency:
 
 - `postgres` superuser role
 - `chartwarden_admin` outside of normal migration runner context
-- MinIO root credentials
+- Object-store admin credentials (SeaweedFS `SEAWEEDFS_ADMIN_ACCESS_KEY` / `SEAWEEDFS_ADMIN_SECRET_KEY`; not an application credential). It is a standing credential on the host, not a sealed one: `deploy.sh` generates it into the host's production env file when absent and `object-store-provision` renders it into `s3.json` on every deploy; only operators and `scripts/object-store-copy.ts --restore` use it
 - SSH directly to production VM bypassing bastion
 - Off-site age key for SOPS decryption
 - pgBackRest off-site repo credentials
@@ -1803,7 +1803,7 @@ Use of credentials or access patterns reserved for emergency:
 |---------------------------------|-----------------------------------------------------|------------------------------------------|
 |`postgres` superuser             |Security Owner + Incident Commander (during incident)|Reason; expected duration; planned actions|
 |`chartwarden_admin` for non-migration|Security Owner                                       |Same                                      |
-|MinIO root                       |Security Owner                                       |Same                                      |
+|Object-store admin (SeaweedFS; standing credential on the host, not sealed)|Security Owner                                       |Same                                      |
 |SSH bypassing bastion            |Security Owner (during incident only)                |Same                                      |
 |Off-site age key                 |Security Owner + secondary holder                    |Reason; sealed envelope inventory check   |
 
@@ -2035,12 +2035,12 @@ M34's threat surface differs qualitatively from a clinical module: the actors mo
 |**Denial of service** — repeated public signup POSTs|`POST /api/v1/public/signup-intents`|Rate limit 5/IP/hour + `m34.self_serve_signup` flag (deny-default in Phase 1) + edge WAF.|
 |**Elevation of privilege** — a tenant org_admin reads another tenant's data via DSAR|DSAR job|RLS scopes `dsar_export_job` to `organization_id`; ABAC `dsar_export_patient_caseload_or_org_admin` re-checks each action; patient_id resolved through M5 (itself RLS-scoped).|
 |**Elevation of privilege** — a compliance officer issues a fraudulent self-grant|Tenant route|Distinct-actor rule (D16): grantor ≠ session actor. Grants are M4-audited; anomalous grant patterns surface in M33.|
-|**Cryptographic compromise** — KEK leak unwraps historical DEKs|KEK storage|KEK lives in the HSM-backed store (§4 / §8.4), not in DB or env. KEK rotation re-wraps every DEK without changing the DEK — application-transparent; `current_dek_kek_id` tracks which KEK wrapped each DEK.|
-|**Forensic evasion** — a destroyed DEK is unrecoverable; prove the destruction was lawful|Post-shred|The M22-stored, M4-audited destruction certificate references the per-module eraseFn receipts and the DEK destruction log. The DEK's absence *is* the proof; the certificate reconstructs the story without the DEK.|
+|**Cryptographic compromise** — KEK leak unwraps historical DEKs|KEK storage|TARGET: KEK lives in an HSM-backed store (§4 / §8.4), not in DB or env. TODAY: an env/secret-manager key (`M34_TENANT_KEK`, ADR-0045), not in the DB. KEK rotation re-wraps every DEK without changing the DEK — application-transparent; `current_dek_kek_id` tracks which KEK wrapped each DEK.|
+|**Forensic evasion** — a destroyed DEK is unrecoverable in post-shred backups (a pre-shred snapshot still holds it until it ages out); prove the destruction was lawful|Post-shred|The M22-stored, M4-audited destruction certificate references the per-module eraseFn receipts and the DEK destruction log. The DEK's absence in post-shred backups *is* the proof; the certificate reconstructs the story without the DEK.|
 
 ### 22.2 Encryption Boundaries — Per-Tenant DEK Lifecycle (M34 §8.2)
 
-M34 owns the **per-tenant Data Encryption Key (DEK)** that every other module's envelope-encrypted PHI is sealed under. The DEK is wrapped by a KEK held in the HSM (§4.4); only the wrapped ciphertext lives in the database, in `tenant_key_ring.current_dek_kek_wrapped_ciphertext`.
+M34 owns the **per-tenant Data Encryption Key (DEK)** that every other module's envelope-encrypted PHI is sealed under. The DEK is wrapped by a KEK (TARGET: held in an HSM, §4.4; TODAY an env/secret-manager key, `M34_TENANT_KEK`, ADR-0045); only the wrapped ciphertext lives in the database, in `tenant_key_ring.current_dek_kek_wrapped_ciphertext`.
 
 **DEK lifecycle — three SECURITY DEFINER transitions:**
 

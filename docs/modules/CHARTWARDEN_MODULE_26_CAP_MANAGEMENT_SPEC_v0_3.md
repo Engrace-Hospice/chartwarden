@@ -80,7 +80,7 @@ Module 26 is the deterministic, ledger-grade accounting of every Medicare hospic
 - **Does not refuse, delay, or modify clinical service for cap reasons.** Per D14, the cap is a payment cap under 42 CFR §418.308, not a service cap. The CoP at 42 CFR §418.52 (Patient's Rights) and the Medicare Hospice Benefit at 42 CFR §418.202 do not permit a hospice to discontinue or limit service to a patient because the agency's aggregate payment is approaching a cap. The financial consequence (post-settlement recoupment) is the hospice's to absorb; the patient's clinical care continues. M26 generates alerts that inform *operational* decisions (e.g., admission policy review, payer mix planning) — never *clinical* decisions.
 - **Does not block claim submission.** Pre-submission validation in M23 §11.A consumes M26's `CapProjectionProvider` for two rules — both warn-only per D6. A claim that would push the projected cap over 100% still submits; the warning is captured for billing-manager visibility and surfaces in the M23 validation result panel.
 - **Does not own the cost report.** M27 owns the CMS-1984-14 generation, validation, lockdown, and eCR submission. M26 publishes inputs: the per-cap-year accrual snapshot, the settlement proposal, the per-beneficiary detail. M26 does not render worksheets.
-- **Does not own document storage for PS&R files.** The raw PS&R CSV upload is stored via the M1 storage primitive (MinIO) and tracked in `cap_psr_import` with a `file_storage_key`. M22 Document Management is not a dep; the PS&R file is operational tooling, not a chart document.
+- **Does not own document storage for PS&R files.** The raw PS&R CSV upload is stored via the M1 storage primitive (the object store) and tracked in `cap_psr_import` with a `file_storage_key`. M22 Document Management is not a dep; the PS&R file is operational tooling, not a chart document.
 - **Does not own external PS&R API integration in Phase 1.** D9 — Phase 1 ingests via CSV upload. Phase 3 adds an M29-mediated MAC PS&R API adapter per region (NGS, CGS, Palmetto, WPS). The adapter taxonomy lives in M29; M26 consumes via `ExternalReportImporter` when M29 wires it.
 - **Does not own the per-tenant payer mix forecast.** Cap projections are a Medicare-only calculation. Medicaid cap (in states where it applies) is M24 territory; commercial/private-pay caps do not exist in hospice. M26's scope is strictly Medicare per 42 CFR §418.308.
 - **Does not own AI or predictive modeling.** The projection formula (D5) is deterministic linear extrapolation; the threshold bands (D7) are CMS-floor-aligned platform constants. No M32 dependency; no AI Governance scope.
@@ -282,7 +282,7 @@ Cap management in hospice EMRs is a known weak link. Most competitors handle it 
 │                       'first_coast','novitas')                           │
 │  psr_period_from DATE                                                    │
 │  psr_period_to   DATE                                                    │
-│  file_storage_key TEXT      (MinIO object key)                           │
+│  file_storage_key TEXT      (object-store key)                           │
 │  file_sha256     CHAR(64)                                                │
 │  imported_at     TIMESTAMPTZ                                             │
 │  imported_by     UUID                                                    │
@@ -858,7 +858,7 @@ export const capPsrImport = pgTable('cap_psr_import', {
   macRegion: capMacRegion('mac_region').notNull(),
   psrPeriodFrom: date('psr_period_from').notNull(),
   psrPeriodTo: date('psr_period_to').notNull(),
-  fileStorageKey: text('file_storage_key').notNull(),                           // MinIO object key
+  fileStorageKey: text('file_storage_key').notNull(),                           // object-store key
   fileSha256: char('file_sha256', { length: 64 }).notNull(),
   importedAt: timestamp('imported_at', { withTimezone: true }).notNull().defaultNow(),
   importedBy: uuid('imported_by').notNull(),

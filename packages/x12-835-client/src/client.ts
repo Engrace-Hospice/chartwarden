@@ -32,9 +32,9 @@ export interface X12835HttpPort {
   request(req: X12835HttpRequest): Promise<X12835HttpResponse>;
 }
 
-/** Request to parse a raw 835 file already staged in MinIO (the worker reads it by key). */
+/** Request to parse a raw 835 file already staged in the object store (the worker reads it by key). */
 export interface Parse835Request {
-  /** The MinIO object key of the raw 835 file. */
+  /** The object key of the raw 835 file (the sidecar's wire name `minioObjectKey` is mapped to this at the code boundary). */
   readonly objectKey: string;
   /** The program the M25 puller pulled this 835 over (echoed onto the parsed envelope). */
   readonly payerProgram: PayerProgram;

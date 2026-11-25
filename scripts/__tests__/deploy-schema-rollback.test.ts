@@ -8,6 +8,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,11 +16,11 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import {
-  OBJECT_STORE_ENV_PAIRS,
-  type ObjectStoreEnvPair,
+  LEFTOVER_MINIO_ENV_NAMES,
+  OBJECT_STORE_ENV_NAMES,
   envEntry,
   syntheticValue,
-} from "./object-store-env-pairs";
+} from "./deploy-env-helpers";
 
 // #861 (CW-QA-0017) — fault injection for deploy/production/deploy.sh's rollback decision. The real script runs
 // against a stubbed `docker` that fakes the migration ledger, the migrate run and each later failure point; the
@@ -68,9 +69,10 @@ case "$*" in
     exit "\${STUB_PROVISION_EXIT:-0}" ;;
   *"--force-recreate api worker web docling-worker"*) exit "\${STUB_UP_EXIT:-0}" ;;
   *"volume ls"*) [ -z "\${STUB_MINIO_VOLUME:-}" ] || echo "\$STUB_MINIO_VOLUME" ;;
-  *"--entrypoint bun object-store-provision -e console.log"*) if [ -n "\${STUB_CUTOVER_RECORDED:-}" ]; then echo recorded; else echo absent; fi ;;
-  *"run --rm --no-deps object-store-migrate"*) exit "\${STUB_COPY_EXIT:-0}" ;;
-  *"ps -aq api worker"*) printf 'cid-api\\ncid-worker\\n' ;;
+  *"up -d --no-deps"*"fluent-bit"*) exit "\${STUB_FLUENT_UP_EXIT:-0}" ;;
+  *"ps -q fluent-bit"*) [ -n "\${STUB_FLUENT_NO_CONTAINER:-}" ] || echo cid-fluent ;;
+  *"inspect"*)
+    printf 'PATH=/usr/bin\\nAUDIT_SINK_HOST=api\\nAUDIT_SINK_PATH=%s\\n' "\${STUB_FLUENT_PATH:-/api/v1/webhooks/object-store/access-log}" ;;
 esac
 exit 0
 `;
@@ -91,6 +93,21 @@ writeFileSync(join(binDir, "curl"), CURL_STUB);
 chmodSync(join(binDir, "curl"), 0o755);
 const WEBHOOK = "https://hooks.example.test/services/T000/B000/s3cr3t-token";
 
+// A `cp` that dies half way through copying the OLD backup secret (it leaves a partial destination behind, then fails) and
+// is the real cp for everything else deploy.sh copies. Prepended to PATH only by a scenario that asks for it.
+const failCpBin = join(scratch, "fail-cp-bin");
+mkdirSync(failCpBin);
+writeFileSync(
+  join(failCpBin, "cp"),
+  `#!/bin/sh
+case "$*" in
+  *backup_source_minio_secret_key*) for last; do :; done; printf 'partial' > "$last"; exit 1 ;;
+esac
+exec /bin/cp "$@"
+`,
+);
+chmodSync(join(failCpBin, "cp"), 0o755);
+
 const OLD_API = "ghcr.io/o/chartwarden:sha-old";
 const NEW_API = "ghcr.io/o/chartwarden:sha-new";
 const BASE_LEDGER = ["0001_init.sql", "1287_m41_commercial_destruction_grants.sql"];
@@ -110,16 +127,30 @@ interface Scenario {
   readonly hangProvisionSeconds?: number;
   /** smoke.sh makes the deploy dir read-only, so the EXIT-trap cleanup fails. */
   readonly lockDir?: boolean;
-  /** The host still has a MinIO volume (the one-time SeaweedFS cutover is due unless recorded). */
+  /** The host still has the retired MinIO volume and no cutover marker (deploy.sh must not care any more). */
   readonly legacyMinio?: boolean;
-  /** The seaweedfs-config volume records a completed cutover (the marker file itself is absent). */
-  readonly cutoverRecorded?: boolean;
-  /** Exit status of the MinIO -> SeaweedFS mirror pass. */
-  readonly copyExit?: number;
-  /** The object-store credential lines of `.env.production`. Default: a host that predates the rename (MINIO_* only). */
+  /** The object-store credential lines of `.env.production`. Default: canonical names plus the leftover MINIO_* lines. */
   readonly objectStoreEnv?: readonly string[];
-  /** Exercise mismatch refusal before deploy.sh generates any unrelated compatibility secret. */
+  /** Leave the Docling bearer out, to see deploy.sh generate it. */
   readonly omitDoclingWorkerToken?: boolean;
+  /** The host has compose.backup.yml next to compose.yml (the overlay is added when its source key is configured). */
+  readonly backupOverlay?: boolean;
+  /** Extra `.env.production` lines (the backup overlay's source key, old or new name). */
+  readonly extraEnv?: readonly string[];
+  /** Files placed in the host's `secrets/` directory before the run, name -> `{ content, mode }` (mode default 0400). */
+  readonly secretFiles?: Readonly<
+    Record<string, { readonly content: string; readonly mode?: number }>
+  >;
+  /** The AUDIT_SINK_PATH the RUNNING fluent-bit container carries (default: the canonical audit path). */
+  readonly fluentPath?: string;
+  /** `up -d fluent-bit` exits with this status. */
+  readonly fluentUpExit?: number;
+  /** `ps -q fluent-bit` finds no container. */
+  readonly fluentNoContainer?: boolean;
+  /** Permission bits of the host's `secrets/` directory itself (default 0700), applied after the files are written. */
+  readonly secretsDirMode?: number;
+  /** The `cp` of the old backup secret dies half way through, leaving a partial destination behind. */
+  readonly failSecretCopy?: boolean;
   /** `.env.production` ends without a newline (deploy.sh must not glue an appended line onto the last one). */
   readonly noTrailingNewline?: boolean;
   /**
@@ -145,7 +176,7 @@ interface Outcome {
   readonly curlArgs: string;
   /** The -K config curl read on stdin. */
   readonly curlStdin: string;
-  /** `.object-store-cutover` exists after the run. */
+  /** `.object-store-cutover` exists after the run (deploy.sh no longer writes it). */
   readonly cutoverMarker: boolean;
   /** `.env.production` as the host had it before the run. */
   readonly envBefore: string;
@@ -153,6 +184,8 @@ interface Outcome {
   readonly previousReleaseEnv: string;
   /** Every entry in the deploy dir after the run (a leftover `.env.production.*` staging file shows here). */
   readonly files: readonly string[];
+  /** The host's `secrets/` directory after the run: name -> content and permission bits. Empty when it does not exist. */
+  readonly secrets: Readonly<Record<string, { readonly content: string; readonly mode: number }>>;
 }
 
 const readIfExists = (p: string): string => (existsSync(p) ? readFileSync(p, "utf8") : "");
@@ -165,10 +198,11 @@ interface Prepared {
   readonly envBefore: string;
 }
 
-/** A host that predates the rename: the object-store credentials exist under the MINIO_* names only. */
-const LEGACY_OBJECT_STORE_ENV: readonly string[] = OBJECT_STORE_ENV_PAIRS.map(
-  (p) => `${p.legacy}=${syntheticValue(p.legacy, "old")}`,
-);
+/** A live host: the canonical names, plus the MINIO_* aliases the compatibility release left behind (unused now). */
+const DEFAULT_OBJECT_STORE_ENV: readonly string[] = [
+  ...OBJECT_STORE_ENV_NAMES.map((n) => `${n}=${syntheticValue(n, "new")}`),
+  ...LEFTOVER_MINIO_ENV_NAMES.map((n) => `${n}=${syntheticValue(n, "old")}`),
+];
 
 function prepare(s: Scenario): Prepared {
   const dir = mkdtempSync(join(scratch, "host-"));
@@ -183,6 +217,7 @@ function prepare(s: Scenario): Prepared {
   );
   chmodSync(join(dir, "smoke.sh"), 0o755);
   writeFileSync(join(dir, "compose.yml"), "services: {}\n");
+  if (s.backupOverlay) writeFileSync(join(dir, "compose.backup.yml"), "services: {}\n");
   mkdirSync(join(dir, "object-store"));
   writeFileSync(join(dir, "object-store", "audit.json"), "{}\n");
   writeFileSync(join(dir, "object-store", "fluent-bit.yaml"), "service: {}\n");
@@ -190,7 +225,8 @@ function prepare(s: Scenario): Prepared {
     `CHARTWARDEN_IMAGE=${OLD_API}`,
     "CHARTWARDEN_WEB_IMAGE=ghcr.io/o/chartwarden-web:sha-old",
     ...(s.omitDoclingWorkerToken ? [] : ["DOCLING_WORKER_TOKEN=x"]),
-    ...(s.objectStoreEnv ?? LEGACY_OBJECT_STORE_ENV),
+    ...(s.objectStoreEnv ?? DEFAULT_OBJECT_STORE_ENV),
+    ...(s.extraEnv ?? []),
     "CHARTWARDEN_DESTRUCTION_PASSWORD=x",
     ...(s.alert?.via === "legacy-env-file" && s.alert.url
       ? [`DEPLOY_ALERT_WEBHOOK_URL=${s.alert.url}`]
@@ -198,6 +234,14 @@ function prepare(s: Scenario): Prepared {
   ];
   const envBefore = `${envLines.join("\n")}${s.noTrailingNewline ? "" : "\n"}`;
   writeFileSync(join(dir, ".env.production"), envBefore);
+  if (s.secretFiles) {
+    mkdirSync(join(dir, "secrets"), { mode: 0o700 });
+    for (const [name, file] of Object.entries(s.secretFiles)) {
+      writeFileSync(join(dir, "secrets", name), file.content);
+      chmodSync(join(dir, "secrets", name), file.mode ?? 0o400);
+    }
+    if (s.secretsDirMode !== undefined) chmodSync(join(dir, "secrets"), s.secretsDirMode);
+  }
   if (s.alert?.via === "file" && s.alert.url) {
     writeFileSync(join(dir, ".deploy-alert.env"), `DEPLOY_ALERT_WEBHOOK_URL=${s.alert.url}\n`, {
       mode: 0o600,
@@ -211,7 +255,7 @@ function prepare(s: Scenario): Prepared {
     log,
     envBefore,
     env: {
-      PATH: `${binDir}:/usr/bin:/bin`,
+      PATH: `${s.failSecretCopy ? `${failCpBin}:` : ""}${binDir}:/usr/bin:/bin`,
       CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED: "1",
       CHARTWARDEN_FITNESS_ROOT: fixtureRoot,
       STUB_LOG: log,
@@ -228,9 +272,10 @@ function prepare(s: Scenario): Prepared {
       STUB_LEDGER_FAIL: s.ledgerFail ?? "",
       STUB_CURL_EXIT: String(s.alert?.curlExit ?? 0),
       STUB_MINIO_VOLUME: s.legacyMinio ? "wardenx_minio-data" : "",
-      STUB_CUTOVER_RECORDED: s.cutoverRecorded ? "1" : "",
-      STUB_COPY_EXIT: String(s.copyExit ?? 0),
       STUB_SLEEP: s.hangProvisionSeconds ? String(s.hangProvisionSeconds) : "",
+      STUB_FLUENT_PATH: s.fluentPath ?? "/api/v1/webhooks/object-store/access-log",
+      STUB_FLUENT_UP_EXIT: String(s.fluentUpExit ?? 0),
+      STUB_FLUENT_NO_CONTAINER: s.fluentNoContainer ? "1" : "",
       ...(s.alert?.via === "env" && s.alert.url ? { DEPLOY_ALERT_WEBHOOK_URL: s.alert.url } : {}),
     },
   };
@@ -256,7 +301,23 @@ function collect(p: Prepared, code: number, out: string): Outcome {
     envBefore: p.envBefore,
     previousReleaseEnv: readIfExists(join(dir, ".env.production.previous-release")),
     files: readdirSync(dir),
+    secrets: readSecrets(join(dir, "secrets")),
   };
+}
+
+function readSecrets(
+  secretsDir: string,
+): Record<string, { readonly content: string; readonly mode: number }> {
+  if (!existsSync(secretsDir)) return {};
+  chmodSync(secretsDir, 0o700); // a scenario may have left the directory inaccessible; read it back as its owner
+  return Object.fromEntries(
+    readdirSync(secretsDir).map((name) => {
+      const file = join(secretsDir, name);
+      const mode = statSync(file).mode & 0o777;
+      if ((mode & 0o400) === 0) chmodSync(file, 0o600); // an unreadable fixture: reported as it was, read back as owner
+      return [name, { content: readFileSync(file, "utf8"), mode }];
+    }),
+  );
 }
 
 function deploy(s: Scenario): Outcome {
@@ -315,49 +376,37 @@ describe.skipIf(BUN === "")("deploy.sh rollback decision under injected failures
     expect(oldRestarts(o)).toBe(0);
   });
 
-  describe("one-time SeaweedFS cutover", () => {
-    const index = (o: Outcome, needle: string): number =>
-      o.calls.findIndex((c) => c.includes(needle));
+  // The one-time MinIO -> SeaweedFS cutover is gone: a host that still has the retired MinIO volume (and no marker, and
+  // no record in the seaweedfs-config volume) is deployed exactly like any other.
+  describe("retired MinIO cutover", () => {
+    const callsMatching = (o: Outcome, re: RegExp): string[] => o.calls.filter((c) => re.test(c));
 
-    it("a failed mirror undoes the cutover (MinIO back on its port, the stopped api/worker started) before any migration", () => {
-      const o = deploy({ legacyMinio: true, copyExit: 1 });
-      expect(o.code, o.out).toBe(1);
+    it("a host with a leftover minio-data volume and no marker deploys normally: no volume query, no stop, no copy, no marker", () => {
+      const o = deploy({ legacyMinio: true });
+      expect(o.code, o.out).toBe(0);
+      expect(callsMatching(o, /volume ls/)).toEqual([]);
+      expect(
+        callsMatching(o, /stop api worker|legacy-minio|object-store-migrate|--profile/),
+      ).toEqual([]);
       expect(o.cutoverMarker).toBe(false);
-      const stop = index(o, "stop api worker");
-      const copy = index(o, "object-store-migrate");
-      expect(stop).toBeGreaterThan(-1);
-      expect(copy).toBeGreaterThan(stop);
-      expect(index(o, "stop seaweedfs")).toBeGreaterThan(copy);
-      expect(index(o, "-f - --profile legacy-minio up")).toBeGreaterThan(copy);
-      expect(index(o, "start cid-api cid-worker")).toBeGreaterThan(copy);
-      expect(o.calls.some((c) => c.includes("scripts/db/migrate.ts"))).toBe(false);
-      expect(oldRestarts(o)).toBe(0); // the stopped containers come back unchanged, not recreated
+      expect(oldRestarts(o)).toBe(0);
     });
 
-    it("a failure after the cutover recreates the previous release (on SeaweedFS), never leaves the api stopped", () => {
-      const o = deploy({ legacyMinio: true, migrateExit: 1 });
-      expect(o.code, o.out).toBe(1);
-      expect(o.cutoverMarker).toBe(true);
-      expect(o.calls.some((c) => c.includes('writeFileSync("/config/cutover-done"'))).toBe(true);
-      expect(oldRestarts(o), o.out).toBe(1);
+    it("a failure after migrating restores the previous release the ordinary way, with no cutover banner", () => {
+      const o = deploy({ legacyMinio: true, smokeExit: 1 });
+      expectRolledBack(o, true);
+      expect(o.out).not.toContain("cutover");
     });
 
-    it("an operator hold after the cutover says the api is STOPPED and how to bring it back", () => {
+    it("an operator hold carries no 'app is STOPPED' exception", () => {
       const o = deploy({
         legacyMinio: true,
         applied: ["1291_m1_drop_legacy.sql"],
         provisionExit: 1,
       });
       expectHeld(o);
-      expect(o.out).toContain("THE APP IS DOWN");
-    });
-
-    it("a cutover recorded in the volume is never re-run when the marker file is lost", () => {
-      const o = deploy({ legacyMinio: true, cutoverRecorded: true });
-      expect(o.code, o.out).toBe(0);
-      expect(o.cutoverMarker).toBe(true);
-      expect(o.calls.some((c) => c.includes("stop api worker"))).toBe(false);
-      expect(o.calls.some((c) => c.includes("object-store-migrate"))).toBe(false);
+      expect(o.out).not.toContain("THE APP IS DOWN");
+      expect(o.out).not.toContain("EXCEPTION");
     });
   });
 
@@ -473,224 +522,568 @@ describe.skipIf(BUN === "")("deploy.sh rollback decision under injected failures
   });
 });
 
-// Object-store credential names (additive compatibility release). deploy.sh reconciles each canonical <-> legacy pair in
-// `.env.production` BEFORE the rollback backup is taken: copy old->new, copy new->old, generate one value for both, accept
-// equal values, and refuse different ones (exit 78) before any docker call. No value is ever printed, none is rotated.
-describe.skipIf(BUN === "")("deploy.sh object-store credential names", () => {
-  type Mode = "old-only" | "new-only" | "both-equal" | "both-different" | "neither";
-  const oldValue = (p: ObjectStoreEnvPair): string => syntheticValue(p.legacy, "old");
-  const newValue = (p: ObjectStoreEnvPair): string => syntheticValue(p.canonical, "new");
-
-  function pairLines(p: ObjectStoreEnvPair, mode: Mode): string[] {
-    switch (mode) {
-      case "old-only":
-        return [`${p.legacy}=${oldValue(p)}`];
-      case "new-only":
-        return [`${p.canonical}=${newValue(p)}`];
-      case "both-equal":
-        return [`${p.canonical}=${newValue(p)}`, `${p.legacy}=${newValue(p)}`];
-      case "both-different":
-        return [`${p.canonical}=${newValue(p)}`, `${p.legacy}=${oldValue(p)}`];
-      case "neither":
-        return [];
-    }
-  }
-
-  /** The env lines for all five pairs, each in the given mode (or the mode `modeOf` picks for it). */
-  const envFor = (modeOf: Mode | ((p: ObjectStoreEnvPair, i: number) => Mode)): string[] =>
-    OBJECT_STORE_ENV_PAIRS.flatMap((p, i) =>
-      pairLines(p, typeof modeOf === "function" ? modeOf(p, i) : modeOf),
-    );
+// Object-store credentials. deploy.sh makes sure the five canonical names compose.yml reads exist in `.env.production`
+// BEFORE the rollback backup is taken: an absent one is generated once, an existing one is never touched or rotated, and no
+// value is ever printed. The retired MINIO_* rollback aliases are neither read nor written; a host that still carries them
+// keeps booting.
+describe.skipIf(BUN === "")("deploy.sh object-store credentials", () => {
+  const value = (name: string): string => syntheticValue(name, "new");
+  const canonicalEnv = (): string[] => OBJECT_STORE_ENV_NAMES.map((n) => `${n}=${value(n)}`);
+  const leftoverEnv = (): string[] =>
+    LEFTOVER_MINIO_ENV_NAMES.map((n) => `${n}=${syntheticValue(n, "old")}`);
 
   /** Every synthetic value a fixture could hold: none of them may ever appear in deploy output. */
-  const allSyntheticValues = OBJECT_STORE_ENV_PAIRS.flatMap((p) => [oldValue(p), newValue(p)]);
+  const allSyntheticValues = [
+    ...OBJECT_STORE_ENV_NAMES.map(value),
+    ...LEFTOVER_MINIO_ENV_NAMES.map((n) => syntheticValue(n, "old")),
+  ];
   const expectNoSecretInOutput = (o: Outcome): void => {
     for (const v of allSyntheticValues) expect(o.out).not.toContain(v);
   };
+  const minioLines = (env: string): string[] =>
+    env.split("\n").filter((l) => l.startsWith("MINIO_"));
 
-  it("old names only (an existing host): each new name gets the exact old value, the old lines stay", () => {
-    const o = deploy({ objectStoreEnv: envFor("old-only") });
+  it("canonical names only (the template's shape): succeeds, writes nothing, creates no MINIO_* alias", () => {
+    const o = deploy({ objectStoreEnv: canonicalEnv() });
     expect(o.code, o.out).toBe(0);
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      expect(envEntry(o.env, p.canonical), p.canonical).toEqual({ value: oldValue(p), count: 1 });
-      expect(envEntry(o.env, p.legacy), p.legacy).toEqual({ value: oldValue(p), count: 1 });
-      expect(o.out).toContain(`copied ${p.legacy} to ${p.canonical} in .env.production`);
+    for (const n of OBJECT_STORE_ENV_NAMES) {
+      expect(envEntry(o.env, n), n).toEqual({ value: value(n), count: 1 });
     }
+    expect(minioLines(o.env)).toEqual([]);
+    expect(o.out).not.toMatch(/(copied|generated) (SEAWEEDFS|OBJECT_STORE|MINIO)_/);
     expectNoSecretInOutput(o);
   });
 
-  it("new names only (a fresh host): each legacy alias gets the exact new value, the new lines stay", () => {
-    const o = deploy({ objectStoreEnv: envFor("new-only") });
+  it("a live host that still has the MINIO_* lines keeps booting: they are left byte-for-byte, nothing is copied either way", () => {
+    const o = deploy({ objectStoreEnv: [...canonicalEnv(), ...leftoverEnv()] });
     expect(o.code, o.out).toBe(0);
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      expect(envEntry(o.env, p.canonical), p.canonical).toEqual({ value: newValue(p), count: 1 });
-      expect(envEntry(o.env, p.legacy), p.legacy).toEqual({ value: newValue(p), count: 1 });
-      expect(o.out).toContain(`copied ${p.canonical} to ${p.legacy} in .env.production`);
+    for (const n of OBJECT_STORE_ENV_NAMES) {
+      expect(envEntry(o.env, n), n).toEqual({ value: value(n), count: 1 });
     }
+    for (const n of LEFTOVER_MINIO_ENV_NAMES) {
+      expect(envEntry(o.env, n), n).toEqual({ value: syntheticValue(n, "old"), count: 1 });
+    }
+    expect(o.out).not.toMatch(/(copied|generated) (SEAWEEDFS|OBJECT_STORE|MINIO)_/);
     expectNoSecretInOutput(o);
   });
 
-  it("both names set and equal: succeeds and writes nothing", () => {
-    const o = deploy({ objectStoreEnv: envFor("both-equal") });
+  it("a canonical name that DIFFERS from its old MINIO_* twin is no longer an error: the canonical value wins, nothing exits 78", () => {
+    const o = deploy({
+      objectStoreEnv: [
+        `SEAWEEDFS_APP_SECRET_KEY=${value("SEAWEEDFS_APP_SECRET_KEY")}`,
+        `MINIO_APP_SECRET_KEY=${syntheticValue("MINIO_APP_SECRET_KEY", "old")}`,
+        ...canonicalEnv().filter((l) => !l.startsWith("SEAWEEDFS_APP_SECRET_KEY=")),
+      ],
+    });
     expect(o.code, o.out).toBe(0);
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      expect(envEntry(o.env, p.canonical), p.canonical).toEqual({ value: newValue(p), count: 1 });
-      expect(envEntry(o.env, p.legacy), p.legacy).toEqual({ value: newValue(p), count: 1 });
-    }
-    expect(o.out).not.toMatch(/copied (SEAWEEDFS|OBJECT_STORE|MINIO)_/);
-    expect(o.out).not.toMatch(/generated (SEAWEEDFS|OBJECT_STORE|MINIO)_/);
+    expect(o.out).not.toContain("MISMATCH");
+    expect(envEntry(o.env, "SEAWEEDFS_APP_SECRET_KEY").value).toBe(
+      value("SEAWEEDFS_APP_SECRET_KEY"),
+    );
     expectNoSecretInOutput(o);
   });
 
-  it("neither name set: ONE value is generated and written under both names, and never printed", () => {
+  it("a fresh host (none of the names set): each canonical name is generated once, never printed, no MINIO_* is written", () => {
     const o = deploy({ objectStoreEnv: [] });
     expect(o.code, o.out).toBe(0);
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      const canonical = envEntry(o.env, p.canonical);
-      const legacy = envEntry(o.env, p.legacy);
-      expect(canonical.count, p.canonical).toBe(1);
-      expect(legacy.count, p.legacy).toBe(1);
-      expect(canonical.value, p.canonical).toBeTruthy();
-      expect(legacy.value, `${p.legacy} must equal ${p.canonical}`).toBe(canonical.value);
-      expect(o.out).toContain(`generated ${p.canonical} and ${p.legacy} in .env.production`);
-      // The generated value (a secret for every pair but the two account names) is not in the log.
-      if (!p.canonical.endsWith("ACCESS_KEY")) {
-        expect(canonical.value?.length ?? 0, p.canonical).toBeGreaterThanOrEqual(32);
-        expect(o.out).not.toContain(canonical.value as string);
+    for (const n of OBJECT_STORE_ENV_NAMES) {
+      const entry = envEntry(o.env, n);
+      expect(entry.count, n).toBe(1);
+      expect(entry.value, n).toBeTruthy();
+      expect(o.out).toContain(`generated ${n} in .env.production`);
+      if (!n.endsWith("ACCESS_KEY")) {
+        // A secret for every name but the two account names: long, and absent from the log.
+        expect(entry.value?.length ?? 0, n).toBeGreaterThanOrEqual(32);
+        expect(o.out).not.toContain(entry.value as string);
       }
     }
+    expect(minioLines(o.env)).toEqual([]);
     // The admin and app accounts must differ (seaweedfs-identities.ts refuses the same name for both).
     expect(envEntry(o.env, "SEAWEEDFS_ADMIN_ACCESS_KEY").value).toBe("chartwarden-seaweedfs-admin");
     expect(envEntry(o.env, "SEAWEEDFS_APP_ACCESS_KEY").value).toBe("chartwarden-app");
+    const secrets = [
+      "SEAWEEDFS_ADMIN_SECRET_KEY",
+      "SEAWEEDFS_APP_SECRET_KEY",
+      "OBJECT_STORE_AUDIT_WEBHOOK_TOKEN",
+    ];
+    expect(new Set(secrets.map((n) => envEntry(o.env, n).value)).size).toBe(secrets.length);
   });
 
-  it("each pair is reconciled by its own state in one run", () => {
-    const modes: Mode[] = ["old-only", "new-only", "both-equal", "neither", "old-only"];
-    const o = deploy({ objectStoreEnv: envFor((_p, i) => modes[i] ?? "neither") });
-    expect(o.code, o.out).toBe(0);
-    OBJECT_STORE_ENV_PAIRS.forEach((p, i) => {
-      const canonical = envEntry(o.env, p.canonical);
-      const legacy = envEntry(o.env, p.legacy);
-      expect(canonical.count, p.canonical).toBe(1);
-      expect(legacy.count, p.legacy).toBe(1);
-      expect(legacy.value, p.legacy).toBe(canonical.value);
-      if (modes[i] === "old-only") expect(canonical.value).toBe(oldValue(p));
-      if (modes[i] === "new-only" || modes[i] === "both-equal")
-        expect(canonical.value).toBe(newValue(p));
-    });
-    expectNoSecretInOutput(o);
-  });
-
-  it.each(OBJECT_STORE_ENV_PAIRS.map((p) => [p.canonical, p] as const))(
-    "%s and its alias set to different values: exit 78 before any docker call, nothing written, no value shown",
-    (_name, mismatched) => {
-      const o = deploy({
-        objectStoreEnv: envFor((p) => (p === mismatched ? "both-different" : "both-equal")),
-      });
-      expect(o.code, o.out).toBe(78);
-      expect(o.calls, "docker must not be called").toEqual([]);
-      expect(o.env).toBe(o.envBefore);
-      expect(o.files.filter((f) => f.startsWith(".env.production."))).toEqual([]);
-      expect(o.previousReleaseSaved).toBe(false);
-      expect(o.out).toContain("OBJECT-STORE ENV MISMATCH");
-      expect(o.out).toContain(`${mismatched.canonical} and ${mismatched.legacy}`);
-      expect(o.out).toContain("values not shown");
-      expectNoSecretInOutput(o);
-    },
-  );
-
-  it("a mismatch in one pair blocks the whole run: the other pairs are not half-migrated", () => {
+  it("only the missing names are generated; the others keep their value", () => {
     const o = deploy({
-      objectStoreEnv: envFor((_p, i) => (i === 0 ? "both-different" : "old-only")),
-    });
-    expect(o.code, o.out).toBe(78);
-    expect(o.calls).toEqual([]);
-    expect(o.env).toBe(o.envBefore); // byte-identical: no canonical name was created for the clean pairs
-    for (const p of OBJECT_STORE_ENV_PAIRS.slice(1)) {
-      expect(envEntry(o.env, p.canonical).count, p.canonical).toBe(0);
-    }
-  });
-
-  it("a mismatch refuses before generating an unrelated missing Docling token", () => {
-    const o = deploy({
-      omitDoclingWorkerToken: true,
-      objectStoreEnv: envFor((_p, i) => (i === 0 ? "both-different" : "both-equal")),
-    });
-    expect(o.code, o.out).toBe(78);
-    expect(o.calls).toEqual([]);
-    expect(o.env).toBe(o.envBefore);
-    expect(envEntry(o.env, "DOCLING_WORKER_TOKEN").count).toBe(0);
-    expect(o.out).not.toContain("generated DOCLING_WORKER_TOKEN");
-  });
-
-  it("every mismatched pair is named in one failure", () => {
-    const o = deploy({ objectStoreEnv: envFor("both-different") });
-    expect(o.code, o.out).toBe(78);
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      expect(o.out).toContain(`${p.canonical} and ${p.legacy}`);
-    }
-    expectNoSecretInOutput(o);
-  });
-
-  it("a mismatch alerts with step object-store-env and exit 78, carrying no value", () => {
-    const o = deploy({
-      objectStoreEnv: envFor((_p, i) => (i === 1 ? "both-different" : "both-equal")),
-      alert: { via: "env", url: WEBHOOK },
-    });
-    expect(o.code, o.out).toBe(78);
-    expect(o.alertBody).toMatchObject({
-      step: "object-store-env",
-      exit_code: 78,
-      operator_decision_required: false,
-      applied_migrations: [],
-    });
-    for (const v of allSyntheticValues) expect(JSON.stringify(o.alertBody)).not.toContain(v);
-  });
-
-  it("copies the raw value verbatim: spaces, quotes, `=`, `$`, `#`, `&`, `/` and backslashes survive", () => {
-    const raw = 'a=b/c&d$HOME#e "q" \\n tail ';
-    const first = OBJECT_STORE_ENV_PAIRS[0] as ObjectStoreEnvPair;
-    // Pair 0 old-only with the awkward value; the other four pairs already agree (two lines each).
-    const o = deploy({
-      objectStoreEnv: [`${first.legacy}=${raw}`, ...envFor("both-equal").slice(2)],
+      objectStoreEnv: canonicalEnv().filter(
+        (l) => !l.startsWith("SEAWEEDFS_ADMIN_SECRET_KEY=") && !l.startsWith("OBJECT_STORE_AUDIT"),
+      ),
     });
     expect(o.code, o.out).toBe(0);
-    expect(envEntry(o.env, first.canonical)).toEqual({ value: raw, count: 1 });
-    expect(envEntry(o.env, first.legacy)).toEqual({ value: raw, count: 1 });
+    expect(o.out).toContain("generated SEAWEEDFS_ADMIN_SECRET_KEY in .env.production");
+    expect(o.out).toContain("generated OBJECT_STORE_AUDIT_WEBHOOK_TOKEN in .env.production");
+    expect(o.out).not.toContain("generated SEAWEEDFS_APP");
+    expect(envEntry(o.env, "SEAWEEDFS_APP_SECRET_KEY")).toEqual({
+      value: value("SEAWEEDFS_APP_SECRET_KEY"),
+      count: 1,
+    });
+  });
+
+  it("a host that has the MINIO_* names ONLY (never ran the compatibility release) gets fresh canonical values; its MINIO_* lines are not read or changed", () => {
+    const o = deploy({ objectStoreEnv: leftoverEnv() });
+    expect(o.code, o.out).toBe(0);
+    for (const n of OBJECT_STORE_ENV_NAMES) expect(envEntry(o.env, n).count, n).toBe(1);
+    for (const n of LEFTOVER_MINIO_ENV_NAMES) {
+      expect(envEntry(o.env, n), n).toEqual({ value: syntheticValue(n, "old"), count: 1 });
+    }
+    expectNoSecretInOutput(o);
   });
 
   it("an env file with no trailing newline never has an appended line glued onto its last line", () => {
-    const o = deploy({ objectStoreEnv: envFor("old-only"), noTrailingNewline: true });
+    const o = deploy({ objectStoreEnv: [], noTrailingNewline: true });
     expect(o.code, o.out).toBe(0);
     expect(envEntry(o.env, "CHARTWARDEN_DESTRUCTION_PASSWORD")).toEqual({ value: "x", count: 1 });
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      expect(envEntry(o.env, p.canonical), p.canonical).toEqual({ value: oldValue(p), count: 1 });
-    }
+    for (const n of OBJECT_STORE_ENV_NAMES) expect(envEntry(o.env, n).count, n).toBe(1);
   });
 
-  it("the rollback backup is taken AFTER the reconciliation: a failed deploy restores an env that still carries both names", () => {
-    const o = deploy({ objectStoreEnv: envFor("old-only"), smokeExit: 1 });
+  it("the Docling bearer is generated like before when missing", () => {
+    const o = deploy({ objectStoreEnv: canonicalEnv(), omitDoclingWorkerToken: true });
+    expect(o.code, o.out).toBe(0);
+    expect(o.out).toContain("generated DOCLING_WORKER_TOKEN in .env.production");
+    expect(envEntry(o.env, "DOCLING_WORKER_TOKEN").count).toBe(1);
+  });
+
+  it("the rollback backup is taken AFTER the generation: a failed deploy restores an env that still carries the generated names", () => {
+    const o = deploy({ objectStoreEnv: [], smokeExit: 1 });
     expectRolledBack(o, true);
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      expect(envEntry(o.env, p.canonical), p.canonical).toEqual({ value: oldValue(p), count: 1 });
-      expect(envEntry(o.env, p.legacy), p.legacy).toEqual({ value: oldValue(p), count: 1 });
-    }
-    expectNoSecretInOutput(o);
+    for (const n of OBJECT_STORE_ENV_NAMES) expect(envEntry(o.env, n).count, n).toBe(1);
   });
 
-  it("an operator hold after a contract migration still leaves both names identical in the saved previous-release env", () => {
+  it("an operator hold after a contract migration saves a previous-release env that carries the same names", () => {
     const o = deploy({
-      objectStoreEnv: envFor("new-only"),
+      objectStoreEnv: canonicalEnv(),
       applied: ["1291_m1_drop_legacy.sql"],
       smokeExit: 1,
     });
     expectHeld(o);
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      const canonical = envEntry(o.previousReleaseEnv, p.canonical);
-      expect(canonical, p.canonical).toEqual({ value: newValue(p), count: 1 });
-      expect(envEntry(o.previousReleaseEnv, p.legacy), p.legacy).toEqual(canonical);
+    for (const n of OBJECT_STORE_ENV_NAMES) {
+      expect(envEntry(o.previousReleaseEnv, n), n).toEqual({ value: value(n), count: 1 });
     }
     expect(o.previousReleaseEnv).toContain(`CHARTWARDEN_IMAGE=${OLD_API}`);
+  });
+
+  it("deploy.sh never references the retired aliases: no MINIO_*, no legacy-minio profile, no mismatch exit", () => {
+    const script = readFileSync(DEPLOY, "utf8");
+    expect(script).not.toMatch(/MINIO_(ROOT|APP|ACCESS_LOG)/);
+    expect(script).not.toContain("legacy-minio");
+    expect(script).not.toContain("OBJECT_STORE_ENV_PAIRS");
+    expect(script).not.toMatch(/exit 78/);
+  });
+});
+
+// Backup-overlay names. compose.backup.yml reads BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY and the secret file
+// secrets/backup_source_object_store_secret_key; a live host still has the OLD names (BACKUP_SOURCE_MINIO_ACCESS_KEY and
+// secrets/backup_source_minio_secret_key). deploy.sh copies them across, additively and idempotently, before anything is
+// started or backed up: an existing new value or file is never changed, no value is printed, the old ones stay in place.
+describe.skipIf(BUN === "")("deploy.sh backup-overlay name migration", () => {
+  const OLD_KEY = "BACKUP_SOURCE_MINIO_ACCESS_KEY";
+  const NEW_KEY = "BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY";
+  const OLD_SECRET = "backup_source_minio_secret_key";
+  const NEW_SECRET = "backup_source_object_store_secret_key";
+  const accessKey = "synthetic-backup-reader-not-a-real-key";
+  const secretValue = "synthetic-backup-reader-secret-not-a-real-secret\n";
+  const otherSecret = "synthetic-already-migrated-secret-not-real\n";
+  const expectNoBackupSecretInOutput = (o: Outcome): void => {
+    expect(o.out).not.toContain(secretValue.trim());
+    expect(o.out).not.toContain(otherSecret.trim());
+    expect(o.out).not.toContain(accessKey);
+  };
+
+  it("a live host (old variable + old secret file): the new variable and file are created with the same value, mode 0400; the old ones stay", () => {
+    const o = deploy({
+      extraEnv: [`${OLD_KEY}=${accessKey}`],
+      secretFiles: { [OLD_SECRET]: { content: secretValue } },
+    });
+    expect(o.code, o.out).toBe(0);
+    expect(envEntry(o.env, NEW_KEY)).toEqual({ value: accessKey, count: 1 });
+    expect(envEntry(o.env, OLD_KEY)).toEqual({ value: accessKey, count: 1 });
+    expect(o.secrets[NEW_SECRET]).toEqual({ content: secretValue, mode: 0o400 });
+    expect(o.secrets[OLD_SECRET]).toEqual({ content: secretValue, mode: 0o400 });
+    expect(o.out).toContain(`copied ${OLD_KEY} to ${NEW_KEY} in .env.production`);
+    expect(o.out).toContain(`copied secrets/${OLD_SECRET} to secrets/${NEW_SECRET}`);
+    expectNoBackupSecretInOutput(o);
+  });
+
+  it("is idempotent: a second deploy on the migrated host changes nothing and prints no copy", () => {
+    const p = prepare({
+      extraEnv: [`${OLD_KEY}=${accessKey}`],
+      secretFiles: { [OLD_SECRET]: { content: secretValue } },
+    });
+    spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+    const first = collect(p, 0, "");
+    const second = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+    const after = collect(p, second.status ?? -1, `${second.stdout}${second.stderr}`);
+    expect(after.code, after.out).toBe(0);
+    // Only the image lines differ between two deploys of the same release; every backup line is identical.
+    expect(envEntry(after.env, NEW_KEY)).toEqual(envEntry(first.env, NEW_KEY));
+    expect(envEntry(after.env, NEW_KEY).count).toBe(1);
+    expect(after.secrets).toEqual(first.secrets);
+    expect(after.out).not.toMatch(/copied (BACKUP_SOURCE|secrets)/);
+  });
+
+  it("a host that already has the new names keeps them, whatever the old ones hold: nothing copied, nothing changed", () => {
+    const o = deploy({
+      extraEnv: [`${NEW_KEY}=new-reader-key`, `${OLD_KEY}=${accessKey}`],
+      secretFiles: {
+        [NEW_SECRET]: { content: otherSecret },
+        [OLD_SECRET]: { content: secretValue },
+      },
+    });
+    expect(o.code, o.out).toBe(0);
+    expect(envEntry(o.env, NEW_KEY)).toEqual({ value: "new-reader-key", count: 1 });
+    expect(envEntry(o.env, OLD_KEY)).toEqual({ value: accessKey, count: 1 });
+    expect(o.secrets[NEW_SECRET]?.content).toBe(otherSecret);
+    expect(o.out).not.toMatch(/copied (BACKUP_SOURCE|secrets)/);
+    expectNoBackupSecretInOutput(o);
+  });
+
+  it("a fresh host (no backup overlay at all): nothing is created, no secrets directory appears, nothing is said", () => {
+    const o = deploy({});
+    expect(o.code, o.out).toBe(0);
+    expect(envEntry(o.env, NEW_KEY).count).toBe(0);
+    expect(envEntry(o.env, OLD_KEY).count).toBe(0);
+    expect(o.secrets).toEqual({});
+    expect(o.files).not.toContain("secrets");
+    expect(o.out).not.toMatch(/BACKUP_SOURCE|backup_source/);
+  });
+
+  it("the new variable present but EMPTY is filled from the old one by an appended line; the empty line is left as it was", () => {
+    const o = deploy({ extraEnv: [`${NEW_KEY}=`, `${OLD_KEY}=${accessKey}`] });
+    expect(o.code, o.out).toBe(0);
+    expect(envEntry(o.env, NEW_KEY)).toEqual({ value: accessKey, count: 2 }); // the last line wins, as for compose
+    expect(o.env).toContain(`${NEW_KEY}=\n`);
+    expectNoBackupSecretInOutput(o);
+  });
+
+  it("the old variable alone (no secret files on this host): only the variable is copied, no secret file is invented", () => {
+    const o = deploy({ extraEnv: [`${OLD_KEY}=${accessKey}`] });
+    expect(o.code, o.out).toBe(0);
+    expect(envEntry(o.env, NEW_KEY)).toEqual({ value: accessKey, count: 1 });
+    expect(o.secrets).toEqual({});
+  });
+
+  it("the old secret file alone: only the file is copied, no variable is invented", () => {
+    const o = deploy({ secretFiles: { [OLD_SECRET]: { content: secretValue } } });
+    expect(o.code, o.out).toBe(0);
+    expect(o.secrets[NEW_SECRET]).toEqual({ content: secretValue, mode: 0o400 });
+    expect(envEntry(o.env, NEW_KEY).count).toBe(0);
+  });
+
+  it("an existing new secret file is never overwritten, even when the old one differs", () => {
+    const o = deploy({
+      extraEnv: [`${OLD_KEY}=${accessKey}`],
+      secretFiles: {
+        [NEW_SECRET]: { content: otherSecret },
+        [OLD_SECRET]: { content: secretValue },
+      },
+    });
+    expect(o.code, o.out).toBe(0);
+    expect(o.secrets[NEW_SECRET]?.content).toBe(otherSecret);
+    expect(envEntry(o.env, NEW_KEY)).toEqual({ value: accessKey, count: 1 });
+  });
+
+  it("copies the raw variable value verbatim: spaces, quotes, `=`, `$`, `#`, `&` and backslashes survive", () => {
+    const raw = 'a=b/c&d$HOME#e "q" \\n tail ';
+    const o = deploy({ extraEnv: [`${OLD_KEY}=${raw}`] });
+    expect(o.code, o.out).toBe(0);
+    expect(envEntry(o.env, NEW_KEY)).toEqual({ value: raw, count: 1 });
+  });
+
+  it("an env file with no trailing newline never has the appended variable glued onto its last line", () => {
+    const o = deploy({ extraEnv: [`${OLD_KEY}=${accessKey}`], noTrailingNewline: true });
+    expect(o.code, o.out).toBe(0);
+    expect(envEntry(o.env, "CHARTWARDEN_DESTRUCTION_PASSWORD")).toEqual({ value: "x", count: 1 });
+    expect(envEntry(o.env, NEW_KEY)).toEqual({ value: accessKey, count: 1 });
+  });
+
+  it("the rollback backup is taken AFTER the migration: a failed deploy restores an env that carries both names", () => {
+    const o = deploy({
+      extraEnv: [`${OLD_KEY}=${accessKey}`],
+      secretFiles: { [OLD_SECRET]: { content: secretValue } },
+      smokeExit: 1,
+    });
+    expectRolledBack(o, true);
+    expect(envEntry(o.env, NEW_KEY)).toEqual({ value: accessKey, count: 1 });
+    expect(envEntry(o.env, OLD_KEY)).toEqual({ value: accessKey, count: 1 });
+  });
+
+  it.skipIf(process.getuid?.() === 0)(
+    "an unreadable old secret file stops the deploy before any docker call, with the env untouched and a hand-copy hint",
+    () => {
+      const o = deploy({
+        extraEnv: [`${OLD_KEY}=${accessKey}`],
+        secretFiles: { [OLD_SECRET]: { content: secretValue, mode: 0o000 } },
+      });
+      expect(o.code, o.out).toBe(1);
+      expect(o.calls, "docker must not be called").toEqual([]);
+      expect(o.env).toBe(o.envBefore);
+      expect(o.secrets[NEW_SECRET]).toBeUndefined();
+      expect(o.out).toContain("Copy it by hand");
+      expect(o.out).toContain("No service was touched");
+      expectNoBackupSecretInOutput(o);
+    },
+  );
+
+  it("the backup overlay (compose.backup.yml) is added to object-store-provision once the OLD variable has been migrated", () => {
+    const o = deploy({
+      backupOverlay: true,
+      extraEnv: [`${OLD_KEY}=${accessKey}`],
+      secretFiles: { [OLD_SECRET]: { content: secretValue } },
+    });
+    expect(o.code, o.out).toBe(0);
+    expect(
+      o.calls.some((c) => c.includes("-f compose.backup.yml run --rm object-store-provision")),
+    ).toBe(true);
+  });
+
+  it("without the variable (old or new) the overlay is not added", () => {
+    const o = deploy({ backupOverlay: true });
+    expect(o.code, o.out).toBe(0);
+    expect(o.calls.some((c) => c.includes("compose.backup.yml"))).toBe(false);
+  });
+
+  // Review finding 1a: a secrets/ directory this user cannot enter (0700 owned by uid 999, the deploy user is neither) made
+  // `[ -f old ]` false, so the copy was skipped silently while the variable half still migrated and enabled the overlay.
+  describe.skipIf(process.getuid?.() === 0)("an inaccessible secrets directory", () => {
+    it("stops before .env.production is touched, with a hand-copy hint, when the overlay is configured", () => {
+      const o = deploy({
+        backupOverlay: true,
+        extraEnv: [`${OLD_KEY}=${accessKey}`],
+        secretFiles: { [OLD_SECRET]: { content: secretValue } },
+        secretsDirMode: 0o000,
+      });
+      expect(o.code, o.out).toBe(1);
+      expect(o.calls, "docker must not be called").toEqual([]);
+      expect(o.env, "the env file is exactly what the host had").toBe(o.envBefore);
+      expect(envEntry(o.env, NEW_KEY).count).toBe(0);
+      expect(o.secrets[NEW_SECRET]).toBeUndefined();
+      expect(o.out).toContain("Copy it by hand");
+      expect(o.out).toContain("No service was touched");
+      expect(o.out).toContain("not accessible");
+      expect(o.out, "the loop is named: a hand copy alone does not clear it").toContain("setfacl");
+      expectNoBackupSecretInOutput(o);
+    });
+
+    it("a hand copy inside the directory does not clear the stop, only search permission on it does", () => {
+      const p = prepare({
+        backupOverlay: true,
+        extraEnv: [`${OLD_KEY}=${accessKey}`],
+        secretFiles: {
+          [OLD_SECRET]: { content: secretValue },
+          [NEW_SECRET]: { content: secretValue },
+        },
+        secretsDirMode: 0o000,
+      });
+      try {
+        const stuck = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+        expect(stuck.status, `${stuck.stdout}${stuck.stderr}`).toBe(1); // the new file exists but cannot be seen
+        expect(stuck.stderr).toContain("setfacl");
+        chmodSync(join(p.dir, "secrets"), 0o500); // search permission, which is what the setfacl line grants
+        const cleared = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+        expect(cleared.status, `${cleared.stdout}${cleared.stderr}`).toBe(0);
+      } finally {
+        chmodSync(join(p.dir, "secrets"), 0o700); // so the scratch directory can be removed even when an assertion threw
+      }
+    });
+
+    it("a re-run fails the same way (never a half-migrated env) until the operator copies the file", () => {
+      const p = prepare({
+        backupOverlay: true,
+        extraEnv: [`${OLD_KEY}=${accessKey}`],
+        secretFiles: { [OLD_SECRET]: { content: secretValue } },
+        secretsDirMode: 0o000,
+      });
+      try {
+        for (let i = 0; i < 2; i += 1) {
+          const r = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+          expect(r.status, `${r.stdout}${r.stderr}`).toBe(1);
+          expect(readFileSync(join(p.dir, ".env.production"), "utf8")).toBe(p.envBefore);
+        }
+      } finally {
+        chmodSync(join(p.dir, "secrets"), 0o700); // the operator fixes access (and a failed assertion cannot strand the scratch dir)
+      }
+      const fixed = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+      expect(fixed.status, `${fixed.stdout}${fixed.stderr}`).toBe(0); // the deploy now migrates
+      expect(existsSync(join(p.dir, "secrets", NEW_SECRET))).toBe(true);
+    });
+
+    it("an inaccessible directory is harmless when no backup overlay is configured on the host", () => {
+      const o = deploy({
+        secretFiles: { [OLD_SECRET]: { content: secretValue } },
+        secretsDirMode: 0o000,
+      });
+      expect(o.code, o.out).toBe(0);
+      expect(envEntry(o.env, NEW_KEY).count).toBe(0);
+    });
+  });
+
+  it("the overlay is configured but NO secret file exists on the host: stops before the env is touched, naming the missing file", () => {
+    const o = deploy({ backupOverlay: true, extraEnv: [`${OLD_KEY}=${accessKey}`] });
+    expect(o.code, o.out).toBe(1);
+    expect(o.calls).toEqual([]);
+    expect(o.env).toBe(o.envBefore);
+    expect(o.out).toContain(`secrets/${NEW_SECRET}`);
+    expect(o.out).toContain("Copy it by hand");
+  });
+
+  it("an already migrated host (new variable + new file) passes with the overlay and copies nothing", () => {
+    const o = deploy({
+      backupOverlay: true,
+      extraEnv: [`${NEW_KEY}=new-reader-key`],
+      secretFiles: { [NEW_SECRET]: { content: otherSecret } },
+    });
+    expect(o.code, o.out).toBe(0);
+    expect(o.out).not.toMatch(/copied (BACKUP_SOURCE|secrets)/);
+    expect(
+      o.calls.some((c) => c.includes("-f compose.backup.yml run --rm object-store-provision")),
+    ).toBe(true);
+  });
+
+  // Review finding 1b: the copy must be atomic, so a partial destination is never mistaken for the real file on a re-run.
+  describe("the secret copy is atomic", () => {
+    it("a copy that dies half way leaves no partial file under the new name or a temp name, and the env unchanged", () => {
+      const o = deploy({
+        backupOverlay: true,
+        failSecretCopy: true,
+        extraEnv: [`${OLD_KEY}=${accessKey}`],
+        secretFiles: { [OLD_SECRET]: { content: secretValue } },
+      });
+      expect(o.code, o.out).toBe(1);
+      expect(o.calls).toEqual([]);
+      expect(o.env).toBe(o.envBefore);
+      expect(Object.keys(o.secrets)).toEqual([OLD_SECRET]); // nothing partial, nothing temporary
+      expect(o.secrets[OLD_SECRET]?.content).toBe(secretValue);
+      expect(o.out).toContain("Copy it by hand");
+      expectNoBackupSecretInOutput(o);
+    });
+
+    it("a re-run after the failed copy migrates normally (the partial was never mistaken for the real file)", () => {
+      const p = prepare({
+        backupOverlay: true,
+        failSecretCopy: true,
+        extraEnv: [`${OLD_KEY}=${accessKey}`],
+        secretFiles: { [OLD_SECRET]: { content: secretValue } },
+      });
+      const failed = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+      expect(failed.status).toBe(1);
+      const rerun = spawnSync("sh", DEPLOY_ARGS, {
+        cwd: p.dir,
+        encoding: "utf8",
+        env: { ...p.env, PATH: `${binDir}:/usr/bin:/bin` }, // the real cp now
+      });
+      expect(rerun.status, `${rerun.stdout}${rerun.stderr}`).toBe(0);
+      const o = collect(p, rerun.status ?? -1, `${rerun.stdout}${rerun.stderr}`);
+      expect(o.secrets[NEW_SECRET]).toEqual({ content: secretValue, mode: 0o400 });
+      expect(Object.keys(o.secrets).sort()).toEqual([NEW_SECRET, OLD_SECRET].sort());
+      expect(envEntry(o.env, NEW_KEY)).toEqual({ value: accessKey, count: 1 });
+    });
+
+    it.skipIf(process.getuid?.() === 0)(
+      "a secrets directory that cannot be written leaves nothing behind and the env unchanged",
+      () => {
+        const o = deploy({
+          backupOverlay: true,
+          extraEnv: [`${OLD_KEY}=${accessKey}`],
+          secretFiles: { [OLD_SECRET]: { content: secretValue } },
+          secretsDirMode: 0o500,
+        });
+        expect(o.code, o.out).toBe(1);
+        expect(o.env).toBe(o.envBefore);
+        expect(Object.keys(o.secrets)).toEqual([OLD_SECRET]);
+        expect(o.out).toContain("Copy it by hand");
+      },
+    );
+  });
+});
+
+// Audit sink. The new api serves only /api/v1/webhooks/object-store/access-log (the legacy minio path answers 404), so a
+// fluent-bit that keeps posting to the old path silently loses every signed-URL download confirmation once the api is
+// swapped. deploy.sh therefore recreates fluent-bit, verifies the RUNNING container's AUDIT_SINK_PATH is the canonical one,
+// and fails the deploy before any migration (previous release untouched) when it cannot start or is not canonical.
+describe.skipIf(BUN === "")("deploy.sh audit sink (fluent-bit)", () => {
+  const CANONICAL = "/api/v1/webhooks/object-store/access-log";
+  const index = (o: Outcome, needle: string): number =>
+    o.calls.findIndex((c) => c.includes(needle));
+  /** A deploy that stopped at the audit-sink check: nothing migrated, nothing swapped, the previous release is still running. */
+  const expectStoppedBeforeMigrations = (o: Outcome): void => {
+    expect(o.code, o.out).toBe(1);
+    expect(
+      o.calls.some((c) => c.includes("scripts/db/migrate.ts")),
+      "migrate must not run",
+    ).toBe(false);
+    expect(o.calls.some((c) => c.includes("--force-recreate api worker web docling-worker"))).toBe(
+      false,
+    );
+    expect(oldRestarts(o), "the previous release is left running, not recreated").toBe(0);
+    expect(o.env).toContain(`CHARTWARDEN_IMAGE=${OLD_API}`);
+    expect(o.previousReleaseSaved).toBe(false);
+    expect(o.files, "the applied-config hash is only recorded after verification").not.toContain(
+      ".object-store-conf.sha256",
+    );
+  };
+
+  it("a fluent-bit on the canonical path passes: it is recreated, inspected, and only then do migrations run", () => {
+    const o = deploy({});
+    expect(o.code, o.out).toBe(0);
+    const up = index(o, "up -d --no-deps");
+    const ps = index(o, "ps -q fluent-bit");
+    const inspect = index(o, "inspect");
+    const migrate = index(o, "scripts/db/migrate.ts");
+    expect(
+      o.calls.findIndex((c) => c.endsWith("fluent-bit") && c.includes("up -d")),
+    ).toBeGreaterThan(-1);
+    expect(ps).toBeGreaterThan(up);
+    expect(inspect).toBeGreaterThan(ps);
+    expect(migrate).toBeGreaterThan(inspect);
+    expect(o.files).toContain(".object-store-conf.sha256");
+  });
+
+  it("a RUNNING fluent-bit still posting to the removed /api/v1/webhooks/minio/access-log fails the deploy before migrations", () => {
+    const o = deploy({ fluentPath: "/api/v1/webhooks/minio/access-log" });
+    expectStoppedBeforeMigrations(o);
+    expect(o.out).toContain(CANONICAL);
+    expect(o.out).toContain("/api/v1/webhooks/minio/access-log");
+    expect(o.out).toMatch(/no migrations were applied/i);
+  });
+
+  it("`up -d fluent-bit` failing fails the deploy before migrations (it was a warning before)", () => {
+    const o = deploy({ fluentUpExit: 1 });
+    expectStoppedBeforeMigrations(o);
+    expect(o.out).toContain("fluent-bit did not start");
+    expect(o.out).not.toContain("WARNING: fluent-bit");
+  });
+
+  it("an unverifiable fluent-bit (no container found) fails closed", () => {
+    const o = deploy({ fluentNoContainer: true });
+    expectStoppedBeforeMigrations(o);
+    expect(o.out).toContain(CANONICAL);
+  });
+
+  it("a path that merely CONTAINS the canonical one is not accepted (exact match)", () => {
+    const o = deploy({ fluentPath: `${CANONICAL}/../minio/access-log` });
+    expectStoppedBeforeMigrations(o);
+    const prefixed = deploy({ fluentPath: `/legacy${CANONICAL}` });
+    expectStoppedBeforeMigrations(prefixed);
+  });
+
+  it("the failure alerts as a plain failure at the object-store step (exit 1), without values", () => {
+    const o = deploy({ fluentUpExit: 1, alert: { via: "env", url: WEBHOOK } });
+    expect(o.code, o.out).toBe(1);
+    expect(o.alertBody).toMatchObject({ step: "object-store", exit_code: 1 });
+  });
+
+  it("the canonical path deploy.sh verifies is the one compose.yml gives fluent-bit", () => {
+    const compose = readFileSync(join(REPO, "deploy/production/compose.yml"), "utf8");
+    const fromCompose = /AUDIT_SINK_PATH: (\S+)/.exec(compose)?.[1];
+    const fromScript = /^object_store_audit_path=(\S+)$/m.exec(readFileSync(DEPLOY, "utf8"))?.[1];
+    expect(fromCompose).toBe(CANONICAL);
+    expect(fromScript).toBe(CANONICAL);
   });
 });
 

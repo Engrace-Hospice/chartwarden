@@ -30,7 +30,7 @@ Decision record: [`docs/history/m38-catalog-loading-and-search.md`](../history/m
    `loading`/`staged` version. A bad file moves the version to `failed` with **no staging or concept rows left**.
 5. **Verify** (below). `GET /api/v1/admin/terminology/versions?system=…` shows the ledger.
 
-Requirements: the API/worker must be running with object storage (`MINIO_*`) and Valkey configured, otherwise the
+Requirements: the API/worker must be running with object storage (`OBJECT_STORE_*`; formerly `MINIO_*`) and Valkey configured, otherwise the
 routes answer 503 (`OBJECT_STORAGE_UNAVAILABLE` / `LOADER_UNAVAILABLE`) before registering anything.
 
 Memory note: a source file is read into the worker's memory (zip members inflate up to 1.5 GB, hard cap) and parsed

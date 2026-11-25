@@ -1658,7 +1658,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       for (const k of keys) expect(storage.objects.has(`${org}/${k}`)).toBe(false);
     });
 
-    it("the refusing port (MINIO_* unset) is loud too: the erase fails, the rows stay", async () => {
+    it("the refusing port (OBJECT_STORE_* unset) is loud too: the erase fails, the rows stay", async () => {
       const { createRefusingAttachmentStorage } = await import("../src/m36-attachment-storage");
       const { org, rows, createDrizzleMessagingEraseStore } = await orgWithObjects(1);
       const store = createDrizzleMessagingEraseStore(destroyer.db, {

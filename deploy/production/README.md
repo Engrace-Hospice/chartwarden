@@ -169,116 +169,104 @@ in place (it adds the `listen 443 ssl` block and the certificate paths), so **ne
 
 SeaweedFS writes an **audit record per S3 call** over the Fluent forward protocol (`object-store/audit.json`; its
 timeouts are Go nanoseconds, so `3000000000` is 3 s); `fluent-bit` posts each batch as JSON to the api's
-`/api/v1/webhooks/minio/access-log` with the bearer `OBJECT_STORE_AUDIT_WEBHOOK_TOKEN` (`object-store/fluent-bit.yaml`).
-The api serves the receiver on two paths with the same handler and the same token: `/api/v1/webhooks/object-store/access-log`
-is the new canonical path, and `/api/v1/webhooks/minio/access-log` is the temporary compatibility path. **During this
-compatibility release `fluent-bit` deliberately keeps posting to the legacy `minio` path**, because the previous release,
-the rollback image, serves only that path and a rollback does not recreate `fluent-bit`. The sender switches to the
-canonical path (one `AUDIT_SINK_PATH` line in `compose.yml`) only in a later release, once no rollback target predates
-support for it. The api keeps successful object GETs on `tenant-*` buckets and records them as `signed_url_consumed` in `document_access_log`,
-attributed to the principal the signed URL was issued to (best effort; unattributable fetches are dropped). SeaweedFS
-logs asynchronously: a down `fluent-bit` loses audit records but never blocks an S3 request. The parser also reads
-MinIO's and RustFS's record shapes.
+`/api/v1/webhooks/object-store/access-log` with the bearer `OBJECT_STORE_AUDIT_WEBHOOK_TOKEN`
+(`object-store/fluent-bit.yaml`, `AUDIT_SINK_PATH` in `compose.yml`). The former `/api/v1/webhooks/minio/access-log` path
+is gone (404). The api keeps successful object GETs on `tenant-*` buckets and records them as `signed_url_consumed` in
+`document_access_log`, attributed to the principal the signed URL was issued to (best effort; unattributable fetches are
+dropped). SeaweedFS logs asynchronously: a down `fluent-bit` loses audit records but never blocks an S3 request. The parser
+also reads MinIO's and RustFS's record shapes. Because the new api answers 404 on the old path (and a sender still posting
+there drops every record after `retry_limit`), `deploy.sh` no longer treats `fluent-bit` as best-effort: before it applies
+any migration it recreates `fluent-bit`, then reads the RUNNING container's `AUDIT_SINK_PATH` and requires the canonical path.
+If `fluent-bit` does not start, or is not on that path, the deploy fails there (exit 1) with the previous release untouched.
 
 `deploy.sh` generates `DOCLING_WORKER_TOKEN` and any missing object-store credential (below) into `.env.production`
 the first time it runs (existing values are never touched, and this happens before the rollback backup is taken).
-To rotate the object store's app secret, set `SEAWEEDFS_APP_SECRET_KEY` **and its rollback alias `MINIO_APP_SECRET_KEY` to
-the same new value** and deploy (changing only one is a mismatch, and the deploy refuses it): `object-store-provision`
-rewrites `s3.json` and `deploy.sh` recreates `seaweedfs` (it reads its identities at start only; a few seconds of storage
-downtime).
+To rotate the object store's app secret, set `SEAWEEDFS_APP_SECRET_KEY` to the new value and deploy:
+`object-store-provision` rewrites `s3.json` and `deploy.sh` recreates `seaweedfs` (it reads its identities at start only; a
+few seconds of storage downtime).
 
-## Object store: the environment contract (SeaweedFS primary; additive compatibility release)
+## Object store: the environment contract (SeaweedFS primary)
 
 Production's object store is **SeaweedFS**. Which variable names mean what:
 
 | Names | Meaning | Who reads them |
 | --- | --- | --- |
-| `OBJECT_STORE_ENDPOINT`, `OBJECT_STORE_PUBLIC_ENDPOINT`, `OBJECT_STORE_ACCESS_KEY`, `OBJECT_STORE_SECRET_KEY`, `OBJECT_STORE_REGION`, `OBJECT_STORE_AUDIT_WEBHOOK_TOKEN` | **The application contract**, vendor-neutral. | api, worker, `tenant-buckets` and `hl7-listener` (the public endpoint where presigned URLs are made); the audit token is the api's, and Fluent Bit presents it |
-| `SEAWEEDFS_ADMIN_ACCESS_KEY` / `_SECRET_KEY`, `SEAWEEDFS_APP_ACCESS_KEY` / `_SECRET_KEY` | **Production provisioning credentials**: what `object-store-provision` renders into `s3.json`. The app pair is also what compose hands the application as `OBJECT_STORE_ACCESS_KEY` / `_SECRET_KEY`; the admin pair is the migration's target. | `.env.production`, `object-store-provision`, `object-store-migrate` (target) |
-| `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `MINIO_APP_ACCESS_KEY`, `MINIO_APP_SECRET_KEY`, `MINIO_ACCESS_LOG_WEBHOOK_TOKEN`; and `MINIO_ENDPOINT`, `MINIO_PUBLIC_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_REGION` in api, worker, `tenant-buckets`, `hl7-listener` | **Temporary rollback aliases**: always the same value as their canonical counterpart, so a release that reads only `MINIO_*` still boots if deploy rolls back to it. No current application code needs them (`MINIO_ROOT_*` is also the real MinIO root, next row). | the previous release only |
-| `minio` service and `legacy-minio` profile, `object-store-migrate`'s `SOURCE_S3_*` (from `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`), `RESTORE_MINIO_*`, `BACKUP_SOURCE_MINIO_*`, the restore drill's MinIO variables | **Real legacy / restore MinIO**, not aliases: they name an actual MinIO server. They stay. | the one-time cutover, the backup restore and the drills |
+| `OBJECT_STORE_ENDPOINT`, `OBJECT_STORE_PUBLIC_ENDPOINT`, `OBJECT_STORE_ACCESS_KEY`, `OBJECT_STORE_SECRET_KEY`, `OBJECT_STORE_REGION`, `OBJECT_STORE_AUDIT_WEBHOOK_TOKEN` | **The application contract**, vendor-neutral. The backend reads these names and no others. | api, worker, `tenant-buckets` and `hl7-listener` (the public endpoint where presigned URLs are made); the audit token is the api's, and Fluent Bit presents it |
+| `SEAWEEDFS_ADMIN_ACCESS_KEY` / `_SECRET_KEY`, `SEAWEEDFS_APP_ACCESS_KEY` / `_SECRET_KEY` | **Production provisioning credentials**: what `object-store-provision` renders into `s3.json`. The app pair is also what compose hands the application as `OBJECT_STORE_ACCESS_KEY` / `_SECRET_KEY`; the admin pair is for operators. | `.env.production`, `object-store-provision` |
+| `BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY` and the secret file `secrets/backup_source_object_store_secret_key` (`BACKUP_SOURCE_OBJECT_STORE_URL`, `_SECRET_KEY_FILE` inside the sidecar) | **The backup's read-only source key** on SeaweedFS (`compose.backup.yml`). Its presence in `.env.production` is what makes `deploy.sh` add the backup overlay. | `compose.backup.yml`, `deploy.sh`, `preflight.sh`, `cw-backup.sh` |
+| `RESTORE_OBJECT_STORE_URL`, `_ENDPOINT`, `_ACCESS_KEY`, `_SECRET_KEY`, `_PORT`, `_IMAGE` | **The restore target**: the object store a restore or a drill writes into. Today `backup/restore.sh` and the drills (`m36:restore-drill`, `backup:coordinated-drill`) start a throwaway MinIO container for it (the drill has not moved to SeaweedFS yet; ADR-0050 amendment), so `RESTORE_OBJECT_STORE_IMAGE` defaults to a MinIO image pinned by digest and the drill's own `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` log in to that container. | `backup/restore.sh`, `backup/cw-backup.sh`, `scripts/backup/*` |
 
 **RustFS** is the local and CI object store (`docker-compose.yml`, the CI jobs: both use the `OBJECT_STORE_*` names) and the
 separate-host second copy (`compose.object-copy.yml`, `replica/`); it is never production's primary.
 
-### How `deploy.sh` migrates the names (and never rotates a credential)
+### Retired: the MinIO rollback window
 
-Five pairs are reconciled in `.env.production` before the rollback backup is taken, so the backup, and therefore a
-rollback, carries both names:
+The compatibility release that kept a rollback path to a pre-SeaweedFS release is over. There is no `minio` service, no
+`legacy-minio` profile, no `minio-data` volume, no `object-store-migrate` one-shot and no `MINIO_*` variable in
+`compose.yml`; the backend ignores `MINIO_ENDPOINT`, `MINIO_PUBLIC_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`,
+`MINIO_REGION` and `MINIO_ACCESS_LOG_WEBHOOK_TOKEN`; and `deploy.sh` neither reconciles `MINIO_ROOT_USER`,
+`MINIO_ROOT_PASSWORD`, `MINIO_APP_ACCESS_KEY`, `MINIO_APP_SECRET_KEY`, `MINIO_ACCESS_LOG_WEBHOOK_TOKEN` with their
+canonical counterparts nor refuses a mismatch (the old exit 78 is gone). A host whose `.env.production` still has those
+lines keeps deploying: they are simply unused. Do not redeploy a pre-SeaweedFS commit; its `compose.yml` brings back a
+MinIO with stale data.
 
-| Canonical | Legacy alias |
-| --- | --- |
-| `SEAWEEDFS_ADMIN_ACCESS_KEY` | `MINIO_ROOT_USER` |
-| `SEAWEEDFS_ADMIN_SECRET_KEY` | `MINIO_ROOT_PASSWORD` |
-| `SEAWEEDFS_APP_ACCESS_KEY` | `MINIO_APP_ACCESS_KEY` |
-| `SEAWEEDFS_APP_SECRET_KEY` | `MINIO_APP_SECRET_KEY` |
-| `OBJECT_STORE_AUDIT_WEBHOOK_TOKEN` | `MINIO_ACCESS_LOG_WEBHOOK_TOKEN` |
+### What `deploy.sh` does with these names (and never rotates a credential)
 
-- only the old name is set: its exact value is copied to the new name (an existing host upgrades with no edit);
-- only the new name is set: its exact value is copied to the old name (a fresh host rendered from `.env.production.example`);
-- neither is set: one value is generated and written under both names (the two access keys are the account names
-  `chartwarden-seaweedfs-admin` and `chartwarden-app`; the rest are random);
-- both are set and equal: nothing is written.
+- **The five canonical names** (`SEAWEEDFS_ADMIN_ACCESS_KEY`, `SEAWEEDFS_ADMIN_SECRET_KEY`, `SEAWEEDFS_APP_ACCESS_KEY`,
+  `SEAWEEDFS_APP_SECRET_KEY`, `OBJECT_STORE_AUDIT_WEBHOOK_TOKEN`): any that is missing is generated once (the two access
+  keys are the account names `chartwarden-seaweedfs-admin` and `chartwarden-app`; the rest are random) before the rollback
+  backup is taken. An existing value is never changed, and no value is ever printed (the log names variables only).
+- **The backup overlay's names** were `BACKUP_SOURCE_MINIO_ACCESS_KEY` and `secrets/backup_source_minio_secret_key`. A live
+  host still holds those, so one additive step runs before anything is started or backed up: if
+  `secrets/backup_source_object_store_secret_key` is missing and the old file exists, it is copied (`cp -p`: same mode and
+  owner); if `BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY` is unset or empty and the old variable has a value, the new variable is
+  appended with that exact value. An existing new value or file is never changed, the old ones stay where they are, and a
+  host that still has only the old names never fails the deploy merely for having them (a copy that fails, because the
+  deploy user cannot read the old file, does stop it, overlay or not). When the backup overlay is configured (`compose.backup.yml`
+  present and either variable set) the new secret file must exist once that step ends, otherwise the deploy stops before
+  this step changes `.env.production` and says so (steps that ran earlier in the deploy may already have appended the
+  object-store and DOCLING names). On the documented layout two things usually hold at once, so expect to do both: the
+  deploy user cannot read the old file (mode 0400, owner 999, and `deploy` is not root), so copy it by hand as root, same
+  mode and owner; and the deploy user cannot enter `secrets/` (mode 0700, owner 999), where a hand copy alone never
+  clears the stop because the file cannot be seen, so give the deploy user search permission (`sudo setfacl -m u:deploy:x
+  secrets`, which needs the `acl` package; without it `sudo chmod o+x secrets` does the same but opens search to every
+  local user; names become visible, contents stay protected by each file's own mode). Then re-run.
+  `preflight.sh`, which the workflows run before `deploy.sh`, treats either name as enabling the backup-image digest check.
+- **After the first deploy of this release**, the operator may delete from the host what nothing reads any more: the
+  `MINIO_*` lines in `.env.production`, `BACKUP_SOURCE_MINIO_ACCESS_KEY`, `secrets/backup_source_minio_secret_key`, the
+  `.object-store-cutover` marker file, and (see below) the `<prefix>_minio-data` volume. None of them is needed, and leaving
+  them changes nothing.
+- **The backup sidecar's image** is digest-pinned in `CHARTWARDEN_BACKUP_IMAGE` and `deploy.sh` does not recreate `backup`,
+  so the pinned image's `cw-backup.sh` may still read the OLD names (`BACKUP_SOURCE_MINIO_*`, `RESTORE_MINIO_*`) for a while.
+  For one release the repo therefore bridges both spellings, in blocks marked `TEMPORARY ALIAS: delete when
+  CHARTWARDEN_BACKUP_IMAGE is repinned to an image built from this commit`: `compose.backup.yml` also sets
+  `BACKUP_SOURCE_MINIO_URL`, `_ACCESS_KEY` and `_SECRET_KEY_FILE` (the same values and the same secret mount), and
+  `restore.sh` hands the `restore-objects` container both `RESTORE_OBJECT_STORE_*` and `RESTORE_MINIO_*` (and writes both
+  into `restore.env`), and accepts `RESTORE_MINIO_IMAGE` / `RESTORE_MINIO_PORT` as fallbacks for the renamed image and port
+  variables (the new names win), so a recreated sidecar and a DR restore work on the old pinned image. **Order:** publish
+  the backup image from a commit that contains this change (`backup-image.yml`, manual), repin `CHARTWARDEN_BACKUP_IMAGE` to
+  its digest, recreate `backup` / `postgres` and confirm a snapshot, THEN delete the alias blocks from `compose.backup.yml`
+  and `restore.sh` in a later change. Deleting them first would make a sidecar on the old image die on
+  `BACKUP_SOURCE_MINIO_ACCESS_KEY is not set`, and a restore with it restore the database and then fail in
+  `restore-objects`. `restore.sh` keeps refusing a plain backup-source secret in either spelling.
 
-An existing value is never changed, and no value is ever printed (the log names variables only).
+## Object store: removing the retired MinIO data (operator, once)
 
-**Fail closed on a mismatch.** If both names of a pair are set to different values, `deploy.sh` exits 78 right there,
-printing the two variable names and no value. It has not touched a container, applied a migration or taken the backup,
-so the host is exactly as it was. It does not pick a side: decide which value is live (a host that has not yet deployed
-this release provisioned SeaweedFS from the `MINIO_*` values, and while the cutover is still pending `MINIO_ROOT_USER` /
-`MINIO_ROOT_PASSWORD` must be MinIO's real root credential), make both lines identical, and deploy again. Do not add the
-`MINIO_*` aliases to a template by hand with separately generated secrets: that is the mismatch this check exists to stop.
+The one-time MinIO -> SeaweedFS cutover has run and its machinery is gone from `deploy.sh`. A host that went through it
+still has the `<prefix>_minio-data` volume: the pre-cutover copy of every object, **in plaintext, outside the backups, and
+no longer visible to the stack** (nothing mounts it; `compose.yml` does not declare it). Dispose of it:
 
-**Rollback and the audit path.** A rollback reuses the new `compose.yml` with the previous images, which is why the aliases
-exist. `fluent-bit` is not part of that recreate, and it keeps posting to `/api/v1/webhooks/minio/access-log`, the path
-the previous release serves, so signed-URL download confirmations (`signed_url_consumed`) keep flowing across a rollback
-with the same token. Retiring the legacy names is a later release, in this order: first `fluent-bit` moves to
-`/api/v1/webhooks/object-store/access-log`, once no rollback target predates support for that path; only after that are
-the `MINIO_*` aliases, the `/api/v1/webhooks/minio/access-log` path and the `MINIO_*` fallbacks in the adapter removed.
+1. Confirm a backup snapshot of the SeaweedFS store has succeeded, and that the access-log, upload and download paths work.
+2. `docker volume rm <prefix>_minio-data`. **This is irreversible** and ends any way back to a pre-SeaweedFS release.
 
-## Object store: the SeaweedFS cutover (ADR-0050 D6 amendment, 2026-11-05)
+The deadline for step 2 is the owner's decision; this document sets none. Until it is done, `preflight.sh` prints a WARNING on
+every deploy that names the volume. `preflight.sh` also **refuses** (exit 67) a host that has a `*_minio-data` volume and no
+`*_seaweedfs-data` volume: the cutover is no longer automated, so a deploy there would start an EMPTY object store and every
+document would look lost. Such a host must be migrated by hand (`scripts/object-store-copy.ts`, which keeps each object's
+SHA-256) before it is deployed. `volumes-copy.sh` does not copy the retired volume.
 
-The first deploy of this release on a host that still has a `*_minio-data` volume and no `.object-store-cutover`
-marker migrates it in a short maintenance window (the api is down for the length of the copy), before any schema change:
-
-1. renders the identities, then STOPS the api and worker (`stop` keeps their containers and MinIO settings), so
-   neither store is written while the copy runs;
-2. recreates `minio` under the `legacy-minio` profile WITHOUT its host port (`127.0.0.1:9000` becomes SeaweedFS's) and
-   starts `seaweedfs`;
-3. runs `object-store-migrate` (`scripts/object-store-copy.ts --adopt-unchecksummed`, source: MinIO root from `MINIO_ROOT_USER` /
-   `MINIO_ROOT_PASSWORD`; target: SeaweedFS admin from `SEAWEEDFS_ADMIN_ACCESS_KEY` / `SEAWEEDFS_ADMIN_SECRET_KEY`): a
-   MIRROR, so every `tenant-*` / `chartwarden-*` object is re-put WITH its SHA-256 and read back, and anything a
-   failed earlier attempt left in SeaweedFS is removed (the app never writes SeaweedFS before this pass succeeds). A
-   generic copier (`mc mirror`, rclone) would drop the stored checksum and leave every upload unverifiable;
-4. only after that pass succeeds: writes `.object-store-cutover` and stops `minio`. Migrations, `up` and smoke follow;
-   if one of them fails, the previous release comes back on SeaweedFS (it already holds everything).
-
-If steps 1-3 fail, `deploy.sh` puts the old world back (SeaweedFS stopped, MinIO recreated ON `127.0.0.1:9000`, the
-stopped api/worker started unchanged) and fails with no schema change; the next deploy retries from the start. If that
-undo itself fails (it says so with `!!`), bring MinIO back on its port by hand:
-
-```sh
-printf 'services:\n  minio:\n    ports: ["127.0.0.1:9000:9000"]\n' | docker compose --env-file .env.production \
-  -f compose.yml -f - --profile legacy-minio up -d --force-recreate --wait minio
-docker compose --env-file .env.production -f compose.yml stop seaweedfs
-docker start $(docker compose --env-file .env.production -f compose.yml ps -aq api worker)   # not `compose start`: it would start seaweedfs
-```
-
-A retry's mirror refuses to delete more than max(10, 10%) of a bucket (or all of it). If MinIO really is the truth
-for that bucket (for example the api removed its last object after a failed attempt), name it for one deploy with
-`OBJECT_STORE_MIGRATE_ALLOW_MASS_DELETE=<bucket>[,...]` in the deploy environment, then remove it. A deploy killed
-inside the window (cancelled run, dropped ssh) runs the same undo from its EXIT trap; still, do not push to `main`
-while the cutover deploy runs (a new run cancels it). The cutover is recorded twice, in `.object-store-cutover` and
-in the `seaweedfs-config` volume (`cutover-done`), so losing the marker file never re-mirrors a stale MinIO. If a
-migration then halts the deploy for an operator (exit 75), the api and worker are STOPPED, not running: recreate them
-(`up -d --no-deps --force-recreate api worker web`), never `start` them (they still point at MinIO).
-
-Rollback inside a deploy stays on SeaweedFS (it reuses the new `compose.yml` with the previous images, and the app
-works with any S3 store). Do NOT redeploy a pre-cutover commit afterwards: its `compose.yml` brings back MinIO on
-`127.0.0.1:9000` with stale data. Always include `-f compose.backup.yml` when re-running `object-store-provision` by
-hand on a host with backups configured, or the backup sidecar's reader is dropped at SeaweedFS's next restart. Keep the `*_minio-data` volume until a backup snapshot of the SeaweedFS store has
-succeeded and the access-log, upload and download paths are confirmed, then remove it with
-`docker volume rm <prefix>_minio-data` (and `preflight.sh` stops checking it once it is gone).
+Always include `-f compose.backup.yml` when re-running `object-store-provision` by hand on a host with backups configured,
+or the backup sidecar's reader is dropped at SeaweedFS's next restart.
 
 ## Object store: second copy (`compose.object-copy.yml`, `replica/`)
 
@@ -317,7 +305,9 @@ Each failed run posts `object_copy.failed` to `OPS_ALERT_WEBHOOK_URL` (counts an
 container turns unhealthy when no run has been clean for three intervals. Restore from the copy into a primary with
 `--restore` (never deletes): run `scripts/object-store-copy.ts --restore` with `SOURCE_S3_*` = the replica and
 `TARGET_S3_*` = the primary's admin, then the `tenant-buckets` backfill (the copy carries objects, not bucket
-versioning or expiry rules).
+versioning or expiry rules). Stop `object-copy` first and keep it stopped until the restore and the per-bucket object
+counts check out (a nearly restored primary can sit under the sync's mass-delete guard, which would then delete the
+rest from the copy), and re-run any D12 erasure made since the snapshot (`docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md` §6.3).
 
 ## Backups and restore (`compose.backup.yml`, `backup/`, #857)
 
@@ -771,26 +761,24 @@ arch:compose-policy` (part of `arch:fitness`) fails on any literal image without
 | valkey | `valkey/valkey:8-alpine` | Valkey 8.x |
 | seaweedfs | `chrislusf/seaweedfs:4.52` | SeaweedFS 4.52 (pinned 2026-11-05) |
 | fluent-bit | `fluent/fluent-bit:5.1.5` | Fluent Bit 5.1.5 (pinned 2026-11-05) |
-| minio (legacy profile, cutover only) | `cgr.dev/chainguard/minio:latest` | MinIO `RELEASE.2026-10-23T20-06-51Z` |
 | clamav | `ghcr.io/engrace-hospice/chartwarden-clamav` | ClamAV 1.5.2, Wolfi (pinned 2026-11-23; built by `clamav-image.yml`; replaces `clamav/clamav:1.4`, Alpine, ClamAV 1.4.6) |
 
 SeaweedFS: `test:object-store:conformance:live` and `test:object-store:resilience:live` (CI job
 `object-store-conformance-live`) run against the same image and the same `object-store/` files; re-run them on a bump.
 
-MinIO (legacy, read once by the cutover): `minio/minio` is no longer published to Docker Hub, so the server is Chainguard's build (it ships `minio`,
-`mc`, `sh` and `bash`, but no `curl`; the healthcheck therefore probes `/minio/health/ready` over bash `/dev/tcp`
-and sends `Host: localhost`, which MinIO requires for this HTTP/1.0 request).
-It defaults to uid 65532, but the existing `minio-data` volume is root-owned, so the service sets `user: "0:0"`.
-Moving to the nonroot user needs a one-time `chown -R 65532 /data` on the volume. Chainguard's free tier only
-tags `latest`; older digests stay pullable for now but are not guaranteed, so mirror the pinned digest into a
-registry you control (e.g. GHCR) before relying on it for disaster recovery.
+MinIO is no longer in `compose.yml`, but the restore tooling still starts a throwaway MinIO container as the restore
+target today (`backup/restore.sh`, `m36:restore-drill`, `backup:coordinated-drill`; the drill has not moved to SeaweedFS
+yet, ADR-0050 amendment). `minio/minio` is no longer published to Docker Hub, so that image is Chainguard's build
+(`DEFAULT_MINIO_IMAGE` in `backup/restore.sh`, pinned by digest; override with `RESTORE_OBJECT_STORE_IMAGE`).
+Chainguard's free tier only tags `latest`; older digests stay pullable for now but are not guaranteed, so mirror the
+pinned digest into a registry you control (e.g. GHCR) before relying on it for disaster recovery.
 
 **Updating an image**
 1. Resolve the new digest: `docker buildx imagetools inspect <repo:tag>` (the top-level `Digest:` is the index digest).
 2. Edit `compose.yml` (tag and digest together) and the version table above. Postgres is the exception: follow
    "Bumping it" under "Postgres image" (the digest also moves in `backup/Dockerfile`, and a glibc change is a
    REINDEX migration, not a digest bump). `deploy.sh` never recreates postgres.
-3. Restore-test: run the restore drill (`docs/runbooks/m36-restore-drill.md`; for postgres/minio also restore the
+3. Restore-test: run the restore drill (`docs/runbooks/m36-restore-drill.md`; for postgres also restore the
    previous backup onto the new image) and `smoke.sh` against a staging stack.
 4. `bun run arch:compose-policy`, then ship through the normal PR/deploy path. Rollback is the previous digest.
 
@@ -811,7 +799,7 @@ values**; tune them from `docker stats` and OOM events (`docker inspect -f '{{.S
 | seaweedfs | 1g | 256m | 2 |
 | fluent-bit | 128m | none | 0.25 |
 | web | 128m | 32m | 0.5 |
-| one-shots (migrate, provision, object-store-provision, object-store-migrate, tenant-buckets, seed-runner, hl7-listener) | 128m-1g | none | 0.5-2 |
+| one-shots (migrate, provision, object-store-provision, tenant-buckets, seed-runner, hl7-listener) | 128m-1g | none | 0.5-2 |
 
 Long-running limits sum to about 15 GiB (memory limits are ceilings, not a simultaneous allocation) and
 reservations to about 5 GiB, which leaves headroom for the OS, host Nginx and Docker on 16 GiB. CPU limits are
