@@ -698,6 +698,34 @@ describe.skipIf(!DB_URL)(
       }
     });
 
+    it("admits the evaluator's reassessment update that reopens a completed review", async () => {
+      const reassess = (workflow: string) =>
+        `UPDATE medicaid_era_review SET workflow_state='${workflow}', version=version+1,
+           assessment_fingerprint=repeat('a',64), assessment_evidence_fingerprint=repeat('b',64),
+           assessment_observed_at=now(), assessment_version='l6d-v2', decision_status='review_required',
+           reason_codes='[]'::jsonb, claim_match_status='MATCHED', duplicate_status='none',
+           safe_summary='{"transactionSetCount":1,"claims":[]}'::jsonb,
+           assessment_trust_status='isolated_evaluator', updated_at=now() WHERE id=$1`;
+      await db.query("BEGIN");
+      try {
+        // A trusted, completed review (set up on the privileged connection) ...
+        await db.query(reassess("reviewed_not_posted"), [a.medicaidEraReview]);
+        // ... that the evaluator reassesses: the new workflow state rides the same version bump, under its RLS policy.
+        await db.query("SET LOCAL ROLE chartwarden_m25_evaluator");
+        await db.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
+        const reopened = await db.query(reassess("reopened"), [a.medicaidEraReview]);
+        expect(reopened.rowCount).toBe(1);
+        await db.query("RESET ROLE");
+        const state = await db.query<{ workflow_state: string; version: number }>(
+          "SELECT workflow_state, version FROM medicaid_era_review WHERE id=$1",
+          [a.medicaidEraReview],
+        );
+        expect(state.rows[0].workflow_state).toBe("reopened");
+      } finally {
+        await db.query("ROLLBACK");
+      }
+    });
+
     it("ERA review and history audit records land with the summary, account and note scrubbed", async () => {
       const review = await db.query<{ after: Record<string, unknown> }>(
         `SELECT after FROM audit_event

@@ -18,9 +18,12 @@ import {
   provingAttemptOf,
 } from "../src/modules/25-remittance/ingest/medicaid-era-review-readers";
 import {
+  MAX_STORED_ADJUSTMENTS,
   assertAttestedReview,
   buildDrizzleMedicaidEraReviewWorkflow,
   duplicateStatusOf,
+  storedAdjustments,
+  workflowAfterReassessment,
 } from "../src/modules/25-remittance/ingest/medicaid-era-review-service";
 import type { MedicaidSubmissionEvidenceView } from "../src/modules/25-remittance/routes/medicaid-claim-facts";
 import {
@@ -283,6 +286,82 @@ describe("the stored assessment projection", () => {
       "conflict",
     );
     expect(duplicateStatusOf(claims("payment_reported", "denial"))).toBe("none");
+  });
+});
+
+describe("the stored adjustment observations", () => {
+  const assessed = {
+    claimAdjustments: [{ groupCode: "CO", reasonCode: "45", amountCents: 1500, quantity: null }],
+    serviceLineAdjustments: [
+      {
+        lineIndex: 1,
+        groupCode: "PR",
+        reasonCode: "2",
+        amountCents: 500,
+        quantity: 2,
+        remarks: [{ kind: "RARC", code: "N1" }],
+        references: [{ qualifier: "6R", value: "SYNTHETIC-LINE-REF" }],
+      },
+    ],
+    providerAdjustments: [{ reason: "WO", reference: "SYNTHETIC-PLB-REF", amountCents: -250 }],
+  };
+
+  it("keeps codes, amounts, quantities and line indexes, and nothing that names a source identifier", () => {
+    const stored = storedAdjustments(assessed);
+    expect(stored).toEqual({
+      claimAdjustments: [{ groupCode: "CO", reasonCode: "45", amountCents: 1500, quantity: null }],
+      serviceLineAdjustments: [
+        { lineIndex: 1, groupCode: "PR", reasonCode: "2", amountCents: 500, quantity: 2 },
+      ],
+      providerAdjustments: [{ reason: "WO", amountCents: -250 }],
+    });
+    const json = JSON.stringify(stored);
+    expect(json).not.toContain("SYNTHETIC-LINE-REF");
+    expect(json).not.toContain("SYNTHETIC-PLB-REF");
+    expect(json).not.toContain("RARC");
+  });
+
+  it("keeps at most the number of observations the review screen can read", () => {
+    const many = Array.from({ length: MAX_STORED_ADJUSTMENTS + 25 }, (_, index) => ({
+      groupCode: "CO",
+      reasonCode: "45",
+      amountCents: index,
+      quantity: null,
+    }));
+    expect(
+      storedAdjustments({ ...assessed, claimAdjustments: many }).claimAdjustments,
+    ).toHaveLength(MAX_STORED_ADJUSTMENTS);
+  });
+});
+
+describe("where a reassessed review goes", () => {
+  it("reopens a completed review whose evidence changed", () => {
+    expect(
+      workflowAfterReassessment({
+        assessmentTrustStatus: "isolated_evaluator",
+        workflowState: "reviewed_not_posted",
+      }),
+    ).toEqual({
+      workflowState: "reopened",
+      reasonCode: "COMPLETED_REVIEW_REOPENED_BY_REASSESSMENT",
+    });
+  });
+
+  it("sends a promoted legacy review back to needs-review, whatever state it was closed in", () => {
+    for (const workflowState of ["reviewed_not_posted", "investigating", "needs_review"])
+      expect(
+        workflowAfterReassessment({ assessmentTrustStatus: "legacy_unverified", workflowState }),
+      ).toEqual({
+        workflowState: "needs_review",
+        reasonCode: "LEGACY_REVIEW_REASSESSED_NEEDS_REVIEW",
+      });
+  });
+
+  it("leaves work in progress where it is", () => {
+    for (const workflowState of ["needs_review", "investigating", "follow_up_required", "reopened"])
+      expect(
+        workflowAfterReassessment({ assessmentTrustStatus: "isolated_evaluator", workflowState }),
+      ).toEqual({ workflowState, reasonCode: "CURRENT_SOURCE_FACTS_REASSESSED" });
   });
 });
 

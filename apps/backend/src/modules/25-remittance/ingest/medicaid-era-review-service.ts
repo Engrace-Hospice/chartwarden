@@ -51,6 +51,75 @@ export function duplicateStatusOf(
   );
 }
 
+/** The review screen reads at most this many of each adjustment list (more fails its parser), so that is all a summary keeps. */
+export const MAX_STORED_ADJUSTMENTS = 100;
+
+interface AssessedAdjustments {
+  readonly claimAdjustments: readonly {
+    readonly groupCode: string;
+    readonly reasonCode: string;
+    readonly amountCents: number | null;
+    readonly quantity: number | null;
+  }[];
+  readonly serviceLineAdjustments: readonly {
+    readonly lineIndex: number;
+    readonly groupCode: string;
+    readonly reasonCode: string;
+    readonly amountCents: number | null;
+    readonly quantity: number | null;
+  }[];
+  readonly providerAdjustments: readonly {
+    readonly reason: string;
+    readonly amountCents: number | null;
+  }[];
+}
+
+/**
+ * The adjustment observations a stored review summary keeps (the screen's "Adjustment observations" block reads them):
+ * group, reason code, amount, quantity and line index only. Remittance remark references, service-line reference
+ * values and provider-level adjustment (PLB) reference ids are identifiers from the source file and are not stored.
+ */
+export function storedAdjustments(item: AssessedAdjustments) {
+  return {
+    claimAdjustments: item.claimAdjustments
+      .slice(0, MAX_STORED_ADJUSTMENTS)
+      .map(({ groupCode, reasonCode, amountCents, quantity }) => ({
+        groupCode,
+        reasonCode,
+        amountCents,
+        quantity,
+      })),
+    serviceLineAdjustments: item.serviceLineAdjustments
+      .slice(0, MAX_STORED_ADJUSTMENTS)
+      .map(({ lineIndex, groupCode, reasonCode, amountCents, quantity }) => ({
+        lineIndex,
+        groupCode,
+        reasonCode,
+        amountCents,
+        quantity,
+      })),
+    providerAdjustments: item.providerAdjustments
+      .slice(0, MAX_STORED_ADJUSTMENTS)
+      .map(({ reason, amountCents }) => ({ reason, amountCents })),
+  };
+}
+
+/**
+ * Where a review goes when a reassessment replaces its assessment. A completed review was closed against the old
+ * evidence, so changed evidence reopens it; a review promoted from an unattested (legacy) assessment goes back to
+ * needs-review, because nobody reviewed the new trusted snapshot. Work in progress keeps its state.
+ */
+export function workflowAfterReassessment(existing: {
+  readonly assessmentTrustStatus: string;
+  readonly workflowState: string;
+}): { readonly workflowState: string; readonly reasonCode: string } {
+  if (existing.assessmentTrustStatus !== "isolated_evaluator")
+    return { workflowState: "needs_review", reasonCode: "LEGACY_REVIEW_REASSESSED_NEEDS_REVIEW" };
+  if (existing.workflowState === "reviewed_not_posted")
+    return { workflowState: "reopened", reasonCode: "COMPLETED_REVIEW_REOPENED_BY_REASSESSMENT" };
+  return { workflowState: existing.workflowState, reasonCode: "CURRENT_SOURCE_FACTS_REASSESSED" };
+}
+
 /** Deterministic JSON for fingerprints; object key insertion order never changes assessment identity. */
 function canonicalJson(value: unknown): string {
   if (value === null) return "null";
@@ -233,6 +302,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
           attribution: item.attribution,
           evidenceReferences: item.evidenceReferences,
           amounts: item.amounts,
+          ...storedAdjustments(item),
           unresolvedRequirements: item.unresolvedRequirements,
           postingAuthorized: false,
         })),
@@ -381,9 +451,12 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
         }
         if (existing) {
           const version = existing.version + 1;
+          // Every workflow change takes the next version (the 1543 guard), which a reassessment already does.
+          const reassessed = workflowAfterReassessment(existing);
           const [updated] = await tx
             .update(REVIEW)
             .set({
+              workflowState: reassessed.workflowState,
               assessmentFingerprint,
               assessmentEvidenceFingerprint: evaluationSnapshotFingerprint,
               assessmentObservedAt,
@@ -420,7 +493,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
             reviewId: existing.id,
             version,
             action: "reassessed",
-            reasonCode: "CURRENT_SOURCE_FACTS_REASSESSED",
+            reasonCode: reassessed.reasonCode,
             actorMembershipId: actor.membershipId,
             idempotencyKeyHash: digestKey,
             operationFingerprint,
