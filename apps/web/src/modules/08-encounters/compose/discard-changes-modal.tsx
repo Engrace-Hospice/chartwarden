@@ -13,6 +13,8 @@ export interface DiscardChangesModalProps {
   readonly open: boolean;
   /** A save is in flight: the note cannot be left until it ends. */
   readonly busy: boolean;
+  /** Nothing but a typed late-entry reason would be lost: the note itself is saved. */
+  readonly lateReasonOnly?: boolean;
   readonly onKeepEditing: () => void;
   readonly onDiscard: () => void;
 }
@@ -20,6 +22,7 @@ export interface DiscardChangesModalProps {
 export function DiscardChangesModal({
   open,
   busy,
+  lateReasonOnly = false,
   onKeepEditing,
   onDiscard,
 }: DiscardChangesModalProps): JSX.Element {
@@ -30,7 +33,9 @@ export function DiscardChangesModal({
         <p style={discardText}>
           {busy
             ? "Your visit note is being saved. Wait for the operation to finish before leaving."
-            : "Your visit-note changes have not been saved. Keep editing or discard them before leaving."}
+            : lateReasonOnly
+              ? "Your late-entry reason has not been sent. Keep editing or discard it before leaving."
+              : "Your visit-note changes have not been saved. Keep editing or discard them before leaving."}
         </p>
         <footer style={discardActions}>
           <Button tone="tertiary" onClick={onKeepEditing}>

@@ -317,7 +317,7 @@ export function EncounterCompose(): JSX.Element {
           ? held.message.includes(message)
             ? held
             : { ...held, message: `${held.message} ${message}` }
-          : { tone: "warning", title: "", message },
+          : { tone: "warning", title: "Sentence removed", message },
       ),
     [],
   );
@@ -600,6 +600,7 @@ export function EncounterCompose(): JSX.Element {
               savingPanelCount={savingPanels.length}
               selectionsDirty={selectionsDirty}
               panelsDirty={panelsDirty}
+              lateReasonUnsent={lateEntry.unsent}
             />
 
             <FeedbackNotice
@@ -790,6 +791,7 @@ export function EncounterCompose(): JSX.Element {
       <DiscardChangesModal
         open={blocker.state === "blocked"}
         busy={busy}
+        lateReasonOnly={lateEntry.unsent && !dirty}
         onKeepEditing={() => blocker.reset?.()}
         onDiscard={() => blocker.proceed?.()}
       />

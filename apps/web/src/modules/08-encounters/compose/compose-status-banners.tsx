@@ -94,6 +94,8 @@ export interface SaveStateLineProps {
   readonly savingPanelCount: number;
   readonly selectionsDirty: boolean;
   readonly panelsDirty: boolean;
+  /** A late-entry reason is typed that no save has sent (only Finalize sends it): "All changes saved" would say too much. */
+  readonly lateReasonUnsent?: boolean;
 }
 
 export function SaveStateLine({
@@ -101,6 +103,7 @@ export function SaveStateLine({
   savingPanelCount,
   selectionsDirty,
   panelsDirty,
+  lateReasonUnsent = false,
 }: SaveStateLineProps): JSX.Element {
   return (
     <output className="wx-encounter-save-state" aria-live="polite">
@@ -114,7 +117,9 @@ export function SaveStateLine({
               ? "Unsaved changes"
               : panelsDirty
                 ? "Unsaved entries in a section. Use that section's own Save button."
-                : "All changes saved"}
+                : lateReasonUnsent
+                  ? "Late-entry reason not sent yet"
+                  : "All changes saved"}
     </output>
   );
 }
