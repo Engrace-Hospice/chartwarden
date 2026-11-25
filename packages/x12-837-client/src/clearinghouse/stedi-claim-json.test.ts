@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { Claim837iBuildError, build837iClaim } from "../claims/build-837i-claim";
+import {
+  Claim837iBuildError,
+  type Claim837iInput,
+  build837iClaim,
+} from "../claims/build-837i-claim";
 import { CLAIM_INPUT, REPLACEMENT_INPUT, VOID_INPUT } from "../claims/claim-fixture-input";
 import { compareStediClaimJsonToX12 } from "./stedi-claim-agreement";
 import { type StediClaimJson, buildStediClaimJson } from "./stedi-claim-json";
@@ -216,6 +220,35 @@ describe("compareStediClaimJsonToX12 — raw and JSON agree", () => {
     ).toEqual([]);
   });
 
+  // The M24 Medicaid shape: filing indicator MC and a payer-assigned memberId with no MBI. The M24 mapper
+  // (@chartwarden/medicaid-adapters) cannot be imported here (it depends on this package), so the same shape is built
+  // directly from the Medicare fixture.
+  const { mbi: _medicareMbi, ...subscriberWithoutMbi } = CLAIM_INPUT.subscriber;
+  const MEDICAID_MEMBER_ID = "SYNTH-OHP-MEMBER-0001";
+  const MEDICAID_INPUT: Claim837iInput = {
+    ...CLAIM_INPUT,
+    claimFilingIndicator: "MC",
+    subscriber: { ...subscriberWithoutMbi, memberId: MEDICAID_MEMBER_ID },
+    payer: { name: "Synthetic Medicaid Plan", payerId: "SYNTHETIC-EOCCO-TEST" },
+    claim: { ...CLAIM_INPUT.claim, frequency: "1", patientStatus: "40" },
+  };
+
+  it("agrees on a Medicaid (MC) claim identified by memberId alone, and still catches drift on it", () => {
+    const medicaidRaw = build837iClaim(MEDICAID_INPUT);
+    const medicaidJson = buildStediClaimJson(MEDICAID_INPUT);
+    expect(medicaidRaw).toContain(`NM1*IL*1*DOE*JANE****MI*${MEDICAID_MEMBER_ID}`);
+    expect(medicaidJson.claimInformation.claimFilingCode).toBe("MC");
+    expect(medicaidJson.subscriber.memberId).toBe(MEDICAID_MEMBER_ID);
+    expect(compareStediClaimJsonToX12(medicaidJson, medicaidRaw)).toEqual([]);
+
+    const drifted = structuredClone(medicaidJson);
+    Object.assign(drifted.subscriber, { memberId: "SYNTH-OHP-MEMBER-0002" });
+    Object.assign(drifted.claimInformation, { claimFilingCode: "MA" });
+    expect(compareStediClaimJsonToX12(drifted, medicaidRaw)).toEqual(
+      expect.arrayContaining(["subscriber.memberId", "claim.claimFilingCode"]),
+    );
+  });
+
   // Each tamper must be caught by the field that guards it (mutation check on the comparator).
   const raw = build837iClaim(CLAIM_INPUT);
   const json = buildStediClaimJson(CLAIM_INPUT);
@@ -243,6 +276,12 @@ describe("compareStediClaimJsonToX12 — raw and JSON agree", () => {
       "claim.patientControlNumber",
       (j: StediClaimJson) => {
         claim(j).patientControlNumber = "OTHER";
+      },
+    ],
+    [
+      "claim.claimFilingCode",
+      (j: StediClaimJson) => {
+        claim(j).claimFilingCode = "MC";
       },
     ],
     [
@@ -341,6 +380,13 @@ describe("compareStediClaimJsonToX12 — raw and JSON agree", () => {
       "claim.lines",
       (j: StediClaimJson) => {
         claim(j).serviceLines[0].institutionalService.procedureModifiers = ["PM"];
+      },
+    ],
+    [
+      "claim.lines",
+      (j: StediClaimJson) => {
+        // SV204 is UN in the raw X12; the JSON must not claim days instead.
+        claim(j).serviceLines[0].institutionalService.measurementUnit = "DA";
       },
     ],
   ])("flags %s when the JSON is tampered", (field, fn) => {

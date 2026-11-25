@@ -186,6 +186,34 @@ describe("electronicSubmissionRefusal follow-ups (S11)", () => {
     );
   });
 
+  it.each(["unresolved", "ambiguous", "unsupported"] as const)(
+    "never reports a verified program assignment for the %s kind, whatever the caller passes",
+    (kind) => {
+      expect(medicaidClaimRouteReadiness("OR", null, true, kind, true)).toMatchObject({
+        programKind: kind,
+        programAssignmentVerified: false,
+      });
+    },
+  );
+
+  it.each(["ffs_open_card", "managed_care", "other_managed_care"] as const)(
+    "passes the caller's verified flag through for the resolved %s kind",
+    (kind) => {
+      expect(
+        medicaidClaimRouteReadiness("OR", "mco-id", true, kind, true).programAssignmentVerified,
+      ).toBe(true);
+      expect(
+        medicaidClaimRouteReadiness("OR", "mco-id", true, kind, false).programAssignmentVerified,
+      ).toBe(false);
+    },
+  );
+
+  it("does not verify the legacy NULL-MCO derivation either", () => {
+    expect(
+      medicaidClaimRouteReadiness("OR", null, true, undefined, true).programAssignmentVerified,
+    ).toBe(false);
+  });
+
   it("the web claim editor uses the same code string as the backend", () => {
     const ui = readFileSync(
       join(__dirname, "../../../apps/web/src/modules/24-billing-medicaid/claim-editor.tsx"),

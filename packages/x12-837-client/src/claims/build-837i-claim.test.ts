@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkStediEdits } from "../clearinghouse/stedi-edit-rules";
 import { X12BuildError } from "../x12/writer";
-import { Claim837iBuildError, build837iClaim } from "./build-837i-claim";
+import { Claim837iBuildError, type Claim837iInput, build837iClaim } from "./build-837i-claim";
 import { CLAIM_INPUT, REPLACEMENT_INPUT, VOID_INPUT } from "./claim-fixture-input";
 
 const fixture = (name: string): string =>
@@ -188,6 +188,14 @@ describe("build837iClaim — fail closed, field names only", () => {
         }) as never,
       ),
     ).not.toThrow();
+  });
+
+  it("needs a subscriber identifier at compile time, and still refuses one that slips through at run time", () => {
+    const { address, birthDate, sex, firstName, lastName } = CLAIM_INPUT.subscriber;
+    const person = { lastName, firstName, address, birthDate, sex };
+    // @ts-expect-error a subscriber needs `memberId` or `mbi`; with neither it must not compile
+    const noIdentifier: Claim837iInput["subscriber"] = person;
+    bad({ ...CLAIM_INPUT, subscriber: noIdentifier }, "subscriber.mbi");
   });
 
   it("accepts the deprecated mbi alias beside an identical memberId, whatever its case or padding", () => {

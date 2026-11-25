@@ -26,6 +26,19 @@ const MAX_STORABLE_INSTANT_MS = Date.parse("9999-12-31T23:59:59.999Z");
 
 const ISO_DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})(?:[Tt ]|$)/;
 
+/** An ISO date-time with no `Z` or offset: date, separator, `HH:MM`, optional seconds and fraction. */
+const OFFSETLESS_DATE_TIME_RE = /^(\d{4}-\d{2}-\d{2})[Tt ](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)$/;
+
+/**
+ * `Date.parse` reads an offset-less date-time as LOCAL time, so the 0001..9999 bounds would move with the process
+ * time zone. The storable range is defined in UTC, so an offset-less value is parsed as UTC (the separator is
+ * normalised to `T` too: V8's legacy parser reads "0001-01-01 00:00:00" as year 2001). Any other shape parses as before.
+ */
+function parseInstant(value: string): number {
+  const offsetless = OFFSETLESS_DATE_TIME_RE.exec(value);
+  return Date.parse(offsetless ? `${offsetless[1]}T${offsetless[2]}Z` : value);
+}
+
 /**
  * A parseable instant Postgres can store. The text must start with an ISO calendar date (Date.parse also reads
  * "12/31/0000" and rolls 2026-02-30 over to March 2), the date part must be a real day at or after 0001-01-01 (the raw
@@ -35,7 +48,7 @@ const ISO_DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})(?:[Tt ]|$)/;
 function isStorableDateTime(value: string): boolean {
   const datePart = ISO_DATE_PREFIX_RE.exec(value)?.[1];
   if (datePart === undefined || !isCalendarDate(datePart)) return false;
-  const instant = Date.parse(value);
+  const instant = parseInstant(value);
   return (
     !Number.isNaN(instant) &&
     instant >= MIN_STORABLE_INSTANT_MS &&

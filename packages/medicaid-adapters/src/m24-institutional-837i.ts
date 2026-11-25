@@ -26,6 +26,7 @@ export type M24DocumentGapCode =
   | "M24_ROUTE_NOT_QUALIFIED"
   | "M24_SECONDARY_PAYER_UNSUPPORTED"
   | "M24_SECONDARY_ROOM_AND_BOARD_UNSUPPORTED"
+  | "M24_837I_ADJUSTMENT_FREQUENCY_UNQUALIFIED"
   | "M24_DOCUMENT_INVALID";
 
 export interface M24DocumentGap {
@@ -153,6 +154,12 @@ const qualificationGaps: readonly [
   ["route", "M24_ROUTE_NOT_QUALIFIED"],
 ];
 
+/**
+ * Claim frequency 7 (replacement) and 8 (void) emit TOB 817/818. The Oregon adapter qualifies only 811-814 (OHA FFS
+ * instructions; no CCO format qualification), so an adjustment is refused until 817/818 are qualified.
+ */
+const UNQUALIFIED_ADJUSTMENT_FREQUENCIES: readonly string[] = ["7", "8"];
+
 const fail = (code: M24DocumentGapCode, field: string): M24DocumentResult<never> => ({
   ok: false,
   gaps: [{ code, field }],
@@ -204,6 +211,9 @@ function documentFromInput(facts: M24DocumentFacts): M24DocumentResult<M24Instit
   }
   if ((facts.x12Input.claim.otherPayers ?? []).length > 0) {
     return fail("M24_SECONDARY_PAYER_UNSUPPORTED", "claim.otherPayers");
+  }
+  if (UNQUALIFIED_ADJUSTMENT_FREQUENCIES.includes(facts.x12Input.claim.frequency)) {
+    return fail("M24_837I_ADJUSTMENT_FREQUENCY_UNQUALIFIED", "claim.frequency");
   }
   const gaps: M24DocumentGap[] = qualificationGaps
     .filter(([dimension]) => facts.qualification[dimension] !== "verified")

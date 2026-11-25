@@ -1,4 +1,8 @@
-import { type Claim837iInput, tokenizeInterchange } from "@chartwarden/x12-837-client";
+import {
+  type Claim837iInput,
+  build837iClaim,
+  tokenizeInterchange,
+} from "@chartwarden/x12-837-client";
 import { describe, expect, it, vi } from "vitest";
 import {
   type M24QualifiedClaimFacts,
@@ -691,6 +695,40 @@ describe("production mapping from server-minted facts", () => {
       gaps: [{ code: "M24_DOCUMENT_INVALID", field: "claimFilingIndicator" }],
     });
   });
+
+  it.each(["7", "8"] as const)(
+    "refuses claim frequency %s (an unqualified 817/818 bill type)",
+    (frequency) => {
+      const adjustment: Claim837iInput = {
+        ...claimInput,
+        claim: { ...claimInput.claim, frequency, payerClaimControlNumber: "SYNTHPAYERICN01" },
+      };
+      // The raw X12 builder accepts the adjustment; only the M24 qualification boundary refuses it.
+      expect(() => build837iClaim(adjustment)).not.toThrow();
+      expect(mapQualifiedM24ClaimToInstitutionalDocument(facts({ x12Input: adjustment }))).toEqual({
+        ok: false,
+        gaps: [{ code: "M24_837I_ADJUSTMENT_FREQUENCY_UNQUALIFIED", field: "claim.frequency" }],
+      });
+    },
+  );
+
+  it.each(["1", "2", "3", "4"] as const)(
+    "still maps claim frequency %s to its 81x bill type",
+    (frequency) => {
+      const original: Claim837iInput = {
+        ...claimInput,
+        claim: {
+          ...claimInput.claim,
+          frequency,
+          // Interim frequencies 2/3 are "still a patient"; 1/4 are final bills.
+          patientStatus: frequency === "2" || frequency === "3" ? "30" : "40",
+        },
+      };
+      expect(
+        mapQualifiedM24ClaimToInstitutionalDocument(facts({ x12Input: original })),
+      ).toMatchObject({ ok: true, value: { typeOfBill: `81${frequency}`, frequency } });
+    },
+  );
 });
 
 describe("M24 offline route and acknowledgment contracts", () => {

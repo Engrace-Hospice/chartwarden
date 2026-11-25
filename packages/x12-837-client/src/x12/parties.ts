@@ -16,6 +16,15 @@ import {
   text,
 } from "./writer";
 
+/**
+ * At least one subscriber identifier is required, so a missing one fails to compile instead of failing at runtime.
+ * `memberId` is the generic payer-assigned identifier (Medicaid identifiers must use it); `mbi` is the Medicare
+ * compatibility alias (deprecated for new callers: use `memberId`).
+ */
+export type SubscriberIdentifier =
+  | { readonly memberId: string; readonly mbi?: string }
+  | { readonly mbi: string; readonly memberId?: string };
+
 export interface Parties837i {
   readonly submitter: {
     readonly name: string;
@@ -32,15 +41,12 @@ export interface Parties837i {
     readonly address: X12Address;
   };
   /** The beneficiary — the subscriber IS the patient on hospice 837Is. */
-  readonly subscriber: X12PersonName & {
-    /** Generic payer-assigned subscriber/member identifier. Medicaid identifiers must use this field. */
-    readonly memberId?: string;
-    /** @deprecated Medicare compatibility alias. New callers should use `memberId`. */
-    readonly mbi?: string;
-    readonly address: X12Address;
-    readonly birthDate: string;
-    readonly sex: "M" | "F";
-  };
+  readonly subscriber: X12PersonName &
+    SubscriberIdentifier & {
+      readonly address: X12Address;
+      readonly birthDate: string;
+      readonly sex: "M" | "F";
+    };
   readonly payer: { readonly name: string; readonly payerId: string };
   /** Explicit filing indicator for non-commercial claims. Omission preserves M23's Medicare `MA` behavior. */
   readonly claimFilingIndicator?: "MA" | "MC";

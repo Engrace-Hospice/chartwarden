@@ -219,6 +219,14 @@ describe("each gate goes RED on its planted violation", () => {
     expect(r.out).toMatch(/domain-is-pure/);
   });
 
+  it("boundaries — production code importing the medicaid-adapters test-only subpath", async () => {
+    const r = await boundaries(["packages"], join(FIX, "boundaries"));
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/medicaid-adapters-testing-only-from-tests: .*prod-importer\.ts/);
+    // A file under `__tests__` importing the same subpath is the allowed shape.
+    expect(r.out).not.toMatch(/medicaid-adapters-testing-only-from-tests: .*allowed-importer\.ts/);
+  });
+
   // The M20-T06 hole: `openapi:check` only proves openapi.json was REGENERATED and that no
   // enrichment targets a dead route — an unenriched route is legal, so a routes task could
   // ship 30+ contract-less routes with all gates green. The fixture plants exactly one such

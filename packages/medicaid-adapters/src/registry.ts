@@ -92,6 +92,12 @@ export type MedicaidProgramKind =
   | "unresolved"
   | "ambiguous"
   | "unsupported";
+/** Kinds that name one responsible program. `unresolved`, `ambiguous` and `unsupported` can never be "verified". */
+const RESOLVED_PROGRAM_KINDS: readonly MedicaidProgramKind[] = [
+  "ffs_open_card",
+  "managed_care",
+  "other_managed_care",
+];
 export type MedicaidRouteReadinessStatus =
   | "transport_unconfigured"
   | "certification_pending"
@@ -136,7 +142,9 @@ export function medicaidClaimRouteReadiness(
   const base = {
     serviceState,
     programKind,
-    programAssignmentVerified,
+    // A caller's "verified" flag means nothing for a kind that did not resolve to one program.
+    programAssignmentVerified:
+      programAssignmentVerified && RESOLVED_PROGRAM_KINDS.includes(programKind),
     requestedChannel,
     localPreparationAvailable: true as const,
     transportConfigured: serviceState === "OR" && gatewayBound,

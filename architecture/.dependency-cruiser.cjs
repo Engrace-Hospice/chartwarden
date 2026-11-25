@@ -332,6 +332,17 @@ module.exports = {
       from: { path: p("apps/backend/src/modules/29-external-interfaces") },
       to: { path: anyOf(["packages/xero-client", "packages/gusto-client"]) },
     },
+    {
+      name: "medicaid-adapters-testing-only-from-tests",
+      comment:
+        "@chartwarden/medicaid-adapters/testing (packages/medicaid-adapters/src/testing.ts) mints synthetic " +
+        "M24 fixtures and builds claim documents without the server-reader trust checks; it only verifies that the " +
+        "id fields are synthetic and that the envelope usage is 'T'. The workspace exports it to every consumer, so " +
+        "import it only from `__tests__` directories and `*.test.ts(x)` files, never from production code.",
+      severity: "error",
+      from: { pathNot: "(^|/)__tests__/|\\.test\\.tsx?$" },
+      to: { path: "^packages/medicaid-adapters/src/testing\\.ts$" },
+    },
     ...vendorRules,
     ...helperTableRules,
     ...moduleBoundaryRules,
