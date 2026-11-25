@@ -36,7 +36,7 @@ export interface M25IngestActor {
 
 /**
  * #658 — where the raw 835 lives between `receiveAdvice` and `postAdvice`. Keyed by the server-generated advice id,
- * never the caller's `minioObjectKey`, so two advices cannot overwrite each other's staged text. Tenant-scoped by
+ * never the caller's `objectKey`, so two advices cannot overwrite each other's staged text. Tenant-scoped by
  * `organizationId` (the adapter picks the tenant bucket); `get` returns null when the object is gone.
  */
 export interface RawAdviceStore {
@@ -52,7 +52,7 @@ export interface ReceiveAdviceInput {
   /** Also the X12835WorkerClient `payerProgram` discriminator — the DB enum and the sidecar's program
    *  literal happen to be the exact same 3-value union, so this one field serves both. */
   readonly payerKind: "medicare" | "medicaid" | "commercial";
-  readonly minioObjectKey: string;
+  readonly objectKey: string;
   readonly fileSha256: string;
   /** The raw X12 interchange (one ISA/IEA, potentially many GS/GE and ST/SE sets), staged in RawAdviceStore. */
   readonly rawEdi: string;

@@ -108,12 +108,12 @@ describe("parseX12835AllSets (#671)", () => {
   it("the client exposes it and reports a missing reader as retryable", async () => {
     const c = createX12835Client();
     const ok = await c.parse835All?.({
-      minioObjectKey: "k",
+      objectKey: "k",
       payerProgram: "medicare",
       rawEdi: two,
     });
     expect(ok?.ok && ok.value.length).toBe(2);
-    const missing = await c.parse835All?.({ minioObjectKey: "k", payerProgram: "medicare" });
+    const missing = await c.parse835All?.({ objectKey: "k", payerProgram: "medicare" });
     expect(missing && !missing.ok && missing.degraded.retryable).toBe(true);
   });
   it("keeps multiple groups and repeated ST02 scoped to each group", () => {

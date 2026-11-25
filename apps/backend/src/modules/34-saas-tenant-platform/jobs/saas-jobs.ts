@@ -904,7 +904,7 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
         await repo.update(input.jobId, {
           status: "fulfilled",
           fulfilledAt: now(),
-          bundleMinioObjectKey: input.bundleMinioObjectKey,
+          bundleObjectKey: input.bundleObjectKey,
           bundleSha256: input.bundleSha256,
           bundleSizeBytes: String(input.bundleSizeBytes),
           bundleModuleInventory: input.bundleModuleInventory,
@@ -950,7 +950,8 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
           tenantExportJobId: input.jobId,
           eventKind: "oversized_hold",
           shardReceipt: {
-            bundleMinioObjectKey: input.bundleMinioObjectKey,
+            // JSON key kept: it is persisted in `tenant_export_job_event.shard_receipt` and read back by the approve-oversized route.
+            bundleMinioObjectKey: input.bundleObjectKey,
             bundleSha256: input.bundleSha256,
             bundleSizeBytes: input.bundleSizeBytes,
             recordCount: input.recordCount,

@@ -11,6 +11,15 @@ import type { Check } from "../restore-drill/report";
 export interface ObjectRefSource {
   readonly table: string;
   readonly keyColumn: string;
+  /**
+   * The column's name before migration 1546 renamed it (the "minio" vendor name). A restore of an older snapshot still
+   * has it; {@link resolveObjectRefSource} reads it when the new name is absent.
+   *
+   * Temporary: delete this field, `resolveObjectRefSource` and its tests once no pre-1546 snapshot is within backup retention
+   * (the pgBackRest full-backup counts `BACKUP_PG_RETENTION_FULL_LOCAL` / `BACKUP_PG_RETENTION_FULL_OFFSITE` in
+   * deploy/production/compose.backup.yml, and the off-site bucket's lock days `BACKUP_OFFSITE_MIN_LOCK_DAYS`).
+   */
+  readonly legacyKeyColumn?: string;
   /** Column holding the sha256 of the stored bytes, when the table records one. */
   readonly shaColumn: string | null;
   /** SQL predicate over alias `t`: rows for which the object MUST exist (completed, not destroyed, ...). */
@@ -26,7 +35,8 @@ export const OBJECT_REF_SOURCES: readonly ObjectRefSource[] = [
   },
   {
     table: "document_version",
-    keyColumn: "minio_object_key",
+    keyColumn: "object_key",
+    legacyKeyColumn: "minio_object_key",
     shaColumn: "sha256_hex",
     liveWhere:
       "NOT EXISTS (SELECT 1 FROM document d WHERE d.id = t.document_id AND d.status = 'destroyed_tombstone')",
@@ -39,25 +49,29 @@ export const OBJECT_REF_SOURCES: readonly ObjectRefSource[] = [
   },
   {
     table: "dsar_export_job",
-    keyColumn: "bundle_minio_object_key",
+    keyColumn: "bundle_object_key",
+    legacyKeyColumn: "bundle_minio_object_key",
     shaColumn: "bundle_sha256",
-    liveWhere: "t.bundle_minio_object_key IS NOT NULL AND t.status = 'fulfilled'",
+    liveWhere: "t.bundle_object_key IS NOT NULL AND t.status = 'fulfilled'",
   },
   {
     table: "tenant_export_job",
-    keyColumn: "bundle_minio_object_key",
+    keyColumn: "bundle_object_key",
+    legacyKeyColumn: "bundle_minio_object_key",
     shaColumn: "bundle_sha256",
-    liveWhere: "t.bundle_minio_object_key IS NOT NULL AND t.status = 'fulfilled'",
+    liveWhere: "t.bundle_object_key IS NOT NULL AND t.status = 'fulfilled'",
   },
   {
     table: "fhir_bulk_export_artifact",
-    keyColumn: "minio_object_key",
+    keyColumn: "object_key",
+    legacyKeyColumn: "minio_object_key",
     shaColumn: "checksum_sha256",
     liveWhere: "TRUE",
   },
   {
     table: "remittance_advice",
-    keyColumn: "minio_object_key",
+    keyColumn: "object_key",
+    legacyKeyColumn: "minio_object_key",
     shaColumn: "file_sha256",
     liveWhere: "TRUE",
   },
@@ -84,9 +98,38 @@ export const NOT_OBJECT_STORE_REFS: Readonly<Record<string, string>> = {
 export const OBJECT_REF_COLUMN_PATTERN =
   "(object_key|storage_key|storage_uri|file_uri|storage_ref)$";
 
+/**
+ * The source to query for the schema `discovered` describes (the `table.column` names {@link OBJECT_REF_COLUMN_PATTERN}
+ * finds): the registered one, or, on a restore of a snapshot taken before migration 1546, the same source over the
+ * legacy column name (the key column and every mention of it in `liveWhere`). When neither column exists the registered
+ * name is kept, so the query fails loudly rather than reading nothing.
+ *
+ * Remove with `legacyKeyColumn` once no pre-1546 snapshot is within backup retention (see that field).
+ */
+export function resolveObjectRefSource(
+  source: ObjectRefSource,
+  discovered: readonly string[],
+): ObjectRefSource {
+  const { legacyKeyColumn } = source;
+  if (
+    !legacyKeyColumn ||
+    discovered.includes(`${source.table}.${source.keyColumn}`) ||
+    !discovered.includes(`${source.table}.${legacyKeyColumn}`)
+  )
+    return source;
+  return {
+    ...source,
+    keyColumn: legacyKeyColumn,
+    liveWhere: source.liveWhere.split(source.keyColumn).join(legacyKeyColumn),
+  };
+}
+
 export function unclassifiedRefColumns(discovered: readonly string[]): string[] {
   const known = new Set([
     ...OBJECT_REF_SOURCES.map((s) => `${s.table}.${s.keyColumn}`),
+    ...OBJECT_REF_SOURCES.flatMap((s) =>
+      s.legacyKeyColumn ? [`${s.table}.${s.legacyKeyColumn}`] : [],
+    ),
     ...Object.keys(NOT_OBJECT_STORE_REFS),
   ]);
   return discovered.filter((c) => !known.has(c)).sort();

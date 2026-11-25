@@ -24,7 +24,7 @@ export const tenantExportJob = pgTable(
     status: tenantExportJobStatus("status").notNull().default("requested"),
     requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
     fulfilledAt: timestamp("fulfilled_at", { withTimezone: true }),
-    bundleMinioObjectKey: text("bundle_minio_object_key"),
+    bundleObjectKey: text("bundle_object_key"),
     bundleSha256: text("bundle_sha256"),
     // GAP-097: bigint stored as text per M1 convention (the M22 `document_version.byte_size` precedent)
     // — SEC-052 oversized bundles are BY DEFINITION over the 50GB `TENANT_EXPORT_MAX_BYTES` threshold,

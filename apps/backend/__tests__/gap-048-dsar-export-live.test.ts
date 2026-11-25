@@ -221,18 +221,18 @@ describe.skipIf(!DB_URL)("GAP-048 — M34 DSAR export, LIVE Postgres", () => {
     // The Bundle really landed in the object store — a valid FHIR R4 collection Bundle, gzip-compressed.
     const stored = await objects.inspectObject({
       bucket: `tenant-${ORG}`,
-      objectKey: result.bundleMinioObjectKey,
+      objectKey: result.bundleObjectKey,
     });
     expect(stored).not.toBeNull();
     expect(stored?.byteSize).toBeGreaterThan(0);
 
     // The job row itself carries the real artifacts (not the old async-backref-consumer null).
     const { rows: jobRows } = await admin.query(
-      "SELECT status, bundle_minio_object_key, bundle_sha256, bundle_document_id FROM dsar_export_job WHERE id=$1",
+      "SELECT status, bundle_object_key, bundle_sha256, bundle_document_id FROM dsar_export_job WHERE id=$1",
       [jobId],
     );
     expect(jobRows[0].status).toBe("review_pending");
-    expect(jobRows[0].bundle_minio_object_key).toBe(result.bundleMinioObjectKey);
+    expect(jobRows[0].bundle_object_key).toBe(result.bundleObjectKey);
     expect(jobRows[0].bundle_document_id).toBe(result.bundleDocumentId);
 
     // GAP-048: exactly ONE outbox event — the dead m22.document.upload_requested emit is gone, and the
@@ -263,7 +263,7 @@ describe.skipIf(!DB_URL)("GAP-048 — M34 DSAR export, LIVE Postgres", () => {
     // presign fix in isolation, exactly matching GAP-048's original evidence: `GET .../download`).
     const jobId = (
       await admin.query(
-        `INSERT INTO dsar_export_job (organization_id, patient_id, request_source, requestor_identity_verification_evidence, requesting_membership_id, status, sla_due_at, bundle_minio_object_key, bundle_sha256)
+        `INSERT INTO dsar_export_job (organization_id, patient_id, request_source, requestor_identity_verification_evidence, requesting_membership_id, status, sla_due_at, bundle_object_key, bundle_sha256)
          VALUES ($1,$2,'patient','ID verified via phone callback','${ACTOR_MEMBERSHIP}','fulfilled',NOW()+interval '30 days','exports/dsar/manual-fixture.ndjson.gz','deadbeef') RETURNING id`,
         [ORG, patientId],
       )

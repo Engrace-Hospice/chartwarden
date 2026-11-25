@@ -305,7 +305,7 @@ async function pullOne(
           providerEntityId,
           payerId,
           payerKind: "medicare",
-          minioObjectKey: `clearinghouse/${binding.vendor}/${file.remittanceId}`,
+          objectKey: `clearinghouse/${binding.vendor}/${file.remittanceId}`,
           fileSha256,
           rawEdi: file.rawX12,
         },

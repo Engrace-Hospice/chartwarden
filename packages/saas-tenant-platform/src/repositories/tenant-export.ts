@@ -221,7 +221,7 @@ export class TenantExportRepository {
         schema.NewTenantExportJob,
         | "status"
         | "fulfilledAt"
-        | "bundleMinioObjectKey"
+        | "bundleObjectKey"
         | "bundleSha256"
         | "bundleSizeBytes"
         | "bundleModuleInventory"

@@ -94,7 +94,7 @@ export class DsarExportRepository {
         | "fulfilledAt"
         | "deniedReason"
         | "bundleDocumentId"
-        | "bundleMinioObjectKey"
+        | "bundleObjectKey"
         | "bundleSha256"
         | "bundlePresignedUrlExpiresAt"
         | "bundleDownloadedAt"

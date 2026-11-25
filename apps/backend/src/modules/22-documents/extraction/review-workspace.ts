@@ -703,7 +703,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
       const source = await read(organizationId, async (tx) => {
         const [row] = await tx
           .select({
-            objectKey: DV.minioObjectKey,
+            objectKey: DV.objectKey,
             geometry: BATCH.pageGeometry,
             sudStatus: BATCH.sudStatus,
             patientId: BATCH.patientId,

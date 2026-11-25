@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   NO_X12_835_PORT,
   type X12835HttpPort,
+  type X12835HttpRequest,
   createX12835Client,
   mapParsed277ca,
 } from "../src/index";
@@ -29,7 +30,7 @@ describe("mapParsed277ca", () => {
 describe("createX12835Client (277CA sidecar port, fail-closed default)", () => {
   it("returns a retryable transport degrade for 277CA when no sidecar is wired", async () => {
     const r = await createX12835Client({ port: NO_X12_835_PORT }).parse277ca({
-      minioObjectKey: "era/x.277",
+      objectKey: "era/x.277",
     });
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -37,9 +38,28 @@ describe("createX12835Client (277CA sidecar port, fail-closed default)", () => {
     expect(r.degraded.retryable).toBe(true);
   });
 
+  it("sends the sidecar the published request field `minioObjectKey`, whatever the in-process input is called", async () => {
+    // Arrange: capture what reaches the transport
+    const sent: X12835HttpRequest[] = [];
+    const port: X12835HttpPort = {
+      request: (req) => {
+        sent.push(req);
+        return Promise.resolve({ status: 503, body: null });
+      },
+    };
+
+    // Act
+    await createX12835Client({ port }).parse277ca({ objectKey: "era/x.277" });
+
+    // Assert: the sidecar's request body is a wire contract and keeps its name
+    expect(sent).toEqual([
+      { method: "POST", path: "/parse277ca", body: { minioObjectKey: "era/x.277" } },
+    ]);
+  });
+
   it("treats a 5xx as a retryable transport degrade", async () => {
     const port: X12835HttpPort = { request: () => Promise.resolve({ status: 503, body: null }) };
-    const r = await createX12835Client({ port }).parse277ca({ minioObjectKey: "k" });
+    const r = await createX12835Client({ port }).parse277ca({ objectKey: "k" });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.degraded.retryable).toBe(true);

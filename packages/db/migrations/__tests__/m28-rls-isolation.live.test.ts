@@ -194,7 +194,7 @@ describe.skipIf(!DB_URL)(
 
       const artifact = (
         await db.query(
-          `INSERT INTO fhir_bulk_export_artifact (organization_id, job_id, resource_type, minio_object_key,
+          `INSERT INTO fhir_bulk_export_artifact (organization_id, job_id, resource_type, object_key,
            byte_size, row_count, checksum_sha256)
          VALUES ($1, $2, 'Patient', 'exports/${n}/patient.ndjson', 2048, 12, '${"f".repeat(63)}${n}')
          RETURNING id`,

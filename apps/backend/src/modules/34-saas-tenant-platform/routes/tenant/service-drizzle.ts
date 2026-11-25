@@ -379,7 +379,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
       return inOrgCtx(organizationId, async (tx) => {
         const repo = new DsarExportRepository(tx);
         const row = await loadDsar(tx, organizationId, jobId);
-        if (row.status !== "fulfilled" || !row.bundleMinioObjectKey) {
+        if (row.status !== "fulfilled" || !row.bundleObjectKey) {
           throw new ChartWardenError(
             "DSAR_NOT_FULFILLED",
             "the bundle is not yet available for download",
@@ -388,7 +388,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
         }
         const { url, expiresAt } = await deps.presign.presign(
           organizationId,
-          row.bundleMinioObjectKey,
+          row.bundleObjectKey,
           PRESIGN_TTL_SECONDS,
         );
         await repo.update(jobId, {
@@ -446,7 +446,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
       return inOrgCtx(organizationId, async (tx) => {
         const repo = new TenantExportRepository(tx);
         const row = await loadTenantExport(tx, organizationId, jobId);
-        if (row.status !== "fulfilled" || !row.bundleMinioObjectKey) {
+        if (row.status !== "fulfilled" || !row.bundleObjectKey) {
           throw new ChartWardenError(
             "TENANT_EXPORT_NOT_FULFILLED",
             "the bundle is not yet available",
@@ -455,7 +455,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
         }
         const { url, expiresAt } = await deps.presign.presign(
           organizationId,
-          row.bundleMinioObjectKey,
+          row.bundleObjectKey,
           PRESIGN_TTL_SECONDS,
         );
         await repo.update(jobId, {

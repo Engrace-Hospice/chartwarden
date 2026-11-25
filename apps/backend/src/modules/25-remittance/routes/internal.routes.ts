@@ -98,10 +98,11 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
       },
       async (request, reply) => {
         const actor = actorOf(request);
-        const body = parse(ReceiveAdviceRequestSchema, request.body);
+        const { minioObjectKey, ...body } = parse(ReceiveAdviceRequestSchema, request.body);
+        // The request field keeps its published name (OpenAPI contract); the service input and the column are `objectKey`.
         const result = await ingestService.receiveAdvice(
           { organizationId: actor.organizationId },
-          body,
+          { ...body, objectKey: minioObjectKey },
         );
         if (result.outcome === "malformed") {
           return reply.code(422).send({ outcome: result.outcome, reason: result.reason });

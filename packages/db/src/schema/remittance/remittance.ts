@@ -78,7 +78,7 @@ export const remittanceAdvice = pgTable(
     functionalGroupCreationDate: date("functional_group_creation_date", { mode: "string" }),
     productionDate: timestamp("production_date", { withTimezone: true }),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
-    minioObjectKey: varchar("minio_object_key", { length: 500 }).notNull(),
+    objectKey: varchar("object_key", { length: 500 }).notNull(),
     fileSha256: varchar("file_sha256", { length: 64 }).notNull(),
     parseStatus: m25ParseStatus("parse_status").notNull().default("queued"),
     parseSummary: jsonb("parse_summary"),

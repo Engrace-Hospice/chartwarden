@@ -228,7 +228,7 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
       await admin.query(
         `INSERT INTO remittance_advice (organization_id, provider_entity_id, payer_id, payer_kind,
            interchange_control_number, transaction_set_control_number, check_or_eft_trace_number, payment_method,
-           total_payment_amount, production_date, minio_object_key, file_sha256, parse_status)
+           total_payment_amount, production_date, object_key, file_sha256, parse_status)
          VALUES ($1,$2,$3,'medicare','900000036','100036','TRC036036','eft',0, now(),'k',$4,'partial_posted')
          RETURNING id, received_at`,
         [ORG, providerEntityId, randomUUID(), "0".repeat(64)],

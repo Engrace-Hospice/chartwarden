@@ -1230,7 +1230,7 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
         ).rows[0].id as string;
         const version = (
           await admin.query(
-            `INSERT INTO document_version (organization_id, document_id, version_number, minio_object_key, mime_type, byte_size, sha256_hex, uploaded_by_kind)
+            `INSERT INTO document_version (organization_id, document_id, version_number, object_key, mime_type, byte_size, sha256_hex, uploaded_by_kind)
              VALUES ($1,$2,'1',$3,'application/pdf','10','abc','system_render') RETURNING id`,
             [org, doc, `mailing-batch/${doc}`],
           )

@@ -395,7 +395,7 @@ export function createDrizzleDocumentEraseStore(
             : uniq(
                 (
                   await tx
-                    .select({ key: VER.minioObjectKey })
+                    .select({ key: VER.objectKey })
                     .from(VER)
                     .where(inArray(VER.documentId, docIds))
                 ).map((r) => r.key),
