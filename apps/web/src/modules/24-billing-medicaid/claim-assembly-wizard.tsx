@@ -131,6 +131,7 @@ interface AssemblyPreview {
       serviceFrom: string;
       serviceTo: string;
       serviceCategory: "RHC" | "CHC" | "IRC" | "GIP" | "IN_HOME_RESPITE" | null;
+      serviceLocationKind: "home" | "facility" | null;
       status: "resolved" | "partial" | "unresolved" | "ambiguous" | "unsupported";
       rateStatus: "qualified" | "missing" | "ambiguous" | "unverified" | "unsupported";
       unitBasis: "per_day" | "per_hour" | null;
@@ -840,7 +841,13 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                     >
                       <strong>
                         {segment.serviceCategory
-                          ? labelFor(SERVICE_CATEGORY_LABEL, segment.serviceCategory)
+                          ? segment.serviceCategory === "RHC" &&
+                            segment.serviceLocationKind === "facility"
+                            ? "Facility-based RHC"
+                            : segment.serviceCategory === "RHC" &&
+                                segment.serviceLocationKind === "home"
+                              ? "Home RHC"
+                              : labelFor(SERVICE_CATEGORY_LABEL, segment.serviceCategory)
                           : "Service category unresolved"}
                         {` · ${segment.serviceFrom}${segment.serviceTo === segment.serviceFrom ? "" : ` to ${segment.serviceTo}`}`}
                       </strong>

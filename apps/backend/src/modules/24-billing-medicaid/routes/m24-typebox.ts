@@ -237,6 +237,7 @@ const AssemblyPreviewPricingSegment = Type.Object({
     lit(["RHC", "CHC", "IRC", "GIP", "IN_HOME_RESPITE"] as const),
     Type.Null(),
   ]),
+  serviceLocationKind: Type.Union([lit(["home", "facility"] as const), Type.Null()]),
   status: lit(["resolved", "partial", "unresolved", "ambiguous", "unsupported"] as const),
   rateStatus: lit(["qualified", "missing", "ambiguous", "unverified", "unsupported"] as const),
   unitBasis: Type.Union([lit(["per_day", "per_hour"] as const), Type.Null()]),

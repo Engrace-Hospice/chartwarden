@@ -82841,6 +82841,7 @@ export interface operations {
                                 /** Format: date */
                                 serviceTo: string;
                                 serviceCategory: ("RHC" | "CHC" | "IRC" | "GIP" | "IN_HOME_RESPITE") | null;
+                                serviceLocationKind: ("home" | "facility") | null;
                                 status: "resolved" | "partial" | "unresolved" | "ambiguous" | "unsupported";
                                 rateStatus: "qualified" | "missing" | "ambiguous" | "unverified" | "unsupported";
                                 unitBasis: ("per_day" | "per_hour") | null;

@@ -2121,6 +2121,7 @@ import {
   createDbNppesNpiSource,
   createDrizzleMdmEraseStore,
   facilityKindsForIds,
+  facilityKindsForIdsInTransaction,
   facilityPostalCodesForIds,
   getMdmEntityProvider,
   mountMdmRoutes,
@@ -5608,16 +5609,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // posture as `m24LocPeriodReader`, but NON_ORG_SCOPED so no org context. Batched by id so one claim assembly issues at most one query here.
   const m24FacilityKindReader = dbHandle
     ? {
-        async kindsFor(facilityIds: readonly string[]) {
-          const map = new Map<string, PlaceOfServiceFacilityKind>();
-          if (facilityIds.length === 0) return map;
-          const rows = await dbHandle.db
-            .select({ id: schema.facilities.id, kind: schema.facilities.kind })
-            .from(schema.facilities)
-            .where(inArray(schema.facilities.id, [...facilityIds]));
-          for (const r of rows) map.set(r.id, r.kind);
-          return map;
-        },
+        kindsFor: (facilityIds: readonly string[]) => facilityKindsForIds(dbHandle.db, facilityIds),
+        kindsForInTransaction: (transaction: unknown, facilityIds: readonly string[]) =>
+          facilityKindsForIdsInTransaction(transaction, facilityIds),
       }
     : undefined;
   // M24 → M40 (GAP-040) — the LIVE `MdmEntityProvider` seam for the R&B arrangement's NF-name snapshot.
@@ -12100,6 +12094,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       admissions: m24LocPeriodReader,
       canonicalPayerReader: m24CanonicalPayerReader,
       patientAddresses: getSeam("PatientAddressReader") as PatientAddressReader,
+      facilityKindReader: m24FacilityKindReader,
       outbox: m24OutboxPublisher,
     });
     app.addHook("onClose", async () => {

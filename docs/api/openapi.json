@@ -210741,6 +210741,7 @@
                               "serviceFrom",
                               "serviceTo",
                               "serviceCategory",
+                              "serviceLocationKind",
                               "status",
                               "rateStatus",
                               "unitBasis",
@@ -210795,6 +210796,25 @@
                                       },
                                       {
                                         "const": "IN_HOME_RESPITE",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "serviceLocationKind": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "home",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "facility",
                                         "type": "string"
                                       }
                                     ]

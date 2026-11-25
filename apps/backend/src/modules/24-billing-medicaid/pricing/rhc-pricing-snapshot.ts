@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
+import type { MedicaidClaimLinePricingSnapshotPayload } from "@chartwarden/db/schema";
 import type { MedicaidPayerProgramClassification } from "@chartwarden/mdm";
 import type { PayerRatePolicyFact } from "@chartwarden/medicaid-adapters";
 import { assessHospicePricing } from "@chartwarden/medicaid-adapters";
@@ -46,6 +47,14 @@ export interface RHCServiceResidenceReader {
   ): Promise<readonly RHCServiceResidenceSpan[]>;
 }
 
+export interface RHCFacilityKindReader {
+  kindsFor(facilityIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
+  kindsForInTransaction?(
+    transaction: unknown,
+    facilityIds: readonly string[],
+  ): Promise<ReadonlyMap<string, string>>;
+}
+
 export interface RHCPriceScope {
   readonly organizationId: string;
   readonly providerEntityId: string;
@@ -67,6 +76,7 @@ export interface RHCPriceScope {
 }
 
 export interface RHCPriceLinePlan {
+  readonly snapshotSchemaVersion: 1 | 2;
   readonly serviceFrom: string;
   readonly serviceTo: string;
   readonly locPeriodId: string;
@@ -85,6 +95,56 @@ export interface RHCPriceLinePlan {
   readonly rate: PayerRatePolicyFact;
   readonly evidence: BillingEvidence;
   readonly integrityFacts: Record<string, unknown>;
+}
+
+/** Validate the explicit persisted daily-RHC snapshot profile before handing JSON to Drizzle. */
+export function assertSupportedRhcPricingSnapshotPayload(
+  snapshot: Record<string, unknown>,
+  expectedVersion: 1 | 2,
+): MedicaidClaimLinePricingSnapshotPayload {
+  const location = snapshot.serviceLocation;
+  const hasCommonIdentity =
+    typeof snapshot.assessmentTimestamp === "string" &&
+    typeof snapshot.organizationId === "string" &&
+    typeof snapshot.providerEntityId === "string" &&
+    typeof snapshot.patientId === "string" &&
+    typeof snapshot.admissionId === "string" &&
+    typeof snapshot.medicaidClaimId === "string" &&
+    typeof snapshot.claimLineId === "string" &&
+    typeof snapshot.billingEvidenceId === "string" &&
+    typeof snapshot.payerRatePolicyId === "string";
+  if (
+    !hasCommonIdentity ||
+    snapshot.schemaVersion !== expectedVersion ||
+    snapshot.postingAuthorized !== false ||
+    snapshot.levelOfCare !== "RHC" ||
+    snapshot.programKind !== "managed_care" ||
+    !location ||
+    typeof location !== "object"
+  ) {
+    throw new Error("unsupported or incomplete local daily RHC pricing snapshot");
+  }
+  const serviceLocation = location as Record<string, unknown>;
+  if (
+    expectedVersion === 1 &&
+    snapshot.hcpcsCode === "Q5001" &&
+    serviceLocation.kind === "home" &&
+    serviceLocation.facilityId === null &&
+    !Object.hasOwn(snapshot, "localBillingProfile")
+  ) {
+    return snapshot as MedicaidClaimLinePricingSnapshotPayload;
+  }
+  if (
+    expectedVersion === 2 &&
+    snapshot.hcpcsCode === "Q5002" &&
+    snapshot.localBillingProfile === "rhc_assisted_living_q5002_daily_v1" &&
+    serviceLocation.kind === "facility" &&
+    typeof serviceLocation.facilityId === "string" &&
+    serviceLocation.facilityKind === "alf"
+  ) {
+    return snapshot as MedicaidClaimLinePricingSnapshotPayload;
+  }
+  throw new Error("pricing snapshot does not match its supported daily RHC profile");
 }
 
 export type RHCPricePlanResult =
@@ -389,6 +449,7 @@ export async function verifyStoredRhcPricingSnapshots(input: {
   readonly rateRows: readonly RateRow[];
   readonly payerReader: CurrentPayerIdentityReader | undefined;
   readonly residenceReader: RHCServiceResidenceReader | undefined;
+  readonly facilityKindReader?: RHCFacilityKindReader;
   readonly assessedAt: string;
 }): Promise<StoredRhcPricingVerification> {
   const hospiceLines = input.lines.filter((line) => !line.isRb);
@@ -425,7 +486,7 @@ export async function verifyStoredRhcPricingSnapshots(input: {
     inclusiveEndDate: input.inclusiveEndDate ?? null,
   };
   const evidence = await readMedicaidHospiceBillingEvidence(input.tx, scope);
-  if (evidence.status !== "verified") {
+  if (evidence.status !== "verified" && evidence.status !== "segmentation_required") {
     return { pricingSnapshotVerified: false, institutionalFormatQualified: false };
   }
   if (!input.residenceReader) {
@@ -438,12 +499,21 @@ export async function verifyStoredRhcPricingSnapshots(input: {
     isoValue(input.claim.serviceFrom),
     isoValue(input.claim.serviceTo),
   );
+  const facilityIds = [
+    ...new Set(residenceSpans.flatMap((span) => (span.facilityId ? [span.facilityId] : []))),
+  ];
+  const facilityKinds = input.facilityKindReader
+    ? input.facilityKindReader.kindsForInTransaction
+      ? await input.facilityKindReader.kindsForInTransaction(input.tx, facilityIds)
+      : await input.facilityKindReader.kindsFor(facilityIds)
+    : new Map<string, string>();
   const plan = resolveRhcDailyPricingPlan({
     scope,
-    evidence: evidence.row,
+    evidence: evidence.status === "verified" ? evidence.row : evidence.rows,
     locPeriods: input.locPeriods,
     rates: input.rateRows.map(rateRowAsFact),
     residenceSpans,
+    facilityKinds,
   });
   if (plan.status !== "resolved" || plan.lines.length !== hospiceLines.length) {
     return { pricingSnapshotVerified: false, institutionalFormatQualified: false };
@@ -500,7 +570,7 @@ export async function verifyStoredRhcPricingSnapshots(input: {
       line.stateRateScheduleIdSnapshot !== null ||
       snapshot.payerRatePolicyId !== current.rate.id ||
       snapshot.billingEvidenceId !== current.evidence.id ||
-      snapshot.snapshotSchemaVersion !== 1
+      snapshot.snapshotSchemaVersion !== current.snapshotSchemaVersion
     ) {
       return { pricingSnapshotVerified: false, institutionalFormatQualified: false };
     }
@@ -540,6 +610,7 @@ export async function readMedicaidHospiceBillingEvidence(
   scope: RHCPriceScope,
 ): Promise<
   | { readonly status: "verified"; readonly row: BillingEvidence }
+  | { readonly status: "segmentation_required"; readonly rows: readonly BillingEvidence[] }
   | { readonly status: "unresolved" | "ambiguous"; readonly reasonCode: string }
 > {
   const table = schema.medicaidHospiceBillingEvidence;
@@ -573,39 +644,40 @@ export async function readMedicaidHospiceBillingEvidence(
     serviceTo: scope.serviceTo,
     assessedAt: scope.assessedAt,
   });
-  if (lineage.status === "segmentation_required") {
-    // The current RHC snapshot contract has one evidence identity per assessment. The shared
-    // segmented plan is a separate implementation step; never price by selecting one segment.
-    return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_SEGMENTATION_REQUIRED" };
-  }
-  if (lineage.status !== "verified") return lineage;
-  const row = lineage.row;
-  if (scope.admissionVersion === undefined || row.admissionVersion !== scope.admissionVersion) {
-    return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_ADMISSION_VERSION_STALE" };
-  }
+  if (lineage.status !== "verified" && lineage.status !== "segmentation_required") return lineage;
+  const lineageRows = lineage.status === "verified" ? [lineage.row] : lineage.rows;
   const assessedAt = Date.parse(scope.assessedAt);
-  if (
-    !Number.isFinite(assessedAt) ||
-    !row.verifiedAt ||
-    row.verifiedAt.getTime() > assessedAt ||
-    row.effectiveFrom > scope.serviceFrom ||
-    (row.effectiveTo !== null && row.effectiveTo < scope.serviceTo)
-  ) {
-    return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_NOT_CURRENT_FOR_ASSESSMENT" };
+  for (const row of lineageRows) {
+    if (scope.admissionVersion === undefined || row.admissionVersion !== scope.admissionVersion) {
+      return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_ADMISSION_VERSION_STALE" };
+    }
+    if (
+      !Number.isFinite(assessedAt) ||
+      !row.verifiedAt ||
+      row.verifiedAt.getTime() > assessedAt ||
+      row.effectiveFrom > scope.serviceTo ||
+      (row.effectiveTo !== null && row.effectiveTo < scope.serviceFrom)
+    ) {
+      return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_NOT_CURRENT_FOR_ASSESSMENT" };
+    }
+    if (
+      row.programKind !== "managed_care" ||
+      row.serviceState !== "OR" ||
+      row.serviceCategory !== "RHC" ||
+      row.quantityPolicy !== "active_rhc_loc_calendar_day" ||
+      row.quantityEvidenceOwner !== "m6_level_of_care_period" ||
+      row.billingUnit !== "daily" ||
+      row.codingProfile !== "local_draft_only" ||
+      !["Q5001", "Q5002"].includes(row.hcpcsCode) ||
+      row.revenueCode !== "0651" ||
+      row.billedChargeCentsPerUnit <= 0
+    ) {
+      return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_UNSUPPORTED" };
+    }
   }
-  if (
-    row.programKind !== "managed_care" ||
-    row.serviceState !== "OR" ||
-    row.serviceCategory !== "RHC" ||
-    row.quantityPolicy !== "active_rhc_loc_calendar_day" ||
-    row.quantityEvidenceOwner !== "m6_level_of_care_period" ||
-    row.billingUnit !== "daily" ||
-    row.codingProfile !== "local_draft_only" ||
-    row.billedChargeCentsPerUnit <= 0
-  ) {
-    return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_UNSUPPORTED" };
-  }
-  return { status: "verified", row };
+  return lineage.status === "verified"
+    ? { status: "verified", row: lineageRows[0]! }
+    : { status: "segmentation_required", rows: lineageRows };
 }
 
 function isoDate(value: Date): string {
@@ -682,13 +754,58 @@ export function resolveRhcHomeResidence(
   return { status: "resolved", span };
 }
 
-/** Shared price resolver used by preview, assembly and stored-snapshot revalidation. */
-export function resolveRhcDailyPricingPlan(input: {
+/** A facility-based daily RHC profile requires an effective M5 facility residence and M40 kind. */
+export function resolveRhcAssistedLivingResidence(
+  spans: readonly RHCServiceResidenceSpan[],
+  facilityKinds: ReadonlyMap<string, string>,
+  serviceFrom: string,
+  serviceTo: string,
+):
+  | {
+      readonly status: "resolved";
+      readonly span: RHCServiceResidenceSpan;
+      readonly facilityKind: "alf";
+    }
+  | { readonly status: "unresolved" | "ambiguous" | "unsupported"; readonly reasonCode: string } {
+  const overlapping = spans.filter(
+    (span) =>
+      span.effectiveFrom <= serviceTo &&
+      (span.effectiveTo === null || span.effectiveTo >= serviceFrom),
+  );
+  if (overlapping.length === 0) {
+    return { status: "unresolved", reasonCode: "RHC_SERVICE_RESIDENCE_MISSING" };
+  }
+  if (overlapping.length !== 1) {
+    return { status: "ambiguous", reasonCode: "RHC_SERVICE_RESIDENCE_AMBIGUOUS" };
+  }
+  const span = overlapping[0]!;
+  if (
+    span.effectiveFrom > serviceFrom ||
+    (span.effectiveTo !== null && span.effectiveTo < serviceTo)
+  ) {
+    return { status: "unresolved", reasonCode: "RHC_SERVICE_RESIDENCE_PERIOD_INCOMPLETE" };
+  }
+  if (span.kind !== "facility" || !span.facilityId || !span.addressId) {
+    return { status: "unsupported", reasonCode: "RHC_Q5002_REQUIRES_FACILITY_RESIDENCE" };
+  }
+  const facilityKind = facilityKinds.get(span.facilityId);
+  if (!facilityKind) {
+    return { status: "unresolved", reasonCode: "RHC_FACILITY_KIND_UNRESOLVED" };
+  }
+  if (facilityKind !== "alf") {
+    return { status: "unsupported", reasonCode: "RHC_Q5002_REQUIRES_ASSISTED_LIVING" };
+  }
+  return { status: "resolved", span, facilityKind };
+}
+
+/** Shared single-evidence daily price resolver used inside the shared segmented planner. */
+function resolveSingleRhcDailyPricingPlan(input: {
   readonly scope: RHCPriceScope;
   readonly evidence: BillingEvidence;
   readonly locPeriods: readonly RHCServiceLocPeriod[];
   readonly rates: readonly PayerRatePolicyFact[];
   readonly residenceSpans: readonly RHCServiceResidenceSpan[];
+  readonly facilityKinds: ReadonlyMap<string, string>;
 }): RHCPricePlanResult {
   const { scope, evidence } = input;
   if (
@@ -706,8 +823,8 @@ export function resolveRhcDailyPricingPlan(input: {
   if (scope.programKind !== "managed_care") {
     return { status: "unsupported", reasonCode: "RHC_PRICING_PROGRAM_UNSUPPORTED" };
   }
-  if (evidence.hcpcsCode !== "Q5001") {
-    return { status: "unsupported", reasonCode: "RHC_Q5001_LOCAL_PROFILE_REQUIRED" };
+  if (evidence.hcpcsCode !== "Q5001" && evidence.hcpcsCode !== "Q5002") {
+    return { status: "unsupported", reasonCode: "RHC_DAILY_LOCAL_PROFILE_UNSUPPORTED" };
   }
   if (
     evidence.effectiveFrom > scope.serviceFrom ||
@@ -716,11 +833,15 @@ export function resolveRhcDailyPricingPlan(input: {
   ) {
     return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_STALE_OR_OUT_OF_RANGE" };
   }
-  const residence = resolveRhcHomeResidence(
-    input.residenceSpans,
-    scope.serviceFrom,
-    scope.serviceTo,
-  );
+  const residence =
+    evidence.hcpcsCode === "Q5001"
+      ? resolveRhcHomeResidence(input.residenceSpans, scope.serviceFrom, scope.serviceTo)
+      : resolveRhcAssistedLivingResidence(
+          input.residenceSpans,
+          input.facilityKinds,
+          scope.serviceFrom,
+          scope.serviceTo,
+        );
   if (residence.status !== "resolved") {
     return { status: residence.status, reasonCode: residence.reasonCode };
   }
@@ -854,8 +975,26 @@ export function resolveRhcDailyPricingPlan(input: {
       const chargesCents = safeProduct(evidence.billedChargeCentsPerUnit, segment.quantity.units);
       if (chargesCents === null)
         return { status: "unresolved", reasonCode: "BILLED_CHARGE_OVERFLOW" };
+      const snapshotSchemaVersion = evidence.hcpcsCode === "Q5002" ? 2 : 1;
+      const serviceLocation =
+        evidence.hcpcsCode === "Q5002"
+          ? {
+              patientAddressId: residence.span.addressId,
+              kind: residence.span.kind,
+              facilityId: residence.span.facilityId,
+              facilityKind: "alf",
+              effectiveFrom: residence.span.effectiveFrom,
+              effectiveTo: residence.span.effectiveTo,
+            }
+          : {
+              patientAddressId: residence.span.addressId,
+              kind: residence.span.kind,
+              facilityId: residence.span.facilityId,
+              effectiveFrom: residence.span.effectiveFrom,
+              effectiveTo: residence.span.effectiveTo,
+            };
       const facts: Record<string, unknown> = {
-        schemaVersion: 1,
+        schemaVersion: snapshotSchemaVersion,
         postingAuthorized: false,
         organizationId: scope.organizationId,
         providerEntityId: scope.providerEntityId,
@@ -884,13 +1023,7 @@ export function resolveRhcDailyPricingPlan(input: {
           evidenceReference: evidence.localityEvidenceReference,
           evidenceVersion: evidence.localityEvidenceVersion,
         },
-        serviceLocation: {
-          patientAddressId: residence.span.addressId,
-          kind: residence.span.kind,
-          facilityId: residence.span.facilityId,
-          effectiveFrom: residence.span.effectiveFrom,
-          effectiveTo: residence.span.effectiveTo,
-        },
+        serviceLocation,
         qualityReporting: {
           applicability: evidence.qualityReportingApplicability,
           status: evidence.qualityReportingStatus,
@@ -924,7 +1057,11 @@ export function resolveRhcDailyPricingPlan(input: {
         codingEvidenceReference: evidence.codingEvidenceReference,
         codingEvidenceVersion: evidence.codingEvidenceVersion,
       };
+      if (snapshotSchemaVersion === 2) {
+        facts.localBillingProfile = "rhc_assisted_living_q5002_daily_v1";
+      }
       lines.push({
+        snapshotSchemaVersion,
         serviceFrom: segment.serviceFrom,
         serviceTo: segment.serviceTo,
         locPeriodId: period.period.id,
@@ -958,6 +1095,138 @@ export function resolveRhcDailyPricingPlan(input: {
     return { status: "unresolved", reasonCode: "M6_LOC_SERVICE_DAYS_INCOMPLETE" };
   }
   return { status: "resolved", lines };
+}
+
+/**
+ * Shared pricing pipeline for preview, assembly, and revalidation. Adjacent verified billing-evidence
+ * heads are evaluated independently, then joined in date order. A segment-level contract ceiling is
+ * applied once across contiguous lines that use the same rate identity, and its result is allocated in
+ * integer minor units so evidence segmentation cannot multiply the ceiling.
+ */
+export function resolveRhcDailyPricingPlan(input: {
+  readonly scope: RHCPriceScope;
+  readonly evidence: BillingEvidence | readonly BillingEvidence[];
+  readonly locPeriods: readonly RHCServiceLocPeriod[];
+  readonly rates: readonly PayerRatePolicyFact[];
+  readonly residenceSpans: readonly RHCServiceResidenceSpan[];
+  readonly facilityKinds?: ReadonlyMap<string, string>;
+}): RHCPricePlanResult {
+  const rows: readonly BillingEvidence[] = Array.isArray(input.evidence)
+    ? input.evidence
+    : [input.evidence as BillingEvidence];
+  if (rows.length === 0) return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_MISSING" };
+  const sorted = [...rows].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+  const lines: RHCPriceLinePlan[] = [];
+  let expected = input.scope.serviceFrom;
+  for (const row of sorted) {
+    const from =
+      row.effectiveFrom < input.scope.serviceFrom ? input.scope.serviceFrom : row.effectiveFrom;
+    const to =
+      row.effectiveTo === null || row.effectiveTo > input.scope.serviceTo
+        ? input.scope.serviceTo
+        : row.effectiveTo;
+    if (from < expected)
+      return { status: "ambiguous", reasonCode: "BILLING_EVIDENCE_OVERLAPPING_HEADS" };
+    if (from > expected || to < from) {
+      return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_PERIOD_INCOMPLETE" };
+    }
+    const result = resolveSingleRhcDailyPricingPlan({
+      scope: { ...input.scope, serviceFrom: from, serviceTo: to },
+      evidence: row,
+      locPeriods: input.locPeriods,
+      rates: input.rates,
+      residenceSpans: input.residenceSpans,
+      facilityKinds: input.facilityKinds ?? new Map(),
+    });
+    if (result.status !== "resolved") return result;
+    lines.push(...result.lines);
+    const nextExpected = nextCalendarDate(to);
+    if (nextExpected === null)
+      return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_PERIOD_INVALID" };
+    expected = nextExpected;
+  }
+  const afterScope = nextCalendarDate(input.scope.serviceTo);
+  if (expected !== afterScope) {
+    return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_PERIOD_INCOMPLETE" };
+  }
+  const ceilingAdjusted = applySegmentCeilingAcrossEvidence(lines);
+  if (!ceilingAdjusted)
+    return { status: "unresolved", reasonCode: "RHC_SEGMENT_CEILING_ALLOCATION_UNRESOLVED" };
+  return { status: "resolved", lines: ceilingAdjusted };
+}
+
+function nextCalendarDate(day: string): string | null {
+  const time = Date.parse(`${day}T00:00:00.000Z`);
+  return Number.isFinite(time) ? new Date(time + 86_400_000).toISOString().slice(0, 10) : null;
+}
+
+function applySegmentCeilingAcrossEvidence(
+  input: readonly RHCPriceLinePlan[],
+): readonly RHCPriceLinePlan[] | null {
+  const lines = [...input];
+  let start = 0;
+  while (start < lines.length) {
+    const first = lines[start]!;
+    const rate = first.rate;
+    if (
+      rate.chargeCeilingMethod !== "contract_maximum" ||
+      rate.chargeCeilingBoundary !== "segment"
+    ) {
+      start += 1;
+      continue;
+    }
+    let end = start + 1;
+    while (end < lines.length) {
+      const prior = lines[end - 1]!;
+      const next = lines[end]!;
+      if (
+        next.rate.id !== rate.id ||
+        next.rate.version !== rate.version ||
+        next.serviceFrom !== nextCalendarDate(prior.serviceTo)
+      )
+        break;
+      end += 1;
+    }
+    if (end - start > 1) {
+      const group = lines.slice(start, end);
+      const totalBase = group.reduce((sum, line) => sum + BigInt(line.baseReimbursementCents), 0n);
+      const cap = rate.chargeCeilingCents;
+      if (cap === null || totalBase <= 0n || totalBase > 2_147_483_647n) return null;
+      const totalEstimate = totalBase < BigInt(cap) ? totalBase : BigInt(cap);
+      let allocated = 0n;
+      for (let index = 0; index < group.length; index += 1) {
+        const line = group[index]!;
+        const amount =
+          index === group.length - 1
+            ? totalEstimate - allocated
+            : (totalEstimate * BigInt(line.baseReimbursementCents)) / totalBase;
+        allocated += amount;
+        const ceilings =
+          index === group.length - 1 && totalBase > BigInt(cap)
+            ? [
+                {
+                  method: "contract_maximum" as const,
+                  amountCents: cap,
+                  boundary: "segment" as const,
+                },
+              ]
+            : [];
+        const integrityFacts = {
+          ...line.integrityFacts,
+          reimbursementEstimateCents: Number(amount),
+          appliedCeilings: ceilings,
+        };
+        lines[start + index] = {
+          ...line,
+          reimbursementEstimateCents: Number(amount),
+          appliedCeilings: ceilings,
+          integrityFacts,
+        };
+      }
+    }
+    start = end;
+  }
+  return lines;
 }
 
 export function rateRowAsFact(row: RateRow): PayerRatePolicyFact {

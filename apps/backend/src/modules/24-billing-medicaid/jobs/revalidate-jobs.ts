@@ -61,7 +61,10 @@ import {
   readInSavepoint,
   verifyStoredRhcPricingSnapshots,
 } from "../pricing/rhc-pricing-snapshot";
-import type { CanonicalPayerIdentityReader } from "../routes/write-service-drizzle";
+import type {
+  CanonicalPayerIdentityReader,
+  FacilityKindReaderPort,
+} from "../routes/write-service-drizzle";
 import { readMedicaidRatePolicyLineage } from "../routes/write-service-drizzle";
 import { M24_QUEUES, M24_QUEUE_PARAMS } from "./queues";
 
@@ -134,6 +137,8 @@ export interface RevalidateWorkerDeps {
   readonly canonicalPayerReader?: CanonicalPayerIdentityReader;
   /** M5 PHI-minimal, transaction-bound residence history for local RHC snapshot revalidation. */
   readonly patientAddresses?: Pick<PatientAddressReader, "residencesBetweenInTransaction">;
+  /** M40's canonical facility-kind read for supported local RHC residence profiles. */
+  readonly facilityKindReader?: FacilityKindReaderPort;
   now?: () => Date;
   readonly outbox: RevalidateWorkerOutboxPort;
 }
@@ -400,6 +405,7 @@ export async function runMedicaidRevalidate(
     ) {
       const { resolvePayer, medicaidProgramClassifications } = deps.canonicalPayerReader;
       const canonicalPayerId = claim.canonicalPayerId;
+      const facilityKindReader = deps.facilityKindReader;
       // One claim's pricing verification runs in a savepoint: a refusal or a deterministic defect in this
       // claim marks only this claim unverified (it then fails the snapshot rule and is visible to the operator),
       // instead of rolling back every claim of the patient and parking the job after its retries. A connection
@@ -434,6 +440,7 @@ export async function runMedicaidRevalidate(
                       deps.patientAddresses!.residencesBetweenInTransaction!(...args),
                   }
                 : undefined,
+            facilityKindReader,
             assessedAt,
           });
         },

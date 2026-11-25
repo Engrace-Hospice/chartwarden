@@ -43,7 +43,11 @@ import {
   buildDrizzleM24WriteService as buildProductionM24WriteService,
   readMedicaidRatePolicyLineage,
 } from "../src/modules/24-billing-medicaid/routes/write-service-drizzle";
-import { createDbMdmStore } from "../src/modules/40-mdm";
+import {
+  createDbMdmStore,
+  facilityKindsForIds,
+  facilityKindsForIdsInTransaction,
+} from "../src/modules/40-mdm";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -72,6 +76,23 @@ const RHC_ADDRESS = "abababab-abab-abab-abab-abababababac";
 const RHC_ENCOUNTER = "abababab-abab-abab-abab-abababababcc";
 const RHC_UNRELATED_ENCOUNTER = "abababab-abab-abab-abab-abababababce";
 const RHC_SIGNER_MEMBERSHIP = "abababab-abab-abab-abab-abababababcd";
+const ALF_RHC_PATIENT = "abababab-abab-abab-abab-ababababac01";
+const ALF_RHC_ADMISSION = "abababab-abab-abab-abab-ababababac02";
+const ALF_RHC_COVERAGE = "abababab-abab-abab-abab-ababababac03";
+const ALF_RHC_ASSIGNMENT = "abababab-abab-abab-abab-ababababac04";
+const ALF_RHC_LOC = "abababab-abab-abab-abab-ababababac05";
+const ALF_RHC_FACILITY = "abababab-abab-abab-abab-ababababac06";
+const ALF_RHC_ADDRESS = "abababab-abab-abab-abab-ababababac07";
+const ALF_RHC_EVIDENCE_EARLY = "abababab-abab-abab-abab-ababababac08";
+const ALF_RHC_EVIDENCE_LATE = "abababab-abab-abab-abab-ababababac09";
+const ALF_CADENCE_PATIENT = "abababab-abab-abab-abab-ababababac11";
+const ALF_CADENCE_COVERAGE = "abababab-abab-abab-abab-ababababac12";
+const ALF_CADENCE_ADMISSION = "abababab-abab-abab-abab-ababababac13";
+const ALF_CADENCE_LOC = "abababab-abab-abab-abab-ababababac14";
+const ALF_CADENCE_ASSIGNMENT = "abababab-abab-abab-abab-ababababac15";
+const ALF_CADENCE_ADDRESS = "abababab-abab-abab-abab-ababababac16";
+const ALF_CADENCE_EVIDENCE_EARLY = "abababab-abab-abab-abab-ababababac17";
+const ALF_CADENCE_EVIDENCE_LATE = "abababab-abab-abab-abab-ababababac18";
 const CHC_LOC = "abababab-abab-abab-abab-abababababd3";
 const CHC_ENCOUNTER = "abababab-abab-abab-abab-abababababd4";
 const LOC_1 = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
@@ -345,6 +366,11 @@ describe.skipIf(!DB_URL)(
       const patientAddressReader = buildPatientAddressReader(handle.db);
       const coverageResolver = buildM24MedicaidCoverageResolver(() => m5Reader);
       const m6Reader = createAdmissionLocPeriodsReader(handle.db);
+      const facilityKindReader = {
+        kindsFor: (facilityIds: readonly string[]) => facilityKindsForIds(handle.db, facilityIds),
+        kindsForInTransaction: (tx: unknown, facilityIds: readonly string[]) =>
+          facilityKindsForIdsInTransaction(tx, facilityIds),
+      };
       const mdmProvider = createMdmEntityProvider(createDbMdmStore(handle.db));
       const canonicalPayerReader: CanonicalPayerIdentityReader = {
         async resolvePayer(organizationId, canonicalPayerId) {
@@ -683,7 +709,7 @@ describe.skipIf(!DB_URL)(
         { ccnForProviderEntity: ccn.ccnFor },
         m6Reader,
         m8Encounters,
-        undefined,
+        facilityKindReader,
         {
           async residenceAt(organizationId, patientId, asOfDate) {
             return patientAddressReader.residenceAt(organizationId, patientId, asOfDate);
@@ -985,6 +1011,485 @@ describe.skipIf(!DB_URL)(
       );
       expect(backgroundFormatRule.rows).toEqual([{ outcome: "fail" }]);
       expect(backgroundEvents).not.toContain("m24.medicaid_claim.ready_for_submission");
+
+      // A separate, synthetic admission proves the facility profile through the same M5/M40 owner
+      // readers, rate engine, transaction-bound assembly service, line writer, and snapshot guard.
+      await admin.query(`INSERT INTO facility (id,kind,name) VALUES ($1,'alf','Synthetic ALF')`, [
+        ALF_RHC_FACILITY,
+      ]);
+      await admin.query(
+        `INSERT INTO patient
+           (id,organization_id,provider_entity_id,location_id,mrn,legal_first_name,legal_last_name,
+            dob,sex_assigned_at_birth,status)
+         VALUES ($1,$2,$3,$4,'SYN-ALF-RHC-01','Morgan','Syntheticpatient',
+                 '1952-02-02','unknown','active')`,
+        [ALF_RHC_PATIENT, ORG, peId, locationId],
+      );
+      await admin.query(
+        `INSERT INTO patient_address
+           (id,patient_id,organization_id,provider_entity_id,kind,line1,city,state,postal_code,
+            country,is_primary,effective_from,effective_to,facility_id)
+         VALUES ($1,$2,$3,$4,'facility','123 Test St','Testville','OR','00000','US',true,
+                 '2026-11-01','2026-11-04',$5)`,
+        [ALF_RHC_ADDRESS, ALF_RHC_PATIENT, ORG, peId, ALF_RHC_FACILITY],
+      );
+      await admin.query(
+        `INSERT INTO patient_payer
+           (id,patient_id,organization_id,provider_entity_id,location_id,payer_id,rank,coverage_kind,
+            subscriber_id,effective_from,effective_to)
+         VALUES ($1,$2,$3,$4,$5,$6,1,'medicaid','SYNTHETIC-MEMBER-ALF-01','2026-01-01',NULL)`,
+        [ALF_RHC_COVERAGE, ALF_RHC_PATIENT, ORG, peId, locationId, RHC_PAYER],
+      );
+      await admin.query(
+        `INSERT INTO admission
+           (id,organization_id,provider_entity_id,location_id,patient_id,status,admission_at,activated_at,
+            admitted_by_physician_id,service_address_line1,service_address_city,service_address_state,
+            service_address_postal_code,service_address_country)
+         VALUES ($1,$2,$3,$4,$5,'active','2026-11-01T00:00:00Z','2026-11-01T00:00:00Z',$6,
+                 '123 Test St','Testville','OR','00000','US')`,
+        [ALF_RHC_ADMISSION, ORG, peId, locationId, ALF_RHC_PATIENT, USER],
+      );
+      await admin.query(
+        `INSERT INTO level_of_care_period
+           (id,organization_id,admission_id,level_of_care,status,effective_at,ended_at,
+            assigned_by,reason,q_code,version)
+         VALUES ($1,$2,$3,'routine_home_care','ended','2026-11-01T00:00:00Z',
+                 '2026-11-05T00:00:00Z',$4,'Synthetic ALF RHC qualification','Q5002',0)`,
+        [ALF_RHC_LOC, ORG, ALF_RHC_ADMISSION, USER],
+      );
+      await admin.query(
+        `INSERT INTO medicaid_program_assignment
+           (id,organization_id,patient_id,patient_payer_id,admission_id,provider_entity_id,location_id,
+            service_state,program_kind,canonical_payer_id,canonical_payer_classification_id,
+            payer_snapshot,status,effective_from,effective_to,source_kind,verification_source,
+            evidence_reference,verified_at,verified_by_membership_id,recorded_by_membership_id,version)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'OR','managed_care',$8,$9,
+                 jsonb_build_object('id',$8::uuid::text,'displayName','Synthetic Medicaid CCO',
+                   'kind','medicaid','stateCode','OR'),
+                 'verified','2026-11-01','2026-11-04','payer_confirmation',
+                 'synthetic_qualification_fixture','doc:synthetic-alf/program-assignment',
+                 '2026-01-01T00:00:00Z',$10,$11,1)`,
+        [
+          ALF_RHC_ASSIGNMENT,
+          ORG,
+          ALF_RHC_PATIENT,
+          ALF_RHC_COVERAGE,
+          ALF_RHC_ADMISSION,
+          peId,
+          locationId,
+          RHC_PAYER,
+          RHC_CLASSIFICATION,
+          verifierId,
+          USER,
+        ],
+      );
+      const insertAlfBillingEvidence = async (input: {
+        id: string;
+        from: string;
+        to: string;
+        chargeCents: number;
+        evidenceSuffix: string;
+      }) => {
+        await admin.query(
+          `INSERT INTO medicaid_hospice_billing_evidence
+             (id,organization_id,provider_entity_id,patient_id,admission_id,admission_version,
+              canonical_payer_id,program_kind,service_state,locality_code,locality_evidence_reference,
+              locality_evidence_version,quality_reporting_applicability,quality_reporting_status,
+              quality_evidence_reference,quality_evidence_version,service_category,quantity_policy,
+              quantity_evidence_owner,billing_unit,revenue_code,hcpcs_code,coding_profile,
+              coding_evidence_reference,coding_evidence_version,billed_charge_cents_per_unit,
+              charge_evidence_reference,charge_evidence_version,verification_status,effective_from,
+              effective_to,source_document_reference,verified_at,verified_by_membership_id,
+              recorded_by_membership_id,version)
+           VALUES ($1,$2,$3,$4,$5,0,$6,'managed_care','OR','synthetic-locality-lineage',
+                   'evidence:synthetic-alf/locality',1,'not_required','not_applicable',
+                   'evidence:synthetic-alf/quality',1,'RHC','active_rhc_loc_calendar_day',
+                   'm6_level_of_care_period','daily','0651','Q5002','local_draft_only',
+                   'evidence:synthetic-alf/coding',1,$7,
+                   'evidence:synthetic-alf/charge-${input.evidenceSuffix}',1,'verified',$8,$9,
+                   'doc:synthetic-alf/billing-${input.evidenceSuffix}',
+                   '2026-01-01T00:00:00Z',$10,$11,1)`,
+          [
+            input.id,
+            ORG,
+            peId,
+            ALF_RHC_PATIENT,
+            ALF_RHC_ADMISSION,
+            RHC_PAYER,
+            input.chargeCents,
+            input.from,
+            input.to,
+            verifierId,
+            USER,
+          ],
+        );
+      };
+      await insertAlfBillingEvidence({
+        id: ALF_RHC_EVIDENCE_EARLY,
+        from: "2026-11-01",
+        to: "2026-11-02",
+        chargeCents: 16000,
+        evidenceSuffix: "early",
+      });
+      await insertAlfBillingEvidence({
+        id: ALF_RHC_EVIDENCE_LATE,
+        from: "2026-11-03",
+        to: "2026-11-04",
+        chargeCents: 17000,
+        evidenceSuffix: "late",
+      });
+      const alfClaimInput = {
+        patientId: ALF_RHC_PATIENT,
+        admissionId: ALF_RHC_ADMISSION,
+        providerEntityId: peId,
+        serviceFrom: "2026-11-01",
+        serviceTo: "2026-11-04",
+        kind: "hospice_only" as const,
+      };
+      await admin.query("UPDATE facility SET kind='other' WHERE id=$1", [ALF_RHC_FACILITY]);
+      await expectUnpricedAssembly(() => service.assembleClaim(actor, alfClaimInput));
+      await admin.query("UPDATE facility SET kind='alf' WHERE id=$1", [ALF_RHC_FACILITY]);
+      await admin.query("UPDATE facility SET status='deactivated' WHERE id=$1", [ALF_RHC_FACILITY]);
+      await expectUnpricedAssembly(() => service.assembleClaim(actor, alfClaimInput));
+      await admin.query("UPDATE facility SET status='active' WHERE id=$1", [ALF_RHC_FACILITY]);
+      await admin.query("UPDATE patient_address SET effective_to='2026-11-01' WHERE id=$1", [
+        ALF_RHC_ADDRESS,
+      ]);
+      await expectUnpricedAssembly(() =>
+        service.assembleClaim(actor, { ...alfClaimInput, serviceFrom: "2026-11-02" }),
+      );
+      await admin.query("UPDATE patient_address SET effective_to='2026-11-04' WHERE id=$1", [
+        ALF_RHC_ADDRESS,
+      ]);
+      const facilityDraft = await service.assembleClaim(actor, {
+        ...alfClaimInput,
+      });
+      expect(facilityDraft.state).toBe("DRAFT");
+      const alfLines = await admin.query(
+        `SELECT id,line_number,service_date::date::text AS service_from,
+                service_date_to::date::text AS service_to,units,q_code,rate_at_assembly_cents,
+                charges_cents
+           FROM medicaid_claim_line WHERE medicaid_claim_id=$1 ORDER BY line_number`,
+        [facilityDraft.id],
+      );
+      expect(alfLines.rows).toEqual([
+        expect.objectContaining({
+          line_number: 1,
+          service_from: "2026-11-01",
+          service_to: "2026-11-02",
+          units: 2,
+          q_code: "Q5002",
+          rate_at_assembly_cents: 12000,
+          charges_cents: 32000,
+        }),
+        expect.objectContaining({
+          line_number: 2,
+          service_from: "2026-11-03",
+          service_to: "2026-11-04",
+          units: 2,
+          q_code: "Q5002",
+          rate_at_assembly_cents: 13000,
+          charges_cents: 34000,
+        }),
+      ]);
+      const alfSnapshots = await admin.query(
+        `SELECT snapshot_schema_version,snapshot,billing_evidence_id,payer_rate_policy_id
+           FROM medicaid_claim_line_pricing_snapshot
+          WHERE medicaid_claim_id=$1 ORDER BY snapshot->>'serviceFrom'`,
+        [facilityDraft.id],
+      );
+      expect(alfSnapshots.rows).toHaveLength(2);
+      expect(alfSnapshots.rows.map((row) => row.snapshot_schema_version)).toEqual([2, 2]);
+      expect(alfSnapshots.rows.map((row) => row.billing_evidence_id)).toEqual([
+        ALF_RHC_EVIDENCE_EARLY,
+        ALF_RHC_EVIDENCE_LATE,
+      ]);
+      expect(alfSnapshots.rows.map((row) => row.snapshot.billingEvidenceVersion)).toEqual([1, 1]);
+      expect(alfSnapshots.rows.map((row) => row.payer_rate_policy_id)).toEqual([
+        RHC_RATE_EARLY,
+        RHC_RATE_LATE,
+      ]);
+      expect(alfSnapshots.rows.map((row) => row.snapshot.reimbursementEstimateCents)).toEqual([
+        24000, 26000,
+      ]);
+      expect(alfSnapshots.rows.map((row) => row.snapshot.billedChargeCents)).toEqual([
+        32000, 34000,
+      ]);
+      expect(
+        alfSnapshots.rows.every(
+          (row) =>
+            row.snapshot.schemaVersion === 2 &&
+            row.snapshot.localBillingProfile === "rhc_assisted_living_q5002_daily_v1" &&
+            row.snapshot.serviceLocation.facilityId === ALF_RHC_FACILITY &&
+            row.snapshot.serviceLocation.facilityKind === "alf",
+        ),
+      ).toBe(true);
+      const { validationRunId: alfValidationRunId } = await service.validateClaim(
+        serviceActor,
+        facilityDraft.id,
+      );
+      const alfManualRules = await admin.query(
+        `SELECT rule_key,outcome FROM medicaid_validation_result
+          WHERE organization_id=$1 AND medicaid_validation_run_id=$2
+            AND rule_key IN ('medicaid_payer_rate_policy_snapshot_verified',
+                             'medicaid_hospice_institutional_format_qualified')
+          ORDER BY rule_key`,
+        [ORG, alfValidationRunId],
+      );
+      expect(alfManualRules.rows).toEqual([
+        { rule_key: "medicaid_hospice_institutional_format_qualified", outcome: "fail" },
+        { rule_key: "medicaid_payer_rate_policy_snapshot_verified", outcome: "pass" },
+      ]);
+      await admin.query("UPDATE facility SET kind='other' WHERE id=$1", [ALF_RHC_FACILITY]);
+      const { validationRunId: staleFacilityRunId } = await service.validateClaim(
+        serviceActor,
+        facilityDraft.id,
+      );
+      const staleFacilityPricing = await admin.query(
+        `SELECT outcome FROM medicaid_validation_result
+          WHERE organization_id=$1 AND medicaid_validation_run_id=$2
+            AND rule_key='medicaid_payer_rate_policy_snapshot_verified'`,
+        [ORG, staleFacilityRunId],
+      );
+      expect(staleFacilityPricing.rows).toEqual([{ outcome: "fail" }]);
+      await admin.query("UPDATE facility SET kind='alf' WHERE id=$1", [ALF_RHC_FACILITY]);
+      const alfBackgroundEvent = randomUUID();
+      await withOrgContext(handle.db, { organizationId: ORG, userId: USER }, (tx) =>
+        runMedicaidRevalidate(
+          tx,
+          { ...workerDeps, facilityKindReader },
+          {
+            organizationId: ORG,
+            patientId: ALF_RHC_PATIENT,
+            eventId: alfBackgroundEvent,
+            eventName: "m24.medicaid_claim.revalidate_requested",
+          },
+        ),
+      );
+      const alfBackgroundRule = await admin.query(
+        `SELECT result.outcome FROM medicaid_validation_run run
+          JOIN medicaid_validation_result result ON result.organization_id=run.organization_id
+            AND result.medicaid_validation_run_id=run.id
+          WHERE run.medicaid_claim_id=$1 AND run.trigger_signal_id=$2
+            AND result.rule_key='medicaid_payer_rate_policy_snapshot_verified'`,
+        [facilityDraft.id, alfBackgroundEvent],
+      );
+      expect(alfBackgroundRule.rows).toEqual([{ outcome: "pass" }]);
+      expect(events).not.toContain("m24.medicaid_claim.ready_for_submission");
+
+      // Reuse the qualified synthetic daily path for the previously skipped cadence race. Both
+      // requests have complete persisted M5/M6/M24/M40 evidence, distinct adjacent service windows,
+      // and share the actual locked M6 admission row.
+      await admin.query(
+        `INSERT INTO patient
+           (id,organization_id,provider_entity_id,location_id,mrn,legal_first_name,legal_last_name,
+            dob,sex_assigned_at_birth,status)
+         SELECT $1,organization_id,provider_entity_id,location_id,'SYN-ALF-CAD-01','Casey',
+                'Cadence Testpatient','1954-03-03','unknown','active'
+           FROM patient WHERE id=$2`,
+        [ALF_CADENCE_PATIENT, ALF_RHC_PATIENT],
+      );
+      await admin.query(
+        `INSERT INTO patient_address
+           (id,patient_id,organization_id,provider_entity_id,kind,line1,city,state,postal_code,
+            country,is_primary,effective_from,effective_to,facility_id)
+         SELECT $1,$2,organization_id,provider_entity_id,'facility',line1,city,state,postal_code,
+                country,true,'2026-11-01','2026-11-04',facility_id
+           FROM patient_address WHERE id=$3`,
+        [ALF_CADENCE_ADDRESS, ALF_CADENCE_PATIENT, ALF_RHC_ADDRESS],
+      );
+      await admin.query(
+        `INSERT INTO patient_payer
+           (id,patient_id,organization_id,provider_entity_id,location_id,payer_id,rank,coverage_kind,
+            subscriber_id,effective_from,effective_to)
+         SELECT $1,$2,organization_id,provider_entity_id,location_id,payer_id,1,'medicaid',
+                'SYNTHETIC-MEMBER-ALF-CAD-01','2026-01-01',NULL
+           FROM patient_payer WHERE id=$3`,
+        [ALF_CADENCE_COVERAGE, ALF_CADENCE_PATIENT, ALF_RHC_COVERAGE],
+      );
+      await admin.query(
+        `INSERT INTO admission
+           (id,organization_id,provider_entity_id,location_id,patient_id,status,admission_at,
+            activated_at,admitted_by_physician_id,service_address_line1,service_address_city,
+            service_address_state,service_address_postal_code,service_address_country)
+         SELECT $1,organization_id,provider_entity_id,location_id,$2,'active','2026-11-01T00:00:00Z',
+                '2026-11-01T00:00:00Z',admitted_by_physician_id,service_address_line1,
+                service_address_city,service_address_state,service_address_postal_code,
+                service_address_country
+           FROM admission WHERE id=$3`,
+        [ALF_CADENCE_ADMISSION, ALF_CADENCE_PATIENT, ALF_RHC_ADMISSION],
+      );
+      await admin.query(
+        `INSERT INTO level_of_care_period
+           (id,organization_id,admission_id,level_of_care,status,effective_at,ended_at,
+            assigned_by,reason,q_code,version)
+         SELECT $1,organization_id,$2,level_of_care,'ended',effective_at,ended_at,
+                assigned_by,'Synthetic cadence qualification',q_code,version
+           FROM level_of_care_period WHERE id=$3`,
+        [ALF_CADENCE_LOC, ALF_CADENCE_ADMISSION, ALF_RHC_LOC],
+      );
+      await admin.query(
+        `INSERT INTO medicaid_program_assignment
+           (id,organization_id,patient_id,patient_payer_id,admission_id,provider_entity_id,location_id,
+            service_state,program_kind,canonical_payer_id,canonical_payer_classification_id,
+            payer_snapshot,status,effective_from,effective_to,source_kind,verification_source,
+            evidence_reference,verified_at,verified_by_membership_id,recorded_by_membership_id,version)
+         SELECT $1,organization_id,$2,$3,$4,provider_entity_id,location_id,service_state,program_kind,
+                canonical_payer_id,canonical_payer_classification_id,payer_snapshot,status,
+                effective_from,effective_to,source_kind,verification_source,
+                'doc:synthetic-alf-cadence/program-assignment',verified_at,
+                verified_by_membership_id,recorded_by_membership_id,version
+           FROM medicaid_program_assignment WHERE id=$5`,
+        [
+          ALF_CADENCE_ASSIGNMENT,
+          ALF_CADENCE_PATIENT,
+          ALF_CADENCE_COVERAGE,
+          ALF_CADENCE_ADMISSION,
+          ALF_RHC_ASSIGNMENT,
+        ],
+      );
+      for (const [sourceId, evidenceId] of [
+        [ALF_RHC_EVIDENCE_EARLY, ALF_CADENCE_EVIDENCE_EARLY],
+        [ALF_RHC_EVIDENCE_LATE, ALF_CADENCE_EVIDENCE_LATE],
+      ] as const) {
+        await admin.query(
+          `INSERT INTO medicaid_hospice_billing_evidence
+             (id,organization_id,provider_entity_id,patient_id,admission_id,admission_version,
+              canonical_payer_id,program_kind,service_state,locality_code,locality_evidence_reference,
+              locality_evidence_version,quality_reporting_applicability,quality_reporting_status,
+              quality_evidence_reference,quality_evidence_version,service_category,quantity_policy,
+              quantity_evidence_owner,billing_unit,revenue_code,hcpcs_code,coding_profile,
+              coding_evidence_reference,coding_evidence_version,billed_charge_cents_per_unit,
+              charge_evidence_reference,charge_evidence_version,verification_status,effective_from,
+              effective_to,source_document_reference,verified_at,verified_by_membership_id,
+              recorded_by_membership_id,version)
+           SELECT $1,organization_id,provider_entity_id,$2,$3,admission_version,canonical_payer_id,
+                  program_kind,service_state,locality_code,locality_evidence_reference,
+                  locality_evidence_version,quality_reporting_applicability,quality_reporting_status,
+                  quality_evidence_reference,quality_evidence_version,service_category,quantity_policy,
+                  quantity_evidence_owner,billing_unit,revenue_code,hcpcs_code,coding_profile,
+                  coding_evidence_reference,coding_evidence_version,billed_charge_cents_per_unit,
+                  charge_evidence_reference,charge_evidence_version,verification_status,effective_from,
+                  effective_to,source_document_reference,verified_at,verified_by_membership_id,
+                  recorded_by_membership_id,version
+             FROM medicaid_hospice_billing_evidence WHERE id=$4`,
+          [evidenceId, ALF_CADENCE_PATIENT, ALF_CADENCE_ADMISSION, sourceId],
+        );
+      }
+      const cadenceClaims = await Promise.all([
+        service.assembleClaim(serviceActor, {
+          patientId: ALF_CADENCE_PATIENT,
+          admissionId: ALF_CADENCE_ADMISSION,
+          providerEntityId: peId,
+          serviceFrom: "2026-11-01",
+          serviceTo: "2026-11-02",
+          kind: "hospice_only",
+        }),
+        service.assembleClaim(serviceActor, {
+          patientId: ALF_CADENCE_PATIENT,
+          admissionId: ALF_CADENCE_ADMISSION,
+          providerEntityId: peId,
+          serviceFrom: "2026-11-03",
+          serviceTo: "2026-11-04",
+          kind: "hospice_only",
+        }),
+      ]);
+      expect(cadenceClaims.map((claim) => claim.tob).sort()).toEqual(["812", "813"]);
+      expect(cadenceClaims.every((claim) => claim.state === "DRAFT")).toBe(true);
+      const cadenceLines = await admin.query(
+        `SELECT count(*)::int AS count FROM medicaid_claim_line
+          WHERE medicaid_claim_id = ANY($1::uuid[])`,
+        [cadenceClaims.map((claim) => claim.id)],
+      );
+      expect(cadenceLines.rows).toEqual([{ count: 2 }]);
+      expect(events).not.toContain("m24.medicaid_claim.ready_for_submission");
+
+      // A structurally valid, correctly hashed v2 snapshot with a fabricated estimate must fail the
+      // source-grounded verifier. This isolated negative fixture clones only synthetic rows; the positive
+      // assisted-living claim above was created exclusively through assembleClaim.
+      const tamperedClaimId = randomUUID();
+      const tamperedControl = `SYN${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+      await admin.query(
+        `INSERT INTO medicaid_claim
+           (id,organization_id,provider_entity_id,location_id,patient_id,patient_payer_id,admission_id,
+            service_state,kind,tob,service_from,service_to,state_plan_code_id,state_plan_code_snapshot,
+            mco_id,mco_snapshot,medicaid_program_kind,canonical_payer_id,program_assignment_id,
+            program_resolution_snapshot,medicare_claim_id,medicare_secondary_context_snapshot,
+            rb_arrangement_id,rb_day_count_snapshot,replaces_claim_id,replaced_by_claim_id,
+            medicaid_claim_control_number,state,version,eligibility_check_id,eligibility_outcome_snapshot,
+            eligibility_checked_at_snapshot,validation_run_id_latest,created_by_membership_id,
+            updated_by_membership_id)
+         SELECT $1,organization_id,provider_entity_id,location_id,patient_id,patient_payer_id,admission_id,
+                service_state,kind,tob,service_from,service_to,state_plan_code_id,state_plan_code_snapshot,
+                mco_id,mco_snapshot,medicaid_program_kind,canonical_payer_id,program_assignment_id,
+                program_resolution_snapshot,medicare_claim_id,medicare_secondary_context_snapshot,
+                rb_arrangement_id,rb_day_count_snapshot,replaces_claim_id,replaced_by_claim_id,
+                $2,'DRAFT',1,eligibility_check_id,eligibility_outcome_snapshot,
+                eligibility_checked_at_snapshot,NULL,created_by_membership_id,updated_by_membership_id
+           FROM medicaid_claim WHERE id=$3`,
+        [tamperedClaimId, tamperedControl, facilityDraft.id],
+      );
+      const tamperedLineIds = alfLines.rows.map(() => randomUUID());
+      await admin.query("BEGIN");
+      try {
+        for (let index = 0; index < alfLines.rows.length; index += 1) {
+          const line = alfLines.rows[index]!;
+          const newLineId = tamperedLineIds[index]!;
+          await admin.query(
+            `INSERT INTO medicaid_claim_line
+               (id,organization_id,provider_entity_id,location_id,medicaid_claim_id,line_number,
+                service_date,service_date_to,revenue_code,q_code,level_of_care,loc_period_id,units,
+                rate_at_assembly_cents,state_rate_schedule_id_snapshot,payer_rate_policy_id_snapshot,
+                charges_cents,is_rb,rb_day_id)
+             SELECT $1,organization_id,provider_entity_id,location_id,$2::uuid,line_number,
+                    service_date,service_date_to,revenue_code,q_code,level_of_care,loc_period_id,units,
+                    rate_at_assembly_cents,state_rate_schedule_id_snapshot,payer_rate_policy_id_snapshot,
+                    charges_cents,is_rb,rb_day_id
+               FROM medicaid_claim_line WHERE id=$3`,
+            [newLineId, tamperedClaimId, line.id],
+          );
+          await admin.query(
+            `WITH copied AS (
+               SELECT jsonb_set(
+                        jsonb_set(
+                          jsonb_set(snapshot,'{medicaidClaimId}',to_jsonb($2::text),true),
+                          '{claimLineId}',to_jsonb($3::text),true),
+                        '{reimbursementEstimateCents}','999999'::jsonb,true) AS material,
+                      organization_id,provider_entity_id,payer_rate_policy_id,billing_evidence_id,
+                      assessed_at,created_by_membership_id
+                 FROM medicaid_claim_line_pricing_snapshot WHERE medicaid_claim_line_id=$1
+             )
+             INSERT INTO medicaid_claim_line_pricing_snapshot
+               (organization_id,provider_entity_id,medicaid_claim_id,medicaid_claim_line_id,
+                payer_rate_policy_id,billing_evidence_id,snapshot_schema_version,assessed_at,
+                fingerprint,snapshot,created_by_membership_id)
+             SELECT organization_id,provider_entity_id,$2::uuid,$3::uuid,payer_rate_policy_id,billing_evidence_id,
+                    (material->>'schemaVersion')::integer,assessed_at,
+                    encode(digest((material-'assessmentTimestamp')::text,'sha256'),'hex'),
+                    material,created_by_membership_id FROM copied`,
+            [line.id, tamperedClaimId, newLineId],
+          );
+        }
+        await admin.query("COMMIT");
+      } catch (error) {
+        await admin.query("ROLLBACK");
+        throw error;
+      }
+      const tamperedValidation = await service.validateClaim(serviceActor, tamperedClaimId);
+      const tamperedPricingRule = await admin.query(
+        `SELECT outcome FROM medicaid_validation_result
+          WHERE organization_id=$1 AND medicaid_validation_run_id=$2
+            AND rule_key='medicaid_payer_rate_policy_snapshot_verified'`,
+        [ORG, tamperedValidation.validationRunId],
+      );
+      expect(tamperedPricingRule.rows).toEqual([{ outcome: "fail" }]);
+      const tamperedSnapshots = await admin.query(
+        `SELECT count(*)::int AS count,min(snapshot->>'reimbursementEstimateCents') AS estimate
+           FROM medicaid_claim_line_pricing_snapshot WHERE medicaid_claim_id=$1`,
+        [tamperedClaimId],
+      );
+      expect(tamperedSnapshots.rows).toEqual([{ count: 2, estimate: "999999" }]);
+      expect(events).not.toContain("m24.medicaid_claim.ready_for_submission");
 
       const correctedEvidenceId = randomUUID();
       await admin.query(
@@ -1850,60 +2355,8 @@ describe.skipIf(!DB_URL)(
       expect(after.rows[0]).toEqual(before.rows[0]);
     });
 
-    // The persisted synthetic RHC path above also exercises the owner-backed M8 signed-encounter reader.
-    // These older fixtures remain skipped individually: September/October cadence lacks scoped verified
-    // evidence; 817/818 paths require replacement/void pricing lineage; Q5002/Q5006 require qualified ALF/IPU
-    // coding. R&B-only assembly remains separate.
-    it.skip("serializes concurrent original-claim cadence on the M6 admission row (requires qualified pricing)", async () => {
-      const admissionId = "40404040-4040-4040-4040-404040404040";
-      const locId = "41414141-4141-4141-4141-414141414141";
-      await admin.query(
-        `INSERT INTO admission (id, organization_id, patient_id, provider_entity_id, service_address_state, status, admission_at)
-         VALUES ($1,$2,$3,$4,'OR','active','2026-09-01')`,
-        [admissionId, ORG, PATIENT, peId],
-      );
-      await admin.query(
-        `INSERT INTO level_of_care_period
-           (id, organization_id, admission_id, level_of_care, status, effective_at)
-         VALUES ($1,$2,$3,'routine_home_care','active','2026-09-01')`,
-        [locId, ORG, admissionId],
-      );
-      const m6Reader = createAdmissionLocPeriodsReader(handle.db);
-      const svc = buildProductionM24WriteService(
-        handle.db,
-        NOOP_OUTBOX,
-        OPEN_CIPHER,
-        coverage,
-        ccnReader,
-        m6Reader,
-        noEncounters(),
-        undefined,
-        undefined,
-        undefined,
-        () => true,
-        m6Reader,
-        { adapterForState: () => ({ replacementTob: () => "817", voidTob: () => "818" }) },
-      );
-      const assemble = (serviceFrom: string, serviceTo: string) =>
-        svc.assembleClaim(
-          { organizationId: ORG, userId: USER, roles: [] },
-          {
-            patientId: PATIENT,
-            admissionId,
-            providerEntityId: peId,
-            serviceFrom,
-            serviceTo,
-            kind: "hospice_only",
-          },
-        );
-
-      const claims = await Promise.all([
-        assemble("2026-09-01", "2026-09-30"),
-        assemble("2026-10-01", "2026-10-31"),
-      ]);
-      expect(claims.map((claim) => claim.tob).sort()).toEqual(["812", "813"]);
-    });
-
+    // The persisted synthetic RHC paths exercise home Q5001 and owner-backed ALF Q5002; concurrent
+    // original-claim cadence is exercised with complete evidence in the positive ALF test above.
     it.skip("preserves 812 cadence through an accepted 817 replacement before the next original (requires qualified pricing)", async () => {
       const admissionId = "42424242-4242-4242-4242-424242424242";
       const svc = buildDrizzleM24WriteService(
@@ -2095,63 +2548,6 @@ describe.skipIf(!DB_URL)(
           },
         ),
       );
-    });
-
-    it.skip("residence at an ALF resolves the real Q5002 place-of-service code, not the LOC-based Q5001 default (pricing required)", async () => {
-      const admissionId = "dddddddd-1111-2222-3333-444444444444";
-      const facility = await admin.query(
-        `INSERT INTO facility (kind, name) VALUES ('alf', 'Sunny ALF') RETURNING id`,
-      );
-      const facilityId: string = facility.rows[0].id;
-      const facilityKindReader = {
-        async kindsFor(ids: readonly string[]) {
-          const m = new Map<string, PlaceOfServiceFacilityKind>();
-          if (ids.includes(facilityId)) m.set(facilityId, "alf");
-          return m;
-        },
-      };
-      const residenceReader = {
-        async residenceAt() {
-          return { kind: "facility" as const, facilityId };
-        },
-        async residencesBetweenInTransaction() {
-          return [];
-        },
-      };
-      const svc = buildDrizzleM24WriteService(
-        handle.db,
-        NOOP_OUTBOX,
-        OPEN_CIPHER,
-        coverage,
-        ccnReader,
-        locPeriodReader([
-          {
-            id: LOC_1,
-            levelOfCare: "routine_home_care",
-            effectiveAt: new Date("2026-07-01"),
-            endedAt: new Date("2026-07-06"),
-          },
-        ]),
-        noEncounters(),
-        facilityKindReader,
-        residenceReader,
-      );
-      const claim = await svc.assembleClaim(
-        { organizationId: ORG, userId: USER, roles: [] },
-        {
-          patientId: PATIENT,
-          admissionId,
-          providerEntityId: peId,
-          serviceFrom: "2026-07-01",
-          serviceTo: "2026-07-05",
-          kind: "hospice_only",
-        },
-      );
-      const lines = await admin.query(
-        "SELECT q_code FROM medicaid_claim_line WHERE medicaid_claim_id=$1",
-        [claim.id],
-      );
-      expect(lines.rows).toEqual([{ q_code: "Q5002" }]);
     });
 
     it.skip("a confirmed own-IPU bed resolves Q5006 regardless of the LOC period's facility kind (pricing required)", async () => {
