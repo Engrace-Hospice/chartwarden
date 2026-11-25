@@ -2489,7 +2489,7 @@ export function buildDrizzleClaimMdEraReviewService(
             functionalGroupCreationDate: parsed.functionalGroupCreationDate,
             productionDate: new Date(paymentDate.day),
             receivedAt: new Date(),
-            minioObjectKey: `claimmd-stage/${stage.id}/${sourceFileSha256}`,
+            objectKey: `claimmd-stage/${stage.id}/${sourceFileSha256}`,
             fileSha256: sourceFileSha256,
             parseStatus: "queued",
             parseSummary: {

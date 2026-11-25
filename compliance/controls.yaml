@@ -1450,6 +1450,13 @@ controls:
       - file: apps/backend/src/modules/07-care-plan/routes/change-proposal-routes.ts
       - file: apps/backend/src/modules/08-encounters/routes/encounters-routes.ts
       - file: packages/db/migrations/1532_m7_care_plan_change_proposal.sql
+      # Migration 1546 renames document_version.minio_object_key to object_key and, in the same transaction, re-points that table's
+      # write-audit scrub (audit_phi_write_document_version, first written in 0049) at the new name; the db-migrate live suite asserts the
+      # audit images read "<changed>" for object_key and that the function keeps its SECURITY DEFINER and pinned search_path. Known limit:
+      # no arch gate checks that a scrub-list name is a real column, so a later rename that misses a trigger would leave the value in the
+      # images; the live suite is the only guard. Parity with before: the M25, M28 and M34 audit functions scrub no object keys.
+      - file: packages/db/migrations/1546_object_key_column_rename.sql
+      - script: test:db:migrate:live
 
   - id: CW-AU-02
     title: External auditor access is staged behind BAA acceptance and a second factor
@@ -1462,7 +1469,7 @@ controls:
       - script: test:m3:auditor-engagement:live
 
   - id: CW-IA-01
-    title: Person/entity authentication — MFA, step-up for sensitive actions (signing a HOPE assessment included), credential throttling
+    title:  Person/entity authentication — MFA, step-up for sensitive actions (signing a HOPE assessment included), credential throttling, and credential-safe authentication logging
     hipaa: ["164.312(d)", "164.308(a)(5)(ii)(D)"]
     soc2: ["CC6.1", "CC6.2"]
     status: implemented
@@ -1474,6 +1481,8 @@ controls:
       - script: test:m10:sfv-sign-binding:live
       - script: test:rate-limit-store:live
       - file: packages/auth/src/identity/credential-throttle.ts
+      - file: packages/auth/src/identity/auth.ts
+      - file: packages/auth/__tests__/identity-auth-config.test.ts
 
   - id: CW-TX-01
     title: Transmission security — TLS/HSTS at the edge, certificate pinning to external interfaces
@@ -2486,6 +2495,25 @@ controls:
       # extraction job and evidence rather than silently completing or changing schemas.
       - script: test:f236:doclens-intake:live
       - file: apps/backend/src/modules/22-documents/extraction/intake-job.ts
+      # Stage-5 vision re-read (changed): a diagnosis description agrees with the page reading only when one
+      # sentence of it holds the whole value as a phrase (no more specific disease around it) and nothing in
+      # that sentence, or in a qualified neighbour of a bare diagnosis name, negates, doubts or reassigns it; a
+      # value not on the crop never agrees. The value's own grounded page quote is checked the same way, because
+      # the model returns each entry as its own string and a bare reading hides a "Denies:" lead-in. The
+      # qualifier list is closed, so a wording it does not name can still agree; the reviewer sees the page
+      # quote beside every field (limits: docs/ai/capabilities/doclens-vision-verification.md). List fields are
+      # sent to the model without their index so it returns every entry. A diagnosis role, a normalised enum
+      # with no verbatim form, is no longer re-read; medications, allergies and identity values keep the
+      # strict length rule. The classifier prompt moved to classify.v2.md and the vision prompt to
+      # vision_verify.v2.md (new hash-pinned versions, v1 deprecated; v2 names the list path in its list rule).
+      - file: apps/backend/__tests__/f237-doclens-stage5-sud.test.ts
+      - file: packages/ai-platform/prompts/doclens/classify.v2.md
+      - file: packages/ai-platform/prompts/doclens/vision_verify.v2.md
+      # docling-worker OCR (changed): Tesseract is primary, RapidOCR the backup for a document the primary fails
+      # on; the fallback warning logs ids and the exception class only. The RapidOCR model files are pinned by
+      # SHA-256 (the image build fails on drift) and their unused .pth checkpoints are removed. Production runs
+      # Tesseract only (DOCLING_OCR_BACKUP=none) because both engines together peak above its 2g limit.
+      - file: services/docling-worker/rapidocr-models.sha256
 
   - id: CW-DD-01
     title: Death notifications — external disclosure gated on a BAA (service check, delivery-boundary check, link redemption, and every funeral-home session read), explicit selection, caseload check (refusal audit is best-effort), atomic single-send claim with fenced stranded-send reconciliation, audit events for invite attempts and best-effort revocations, a keyed recipient digest and database-enforced disclosure-record integrity (not a BAA gate); internal notices fixed-text and explicitly acknowledged

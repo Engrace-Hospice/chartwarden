@@ -240,7 +240,7 @@ describe.skipIf(!DB_URL)("GAP-084 — M28 §4.8 workers — LIVE Postgres", () =
   }
   async function seedArtifact(org: string, job: string, type: string, key: string) {
     await admin.query(
-      `INSERT INTO fhir_bulk_export_artifact (organization_id, job_id, resource_type, minio_object_key, byte_size, row_count, checksum_sha256)
+      `INSERT INTO fhir_bulk_export_artifact (organization_id, job_id, resource_type, object_key, byte_size, row_count, checksum_sha256)
        VALUES ($1,$2,$3,$4,1,1,'abc')`,
       [org, job, type, key],
     );
@@ -401,7 +401,7 @@ describe.skipIf(!DB_URL)("GAP-084 — M28 §4.8 workers — LIVE Postgres", () =
       expect(result).toEqual({ status: "completed", totalResources: 4, artifacts: 3 });
       const rows = (
         await admin.query(
-          "SELECT resource_type, minio_object_key, row_count, checksum_sha256, byte_size FROM fhir_bulk_export_artifact WHERE job_id=$1 ORDER BY resource_type",
+          "SELECT resource_type, object_key, row_count, checksum_sha256, byte_size FROM fhir_bulk_export_artifact WHERE job_id=$1 ORDER BY resource_type",
           [created.id],
         )
       ).rows;
@@ -411,10 +411,10 @@ describe.skipIf(!DB_URL)("GAP-084 — M28 §4.8 workers — LIVE Postgres", () =
         "Patient",
       ]);
       for (const row of rows) {
-        expect(row.minio_object_key).toBe(
+        expect(row.object_key).toBe(
           `tenants/${ORG_A}/fhir-exports/${created.id}/${row.resource_type}.ndjson`,
         );
-        const bytes = bucket.get(`${ORG_A}|${row.minio_object_key}`);
+        const bytes = bucket.get(`${ORG_A}|${row.object_key}`);
         expect(bytes).toBeDefined();
         expect(
           createHash("sha256")
@@ -641,11 +641,11 @@ describe.skipIf(!DB_URL)("GAP-084 — M28 §4.8 workers — LIVE Postgres", () =
       // The row metadata survives as accounting evidence; only the key is blanked.
       const art = (
         await admin.query(
-          "SELECT minio_object_key, row_count, checksum_sha256 FROM fhir_bulk_export_artifact WHERE job_id=$1",
+          "SELECT object_key, row_count, checksum_sha256 FROM fhir_bulk_export_artifact WHERE job_id=$1",
           [due],
         )
       ).rows[0];
-      expect(art).toEqual({ minio_object_key: "", row_count: 1, checksum_sha256: "abc" });
+      expect(art).toEqual({ object_key: "", row_count: 1, checksum_sha256: "abc" });
 
       destroyed.length = 0;
       expect((await runBulkExportSweeper(sweeperDeps(ORG_A, ORG_B))).expired).toBe(0);
@@ -958,10 +958,10 @@ describe.skipIf(!DB_URL)("GAP-084 — M28 §4.8 workers — LIVE Postgres", () =
       await runBulkExportSweeper(sweeperDeps(ORG_A));
       expect(bucket.size).toBe(0);
       const keys = await admin.query(
-        "SELECT minio_object_key FROM fhir_bulk_export_artifact WHERE job_id=$1",
+        "SELECT object_key FROM fhir_bulk_export_artifact WHERE job_id=$1",
         [job],
       );
-      expect(keys.rows.map((r) => r.minio_object_key)).toEqual([""]);
+      expect(keys.rows.map((r) => r.object_key)).toEqual([""]);
     });
   });
 

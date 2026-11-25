@@ -104,7 +104,7 @@ describe.skipIf(!DB_URL)(
         await db.query(
           `INSERT INTO remittance_advice (organization_id, provider_entity_id, payer_id, payer_kind,
            interchange_control_number, transaction_set_control_number, payment_method, total_payment_amount,
-           production_date, minio_object_key, file_sha256)
+           production_date, object_key, file_sha256)
          VALUES ($1,$2,gen_random_uuid(),'medicare',$3,$4,'eft',1000,now(),'k','sha') RETURNING id`,
           [org, pe, `ICN${n}`, `ST${n}`],
         )

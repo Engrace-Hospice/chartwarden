@@ -325,7 +325,7 @@ describe("parseX12835 fails closed", () => {
 describe("createX12835Client.parse835 (in-process, no sidecar)", () => {
   it("parses supplied raw text without any port", async () => {
     const r = await createX12835Client().parse835({
-      minioObjectKey: "era/a.835",
+      objectKey: "era/a.835",
       payerProgram: "medicaid",
       rawEdi: wrap835(DENIAL_BODY),
     });
@@ -334,13 +334,13 @@ describe("createX12835Client.parse835 (in-process, no sidecar)", () => {
 
   it("reads the staged object through readRaw when no raw text is supplied", async () => {
     const client = createX12835Client({ readRaw: async () => wrap835(DENIAL_BODY) });
-    const r = await client.parse835({ minioObjectKey: "k", payerProgram: "medicare" });
+    const r = await client.parse835({ objectKey: "k", payerProgram: "medicare" });
     expect(r.ok).toBe(true);
   });
 
   it("degrades (retryable) when neither raw text nor a reader is available", async () => {
     const r = await createX12835Client().parse835({
-      minioObjectKey: "k",
+      objectKey: "k",
       payerProgram: "medicare",
     });
     expect(r.ok).toBe(false);
@@ -351,7 +351,7 @@ describe("createX12835Client.parse835 (in-process, no sidecar)", () => {
 
   it("degrades (retryable) when the object read rejects", async () => {
     const client = createX12835Client({ readRaw: () => Promise.reject(new Error("boom")) });
-    const r = await client.parse835({ minioObjectKey: "k", payerProgram: "medicare" });
+    const r = await client.parse835({ objectKey: "k", payerProgram: "medicare" });
     expect(!r.ok && r.degraded.code).toBe("X12_835_RAW_READ");
   });
 });

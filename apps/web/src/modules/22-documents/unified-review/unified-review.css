@@ -1,0 +1,372 @@
+.wx-unified-review {
+  container-type: inline-size;
+}
+
+.wx-unified-eyebrow,
+.wx-unified-category {
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.wx-unified-head-actions,
+.wx-unified-observation-actions,
+.wx-unified-source footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+}
+
+.wx-unified-progress {
+  display: grid;
+  grid-template-columns: minmax(15rem, auto) minmax(12rem, 1fr);
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+}
+.wx-unified-progress > div {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.wx-unified-progress > div span,
+.wx-unified-progress small {
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+}
+.wx-unified-progress progress {
+  width: 100%;
+  height: 0.625rem;
+  accent-color: var(--color-primary);
+}
+.wx-unified-progress progress::-webkit-progress-bar {
+  border-radius: 999px;
+  background: var(--color-surface-high);
+}
+.wx-unified-progress progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: var(--color-primary);
+}
+.wx-unified-progress progress::-moz-progress-bar {
+  border-radius: 999px;
+  background: var(--color-primary);
+}
+.wx-unified-progress small {
+  grid-column: 2;
+}
+
+.wx-unified-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 35%, var(--color-card-border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-warning) 7%, var(--color-surface-lowest));
+}
+.wx-unified-banner div {
+  display: grid;
+  gap: 0.125rem;
+}
+.wx-unified-banner span {
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+}
+
+.wx-unified-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(19rem, 26rem);
+  gap: 1.25rem;
+  align-items: start;
+}
+.wx-unified-main {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.wx-unified-sections {
+  display: grid;
+  gap: 0.5rem;
+}
+.wx-unified-sections > button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.875rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-on-surface);
+  background: var(--color-surface-lowest);
+  text-align: left;
+  cursor: pointer;
+}
+.wx-unified-sections > button:hover,
+.wx-unified-sections > button.is-selected {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-card-border));
+  background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface-lowest));
+}
+.wx-unified-sections > button:focus-visible,
+.wx-unified-exceptions button:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+.wx-unified-section-icon {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-lg);
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 9%, var(--color-surface-lowest));
+}
+.wx-unified-section-copy {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+}
+.wx-unified-section-copy strong {
+  font-size: 0.9375rem;
+}
+.wx-unified-section-copy small {
+  overflow-wrap: anywhere;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+}
+
+.wx-unified-section-detail,
+.wx-unified-exceptions,
+.wx-unified-source {
+  min-width: 0;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-lowest);
+  overflow: hidden;
+}
+.wx-unified-section-detail > header,
+.wx-unified-exceptions > header,
+.wx-unified-source > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 1rem 1.125rem;
+  border-bottom: 1px solid var(--color-card-border);
+}
+.wx-unified-section-detail h2,
+.wx-unified-exceptions h2,
+.wx-unified-source h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+.wx-unified-section-detail header p {
+  margin: 0.125rem 0 0;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+}
+.wx-unified-section-detail > header > span {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.wx-unified-group {
+  padding: 1rem 1.125rem;
+}
+.wx-unified-group + .wx-unified-group {
+  border-top: 1px solid var(--color-card-border);
+}
+.wx-unified-group > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+.wx-unified-group h3 {
+  margin: 0.125rem 0;
+  font-size: 0.9375rem;
+}
+.wx-unified-group header p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+.wx-unified-observations {
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.wx-unified-observations > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-container-low);
+}
+.wx-unified-observations > li + li {
+  margin-top: 0.5rem;
+}
+.wx-unified-observation-value {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.wx-unified-observation-value span {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+.wx-unified-observation-actions {
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.wx-unified-exceptions {
+  position: sticky;
+  top: 1rem;
+}
+.wx-unified-exceptions ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wx-unified-exceptions li + li {
+  border-top: 1px solid var(--color-card-border);
+}
+.wx-unified-exceptions li > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 0;
+  color: var(--color-on-surface);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.wx-unified-exceptions li > button:hover {
+  background: var(--color-surface-container-low);
+}
+.wx-unified-exceptions button > span:first-child {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+}
+.wx-unified-exceptions small {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.wx-unified-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 1rem 1.125rem;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+}
+
+.wx-unified-source-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 20rem;
+  max-height: 42rem;
+  padding: 1rem;
+  overflow: auto;
+  background: var(--color-surface-container);
+}
+.wx-unified-source-stage > img {
+  display: block;
+  max-width: 100%;
+  max-height: 40rem;
+  object-fit: contain;
+  box-shadow: var(--shadow-soft);
+}
+.wx-unified-source-stage > .wx-status-pill {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+}
+.wx-unified-source-failure {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  max-width: 30rem;
+  text-align: center;
+}
+.wx-unified-source-failure p {
+  margin: 0;
+  color: var(--color-muted);
+}
+.wx-unified-source footer {
+  justify-content: space-between;
+  padding: 0.875rem 1rem;
+  border-top: 1px solid var(--color-card-border);
+}
+.wx-unified-source footer p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+@container (max-width: 72rem) {
+  .wx-unified-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wx-unified-exceptions {
+    position: static;
+  }
+}
+
+@container (max-width: 42rem) {
+  .wx-unified-head-actions,
+  .wx-unified-head-actions .wx-btn-secondary,
+  .wx-unified-observation-actions,
+  .wx-unified-observation-actions > *,
+  .wx-unified-source footer .wx-btn-primary {
+    width: 100%;
+  }
+  .wx-unified-progress {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wx-unified-progress small {
+    grid-column: 1;
+  }
+  .wx-unified-sections > button {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .wx-unified-sections > button .wx-status-pill {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .wx-unified-sections > button > svg:last-child {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+  }
+  .wx-unified-observations > li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .wx-unified-observation-actions {
+    flex-direction: column;
+  }
+  .wx-unified-source footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

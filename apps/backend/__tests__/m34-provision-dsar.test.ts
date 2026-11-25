@@ -242,7 +242,7 @@ function makeDsarPorts() {
   const jobPatches: Array<{
     status: string;
     bundleSha256?: string;
-    bundleMinioObjectKey?: string;
+    bundleObjectKey?: string;
     bundleDocumentId?: string;
   }> = [];
   const ledger: Array<{
@@ -252,7 +252,7 @@ function makeDsarPorts() {
     shardReceipt?: DsarShardReceipt | null;
   }> = [];
   const outbox: Array<{ event: string; payload: Record<string, unknown> }> = [];
-  const renderCalls: Array<{ aggregateId: string; bundleMinioObjectKey: string }> = [];
+  const renderCalls: Array<{ aggregateId: string; bundleObjectKey: string }> = [];
   let sealedKey: string | undefined;
 
   const ports: DsarExportWorkerPorts = {
@@ -287,7 +287,7 @@ function makeDsarPorts() {
     async renderBundleDocument(args) {
       renderCalls.push({
         aggregateId: args.aggregateId,
-        bundleMinioObjectKey: args.bundleMinioObjectKey,
+        bundleObjectKey: args.bundleObjectKey,
       });
       return { documentId: `doc_${args.aggregateId}` };
     },
@@ -322,9 +322,9 @@ describe("M34 §7.3 — tenant.dsar_export worker (fan-out + lifecycle)", () => 
     expect(jobPatches.map((p) => p.status)).toEqual(["generating", "review_pending"]);
     const finalPatch = jobPatches[1];
     expect(finalPatch?.bundleSha256).toBe(result.bundleSha256);
-    expect(finalPatch?.bundleMinioObjectKey).toBe(result.bundleMinioObjectKey);
+    expect(finalPatch?.bundleObjectKey).toBe(result.bundleObjectKey);
     expect(result.status).toBe("review_pending");
-    expect(sealed()).toBe(result.bundleMinioObjectKey);
+    expect(sealed()).toBe(result.bundleObjectKey);
 
     // §164.528 ledger: open hop, one shard receipt per module, assembly, upload-to-review hop.
     expect(ledger.map((e) => e.eventKind)).toEqual([
@@ -352,7 +352,7 @@ describe("M34 §7.3 — tenant.dsar_export worker (fan-out + lifecycle)", () => 
     // single remaining outbox event.
     expect(renderCalls).toHaveLength(1);
     expect(renderCalls[0]?.aggregateId).toBe("dsar_1");
-    expect(renderCalls[0]?.bundleMinioObjectKey).toBe(result.bundleMinioObjectKey);
+    expect(renderCalls[0]?.bundleObjectKey).toBe(result.bundleObjectKey);
     expect(result.bundleDocumentId).toBe("doc_dsar_1");
     // The terminal job patch already carries the rendered document id (synchronous, no backref consumer).
     expect(jobPatches.at(-1)?.bundleDocumentId).toBe("doc_dsar_1");

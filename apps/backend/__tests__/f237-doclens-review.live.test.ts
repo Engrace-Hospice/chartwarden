@@ -128,7 +128,7 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
     ).rows[0].id as string;
     const v = (
       await admin.query(
-        `INSERT INTO document_version (organization_id, document_id, version_number, minio_object_key,
+        `INSERT INTO document_version (organization_id, document_id, version_number, object_key,
            mime_type, byte_size, sha256_hex, uploaded_by_kind)
          VALUES ($1,$2,'1',$3,'application/pdf','1','abc','system') RETURNING id`,
         [ORG, doc, `uploads/${doc}/v1`],

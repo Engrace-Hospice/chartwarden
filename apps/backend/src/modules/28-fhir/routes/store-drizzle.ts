@@ -590,7 +590,7 @@ export function createDrizzleFhirGatewayStore(
           .orderBy(ARTIFACT.resourceType);
         return rows.map((r) => ({
           resourceType: r.resourceType,
-          objectKey: r.minioObjectKey,
+          objectKey: r.objectKey,
           byteSize: r.byteSize,
           rowCount: r.rowCount,
           checksumSha256: r.checksumSha256,

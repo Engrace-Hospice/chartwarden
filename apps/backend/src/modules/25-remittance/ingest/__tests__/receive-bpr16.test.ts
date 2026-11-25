@@ -44,7 +44,7 @@ function receive(parsed: ParsedRemittanceAdvice) {
       providerEntityId: PE,
       payerId: PE,
       payerKind: "medicare",
-      minioObjectKey: "k",
+      objectKey: "k",
       fileSha256: createHash("sha256").update(RAW, "utf8").digest("hex"),
       rawEdi: RAW,
     },

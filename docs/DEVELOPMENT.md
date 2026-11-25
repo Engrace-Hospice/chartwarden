@@ -201,7 +201,8 @@ passes. To run it end to end against a local model:
    FY2026 + FY2027 releases (checksum-pinned, cached in `.cache/`) into M38 and replaces the subset in place.
    On a database with no ICD-10-CM version at all the intake job skips the coding checks and says so
    (`coding.status: icd10cm_not_loaded`).
-   The docling-worker OCRs with Tesseract by default (`DOCLING_OCR_ENGINE=easyocr` to switch back).
+   The docling-worker OCRs with Tesseract and falls back to RapidOCR for a document Tesseract fails on
+   (`DOCLING_OCR_ENGINE` / `DOCLING_OCR_BACKUP`: `tesseract`, `rapidocr`, `easyocr`; backup `none` turns it off).
    A synthetic 21-page complex referral packet + answer key lives in
    `apps/backend/__tests__/fixtures/doclens-complex-packet/` (regenerate with
    `services/docling-worker/.venv/bin/python scripts/doclens/make-complex-packet.py <dir>`).

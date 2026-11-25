@@ -73,7 +73,7 @@ describe.skipIf(!DB_URL)("M25 → M27 ClaimSettlementProvider seam — LIVE Post
       await admin.query(
         `INSERT INTO remittance_advice (organization_id, provider_entity_id, payer_id, payer_kind,
            interchange_control_number, transaction_set_control_number, payment_method, total_payment_amount,
-           production_date, received_at, minio_object_key, file_sha256)
+           production_date, received_at, object_key, file_sha256)
          VALUES ($1,$2,$2,'medicare','000000001','0001','eft',40000.00,'2026-02-01','2026-02-01','k','sha') RETURNING id`,
         [ORG, U],
       )

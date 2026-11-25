@@ -192,6 +192,10 @@ services:
     environment:
       DOCLING_WORKER_TOKEN: ${DOCLING_WORKER_TOKEN:?set in .env.production}
       LOG_LEVEL: info
+      # Tesseract only. The RapidOCR backup (default elsewhere) loads a second set of layout models: measured peak
+      # ~1.4 GB for Tesseract alone, ~2.5 GB with the backup loaded, over this container's 2g. Remove this line only
+      # together with a raised mem_limit (services/docling-worker/README.md, "OCR engines").
+      DOCLING_OCR_BACKUP: none
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
       interval: 15s

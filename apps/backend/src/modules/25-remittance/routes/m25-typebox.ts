@@ -19,6 +19,7 @@ export const ReceiveAdviceRequestSchema = Type.Object({
     Type.Literal("medicaid"),
     Type.Literal("commercial"),
   ]),
+  // Wire name kept (OpenAPI + typed client contract); `internal.routes.ts` maps it to `ReceiveAdviceInput.objectKey`.
   minioObjectKey: Type.String({ minLength: 1 }),
   fileSha256: Type.String({ minLength: 64, maxLength: 64 }),
   rawEdi: Type.String({ minLength: 1 }),

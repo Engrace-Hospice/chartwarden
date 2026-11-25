@@ -19,6 +19,11 @@ import { restrictionOf } from "../src/modules/05-patient/admission-clearance-rea
 import { decideSudFlag } from "../src/modules/05-patient/index";
 import {
   closestReading,
+  quoteDeniesValue,
+  requiresVisionCheck,
+  unindexedFieldPath,
+  visionComparisonFor,
+  visionConfirms,
   visionReadingAgrees,
 } from "../src/modules/22-documents/extraction/intake-job";
 import { visionStatusOf } from "../src/modules/22-documents/extraction/review-workspace";
@@ -41,6 +46,220 @@ const out = (text: string) => ({
   modelVersionPin: "p",
   inputTokens: 1,
   outputTokens: 1,
+});
+
+// A diagnosis description is prose: the crop is the whole paragraph the diagnosis sits in, so the model's
+// reading is a sentence, not a list entry. The extracted value must still appear in it, as whole words and
+// not as a negated or family finding. A normalised enum (the role) has no verbatim form, so it is not re-read.
+describe("F-237 — stage 5 diagnosis descriptions and roles", () => {
+  it.each([
+    [
+      "Non-ischemic dilated cardiomyopathy",
+      "Non-ischemic dilated cardiomyopathy diagnosed 2017. Progressive symptoms over two years; four heart failure admissions since April 2026.",
+      true,
+    ],
+    ["End-stage heart failure", "End-stage heart failure is the primary terminal diagnosis.", true],
+    ["Former tobacco use", "Former tobacco use, 60 pack-years", true],
+    ["COPD", "Severe COPD GOLD 4, on home oxygen", true],
+    ["COPD", "Hypertension. COPD with chronic hypoxemic respiratory failure and CKD stage 4", true],
+    [
+      "type 2 diabetes",
+      "Other conditions: COPD on home oxygen; chronic kidney disease stage 4, Alzheimer's dementia; type 2 diabetes; atrial fibrillation; pressure injury sacrum.",
+      true,
+    ],
+    ["Heart failure, congestive", "Heart failure, congestive (HFrEF)", true], // a value with its own comma
+    ["Stage 3.5 CKD", "Stage 3.5 CKD with anemia", true], // a decimal point is not a sentence end
+    ["COPD", "COPD", true],
+    ["Alzheimer's dementia", "pressure injury sacrum", false], // not on the crop at all
+    ["Heart failure", "Heart, failure of the valve", false], // words split by a clause break
+    ["", "Severe COPD", false],
+    // Negated, someone else's, or uncertain — before the value, after it, or in an earlier clause of the sentence.
+    ["COPD", "No evidence of COPD on this admission", false],
+    ["COPD", "COPD ruled out", false],
+    ["COPD", "COPD: negative", false],
+    ["COPD", "Never had COPD", false],
+    ["COPD", "Neg for COPD", false],
+    ["COPD", "Exclusion of COPD", false],
+    ["COPD", "Non-COPD", false],
+    ["COPD", "Denies COPD", false],
+    ["COPD", "Denies the following: chest pain, COPD", false],
+    ["COPD", "Mother has asthma; COPD", false],
+    ["COPD", "Family history of COPD in mother", false],
+    ["Breast cancer", "Family history: breast cancer in mother", false],
+    ["COPD", "Possible COPD", false],
+    ["COPD", "Suspected COPD", false],
+    ["COPD", "Rule out COPD", false],
+    ["COPD", "r/o COPD", false],
+    ["COPD", "?COPD", false],
+    ["Pneumonia", "Pneumonia versus atelectasis", false],
+    // The length-ratio shortcut must not let a short negated reading through.
+    ["Heart failure", "No heart failure", false],
+    ["CHF", "No CHF", false],
+    ["COPD", "No COPD", false],
+    // A value that is only part of a more specific disease is not that disease.
+    ["Diabetes", "Diabetes insipidus", false],
+    ["Dementia", "Vascular dementia", false],
+    ["Cancer", "Breast cancer", false],
+    ["Stroke", "Stroke-like episode", false],
+    // Resolved, doubtful or unconfirmed: the page does not state an active diagnosis.
+    ["COPD", "COPD is unlikely", false],
+    ["COPD", "COPD, resolved", false],
+    ["COPD", "COPD (resolved)", false],
+    ["COPD", "COPD is in remission", false],
+    ["COPD", "COPD: none", false],
+    ["COPD", "COPD (unknown)", false],
+    ["COPD", "Resolved: COPD", false],
+    ["COPD", "Differential: COPD", false],
+    ["COPD", "COPD: unconfirmed", false],
+    // An abbreviation's period is not a sentence end; a stand-alone qualifier applies to its neighbour.
+    ["COPD", "Neg. COPD", false],
+    ["COPD", "R.O. COPD", false],
+    ["COPD", "Fam. COPD", false],
+    ["Breast cancer", "Mat. breast cancer", false],
+    ["COPD", "COPD. Negative.", false],
+    ["COPD", "COPD.\nRuled out.", false],
+    ["COPD", "Denied. COPD", false],
+    // Someone else's, in every spelling a chart uses.
+    ["Breast cancer", "Daughter: breast cancer", false],
+    ["Breast cancer", "Breast cancer in mom", false],
+    ["COPD", "COPD in dad", false],
+    ["COPD", "FHx: COPD", false],
+    ["COPD", "Relatives: COPD", false],
+    // A form's negative mark or an unticked box.
+    ["COPD", "COPD (-)", false],
+    ["COPD", "COPD [-]", false],
+    ["COPD", "COPD: N", false],
+    ["COPD", "☐ COPD", false],
+    ["COPD", "COPD ✗", false],
+    // Plain stage and spread words around the value still agree.
+    ["Pancreatic cancer", "Metastatic pancreatic cancer", true],
+    ["Pancreatic cancer", "Stage IV pancreatic cancer", true],
+    ["COPD", "COPD. Hypertension.", true], // a neighbour that holds no qualifier
+    // "without" negates what follows it, not the diagnosis it describes; a list of findings is not a doubt.
+    [
+      "Alzheimer's disease with late onset",
+      "Alzheimer's disease with late onset, with dementia, moderate, without behavioral disturbance",
+      true,
+    ],
+    ["COPD", "COPD without exacerbation", true],
+    ["COPD", "Presented without COPD", false],
+    ["COPD", "Without COPD", false],
+    ["malnutrition", "Alzheimer's dementia (moderate) and malnutrition", true],
+    ["COPD", "Hypertension and COPD", true],
+    ["COPD", "Denies fever and COPD", false],
+    // A contraction of "not" negates like "not".
+    ["COPD", "Patient doesn't have severe COPD", false],
+    ["COPD", "Patient doesn’t have chronic COPD", false],
+    ["COPD", "Patient isn't known COPD", false],
+    // A qualified sentence beside a sentence that is only the diagnosis name governs it, however long it is.
+    ["Pneumonia", "Pneumonia. Ruled out per CXR.", false],
+    ["Pneumonia", "Pneumonia. Not confirmed on imaging.", false],
+    ["Lung cancer", "Lung cancer. The patient does not have this condition.", false],
+    ["COPD", "Patient denies the following. COPD", false],
+    ["COPD", "Negative for the following. COPD", false],
+    // ...also across short list items between them, and with the apostrophe OCR often drops.
+    ["COPD", "Denies the following symptoms. Chest pain. COPD.", false],
+    ["COPD", "Patient denies chest pain. Fever. COPD.", false],
+    ["COPD", "Patient doesnt have COPD", false],
+    ["COPD", "Patient cant have COPD", false],
+    ["COPD", "Hospice diagnosis. Alzheimer's dementia. COPD.", true], // list items with nothing qualified
+    ["COPD", "Patient has severe COPD. Denies chest pain at rest today.", true], // a fuller sentence stands alone
+  ])("prose: %s in %s → %s", (extracted, observed, agrees) => {
+    expect(visionReadingAgrees(extracted, observed, "prose")).toBe(agrees);
+  });
+
+  // A bare reading ("COPD") cannot show the "Denies:" in front of it, so the value's own page quote is checked too.
+  it.each([
+    ["COPD", "Denies: chest pain, COPD", true],
+    ["COPD", "Family history: COPD", true],
+    ["COPD", "Presented without COPD", true],
+    ["Pneumonia", "Pneumonia. Ruled out per CXR.", true],
+    ["COPD", "COPD", false],
+    ["COPD", "Hospice diagnosis: COPD, severe", false],
+    ["COPD", "Denies fever and chills today. Patient has COPD, severe.", false],
+    ["Congestive heart failure", "Diagnoses on file", false], // the quote does not hold the value: it cannot judge
+  ])("quote: %s in %s → denied %s", (value, quote, denied) => {
+    expect(quoteDeniesValue(value, quote)).toBe(denied);
+  });
+
+  it("verifies a diagnosis only when a reading agrees and its quote does not deny it", () => {
+    const base = { fieldPath: "diagnoses[3].description", value: "COPD" };
+    expect(visionConfirms({ ...base, readings: ["COPD"] })).toBe(true);
+    expect(visionConfirms({ ...base, quote: "Hospice diagnosis: COPD", readings: ["COPD"] })).toBe(
+      true,
+    );
+    expect(visionConfirms({ ...base, quote: "Denies: chest pain, COPD", readings: ["COPD"] })).toBe(
+      false,
+    );
+    expect(
+      visionConfirms({ ...base, quote: "Hospice diagnosis: COPD", readings: ["Asthma"] }),
+    ).toBe(false);
+    // A medication is compared as an entry; a quote never changes that.
+    expect(
+      visionConfirms({
+        fieldPath: "medications[0].name",
+        value: "Lasix",
+        quote: "Denies Lasix",
+        readings: ["Lasix"],
+      }),
+    ).toBe(true);
+  });
+
+  it("asks the model for every entry of a list, whatever the entry's index", () => {
+    // Given "diagnoses[1].description" the model returns the 2nd entry of the CROP (the index counts entries
+    // across the whole document), so entries sharing one paragraph were checked against the wrong one.
+    expect(unindexedFieldPath("diagnoses[1].description")).toBe("diagnoses[].description");
+    expect(unindexedFieldPath("diagnoses[12].description")).toBe("diagnoses[].description");
+    expect(unindexedFieldPath("medications[0].name")).toBe("medications[].name");
+    expect(unindexedFieldPath("patient.dateOfBirth")).toBe("patient.dateOfBirth");
+  });
+
+  it("keeps the strict comparison for list entries and identity fields", () => {
+    expect(visionReadingAgrees("Penicillin", "Penicillin - anaphylaxis to IV dose")).toBe(false);
+    expect(visionReadingAgrees("Penicillin", "Penicillin - anaphylaxis to IV dose", "entry")).toBe(
+      false,
+    );
+    expect(visionReadingAgrees("Smith", "Smith, John", "entry")).toBe(false);
+  });
+
+  it("uses the prose comparison for diagnosis descriptions only", () => {
+    expect(visionComparisonFor("diagnoses[0].description")).toBe("prose");
+    expect(visionComparisonFor("diagnoses[12].description")).toBe("prose");
+    expect(visionComparisonFor("medications[0].name")).toBe("entry");
+    expect(visionComparisonFor("allergies[1].substance")).toBe("entry");
+    expect(visionComparisonFor("patient.legalLastName")).toBe("entry");
+  });
+
+  it("re-reads medium/high fields from the page except a diagnosis role", () => {
+    expect(requiresVisionCheck("high", "diagnoses[2].description")).toBe(true);
+    expect(requiresVisionCheck("medium", "patient.dateOfBirth")).toBe(true);
+    expect(requiresVisionCheck("medium", "diagnoses[0].role")).toBe(false);
+    expect(requiresVisionCheck("medium", "diagnoses[14].role")).toBe(false);
+    expect(requiresVisionCheck("low", "patient.phoneMobile")).toBe(false);
+  });
+
+  it("shows a diagnosis role as not requiring a page re-read", () => {
+    const base = { visionVerified: false, visionDisagreement: null } as const;
+    expect(visionStatusOf({ ...base, riskLevel: "medium", fieldPath: "diagnoses[0].role" })).toBe(
+      "not_required",
+    );
+    expect(visionStatusOf({ ...base, riskLevel: "medium", fieldPath: "patient.dateOfBirth" })).toBe(
+      "unverified",
+    );
+  });
+
+  it("keeps asking for a reason when a role row already carries a stored disagreement", () => {
+    // Batches extracted before roles stopped being re-read still hold a disagreement; the server demands a
+    // reason to accept it, so the screen must still show the reason box rather than dead-end.
+    expect(
+      visionStatusOf({
+        riskLevel: "medium",
+        fieldPath: "diagnoses[0].role",
+        visionVerified: false,
+        visionDisagreement: "v1.x",
+      }),
+    ).toBe("disagreed");
+  });
 });
 
 describe("F-237 — stage 5 reading comparison", () => {

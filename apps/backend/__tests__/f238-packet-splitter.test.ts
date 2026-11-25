@@ -64,10 +64,17 @@ describe("fax-packet splitter (complex referral packet, Tesseract OCR)", () => {
   it("dates each document by its own header — discharge date, never the DOB", () => {
     const segs = splitPacket(pages, classify(pages));
     const byFirst = new Map(segs.map((s) => [s.pageNumbers[0], s.documentDate]));
+    // Including the cumulative lab: its dates are table columns, and the document is dated by the latest.
     for (const d of key.documents) {
-      // A cumulative lab table has no single document date; the splitter reports its first column.
-      if (d.id === "labs") continue;
       expect([d.id, byFirst.get(d.pages[0])]).toEqual([d.id, isoOf(d.date)]);
+    }
+  });
+
+  it("dates the cumulative lab by its latest column under either OCR engine", () => {
+    const labs = key.documents.find((d) => d.id === "labs") as KeyDoc;
+    for (const engine of ["tesseract", "easyocr"] as const) {
+      const labPage = parse(engine).find((p) => p.page === labs.pages[0]) as SplitterPage;
+      expect([engine, headerDate(labPage)]).toEqual([engine, isoOf(labs.date)]);
     }
   });
 
@@ -163,5 +170,112 @@ describe("splitter rules", () => {
       ),
     ).toBe("2026-10-01");
     expect(headerDate(page(1, ["text", "DOB 03/02/1941"]))).toBeNull();
+  });
+
+  describe("a table whose header row is a run of date columns", () => {
+    const cells = (...texts: string[]): [string, string][] =>
+      texts.map((t): [string, string] => ["table_cell", t]);
+
+    it("is dated by its latest column, whatever the column order", () => {
+      const asc = page(
+        1,
+        ["section_header", "LABORATORY RESULTS"],
+        ...cells("Test", "09/17/2026", "09/24/2026", "09/30/2026", "Ref range"),
+      );
+      const desc = page(
+        1,
+        ["section_header", "LABORATORY RESULTS"],
+        ...cells("Test", "09/30/2026", "09/24/2026", "09/17/2026", "Ref range"),
+      );
+      expect(headerDate(asc)).toBe("2026-09-30");
+      expect(headerDate(desc)).toBe("2026-09-30");
+    });
+
+    it("reaches the columns even when the page header pushes them past the first six blocks", () => {
+      const p = page(
+        1,
+        ["text", "HOSPITAL"],
+        ["section_header", "LABORATORY RESULTS"],
+        ["text", "Patient:"],
+        ["text", "DOCLENS, ARTHUR DOB: 03/02/1941"],
+        ["text", "Ordering physician"],
+        ["text", "Lab director"],
+        ...cells("Test", "09/17/2026", "09/24/2026", "09/30/2026"),
+      );
+      expect(headerDate(p)).toBe("2026-09-30");
+    });
+
+    it("never outranks a labelled document date", () => {
+      const p = page(
+        1,
+        ["text", "Date of service: 09/20/2026"],
+        ...cells("Test", "09/17/2026", "09/24/2026", "09/30/2026"),
+      );
+      expect(headerDate(p)).toBe("2026-09-20");
+    });
+
+    it("is not thrown off by a 'Date' column label sitting in front of the first date", () => {
+      const p = page(
+        1,
+        ["section_header", "LABORATORY RESULTS"],
+        ...cells("Collection Date", "09/17/2026", "09/24/2026", "09/30/2026"),
+      );
+      expect(headerDate(p)).toBe("2026-09-30");
+    });
+
+    it("only reads dates that sit in adjacent columns", () => {
+      const p = page(1, ...cells("Follow-up", "10/05/2026", "Cardiology", "10/12/2026"));
+      expect(headerDate(p)).toBe("2026-10-05"); // the first unlabelled date, as before
+    });
+
+    it("does not trust columns years apart (one misread year must not win)", () => {
+      const p = page(1, ...cells("Test", "09/17/2026", "09/24/2062", "09/30/2026"));
+      expect(headerDate(p)).toBe("2026-09-17");
+    });
+
+    it("needs at least three date cells and ignores a table of ordinary values", () => {
+      expect(headerDate(page(1, ["text", "Seen 10/01/2026"], ...cells("Test", "09/17/2026")))).toBe(
+        "2026-10-01",
+      );
+      expect(headerDate(page(1, ...cells("BNP", "4,820", "4,410", "3,950")))).toBeNull();
+    });
+
+    it("does not read a start/end pair as columns (its end date is in the future)", () => {
+      const p = page(
+        1,
+        ...cells("Benefit period start", "Benefit period end", "11/01/2026", "01/29/2027"),
+      );
+      expect(headerDate(p)).toBe("2026-11-01"); // the first unlabelled date, as before
+    });
+
+    it("does not read a three-date certification table as columns", () => {
+      const p = page(
+        1,
+        ...cells("Election", "Cert start", "Cert end", "11/01/2026", "11/01/2026", "01/29/2027"),
+      );
+      expect(headerDate(p)).toBe("2026-11-01"); // not the future end date
+      // A real column-per-date table still wins its latest column.
+      expect(headerDate(page(1, ...cells("Test", "09/17/2026", "09/24/2026", "09/30/2026")))).toBe(
+        "2026-09-30",
+      );
+      // A banner or fax header that says "From:" or "period" is not a table header cell.
+      expect(
+        headerDate(
+          page(
+            1,
+            ["text", "From: Mercy Clinic"],
+            ["text", "Reporting period: Q3"],
+            ...cells("Test", "09/17/2026", "09/24/2026", "09/30/2026"),
+          ),
+        ),
+      ).toBe("2026-09-30");
+    });
+
+    it("skips a day that is not on the calendar instead of letting it roll over", () => {
+      const p = page(1, ...cells("Test", "09/17/2026", "09/31/2026", "09/30/2026"));
+      // 09/31 is not a date, so only two real columns remain: no column rule, first real date wins.
+      expect(headerDate(p)).toBe("2026-09-17");
+      expect(headerDate(page(1, ["text", "Seen 02/30/2026"]))).toBeNull();
+    });
   });
 });

@@ -204,7 +204,7 @@ async function seedDocument(
   const documentId = firstRow(doc, "seed-scenario-remaining: document insert").id;
   const version = await db.query<{ id: string }>(
     `INSERT INTO document_version
-       (organization_id, document_id, version_number, minio_object_key, mime_type, byte_size,
+       (organization_id, document_id, version_number, object_key, mime_type, byte_size,
         sha256_hex, sha256_verified_at, uploaded_by_membership_id, uploaded_by_kind)
      VALUES ($1,$2,'1',$3,'application/pdf','102400',
              '0000000000000000000000000000000000000000000000000000000000000000', now(), $4, 'user')

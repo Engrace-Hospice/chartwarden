@@ -56,6 +56,7 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
         Type.Literal("medicaid"),
         Type.Literal("commercial"),
       ]),
+      // Wire name kept (the outbox payload is a persisted contract); the column is `remittance_advice.object_key`.
       minioObjectKey: str,
       fileSha256: str,
     }),

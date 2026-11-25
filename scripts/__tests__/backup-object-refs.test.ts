@@ -9,6 +9,7 @@ import {
   objectRefCheck,
   parseManifest,
   reconcileRef,
+  resolveObjectRefSource,
   unclassifiedRefColumns,
 } from "../lib/backup/object-refs";
 
@@ -39,6 +40,68 @@ describe("object reference registry", () => {
   it("registers each table/column pair once", () => {
     const ids = OBJECT_REF_SOURCES.map((s) => `${s.table}.${s.keyColumn}`);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("object reference columns across the 1546 rename", () => {
+  const source = (table: string) => {
+    const found = OBJECT_REF_SOURCES.find((s) => s.table === table);
+    if (!found) throw new Error(`no registered source for ${table}`);
+    return found;
+  };
+
+  it("reads the new column names on a schema that has them", () => {
+    // Arrange
+    const discovered = ["document_version.object_key", "dsar_export_job.bundle_object_key"];
+
+    // Act / Assert
+    expect(resolveObjectRefSource(source("document_version"), discovered).keyColumn).toBe(
+      "object_key",
+    );
+    expect(resolveObjectRefSource(source("dsar_export_job"), discovered).keyColumn).toBe(
+      "bundle_object_key",
+    );
+  });
+
+  it("falls back to the legacy column names on a snapshot taken before the rename", () => {
+    // Arrange: a restore of a pre-1546 snapshot still has minio_object_key / bundle_minio_object_key
+    const discovered = [
+      "document_version.minio_object_key",
+      "dsar_export_job.bundle_minio_object_key",
+      "message_attachment.object_key",
+    ];
+
+    // Act
+    const document = resolveObjectRefSource(source("document_version"), discovered);
+    const dsar = resolveObjectRefSource(source("dsar_export_job"), discovered);
+
+    // Assert: the key column and every mention of it in the liveness predicate move together
+    expect(document.keyColumn).toBe("minio_object_key");
+    expect(dsar.keyColumn).toBe("bundle_minio_object_key");
+    expect(dsar.liveWhere).toBe("t.bundle_minio_object_key IS NOT NULL AND t.status = 'fulfilled'");
+    expect(dsar.liveWhere).not.toContain("t.bundle_object_key");
+    expect(resolveObjectRefSource(source("message_attachment"), discovered).keyColumn).toBe(
+      "object_key",
+    );
+  });
+
+  it("keeps the new name when neither column exists, so the query fails loudly instead of reading nothing", () => {
+    expect(resolveObjectRefSource(source("remittance_advice"), []).keyColumn).toBe("object_key");
+  });
+
+  it("classifies the legacy column names as registered, not as an unknown object reference", () => {
+    // Arrange
+    const discovered = [
+      "document_version.minio_object_key",
+      "remittance_advice.minio_object_key",
+      "fhir_bulk_export_artifact.minio_object_key",
+      "dsar_export_job.bundle_minio_object_key",
+      "tenant_export_job.bundle_minio_object_key",
+      "new_module.minio_object_key",
+    ];
+
+    // Act / Assert
+    expect(unclassifiedRefColumns(discovered)).toEqual(["new_module.minio_object_key"]);
   });
 });
 

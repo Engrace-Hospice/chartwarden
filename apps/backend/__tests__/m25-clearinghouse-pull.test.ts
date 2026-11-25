@@ -91,17 +91,17 @@ function ingestDouble(
         input: ReceiveAdviceInput,
       ): Promise<ReceiveAdviceResult> {
         received.push(input);
-        if (opts.unsupportedFor && input.minioObjectKey.endsWith(opts.unsupportedFor)) {
+        if (opts.unsupportedFor && input.objectKey.endsWith(opts.unsupportedFor)) {
           return {
             outcome: "unsupported",
             code: "X12_835_UNSUPPORTED_ROUTING",
             reason: "synthetic group routing",
           };
         }
-        if (opts.heldFor && input.minioObjectKey.endsWith(opts.heldFor.suffix)) {
+        if (opts.heldFor && input.objectKey.endsWith(opts.heldFor.suffix)) {
           return opts.heldFor.result;
         }
-        if (opts.malformedFor && input.minioObjectKey.endsWith(opts.malformedFor)) {
+        if (opts.malformedFor && input.objectKey.endsWith(opts.malformedFor)) {
           return {
             outcome: "malformed",
             reason: "synthetic refusal",
@@ -180,7 +180,7 @@ describe("pullRemittances", () => {
     const result = await pullRemittances(deps, ORG);
 
     expect(result).toMatchObject({ queued: 5, duplicates: 0, failures: [] });
-    expect(ingest.received.map((r) => r.minioObjectKey)).toEqual(
+    expect(ingest.received.map((r) => r.objectKey)).toEqual(
       [1, 2, 3, 4, 5].map((n) => `clearinghouse/in_memory/ERA-${n}`),
     );
     expect(ingest.received[0]).toMatchObject({
@@ -781,7 +781,7 @@ describe("pullRemittances with a clearinghouse per organization (ADR-0053 amendm
 
     expect(a).toMatchObject({ queued: 1, failures: [] });
     expect(b).toMatchObject({ queued: 1, failures: [] });
-    expect(ingest.received.map((r) => r.minioObjectKey)).toEqual([
+    expect(ingest.received.map((r) => r.objectKey)).toEqual([
       "clearinghouse/stedi/ERA-A",
       "clearinghouse/claimmd/ERA-B",
     ]);

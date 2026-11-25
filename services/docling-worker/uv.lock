@@ -161,6 +161,7 @@ dependencies = [
 docling = [
     { name = "docling", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "easyocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "onnxruntime", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "torch", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "torchvision", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
@@ -179,6 +180,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28" },
     { name = "jaraco-context", specifier = ">=6.1.0" },
+    { name = "onnxruntime", marker = "extra == 'docling'", specifier = ">=1.7,<2" },
     { name = "pillow", specifier = ">=13.0.0,<14" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pypdfium2", specifier = ">=4.30" },
@@ -449,6 +451,14 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/bb/29/745f7d30d47fe0f251d3ad3dc2978a23141917661998763bebb6da007eb1/filetype-1.2.0.tar.gz", hash = "sha256:66b56cd6474bf41d8c54660347d37afcc3f7d1970648de365c102ef77548aadb", size = 998020, upload-time = "2022-11-02T17:34:04.141Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/18/79/1b8fa1bb3568781e84c9200f951c735f3f157429f44be0495da55894d620/filetype-1.2.0-py2.py3-none-any.whl", hash = "sha256:7ce71b6880181241cf7ac8697a2f1eb6a8bd9b429f7ad6d27b8db9ba5f1c2d25", size = 19970, upload-time = "2022-11-02T17:34:01.425Z" },
+]
+
+[[package]]
+name = "flatbuffers"
+version = "25.12.19"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e8/2d/d2a548598be01649e2d46231d151a6c56d10b964d94043a335ae56ea2d92/flatbuffers-25.12.19-py2.py3-none-any.whl", hash = "sha256:7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4", size = 26661, upload-time = "2025-12-19T23:16:13.622Z" },
 ]
 
 [[package]]
@@ -883,6 +893,25 @@ wheels = [
 ]
 
 [[package]]
+name = "onnxruntime"
+version = "1.32.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "flatbuffers", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "numpy", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "packaging", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "protobuf", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4a/8f/1e43fb994513c7c7a9c6965272ef89d963c1bd4080993a6267bf913701d1/onnxruntime-1.32.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:e36c187006e7a7c8b8d6d57f1a209dd63f52430dca6c282b177718ad6b841054", size = 23196724, upload-time = "2026-11-13T11:06:16.67Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/81/55845186c20cba59f614991f4065dea148e48eeb9749893768c85ce64327/onnxruntime-1.32.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:99e1074c4b2197accd5073052a465361be17b89c093b8ffb6e6bd8f986c52df8", size = 27780211, upload-time = "2026-11-13T11:06:19.734Z" },
+    { url = "https://files.pythonhosted.org/packages/96/c7/26be6be3ebe42597a521645a7bb18701ce0716af87af0cd2c9281d2e84a5/onnxruntime-1.32.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:54d02baff2df38777b4c3cc7af326406fe8b8a48f54720f4c446d2d327920a79", size = 23195811, upload-time = "2026-11-13T11:06:31.896Z" },
+    { url = "https://files.pythonhosted.org/packages/92/74/1f7c51522822e93aa91f633ebcd75688e2deebeca5901b2e6da8a8c5ad7c/onnxruntime-1.32.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:02ea12a28c069ea8510093d95a7f6ff8126bfd9fc5c0d3381c03b80fb2b424ba", size = 27780404, upload-time = "2026-11-13T11:06:36.602Z" },
+    { url = "https://files.pythonhosted.org/packages/08/3b/28be6dee643e29086c86b0b778e43d73e9c910aa044e8ac67856a9452131/onnxruntime-1.32.0-cp313-cp313t-manylinux_2_28_aarch64.whl", hash = "sha256:b01314ab8aa8176919818b19b899cd1cd72b5e4fc33e1127396f043206b6ceed", size = 23205671, upload-time = "2026-11-13T11:06:45.93Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/b0/8cc346bc2113c51d185d5f6ecbf8962c28ae2dfbc5461d9d36b79a267c6e/onnxruntime-1.32.0-cp313-cp313t-manylinux_2_28_x86_64.whl", hash = "sha256:926b6a87ffdcef56805b213807c28b97ae53763a630795baee1dfb420c2a5b68", size = 27797958, upload-time = "2026-11-13T11:06:48.981Z" },
+]
+
+[[package]]
 name = "opencv-python-headless"
 version = "5.0.0.93"
 source = { registry = "https://pypi.org/simple" }
@@ -992,6 +1021,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/65/19/cc8f17f7778d52a8b930622fc0bb8dd450c1d6d8ed4bdb5b2b7703c85dc4/polyfactory-3.5.0.tar.gz", hash = "sha256:78a1e4cf8f317be7da7c111d661f39db35080ec9c12b8df7c01dfbbc1c17250f", size = 381522, upload-time = "2026-10-21T07:13:31.664Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d6/bb/8667413181bfac2fee81b6f80710356222bf438df1eff6b3c12ab39480a8/polyfactory-3.5.0-py3-none-any.whl", hash = "sha256:2051105650e82ea7046afbab9ad4a7bf579fb6fd80ef65a51a7feaef3396d278", size = 63644, upload-time = "2026-10-21T07:13:30.009Z" },
+]
+
+[[package]]
+name = "protobuf"
+version = "7.36.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d9/89/5b8517baa72f84a67b8a307ba953c91057af618bf40bf676f3c03551f8f0/protobuf-7.36.2.tar.gz", hash = "sha256:497d0463ff3316681da6c0b9e8d06cb465d61abce00b613ab42226175644d1bb", size = 512737, upload-time = "2026-09-17T20:07:59.326Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b6/ea/91fdf7c2b8bbd49cde056f00a9df6773532987e1c00fe2830b895af95c7e/protobuf-7.36.2-cp310-abi3-manylinux2014_aarch64.whl", hash = "sha256:e11e1f0180583a2af89db6a2ecd9e8dc40aa6d2988ca175bfd0e6d12ea72d74e", size = 344219, upload-time = "2026-09-17T20:07:52.914Z" },
+    { url = "https://files.pythonhosted.org/packages/17/ab/5fd5f8ece73fad885c5a09aa849b32d70472f954ba3a92d3bb5974ea953b/protobuf-7.36.2-cp310-abi3-manylinux2014_s390x.whl", hash = "sha256:f4fee11ec330d238b34a05c9b675f693c20415d1c5bd7d5320cc2f8a798eb9cf", size = 357223, upload-time = "2026-09-17T20:07:53.985Z" },
+    { url = "https://files.pythonhosted.org/packages/db/f3/3996583dd2906297a637af12114deddf7658af6e683fedb83be061983fb5/protobuf-7.36.2-cp310-abi3-manylinux2014_x86_64.whl", hash = "sha256:89f23aa53c24553a2416fd4fd1ec06f74fa42b14b546d8883128813f775bbfd2", size = 343223, upload-time = "2026-09-17T20:07:54.931Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/04/d52c7016b04b6c5108f26691f9d33ec82a9b65d041f1a9c771137693d618/protobuf-7.36.2-py3-none-any.whl", hash = "sha256:bdb3a345d48db958e6ce1f18e508beb0cc981d64f24088427549c866cd039f1e", size = 179806, upload-time = "2026-09-17T20:07:58.211Z" },
 ]
 
 [[package]]

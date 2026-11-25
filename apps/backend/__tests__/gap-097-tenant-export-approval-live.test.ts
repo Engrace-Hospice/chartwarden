@@ -155,6 +155,7 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
         ORG,
         jobId,
         JSON.stringify({
+          // The persisted JSON key of a hold event's shard_receipt (kept; only the column was renamed).
           bundleMinioObjectKey: `exports/tenant/${jobId}.tar.gz`,
           bundleSha256: "deadbeef",
           bundleSizeBytes: 60 * 1024 * 1024 * 1024,
@@ -200,11 +201,11 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
     expect(result).toEqual({ jobId, status: "fulfilled" });
 
     const { rows: jobRows } = await admin.query(
-      "SELECT status, bundle_minio_object_key, bundle_sha256, bundle_size_bytes, fulfilled_at, bundle_presigned_url_expires_at FROM tenant_export_job WHERE id=$1",
+      "SELECT status, bundle_object_key, bundle_sha256, bundle_size_bytes, fulfilled_at, bundle_presigned_url_expires_at FROM tenant_export_job WHERE id=$1",
       [jobId],
     );
     expect(jobRows[0].status).toBe("fulfilled");
-    expect(jobRows[0].bundle_minio_object_key).toBe(`exports/tenant/${jobId}.tar.gz`);
+    expect(jobRows[0].bundle_object_key).toBe(`exports/tenant/${jobId}.tar.gz`);
     expect(jobRows[0].bundle_sha256).toBe("deadbeef");
     expect(Number(jobRows[0].bundle_size_bytes)).toBe(60 * 1024 * 1024 * 1024);
     expect(jobRows[0].fulfilled_at).not.toBeNull();
