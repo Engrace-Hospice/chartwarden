@@ -58,6 +58,8 @@ export interface MedicaidEraReviewService {
     | {
         readonly status: "review_only";
         readonly transactionSetCount: number;
+        readonly artifactReference: string;
+        readonly artifactDigest: string;
         readonly claims: readonly MedicaidEraReviewAssessment[];
       }
     | { readonly status: "held"; readonly reasonCode: string; readonly postingAuthorized: false }
@@ -67,6 +69,26 @@ export interface MedicaidEraReviewService {
 const UNAVAILABLE = { status: "unavailable", reasonCode: "SOURCE_ARTIFACT_UNAVAILABLE" } as const;
 const EMPTY_SOURCE_EVIDENCE_FINGERPRINT =
   "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+/**
+ * API-side fallback when the isolated evaluator is disabled or unavailable. It deliberately has
+ * no staged-source, account, duplicate, or M24 claim access; a public API process can never fall
+ * back to evaluating or decrypting an ERA locally.
+ */
+export const unavailableMedicaidEraReviewReaders: MedicaidEraReviewReaders = Object.freeze({
+  async readAuthenticatedArtifact() {
+    return null;
+  },
+  async accountEvidence() {
+    return [];
+  },
+  async duplicateDecision() {
+    return "none" as const;
+  },
+  async claimCandidates() {
+    return { candidates: [], sourceEvidenceFingerprint: EMPTY_SOURCE_EVIDENCE_FINGERPRINT };
+  },
+});
 
 /** Hash only allowlisted owner snapshots; raw account, claim and member identifiers never leave the evaluator. */
 function evidenceSnapshotFingerprint(input: {
@@ -277,7 +299,13 @@ export function createMedicaidEraReviewService(
           })),
         );
       }
-      return { status: "review_only", transactionSetCount: observations.length, claims: reviews };
+      return {
+        status: "review_only",
+        transactionSetCount: observations.length,
+        artifactReference: staged.source.artifactReference,
+        artifactDigest: staged.source.artifactDigest,
+        claims: reviews,
+      };
     },
   };
 }

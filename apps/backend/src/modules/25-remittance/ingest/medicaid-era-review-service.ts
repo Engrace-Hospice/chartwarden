@@ -1,10 +1,18 @@
 import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ConflictError, DegradedError, NotFoundError, ValidationError } from "@chartwarden/types";
-import { and, desc, eq, lt, or, sql } from "drizzle-orm";
-import type { MedicaidEraReviewService as Evaluator } from "../domain/medicaid-era-trusted-review";
-import { consistentMedicaidEraReviewAttribution } from "../domain/medicaid-era-trusted-review";
+import { and, desc, eq, sql } from "drizzle-orm";
+import {
+  type MedicaidEraDuplicateDecision,
+  strictestDuplicate,
+} from "../domain/medicaid-era-duplicate-scan";
+import type { MedicaidEraReviewService as Evaluator } from "../domain/medicaid-era-review-service";
+import {
+  type MedicaidEraReviewDecision,
+  consistentMedicaidEraReviewAttribution,
+} from "../domain/medicaid-era-trusted-review";
 import type { M25ReadActor, M25WriteActor } from "../routes/actor";
 import { providerEntityScopeCondition } from "../routes/scope";
 
@@ -25,6 +33,23 @@ const allowed = new Set<State>([
   "reviewed_not_posted",
   "reopened",
 ]);
+
+const DUPLICATE_OF_DECISION: Partial<
+  Record<MedicaidEraReviewDecision, MedicaidEraDuplicateDecision>
+> = {
+  source_identity_conflict: "conflict",
+  exact_duplicate: "exact",
+  possible_duplicate: "possible",
+};
+
+/** The stored duplicate status: the strictest per-claim decision, conflict over exact over possible over none. */
+export function duplicateStatusOf(
+  claims: readonly { readonly decision: MedicaidEraReviewDecision }[],
+): MedicaidEraDuplicateDecision {
+  return strictestDuplicate(
+    ...claims.map((item) => DUPLICATE_OF_DECISION[item.decision] ?? "none"),
+  );
+}
 
 /** Deterministic JSON for fingerprints; object key insertion order never changes assessment identity. */
 function canonicalJson(value: unknown): string {
@@ -95,6 +120,17 @@ export function isTrustedAssessmentReplay(
     existing.assessmentFingerprint === assessmentFingerprint &&
     existing.assessmentEvidenceFingerprint === evidenceFingerprint
   );
+}
+
+/**
+ * A review written before evaluator attestation (legacy_unverified) cannot take an action: the evaluator's row policies
+ * require an attested row, so the write would fail as an opaque 503 and retrying would never help. Refuse it plainly.
+ */
+export function assertAttestedReview(review: { readonly assessmentTrustStatus: string }): void {
+  if (review.assessmentTrustStatus !== "isolated_evaluator")
+    throw new ConflictError(
+      "this review predates evaluator attestation; evaluate it again before recording an action",
+    );
 }
 
 function actorOperationIdentity(actor: M25WriteActor) {
@@ -191,6 +227,8 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
           decision: item.decision,
           reasonCode: item.reasonCode,
           matchStatus: item.matchStatus,
+          // Keeps a CLP02=22 reversal visible when its original reads UNMATCHED (the M24 seam hides replaced claims).
+          claimStatusCode: item.claimStatusCode,
           matchedClaim: item.matchedClaim,
           attribution: item.attribution,
           evidenceReferences: item.evidenceReferences,
@@ -206,11 +244,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
       const reasonCodes = [...new Set(result.claims.map((item) => item.reasonCode))].slice(0, 32);
       const claimMatchStatus =
         result.claims.length === 1 ? result.claims[0]!.matchStatus : "MULTIPLE";
-      const duplicateStatus = result.claims.some((item) => item.decision === "possible_duplicate")
-        ? "possible"
-        : result.claims.some((item) => item.decision === "exact_duplicate")
-          ? "exact"
-          : "none";
+      const duplicateStatus = duplicateStatusOf(result.claims);
       const assessmentFingerprint = createHash("sha256")
         .update(
           canonicalJson({
@@ -309,6 +343,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
           )
             throw new ConflictError("this idempotency key was used for another review operation");
           if (
+            existing &&
             isTrustedAssessmentReplay(
               existing,
               assessmentFingerprint,
@@ -452,17 +487,8 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
     },
     async list(actor: M25ReadActor, limit = 50, cursor?: string) {
       const bounded = Math.min(100, Math.max(1, Number.isInteger(limit) ? limit : 50));
-      let after: { at: Date; id: string } | undefined;
-      if (cursor) {
-        try {
-          const [at, id] = Buffer.from(cursor, "base64url").toString("utf8").split("|");
-          if (!at || !id || !/^[0-9a-f-]{36}$/i.test(id) || !Number.isFinite(Date.parse(at)))
-            throw new Error();
-          after = { at: new Date(at), id };
-        } catch {
-          throw new ValidationError("invalid Medicaid ERA review cursor", []);
-        }
-      }
+      // Signed per organization and shape-checked (422 INVALID_CURSOR), like every other list cursor (CW-AC-11).
+      const after = decodeKeysetCursor(actor.organizationId, cursor, "instant");
       return withOrgContext(db, actor, async (tx) => {
         const rows = await tx
           .select({
@@ -482,6 +508,9 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
             workflowState: REVIEW.workflowState,
             version: REVIEW.version,
             createdAt: REVIEW.createdAt,
+            // The cursor anchor keeps microseconds (a Date holds milliseconds, which would skip the rest of a group
+            // of rows created in one millisecond across a page boundary).
+            sortTs: sql<string>`${REVIEW.createdAt}::text`,
           })
           .from(REVIEW)
           .where(
@@ -489,10 +518,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
               eq(REVIEW.organizationId, actor.organizationId),
               providerEntityScopeCondition(REVIEW.providerEntityId, actor.providerEntityScope),
               after
-                ? or(
-                    lt(REVIEW.createdAt, after.at),
-                    and(eq(REVIEW.createdAt, after.at), lt(REVIEW.id, after.id)),
-                  )
+                ? sql`(${REVIEW.createdAt}, ${REVIEW.id}) < (${after.a}::timestamptz, ${after.id}::uuid)`
                 : undefined,
             ),
           )
@@ -509,7 +535,11 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
                 : item.assessmentEvidenceFingerprint && item.assessmentObservedAt
                   ? "point_in_time_nonposting"
                   : "snapshot_unavailable";
-            const { assessmentEvidenceFingerprint: _evidenceFingerprint, ...safeItem } = item;
+            const {
+              assessmentEvidenceFingerprint: _evidenceFingerprint,
+              sortTs: _sortTs,
+              ...safeItem
+            } = item;
             return item.assessmentTrustStatus === "legacy_unverified"
               ? {
                   ...safeItem,
@@ -527,7 +557,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
           }),
           nextCursor:
             hasMore && last
-              ? Buffer.from(`${last.createdAt.toISOString()}|${last.id}`).toString("base64url")
+              ? encodeCursor(actor.organizationId, { a: last.sortTs, id: last.id })
               : null,
         };
       });
@@ -687,6 +717,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
           };
         }
         const current = await find(actor, id, tx, true);
+        assertAttestedReview(current);
         if (current.version !== expectedVersion)
           throw new ConflictError("reload the review before adding a note");
         const version = current.version + 1;
@@ -781,6 +812,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
           };
         }
         const current = await find(actor, id, tx, true);
+        assertAttestedReview(current);
         if (current.version !== expectedVersion)
           throw new ConflictError("reload the review before updating it");
         if (current.workflowState === "reviewed_not_posted" && state !== "reopened")

@@ -25,6 +25,8 @@ export function createIsolatedEvaluatorHandler(input: {
   ready?: () => Promise<boolean>;
   maxInFlight?: number;
   maxReplayEntries?: number;
+  /** One JSON line per failed command (status and error class only); defaults to console.warn. */
+  log?: (line: string) => void;
 }) {
   const seen = new Map<string, number>();
   let inFlight = 0;
@@ -125,7 +127,18 @@ export function createIsolatedEvaluatorHandler(input: {
       return Response.json(result);
     } catch (error) {
       const name = error instanceof Error ? error.name : "Error";
-      const status = name === "ConflictError" ? 409 : name === "ValidationError" ? 400 : 503;
+      const status =
+        name === "ConflictError"
+          ? 409
+          : name === "ValidationError"
+            ? 400
+            : name === "NotFoundError"
+              ? 404
+              : 503;
+      // Status and error class only: no command body, id or message, which can name a review or an account.
+      (input.log ?? ((line: string) => console.warn(line)))(
+        JSON.stringify({ event: "m25.evaluator.command_failed", status, errorName: name }),
+      );
       return Response.json({ error: status === 503 ? "evaluator_failed" : name }, { status });
     } finally {
       inFlight -= 1;

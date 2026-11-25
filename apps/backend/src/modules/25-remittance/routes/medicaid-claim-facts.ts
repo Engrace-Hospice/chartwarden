@@ -104,8 +104,8 @@ const liveView = (): MedicaidClaimFactsView =>
   getSeam("MedicaidClaimMatchProvider") as MedicaidClaimFactsView;
 
 /**
- * Server-owned claim/submission evidence; incomplete attempts remain ID-hidden and unverified. Unbound: nothing calls this
- * yet (the L5 review evaluator's `claimCandidates` reader has no implementation), so no M25 request path consumes the seam.
+ * Server-owned claim/submission evidence; incomplete attempts remain ID-hidden and unverified. Its one caller is the
+ * Medicaid ERA review evaluator's `claimCandidates` reader (`ingest/medicaid-era-review-readers.ts`).
  */
 export async function medicaidSubmissionEvidence(
   organizationId: string,

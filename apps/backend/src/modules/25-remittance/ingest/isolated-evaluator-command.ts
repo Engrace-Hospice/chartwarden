@@ -7,7 +7,7 @@ import {
   verify,
 } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { ConflictError, DegradedError, ValidationError } from "@chartwarden/types";
+import { ConflictError, DegradedError, NotFoundError, ValidationError } from "@chartwarden/types";
 import type { M25WriteActor } from "../routes/actor";
 import type { ReturnTypeMedicaidEraReviewWorkflow } from "./medicaid-era-review-service";
 
@@ -213,6 +213,9 @@ export function createHttpEvaluatorTransport(input: {
       const result = (await response.json().catch(() => null)) as Record<string, unknown> | null;
       if (response.status === 409)
         throw new ConflictError("the review command conflicts with current state");
+      // A missing review, or one outside the actor's provider-entity scope, is a 404 here, not an unavailable evaluator.
+      if (response.status === 404) throw new NotFoundError("Medicaid ERA review not found");
+      if (response.status === 400) throw new ValidationError("the review command is invalid", []);
       if (!response.ok || !result)
         throw new DegradedError(
           "MEDICAID_ERA_EVALUATOR_UNAVAILABLE",

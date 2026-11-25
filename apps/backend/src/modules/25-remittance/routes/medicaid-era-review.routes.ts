@@ -1,4 +1,4 @@
-import { requireIdempotencyKey } from "@chartwarden/shared/route-kit";
+import { rejectAiActor, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
@@ -22,6 +22,8 @@ const READ = P("remittance.read");
 const MATCH_REVIEW = P("remittance.match_review");
 const FINANCIAL_REVIEW = P("remittance.financial_review");
 const IDEMPOTENT = requireIdempotencyKey();
+// Evaluating and dispositioning a review are human acts (D12): an AI principal is refused before the evaluator is asked.
+const AI = rejectAiActor("AI principals cannot evaluate or disposition Medicaid ERA reviews (D12)");
 const ReviewParams = Type.Object({ id: Type.String({ format: "uuid" }) });
 
 function idempotencyKey(request: {
@@ -87,7 +89,7 @@ export function registerMedicaidEraReviewRoutes(
         params: MedicaidEraEvaluateParamsSchema,
         response: { 200: MedicaidEraEvaluateResultSchema },
       },
-      preHandler: [MATCH_REVIEW, IDEMPOTENT],
+      preHandler: [MATCH_REVIEW, AI, IDEMPOTENT],
       config: {
         auditRead: { resourceKind: "medicaid_era_artifact", resourceIdParam: "artifactId" },
       },
@@ -107,7 +109,7 @@ export function registerMedicaidEraReviewRoutes(
         params: ReviewParams,
         response: { 200: MedicaidEraEvaluateResultSchema },
       },
-      preHandler: [MATCH_REVIEW, IDEMPOTENT],
+      preHandler: [MATCH_REVIEW, AI, IDEMPOTENT],
       config: {
         auditRead: { resourceKind: "medicaid_era_review", resourceIdParam: "id" },
       },
@@ -130,7 +132,7 @@ export function registerMedicaidEraReviewRoutes(
         body: MedicaidEraDispositionSchema,
         response: { 200: MedicaidEraDispositionResultSchema },
       },
-      preHandler: [FINANCIAL_REVIEW, IDEMPOTENT],
+      preHandler: [FINANCIAL_REVIEW, AI, IDEMPOTENT],
     },
     async (request, reply) => {
       const { id } = request.params as { id: string };
@@ -160,7 +162,7 @@ export function registerMedicaidEraReviewRoutes(
         body: MedicaidEraNoteSchema,
         response: { 200: MedicaidEraDispositionResultSchema },
       },
-      preHandler: [FINANCIAL_REVIEW, IDEMPOTENT],
+      preHandler: [FINANCIAL_REVIEW, AI, IDEMPOTENT],
     },
     async (request, reply) => {
       const { id } = request.params as { id: string };

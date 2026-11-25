@@ -1408,7 +1408,7 @@ import { isVoidM24Claim } from "./modules/24-billing-medicaid/void-claim";
 import {
   createMedicaidEraReviewService,
   unavailableMedicaidEraReviewReaders,
-} from "./modules/25-remittance/domain/medicaid-era-trusted-review";
+} from "./modules/25-remittance/domain/medicaid-era-review-service";
 // M25 (Remittance & Denials) boot surface — the §4.5 outbox catalog, the §4.7 ABAC resolvers
 // (`claim_assigned_to_actor`, `appeal_within_deadline`), and the §4.1 route mount over the Drizzle
 // read/write services. The write service binds the catalog-validating transactional outbox publisher

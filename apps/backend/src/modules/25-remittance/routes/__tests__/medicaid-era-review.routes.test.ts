@@ -13,7 +13,7 @@ afterEach(() => {
   resetEffectivePermissionResolver();
 });
 
-function setup(permissions: string[]) {
+function setup(permissions: string[], actorKind?: string) {
   const app = Fastify();
   app.addHook("onRequest", async (request) => {
     request.context = {
@@ -23,7 +23,10 @@ function setup(permissions: string[]) {
       providerEntityIds: [PROVIDER],
       locationIds: [],
       roles: [],
-      attributes: { membershipId: "50000000-0000-4000-8000-000000000005" },
+      attributes: {
+        membershipId: "50000000-0000-4000-8000-000000000005",
+        ...(actorKind ? { actorKind } : {}),
+      },
       ip: "127.0.0.1",
       userAgent: "test",
       startTime: Date.now(),
@@ -92,6 +95,74 @@ describe("Medicaid ERA nonposting review API", () => {
       "30000000-0000-4000-8000-000000000001",
       "synthetic-review-key-0002",
     );
+    await allowed.app.close();
+  });
+
+  const REVIEW_ID = "30000000-0000-4000-8000-000000000001";
+  const WRITE_ROUTES = [
+    {
+      name: "evaluate",
+      url: `/api/v1/remittance/medicaid-era-artifacts/${REVIEW_ID}/evaluate`,
+      permission: "remittance.match_review",
+      payload: undefined,
+    },
+    {
+      name: "reassess",
+      url: `/api/v1/remittance/medicaid-era-reviews/${REVIEW_ID}/reassess`,
+      permission: "remittance.match_review",
+      payload: undefined,
+    },
+    {
+      name: "disposition",
+      url: `/api/v1/remittance/medicaid-era-reviews/${REVIEW_ID}/disposition`,
+      permission: "remittance.financial_review",
+      payload: { expectedVersion: 1, state: "investigating", reasonCode: "SYNTHETIC_REASON" },
+    },
+    {
+      name: "notes",
+      url: `/api/v1/remittance/medicaid-era-reviews/${REVIEW_ID}/notes`,
+      permission: "remittance.financial_review",
+      payload: { expectedVersion: 1, reasonCode: "SYNTHETIC_REASON" },
+    },
+  ] as const;
+
+  it.each(WRITE_ROUTES)(
+    "$name refuses an AI principal that holds the permission",
+    async (route) => {
+      const { app, service } = setup([route.permission], "ai_agent");
+      const response = await app.inject({
+        method: "POST",
+        url: route.url,
+        headers: { "idempotency-key": "synthetic-review-key-0003" },
+        ...(route.payload ? { payload: route.payload } : {}),
+      });
+      expect(response.statusCode).toBe(403);
+      expect(service.evaluate).not.toHaveBeenCalled();
+      expect(service.transition).not.toHaveBeenCalled();
+      await app.close();
+    },
+  );
+
+  it.each(WRITE_ROUTES)("$name requires its permission and an Idempotency-Key", async (route) => {
+    const denied = setup([]);
+    const noPermission = await denied.app.inject({
+      method: "POST",
+      url: route.url,
+      headers: { "idempotency-key": "synthetic-review-key-0004" },
+      ...(route.payload ? { payload: route.payload } : {}),
+    });
+    expect(noPermission.statusCode).toBe(403);
+    await denied.app.close();
+
+    const allowed = setup([route.permission]);
+    const noKey = await allowed.app.inject({
+      method: "POST",
+      url: route.url,
+      ...(route.payload ? { payload: route.payload } : {}),
+    });
+    expect(noKey.statusCode).toBeGreaterThanOrEqual(400);
+    expect(allowed.service.evaluate).not.toHaveBeenCalled();
+    expect(allowed.service.transition).not.toHaveBeenCalled();
     await allowed.app.close();
   });
 

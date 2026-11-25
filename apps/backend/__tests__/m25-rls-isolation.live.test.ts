@@ -22,13 +22,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { createDbClient } from "@chartwarden/db";
+import { encodeCursor } from "@chartwarden/shared/route-kit";
 import { chromium } from "@playwright/test";
 import { makeSignature } from "better-auth/crypto";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClaimMdProtectedPayloadCipher } from "../src/bootstrap/claimmd-payload-cipher";
 import { registerM24PublishedSeams } from "../src/modules/24-billing-medicaid/wiring";
-import { createMedicaidEraReviewService } from "../src/modules/25-remittance/domain/medicaid-era-trusted-review";
+import { createMedicaidEraReviewService } from "../src/modules/25-remittance/domain/medicaid-era-review-service";
 import { createClaimMdEraStore } from "../src/modules/25-remittance/ingest/claimmd-era-store";
 import {
   M25_EVALUATOR_ASSERTION_HEADER,
@@ -610,21 +611,126 @@ describe.skipIf(!DB_URL)(
           [a.medicaidEraReview],
         ),
       ).rejects.toThrow(/reassessment requires a version increment/);
+      // The application role has no UPDATE grant on the review table at all (1544) ...
       await expect(
         withOrg(ORG_A, () =>
           db.query(
-            "UPDATE medicaid_era_review SET workflow_state='posted', version=version+1 WHERE id=$1",
+            "UPDATE medicaid_era_review SET workflow_state='investigating', version=version+1 WHERE id=$1",
             [a.medicaidEraReview],
           ),
         ),
-      ).rejects.toThrow();
+      ).rejects.toThrow(/permission denied/);
+      // ... so the workflow CHECK is proven on the privileged connection: 'posted' is not representable.
+      await expect(
+        db.query(
+          "UPDATE medicaid_era_review SET workflow_state='posted', version=version+1 WHERE id=$1",
+          [a.medicaidEraReview],
+        ),
+      ).rejects.toThrow(/medicaid_era_review_workflow_state_check/);
       await expect(
         withOrg(ORG_A, () =>
           db.query("UPDATE medicaid_era_review_history SET reason_code='changed' WHERE id=$1", [
             a.medicaidEraReviewHistory,
           ]),
         ),
-      ).rejects.toThrow(/append-only|permission denied/);
+      ).rejects.toThrow(/permission denied/);
+      // The append-only trigger holds for the privileged connection too (the grant alone is not the proof).
+      await expect(
+        db.query("UPDATE medicaid_era_review_history SET reason_code='changed' WHERE id=$1", [
+          a.medicaidEraReviewHistory,
+        ]),
+      ).rejects.toThrow(/append-only/);
+      await expect(
+        db.query("DELETE FROM medicaid_era_review_history WHERE id=$1", [
+          a.medicaidEraReviewHistory,
+        ]),
+      ).rejects.toThrow(/append-only/);
+    });
+
+    it("the platform audit writer cannot be redirected into a caller's TEMP audit_event", async () => {
+      // The source reader audits each read through audit_writer_insert_platform_event; without pg_temp pinned last in its
+      // search_path a caller's temporary audit_event table is searched first and swallows the row.
+      await db.query("SET ROLE chartwarden_platform");
+      try {
+        await db.query(
+          `CREATE TEMP TABLE audit_event (organization_id uuid, actor_user_id uuid, actor_kind text, event_type text,
+             resource_kind text, resource_id uuid, outcome text, correlation_id text, severity text, context jsonb,
+             retention_class text)`,
+        );
+        await db.query("GRANT INSERT ON pg_temp.audit_event TO PUBLIC");
+        await db.query(
+          `SELECT audit_writer_insert_platform_event('m25.temp_redirect_probe', 'probe', gen_random_uuid(), 'success',
+             'info', 'temp-redirect-probe', '{}'::jsonb, 'compliance')`,
+        );
+        const swallowed = await db.query("SELECT count(*)::int AS n FROM pg_temp.audit_event");
+        expect(swallowed.rows[0].n).toBe(0);
+      } finally {
+        await db.query("DROP TABLE IF EXISTS pg_temp.audit_event");
+        await db.query("RESET ROLE");
+      }
+      const landed = await db.query(
+        "SELECT count(*)::int AS n FROM audit_event WHERE event_type='m25.temp_redirect_probe'",
+      );
+      expect(landed.rows[0].n).toBe(1);
+    });
+
+    it("every workflow change takes the next version, so it has a history slot", async () => {
+      await db.query("BEGIN");
+      try {
+        await expect(
+          db.query("UPDATE medicaid_era_review SET workflow_state='investigating' WHERE id=$1", [
+            a.medicaidEraReview,
+          ]),
+        ).rejects.toThrow(/workflow transition requires a version increment/);
+      } finally {
+        await db.query("ROLLBACK");
+      }
+      // Control: the same change with the next version is admitted.
+      await db.query("BEGIN");
+      try {
+        const moved = await db.query(
+          "UPDATE medicaid_era_review SET workflow_state='investigating', version=version+1 WHERE id=$1",
+          [a.medicaidEraReview],
+        );
+        expect(moved.rowCount).toBe(1);
+      } finally {
+        await db.query("ROLLBACK");
+      }
+    });
+
+    it("ERA review and history audit records land with the summary, account and note scrubbed", async () => {
+      const review = await db.query<{ after: Record<string, unknown> }>(
+        `SELECT after FROM audit_event
+          WHERE resource_kind='medicaid_era_review' AND resource_id=$1
+          ORDER BY created_at DESC LIMIT 1`,
+        [a.medicaidEraReview],
+      );
+      expect(review.rows).toHaveLength(1);
+      expect(review.rows[0].after.safe_summary).toBe("<changed>");
+      expect(review.rows[0].after.account_reference).toBe("<changed>");
+      // Inside a transaction that is rolled back: later tests count this review's history rows.
+      await db.query("BEGIN");
+      try {
+        const history = (
+          await db.query<{ id: string }>(
+            `INSERT INTO medicaid_era_review_history
+               (organization_id, provider_entity_id, review_id, version, action, note, actor_membership_id)
+             SELECT organization_id, provider_entity_id, id, 99, 'note', 'synthetic free text note', gen_random_uuid()
+               FROM medicaid_era_review WHERE id=$1 RETURNING id`,
+            [a.medicaidEraReview],
+          )
+        ).rows[0].id;
+        const noteAudit = await db.query<{ after: Record<string, unknown> }>(
+          `SELECT after FROM audit_event
+            WHERE resource_kind='medicaid_era_review_history' AND resource_id=$1`,
+          [history],
+        );
+        expect(noteAudit.rows).toHaveLength(1);
+        expect(noteAudit.rows[0].after.note).toBe("<changed>");
+        expect(JSON.stringify(noteAudit.rows[0].after)).not.toContain("synthetic free text note");
+      } finally {
+        await db.query("ROLLBACK");
+      }
     });
 
     it("checks staged source identity on INSERT, including privileged direct SQL", async () => {
@@ -665,6 +771,21 @@ describe.skipIf(!DB_URL)(
         );
         const page = await workflow.list(actor, 10);
         expect(page.items.map((item) => item.id)).toContain(a.medicaidEraReview);
+        // The cursor anchor keeps the stored microseconds: a page starting at the review's own (created_at, id) does not
+        // repeat it, and one starting a microsecond later does include it.
+        const stored = await db.query<{ ts: string; later: string }>(
+          `SELECT created_at::text AS ts, (created_at + interval '1 microsecond')::text AS later
+             FROM medicaid_era_review WHERE id=$1`,
+          [a.medicaidEraReview],
+        );
+        const pageFrom = (anchor: string) =>
+          workflow.list(actor, 10, encodeCursor(ORG_A, { a: anchor, id: a.medicaidEraReview }));
+        expect((await pageFrom(stored.rows[0].ts)).items.map((item) => item.id)).not.toContain(
+          a.medicaidEraReview,
+        );
+        expect((await pageFrom(stored.rows[0].later)).items.map((item) => item.id)).toContain(
+          a.medicaidEraReview,
+        );
         await expect(
           workflow.evaluate(actor, a.eraStage, "integration-synthetic-key-0001"),
         ).resolves.toEqual({

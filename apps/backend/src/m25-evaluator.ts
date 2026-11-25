@@ -12,8 +12,9 @@ import { sql } from "drizzle-orm";
 import { claimMdInboxKeyRingFromEnv } from "./modules/23-billing-medicare/claimmd-identity/config";
 import { registerM24PublishedSeams } from "./modules/24-billing-medicaid";
 import { BROAD_DENIAL_SCOPE_ROLES } from "./modules/25-remittance/abac-predicates";
-import { createMedicaidEraReviewService } from "./modules/25-remittance/domain/medicaid-era-trusted-review";
+import { createMedicaidEraReviewService } from "./modules/25-remittance/domain/medicaid-era-review-service";
 import { createClaimMdEraStore } from "./modules/25-remittance/ingest/claimmd-era-store";
+import { assertEvaluatorPoolIdentity } from "./modules/25-remittance/ingest/evaluator-pool-identity";
 import { createIsolatedEvaluatorHandler } from "./modules/25-remittance/ingest/isolated-evaluator-server";
 import { buildDrizzleMedicaidEraReviewReaders } from "./modules/25-remittance/ingest/medicaid-era-review-readers";
 import { buildDrizzleMedicaidEraReviewWorkflow } from "./modules/25-remittance/ingest/medicaid-era-review-service";
@@ -57,6 +58,25 @@ const writer = createDbClient({
   max: 4,
   pool: boundedPool,
 });
+// Fail closed at boot when a URL file names the wrong login: the pools are built from three secret files and nothing
+// else proves which login each one is (a superuser or BYPASSRLS app-reader, or a writer URL naming another login).
+const identityQuery = sql`SELECT current_user::text AS name, r.rolsuper, r.rolbypassrls
+  FROM pg_roles r WHERE r.rolname = current_user`;
+await Promise.all([
+  assertEvaluatorPoolIdentity(app.db, identityQuery, "application reader"),
+  assertEvaluatorPoolIdentity(
+    eraSource.db,
+    identityQuery,
+    "ERA source reader",
+    "chartwarden_m25_era_source_login",
+  ),
+  assertEvaluatorPoolIdentity(
+    writer.db,
+    identityQuery,
+    "review writer",
+    "chartwarden_m25_evaluator_login",
+  ),
+]);
 const keyRing = claimMdInboxKeyRingFromEnv({
   CLAIMMD_RESPONSE_INBOX_KEYRING: secret("M25_EVALUATOR_CLAIMMD_KEYRING_FILE"),
 });

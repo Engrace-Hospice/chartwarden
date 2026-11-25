@@ -4,7 +4,6 @@ import {
   type MedicaidEraReviewReaders,
   createMedicaidEraReviewService,
 } from "../src/modules/25-remittance/domain/medicaid-era-review-service";
-import { createMedicaidEraReviewService as createTrustedReviewService } from "../src/modules/25-remittance/domain/medicaid-era-trusted-review";
 import { consistentMedicaidEraReviewAttribution } from "../src/modules/25-remittance/domain/medicaid-era-trusted-review";
 import type { MedicaidEraAccountEvidence } from "../src/modules/25-remittance/domain/medicaid-era-trusted-review";
 import {
@@ -125,7 +124,7 @@ describe("production-account review service", () => {
   it("binds the production evaluator snapshot to account and M24 submission evidence digests", async () => {
     const { raw } = singleSet();
     const buildTrusted = (accountFingerprint: string, submissionFingerprint: string) =>
-      createTrustedReviewService({
+      createMedicaidEraReviewService({
         async readAuthenticatedArtifact(_actor, reference) {
           return { source: { ...sourceFor(raw), artifactReference: reference }, rawX12: raw };
         },

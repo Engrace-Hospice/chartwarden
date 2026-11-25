@@ -2,9 +2,10 @@ import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, ne } from "drizzle-orm";
-import type { MedicaidEraReviewReaders } from "../domain/medicaid-era-trusted-review";
+import type { MedicaidEraReviewReaders } from "../domain/medicaid-era-review-service";
 import type { M25ReadActor } from "../routes/actor";
 import {
+  type MedicaidSubmissionEvidenceView,
   medicaidEraEnrollmentEvidence,
   medicaidSubmissionEvidence,
 } from "../routes/medicaid-claim-facts";
@@ -14,6 +15,37 @@ import type { createClaimMdEraStore } from "./claimmd-era-store";
 const STAGE = schema.claimmdEraM25Stage;
 const REVIEW = schema.medicaidEraReview;
 type ClaimMdStore = ReturnType<typeof createClaimMdEraStore>;
+
+/**
+ * The one attempt that proves a claim, selected by the M24 seam's own rule as far as the DTO shows it: verified
+ * provenance, production, accepted_sync or pending_async, sent for the claim's current version, to the claim's payer
+ * under its program kind, with its account, ids and send time present. Exactly one must qualify. Other attempts (a
+ * rejected_sync, a transport failure, a timeout before the resubmission, one sent to another payer) are history, not
+ * ambiguity: the seam proves the claim, so the reader must too.
+ */
+export function provingAttemptOf(
+  fact: Pick<
+    MedicaidSubmissionEvidenceView,
+    "claimVersion" | "canonicalPayerId" | "programKind" | "attempts"
+  >,
+): MedicaidSubmissionEvidenceView["attempts"][number] | null {
+  const proving = fact.attempts.filter(
+    (attempt) =>
+      attempt.provenanceStatus === "verified" &&
+      attempt.environment === "production" &&
+      !!attempt.sourceAccountRef &&
+      !!attempt.payerId &&
+      attempt.payerId === fact.canonicalPayerId &&
+      attempt.programKind === fact.programKind &&
+      (attempt.result === "accepted_sync" || attempt.result === "pending_async") &&
+      attempt.claimVersion === fact.claimVersion &&
+      !!attempt.submittedAt &&
+      !!attempt.submissionId &&
+      !!attempt.vendorTransactionId &&
+      !!attempt.payerClassificationId,
+  );
+  return proving.length === 1 ? proving[0]! : null;
+}
 
 /** M25-owned adapters. Claim.MD is the sole raw-X12 source; source ownership still requires M24 evidence. */
 export function buildDrizzleMedicaidEraReviewReaders(
@@ -221,8 +253,7 @@ export function buildDrizzleMedicaidEraReviewReaders(
       for (const fact of facts) {
         if (fact.disposition !== "SUBMISSION_EVIDENCE" || !fact.claimId || !fact.claimControlNumber)
           continue;
-        const attempts = fact.attempts.filter((attempt) => attempt.provenanceStatus === "verified");
-        const attempt = attempts.length === 1 ? attempts[0] : null;
+        const attempt = provingAttemptOf(fact);
         if (!attempt) continue;
         const payerControl =
           attempt.acknowledgments.find((ack) => ack.payerClaimControlNumber)

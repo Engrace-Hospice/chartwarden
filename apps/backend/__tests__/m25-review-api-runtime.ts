@@ -28,7 +28,7 @@ import { registerM25AbacPredicates } from "../src/modules/25-remittance/abac-pre
 import {
   createMedicaidEraReviewService,
   unavailableMedicaidEraReviewReaders,
-} from "../src/modules/25-remittance/domain/medicaid-era-trusted-review";
+} from "../src/modules/25-remittance/domain/medicaid-era-review-service";
 import { buildDrizzleClaimMdEraReviewService } from "../src/modules/25-remittance/ingest/claimmd-era-review";
 import { bindConfiguredRemoteEvaluatorWrites } from "../src/modules/25-remittance/ingest/isolated-evaluator-command";
 import { buildDrizzleMedicaidEraReviewWorkflow } from "../src/modules/25-remittance/ingest/medicaid-era-review-service";

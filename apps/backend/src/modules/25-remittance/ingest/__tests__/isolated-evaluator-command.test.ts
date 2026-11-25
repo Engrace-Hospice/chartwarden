@@ -46,6 +46,49 @@ describe("isolated M25 evaluator command boundary", () => {
     expect(evaluate).toHaveBeenCalledWith(actor, ARTIFACT, "same-key-123");
   });
 
+  it("answers a missing or out-of-scope review as 404 and logs the failure without ids", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const log = vi.fn();
+    const notFound = Object.assign(new Error("Medicaid ERA review not found"), {
+      name: "NotFoundError",
+    });
+    const handler = createIsolatedEvaluatorHandler({
+      workflow: {
+        evaluate: vi.fn(),
+        addNote: vi.fn(async () => {
+          throw notFound;
+        }),
+        transition: vi.fn(),
+      } as never,
+      authority: { resolve: async () => actor },
+      publicKeys: new Map([["test-key", publicKey]]),
+      now: () => 1_000,
+      log,
+    });
+    const transport = createHttpEvaluatorTransport({
+      url: "http://isolated",
+      signer: createEvaluatorCommandSigner({ kid: "test-key", key: privateKey, now: () => 1_000 }),
+      fetchImpl: (url, init) => handler(new Request(url, init)),
+    });
+    await expect(
+      transport.execute(actor, {
+        operation: "note",
+        reviewId: ARTIFACT,
+        expectedVersion: 1,
+        reasonCode: "SYNTHETIC_REASON",
+        idempotencyKey: "same-key-456",
+      }),
+    ).rejects.toMatchObject({ name: "NotFoundError" });
+    expect(log).toHaveBeenCalledTimes(1);
+    const line = String(log.mock.calls[0]?.[0]);
+    expect(JSON.parse(line)).toEqual({
+      event: "m25.evaluator.command_failed",
+      status: 404,
+      errorName: "NotFoundError",
+    });
+    expect(line).not.toContain(ARTIFACT);
+  });
+
   it("rejects payload modification and caller-supplied assessment properties", async () => {
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     const signer = createEvaluatorCommandSigner({

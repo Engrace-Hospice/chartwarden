@@ -132,7 +132,47 @@ describe("trusted Medicaid ERA review contract", () => {
         },
         accounts: [account],
       }),
-    ).toEqual({ status: "held", reason: "PAYEE_IDENTITY_CONFLICT" });
+    ).toEqual({ status: "held", reason: "PAYEE_TIN_EVIDENCE_UNAVAILABLE" });
+  });
+
+  describe("payee tax id", () => {
+    const resolveWith = (taxIdentifier: string | null, billingTin: string | null) => {
+      const observation = observeParsedMedicaidEra(parsed());
+      return resolveMedicaidEraAttribution({
+        source,
+        observation: {
+          ...observation,
+          source: {
+            ...observation.source,
+            payee: { ...observation.source.payee, taxIdentifier },
+          },
+        },
+        accounts: [{ ...account, billingTin }],
+      });
+    };
+
+    it("holds an 835 TIN against evidence that has none as unavailable evidence, not a conflict", () => {
+      expect(resolveWith("123456789", null)).toEqual({
+        status: "held",
+        reason: "PAYEE_TIN_EVIDENCE_UNAVAILABLE",
+      });
+    });
+
+    it("keeps a real mismatch a payee conflict: both TINs present and different, or the 835 omits the one on file", () => {
+      for (const [eraTin, onFile] of [
+        ["123456789", "987654321"],
+        [null, "987654321"],
+      ] as const) {
+        expect(resolveWith(eraTin, onFile)).toEqual({
+          status: "held",
+          reason: "PAYEE_IDENTITY_CONFLICT",
+        });
+      }
+    });
+
+    it("verifies when the TINs agree, ignoring punctuation", () => {
+      expect(resolveWith("123-45-6789", "123456789")).toMatchObject({ status: "verified" });
+    });
   });
 
   it("refuses test fixtures before a candidate can be treated as a local DRAFT or READY submission", () => {
