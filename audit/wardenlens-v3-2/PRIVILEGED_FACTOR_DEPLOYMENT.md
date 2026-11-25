@@ -83,15 +83,15 @@ Findings, 2026-11-25 (an operator ran the read-only checks below on the producti
 Record only the deployment identifier, verification time, operator and sanitized output. Do not place credentials, cookies,
 passkey material or PHI in this file.
 
-- Deployment/release:
-- Release/commit verified:
-- Environment:
-- Verified at:
+- Deployment/release: api and worker `ghcr.io/engrace-hospice/chartwarden@sha256:329680cdf1a6d9ac24aee07a1df6daea5fbb29a611a456405ca772ad456e8ca7`; web `ghcr.io/engrace-hospice/chartwarden-web@sha256:48682108bf989feec4d8286b089085d6a67ade2a882fe2d7be9a5cbdb8fea000`
+- Release/commit verified: `3efb7fbba` (main, merge of #1114; both images carry the tag `sha-3efb7fbba28f3cdf7555d0ab4de7e1f6b54fda03`). PR #1112 is not in this release.
+- Environment: production, host `wardenx` (`/opt/chartwarden`)
+- Verified at: RP id 2026-11-25T10:06Z; enforcement variable 2026-11-25T10:17Z (container recreated 10:17:42Z); browser checks below not yet reported
 - Verified by:
-- `PASSKEY_RP_ID` and `WEBAUTHN_RP_ID` read `chartwarden.cloud` in the running api: PASS | FAIL
+- `PASSKEY_RP_ID` and `WEBAUTHN_RP_ID` read `chartwarden.cloud` in the running api: PASS (operator output, `docker inspect` on the recreated container, 2026-11-25T10:06Z)
 - Passkey sign-in on the web app succeeded for the platform account: PASS | FAIL
 - Passkey step-up on the console succeeded (enforcement off): PASS | FAIL
-- `CHARTWARDEN_MFA_ENFORCEMENT=true`: PASS | FAIL
+- `CHARTWARDEN_MFA_ENFORCEMENT=true`: PASS (operator output `MFA enforcement enabled` from the `docker inspect` check of the recreated api container, 2026-11-25T10:17Z)
 - Password-only session was refused for the platform account: PASS | FAIL
 - Platform-role holders in production (query, 2026-11-25): `orgadmin@chartwarden.local` (`platform_ops`, `platform_admin`); no `superadmin`
 - All production `superadmin` holders have passkeys: N/A as of 2026-11-25, no holder (recorded at the `superadmin` grant)
