@@ -57,7 +57,8 @@ import {
   patientLifecycleServiceRangeIssue,
 } from "../claim-range-guards";
 import {
-  rethrowUnlessDomainError,
+  lockMedicaidRatePolicyScopes,
+  readInSavepoint,
   verifyStoredRhcPricingSnapshots,
 } from "../pricing/rhc-pricing-snapshot";
 import type { CanonicalPayerIdentityReader } from "../routes/write-service-drizzle";
@@ -157,22 +158,29 @@ async function resolvePayerContext(
     };
   }
 
-  let snapshot: Awaited<ReturnType<PatientCoverageReader["coverageSnapshotForRangeInTransaction"]>>;
-  try {
-    snapshot = await deps.coverages.coverageSnapshotForRangeInTransaction(tx, {
-      organizationId: claim.organizationId,
-      patientId: claim.patientId,
-      from: day(claim.serviceFrom),
-      to: day(claim.serviceTo),
-      coverageKind: "medicaid",
-    });
-  } catch {
+  // Each in-transaction read runs in a savepoint: a database error rolls back only that read, never the
+  // patient's whole job, and the claim fails closed with a reason instead of poisoning its siblings.
+  const coverages = deps.coverages;
+  const snapshotRead = await readInSavepoint(
+    tx,
+    "m24.claim_revalidate.coverage_snapshot_unavailable",
+    (savepoint) =>
+      coverages.coverageSnapshotForRangeInTransaction(savepoint, {
+        organizationId: claim.organizationId,
+        patientId: claim.patientId,
+        from: day(claim.serviceFrom),
+        to: day(claim.serviceTo),
+        coverageKind: "medicaid",
+      }),
+  );
+  if (!snapshotRead.ok) {
     return {
       payerResponsibility: { status: "unresolved", reasonCode: "coverage_snapshot_unavailable" },
       hasConcurrentMedicareAndMedicaidCoverage: false,
       primaryPayerCoverageId: null,
     };
   }
+  const snapshot = snapshotRead.value;
 
   const patientLifecycleIssue = patientLifecycleServiceRangeIssue(
     snapshot.patientLifecycle,
@@ -219,22 +227,21 @@ async function resolvePayerContext(
       primaryPayerCoverageId: primary.coverage.id,
     };
   }
-  let admission: Awaited<
-    ReturnType<NonNullable<RevalidateWorkerDeps["admissions"]>["cadenceSnapshotInTransaction"]>
-  >;
-  try {
-    admission = await deps.admissions.cadenceSnapshotInTransaction(
-      tx,
-      claim.organizationId,
-      claim.admissionId,
-    );
-  } catch {
+  const admissions = deps.admissions;
+  const admissionRead = await readInSavepoint(
+    tx,
+    "m24.claim_revalidate.admission_snapshot_unavailable",
+    (savepoint) =>
+      admissions.cadenceSnapshotInTransaction(savepoint, claim.organizationId, claim.admissionId),
+  );
+  if (!admissionRead.ok) {
     return {
       payerResponsibility: { status: "unresolved", reasonCode: "admission_snapshot_unavailable" },
       hasConcurrentMedicareAndMedicaidCoverage,
       primaryPayerCoverageId: primary.coverage.id,
     };
   }
+  const admission = admissionRead.value;
   if (
     !admission ||
     admission.patientId !== claim.patientId ||
@@ -284,25 +291,27 @@ async function verifyHospiceClaimSnapshot(
   if (claim.kind === "rb_only") return { verified: true, periods: [] };
   const readPeriods = deps.admissions?.periodsForAdmissionInTransaction;
   if (!readPeriods) return { verified: false, periods: [] };
-  try {
-    const periods = await readPeriods(tx, claim.organizationId, claim.admissionId);
-    return {
-      verified:
-        hospiceClaimLineSnapshotIssue({
-          lines,
-          periods,
-          organizationId: claim.organizationId,
-          providerEntityId: claim.providerEntityId,
-          claimId: claim.id,
-          serviceFrom: day(claim.serviceFrom),
-          serviceTo: day(claim.serviceTo),
-          inclusiveEndDate,
-        }) === null,
-      periods,
-    };
-  } catch {
-    return { verified: false, periods: [] };
-  }
+  const periodsRead = await readInSavepoint(
+    tx,
+    "m24.claim_revalidate.loc_periods_unavailable",
+    (savepoint) => readPeriods(savepoint, claim.organizationId, claim.admissionId),
+  );
+  if (!periodsRead.ok) return { verified: false, periods: [] };
+  const periods = periodsRead.value;
+  return {
+    verified:
+      hospiceClaimLineSnapshotIssue({
+        lines,
+        periods,
+        organizationId: claim.organizationId,
+        providerEntityId: claim.providerEntityId,
+        claimId: claim.id,
+        serviceFrom: day(claim.serviceFrom),
+        serviceTo: day(claim.serviceTo),
+        inclusiveEndDate,
+      }) === null,
+    periods,
+  };
 }
 
 /**
@@ -341,6 +350,29 @@ export async function runMedicaidRevalidate(
     .orderBy(C.id)
     .for("update");
 
+  // The pricing verification below takes a rate-policy lock per claim and holds it to the end of this
+  // transaction. Take all of them first, in one fixed order, so two workers whose claims touch the same payers
+  // in opposite order cannot deadlock (the evidence locks are per patient, so they cannot cross workers).
+  if (deps.canonicalPayerReader?.medicaidProgramClassifications) {
+    await lockMedicaidRatePolicyScopes(
+      tx,
+      claims.flatMap((claim) =>
+        claim.kind !== "rb_only" &&
+        claim.canonicalPayerId &&
+        claim.medicaidProgramKind === "managed_care"
+          ? [
+              {
+                organizationId: claim.organizationId,
+                providerEntityId: claim.providerEntityId,
+                canonicalPayerId: claim.canonicalPayerId,
+                serviceState: claim.serviceState,
+              },
+            ]
+          : [],
+      ),
+    );
+  }
+
   for (const claim of claims) {
     const lineRows = await tx
       .select()
@@ -366,47 +398,49 @@ export async function runMedicaidRevalidate(
       claim.medicaidProgramKind === "managed_care" &&
       deps.canonicalPayerReader?.medicaidProgramClassifications
     ) {
-      try {
-        const assessedAt = now.toISOString();
-        const rateRows = await readMedicaidRatePolicyLineage(tx, {
-          organizationId: claim.organizationId,
-          providerEntityId: claim.providerEntityId,
-          canonicalPayerId: claim.canonicalPayerId,
-          programKind: "managed_care",
-          serviceState: claim.serviceState,
-          serviceTo: day(claim.serviceTo),
-          assessedAt,
-        });
-        const pricingVerification = await verifyStoredRhcPricingSnapshots({
-          tx,
-          claim,
-          lines: lineRows,
-          locPeriods: hospiceSnapshot.periods,
-          admissionVersion: resolvedPayer.admissionVersion,
-          inclusiveEndDate: resolvedPayer.inclusiveEndDate ?? null,
-          rateRows,
-          payerReader: {
-            resolvePayer: deps.canonicalPayerReader.resolvePayer,
-            medicaidProgramClassifications:
-              deps.canonicalPayerReader.medicaidProgramClassifications,
-          },
-          residenceReader:
-            deps.patientAddresses?.residencesBetweenInTransaction !== undefined
-              ? {
-                  residencesBetweenInTransaction: (...args) =>
-                    deps.patientAddresses!.residencesBetweenInTransaction!(...args),
-                }
-              : undefined,
-          assessedAt,
-        });
-        hospicePricingSnapshotVerified = pricingVerification.pricingSnapshotVerified;
-        hospiceInstitutionalFormatQualified = pricingVerification.institutionalFormatQualified;
-      } catch (error) {
-        // Fail closed on a typed refusal; rethrow anything else (it may have aborted this transaction).
-        rethrowUnlessDomainError("m24.claim_revalidate.pricing_snapshot_unverified", error);
-        hospicePricingSnapshotVerified = false;
-        hospiceInstitutionalFormatQualified = false;
-      }
+      const { resolvePayer, medicaidProgramClassifications } = deps.canonicalPayerReader;
+      const canonicalPayerId = claim.canonicalPayerId;
+      // One claim's pricing verification runs in a savepoint: a refusal or a deterministic defect in this
+      // claim marks only this claim unverified (it then fails the snapshot rule and is visible to the operator),
+      // instead of rolling back every claim of the patient and parking the job after its retries. A connection
+      // or deadlock error is rethrown, so the job retries.
+      const pricing = await readInSavepoint(
+        tx,
+        "m24.claim_revalidate.pricing_snapshot_unverified",
+        async (savepoint) => {
+          const assessedAt = now.toISOString();
+          const rateRows = await readMedicaidRatePolicyLineage(savepoint, {
+            organizationId: claim.organizationId,
+            providerEntityId: claim.providerEntityId,
+            canonicalPayerId,
+            programKind: "managed_care",
+            serviceState: claim.serviceState,
+            serviceTo: day(claim.serviceTo),
+            assessedAt,
+          });
+          return verifyStoredRhcPricingSnapshots({
+            tx: savepoint,
+            claim,
+            lines: lineRows,
+            locPeriods: hospiceSnapshot.periods,
+            admissionVersion: resolvedPayer.admissionVersion,
+            inclusiveEndDate: resolvedPayer.inclusiveEndDate ?? null,
+            rateRows,
+            payerReader: { resolvePayer, medicaidProgramClassifications },
+            residenceReader:
+              deps.patientAddresses?.residencesBetweenInTransaction !== undefined
+                ? {
+                    residencesBetweenInTransaction: (...args) =>
+                      deps.patientAddresses!.residencesBetweenInTransaction!(...args),
+                  }
+                : undefined,
+            assessedAt,
+          });
+        },
+      );
+      hospicePricingSnapshotVerified = pricing.ok && pricing.value.pricingSnapshotVerified;
+      hospiceInstitutionalFormatQualified =
+        pricing.ok && pricing.value.institutionalFormatQualified;
     }
     const ctx: MedicaidValidationContext = {
       orgId: job.organizationId,

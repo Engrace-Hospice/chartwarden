@@ -731,9 +731,9 @@ controls:
       rows (migrations 1539 and 1550) and the patient's billing evidence (1551, 1552) are append-only and corrected only by a later row
       of the same identity, and a verified rate row must carry a complete methodology (1550). A priced claim line carries an
       append-only pricing snapshot. The snapshot insert guard (1551) refuses a rate or evidence row that is not verified, that has a
-      successor, that does not match the line's payer, program, state, locality or category, or that disagrees on the quality-reporting
-      variant, and it refuses an assessment time that differs from the one inside the snapshot or lies more than five minutes ahead of
-      the database clock. A missing or ambiguous rate, an unresolved election day, a pending evidence correction or a service window over
+      successor, that does not match the line's payer, program, state, locality or category, or that disagrees with the snapshot on the
+      quality-reporting variant or the rate methodology, and it refuses an assessment time that differs from the one inside the snapshot
+      or lies more than five minutes ahead of the database clock. A missing or ambiguous rate, an unresolved election day, a pending evidence correction or a service window over
       366 days is refused with a code and nothing is priced. Assembly, manual validation and the nightly revalidation derive the price
       again from current scoped facts and refuse a claim whose stored snapshot no longer matches them. Every other service category
       stays unpriced.

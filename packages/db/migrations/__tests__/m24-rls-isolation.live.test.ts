@@ -415,6 +415,14 @@ describe.skipIf(!DB_URL)(
         evidenceReference: "evidence:synthetic-test/quality",
         evidenceVersion: 1,
       },
+      // the methodology of verifiedRateRow's defaults: the insert guard binds these to the rate row
+      pricingMethod: "per_day",
+      methodologyVersion: 1,
+      quantityConversionMethod: "daily_units",
+      roundingMode: "exact_only",
+      roundingBoundary: "service_day",
+      chargeCeilingMethod: "none",
+      chargeCeilingBoundary: "not_applicable",
       assessmentTimestamp: assessedAt,
       ...over,
     });
@@ -425,6 +433,8 @@ describe.skipIf(!DB_URL)(
       /** Written to assessed_at instead of `assessedAt`, to prove the two must agree. */
       assessedAtColumn?: string;
       snapshot?: Record<string, unknown>;
+      /** The line's service_date_to (default 2026-01-02, the snapshot's serviceTo); null leaves it unset. */
+      lineServiceDateTo?: string | null;
     };
 
     /** Line numbers are unique per claim, and one chain's claim takes several lines. */
@@ -445,9 +455,19 @@ describe.skipIf(!DB_URL)(
             service_date_to, revenue_code, q_code, level_of_care, loc_period_id, units,
             rate_at_assembly_cents, state_rate_schedule_id_snapshot, payer_rate_policy_id_snapshot,
             charges_cents, is_rb)
-         VALUES ($1,$2,$3,$4,$6,'2026-01-01T00:00:00Z','2026-01-02T00:00:00Z','0651','Q5001','RHC',
+         VALUES ($1,$2,$3,$4,$6,'2026-01-01T00:00:00Z',$7::timestamptz,'0651','Q5001','RHC',
                  gen_random_uuid(),2,12000,NULL,$5,20000,false)`,
-        [line, chain.org, chain.pe, chain.claim, chain.rate, lineNumber],
+        [
+          line,
+          chain.org,
+          chain.pe,
+          chain.claim,
+          chain.rate,
+          lineNumber,
+          options.lineServiceDateTo === undefined
+            ? "2026-01-02T00:00:00Z"
+            : options.lineServiceDateTo,
+        ],
       );
       const { rows } = await db.query<{ id: string }>(
         `INSERT INTO medicaid_claim_line_pricing_snapshot
@@ -1733,6 +1753,27 @@ describe.skipIf(!DB_URL)(
       await refused(
         ohaChcRow({ minimum_duration_method: "not_required", minimum_clinical_minutes: null }),
       );
+      // A minimum_minutes method with NULL minutes is not a minimum at all: the CHECK would otherwise see NULL > 0
+      // and NULL = 480 as unknown and let a verified CHC row, or any verified hourly row, omit the minimum.
+      const noMinutes = {
+        code: "23514",
+        constraint: "medicaid_payer_rate_policy_minimum_duration_valid",
+      };
+      await expect(
+        insertRow("medicaid_payer_rate_policy", ohaChcRow({ minimum_clinical_minutes: null })),
+      ).rejects.toMatchObject(noMinutes);
+      await expect(
+        insertRow(
+          "medicaid_payer_rate_policy",
+          verifiedRateRow(ORG_A, a.pe, {
+            unit_basis: "per_hour",
+            pricing_method: "per_hour",
+            quantity_conversion_method: "hourly_each_hour_or_part",
+            minimum_duration_method: "minimum_minutes",
+            minimum_clinical_minutes: null,
+          }),
+        ),
+      ).rejects.toMatchObject(noMinutes);
     });
 
     // ── 1551 — billing evidence: a revoked or superseded row closes its predecessor, so it carries its instant.
@@ -1781,7 +1822,7 @@ describe.skipIf(!DB_URL)(
         await expect(
           insertPricedLine(chain, { assessedAt: await dbInstant("10 minutes") }),
         ).rejects.toMatchObject(refusal(/cannot be in the future/));
-        // The temporal comparisons read assessed_at: a snapshot assessed before the rate was recorded is refused.
+        // A snapshot assessed before the rate was recorded is refused.
         await expect(
           insertPricedLine(chain, { assessedAt: await dbInstant("-1 hour") }),
         ).rejects.toMatchObject(refusal(NOT_CURRENT_RATE));
@@ -1810,9 +1851,18 @@ describe.skipIf(!DB_URL)(
           quality_reporting_applicability: "required",
           quality_reporting_status: "meets",
         };
-        // Control: the two agree (both required and meeting), and both agree that it is not required.
+        // The snapshot records the variant of the evidence row it names.
+        const requiredQuality = {
+          qualityReporting: {
+            applicability: "required",
+            status: "meets",
+            evidenceReference: "evidence:synthetic-test/quality",
+            evidenceVersion: 1,
+          },
+        };
+        // Control: the two agree (both required and meeting), and the snapshot records the same.
         const agreeing = await seedPricedChain(ORG_A, a.pe, { rate: required, evidence: required });
-        expect((await insertPricedLine(agreeing)).line).toBeTruthy();
+        expect((await insertPricedLine(agreeing, { snapshot: requiredQuality })).line).toBeTruthy();
         // Applicability differs.
         const applicability = await seedPricedChain(ORG_A, a.pe, { rate: required });
         await expect(insertPricedLine(applicability)).rejects.toMatchObject(refusal(NOT_MATCHING));
@@ -1821,12 +1871,66 @@ describe.skipIf(!DB_URL)(
           rate: { ...required, quality_reporting_status: "does_not_meet" },
           evidence: required,
         });
-        await expect(insertPricedLine(status)).rejects.toMatchObject(refusal(NOT_MATCHING));
+        await expect(insertPricedLine(status, { snapshot: requiredQuality })).rejects.toMatchObject(
+          refusal(NOT_MATCHING),
+        );
         // A fixed per-day contract unit is a per-day method the daily snapshot supports.
         const fixed = await seedPricedChain(ORG_A, a.pe, {
           rate: { pricing_method: "fixed_contract_unit" },
         });
-        expect((await insertPricedLine(fixed)).line).toBeTruthy();
+        expect(
+          (await insertPricedLine(fixed, { snapshot: { pricingMethod: "fixed_contract_unit" } }))
+            .line,
+        ).toBeTruthy();
+      });
+
+      it("the snapshot must record the methodology and quality variant of the rows it names", async () => {
+        const chain = await seedPricedChain(ORG_A, a.pe);
+        // Control: the default snapshot records exactly the default rows.
+        expect((await insertPricedLine(chain)).line).toBeTruthy();
+        // Each field differs on its own, from an otherwise agreeing snapshot.
+        for (const snapshot of [
+          { pricingMethod: "per_hour" },
+          { methodologyVersion: 2 },
+          { quantityConversionMethod: "hourly_prorated_minutes" },
+          { roundingMode: "half_up" },
+          { roundingBoundary: "line" },
+          { chargeCeilingMethod: "contract_maximum" },
+          { chargeCeilingBoundary: "service_day" },
+        ]) {
+          await expect(insertPricedLine(chain, { snapshot })).rejects.toMatchObject(
+            refusal(NOT_CURRENT_RATE),
+          );
+        }
+        const quality = {
+          evidenceReference: "evidence:synthetic-test/quality",
+          evidenceVersion: 1,
+        };
+        await expect(
+          insertPricedLine(chain, {
+            snapshot: {
+              qualityReporting: { applicability: "required", status: "not_applicable", ...quality },
+            },
+          }),
+        ).rejects.toMatchObject(refusal(NOT_CURRENT_EVIDENCE));
+        await expect(
+          insertPricedLine(chain, {
+            snapshot: {
+              qualityReporting: { applicability: "not_required", status: "meets", ...quality },
+            },
+          }),
+        ).rejects.toMatchObject(refusal(NOT_CURRENT_EVIDENCE));
+      });
+
+      it("a priced line without a service end date cannot skip the range checks", async () => {
+        // The line's service_date_to is nullable; a NULL end and a snapshot that omits serviceTo would compare
+        // NULL to NULL and skip every effective_to check.
+        const chain = await seedPricedChain(ORG_A, a.pe);
+        await expect(
+          insertPricedLine(chain, { lineServiceDateTo: null, snapshot: { serviceTo: undefined } }),
+        ).rejects.toMatchObject(refusal(/identity or amounts do not match its claim line/));
+        // Control: the same chain prices with the end date set.
+        expect((await insertPricedLine(chain)).line).toBeTruthy();
       });
 
       it("a legacy verified rate that never qualified its methodology cannot be snapshotted", async () => {

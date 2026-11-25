@@ -228,19 +228,30 @@ describe("assessment-time hospice billing evidence lineage", () => {
     });
   });
 
-  it("holds on a revoked or superseded row that has no verified_at instead of reviving its predecessor", () => {
+  it("a revoked or superseded row closes its predecessor from the moment it was recorded, not from verified_at", () => {
+    // The database requires verified_at on a closed row (closed_provenance), and verified_at may be later than
+    // created_at. An assessment between the two must not revive the predecessor as the verified head.
     const predecessor = base({ id: "evidence-a" });
     const revoked = base({
       id: "evidence-revoked",
       supersedesId: predecessor.id,
       verificationStatus: "revoked",
       createdAt: "2026-11-08T00:00:00.000Z",
-      verifiedAt: null,
+      verifiedAt: "2026-11-12T00:00:00.000Z",
     });
     expect(resolve([predecessor, revoked])).toEqual({
       status: "unresolved",
       reasonCode: "BILLING_EVIDENCE_REVOKED",
     });
+    // Control: before the revoking row was recorded, the predecessor is still the head.
+    expect(
+      resolveBillingEvidenceLineage({
+        rows: [predecessor, revoked],
+        serviceFrom: "2026-11-01",
+        serviceTo: "2026-11-10",
+        assessedAt: "2026-11-07T00:00:00.000Z",
+      }),
+    ).toMatchObject({ status: "verified", row: { id: "evidence-a" } });
 
     const supersededStatus = {
       ...revoked,

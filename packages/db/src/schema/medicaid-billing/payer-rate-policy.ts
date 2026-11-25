@@ -144,7 +144,7 @@ export const medicaidPayerRatePolicy = pgTable(
     minimumDurationValid: check(
       "medicaid_payer_rate_policy_minimum_duration_valid",
       sql`(minimum_duration_method IN ('unqualified', 'not_applicable', 'not_required') AND minimum_clinical_minutes IS NULL) OR
-        (minimum_duration_method = 'minimum_minutes' AND minimum_clinical_minutes > 0)`,
+        (minimum_duration_method = 'minimum_minutes' AND minimum_clinical_minutes IS NOT NULL AND minimum_clinical_minutes > 0)`,
     ),
     methodologyVersionValid: check(
       "medicaid_payer_rate_policy_methodology_version_valid",
@@ -224,7 +224,7 @@ export const medicaidPayerRatePolicy = pgTable(
             (service_category <> 'CHC' OR
               (pricing_method = 'per_hour' AND unit_basis = 'per_hour'
                 AND quantity_conversion_method = 'hourly_each_hour_or_part'
-                AND minimum_duration_method = 'minimum_minutes' AND minimum_clinical_minutes = 480)))
+                AND minimum_duration_method = 'minimum_minutes' AND COALESCE(minimum_clinical_minutes, 0) = 480)))
         ))`,
     ),
   }),

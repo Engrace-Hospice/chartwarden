@@ -243,6 +243,8 @@ BEGIN
      v_line.medicaid_claim_id IS DISTINCT FROM NEW.medicaid_claim_id OR
      v_line.payer_rate_policy_id_snapshot IS DISTINCT FROM NEW.payer_rate_policy_id OR
      v_line.is_rb OR v_line.state_rate_schedule_id_snapshot IS NOT NULL OR
+     -- service_date_to is nullable on the line; a NULL would make every range comparison below NULL and skip it
+     v_line.service_date IS NULL OR v_line.service_date_to IS NULL OR
      v_line.rate_at_assembly_cents IS DISTINCT FROM (NEW.snapshot ->> 'rateCents')::integer OR
      v_line.charges_cents IS DISTINCT FROM (NEW.snapshot ->> 'billedChargeCents')::integer OR
      (v_line.units::bigint * (NEW.snapshot ->> 'billedChargeCentsPerUnit')::bigint) IS DISTINCT FROM v_line.charges_cents::bigint OR
@@ -266,6 +268,14 @@ BEGIN
      v_rate.verification_status IS DISTINCT FROM 'verified' OR
      v_rate.id IS DISTINCT FROM NEW.payer_rate_policy_id OR
      NEW.snapshot ->> 'rateVersion' IS DISTINCT FROM v_rate.version::text OR
+     -- the methodology the snapshot records is the methodology of the rate row it names
+     NEW.snapshot ->> 'pricingMethod' IS DISTINCT FROM v_rate.pricing_method OR
+     NEW.snapshot ->> 'methodologyVersion' IS DISTINCT FROM v_rate.methodology_version::text OR
+     NEW.snapshot ->> 'quantityConversionMethod' IS DISTINCT FROM v_rate.quantity_conversion_method OR
+     NEW.snapshot ->> 'roundingMode' IS DISTINCT FROM v_rate.rounding_mode OR
+     NEW.snapshot ->> 'roundingBoundary' IS DISTINCT FROM v_rate.rounding_boundary OR
+     NEW.snapshot ->> 'chargeCeilingMethod' IS DISTINCT FROM v_rate.charge_ceiling_method OR
+     NEW.snapshot ->> 'chargeCeilingBoundary' IS DISTINCT FROM v_rate.charge_ceiling_boundary OR
      v_rate.rate_cents IS DISTINCT FROM (NEW.snapshot ->> 'rateCents')::integer OR
      v_rate.created_at > NEW.assessed_at OR
      v_rate.verified_at IS NULL OR v_rate.verified_at > NEW.assessed_at OR
@@ -292,6 +302,8 @@ BEGIN
      NEW.snapshot -> 'locality' ->> 'code' IS DISTINCT FROM v_evidence.locality_code OR
      NEW.snapshot -> 'locality' ->> 'evidenceReference' IS DISTINCT FROM v_evidence.locality_evidence_reference OR
      NEW.snapshot -> 'locality' ->> 'evidenceVersion' IS DISTINCT FROM v_evidence.locality_evidence_version::text OR
+     NEW.snapshot -> 'qualityReporting' ->> 'applicability' IS DISTINCT FROM v_evidence.quality_reporting_applicability OR
+     NEW.snapshot -> 'qualityReporting' ->> 'status' IS DISTINCT FROM v_evidence.quality_reporting_status OR
      NEW.snapshot -> 'qualityReporting' ->> 'evidenceReference' IS DISTINCT FROM v_evidence.quality_evidence_reference OR
      NEW.snapshot -> 'qualityReporting' ->> 'evidenceVersion' IS DISTINCT FROM v_evidence.quality_evidence_version::text OR
      NEW.snapshot ->> 'revenueCode' IS DISTINCT FROM v_evidence.revenue_code OR

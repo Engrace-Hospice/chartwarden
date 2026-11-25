@@ -61,6 +61,7 @@ import type { CredentialCipherPort } from "../credential-crypto";
 import { qualifyMedicaidProgramClassification } from "../medicaid-payer-classification";
 import {
   databasePricingSnapshotFingerprint,
+  lockHospiceBillingEvidenceScope,
   lockMedicaidRatePolicyScope,
   rateRowAsFact,
   readMedicaidHospiceBillingEvidence,
@@ -1048,9 +1049,13 @@ function unresolvedPricingPreview(input: {
   readonly status?: AssemblyPreviewPricing["status"];
 }): AssemblyPreviewPricing {
   // The single segment is a placeholder spanning the request, not an assessment: no day was priced, so it
-  // does not "cover" the period. An ambiguous or unsupported outcome keeps its own segment/rate status.
+  // does not "cover" the period. An ambiguous or unsupported outcome keeps its own segment status. The RATE
+  // is called ambiguous only when the reason names a rate: an ambiguity from the billing evidence, the M6
+  // level of care or the residence says nothing about the rate, so the rate stays "missing" there.
   const outcome =
     input.status === "ambiguous" || input.status === "unsupported" ? input.status : null;
+  const rateOutcome =
+    outcome === "ambiguous" && !/^(MEDICAID_)?RATE_/.test(input.reasonCode) ? null : outcome;
   return {
     status: input.status ?? "unresolved",
     assessedAt: new Date().toISOString(),
@@ -1062,7 +1067,7 @@ function unresolvedPricingPreview(input: {
         serviceTo: input.to,
         serviceCategory: input.serviceCategory ?? null,
         status: outcome ?? "unresolved",
-        rateStatus: outcome ?? "missing",
+        rateStatus: rateOutcome ?? "missing",
         unitBasis: null,
         rateCents: null,
         rateLocalityCode: null,
@@ -3191,6 +3196,18 @@ export function buildDrizzleM24WriteService(
               "the supported local RHC pricing path requires verified managed-care payer identity",
             );
           }
+          // Take the rate and evidence locks BEFORE reading the clock: a rate or evidence correction that commits
+          // while this waits is then older than assessedAt, so the engine prices its head and the snapshot insert
+          // guard (which refuses a row that has a successor) accepts the result.
+          await lockHospiceBillingEvidenceScope(tx, {
+            organizationId: actor.organizationId,
+            providerEntityId: input.providerEntityId,
+            patientId: input.patientId,
+            admissionId: input.admissionId,
+            canonicalPayerId: programResolution.canonicalPayerId,
+            programKind: "managed_care",
+            serviceState,
+          });
           const assessedAt = new Date().toISOString();
           const priceScope = {
             organizationId: actor.organizationId,

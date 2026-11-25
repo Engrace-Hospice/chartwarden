@@ -2,6 +2,7 @@ import { ValidationError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   MAX_ASSEMBLY_SERVICE_SPAN_DAYS,
+  MEDICAID_SERVICE_DATE_INVALID,
   MEDICAID_SERVICE_SPAN_TOO_LONG,
   admissionServiceRangeIssue,
   assertAssemblyServiceSpan,
@@ -183,7 +184,26 @@ describe("M24 assembly service-window cap", () => {
     expect(() => assertAssemblyServiceSpan("2026-01-01", "9999-12-31")).toThrow(ValidationError);
   });
 
-  it("rejects an unparseable date instead of treating NaN as within the cap", () => {
-    expect(() => assertAssemblyServiceSpan("2026-01-01", "not-a-date")).toThrow(ValidationError);
+  it("rejects an invalid date with its own code and the field that is wrong", () => {
+    const refusal = (from: string, to: string) => {
+      try {
+        assertAssemblyServiceSpan(from, to);
+      } catch (error) {
+        return error;
+      }
+      return null;
+    };
+    for (const [from, to, field] of [
+      ["2026-01-01", "not-a-date", "serviceTo"],
+      ["not-a-date", "2026-01-31", "serviceFrom"],
+      // a date that exists in no calendar rolls over under Date.parse, so it is refused, not shifted
+      ["2026-02-30", "2026-03-05", "serviceFrom"],
+      ["2026-03-01", "2026-04-31", "serviceTo"],
+    ] as const) {
+      expect(refusal(from, to), `${from}..${to}`).toMatchObject({
+        statusCode: 422,
+        details: [{ field, code: MEDICAID_SERVICE_DATE_INVALID }],
+      });
+    }
   });
 });

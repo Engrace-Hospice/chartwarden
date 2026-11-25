@@ -1200,10 +1200,16 @@ describe.skipIf(!DB_URL)(
       ]);
 
       // A hash proves only that JSON was hashed. The app role can persist a syntactically coherent
-      // snapshot with an incorrect estimate, but authoritative revalidation must refuse to trust it. The insert
-      // guard refuses a snapshot of a superseded evidence row, so the forgery names the corrected head (its
-      // locality, version and verification instant) and is assessed after that correction was verified. A rate
-      // must share the evidence locality, so the corrected locality gets its own verified rate.
+      // snapshot with an incorrect estimate: the insert guard binds a snapshot to its rate, evidence and line
+      // rows, never to its computed amounts (CW-PI-06). This case proves exactly that limit: the database accepts
+      // the forged 999999 estimate. It does NOT prove the verifier refuses it, because the forged line shares
+      // 2026-11-01 with the priced original and the legacy line, so the line-coverage check refuses the claim
+      // first. That the verifier recomputes the price and refuses a stored estimate that differs is covered by
+      // the unit test "fails closed when a tampered snapshot no longer matches the current plan"
+      // (rhc-pricing-snapshot.test.ts). The insert guard refuses a snapshot of a superseded evidence row, so the
+      // forgery names the corrected head (its locality, version and verification instant) and is assessed after
+      // that correction was verified. A rate must share the evidence locality, so the corrected locality gets its
+      // own verified rate.
       const correctedRateId = randomUUID();
       await rateInsert(
         correctedRateId,
@@ -1305,14 +1311,10 @@ describe.skipIf(!DB_URL)(
         () => null,
         (error: unknown) => error,
       );
+      // The overlapping forged line is refused by the line-coverage check, never silently validated.
       expect(forgedValidationResult).toMatchObject({
         code: "MEDICAID_CLAIM_LINE_LOC_SNAPSHOT_STALE",
       });
-      const afterForgedValidation = await admin.query(
-        "SELECT state FROM medicaid_claim WHERE id=$1",
-        [claim.id],
-      );
-      expect(afterForgedValidation.rows).toEqual([{ state: "FAILED_VALIDATION" }]);
     });
 
     it("migration 1537 treats nullable payer/locality keys as one rate identity", async () => {

@@ -3,7 +3,9 @@
  *
  * A correction changes a historical evidence head only after it has been verified. Pending
  * corrections do not rewrite earlier assessments, and an assessment taken while a conflicting
- * correction is pending is held for review. The resolver never chooses one overlapping head.
+ * correction is pending is held for review. A revoked or superseded row is the exception: it closes
+ * its predecessor from the moment it was recorded (created_at), whatever its verified_at says, so an
+ * assessment never revives revoked evidence. The resolver never chooses one overlapping head.
  */
 export interface BillingEvidenceLineageFact {
   readonly id: string;
@@ -68,8 +70,9 @@ export function resolveBillingEvidenceLineage<T extends BillingEvidenceLineageFa
     }
     // A pending row is retained only as a current conflict signal; it cannot supersede an earlier
     // verified row. A revoked or superseded row closes its predecessor from the moment it was
-    // recorded, whether or not verified_at is set: dropping it would leave the predecessor as the
-    // verified head and let pricing proceed on revoked evidence.
+    // recorded, even when its verified_at is later (the database requires verified_at on these
+    // statuses): dropping it before then would leave the predecessor as the verified head and let
+    // pricing proceed on revoked evidence.
     if (
       isPendingRow(row) ||
       row.verificationStatus === "revoked" ||

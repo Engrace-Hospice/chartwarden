@@ -130,25 +130,57 @@ export async function lockMedicaidRatePolicyScope(
 }
 
 /**
- * Advisory-lock order is FIXED everywhere (preview, assembly, validation, revalidation): the rate-policy
- * scope lock first, then the billing-evidence scope lock. Two paths taking them in opposite orders can
- * deadlock (40P01). Every path reads evidence through this function and rate lineage through
- * `readMedicaidRatePolicyLineage`, so taking the rate lock here before the evidence lock makes the order
- * rate -> evidence regardless of which read a caller issues first (advisory xact locks are re-entrant).
+ * Lock several rate-policy scopes in one fixed total order (their lock keys, sorted). A worker that holds the
+ * rate locks of many claims in one transaction takes them through this, so two workers whose claims touch the
+ * same payers in opposite order cannot deadlock.
  */
-async function lockHospiceBillingEvidenceScope(tx: Tx, scope: RHCPriceScope): Promise<void> {
+export async function lockMedicaidRatePolicyScopes(
+  tx: Tx,
+  scopes: readonly Parameters<typeof ratePolicyLockKey>[0][],
+): Promise<void> {
+  const byKey = new Map(scopes.map((scope) => [ratePolicyLockKey(scope), scope]));
+  for (const key of [...byKey.keys()].sort()) {
+    await lockMedicaidRatePolicyScope(tx, byKey.get(key)!);
+  }
+}
+
+/**
+ * Advisory-lock order within one claim is FIXED everywhere (preview, assembly, validation, revalidation): the
+ * rate-policy scope lock first, then the billing-evidence scope lock. Two paths taking them in opposite orders
+ * can deadlock (40P01). Every path reads evidence through `readMedicaidHospiceBillingEvidence` and rate
+ * lineage through `readMedicaidRatePolicyLineage`, so taking the rate lock here before the evidence lock makes
+ * the order rate -> evidence regardless of which read a caller issues first (advisory xact locks are
+ * re-entrant). A path that holds the locks of several claims at once (the revalidation job) takes all its rate
+ * locks first through `lockMedicaidRatePolicyScopes`. Assembly takes both locks here, before it reads the
+ * clock, so a correction that committed while it waited is already part of the instant it assesses.
+ */
+export async function lockHospiceBillingEvidenceScope(
+  tx: Tx,
+  scope: Pick<
+    RHCPriceScope,
+    | "organizationId"
+    | "providerEntityId"
+    | "patientId"
+    | "admissionId"
+    | "canonicalPayerId"
+    | "programKind"
+    | "serviceState"
+  >,
+): Promise<void> {
   await lockMedicaidRatePolicyScope(tx, scope);
   const key = `m24-hospice-evidence:${scope.organizationId}:${scope.providerEntityId}:${scope.patientId}:${scope.admissionId}:${scope.canonicalPayerId}:${scope.programKind}:${scope.serviceState}:RHC`;
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
 }
 
 /**
- * Handler for a `catch` around pricing reads/verification. A ChartWardenError is a typed, expected refusal
- * (a history cap, an unbound reader): it is logged by class and code only and the caller degrades. Anything
- * else is unexpected and may have aborted the surrounding transaction, so it is logged and rethrown.
- * Never log the message: it can carry record content.
+ * A typed refusal the caller degrades on (a history cap, an unbound reader, a conflict): a 4xx, or the 503
+ * DegradedError. A 5xx ChartWardenError is a defect (TENANT_SCOPE_MISMATCH is a wiring bug), never a refusal.
  */
-export function rethrowUnlessDomainError(event: string, error: unknown): void {
+function isExpectedRefusal(error: unknown): boolean {
+  return error instanceof ChartWardenError && (error.statusCode < 500 || error.statusCode === 503);
+}
+
+function logPricingRefusal(event: string, error: unknown): void {
   console.warn(
     JSON.stringify({
       level: "warn",
@@ -157,7 +189,50 @@ export function rethrowUnlessDomainError(event: string, error: unknown): void {
       errorCode: error instanceof ChartWardenError ? error.code : null,
     }),
   );
-  if (!(error instanceof ChartWardenError)) throw error;
+}
+
+/**
+ * Handler for a `catch` around pricing reads/verification. An expected refusal is logged by class and code
+ * only and the caller degrades. Anything else is unexpected and may have aborted the surrounding transaction,
+ * so it is logged and rethrown. Never log the message: it can carry record content.
+ */
+export function rethrowUnlessDomainError(event: string, error: unknown): void {
+  logPricingRefusal(event, error);
+  if (!isExpectedRefusal(error)) throw error;
+}
+
+/** A connection, deadlock, serialization or shutdown failure: retrying the job is right, degrading is not. */
+const TRANSACTION_FATAL_SQLSTATE = /^(08|40001|40P01|53|57P)/;
+
+export function isTransactionFatalError(error: unknown): boolean {
+  let cause: unknown = error;
+  for (let depth = 0; cause && depth < 4; depth += 1) {
+    const code = (cause as { code?: unknown }).code;
+    if (typeof code === "string" && TRANSACTION_FATAL_SQLSTATE.test(code)) return true;
+    cause = (cause as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/**
+ * Run one read inside a savepoint, so a database error rolls back only that read and not the unit of work
+ * around it (a worker revalidating many claims in one transaction). `ok: false` means the read did not
+ * produce a value and the caller fails closed. A connection or deadlock class error, and a typed 5xx defect,
+ * are rethrown: the job retries or parks instead of marking every claim unverified.
+ */
+export async function readInSavepoint<T>(
+  tx: Tx,
+  event: string,
+  read: (savepoint: Tx) => Promise<T>,
+): Promise<{ readonly ok: true; readonly value: T } | { readonly ok: false }> {
+  try {
+    return { ok: true, value: await tx.transaction(read) };
+  } catch (error) {
+    logPricingRefusal(event, error);
+    if (isTransactionFatalError(error)) throw error;
+    if (error instanceof ChartWardenError && !isExpectedRefusal(error)) throw error;
+    return { ok: false };
+  }
 }
 
 export async function databasePricingSnapshotFingerprint(

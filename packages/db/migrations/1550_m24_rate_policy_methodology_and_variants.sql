@@ -33,7 +33,7 @@ ALTER TABLE medicaid_payer_rate_policy
     CHECK (quantity_conversion_method IN ('unqualified', 'daily_units', 'hourly_prorated_minutes', 'hourly_each_hour_or_part')),
   ADD CONSTRAINT medicaid_payer_rate_policy_minimum_duration_valid
     CHECK ((minimum_duration_method IN ('unqualified', 'not_applicable', 'not_required') AND minimum_clinical_minutes IS NULL) OR
-      (minimum_duration_method = 'minimum_minutes' AND minimum_clinical_minutes > 0)),
+      (minimum_duration_method = 'minimum_minutes' AND minimum_clinical_minutes IS NOT NULL AND minimum_clinical_minutes > 0)),
   ADD CONSTRAINT medicaid_payer_rate_policy_rounding_mode_valid
     CHECK (rounding_mode IN ('unqualified', 'exact_only', 'half_up', 'half_even', 'floor', 'ceiling', 'not_applicable')),
   ADD CONSTRAINT medicaid_payer_rate_policy_rounding_boundary_valid
@@ -86,7 +86,7 @@ ALTER TABLE medicaid_payer_rate_policy
           (service_category <> 'CHC' OR
             (pricing_method = 'per_hour' AND unit_basis = 'per_hour'
               AND quantity_conversion_method = 'hourly_each_hour_or_part'
-              AND minimum_duration_method = 'minimum_minutes' AND minimum_clinical_minutes = 480)))
+              AND minimum_duration_method = 'minimum_minutes' AND COALESCE(minimum_clinical_minutes, 0) = 480)))
       ))
   ) NOT VALID;--> statement-breakpoint
 

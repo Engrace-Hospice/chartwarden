@@ -7,17 +7,34 @@ import { type PatientLifecycleStatus, ValidationError } from "@chartwarden/types
  */
 export const MAX_ASSEMBLY_SERVICE_SPAN_DAYS = 366;
 export const MEDICAID_SERVICE_SPAN_TOO_LONG = "MEDICAID_SERVICE_SPAN_TOO_LONG";
+export const MEDICAID_SERVICE_DATE_INVALID = "MEDICAID_SERVICE_DATE_INVALID";
 
 const DAY_MS = 86_400_000;
 
-/** Reject a service window longer than the cap with a typed VALIDATION_FAILED detail (422). */
+/** UTC midnight of a YYYY-MM-DD day, or null when it is not a real calendar day (2026-02-30 rolls over). */
+function utcDayMs(value: string): number | null {
+  const day = value.slice(0, 10);
+  const ms = Date.parse(`${day}T00:00:00.000Z`);
+  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === day ? ms : null;
+}
+
+function invalidServiceDate(field: "serviceFrom" | "serviceTo"): ValidationError {
+  return new ValidationError("request validation failed", [
+    {
+      field,
+      code: MEDICAID_SERVICE_DATE_INVALID,
+      message: `${field} must be a calendar date (YYYY-MM-DD)`,
+    },
+  ]);
+}
+
+/** Reject an invalid date, or a service window longer than the cap, with a typed VALIDATION_FAILED detail (422). */
 export function assertAssemblyServiceSpan(serviceFrom: string, serviceTo: string): void {
-  const spanDays =
-    (Date.parse(`${serviceTo.slice(0, 10)}T00:00:00.000Z`) -
-      Date.parse(`${serviceFrom.slice(0, 10)}T00:00:00.000Z`)) /
-      DAY_MS +
-    1;
-  if (!Number.isFinite(spanDays) || spanDays > MAX_ASSEMBLY_SERVICE_SPAN_DAYS) {
+  const from = utcDayMs(serviceFrom);
+  if (from === null) throw invalidServiceDate("serviceFrom");
+  const to = utcDayMs(serviceTo);
+  if (to === null) throw invalidServiceDate("serviceTo");
+  if ((to - from) / DAY_MS + 1 > MAX_ASSEMBLY_SERVICE_SPAN_DAYS) {
     throw new ValidationError("request validation failed", [
       {
         field: "serviceTo",
