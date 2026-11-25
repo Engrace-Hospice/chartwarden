@@ -237,9 +237,10 @@ export async function lockHospiceBillingEvidenceScope(
     | "programKind"
     | "serviceState"
   >,
+  serviceCategory: "RHC" | "CHC" = "RHC",
 ): Promise<void> {
   await lockMedicaidRatePolicyScope(tx, scope);
-  const key = `m24-hospice-evidence:${scope.organizationId}:${scope.providerEntityId}:${scope.patientId}:${scope.admissionId}:${scope.canonicalPayerId}:${scope.programKind}:${scope.serviceState}:RHC`;
+  const key = `m24-hospice-evidence:${scope.organizationId}:${scope.providerEntityId}:${scope.patientId}:${scope.admissionId}:${scope.canonicalPayerId}:${scope.programKind}:${scope.serviceState}:${serviceCategory}`;
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
 }
 
@@ -679,7 +680,7 @@ export async function readMedicaidHospiceBillingEvidence(
       row.quantityEvidenceOwner !== "m6_level_of_care_period" ||
       row.billingUnit !== "daily" ||
       row.codingProfile !== "local_draft_only" ||
-      !["Q5001", "Q5002"].includes(row.hcpcsCode) ||
+      (row.hcpcsCode !== "Q5001" && row.hcpcsCode !== "Q5002") ||
       row.revenueCode !== "0651" ||
       row.billedChargeCentsPerUnit <= 0
     ) {
@@ -689,6 +690,84 @@ export async function readMedicaidHospiceBillingEvidence(
   return lineage.status === "verified"
     ? { status: "verified", row: lineageRows[0]! }
     : { status: "segmentation_required", rows: lineageRows };
+}
+
+/** The narrow CHC local-hourly profile shares the append-only evidence lineage, not the RHC code rules. */
+export async function readMedicaidChcBillingEvidence(
+  tx: Tx,
+  scope: RHCPriceScope,
+): Promise<
+  | { readonly status: "verified"; readonly row: BillingEvidence }
+  | { readonly status: "unresolved" | "ambiguous"; readonly reasonCode: string }
+> {
+  const table = schema.medicaidHospiceBillingEvidence;
+  await lockHospiceBillingEvidenceScope(tx, scope, "CHC");
+  const rows = await tx
+    .select()
+    .from(table)
+    .where(
+      and(
+        eq(table.organizationId, scope.organizationId),
+        eq(table.providerEntityId, scope.providerEntityId),
+        eq(table.patientId, scope.patientId),
+        eq(table.admissionId, scope.admissionId),
+        eq(table.canonicalPayerId, scope.canonicalPayerId),
+        eq(table.programKind, "managed_care"),
+        eq(table.serviceState, scope.serviceState),
+        eq(table.serviceCategory, "CHC"),
+        lte(table.effectiveFrom, scope.serviceTo),
+      ),
+    )
+    .orderBy(table.effectiveFrom, table.id)
+    .limit(1001);
+  if (rows.length > 1000) {
+    return { status: "ambiguous", reasonCode: "BILLING_EVIDENCE_HISTORY_LIMIT_EXCEEDED" };
+  }
+  if (rows.length === 0) return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_MISSING" };
+  const lineage = resolveBillingEvidenceLineage({
+    rows,
+    serviceFrom: scope.serviceFrom,
+    serviceTo: scope.serviceTo,
+    assessedAt: scope.assessedAt,
+  });
+  if (lineage.status === "segmentation_required") {
+    return { status: "ambiguous", reasonCode: "CHC_BILLING_EVIDENCE_SEGMENTATION_UNSUPPORTED" };
+  }
+  if (lineage.status !== "verified") return lineage;
+  const row = lineage.row;
+  const assessedAt = Date.parse(scope.assessedAt);
+  if (scope.admissionVersion === undefined || row.admissionVersion !== scope.admissionVersion) {
+    return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_ADMISSION_VERSION_STALE" };
+  }
+  if (
+    !Number.isFinite(assessedAt) ||
+    !row.verifiedAt ||
+    row.verifiedAt.getTime() > assessedAt ||
+    row.effectiveFrom > scope.serviceFrom ||
+    (row.effectiveTo !== null && row.effectiveTo < scope.serviceTo)
+  ) {
+    return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_NOT_CURRENT_FOR_ASSESSMENT" };
+  }
+  if (
+    row.organizationId !== scope.organizationId ||
+    row.providerEntityId !== scope.providerEntityId ||
+    row.patientId !== scope.patientId ||
+    row.admissionId !== scope.admissionId ||
+    row.canonicalPayerId !== scope.canonicalPayerId ||
+    row.programKind !== "managed_care" ||
+    row.serviceState !== "OR" ||
+    row.serviceCategory !== "CHC" ||
+    row.quantityPolicy !== "m6_symptom_crisis_plus_signed_m8_rn_intervals_v1" ||
+    row.quantityEvidenceOwner !== "m6_loc_m8_encounter" ||
+    row.billingUnit !== "hourly" ||
+    row.revenueCode !== null ||
+    row.hcpcsCode !== null ||
+    row.codingProfile !== "local_draft_only" ||
+    row.billedChargeCentsPerUnit <= 0
+  ) {
+    return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_UNSUPPORTED" };
+  }
+  return { status: "verified", row };
 }
 
 function isoDate(value: Date): string {
@@ -838,6 +917,8 @@ function resolveSingleRhcDailyPricingPlan(input: {
     return { status: "unsupported", reasonCode: "RHC_DAILY_LOCAL_PROFILE_UNSUPPORTED" };
   }
   if (
+    !evidence.revenueCode ||
+    !evidence.hcpcsCode ||
     evidence.effectiveFrom > scope.serviceFrom ||
     (evidence.effectiveTo !== null && evidence.effectiveTo < scope.serviceTo) ||
     evidence.admissionVersion !== scope.admissionVersion

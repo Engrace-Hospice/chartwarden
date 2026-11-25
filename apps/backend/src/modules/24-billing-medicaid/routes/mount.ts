@@ -7,6 +7,7 @@
 // + the §8.6 `actor_kind='ai_*'` reject; every mutating route declares Idempotency-Key (§F08).
 import type { FastifyInstance } from "fastify";
 import { registerAdminRoutes } from "./admin.routes";
+import { registerChcPricingPreparationRoutes } from "./chc-pricing-preparation.routes";
 import { registerClaimsRoutes } from "./claims.routes";
 import { registerEligibilityRoutes } from "./eligibility.routes";
 import type { M24RouteServices } from "./index";
@@ -35,4 +36,5 @@ export function mountM24Routes(app: FastifyInstance, services: M24RouteServices)
   registerTradingPartnerRoutes(app, { readService, writeService });
   registerPayerReadinessRoutes(app, { writeService });
   registerAdminRoutes(app, { writeService });
+  registerChcPricingPreparationRoutes(app, services.chcPricingPreparationService);
 }

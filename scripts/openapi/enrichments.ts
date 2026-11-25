@@ -648,6 +648,8 @@ import {
   AssembleClaimBody as M24AssembleClaimBody,
   AssemblyPreviewBody as M24AssemblyPreviewBody,
   AssemblyPreviewResponse as M24AssemblyPreviewResponse,
+  ChcPricingPreparationBody as M24ChcPricingPreparationBody,
+  ChcPricingPreparationResponse as M24ChcPricingPreparationResponse,
   ClaimDto as M24ClaimDto,
   ClaimLineListResponse as M24ClaimLineListResponse,
   ClaimListQuery as M24ClaimListQuery,
@@ -4494,6 +4496,17 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
       "Read-only payer, claim-kind, Room & Board, and Medicare-evidence preview; creates no claim or reservation",
     body: M24AssemblyPreviewBody,
     response: M24AssemblyPreviewResponse,
+  },
+  "POST /api/v1/medicaid-chc-pricing-preparations": {
+    summary:
+      "Prepare and persist source-verified local CHC hourly pricing; institutional units remain unqualified",
+    body: M24ChcPricingPreparationBody,
+    response: M24ChcPricingPreparationResponse,
+  },
+  "GET /api/v1/medicaid-chc-pricing-preparations/:id": {
+    summary:
+      "Read and source-revalidate a local CHC pricing preparation; this does not create an institutional claim",
+    response: M24ChcPricingPreparationResponse,
   },
   "GET /api/v1/medicaid-claims/:id": {
     summary: "Single Medicaid claim — state, TOB, control number, COB + R&B linkage (§4.1)",

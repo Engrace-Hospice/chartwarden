@@ -69,6 +69,16 @@ export function createSignedEncountersReader(store: EncounterReaderStore): Signe
     async signedEncountersForPatientSince(organizationId, patientId, since) {
       return store.signedEncountersForPatientSince(organizationId, patientId, since);
     },
+    ...(store.chcClinicalIntervalsInTransaction
+      ? {
+          chcClinicalIntervalsInTransaction: (
+            transaction: unknown,
+            input: Parameters<
+              NonNullable<EncounterReaderStore["chcClinicalIntervalsInTransaction"]>
+            >[1],
+          ) => store.chcClinicalIntervalsInTransaction!(transaction, input),
+        }
+      : {}),
     async skilledNursingDayTotalsForOrg(organizationId, window) {
       return store.skilledNursingDayTotalsForOrg(organizationId, window);
     },

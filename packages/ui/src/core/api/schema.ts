@@ -16402,6 +16402,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/medicaid-chc-pricing-preparations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prepare and persist source-verified local CHC hourly pricing; institutional units remain unqualified */
+        post: operations["postApiV1Medicaidchcpricingpreparations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-chc-pricing-preparations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read and source-revalidate a local CHC pricing preparation; this does not create an institutional claim */
+        get: operations["getApiV1MedicaidchcpricingpreparationsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/medicaid-claims": {
         parameters: {
             query?: never;
@@ -81785,6 +81819,123 @@ export interface operations {
                             /** @description Integer cents (D8) */
                             chargesCents: number;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Medicaidchcpricingpreparations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: date */
+                    serviceDate: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        preparationId: string;
+                        version: number;
+                        /** Format: date */
+                        serviceDate: string;
+                        observedMinutes: number | null;
+                        qualifiedMinutes: number | null;
+                        reimbursementHours: number | null;
+                        rateCentsPerHour: number | null;
+                        estimatedReimbursementCents: number | null;
+                        billedChargeCents: number | null;
+                        /** @constant */
+                        institutionalUnits: "unqualified";
+                        /** @constant */
+                        institutionalFormatQualified: false;
+                        verification: {
+                            /** @constant */
+                            status: "current";
+                            /** Format: uuid */
+                            preparationId: string;
+                            version: number;
+                            fingerprint: string;
+                        } | {
+                            status: "stale" | "unresolved" | "ambiguous" | "unsupported";
+                            reasonCode: string;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MedicaidchcpricingpreparationsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        preparationId: string;
+                        version: number;
+                        /** Format: date */
+                        serviceDate: string;
+                        observedMinutes: number | null;
+                        qualifiedMinutes: number | null;
+                        reimbursementHours: number | null;
+                        rateCentsPerHour: number | null;
+                        estimatedReimbursementCents: number | null;
+                        billedChargeCents: number | null;
+                        /** @constant */
+                        institutionalUnits: "unqualified";
+                        /** @constant */
+                        institutionalFormatQualified: false;
+                        verification: {
+                            /** @constant */
+                            status: "current";
+                            /** Format: uuid */
+                            preparationId: string;
+                            version: number;
+                            fingerprint: string;
+                        } | {
+                            status: "stale" | "unresolved" | "ambiguous" | "unsupported";
+                            reasonCode: string;
+                        };
                     };
                 };
             };

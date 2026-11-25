@@ -319,6 +319,30 @@ export interface SignedEncounterDigest {
   readonly sourceVersion?: number;
 }
 
+/** Minimal transaction-bound M8 facts needed to qualify actual CHC service minutes. */
+export interface SignedChcClinicalInterval {
+  readonly organizationId: string;
+  readonly providerEntityId: string | null;
+  readonly patientId: string;
+  readonly admissionId: string;
+  readonly encounterId: EncounterId;
+  readonly encounterType: EncounterType;
+  readonly discipline: EncounterDiscipline;
+  readonly serviceDate: string;
+  readonly status: EncounterStatus;
+  readonly signedAt: IsoInstant | null;
+  readonly cosignedAt: IsoInstant | null;
+  readonly startedAt: IsoInstant | null;
+  readonly endedAt: IsoInstant | null;
+  readonly timeSource: EncounterTimeSource | null;
+  readonly sourceVersion: number;
+  readonly voidedAt: IsoInstant | null;
+  readonly locationId: string | null;
+  readonly locationProviderEntityId: string | null;
+  readonly locationState: string | null;
+  readonly serviceTimeZone: string | null;
+}
+
 /** A signed addendum projection inside an {@link EncounterRenderPayload}. */
 export interface EncounterAddendumRender {
   readonly addendumId: EncounterAddendumId;
@@ -373,6 +397,22 @@ export interface SignedEncountersReader {
     patientId: PatientId,
     since: IsoInstant,
   ): Promise<ReadonlyArray<SignedEncounterDigest>>;
+
+  /**
+   * Transaction-bound, source-owner read for M24's CHC quantity assessment. Production binds the M8
+   * implementation, which shares the caller's RLS transaction and locks the selected encounter rows.
+   * Optional for legacy in-memory slices; absence must fail closed for CHC pricing.
+   */
+  chcClinicalIntervalsInTransaction?(
+    transaction: unknown,
+    input: {
+      readonly organizationId: string;
+      readonly providerEntityId: string;
+      readonly patientId: string;
+      readonly admissionId: string;
+      readonly serviceDate: string;
+    },
+  ): Promise<ReadonlyArray<SignedChcClinicalInterval>>;
 
   renderPayloadFor(encounterId: EncounterId): Promise<EncounterRenderPayload>;
 

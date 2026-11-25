@@ -54,6 +54,7 @@ export {
   buildMedicaidOnboardingCredentialPort,
 } from "./routes/index";
 export { mountM24Routes } from "./routes/mount";
+export { createChcPricingPreparationService } from "./pricing/chc-pricing-preparation";
 
 // §4.3 — the eight published reader-seam implementations (built, registration deferred — the M26 posture).
 export { type M24SeamImpls, buildM24SeamImpls } from "./seam-impls";

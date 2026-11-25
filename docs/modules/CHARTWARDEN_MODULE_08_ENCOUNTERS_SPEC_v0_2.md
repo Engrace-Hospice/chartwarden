@@ -1417,6 +1417,15 @@ before linking an encounter to a local claim line. A signed interval is evidence
 time; it does not by itself establish payer-specific continuous-home-care eligibility, billable minutes,
 reimbursement quantity, or institutional 837I units.
 
+**As-built CHC local-pricing reader (L8A.2C2, 2026-11-25):** the transaction-bound M8 projection also
+supplies encounter status, initial and required co-sign timestamps, actual interval, time source, source
+version, discipline, void state, and the service location's provider, state and time zone. It includes
+potential carry-in intervals around the requested local service day; M24 validates exact patient/admission
+and provider scope, final signature timing, local-day bounds, actual-time provenance and overlap before
+counting observed minutes. This reader provides clinical source facts only. M6 LOC and a separately
+verified synthetic managed-care method are required before M24 labels any minutes qualified. It does not
+qualify EOCCO or establish institutional billing units.
+
 **Seams M8 consumes from upstream modules (registered in M8's init, validated at boot):**
 
 ```ts

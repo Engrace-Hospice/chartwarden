@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import type { AbacContext } from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
 import { createMdmEntityProvider } from "@chartwarden/mdm";
 import type { PlaceOfServiceFacilityKind } from "@chartwarden/medicaid-adapters";
@@ -24,15 +25,25 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildFoundationSiteReader } from "../src/bootstrap/foundation-site-reader";
 import { buildProviderEntityCcnResolver } from "../src/bootstrap/provider-entity-resolver";
 import { buildPatientAddressReader } from "../src/modules/05-patient/address-reader";
 import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-reader";
 import { createAdmissionLocPeriodsReader } from "../src/modules/06-admission";
 import { createDrizzleEncounterReaderStore } from "../src/modules/08-encounters/seams/drizzle-store";
+import {
+  buildDrizzleM24AbacResolver,
+  buildM24AbacPredicates,
+} from "../src/modules/24-billing-medicaid/abac-predicates";
 import { m6LocClaimEndDate } from "../src/modules/24-billing-medicaid/claim-hospice-line-snapshot";
 import { runMedicaidRevalidate } from "../src/modules/24-billing-medicaid/jobs/revalidate-jobs";
 import { resolveSignedChcClinicalQuantity } from "../src/modules/24-billing-medicaid/pricing/chc-clinical-quantity";
-import { readMedicaidHospiceBillingEvidence } from "../src/modules/24-billing-medicaid/pricing/rhc-pricing-snapshot";
+import { createChcPricingPreparationService } from "../src/modules/24-billing-medicaid/pricing/chc-pricing-preparation";
+import {
+  canonicalPricingSnapshotJson,
+  pricingSnapshotFingerprint,
+  readMedicaidHospiceBillingEvidence,
+} from "../src/modules/24-billing-medicaid/pricing/rhc-pricing-snapshot";
 import type { WriteOutboxPort } from "../src/modules/24-billing-medicaid/routes/write-service";
 import {
   type AdmissionCadenceReaderPort,
@@ -95,6 +106,11 @@ const ALF_CADENCE_EVIDENCE_EARLY = "abababab-abab-abab-abab-ababababac17";
 const ALF_CADENCE_EVIDENCE_LATE = "abababab-abab-abab-abab-ababababac18";
 const CHC_LOC = "abababab-abab-abab-abab-abababababd3";
 const CHC_ENCOUNTER = "abababab-abab-abab-abab-abababababd4";
+const CHC_PREP_ENCOUNTER = "abababab-abab-abab-abab-abababababd5";
+const CHC_PREP_ASSIGNMENT = "abababab-abab-abab-abab-abababababd6";
+const CHC_PREP_EVIDENCE = "abababab-abab-abab-abab-abababababd7";
+const CHC_PREP_RATE = "abababab-abab-abab-abab-abababababd8";
+const CHC_PREP_CARRY_IN_ENCOUNTER = "abababab-abab-abab-abab-abababababd9";
 const LOC_1 = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
 const LOC_2 = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 let TEST_PE_ID = "";
@@ -452,7 +468,7 @@ describe.skipIf(!DB_URL)(
            (id,organization_id,admission_id,level_of_care,status,effective_at,ended_at,
             assigned_by,reason,q_code,version)
          VALUES ($1,$2,$3,'continuous_home_care','ended','2026-11-05T00:00:00Z',
-                 '2026-11-06T00:00:00Z',$4,'Synthetic CHC quantity qualification','Q5001',0)`,
+                 '2026-11-06T08:00:00Z',$4,'symptom_crisis','Q5001',0)`,
         [CHC_LOC, ORG, RHC_ADMISSION, USER],
       );
       const signerMembership = await admin.query(
@@ -675,6 +691,7 @@ describe.skipIf(!DB_URL)(
         serviceFrom: "2026-11-05",
         serviceTo: "2026-11-05",
         serviceTimeZone: "America/Los_Angeles",
+        assessedAt: new Date().toISOString(),
         chcServiceDates,
         encounters: chcSourceRows.map((row) => ({
           organizationId: row.organizationId ?? "",
@@ -1051,6 +1068,443 @@ describe.skipIf(!DB_URL)(
         await admissionHolder.query("ROLLBACK").catch(() => undefined);
         await admissionHolder.end();
       }
+
+      // The CHC vertical slice uses the actual M5/M6/M8/M40 readers and the production M24 preparation
+      // service. Its synthetic 9-hour quantity, rate and separately sourced charges never create a claim.
+      await admin.query(
+        `INSERT INTO encounter
+           (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,
+            encounter_type,discipline,authored_by_membership_id,service_date,started_at,ended_at,
+            time_source,status,signed_at,vocab_version_id)
+         VALUES ($1,$2,$3,$4,$5,$6,'routine_visit','rn',$7,'2026-11-05',
+                 '2026-11-05T20:00:00Z','2026-11-06T02:30:00Z','clinician','signed',
+                 '2026-11-06T03:00:00Z',$8)`,
+        [
+          CHC_PREP_ENCOUNTER,
+          ORG,
+          peId,
+          locationId,
+          RHC_PATIENT,
+          RHC_ADMISSION,
+          RHC_SIGNER_MEMBERSHIP,
+          NARRATIVE_VOCAB_RELEASES[0]!.id,
+        ],
+      );
+      // This M8 source starts on the preceding local service date and crosses midnight. The owner
+      // reader must select it by interval overlap so the one hour on Nov 5 is not dropped.
+      await admin.query(
+        `INSERT INTO encounter
+           (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,
+            encounter_type,discipline,authored_by_membership_id,service_date,started_at,ended_at,
+            time_source,status,signed_at,vocab_version_id)
+         VALUES ($1,$2,$3,$4,$5,$6,'routine_visit','rn',$7,'2026-11-04',
+                 '2026-11-05T01:00:00Z','2026-11-05T09:00:00Z','clinician','signed',
+                 '2026-11-05T09:30:00Z',$8)`,
+        [
+          CHC_PREP_CARRY_IN_ENCOUNTER,
+          ORG,
+          peId,
+          locationId,
+          RHC_PATIENT,
+          RHC_ADMISSION,
+          RHC_SIGNER_MEMBERSHIP,
+          NARRATIVE_VOCAB_RELEASES[0]!.id,
+        ],
+      );
+      await admin.query(
+        `INSERT INTO medicaid_program_assignment
+           (id,organization_id,patient_id,patient_payer_id,admission_id,provider_entity_id,location_id,
+            service_state,program_kind,canonical_payer_id,canonical_payer_classification_id,
+            payer_snapshot,status,effective_from,effective_to,source_kind,verification_source,
+            evidence_reference,verified_at,verified_by_membership_id,recorded_by_membership_id,version)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'OR','managed_care',$8,$9,
+                 jsonb_build_object('id',$8::uuid::text,'displayName','Synthetic Medicaid CCO',
+                   'kind','medicaid','stateCode','OR'),
+                 'verified','2026-11-05','2026-11-05','payer_confirmation',
+                 'synthetic_qualification_fixture','doc:synthetic-chc/program-assignment',
+                 '2026-01-01T00:00:00Z',$10,$11,1)`,
+        [
+          CHC_PREP_ASSIGNMENT,
+          ORG,
+          RHC_PATIENT,
+          RHC_COVERAGE,
+          RHC_ADMISSION,
+          peId,
+          locationId,
+          RHC_PAYER,
+          RHC_CLASSIFICATION,
+          verifierId,
+          USER,
+        ],
+      );
+      await admin.query(
+        `INSERT INTO medicaid_hospice_billing_evidence
+           (id,organization_id,provider_entity_id,patient_id,admission_id,admission_version,
+            canonical_payer_id,program_kind,service_state,locality_code,locality_evidence_reference,
+            locality_evidence_version,quality_reporting_applicability,quality_reporting_status,
+            quality_evidence_reference,quality_evidence_version,service_category,quantity_policy,
+            quantity_evidence_owner,billing_unit,revenue_code,hcpcs_code,coding_profile,
+            coding_evidence_reference,coding_evidence_version,billed_charge_cents_per_unit,
+            charge_evidence_reference,charge_evidence_version,verification_status,effective_from,
+            effective_to,source_document_reference,verified_at,verified_by_membership_id,
+            recorded_by_membership_id,version)
+         VALUES ($1,$2,$3,$4,$5,0,$6,'managed_care','OR','synthetic-chc-locality',
+                 'evidence:synthetic-chc/locality',1,'not_required','not_applicable',
+                 'evidence:synthetic-chc/quality-applicability',1,'CHC',
+                 'm6_symptom_crisis_plus_signed_m8_rn_intervals_v1','m6_loc_m8_encounter','hourly',
+                 NULL,NULL,'local_draft_only','evidence:synthetic-chc/local-profile',1,7000,
+                 'evidence:synthetic-chc/provider-charge',1,'verified','2026-11-05','2026-11-05',
+                 'doc:synthetic-chc/billing-method','2026-01-01T00:00:00Z',$7,$8,1)`,
+        [CHC_PREP_EVIDENCE, ORG, peId, RHC_PATIENT, RHC_ADMISSION, RHC_PAYER, verifierId, USER],
+      );
+      await admin.query(
+        `INSERT INTO medicaid_payer_rate_policy
+           (id,organization_id,provider_entity_id,canonical_payer_id,program_kind,service_state,
+            locality_code,service_category,unit_basis,rate_cents,pricing_method,
+            quantity_conversion_method,minimum_duration_method,minimum_clinical_minutes,
+            maximum_clinical_minutes,methodology_version,rounding_mode,rounding_boundary,
+            charge_ceiling_method,charge_ceiling_boundary,quality_reporting_applicability,
+            quality_reporting_status,source_kind,verification_status,effective_from,effective_to,
+            source_document_ref,verified_at,verified_by_membership_id,recorded_by_membership_id,version)
+         VALUES ($1,$2,$3,$4,'managed_care','OR','synthetic-chc-locality','CHC','per_hour',5000,
+                 'per_hour','hourly_prorated_minutes','minimum_minutes',480,600,1,'exact_only',
+                 'service_day','none','not_applicable','not_required','not_applicable',
+                 'cco_contract','verified','2026-11-05','2026-11-05','doc:synthetic-chc/hourly-rate',
+                 '2026-01-01T00:00:00Z',$5,$6,1)`,
+        [CHC_PREP_RATE, ORG, peId, RHC_PAYER, verifierId, USER],
+      );
+
+      const encounterStore = createDrizzleEncounterReaderStore(handle.db, {
+        foundationSites: buildFoundationSiteReader(),
+      });
+      if (!encounterStore.chcClinicalIntervalsInTransaction) {
+        throw new Error("M8 transaction-bound CHC interval reader is unavailable");
+      }
+      const chcPreparationService = createChcPricingPreparationService({
+        db: handle.db,
+        coverage: coverageResolver,
+        admissions: m6Reader,
+        encounters: {
+          chcClinicalIntervalsInTransaction:
+            encounterStore.chcClinicalIntervalsInTransaction.bind(encounterStore),
+        },
+        residences: patientAddressReader,
+        canonicalPayer: canonicalPayerReader,
+        // The evidence rows are inserted by this live fixture immediately before preparation. Use the
+        // current assessment clock so the point-in-time lineage reader does not see them as future facts.
+        now: () => new Date(),
+      });
+      const chcActor = {
+        organizationId: ORG,
+        userId: USER,
+        membershipId: RHC_SIGNER_MEMBERSHIP,
+        providerEntityIds: [peId],
+        roles: ["billing_manager"],
+      };
+      const claimCountBeforeChc = await admin.query(
+        "SELECT count(*)::int AS count FROM medicaid_claim WHERE organization_id=$1",
+        [ORG],
+      );
+      const chcInput = {
+        patientId: RHC_PATIENT,
+        admissionId: RHC_ADMISSION,
+        providerEntityId: peId,
+        serviceDate: "2026-11-05",
+      };
+      const [chcPreparation, concurrentChcPreparation] = await Promise.all([
+        chcPreparationService.prepare(chcActor, chcInput),
+        chcPreparationService.prepare(chcActor, chcInput),
+      ]);
+      expect(concurrentChcPreparation).toMatchObject({
+        id: chcPreparation.id,
+        preparationId: chcPreparation.preparationId,
+        version: 1,
+      });
+      expect(chcPreparation).toMatchObject({
+        serviceDate: "2026-11-05",
+        observedMinutes: 540,
+        qualifiedMinutes: 540,
+        reimbursementHours: 9,
+        rateCentsPerHour: 5000,
+        estimatedReimbursementCents: 45000,
+        billedChargeCents: 63000,
+        institutionalUnits: "unqualified",
+        institutionalFormatQualified: false,
+        verification: { status: "current", version: 1 },
+      });
+      const storedChc = await admin.query(
+        `SELECT version,fingerprint,snapshot,rate_policy_id,billing_evidence_id
+           FROM medicaid_chc_pricing_preparation WHERE id=$1`,
+        [chcPreparation.id],
+      );
+      expect(storedChc.rows).toHaveLength(1);
+      expect(storedChc.rows[0]).toMatchObject({
+        version: 1,
+        rate_policy_id: CHC_PREP_RATE,
+        billing_evidence_id: CHC_PREP_EVIDENCE,
+        snapshot: {
+          profile: "home_chc_hourly_local_v1",
+          observedMinutes: 540,
+          qualifiedMinutes: 540,
+          rateCentsPerHour: 5000,
+          baseReimbursementCents: 45000,
+          estimatedReimbursementCents: 45000,
+          billedChargeCentsPerHour: 7000,
+          billedChargeCents: 63000,
+          institutionalUnits: "unqualified",
+          institutionalFormatQualified: false,
+          postingAuthorized: false,
+          serviceTimeZone: "America/Los_Angeles",
+        },
+      });
+      const currentChcVerification = await chcPreparationService.verify(
+        chcActor,
+        chcPreparation.id,
+      );
+      expect(currentChcVerification).toMatchObject({
+        status: "current",
+        preparationId: chcPreparation.preparationId,
+        version: 1,
+      });
+
+      const chcReadPredicate = buildM24AbacPredicates({
+        resolver: buildDrizzleM24AbacResolver(handle.db),
+        isInCaseload: async (query) => query.patientId === RHC_PATIENT,
+      }).medicaid_chc_pricing_preparation_in_scope!;
+      const chcReadContext: AbacContext = {
+        organizationId: ORG,
+        userId: USER,
+        roles: ["billing_manager"],
+        providerEntityIds: [peId],
+        locationIds: [],
+        attributes: {},
+      };
+      await expect(
+        chcReadPredicate(chcReadContext, {
+          medicaidChcPricingPreparationId: chcPreparation.id,
+        }),
+      ).resolves.toBe(true);
+      await expect(
+        chcReadPredicate(
+          { ...chcReadContext, providerEntityIds: [] },
+          { medicaidChcPricingPreparationId: chcPreparation.id },
+        ),
+      ).resolves.toBe(false);
+      await expect(
+        chcReadPredicate(chcReadContext, {
+          medicaidChcPricingPreparationId: randomUUID(),
+        }),
+      ).resolves.toBe(false);
+
+      const repeatedChcPreparation = await chcPreparationService.prepare(chcActor, {
+        patientId: RHC_PATIENT,
+        admissionId: RHC_ADMISSION,
+        providerEntityId: peId,
+        serviceDate: "2026-11-05",
+      });
+      expect(repeatedChcPreparation).toMatchObject({ id: chcPreparation.id, version: 1 });
+      const unchangedChcRowCount = await admin.query(
+        "SELECT count(*)::int AS count FROM medicaid_chc_pricing_preparation WHERE preparation_id=$1",
+        [chcPreparation.preparationId],
+      );
+      expect(unchangedChcRowCount.rows[0].count).toBe(1);
+
+      let backgroundChcResults: readonly unknown[] = [];
+      const workerWithChcPreparation = {
+        ...workerDeps,
+        chcPricingPreparations: {
+          async revalidatePatientInTransaction(
+            transaction: unknown,
+            organizationId: string,
+            patientId: string,
+            assessedAt?: string,
+          ) {
+            backgroundChcResults = await chcPreparationService.revalidatePatientInTransaction(
+              transaction,
+              organizationId,
+              patientId,
+              assessedAt,
+            );
+            return backgroundChcResults;
+          },
+        },
+      };
+      const chcBackgroundEvent = randomUUID();
+      await withOrgContext(handle.db, { organizationId: ORG, userId: USER }, (tx) =>
+        runMedicaidRevalidate(tx, workerWithChcPreparation, {
+          organizationId: ORG,
+          patientId: RHC_PATIENT,
+          eventId: chcBackgroundEvent,
+          eventName: "m24.medicaid_claim.revalidate_requested",
+        }),
+      );
+      expect(backgroundChcResults).toContainEqual({
+        id: chcPreparation.id,
+        verification: expect.objectContaining({ status: "current", version: 1 }),
+      });
+      expect(backgroundEvents).not.toContain("m24.medicaid_claim.ready_for_submission");
+
+      await expect(
+        admin.query("UPDATE medicaid_chc_pricing_preparation SET version=2 WHERE id=$1", [
+          chcPreparation.id,
+        ]),
+      ).rejects.toThrow(/append-only/);
+      // Simulate a privileged administrator bypassing ordinary triggers while leaving the old hash
+      // untouched. An idempotent prepare must verify the stored bytes before returning their amounts.
+      await admin.query("BEGIN");
+      try {
+        await admin.query(
+          "ALTER TABLE medicaid_chc_pricing_preparation DISABLE TRIGGER trg_medicaid_chc_pricing_preparation_append_only",
+        );
+        await admin.query(
+          `UPDATE medicaid_chc_pricing_preparation
+              SET snapshot=jsonb_set(snapshot,'{estimatedReimbursementCents}','45001'::jsonb,false)
+            WHERE id=$1`,
+          [chcPreparation.id],
+        );
+        await admin.query(
+          "ALTER TABLE medicaid_chc_pricing_preparation ENABLE TRIGGER trg_medicaid_chc_pricing_preparation_append_only",
+        );
+        await admin.query("COMMIT");
+      } catch (error) {
+        await admin.query("ROLLBACK");
+        throw error;
+      }
+      const repairedChcPreparation = await chcPreparationService.prepare(chcActor, {
+        patientId: RHC_PATIENT,
+        admissionId: RHC_ADMISSION,
+        providerEntityId: peId,
+        serviceDate: "2026-11-05",
+      });
+      expect(repairedChcPreparation).toMatchObject({
+        id: expect.any(String),
+        version: 2,
+        estimatedReimbursementCents: 45000,
+        verification: { status: "current" },
+      });
+      const chcVersions = await admin.query(
+        `SELECT version,snapshot->>'estimatedReimbursementCents' AS estimate
+           FROM medicaid_chc_pricing_preparation WHERE preparation_id=$1 ORDER BY version`,
+        [chcPreparation.preparationId],
+      );
+      expect(chcVersions.rows).toEqual([
+        { version: 1, estimate: "45001" },
+        { version: 2, estimate: "45000" },
+      ]);
+      await admin.query("UPDATE encounter SET version=version+1 WHERE id=$1", [CHC_PREP_ENCOUNTER]);
+      expect(await chcPreparationService.verify(chcActor, repairedChcPreparation.id)).toMatchObject(
+        {
+          status: "stale",
+          reasonCode: "CHC_PRICING_SNAPSHOT_STALE",
+        },
+      );
+      const refreshedChcPreparation = await chcPreparationService.prepare(chcActor, {
+        patientId: RHC_PATIENT,
+        admissionId: RHC_ADMISSION,
+        providerEntityId: peId,
+        serviceDate: "2026-11-05",
+      });
+      expect(refreshedChcPreparation).toMatchObject({
+        version: 3,
+        estimatedReimbursementCents: 45000,
+        verification: { status: "current" },
+      });
+      const claimCountAfterChc = await admin.query(
+        "SELECT count(*)::int AS count FROM medicaid_claim WHERE organization_id=$1",
+        [ORG],
+      );
+      expect(claimCountAfterChc.rows[0].count).toBe(claimCountBeforeChc.rows[0].count);
+      const chcSubmissions = await admin.query(
+        "SELECT count(*)::int AS count FROM medicaid_submission WHERE organization_id=$1",
+        [ORG],
+      );
+      expect(chcSubmissions.rows[0].count).toBe(0);
+
+      // A privileged fixture writes a structurally valid, correctly fingerprinted but financially
+      // false version. Source-grounded verification—not hash validity—must hold it and redact money.
+      const forgedPreparationId = randomUUID();
+      const forgedChcSnapshot = {
+        ...storedChc.rows[0].snapshot,
+        preparationId: chcPreparation.preparationId,
+        preparationVersion: 4,
+        estimatedReimbursementCents: 45001,
+        baseReimbursementCents: 45001,
+      } as Record<string, unknown>;
+      const {
+        assessedAt: _assessedAt,
+        integrityFingerprint: _oldFingerprint,
+        ...forgedMaterial
+      } = forgedChcSnapshot;
+      const forgedFingerprint = pricingSnapshotFingerprint(
+        JSON.parse(canonicalPricingSnapshotJson(forgedMaterial)) as unknown,
+      );
+      const finalForgedSnapshot = {
+        ...forgedChcSnapshot,
+        integrityFingerprint: forgedFingerprint,
+      };
+      await admin.query(
+        `INSERT INTO medicaid_chc_pricing_preparation
+           (id,preparation_id,organization_id,provider_entity_id,patient_id,admission_id,
+            service_date,version,rate_policy_id,billing_evidence_id,assessed_at,fingerprint,
+            snapshot,created_by_membership_id)
+         SELECT $1,preparation_id,organization_id,provider_entity_id,patient_id,admission_id,
+                service_date,4,rate_policy_id,billing_evidence_id,assessed_at,$2,$3::jsonb,
+                created_by_membership_id
+           FROM medicaid_chc_pricing_preparation WHERE id=$4`,
+        [
+          forgedPreparationId,
+          forgedFingerprint,
+          JSON.stringify(finalForgedSnapshot),
+          chcPreparation.id,
+        ],
+      );
+      const forgedCheck = await chcPreparationService.verify(chcActor, forgedPreparationId);
+      expect(forgedCheck).toMatchObject({
+        status: "stale",
+        reasonCode: "CHC_PRICING_SNAPSHOT_STALE",
+      });
+      const forgedRead = await chcPreparationService.read(chcActor, forgedPreparationId);
+      expect(forgedRead).toMatchObject({
+        verification: { status: "stale" },
+        observedMinutes: null,
+        qualifiedMinutes: null,
+        estimatedReimbursementCents: null,
+        billedChargeCents: null,
+      });
+
+      const correctedBillingEvidenceId = randomUUID();
+      await admin.query(
+        `INSERT INTO medicaid_hospice_billing_evidence
+           (id,organization_id,provider_entity_id,patient_id,admission_id,admission_version,
+            canonical_payer_id,program_kind,service_state,locality_code,locality_evidence_reference,
+            locality_evidence_version,quality_reporting_applicability,quality_reporting_status,
+            quality_evidence_reference,quality_evidence_version,service_category,quantity_policy,
+            quantity_evidence_owner,billing_unit,revenue_code,hcpcs_code,coding_profile,
+            coding_evidence_reference,coding_evidence_version,billed_charge_cents_per_unit,
+            charge_evidence_reference,charge_evidence_version,verification_status,effective_from,
+            effective_to,source_document_reference,verified_at,verified_by_membership_id,
+            recorded_by_membership_id,supersedes_id,version,created_at)
+         SELECT $2,organization_id,provider_entity_id,patient_id,admission_id,admission_version,
+                canonical_payer_id,program_kind,service_state,locality_code,locality_evidence_reference,
+                locality_evidence_version,quality_reporting_applicability,quality_reporting_status,
+                quality_evidence_reference,quality_evidence_version,service_category,quantity_policy,
+                quantity_evidence_owner,billing_unit,revenue_code,hcpcs_code,coding_profile,
+                coding_evidence_reference,coding_evidence_version,7001,
+                'evidence:synthetic-chc/provider-charge-v2',2,verification_status,effective_from,
+                effective_to,'doc:synthetic-chc/billing-method-v2',now(),$3,
+                recorded_by_membership_id,id,version+1,now()
+           FROM medicaid_hospice_billing_evidence WHERE id=$1`,
+        [CHC_PREP_EVIDENCE, correctedBillingEvidenceId, verifierId],
+      );
+      expect(await chcPreparationService.verify(chcActor, chcPreparation.id)).toMatchObject({
+        status: "stale",
+        reasonCode: "CHC_PRICING_SNAPSHOT_STALE",
+      });
+      expect(await chcPreparationService.read(chcActor, chcPreparation.id)).toMatchObject({
+        verification: { status: "stale" },
+        estimatedReimbursementCents: null,
+        billedChargeCents: null,
+      });
 
       // A separate, synthetic admission proves the facility profile through the same M5/M40 owner
       // readers, rate engine, transaction-bound assembly service, line writer, and snapshot guard.

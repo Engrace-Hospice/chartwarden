@@ -775,15 +775,22 @@ controls:
       - file: docs/audits/billing-e2e/M24_1075_L8A2_CLINICAL_QUANTITY_AND_PRICING_SNAPSHOT_QUALIFICATION_20261125.md
       - file: docs/audits/billing-e2e/M24_1075_L8A2R_PRICING_SNAPSHOT_PERSISTENCE_QUALIFICATION_20261125.md
       - file: docs/audits/billing-e2e/M24_1075_L8A2C_ADVANCED_CLINICAL_PRICING_QUALIFICATION_20261125.md
+      # L8A.2C2 adds an append-only local CHC hourly preparation. The private PostgreSQL evidence is
+      # documented in the report and is not represented as CI evidence; the CW-PI-06 status is unchanged.
+      - file: packages/db/migrations/1555_m24_chc_local_pricing_preparations.sql
+      - file: apps/backend/src/modules/24-billing-medicaid/pricing/chc-clinical-qualification.ts
+      - file: apps/backend/src/modules/24-billing-medicaid/pricing/chc-pricing-preparation.ts
+      - file: apps/backend/src/modules/08-encounters/seams/drizzle-store.ts
+      - file: docs/audits/billing-e2e/M24_1075_L8A2C2_CHC_HOURLY_PRICING_QUALIFICATION_20261125.md
     gap:
       reason: >-
         Not database-enforced end to end. The guards are triggers, so a superuser or the table owner can disable them, and row triggers
         do not fire on TRUNCATE, which the owner and admin roles hold (the same limit as migrations 1138 and 1144). Verification is not
         database-bound (verified_by_membership_id has no foreign key). The snapshot insert guard is a backstop, because application code
         decides which rows are current, and the stored reimbursement amounts are bound only by the snapshot fingerprint and the
-        revalidation, never recomputed in SQL. Only routine home care is priced, because the clinical quantity reader for the advanced
-        categories has no caller. The billing evidence and snapshot rows are append-only and carry patient, admission and address ids,
-        so no eraser reaches them (CW-DS-01, an open owner decision).
+        revalidation, never recomputed in SQL. Only routine home care is priced on a claim line; the continuous home care hourly preparation (1555) is a separate local record
+        that is never ready or submittable. The billing evidence, snapshot and preparation rows are append-only and carry patient,
+        admission and address ids, so no eraser reaches them (CW-DS-01, an open owner decision).
       owner: engineering
       review_by: 2027-01-31
 

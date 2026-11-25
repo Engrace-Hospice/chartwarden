@@ -16,6 +16,7 @@ import type {
   MembershipId,
   MileagePayrollRow,
   PatientId,
+  SignedChcClinicalInterval,
   SignedEncounterDigest,
   SkilledNursingDayTotal,
   SkilledVisitDay,
@@ -56,6 +57,17 @@ export interface EncounterReaderStore {
     patientId: PatientId,
     since: IsoInstant,
   ): Promise<ReadonlyArray<SignedEncounterDigest>>;
+  /** Transaction-bound clinical interval facts used only by M24 CHC qualification. */
+  chcClinicalIntervalsInTransaction?(
+    transaction: unknown,
+    input: {
+      readonly organizationId: string;
+      readonly providerEntityId: string;
+      readonly patientId: string;
+      readonly admissionId: string;
+      readonly serviceDate: string;
+    },
+  ): Promise<ReadonlyArray<SignedChcClinicalInterval>>;
   /** The decrypted render payload for one signed encounter, or null when it is not visible. */
   renderPayload(encounterId: EncounterId): Promise<EncounterRenderPayload | null>;
   /** Authoritative mileage rows for a clinician over a service-date range (M27 payroll, §4.5 D10). */

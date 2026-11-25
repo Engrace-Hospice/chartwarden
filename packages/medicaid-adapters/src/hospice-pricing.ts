@@ -109,6 +109,7 @@ export interface HospicePricingSegment {
     readonly quantityConversionMethod: PayerRatePolicyFact["quantityConversionMethod"];
     readonly minimumDurationMethod: PayerRatePolicyFact["minimumDurationMethod"];
     readonly minimumClinicalMinutes: number | null;
+    readonly maximumClinicalMinutes?: number | null;
     readonly roundingMode: PayerRatePolicyFact["roundingMode"];
     readonly roundingBoundary: PayerRatePolicyFact["roundingBoundary"];
     readonly chargeCeilingMethod: PayerRatePolicyFact["chargeCeilingMethod"];
@@ -233,7 +234,10 @@ function amountFor(
   if (!Number.isSafeInteger(quantity.clinicalMinutes) || quantity.clinicalMinutes <= 0) {
     return { amount: null, reasonCode: "MEDICAID_RATE_POLICY_INPUTS_UNRESOLVED" };
   }
-  if (quantity.clinicalMinutes > MAX_CLINICAL_MINUTES_PER_SERVICE_DAY) {
+  if (
+    rate.maximumClinicalMinutes != null &&
+    quantity.clinicalMinutes > rate.maximumClinicalMinutes
+  ) {
     return { amount: null, reasonCode: "MEDICAID_RATE_POLICY_INPUTS_UNRESOLVED" };
   }
   if (rate.quantityConversionMethod === "hourly_each_hour_or_part") {
@@ -477,6 +481,7 @@ function priceOneDay(
     quantityConversionMethod: rate.quantityConversionMethod,
     minimumDurationMethod: rate.minimumDurationMethod,
     minimumClinicalMinutes: rate.minimumClinicalMinutes,
+    maximumClinicalMinutes: rate.maximumClinicalMinutes ?? null,
     roundingMode: rate.roundingMode,
     roundingBoundary: rate.roundingBoundary,
     chargeCeilingMethod: rate.chargeCeilingMethod,

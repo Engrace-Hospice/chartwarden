@@ -68,6 +68,8 @@ export interface PayerRatePolicyFact {
   readonly quantityConversionMethod: RateQuantityConversionMethod;
   readonly minimumDurationMethod: MinimumDurationMethod;
   readonly minimumClinicalMinutes: number | null;
+  /** Explicit payer policy ceiling for one service day; required by M24's supported CHC persistence profile. */
+  readonly maximumClinicalMinutes?: number | null;
   readonly methodologyVersion: number;
   readonly roundingMode: RateRoundingMode;
   readonly roundingBoundary: RateRoundingBoundary;
@@ -255,6 +257,12 @@ function methodologyQualified(rate: PayerRatePolicyFact): boolean {
   // M6 has no authoritative in-home respite service type/quantity contract yet. A rate row alone
   // cannot qualify that service for pricing.
   if (rate.serviceCategory === "IN_HOME_RESPITE") return false;
+  if (
+    rate.maximumClinicalMinutes != null &&
+    (!Number.isSafeInteger(rate.maximumClinicalMinutes) || rate.maximumClinicalMinutes < 1)
+  ) {
+    return false;
+  }
   const methodMatchesUnit =
     (rate.pricingMethod === "per_day" &&
       rate.unitBasis === "per_day" &&

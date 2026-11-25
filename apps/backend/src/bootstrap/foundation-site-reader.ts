@@ -4,8 +4,9 @@
 // (scripts/check-table-ownership.ts — cross-module READS go through the owner's exported reader).
 //
 // Consumers today: M6 (admission siting — default location for a provider entity, the location↔provider
-// consistency check on an admission update) and M10 (the HOPE Admission prefill's provider NPI/CCN, and
-// the iQIES submission header's facility ID + state).
+// consistency check on an admission update), M8 (locked service-site owner/state/timezone facts for M24's
+// local CHC quantity normalization), and M10 (the HOPE Admission prefill's provider NPI/CCN, and the
+// iQIES submission header's facility ID + state).
 //
 // TRANSACTIONALITY. Every method takes the CALLER's org-context tx (the `PrimaryProviderEntityResolver`
 // precedent in ./provider-entity-resolver.ts): the reads run inside the consumer's own `withOrgContext`
@@ -67,6 +68,19 @@ export interface FoundationSiteReader {
    * `DEFAULT_ORDER_TIME_ZONE`, the same fallback M10's `m6-admission-workflow.ts` consumer already uses).
    */
   locationTimezone(tx: DbClient, locationId: string): Promise<string | null>;
+  /**
+   * Authoritative service-site identity for a consumer's transaction. The location and owning provider
+   * rows stay locked FOR SHARE while the caller uses state/timezone for an effective-dated decision.
+   */
+  locationSiteFacts(
+    tx: DbClient,
+    organizationId: string,
+    locationId: string,
+  ): Promise<{
+    readonly providerEntityId: string;
+    readonly state: string;
+    readonly timeZone: string;
+  } | null>;
   /**
    * The distinct IANA timezones of a provider entity's locations (empty when it has none). M25 ends an
    * appeal's last filing day in this zone when the locations agree on one.
@@ -204,6 +218,21 @@ export function buildFoundationSiteReader(): FoundationSiteReader {
         .where(eq(LOCATION.id, locationId))
         .limit(1);
       return location?.timezone ?? null;
+    },
+
+    async locationSiteFacts(tx, organizationId, locationId) {
+      const [site] = await tx
+        .select({
+          providerEntityId: LOCATION.providerEntityId,
+          state: LOCATION.state,
+          timeZone: LOCATION.timezone,
+        })
+        .from(LOCATION)
+        .innerJoin(PROVIDER, eq(PROVIDER.id, LOCATION.providerEntityId))
+        .where(and(eq(LOCATION.id, locationId), eq(PROVIDER.organizationId, organizationId)))
+        .for("share", { of: [LOCATION, PROVIDER] })
+        .limit(1);
+      return site ?? null;
     },
 
     async providerEntityTimezones(tx, providerEntityId) {

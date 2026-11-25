@@ -56,6 +56,13 @@ export const ABAC_RESULT = (key: string, predicate: string): PreHandler =>
     notFoundOnDeny: true,
   }) as PreHandler;
 
+/** Scoped read of a durable local CHC pricing preparation. */
+export const ABAC_CHC_PREPARATION = (key: string): PreHandler =>
+  requireAbac(key, "medicaid_chc_pricing_preparation_in_scope", {
+    getTarget: (r) => ({ medicaidChcPricingPreparationId: param(r, "id") }),
+    notFoundOnDeny: true,
+  }) as PreHandler;
+
 /** §4.8 ABAC over the route's `:ruleKey` rule-config (regulatory-protection). */
 export const ABAC_RULE = (key: string, predicate: string): PreHandler =>
   requireAbac(key, predicate, {

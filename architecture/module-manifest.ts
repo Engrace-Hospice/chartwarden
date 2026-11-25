@@ -1059,6 +1059,7 @@ export const MODULES: ModuleDef[] = [
       "medicaid_payer_rate_policy",
       "medicaid_hospice_billing_evidence",
       "medicaid_claim_line_pricing_snapshot",
+      "medicaid_chc_pricing_preparation",
     ],
   },
   {

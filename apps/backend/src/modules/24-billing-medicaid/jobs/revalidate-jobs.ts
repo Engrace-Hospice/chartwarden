@@ -155,6 +155,15 @@ export interface RevalidateWorkerDeps {
   };
   /** M40 canonical payer and dated program-classification reader. */
   readonly canonicalPayerReader?: CanonicalPayerIdentityReader;
+  /** M24's local CHC preparation verifier. Read-only and separate from claim state validation. */
+  readonly chcPricingPreparations?: {
+    revalidatePatientInTransaction(
+      transaction: unknown,
+      organizationId: string,
+      patientId: string,
+      assessedAt?: string,
+    ): Promise<readonly unknown[]>;
+  };
   /** M5 PHI-minimal, transaction-bound residence history for local RHC snapshot revalidation. */
   readonly patientAddresses?: Pick<PatientAddressReader, "residencesBetweenInTransaction">;
   /** M40's canonical facility-kind read for supported local RHC residence profiles. */
@@ -357,6 +366,16 @@ export async function runMedicaidRevalidate(
   const SH = schema.medicaidClaimStateHistory;
   const clock = deps.now ?? (() => new Date());
   const RULES_BY_KEY = new Map(DEFAULT_MEDICAID_RULES.map((r) => [r.key, r]));
+
+  // Local CHC preparations are not institutional claims and have no READY/financial state. Re-read
+  // them through the same verifier used by the operator API; never translate this result into a
+  // claim transition or financial outbox event.
+  await deps.chcPricingPreparations?.revalidatePatientInTransaction(
+    tx,
+    job.organizationId,
+    job.patientId,
+    now.toISOString(),
+  );
 
   const claims = await tx
     .select()
