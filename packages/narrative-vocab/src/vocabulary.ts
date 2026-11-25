@@ -9,6 +9,7 @@
 // determinism depends on phrase stability).
 import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
 import { DRAFT_VOCABULARY } from "./draft-entries";
+import { PAIN_ASSESSMENT_VOCABULARY } from "./pain-assessment-entries";
 import type { SlotSpec, VocabEntry } from "./types";
 
 /**
@@ -56,9 +57,10 @@ export const FALL_FOLLOWUP_CODE = "nv.reason.fall_followup";
  * and face-to-face draft phrases (ADR-0114 S2); 2026.12.1 adds the RN admission visit's draft phrases (ADR-0114 S2b); 2026.12.2 tags existing draft phrases for
  * the LPN visits and the aide visit (ADR-0114 S3), no new wording; 2026.12.3 adds the social-work and chaplain plan phrases (ADR-0114 S4);
  * 2026.12.4 tags existing draft phrases for the face-to-face visit's vitals and orders and for the IDG follow-up (ADR-0114 S5), no new wording;
- * 2026.12.5 adds the two IDG follow-up phrases and the ten decision-kind labels (ADR-0114 S5b).
+ * 2026.12.5 adds the two IDG follow-up phrases and the ten decision-kind labels (ADR-0114 S5b);
+ * 2026.12.6 adds the sixteen pain assessment statements the composer's pain helper records (`pain-assessment-entries.ts`), no earlier phrase changed.
  */
-export const VOCAB_VERSION = "narrative-vocab@2026.12.5";
+export const VOCAB_VERSION = "narrative-vocab@2026.12.6";
 
 /** Whether the named clinical reviewer has approved the corpus wording. */
 export type ClinicalReviewStatus = "pending" | "approved";
@@ -71,6 +73,9 @@ export type ClinicalReviewStatus = "pending" | "approved";
  * the benefit period, the face-to-face's facts, the benefit period) and in `narrative-vocab@2026.12.1` (the 5 admission entries: the
  * orders in effect, the caregivers on record, the advance directive acknowledgment on file) is DRAFT WORDING. It was written to be neutral and factual (numbers and dates, no clinical judgement), but
  * it has not been read by a clinician. The platform-side reviewer named by the owner on 2026-11-18 is ADA.
+ * The 16 pain assessment statements of `narrative-vocab@2026.12.6` are not part of the visit-note draft: the clinician selects them, and
+ * each states only what the clinician typed or chose. They were signed off on the clinical-review sheet (section 2c, docs/clinical-review/
+ * CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md) by Lora, RN on 2026-11-25, not item by item; that does not change this constant.
  *
  * `status` stays "pending" until ADA approves the wording; the approval is a deliberate edit to this
  * constant in its own commit. A later PR (the per-tenant switch, VN-D17) REFUSES to enable the draft for
@@ -616,10 +621,12 @@ const VISIT_REASON_VOCABULARY: readonly VocabEntry[] = [
 
 /**
  * The curated corpus: the 23 core entries, then the 2026.11.0 draft entries, then the 2026.11.1 visit
- * reasons. Each release only appends (ordering is stable and load-bearing for byte-identical assembly).
+ * reasons, then the pain assessment statements. Each release only appends (ordering is
+ * stable and load-bearing for byte-identical assembly).
  */
 export const VOCABULARY: readonly VocabEntry[] = [
   ...CORE_VOCABULARY,
   ...DRAFT_VOCABULARY,
   ...VISIT_REASON_VOCABULARY,
+  ...PAIN_ASSESSMENT_VOCABULARY,
 ];

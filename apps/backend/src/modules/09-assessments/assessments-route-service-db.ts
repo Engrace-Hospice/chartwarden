@@ -67,6 +67,7 @@ import {
   dpoaConsentActiveViaSeam,
   sudRedactionRequiredViaSeam,
 } from "./capture-siting";
+import { seriesItemScores } from "./routes/series-item-scores";
 import type {
   AssessmentAbacResolver,
   AssessmentRouteService,
@@ -755,6 +756,7 @@ export function createDbAssessmentRouteService(
               score: redacted ? null : toNum(r.score),
               scoreInterpretation: redacted ? null : r.scoreInterpretation,
               significantChange: false,
+              ...seriesItemScores(r.scaleType, r.data, redacted),
             };
           });
           return { scaleType, patientId, from: fromI, to: toI, points };

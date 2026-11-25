@@ -73,6 +73,119 @@ describe("AdlPanel", () => {
     expect(screen.getByRole("checkbox", { name: "Cane" })).not.toBeChecked();
   });
 
+  describe("the dependence score", () => {
+    const score = () => screen.getByRole("group", { name: "ADL dependence" });
+
+    it("shows how many of the assessed activities the patient needs hands-on help with, for the loaded record", async () => {
+      mount(server(STORED));
+      await screen.findByRole("combobox", { name: "Bathing" });
+
+      expect(score()).toHaveTextContent("Dependent in 1 of 2 assessed ADLs: bathing.");
+      expect(score()).toHaveTextContent(
+        "Fewer than the 2 to 3 dependent ADLs that clinical guidelines typically look for.",
+      );
+    });
+
+    it("stays visible text, not a live region that re-announces the sentence at every step of an arrow-key through the options", async () => {
+      mount(server(STORED));
+      await screen.findByRole("combobox", { name: "Bathing" });
+
+      expect(score()).toHaveTextContent("Dependent in 1 of 2 assessed ADLs: bathing.");
+      expect(
+        score().querySelector("output, [role='status'], [role='alert'], [aria-live]"),
+      ).toBeNull();
+    });
+
+    it("updates as the level of help is changed, through the three bands", async () => {
+      const user = userEvent.setup();
+      mount(server(STORED));
+      await screen.findByRole("combobox", { name: "Bathing" });
+
+      await user.selectOptions(levelOf("Dressing"), "Extensive assist");
+      expect(score()).toHaveTextContent("Dependent in 2 of 3 assessed ADLs: bathing and dressing.");
+      expect(score()).toHaveTextContent(
+        "Within the 2 to 3 dependent ADLs that clinical guidelines typically look for.",
+      );
+
+      await user.selectOptions(levelOf("Transferring"), "Total dependence");
+      expect(score()).toHaveTextContent(
+        "Dependent in 3 of 4 assessed ADLs: bathing, dressing and transferring.",
+      );
+      expect(score()).toHaveTextContent(
+        "At or above the 2 to 3 dependent ADLs that clinical guidelines typically look for.",
+      );
+
+      await user.selectOptions(levelOf("Bathing"), "Independent");
+      expect(score()).toHaveTextContent(
+        "Dependent in 2 of 4 assessed ADLs: dressing and transferring.",
+      );
+    });
+
+    it("counts supervision as assessed but not dependent, and leaves 'Did not occur' and 'Not assessed' out of both numbers", async () => {
+      const user = userEvent.setup();
+      mount(server(STORED));
+      await screen.findByRole("combobox", { name: "Bathing" });
+
+      await user.selectOptions(levelOf("Grooming"), "Supervision");
+      expect(score()).toHaveTextContent("Dependent in 1 of 3 assessed ADLs: bathing.");
+
+      await user.selectOptions(levelOf("Eating"), "Did not occur");
+      expect(score()).toHaveTextContent("Dependent in 1 of 2 assessed ADLs: bathing.");
+
+      await user.selectOptions(levelOf("Grooming"), "Not assessed");
+      expect(score()).toHaveTextContent("Dependent in 1 of 1 assessed ADL: bathing.");
+    });
+
+    it("says no activity is assessed yet, and states no band, when none is", async () => {
+      const user = userEvent.setup();
+      mount(server(null));
+      await screen.findByRole("combobox", { name: "Bathing" });
+
+      expect(score()).toHaveTextContent("No activity assessed yet.");
+      expect(score()).not.toHaveTextContent(/clinical guidelines/);
+
+      await user.selectOptions(levelOf("Bathing"), "Did not occur");
+      expect(score()).toHaveTextContent("No activity assessed yet.");
+    });
+
+    it("says nothing is dependent when every assessed activity is independent", async () => {
+      const user = userEvent.setup();
+      mount(server(null));
+      await screen.findByRole("combobox", { name: "Bathing" });
+
+      await user.selectOptions(levelOf("Bathing"), "Independent");
+      expect(score()).toHaveTextContent("Dependent in 0 of 1 assessed ADL.");
+    });
+
+    it("is an aid to the clinician: it never says the patient qualifies or is eligible, and says who decides", async () => {
+      const user = userEvent.setup();
+      mount(server(STORED));
+      await screen.findByRole("combobox", { name: "Bathing" });
+
+      for (const [item, level] of [
+        ["Dressing", "Extensive assist"],
+        ["Transferring", "Total dependence"],
+      ] as const) {
+        await user.selectOptions(levelOf(item), level);
+        expect(score().textContent).not.toMatch(/qualif|is eligible|are eligible|meets/i);
+      }
+      expect(score()).toHaveTextContent(
+        "A guide for your clinical judgement, not an eligibility decision: you and the IDG decide.",
+      );
+      expect(score()).toHaveTextContent(
+        "Limited assist, extensive assist and total dependence count as dependent; supervision does not.",
+      );
+    });
+
+    it("shows on a signed note too, and changes nothing that is saved", async () => {
+      const { writes } = mount(server(STORED), { disabled: true });
+      await screen.findByRole("combobox", { name: "Bathing" });
+
+      expect(score()).toHaveTextContent("Dependent in 1 of 2 assessed ADLs: bathing.");
+      expect(writes()).toEqual([]);
+    });
+  });
+
   it("offers every activity, level, continence level and device in plain words", async () => {
     mount(server(null));
 
@@ -306,6 +419,51 @@ describe("AdlPanel", () => {
       mount(server(STORED), { onStatusChange });
       await screen.findByRole("combobox", { name: "Bathing" });
 
+      await waitFor(() =>
+        expect(onStatusChange).toHaveBeenLastCalledWith({
+          dirty: false,
+          saving: false,
+          recorded: true,
+        }),
+      );
+    });
+
+    it("does not say the section is documented for a stored record with no ADL level (continence or devices only): the server's gate would not count it either", async () => {
+      const onStatusChange = vi.fn();
+      mount(server({ ...STORED, items: {}, bladder: "continent", devices: ["walker"] }), {
+        onStatusChange,
+      });
+      await screen.findByRole("combobox", { name: "Bathing" });
+
+      await waitFor(() =>
+        expect(onStatusChange).toHaveBeenLastCalledWith({
+          dirty: false,
+          saving: false,
+          recorded: false,
+        }),
+      );
+      expect(onStatusChange).not.toHaveBeenCalledWith(expect.objectContaining({ recorded: true }));
+    });
+
+    it("says documented only once a saved record carries an ADL level, not after saving devices alone", async () => {
+      const user = userEvent.setup();
+      const onStatusChange = vi.fn();
+      mount(server(null), { onStatusChange });
+      await screen.findByRole("combobox", { name: "Bathing" });
+
+      await user.click(screen.getByRole("checkbox", { name: "Walker" }));
+      await user.click(screen.getByRole("button", { name: "Save ADLs" }));
+      await screen.findByText("ADLs saved.");
+      await waitFor(() =>
+        expect(onStatusChange).toHaveBeenLastCalledWith({
+          dirty: false,
+          saving: false,
+          recorded: false,
+        }),
+      );
+
+      await user.selectOptions(levelOf("Bathing"), "Did not occur");
+      await user.click(screen.getByRole("button", { name: "Save ADLs" }));
       await waitFor(() =>
         expect(onStatusChange).toHaveBeenLastCalledWith({
           dirty: false,

@@ -12,22 +12,19 @@
 // `service_date end-of-day + Nh` falls on the end-of-day of `service_date + (N/24) days`, so documenting
 // any time on a given calendar day is measured by that day's delta. No IO, no `Date.now()` — `asOfDate`
 // (the org-local finalize day) is injected, so the tiers are deterministic and unit-testable (§7.5/§7.6).
-import type { LateEntryTier, LocalDate } from "@chartwarden/types";
+import {
+  LATE_ENTRY_TIER_DAY_CEILINGS,
+  type LateEntryTier,
+  type LocalDate,
+  lateEntryTierForDaysLate,
+} from "@chartwarden/types";
 import { daysBetween } from "../lifecycle/validation";
 
 /**
- * The §2.5 tier day-ceilings (inclusive upper bound, in whole calendar days late). A tier applies when
- * `daysLate` is ≤ its ceiling and > the previous tier's; `administrative_override` is everything beyond
- * the `significant_late_entry` ceiling (no upper bound).
+ * The §2.5 tier day-ceilings, shared with the visit-note composer through `@chartwarden/types` (one definition of the ladder; the
+ * composer only uses it to ask for the reason before a round trip, the service below still decides).
  */
-export const LATE_ENTRY_TIER_DAY_CEILINGS = {
-  /** ≤ 24h since service_date end-of-day. */
-  normal: 1,
-  /** 24h–72h. */
-  late_entry: 3,
-  /** 72h–14 days. */
-  significant_late_entry: 14,
-} as const;
+export { LATE_ENTRY_TIER_DAY_CEILINGS };
 
 /**
  * Whole calendar days the documentation is late: from `serviceDate` (the day the visit actually occurred)
@@ -48,11 +45,7 @@ export function computeLateEntryTier(input: {
   readonly serviceDate: LocalDate;
   readonly asOfDate: LocalDate;
 }): LateEntryTier {
-  const late = daysLate(input.serviceDate, input.asOfDate);
-  if (late <= LATE_ENTRY_TIER_DAY_CEILINGS.normal) return "normal";
-  if (late <= LATE_ENTRY_TIER_DAY_CEILINGS.late_entry) return "late_entry";
-  if (late <= LATE_ENTRY_TIER_DAY_CEILINGS.significant_late_entry) return "significant_late_entry";
-  return "administrative_override";
+  return lateEntryTierForDaysLate(daysLate(input.serviceDate, input.asOfDate));
 }
 
 /**

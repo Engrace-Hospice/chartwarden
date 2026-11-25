@@ -17,11 +17,12 @@ import {
   requiredVitalsFor,
   resolveTemplate,
 } from "@chartwarden/hearthnote";
-import type {
-  CarePlanOverdueStatus,
-  EncounterDiscipline,
-  EncounterType,
-  ScaleType,
+import {
+  type CarePlanOverdueStatus,
+  type EncounterDiscipline,
+  type EncounterType,
+  type ScaleType,
+  statesAdlItemLevel,
 } from "@chartwarden/types";
 import { ACTION_CODE, type SectionAction } from "../drafting/section-state";
 import { EncounterStateError } from "../lifecycle/errors";
@@ -97,9 +98,11 @@ export interface EncounterGateFacts {
   readonly draftConfirmedSectionIds?: ReadonlySet<string>;
 }
 
-/** An ADL record populates a section only through an ADL ITEM level (a devices- or continence-only record states no assistance level). */
-const statesAdlLevel = (adl: RecordedAdl | undefined): boolean =>
-  Object.keys(adl?.items ?? {}).length > 0;
+/**
+ * An ADL record populates a section only through an ADL ITEM level (a devices- or continence-only record states no assistance level).
+ * The rule lives in @chartwarden/types so the web composer's "documented" mark applies the same one.
+ */
+const statesAdlLevel = (adl: RecordedAdl | undefined): boolean => statesAdlItemLevel(adl?.items);
 
 /** A nutrition record populates a section once at least one of its fields is recorded (a recorded 0 percent counts). */
 const statesNutritionField = (nutrition: RecordedNutrition | undefined): boolean =>
@@ -111,6 +114,11 @@ const statesNutritionField = (nutrition: RecordedNutrition | undefined): boolean
  * documented it in the panel, not in the selections. A record that states nothing (devices only, an empty nutrition record) does
  * not populate a required section, because the signed note would carry no sentence for it. This is the one definition of "a
  * required finding section is populated"; the template flags only say WHICH sections state which record.
+ *
+ * There is no wound term: a wound is M9's record, read through a seam outside any transaction, and no template requires its wound
+ * section (`woundSummary`), so check 1 never asks whether a wound populates it. The composer rail still shows that section as
+ * documented once a wound is assessed at the visit (`sectionsFilledByRecords` in the web). `encounter-gate-wound-section.test.ts`
+ * fails the day a wound section becomes required; the visit's wounds must then be counted here in the same change.
  */
 export function sectionsPopulatedByFindings(
   encounterType: EncounterType,

@@ -350,7 +350,8 @@ describe("Workflow 04 — patient context and recoverable navigation", () => {
     mountCompose();
 
     expect(await screen.findByText("Ada Lovelace")).toBeTruthy();
-    expect(screen.getByText("MRN-9")).toBeTruthy();
+    // The banner's own "MRN" label, then the identifier once: the stored "MRN-9" does not repeat the label.
+    expect(screen.getByText("9").parentElement?.textContent).toBe("MRN9");
 
     fireEvent.click(screen.getByRole("button", { name: "Back to encounter" }));
     expect(await screen.findByRole("heading", { name: "Encounter destination" })).toBeTruthy();

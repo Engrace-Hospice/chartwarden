@@ -6,6 +6,18 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-24 — Pain assessment statements for the visit-note composer (M8): corpus release `narrative-vocab@2026.12.6`
+
+**No new route and no changed field; one existing response gains an additive optional field (`itemScores`, below), and the assembled note's "Functional status" sentence changes for every note with an ADL record (below). The corpus release moves: a selection saved under `narrative-vocab@2026.12.5` and not yet finalized answers `409 VOCAB_VERSION_MISMATCH` until the clinician saves it again.**
+
+- **`itemScores` on a scale series point** (`GET /patients/{patientId}/scales/{scaleType}/series`, and the system-principal `GET /internal/assessments/series-batch`, which returns the same points): an optional object of the nine numeric ESAS-r item scores (`pain`, `tiredness`, `drowsiness`, `nausea`, `lackOfAppetite`, `shortnessOfBreath`, `depression`, `anxiety`, `wellbeing`, each 0 to 10). Present only for an `esas_r` capture that holds all nine items; absent for every other scale and for a redacted point (it is withheld with the score). Numbers only: never the "other" symptom or any free text. The composer's advisory symptom prompt reads it. Additive: a client that ignores the field is unaffected.
+- **Changed: the assembled note's "Functional status" sentence.** For every note whose ADL record has at least one assessed level (an item left as "did not occur" is not assessed), it now also states the dependence count, for example `dependent in 2 of 3 assessed ADLs (bathing and dressing)`. When the patient's previous signed visit also assessed any ADL, it adds the movement since then, `up from`, `down from` or `unchanged from` that visit's count (`1 of 3 assessed at the visit on 2026-11-10`); the movement compares the share of assessed ADLs the patient was dependent in, not the count. A note with no assessed ADL level has neither. A count and its names only: the sentence never states a determination of eligibility. The same count shows live in the Functional Status panel.
+
+- **Sixteen new statements** (`nv.sym.pain_location`, `_character`, `_duration`, `_frequency`, `_worsened_by`, `_relieved_by`, `_prn_relief`, `_side_effects`, `_bowel_regimen`, `_oral_barrier`, `_nonverbal`, `_observation_scale`, `_goal`, `_last_score`, `_change`, `_plan_decision`) in the `symptom_impact` category, scoped like `nv.sym.pain_uncontrolled`, so they appear in the `symptom_management` and `baseline_symptoms` menus of the same visit types and disciplines. Each has its own slots, so the note states only what the clinician recorded. No earlier phrase changed. The composer lists them in its pain assessment helper, not in the flat menu; an integrator that renders the menu itself sees them as ordinary statements. The wording is unreviewed (`CORPUS_CLINICAL_REVIEW` stays pending).
+- Sources, thresholds and the rules behind the helper's advisory plan-of-care prompt: [`docs/research/PAIN_ASSESSMENT_AND_PLAN_OF_CARE_TRIGGERS_RESEARCH.md`](../research/PAIN_ASSESSMENT_AND_PLAN_OF_CARE_TRIGGERS_RESEARCH.md).
+
+---
+
 ## 2026-11-22 — Visit-note drafting slice 5b (M8, ADR-0114): the IDG follow-up visit's own section, from one linked IDG action item, corpus release `narrative-vocab@2026.12.5`
 
 **Two new routes, one new origin kind and one new error code, for a tenant with the draft switched on; nothing changes for a tenant with it off. Migration 1545 (an `expand`) adds a table. The corpus release moves: a selection saved under `narrative-vocab@2026.12.4` and not yet finalized answers `409 VOCAB_VERSION_MISMATCH` until the clinician saves it again.**

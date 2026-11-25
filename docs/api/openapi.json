@@ -191510,6 +191510,49 @@
                           },
                           "significantChange": {
                             "type": "boolean"
+                          },
+                          "itemScores": {
+                            "type": "object",
+                            "required": [
+                              "pain",
+                              "tiredness",
+                              "drowsiness",
+                              "nausea",
+                              "lackOfAppetite",
+                              "shortnessOfBreath",
+                              "depression",
+                              "anxiety",
+                              "wellbeing"
+                            ],
+                            "properties": {
+                              "pain": {
+                                "type": "number"
+                              },
+                              "tiredness": {
+                                "type": "number"
+                              },
+                              "drowsiness": {
+                                "type": "number"
+                              },
+                              "nausea": {
+                                "type": "number"
+                              },
+                              "lackOfAppetite": {
+                                "type": "number"
+                              },
+                              "shortnessOfBreath": {
+                                "type": "number"
+                              },
+                              "depression": {
+                                "type": "number"
+                              },
+                              "anxiety": {
+                                "type": "number"
+                              },
+                              "wellbeing": {
+                                "type": "number"
+                              }
+                            }
                           }
                         }
                       }
@@ -285725,6 +285768,49 @@
                           },
                           "significantChange": {
                             "type": "boolean"
+                          },
+                          "itemScores": {
+                            "type": "object",
+                            "required": [
+                              "pain",
+                              "tiredness",
+                              "drowsiness",
+                              "nausea",
+                              "lackOfAppetite",
+                              "shortnessOfBreath",
+                              "depression",
+                              "anxiety",
+                              "wellbeing"
+                            ],
+                            "properties": {
+                              "pain": {
+                                "type": "number"
+                              },
+                              "tiredness": {
+                                "type": "number"
+                              },
+                              "drowsiness": {
+                                "type": "number"
+                              },
+                              "nausea": {
+                                "type": "number"
+                              },
+                              "lackOfAppetite": {
+                                "type": "number"
+                              },
+                              "shortnessOfBreath": {
+                                "type": "number"
+                              },
+                              "depression": {
+                                "type": "number"
+                              },
+                              "anxiety": {
+                                "type": "number"
+                              },
+                              "wellbeing": {
+                                "type": "number"
+                              }
+                            }
                           }
                         }
                       }

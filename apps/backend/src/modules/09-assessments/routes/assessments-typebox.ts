@@ -270,13 +270,30 @@ export const RequestSummaryDocumentResponseSchema = Type.Object({
   requested: Type.Literal(true),
 });
 
-/** One scored point in a series (§4.3 `SeriesPointDto`). */
+/** The nine numeric ESAS-r item scores of one capture (0 best, 10 worst). Numbers only: never the "other" symptom or any free text. */
+export const EsasrItemScoresResponseSchema = Type.Object({
+  pain: Type.Number(),
+  tiredness: Type.Number(),
+  drowsiness: Type.Number(),
+  nausea: Type.Number(),
+  lackOfAppetite: Type.Number(),
+  shortnessOfBreath: Type.Number(),
+  depression: Type.Number(),
+  anxiety: Type.Number(),
+  wellbeing: Type.Number(),
+});
+
+/**
+ * One scored point in a series (§4.3 `SeriesPointDto`). `itemScores` is present only for an `esas_r` capture that holds all nine items
+ * (the composer's advisory symptom prompt reads it); a redacted point withholds it with the score.
+ */
 export const ScaleSeriesPointResponseSchema = Type.Object({
   assessmentId: Type.String(),
   capturedAt: Type.String(),
   score: nullable(Type.Number()),
   scoreInterpretation: nullable(Type.String()),
   significantChange: Type.Boolean(),
+  itemScores: Type.Optional(EsasrItemScoresResponseSchema),
 });
 
 /** Routes 6 & 12 — a windowed series of one scale (§4.3 `SeriesResponseDto`). */

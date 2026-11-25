@@ -541,24 +541,26 @@ export function sectionHasEmptySlots(
   );
 }
 
-const NO_SECTIONS: ReadonlySet<string> = new Set();
+/** The empty set of section ids: the default for "no section is filled by a record / confirmed draft". */
+export const NO_SECTIONS: ReadonlySet<string> = new Set();
 
 /**
- * The sections a SAVED findings record documents. The server counts a stored ADL or nutrition record as populating the section that
- * states it (`recordedPanel`), so the composer does too: the author documented it in the panel, not in the selections. Wounds are not
- * counted: a wound observation does not populate a section by itself.
+ * The sections a SAVED findings record documents: the section that states the record (`recordedPanel`) is documented by it, because
+ * the author documented it in the panel, not in the selections. A panel counts once it holds what the note states: a saved ADL record
+ * with at least one ADL LEVEL (a devices- or continence-only record states nothing, and the ADL panel reports it as not recorded, by
+ * the same `statesAdlItemLevel` rule the gate uses), a saved nutrition record, or a wound observation recorded AT THIS VISIT (a wound
+ * last observed at an earlier visit is not stated, so it does not count). The server's gate counts the ADL and nutrition records as
+ * populating a REQUIRED section (`sectionsPopulatedByFindings`);
+ * it has no wound term because no template requires its wound section (pinned by `encounter-gate-wound-section.test.ts`), so a wound
+ * here only moves the rail and the progress count. Keyed by panel kind, so a new kind must say here whether it counts.
  */
 export function sectionsFilledByRecords(
   template: TemplateView,
-  recorded: { readonly adl: boolean; readonly nutrition: boolean },
+  recorded: Readonly<Record<NonNullable<TemplateSection["recordedPanel"]>, boolean>>,
 ): ReadonlySet<string> {
   return new Set(
     template.sections
-      .filter(
-        (s) =>
-          (s.recordedPanel === "adl" && recorded.adl) ||
-          (s.recordedPanel === "nutrition" && recorded.nutrition),
-      )
+      .filter((s) => s.recordedPanel !== null && recorded[s.recordedPanel])
       .map((s) => s.sectionId),
   );
 }

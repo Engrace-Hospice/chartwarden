@@ -77561,6 +77561,17 @@ export interface operations {
                             score: number | null;
                             scoreInterpretation: string | null;
                             significantChange: boolean;
+                            itemScores?: {
+                                pain: number;
+                                tiredness: number;
+                                drowsiness: number;
+                                nausea: number;
+                                lackOfAppetite: number;
+                                shortnessOfBreath: number;
+                                depression: number;
+                                anxiety: number;
+                                wellbeing: number;
+                            };
                         }[];
                     };
                 };
@@ -100713,6 +100724,17 @@ export interface operations {
                             score: number | null;
                             scoreInterpretation: string | null;
                             significantChange: boolean;
+                            itemScores?: {
+                                pain: number;
+                                tiredness: number;
+                                drowsiness: number;
+                                nausea: number;
+                                lackOfAppetite: number;
+                                shortnessOfBreath: number;
+                                depression: number;
+                                anxiety: number;
+                                wellbeing: number;
+                            };
                         }[];
                     };
                 };

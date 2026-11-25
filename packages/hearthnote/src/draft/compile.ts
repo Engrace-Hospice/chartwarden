@@ -120,10 +120,12 @@ export function compileDraft(inputs: DraftInputs, deps: DraftDeps): Draft {
         : "";
     // Likewise the recorded ADLs of a section that states them (the aide's `adl`): the confirmed text replaces the section, so a recorded
     // ADL the draft left out would vanish from the note. It LEADS the section, as it does in the assembled note. A recorded finding stated
-    // here is a source of the draft: add its panel to `DRAFT_SOURCE_PANELS` in apps/web `encounter-compose.tsx`, or the composer will not re-read
+    // here is a source of the draft: add its panel to `DRAFT_SOURCE_PANELS` in apps/web `compose/compose-model.ts`, or the composer will not re-read
     // the draft when the author saves it.
     const recordedAdl =
-      section.adlSummary === true ? describeRecordedAdl(inputs.context.recordedAdl) : "";
+      section.adlSummary === true
+        ? describeRecordedAdl(inputs.context.recordedAdl, inputs.context.priorAdl)
+        : "";
     const ownText = [measures, own === undefined ? "" : renderSection(own, inputs.context)]
       .filter((part) => part.length > 0)
       .join(" ");

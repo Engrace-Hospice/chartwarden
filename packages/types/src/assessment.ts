@@ -18,6 +18,7 @@
 import type { AdmissionId, DateRange, OrgId, PatientId, ProviderEntityId } from "./admission";
 import type { IsoInstant, LocationId, MembershipId } from "./care-plan";
 import type { ClinicalLinkSource, ClinicalLinkSummary } from "./clinical-link";
+import type { EsasrItemScores } from "./esas-symptom-prompt";
 
 // ── Assessment-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @chartwarden/db) ──
 export type ClinicalAssessmentId = string;
@@ -250,6 +251,12 @@ export interface ScaleSeriesPoint {
   readonly score: number | null;
   readonly scoreInterpretation: string | null;
   readonly significantChange: boolean;
+  /**
+   * The nine numeric item scores of an `esas_r` capture, for the composer's advisory symptom prompt (`esas-symptom-prompt.ts`).
+   * Only the nine numbers: never `otherSymptom` or any free text. Present only for `esas_r` and only when the record holds all nine;
+   * a redacted point withholds it with the score. Older consumers ignore it.
+   */
+  readonly itemScores?: EsasrItemScores;
 }
 
 /** A windowed series of one scale for a patient (§4.3 `SeriesResponseDto`); read-time computed (D4). */
