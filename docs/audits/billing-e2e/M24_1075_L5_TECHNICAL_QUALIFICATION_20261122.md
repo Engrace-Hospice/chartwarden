@@ -51,6 +51,8 @@ Judgment calls recorded in code: attribution is point-in-time (dates and freshne
 
 Still true: the evaluator has no production caller or concrete reader, and `medicaidSubmissionEvidence` has no caller either. This addendum changes no F09 status.
 
+Superseded for that sentence by L6B (same branch): `ingest/medicaid-era-review-readers.ts` is the concrete reader set (it calls `medicaidSubmissionEvidence`) and the evaluate route is the caller. The writer remains unavailable (L6C, `M24_1075_L6C_BLOCKED`), so nothing is stored.
+
 ## Limitations and operator review
 
 No M24 source-account reader, Medicaid staged artifact resolver, safe durable assessment store, or review route was added. As a result, this lot does not expose a Medicaid ERA worklist or action UI. Existing M25 investigation and Claim.MD review endpoints are tenant-scoped, but their current source ownership contracts do not safely represent Medicaid ERA stages. Reusing those paths without extending their source contract would falsely attribute records or allow unsupported posting workflows.

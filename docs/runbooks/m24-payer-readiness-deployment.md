@@ -14,7 +14,7 @@ No deployment is authorized by this document.
 | `1538_m24_payer_authorization_evidence` | expand | New append-only table `medicaid_payer_authorization_event` (RLS FORCEd, INSERT-only grant, provider-entity guard, append-only trigger, audit trigger). | A new table. |
 | `1539_m24_payer_rate_policy_evidence` | expand | New append-only table `medicaid_payer_rate_policy`, same shape as 1538. | A new table. |
 | `1541_m40_medicaid_payer_classification_and_m24_submission_provenance` | contract | New global table `mdm_medicaid_payer_program_classification`; nine new columns on `medicaid_submission` (`source_provenance_status` NOT NULL DEFAULT `unverified`), four CHECKs, two partial indexes (one UNIQUE), and a BEFORE INSERT OR UPDATE guard trigger on `medicaid_submission`. | `ADD CONSTRAINT` on an existing table, `CREATE UNIQUE INDEX`, a new trigger on a table the previous release writes. |
-| `1542_m24_era_source_account_evidence` | contract | Three nullable columns on `medicaid_enrollment_evidence` (`vendor_account_ref`, `source_environment`, `evidence_fresh_until`), four CHECKs added `NOT VALID` (so no table scan; existing rows are not checked), one partial index. | `ADD CONSTRAINT` on an existing table. Historical rows stay NULL and unqualified; no account or environment is inferred. |
+| `1542_m24_era_source_account_evidence` | contract | Three nullable columns on `medicaid_enrollment_evidence` (`vendor_account_ref`, `source_environment`, `evidence_fresh_until`), four CHECKs validated immediately (the table is created by 1535 in the same batch, so it is empty and the scan costs nothing; applied alone after an earlier 1535 it would scan the table under an ACCESS EXCLUSIVE lock), the redefined identity guard that now also freezes those three columns, one partial index. | `ADD CONSTRAINT` on an existing table. Historical rows stay NULL and unqualified; no account or environment is inferred. |
 | `1543_m25_medicaid_era_nonposting_reviews` | contract | New tables `medicaid_era_review` and `medicaid_era_review_history` (RLS enabled and FORCEd, SELECT grant for `chartwarden_app`, append-only history, identity guard trigger, audit triggers); a conditional `chartwarden_platform` grant when that role exists. Never a ledger or posting record. | New tables with their guards and grants. |
 | `1544_m25_medicaid_era_assessment_writer_lockdown` | contract | `medicaid_era_review.assessment_trust_status` (default `legacy_unverified`) and a non-posting CHECK; every privilege on both review tables is revoked from `PUBLIC`, `chartwarden_app` and the platform roles (`chartwarden_platform`, `chartwarden_platform_login`); SELECT is re-granted to `chartwarden_app` only, so a platform role that exists when 1544 runs ends with no access. | `REVOKE` and `ADD CONSTRAINT`. After it no application or platform role can write a review row until a separately isolated evaluator writer exists. |
 | `1546_m25_isolated_medicaid_era_evaluator` | contract | Creates the NOLOGIN, NOBYPASSRLS evaluator carrier; allows `isolated_evaluator` assessment provenance and grants review/history writes only to that carrier under tenant RLS. | Changes trust checks and restores writes only to an isolated evaluator identity. |
@@ -89,15 +89,16 @@ Do not restart an old application image against the migrated schema.
    ```
 
    `--hold-contract` is left off on purpose. Each file is applied in ordinal order in its own transaction together with its ledger row. If a file fails, that file rolls back and the run stops: files before it stay committed, files after it are not applied. A 1537 refusal (`1537 found duplicate nullable medicaid_state_rate_schedule identities`) therefore leaves 1535 and 1536 committed and 1537, 1538, 1539 and 1541 to 1544 pending; fix the rows, then run the same command again. Do not restart the previous image meanwhile.
-2. Re-run the held deploy: its migrate step has nothing left to apply and its `up -d --force-recreate api worker web docling-worker` starts the new release. **A failed re-run can restart the OLD writers on the migrated schema** (it believes the schema is unchanged, so `restore_previous_release` recreates the previous image). If the re-run fails after its migrate step, stop them at once with `docker compose --env-file .env.production -f compose.yml stop api worker`, fix the cause and re-run; do not recreate from `.env.production` as it stands.
-3. Confirm the ledger holds all nine rows with checksums, and that every replica runs the release digest:
+2. Turn the maintenance page OFF and confirm it (`sh /opt/chartwarden/maintenance.sh off`, then `sh /opt/chartwarden/maintenance.sh status` must report it off). The deploy's smoke tier 3 fetches the public SPA; with maintenance still on it sees the 503 page and fails `tier3/web`, and the failed smoke makes `restore_previous_release` recreate the OLD `api` and `worker` on the migrated schema, which is the state this runbook exists to avoid (`deploy/production/README.md`: "Turn maintenance off before re-running `deploy.sh`"). The previous writers are still stopped, so nothing writes while the page is off.
+3. Re-run the held deploy: its migrate step has nothing left to apply and its `up -d --force-recreate api worker web docling-worker` starts the new release. **A failed re-run can restart the OLD writers on the migrated schema** (it believes the schema is unchanged, so `restore_previous_release` recreates the previous image). If the re-run fails after its migrate step, stop them at once with `docker compose --env-file .env.production -f compose.yml stop api worker`, turn maintenance back on (`sh /opt/chartwarden/maintenance.sh on`), fix the cause, turn it off and re-run; do not recreate from `.env.production` as it stands.
+4. Confirm the ledger holds all nine rows with checksums, and that every replica runs the release digest:
 
    ```sql
    SELECT filename, checksum FROM _chartwarden_migration
     WHERE filename ~ '^(1535|1536|1537|1538|1539|1541|1542|1543|1544)_' ORDER BY filename;  -- 9 rows
    ```
 
-4. Read-only structure checks (run as the owner or a `BYPASSRLS` role; under any other role FORCEd RLS hides every row and a count prints a false zero):
+5. Read-only structure checks (run as the owner or a `BYPASSRLS` role; under any other role FORCEd RLS hides every row and a count prints a false zero):
 
    ```sql
    -- RLS enabled and FORCEd on all seven new tables: 7 rows, both flags true.
@@ -112,16 +113,33 @@ Do not restart an old application image against the migrated schema.
           has_table_privilege('chartwarden_app', 'medicaid_era_review', 'UPDATE') AS review_update,
           has_table_privilege('chartwarden_app', 'medicaid_era_review_history', 'INSERT') AS history_insert;
 
-   -- Guards installed and enabled (tgenabled = 'O'): 13 rows.
+   -- Guards installed and enabled (tgenabled = 'O'): 16 rows.
    SELECT tgrelid::regclass AS tbl, tgname, tgenabled FROM pg_trigger
     WHERE tgname IN ('trg_medicaid_program_assignment_provider_entity', 'trg_medicaid_program_assignment_insert_status',
-                     'trg_medicaid_program_assignment_update_guard',
+                     'trg_medicaid_program_assignment_location', 'trg_medicaid_program_assignment_update_guard',
                      'trg_medicaid_enrollment_evidence_provider_entity', 'trg_medicaid_enrollment_evidence_insert_status',
                      'trg_medicaid_enrollment_evidence_update_guard',
-                     'trg_medicaid_payer_authorization_evidence_status', 'trg_medicaid_payer_authorization_event_append_only',
-                     'trg_medicaid_payer_rate_policy_status', 'trg_medicaid_payer_rate_policy_append_only',
+                     'trg_medicaid_payer_authorization_evidence_status', 'trg_medicaid_payer_authorization_event_location',
+                     'trg_medicaid_payer_authorization_event_append_only',
+                     'trg_medicaid_payer_rate_policy_status', 'trg_medicaid_payer_rate_policy_supersession',
+                     'trg_medicaid_payer_rate_policy_append_only',
                      'trg_medicaid_submission_provenance',
                      'medicaid_era_review_identity_immutable', 'medicaid_era_review_history_immutable') ORDER BY tgname;
+
+   -- Audit triggers installed and enabled (tgenabled = 'O'): 7 rows. Without them the new tables change unrecorded.
+   SELECT tgrelid::regclass AS tbl, tgname, tgenabled FROM pg_trigger
+    WHERE tgname IN ('trg_audit_medicaid_program_assignment', 'trg_audit_medicaid_enrollment_evidence',
+                     'trg_audit_medicaid_payer_authorization_event', 'trg_audit_medicaid_payer_rate_policy',
+                     'trg_audit_mdm_medicaid_payer_program_classification',
+                     'trg_audit_medicaid_era_review', 'trg_audit_medicaid_era_review_history') ORDER BY tgname;
+
+   -- 1544: the platform roles hold nothing on the two ERA review tables. 0 rows (a host without provisioned platform
+   -- roles prints none either).
+   SELECT r.rolname, t.relname, p.priv FROM pg_roles r
+     CROSS JOIN (VALUES ('medicaid_era_review'), ('medicaid_era_review_history')) AS t(relname)
+     CROSS JOIN (VALUES ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE')) AS p(priv)
+    WHERE r.rolname IN ('chartwarden_platform', 'chartwarden_platform_login')
+      AND has_table_privilege(r.rolname, t.relname, p.priv);
 
    -- Unique keys: both NULLS NOT DISTINCT; the rate-policy key ends with supersedes_id.
    SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
@@ -132,7 +150,7 @@ Do not restart an old application image against the migrated schema.
           has_column_privilege('chartwarden_app', 'medicaid_program_assignment', 'patient_id', 'UPDATE') AS patient_id_updatable;
    ```
 
-5. Read-only data checks; every result below is what the SQL leaves behind, and any other result needs an explanation before the release is opened to users:
+6. Read-only data checks; every result below is what the SQL leaves behind, and any other result needs an explanation before the release is opened to users:
 
    ```sql
    SELECT rate_source_kind, verification_status, count(*) FROM medicaid_state_rate_schedule GROUP BY 1, 2;
@@ -149,7 +167,7 @@ Do not restart an old application image against the migrated schema.
    ```
 
    Do NOT test a guard by inserting into a real tenant's table: the 1538 and 1539 tables are append-only for every role (UPDATE and DELETE are refused by trigger), so a test row would be permanent. The guards are proven by the live suites (`test:rls:live:m24`, `test:rls:live:m40`, `test:m24:remittance-feedback:live`), not on production.
-6. Verify service health and the M24 routes on the new release. A migration succeeding does not prove the application works against it.
+7. Verify service health and the M24 routes on the new release. A migration succeeding does not prove the application works against it.
 
 ## Recording program assignments (operators)
 
@@ -177,7 +195,7 @@ Activation is a separate reviewed operation after migration:
 
 1. Generate an Ed25519 command key pair. Custody the private PKCS#8 DER base64url file for API only and the public SPKI DER base64url file for the evaluator only.
 2. Generate distinct evaluator and source-reader database passwords. Place them in root-controlled files and pass them only through `M25_EVALUATOR_LOGIN_PASSWORD_FILE` and `M25_ERA_SOURCE_LOGIN_PASSWORD_FILE`; the provision service reads these as `_FILE` secrets. Rotation uses new secret files, and the corresponding `CHARTWARDEN_M25_EVALUATOR_REVOKE=true` or `CHARTWARDEN_M25_ERA_SOURCE_REVOKE=true` operation clears memberships, disables login and removes the password.
-3. Write separate evaluator-writer, application-reader and ERA-source-reader database URLs to root-controlled secret files. The evaluator also needs its Claim.MD artifact keyring file. Never add these values or key material to `.env.production`.
+3. Write separate evaluator-writer, application-reader and ERA-source-reader database URLs to root-controlled secret files. The evaluator also needs its Claim.MD artifact keyring file. Never add these values or key material to `.env.production`. The writer URL must connect as `chartwarden_m25_evaluator_login` and the source URL as `chartwarden_m25_era_source_login`; the application-reader URL is the API's `chartwarden_app` login (no reader-only role exists). At boot the evaluator asserts that the writer and source pools use exactly those logins and that no pool is a superuser or BYPASSRLS login, and it refuses to start otherwise. Provisioning a login with a new password also terminates that login's open sessions, so a leaked credential does not outlive its rotation.
 4. Validate the effective Compose configuration with `compose.yml` plus `compose.m25-evaluator.yml`. Confirm API alone mounts the private command key; evaluator alone mounts the public key, three narrowly scoped database URLs and Claim.MD keyring; the one-shot provisioner alone mounts the login passwords; generic workers/listeners mount none of these; and evaluator publishes no host port.
 5. Start the `m25-evaluator` profile, wait for `/ready` from inside its container, then recreate API with the overlay. A missing evaluator or invalid command returns a degraded error; there is no platform-database fallback.
 
