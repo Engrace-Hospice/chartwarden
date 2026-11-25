@@ -35,6 +35,7 @@ import {
   VITALS_SECTION_ID,
   documentationCompletion,
   isShellExit,
+  panelTitle,
   removedFromDraftFeedback,
   serializedDraft,
 } from "./compose/compose-model";
@@ -158,12 +159,13 @@ export function EncounterCompose(): JSX.Element {
   const planRegion = useRef<HTMLDivElement>(null);
   // The newest re-read of the note's text: an older one answering late must not overwrite what a newer read or a save put on screen.
   const previewRead = useRef(0);
-  const reportVitals = useCallback(
-    (status: PanelStatus) => reportPanel("vitals", status),
-    [reportPanel],
-  );
-  const reportPlan = useCallback(
-    (status: PanelStatus) => reportPanel("plan", status),
+  // One stable listener per panel that reports through `useReportPanelStatus` without naming itself.
+  const report = useMemo(
+    () => ({
+      vitals: (status: PanelStatus) => reportPanel("vitals", status),
+      planEntry: (status: PanelStatus) => reportPanel("planEntry", status),
+      plan: (status: PanelStatus) => reportPanel("plan", status),
+    }),
     [reportPanel],
   );
   const loadSequence = useRef(0);
@@ -317,7 +319,7 @@ export function EncounterCompose(): JSX.Element {
           ? held.message.includes(message)
             ? held
             : { ...held, message: `${held.message} ${message}` }
-          : { tone: "warning", title: "", message },
+          : { tone: "warning", title: "Sentence removed", message },
       ),
     [],
   );
@@ -358,12 +360,7 @@ export function EncounterCompose(): JSX.Element {
   const panels = Object.values(panelStatus);
   const panelsDirty = panels.some((panel) => panel.dirty);
   const dirtyPanels = PANEL_ORDER.filter((key) => panelStatus[key]?.dirty === true);
-  /** What the author calls a part of the note: the heading of its section, or the panel's own title. */
-  function panelTitle(key: PanelKey): string {
-    if (key === "vitals") return "Visit vitals";
-    if (key === "plan") return "Plan of care";
-    return template?.sections.find((s) => s.recordedPanel === key)?.heading ?? key;
-  }
+  const titleOfPanel = (key: PanelKey): string => panelTitle(template, key);
   // A template with a vitals section (every non-telephonic RN/LPN/MD/NP visit) takes the vitals form inside it; any other keeps the form behind the header's "Vitals" button.
   const vitalsInSection =
     template?.sections.some((s) => s.sectionId === VITALS_SECTION_ID) === true;
@@ -375,6 +372,8 @@ export function EncounterCompose(): JSX.Element {
       else setVitalsOpen(true);
     } else if (key === "plan") {
       planRegion.current?.scrollIntoView?.({ block: "start" });
+    } else if (key === "planEntry") {
+      setOpenSection(PLAN_SECTION_ID);
     } else {
       const sectionId = template?.sections.find((s) => s.recordedPanel === key)?.sectionId;
       if (sectionId !== undefined) setOpenSection(sectionId);
@@ -412,7 +411,7 @@ export function EncounterCompose(): JSX.Element {
     activeSectionId: active?.sectionId,
     saving: busy,
     selectionsDirty: editable && selectionsDirty,
-    unsavedPanels: editable ? dirtyPanels.map(panelTitle) : [],
+    unsavedPanels: editable ? dirtyPanels.map(titleOfPanel) : [],
   });
   // The server's check 1 counts drafted text the clinician confirmed as populating a required section; so does every count here.
   const confirmedIds = useMemo(() => confirmedSectionIds(drafted), [drafted]);
@@ -481,7 +480,7 @@ export function EncounterCompose(): JSX.Element {
     editedNarrative,
     selectionsDirty,
     dirtyPanels,
-    panelTitle,
+    panelTitle: titleOfPanel,
     showPanel,
     headingOfSection,
     lateEntry,
@@ -543,7 +542,7 @@ export function EncounterCompose(): JSX.Element {
       encounterId={encounter.id}
       disabled={frozen || busy}
       headingLevel={vitalsInSection ? 3 : 2}
-      onStatusChange={reportVitals}
+      onStatusChange={report.vitals}
       onSaved={() => {
         setVitalsOpen(false);
         // Vitals are a source of the draft: the text, its hash and its state are re-read.
@@ -600,6 +599,7 @@ export function EncounterCompose(): JSX.Element {
               savingPanelCount={savingPanels.length}
               selectionsDirty={selectionsDirty}
               panelsDirty={panelsDirty}
+              lateReasonUnsent={lateEntry.unsent}
             />
 
             <FeedbackNotice
@@ -695,6 +695,7 @@ export function EncounterCompose(): JSX.Element {
                         currentVisitId={encounter.visitId}
                         disabled={frozen || busy}
                         planStepBusy={panelStatus.plan?.saving === true}
+                        onStatusChange={report.planEntry}
                         onAddToNote={(text) => addToFreeText(PLAN_SECTION_ID, text)}
                         onShowPlanOfCare={() => showPanel("plan")}
                         followUpSlot={
@@ -781,7 +782,7 @@ export function EncounterCompose(): JSX.Element {
                 encounterId={encounter.id}
                 patientId={encounter.patientId}
                 disabled={planDisabled}
-                onStatusChange={reportPlan}
+                onStatusChange={report.plan}
               />
             </div>
           </main>
@@ -790,6 +791,7 @@ export function EncounterCompose(): JSX.Element {
       <DiscardChangesModal
         open={blocker.state === "blocked"}
         busy={busy}
+        lateReasonOnly={lateEntry.unsent && !dirty}
         onKeepEditing={() => blocker.reset?.()}
         onDiscard={() => blocker.proceed?.()}
       />

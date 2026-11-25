@@ -52,18 +52,20 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   const path = new URL(request.url).pathname;
   calls.push(path);
   const scale = path.match(/\/scales\/([^/]+)\/series$/)?.[1];
-  const points = scale === "esas_r" ? esasPoints : scale === "pps" ? ppsPoints : null;
-  if (points === null) return new Response("{}", { status: 404 });
-  return new Response(
-    JSON.stringify({
-      scaleType: scale,
-      patientId: PATIENT,
-      from: "2026-05-29T00:00:00.000Z",
-      to: "2026-08-27T23:59:59.999Z",
-      points,
-    }),
-    { status: 200, headers: { "content-type": "application/json" } },
-  );
+  const stored = scale === "esas_r" ? esasPoints : scale === "pps" ? ppsPoints : null;
+  if (stored === null) return new Response("{}", { status: 404 });
+  // The route takes whole UTC dates and reads the end of `to` inclusive (assessments-route-service-db `seriesScale`).
+  const query = new URL(request.url).searchParams;
+  const from = `${query.get("from")}T00:00:00.000Z`;
+  const to = `${query.get("to")}T23:59:59.999Z`;
+  const points = stored.filter((candidate) => {
+    const { capturedAt } = candidate as { capturedAt: string };
+    return capturedAt >= from && capturedAt <= to;
+  });
+  return new Response(JSON.stringify({ scaleType: scale, patientId: PATIENT, from, to, points }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 function mountTrend(visitTime: string | null = VISIT_TIME) {
@@ -178,6 +180,22 @@ describe("ComposerScoreTrend with the ESAS-r prompt", () => {
     });
     expect(region).toHaveTextContent("Anxiety: 4 of 10");
     expect(region).not.toHaveTextContent("Nausea");
+    expect(region).not.toHaveTextContent("Depression");
+  });
+
+  it("counts an evening reading stamped on the next UTC day, and still drops one taken after the visit", async () => {
+    // A US org's service day 2026-08-27 ends at 2026-08-28T03:59:59.999Z (EDT): a reading at 8:30 pm local is 00:30Z on the 28th.
+    esasPoints = [
+      point("e-1", "2026-08-20T10:00:00.000Z", items({ anxiety: 4 })),
+      point("e-2", "2026-08-28T00:30:00.000Z", items({ pain: 7 })),
+      point("e-3", "2026-08-28T10:00:00.000Z", items({ depression: 9 })),
+    ];
+    mountTrend("2026-08-28T03:59:59.999Z");
+    const region = await screen.findByRole("region", {
+      name: "Consider a fuller symptom assessment",
+    });
+    expect(region).toHaveTextContent("Pain: 7 of 10");
+    expect(region).not.toHaveTextContent("Anxiety");
     expect(region).not.toHaveTextContent("Depression");
   });
 

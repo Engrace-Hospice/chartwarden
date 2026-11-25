@@ -270,6 +270,13 @@ describe("DyspneaAssessmentHelper", () => {
     }
   });
 
+  it("gives the chip list an explicit list role, which Safari and VoiceOver otherwise drop from an unstyled list", () => {
+    render(<Harness />);
+    expect(
+      screen.getByRole("list", { name: "Characteristics of a dyspnea assessment" }),
+    ).toHaveAttribute("role", "list");
+  });
+
   it("ties the hint of a numbered field to its control, so a screen reader reads both", () => {
     render(<Harness />);
     expect(screen.getByLabelText("Intensity (0 to 10)")).toHaveAccessibleDescription(

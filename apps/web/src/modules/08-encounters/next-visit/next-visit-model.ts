@@ -6,7 +6,6 @@
 // decides eligibility, authorization or a lifecycle. Two small tables below are copies of M17's own (apps/web does not depend on
 // @chartwarden/scheduling), each pinned to its source by a test: the machine form of a frequency and the visit purpose a discipline
 // is scheduled for.
-import { localCalendarDay } from "../late-entry-reason";
 
 /** One intervention of the plan of care, as far as this section reads it. */
 export interface PlanIntervention {
@@ -116,20 +115,6 @@ const SCHEDULABLE_GROUPS: ReadonlySet<string> = new Set(
   Object.values(PURPOSE_DISCIPLINE).map(noteDisciplineGroup),
 );
 
-/** The routine visit of each discipline that has one, used to prefill the scheduler; `null` where the visit taxonomy has no such purpose. */
-const NEXT_PURPOSE: Readonly<Record<string, string>> = {
-  rn: "routine_visit",
-  lpn: "routine_visit",
-  chha: "aide_poc",
-  msw: "msw_followup",
-  chaplain: "chaplain_visit",
-  volunteer: "volunteer_visit",
-};
-
-export function defaultNextPurpose(discipline: string): string | null {
-  return Object.hasOwn(NEXT_PURPOSE, discipline) ? (NEXT_PURPOSE[discipline] as string) : null;
-}
-
 export interface OrderedVisitReading {
   /** The most frequent readable visit order for the note's discipline, or null when the plan has none. */
   readonly ordered: OrderedVisitFrequency | null;
@@ -234,31 +219,10 @@ export function assessSchedule(input: {
 }
 
 /**
- * Where "Schedule next visit" goes: the Scheduling calendar with the New Visit form open for this patient, started on the purpose and
- * day suggested (the scheduler's own form still decides who is eligible). Only ids, an enum and a date: the patient id is what the
- * patient-chart links to the same screen carry.
+ * Where "Schedule next visit" goes: the Scheduling calendar with the New Visit form open for this patient (the scheduler's own form
+ * decides the purpose, the day and who is eligible). Only the patient id, which the patient-chart links to the same screen carry: no visit
+ * purpose or date is put in the URL, since it reaches browser history and access logs.
  */
-export function scheduleNextVisitHref(input: {
-  readonly patientId: string;
-  readonly purpose: string | null;
-  readonly date: string | null;
-}): string {
-  const params = new URLSearchParams({ patient: input.patientId, newVisit: "1" });
-  if (input.purpose !== null) params.set("newVisitPurpose", input.purpose);
-  if (input.date !== null) params.set("newVisitDate", input.date);
-  return `/calendar?${params.toString()}`;
-}
-
-/**
- * The date to offer the scheduler: the visit date plus the whole-day spacing the ordered frequency implies (`round(span / count)`, at
- * least one day, the way M17's proposal worker spaces visits). `null` when the plan orders no readable visit frequency: no date is guessed.
- * Both days are the clinician's own calendar days (the way the prefill and "Use the next scheduled visit" read a date), never the UTC day.
- */
-export function suggestedNextVisitDate(
-  now: Date,
-  ordered: OrderedVisitFrequency | null,
-): string | null {
-  if (ordered === null) return null;
-  const spacing = Math.max(1, Math.round(ordered.periodDays / ordered.count));
-  return localCalendarDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() + spacing));
+export function scheduleNextVisitHref(patientId: string): string {
+  return `/calendar?${new URLSearchParams({ patient: patientId, newVisit: "1" }).toString()}`;
 }

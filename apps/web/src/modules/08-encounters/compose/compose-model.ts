@@ -1,6 +1,6 @@
 // apps/web/src/modules/08-encounters/compose — what the visit-note composer page holds besides React: the names of the template sections it
 // treats specially, the parts of the note that keep their own form, and the pure helpers and notices that go with them (moved out of
-// encounter-compose.tsx unchanged).
+// encounter-compose.tsx).
 import type { PanelStatus } from "../../../shell/panel-status";
 import type { UiFeedback } from "../compose-feedback";
 import {
@@ -27,11 +27,28 @@ export const serializedDraft = (draft: DraftSections, fallIncidentId: string | n
   JSON.stringify(toSelectionsBody(draft, fallIncidentId));
 
 /** The parts of the note that keep their own form and say so (see `useReportPanelStatus`). */
-export type PanelKey = RecordedPanelKind | "vitals" | "plan";
+export type PanelKey = RecordedPanelKind | "vitals" | "planEntry" | "plan";
 export type PanelStatuses = Readonly<Partial<Record<PanelKey, PanelStatus>>>;
 
 /** The note's own words for a part of it that keeps its own form (named in the notice that asks the author to save or discard it). */
-export const PANEL_ORDER: readonly PanelKey[] = ["adl", "nutrition", "wounds", "vitals", "plan"];
+export const PANEL_ORDER: readonly PanelKey[] = [
+  "adl",
+  "nutrition",
+  "wounds",
+  "vitals",
+  "planEntry",
+  "plan",
+];
+
+/** What the author calls a part of the note: the heading of its section, or the panel's own title. */
+export function panelTitle(template: TemplateView | null, key: PanelKey): string {
+  if (key === "vitals") return "Visit vitals";
+  if (key === "plan") return "Plan of care";
+  if (key === "planEntry") {
+    return template?.sections.find((s) => s.sectionId === PLAN_SECTION_ID)?.heading ?? key;
+  }
+  return template?.sections.find((s) => s.recordedPanel === key)?.heading ?? key;
+}
 
 export function unsavedPanelsFeedback(titles: readonly string[]): UiFeedback {
   return {

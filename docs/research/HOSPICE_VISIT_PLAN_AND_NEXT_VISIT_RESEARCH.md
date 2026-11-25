@@ -5,8 +5,9 @@ Researched 2026-11-24 for the visit-note composer's last section, "Plan and Next
 external claim carries its source (URL, section or page) and a type. A claim a source did not confirm is marked
 **NOT SOURCED** and is not in the code.
 
-**This is research input, not clinical sign-off.** A hospice clinician (the corpus reviewer, the DON or the medical
-director) must read the guide wording and the advisory rules before release.
+**This is research input, not clinical sign-off.** The guide wording and the advisory rules built on it are section 3 of
+[`CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md`](../clinical-review/CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md),
+signed off by Lora, RN on 2026-11-25 with sections 1-6, not item by item.
 
 ## Claim types
 
@@ -73,7 +74,7 @@ Corrections to the brief this research was given: the plan of care states "scope
 | Machine form is not enforced | `apps/backend/src/modules/07-care-plan/routes/care-plan-typebox.ts:147` (`minLength: 1`); `apps/backend/src/modules/15-discipline-care-plans/lifecycle/validation.ts:179` (`checkInterventionFrequency` only requires a non-empty string) | The spec says "regex on machine form"; the code accepts any 1-64 character string. | The web reader treats anything that is not `count:visit:day|week|month` as "not comparable": it shows the plan's own words and never counts it. |
 | Frequency grammar | `packages/scheduling/src/frequency.ts`; `docs/modules/CHARTWARDEN_MODULE_17_SCHEDULING_SPEC_v0_2.md` D5 (line 68) | `count:unit:period`; `prn`/`continuous`/`episode` are non-cadenced; M17's nightly proposal worker spaces visits by `round(periodDays / count)` days. Proposals are advisory; nothing auto-publishes. | The grammar copy (pinned to this source by a test) and the suggested day for the scheduler. |
 | Scheduling API and permissions | `docs/implementation/evidence/08-visit-scheduling-current-state.md` section 3; `packages/ui/src/core/api/schema.ts` (`GET /api/v1/visits`, `POST /api/v1/visits`) | List: `visit.read`, caseload/org scope applied by the server, PHI list audit. Create: `visit.create`, with credential, discipline, time-off and caseload gates and idempotency. Creation is an M17 form (four steps), not something a note can do. | Read-only schedule from `GET /api/v1/visits?patient=&from=&to=`; booking is a link to the scheduler, not a write from the note. |
-| Existing deep link | `apps/web/src/modules/05-patient/patient-overview.tsx:1428,1616` | The patient chart already links to `/calendar?patient=<id>&newVisit=1`; `calendar-page.tsx` opens the New Visit form for that patient. | The "Schedule next visit" link reuses this route and adds `newVisitPurpose` and `newVisitDate` (validated, optional). |
+| Existing deep link | `apps/web/src/modules/05-patient/patient-overview.tsx:1428,1616` | The patient chart already links to `/calendar?patient=<id>&newVisit=1`; `calendar-page.tsx` opens the New Visit form for that patient. | The "Schedule next visit" link reuses this route unchanged: `?patient=<id>&newVisit=1` only. No visit purpose or date is put in the URL (it reaches browser history and access logs), so the New Visit form shows its own defaults. |
 | "Next visit" seam | `apps/backend/src/modules/17-scheduling/seams/store.ts:131` | The seam's own meaning of "the patient's next scheduled visit": status `published` or `en_route`, start at or after now. | Which visits count as upcoming. |
 | Plan section template | `packages/hearthnote/src/templates/registry.ts` | `plan` is `prose("plan", "Plan and Next Visit")`: required, no categories, "until structured reasons exist". With the tenant's draft wording on, the RN routine, recert and admission visits add the `plan` and `care_plan_element` categories (`nv.plan.continue`, `nv.plan.next_visit` "Next visit is planned for ${next_visit_date}" in `packages/narrative-vocab/src/draft-entries.ts`). | Why a tenant with the draft switch off sees "no preset statements". The section stays as it is; nothing here changes the corpus. |
 | Plan-of-care step | `apps/web/src/modules/07-care-plan/change-proposals/plan-of-care-step.tsx`, `proposal-labels.ts` | A visit proposes plan changes as author-only drafts, released to the case manager's review list when the note is finalized; a proposal never edits the signed plan. | The follow-up block counts this visit's open proposals and points at that step. |
@@ -572,21 +573,22 @@ There is no federal or professional standard for the layout of the end-of-note p
 
 ## 5. What the product does with this
 
-Everything below is advisory. Nothing reads the finalize or sign gate, nothing blocks a note, the section stays required, and the
+Everything below is advisory, except that words typed in the entry fields and not saved hold Finalize and the leave prompt. Nothing
+reads the server's finalize or sign gate, nothing else blocks a note, the section stays required, and the
 server's assembled note, the gate and the corpus version are unchanged (no migration, no new route, no `VOCAB_VERSION` change).
 
 | Piece | Basis | Behaviour |
 |---|---|---|
 | **What this section covers** (`next-visit/plan-entry-guide.ts`) | Parts B and C | Nine short items, each labelled Medicare rule, CMS guidance, Guideline or Common practice with its citation. The next-visit item is labelled Common practice and says no rule requires it in each note. |
 | **Next visit and schedule** (`next-visit-schedule.tsx`, `next-visit-model.ts`) | Findings 1 and 2; M7 spec; M17 spec D5 | Reads the patient's upcoming visits (`GET /api/v1/visits?patient=&from=&to=`, 30 days, `visit.read`, scoped by the server) and the plan of care (`GET /api/v1/patients/{id}/care-plan`). Shows the plan's ordered visit frequency for the note's discipline in the plan's own words, and flags "No RN visit is scheduled in the next 30 days that you can see" or "N visits scheduled in the next D days; the plan of care orders ...". A refused or failed read says so and never reads as an empty schedule. |
-| **Schedule next visit** | M17 permission matrix; existing `/calendar?patient=&newVisit=1` link | A link, opened in a new tab so the note and anything unsaved stay put, to the Scheduling calendar with the New Visit form open for this patient, started on the discipline's routine visit purpose and, when the plan orders a readable frequency, the day it implies. The scheduler's own form still checks eligibility, credentials, caseload and time off; the note books nothing. Someone with `visit.read` but not `visit.create` gets "Open this patient's schedule" instead. |
+| **Schedule next visit** | M17 permission matrix; existing `/calendar?patient=&newVisit=1` link | A link, opened in a new tab so the note and anything unsaved stay put, to the Scheduling calendar with the New Visit form open for this patient (the link carries the patient id and `newVisit=1` only; the purpose and the day are chosen in the scheduler). The scheduler's own form still checks eligibility, credentials, caseload and time off; the note books nothing. Someone with `visit.read` but not `visit.create` gets "Open this patient's schedule" instead. |
 | **Follow-ups from this visit** | M7 plan-of-care step (WF09) | The count of this visit's open plan-of-care proposals (drafts and pending) with a button to the Plan of care step, and the pain helper's plan-of-care review prompt when the note records pain. |
-| **Write the entry (optional)** (`plan-entry-text.ts`) | Finding 3; the "candidate plan elements" in C5 | Next visit by and date, focus, follow-ups, orders and supplies pending, teaching and instructions given, "call the hospice if". **Add to the note** puts the filled fields into the section's free text as fixed sentences, each field's words exactly as typed, below what the clinician wrote; adding the same lines twice adds nothing. The free text is stored and stated verbatim by the server, so the note, preview and gate need no change. |
+| **Write the entry (optional)** (`plan-entry-text.ts`) | Finding 3; the "candidate plan elements" in C5 | Next visit by and date, focus, follow-ups, orders and supplies pending, teaching and instructions given, "call the hospice if". **Save** puts the filled fields into the section's free text as fixed sentences, each field's words exactly as typed, below what the clinician wrote; adding the same lines twice adds nothing. The free text is stored and stated verbatim by the server, so the note, preview and gate need no change. |
 
 **Rules and approximations in the schedule check (for the clinical reviewer).**
 
 1. Counted as upcoming: committed visits (status `published` or `en_route`, the repo's own "next visit" meaning in
-   `apps/backend/src/modules/17-scheduling/seams/store.ts`) starting at or after the moment the section was first opened, leaving out the
+   `apps/backend/src/modules/17-scheduling/seams/store.ts`) starting at or after the latest read of the patient's schedule (read when the section is first shown, and again when the clinician returns to the window or tab or opens the section again), leaving out the
    note's own visit. Visits of other disciplines are listed but not counted.
 2. The ordered frequency is the most frequent active intervention of the note's discipline whose machine form is
    `count:visit:day|week|month`. M17's proposal worker likewise treats each cadenced visit intervention as a visit order. Nursing is one
@@ -597,8 +599,8 @@ server's assembled note, the gate and the corpus version are unchanged (no migra
 4. An order the check cannot read as a visit cadence is shown in the plan's words and never counted: as-needed, per-episode, a range
    ("1-3 visits/week", which the SOM allows at L547) or free text. The care-plan route does not enforce the machine form (it only requires a
    non-empty string), so the reader must tolerate anything.
-5. The suggested day is the visit date plus `round(span / count)` days (at least one), the spacing M17's proposal worker uses. No day is
-   suggested without a readable order.
+5. No next-visit day is suggested: the link to the scheduler carries only the patient id. (An earlier build suggested the visit date plus
+   `round(span / count)` days, the spacing M17's proposal worker uses; it was removed on 2026-11-25.)
 6. Times are shown in the browser's time zone; the organisation's time zone is not shown (an existing M17 limitation).
 
 **Overlap to know about.** With the tenant's draft wording on, the RN routine, recert and admission `plan` sections can also offer the
@@ -620,9 +622,9 @@ both be in a note; no de-duplication was built.
 | Booking a visit from the note | It needs `visit.create` and M17's gates (credential, discipline, caseload, time off, idempotency); the scheduler's form owns them. |
 | Capturing a missed-visit reason in the note | The CFR is silent and the SOM only probes; M17 records cancellation reasons on the visit. |
 
-## 7. Sign-off still needed
+## 7. Sign-off
 
-A clinician must review before release: the nine guide items and which label each carries; the schedule rules above (rolling window,
+Signed off by Lora, RN on 2026-11-25 (section 3 of the clinical sign-off sheet, with sections 1-6, not item by item). The points put to the reviewer: the nine guide items and which label each carries; the schedule rules above (rolling window,
 RN-plus-LPN nursing group, most-frequent-order rule, 30-day month); the sentence forms ("Next visit: RN, Dec 5, 2026.", "Call the
 hospice if: ...") as legal-record wording; and whether "Teaching and instructions given" should invite teach-back wording (it is AHRQ
 guidance for primary care, not a hospice requirement). No compliance control changed (read-only use of existing endpoints under their own

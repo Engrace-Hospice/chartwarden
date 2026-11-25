@@ -1,5 +1,5 @@
 // apps/web/src/modules/08-encounters/compose — the composer's header action bar: back to the encounter, its state, the record, vitals, save
-// and finalize (moved out of encounter-compose.tsx unchanged).
+// and finalize (moved out of encounter-compose.tsx).
 import { Button, StatusPill } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { headerActions } from "../encounter-compose-styles";

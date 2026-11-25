@@ -1388,13 +1388,13 @@ describe("the score trend", () => {
     expect(within(panel).queryByText("ESAS-r total")).toBeNull();
   });
 
-  it("asks the series route for the 90 days up to the service date", async () => {
+  it("asks the series route for the 90 days up to the day after the service date (an evening reading is stamped on the next UTC day)", async () => {
     mountComposer();
     await ready();
     await screen.findByRole("heading", { name: "Scores and trend" });
     const read = callsTo("GET", "/scales/pps/series")[0];
     expect(read?.query.get("from")).toBe("2026-08-19");
-    expect(read?.query.get("to")).toBe("2026-11-17");
+    expect(read?.query.get("to")).toBe("2026-11-18");
   });
 
   it("does not read the scores again, nor blink, when the draft is re-read at a later time", async () => {

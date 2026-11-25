@@ -8,8 +8,9 @@
 // a prompt names its reasons and points the clinician at the Plan of care step. The clinician and the IDG decide.
 //
 // EVERY THRESHOLD CITES ITS SOURCE and its type (regulation, CMS guidance, guideline, common practice, research). The sources, the
-// retrieval date and where they differ are in docs/research/PAIN_ASSESSMENT_AND_PLAN_OF_CARE_TRIGGERS_RESEARCH.md. The clinical
-// content has NOT been signed off by a clinician; do not read a number here as a clinical rule beyond its stated source.
+// retrieval date and where they differ are in docs/research/PAIN_ASSESSMENT_AND_PLAN_OF_CARE_TRIGGERS_RESEARCH.md. Sections 1-6 of
+// docs/clinical-review/CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md (the pain helper is section 2) were signed off by Lora, RN on
+// 2026-11-25, not item by item; do not read a number here as a clinical rule beyond its stated source.
 
 /** The two pain statements the helper hangs off. */
 export const PAIN_STATEMENT_CODES = {

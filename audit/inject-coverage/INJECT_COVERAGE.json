@@ -189,6 +189,7 @@
         "apps/backend/__tests__/m5-lifecycle-routes.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/m7-change-proposals.live.test.ts",
+        "apps/backend/__tests__/m9-assessments-read-service.live.test.ts",
         "apps/backend/__tests__/orders-caseload-scope.test.ts",
         "apps/backend/__tests__/orders-routes.test.ts",
         "apps/backend/__tests__/orm-recovery.test.ts",
@@ -240,6 +241,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/assessment-routes.test.ts",
+        "apps/backend/__tests__/m9-assessments-read-service.live.test.ts",
         "apps/backend/__tests__/m9-assessments-write.live.test.ts",
         "apps/backend/__tests__/wounds-route-writes.test.ts",
         "apps/backend/__tests__/wounds-routes.test.ts",

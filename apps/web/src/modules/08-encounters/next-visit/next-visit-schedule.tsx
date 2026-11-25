@@ -4,9 +4,10 @@ import { visitPurposeLabel } from "@chartwarden/types";
 // link that opens the Scheduling screen to book the next visit.
 //
 // ADVISORY ONLY and read only. Scheduling (M17) and the plan of care (M7) own every fact here and the server decides who may book what;
-// this block neither books a visit nor blocks the note. "Schedule next visit" is a link to the scheduler's own New Visit form, started on
-// the purpose and day this note suggests. It opens in a new tab so the note, and anything unsaved in it, stays where it is; the schedule
-// is read again when the clinician comes back to this tab (use-next-visit-context), so a visit booked there shows up here.
+// this block neither books a visit nor blocks the note. "Schedule next visit" is a link to the scheduler's own New Visit form for this
+// patient (the link carries the patient id and nothing else: the purpose and the day are chosen there). It opens in a new tab so the note,
+// and anything unsaved in it, stays where it is; the schedule is read again when the clinician comes back to this tab
+// (use-next-visit-context), so a visit booked there shows up here.
 import { InlineAlert, LoadingSpinner } from "@chartwarden/ui";
 import { type JSX, useId } from "react";
 import { Link } from "react-router-dom";
@@ -14,10 +15,8 @@ import { useSession } from "../../../shell/session";
 import {
   type ScheduleAssessment,
   assessSchedule,
-  defaultNextPurpose,
   orderedVisitFrequency,
   scheduleNextVisitHref,
-  suggestedNextVisitDate,
   upcomingVisits,
 } from "./next-visit-model";
 import { PLAN_VISIT_BY_OPTIONS } from "./plan-entry-text";
@@ -89,11 +88,7 @@ export function NextVisitSchedule({
     ? advisoryOf(assessment, discipline, ordered?.frequencyText ?? null)
     : null;
 
-  const href = scheduleNextVisitHref({
-    patientId,
-    purpose: defaultNextPurpose(discipline),
-    date: suggestedNextVisitDate(now, ordered),
-  });
+  const href = scheduleNextVisitHref(patientId);
 
   return (
     <section className="wx-form-stack" aria-label="Next visit and schedule">

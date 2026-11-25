@@ -31,7 +31,7 @@ import {
 
 const WOUNDS = `/api/v1/patients/${PATIENT_ID}/wounds`;
 const BUTTON = "No skin or wound concerns at this visit";
-const RECORDED = "Recorded: no skin or wound concerns at this visit";
+const RECORDED = "Added to the note: no skin or wound concerns at this visit";
 const REMOVED = `Removed '${SENTENCE}' because a wound was recorded.`;
 const NOTES = "Section notes";
 

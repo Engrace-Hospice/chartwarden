@@ -2,12 +2,16 @@
 // The pain assessment helper and the plan-of-care prompt, as the clinician meets them under "Symptom impact — pain limiting function".
 // Assertions are on what is on screen and on what is selected; the rules and thresholds have their own unit tests in @chartwarden/types.
 // Synthetic values only.
-import { PAIN_ASSESSMENT_CODES as C, painPlanReviewReasons } from "@chartwarden/types";
+import {
+  PAIN_ASSESSMENT_CODES as C,
+  PAIN_PRN_REASSESS_HINT,
+  painPlanReviewReasons,
+} from "@chartwarden/types";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import type { DraftEntry, MenuEntry } from "./encounters-api";
+import type { DraftEntry, MenuEntry, TemplateSection } from "./encounters-api";
 import { PainAssessmentHelper, showsPainHelper } from "./pain-assessment-helper";
 import { PlanReviewPrompt } from "./plan-review-prompt";
 
@@ -142,6 +146,131 @@ describe("PainAssessmentHelper", () => {
     ]) {
       expect(within(chips).getByText(missing)).toBeTruthy();
     }
+  });
+
+  it("gives the chip list an explicit list role, which Safari and VoiceOver otherwise drop from an unstyled list", () => {
+    render(<Harness />);
+    const chips = screen.getByRole("list", {
+      name: "Characteristics of a comprehensive pain assessment",
+    });
+    expect(chips).toHaveAttribute("role", "list");
+  });
+
+  describe("what a screen reader reads with each control", () => {
+    it("reads the as-needed reassess hint with its choice, and a number's bounds with its hint", () => {
+      render(<Harness />);
+      expect(
+        screen.getByLabelText("Response to the last as-needed dose"),
+      ).toHaveAccessibleDescription(PAIN_PRN_REASSESS_HINT);
+      expect(
+        screen.getByLabelText("The patient's own acceptable pain level"),
+      ).toHaveAccessibleDescription(
+        "0–10 The level at which the patient is comfortable enough to do what matters to them.",
+      );
+      expect(screen.getByLabelText("Location")).toHaveAccessibleDescription(
+        "Where it is, and where it spreads.",
+      );
+    });
+
+    it("reads why a row is locked with every control in it, and with none of the other rows", () => {
+      render(
+        <PainAssessmentHelper
+          menu={MENU}
+          selected={[LIMITING()]}
+          disabled={false}
+          recordedElsewhere={(code) =>
+            ([C.location, C.prnRelief, C.goal] as readonly string[]).includes(code)
+              ? ({ heading: "Baseline Symptoms" } as TemplateSection)
+              : undefined
+          }
+          onToggle={() => undefined}
+          onSlot={() => undefined}
+          onOpenPlan={() => undefined}
+        />,
+      );
+      const lock = "Already recorded in Baseline Symptoms";
+      expect(screen.getByLabelText("Location")).toHaveAccessibleDescription(
+        `Where it is, and where it spreads. ${lock}`,
+      );
+      expect(
+        screen.getByLabelText("Response to the last as-needed dose"),
+      ).toHaveAccessibleDescription(`${PAIN_PRN_REASSESS_HINT} ${lock}`);
+      expect(
+        screen.getByLabelText("The patient's own acceptable pain level"),
+      ).toHaveAccessibleDescription(
+        `0–10 The level at which the patient is comfortable enough to do what matters to them. ${lock}`,
+      );
+      expect(screen.getByLabelText("Character")).not.toHaveAccessibleDescription(
+        /Already recorded/,
+      );
+      expect(screen.getAllByText(lock)).toHaveLength(3);
+    });
+
+    it("gives the lock note of each locked row its own id", () => {
+      render(
+        <PainAssessmentHelper
+          menu={MENU}
+          selected={[LIMITING()]}
+          disabled={false}
+          recordedElsewhere={(code) =>
+            ([C.location, C.character] as readonly string[]).includes(code)
+              ? ({ heading: "Baseline Symptoms" } as TemplateSection)
+              : undefined
+          }
+          onToggle={() => undefined}
+          onSlot={() => undefined}
+          onOpenPlan={() => undefined}
+        />,
+      );
+      const ids = screen
+        .getAllByText("Already recorded in Baseline Symptoms")
+        .map((note) => note.getAttribute("id"));
+      expect(ids.every((id) => id !== null && id !== "")).toBe(true);
+      expect(new Set(ids).size).toBe(2);
+    });
+  });
+
+  describe("what the count and the prompt read", () => {
+    const LOCATION_ELSEWHERE: DraftEntry = { code: C.location, params: { pain_location: "hip" } };
+    const GOAL_ELSEWHERE: DraftEntry = { code: C.goal, params: { pain_goal: "3" } };
+    const renderWith = (allSelected?: readonly DraftEntry[]) =>
+      render(
+        <PainAssessmentHelper
+          menu={MENU}
+          selected={[LIMITING("6")]}
+          allSelected={allSelected}
+          disabled={false}
+          recordedElsewhere={() => undefined}
+          onToggle={() => undefined}
+          onSlot={() => undefined}
+          onOpenPlan={() => undefined}
+        />,
+      );
+
+    it("counts a characteristic recorded in another section, as the Plan section's card does", () => {
+      renderWith([LIMITING("6"), LOCATION_ELSEWHERE]);
+      expect(screen.getByText(/3 of 7 characteristics documented/)).toBeTruthy();
+      expect(
+        within(
+          screen.getByRole("list", { name: "Characteristics of a comprehensive pain assessment" }),
+        ).getByText("Location: documented"),
+      ).toBeTruthy();
+    });
+
+    it("raises the plan-of-care reasons from a goal recorded in another section", () => {
+      renderWith([LIMITING("6"), GOAL_ELSEWHERE]);
+      const prompt = screen.getByRole("region", { name: "Consider a plan-of-care review" });
+      expect(
+        within(prompt).getByText(/above the patient's own acceptable level of 3/),
+      ).toBeTruthy();
+    });
+
+    it("reads only its own section when it is given nothing wider", () => {
+      renderWith();
+      expect(screen.getByText(/2 of 7 characteristics documented/)).toBeTruthy();
+      const prompt = screen.getByRole("region", { name: "Consider a plan-of-care review" });
+      expect(within(prompt).queryByText(/above the patient's own acceptable level/)).toBeNull();
+    });
   });
 
   it("records a characteristic as the clinician types it and takes it back when it is cleared", async () => {
