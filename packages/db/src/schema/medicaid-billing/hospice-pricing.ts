@@ -159,15 +159,17 @@ type MedicaidRhcPricingSnapshotCommon = Record<string, unknown> & {
   readonly providerEntityId: string;
   readonly patientId: string;
   readonly admissionId: string;
-  readonly admissionVersion: number;
   readonly canonicalPayerId: string;
   readonly programKind: "managed_care";
   readonly serviceState: string;
   readonly serviceFrom: string;
   readonly serviceTo: string;
   readonly levelOfCare: "RHC";
+  // The M6 period's identity and its extent clipped to the claimed days (not its row version, which
+  // changes when the open period is closed after the claimed range).
   readonly locPeriodId: string;
-  readonly locPeriodVersion: number;
+  readonly locEffectiveFrom: string;
+  readonly locEffectiveTo: string;
   readonly quantity: {
     readonly basis: "per_day";
     readonly units: number;
@@ -208,8 +210,9 @@ type MedicaidRhcHomeLocationSnapshot = {
   readonly patientAddressId: string;
   readonly kind: "home";
   readonly facilityId: null;
+  // The residence bounded to the line's own service days (equal to the line's serviceFrom/serviceTo).
   readonly effectiveFrom: string;
-  readonly effectiveTo: string | null;
+  readonly effectiveTo: string;
 };
 
 type MedicaidRhcAssistedLivingLocationSnapshot = {
@@ -217,8 +220,9 @@ type MedicaidRhcAssistedLivingLocationSnapshot = {
   readonly kind: "facility";
   readonly facilityId: string;
   readonly facilityKind: "alf";
+  // The residence bounded to the line's own service days (equal to the line's serviceFrom/serviceTo).
   readonly effectiveFrom: string;
-  readonly effectiveTo: string | null;
+  readonly effectiveTo: string;
 };
 
 /** Explicit persisted local-draft profiles; new clinical or billing profiles require a reviewed version. */
@@ -304,7 +308,9 @@ export const medicaidClaimLinePricingSnapshot = pgTable(
     ),
     snapshotShape: check(
       "medicaid_claim_line_pricing_snapshot_shape",
-      sql`jsonb_typeof(snapshot) = 'object' AND
+      // IS TRUE: a snapshot missing `schemaVersion` or `postingAuthorized` makes an operand NULL, which a
+      // CHECK would accept.
+      sql`(jsonb_typeof(snapshot) = 'object' AND
           snapshot ->> 'schemaVersion' = snapshot_schema_version::text AND
           snapshot ->> 'postingAuthorized' = 'false' AND snapshot ? 'assessmentTimestamp' AND
           ((snapshot_schema_version = 1 AND snapshot ->> 'hcpcsCode' = 'Q5001' AND
@@ -315,7 +321,7 @@ export const medicaidClaimLinePricingSnapshot = pgTable(
             snapshot ->> 'localBillingProfile' = 'rhc_assisted_living_q5002_daily_v1' AND
             snapshot #>> '{serviceLocation,kind}' = 'facility' AND
             snapshot #>> '{serviceLocation,facilityKind}' = 'alf' AND
-            snapshot #>> '{serviceLocation,facilityId}' IS NOT NULL))`,
+            snapshot #>> '{serviceLocation,facilityId}' IS NOT NULL))) IS TRUE`,
     ),
   }),
 );

@@ -22,8 +22,10 @@ fail closed.
   canonical write capability.
 - Migration 1554 keeps snapshot schema v1's existing home-RHC/Q5001 shape and adds schema v2 only for
   `rhc_assisted_living_q5002_daily_v1`. Its source guard requires the matching M24 claim, a complete M5
-  facility residence span and the same active, non-merged M40 facility classified as `alf`. Existing
-  snapshot rows are not rewritten or promoted.
+  facility residence span and the same active M40 facility classified as `alf`: the facility the
+  residence names, not a survivor it was merged into, which is refused. The snapshot records the
+  residence bounded to the line's own service days, so a later move-out does not stale a draft whose
+  claimed days it does not touch. Existing snapshot rows are not rewritten or promoted.
 - Drizzle now uses a discriminated TypeScript payload union for those two snapshot versions. The M24
   persistence boundary checks the expected version and exact local profile before writing; SQL guards
   independently enforce the same profile. Other care categories are not extensible by arbitrary JSON.
@@ -37,8 +39,9 @@ Preview, claim assembly, manual validation and background revalidation now use t
 resolver and source-grounded snapshot verifier. The planner accepts `segmentation_required` only when
 the independently verified evidence spans form an exact, non-overlapping, gap-free service window. It
 prices each span from its own evidence ID/version and splits lines at the evidence and rate boundaries.
-An applicable segment ceiling is allocated once across those evidence-created lines, rather than applied
-once per generated line. Conflicting, revoked, incomplete, stale or out-of-scope lineage still refuses.
+An applicable segment ceiling is allocated once across the evidence-created lines of one M6 level-of-care
+period (the segment the engine caps), rather than applied once per generated line; separate level-of-care
+periods remain separate segments. Conflicting, revoked, incomplete, stale or out-of-scope lineage still refuses.
 
 ## Synthetic PostgreSQL evidence
 

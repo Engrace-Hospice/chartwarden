@@ -344,7 +344,8 @@ describe.skipIf(!DB_URL)(
       if (admin) await admin.end();
     });
 
-    async function expectUnpricedAssembly(operation: () => Promise<unknown>) {
+    /** `message` pins the REASON (the refusal code, lower-cased, appears in the message), not just "unresolved". */
+    async function expectUnpricedAssembly(operation: () => Promise<unknown>, message?: RegExp) {
       const before = await admin.query(
         "SELECT (SELECT count(*)::int FROM medicaid_claim) AS claims, (SELECT count(*)::int FROM medicaid_claim_line) AS lines",
       );
@@ -352,6 +353,7 @@ describe.skipIf(!DB_URL)(
         code: expect.stringMatching(
           /^MEDICAID_(RATE_POLICY_UNRESOLVED|BILLING_EVIDENCE_UNRESOLVED)$/,
         ),
+        ...(message ? { message: expect.stringMatching(message) } : {}),
       });
       const after = await admin.query(
         "SELECT (SELECT count(*)::int FROM medicaid_claim) AS claims, (SELECT count(*)::int FROM medicaid_claim_line) AS lines",
@@ -1012,6 +1014,44 @@ describe.skipIf(!DB_URL)(
       expect(backgroundFormatRule.rows).toEqual([{ outcome: "fail" }]);
       expect(backgroundEvents).not.toContain("m24.medicaid_claim.ready_for_submission");
 
+      // Lock order: the job takes the claim's admission row BEFORE any rate/evidence advisory lock. While another
+      // transaction holds that row the job must wait at it holding no advisory lock; a rate lock taken first
+      // would let a concurrent assembly (admission row, then rate lock) deadlock with it.
+      const admissionHolder = new Client({ connectionString: DB_URL });
+      await admissionHolder.connect();
+      try {
+        await admissionHolder.query("BEGIN");
+        await admissionHolder.query("SELECT id FROM admission WHERE id=$1 FOR UPDATE", [
+          RHC_ADMISSION,
+        ]);
+        const blockedJob = withOrgContext(handle.db, { organizationId: ORG, userId: USER }, (tx) =>
+          runMedicaidRevalidate(tx, workerDeps, {
+            organizationId: ORG,
+            patientId: RHC_PATIENT,
+            eventId: randomUUID(),
+            eventName: "m24.medicaid_claim.revalidate_requested",
+          }),
+        );
+        let waiting = false;
+        for (let attempt = 0; attempt < 100 && !waiting; attempt += 1) {
+          const probe = await admin.query(
+            "SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted AND pid <> pg_backend_pid()",
+          );
+          waiting = probe.rows[0].n > 0;
+          if (!waiting) await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        expect(waiting).toBe(true);
+        const heldAdvisory = await admin.query(
+          "SELECT count(*)::int AS n FROM pg_locks WHERE locktype='advisory' AND granted",
+        );
+        expect(heldAdvisory.rows[0].n).toBe(0);
+        await admissionHolder.query("COMMIT");
+        await blockedJob;
+      } finally {
+        await admissionHolder.query("ROLLBACK").catch(() => undefined);
+        await admissionHolder.end();
+      }
+
       // A separate, synthetic admission proves the facility profile through the same M5/M40 owner
       // readers, rate engine, transaction-bound assembly service, line writer, and snapshot guard.
       await admin.query(`INSERT INTO facility (id,kind,name) VALUES ($1,'alf','Synthetic ALF')`, [
@@ -1147,18 +1187,78 @@ describe.skipIf(!DB_URL)(
         kind: "hospice_only" as const,
       };
       await admin.query("UPDATE facility SET kind='other' WHERE id=$1", [ALF_RHC_FACILITY]);
-      await expectUnpricedAssembly(() => service.assembleClaim(actor, alfClaimInput));
+      await expectUnpricedAssembly(
+        () => service.assembleClaim(actor, alfClaimInput),
+        /rhc q5002 requires assisted living/,
+      );
       await admin.query("UPDATE facility SET kind='alf' WHERE id=$1", [ALF_RHC_FACILITY]);
       await admin.query("UPDATE facility SET status='deactivated' WHERE id=$1", [ALF_RHC_FACILITY]);
-      await expectUnpricedAssembly(() => service.assembleClaim(actor, alfClaimInput));
+      await expectUnpricedAssembly(
+        () => service.assembleClaim(actor, alfClaimInput),
+        /rhc facility kind unresolved/,
+      );
       await admin.query("UPDATE facility SET status='active' WHERE id=$1", [ALF_RHC_FACILITY]);
+      // A merged facility: M40's locked reader answers with the SURVIVOR's identity, but M24 prices only
+      // the facility the residence names, so the planner and the snapshot trigger both refuse it.
+      const alfSurvivor = randomUUID();
+      await admin.query(
+        `INSERT INTO facility (id,kind,name) VALUES ($1,'alf','Synthetic ALF survivor')`,
+        [alfSurvivor],
+      );
+      await admin.query("UPDATE facility SET status='merged', merged_into_id=$2 WHERE id=$1", [
+        ALF_RHC_FACILITY,
+        alfSurvivor,
+      ]);
+      const mergedRead = await admin.query(
+        `SELECT requested_facility_id, resolved_facility_id, facility_kind, facility_status
+           FROM m40_facility_kind_for_ids_locked(jsonb_build_array($1::text))`,
+        [ALF_RHC_FACILITY],
+      );
+      expect(mergedRead.rows).toEqual([
+        {
+          requested_facility_id: ALF_RHC_FACILITY,
+          resolved_facility_id: alfSurvivor,
+          facility_kind: "alf",
+          facility_status: "active",
+        },
+      ]);
+      await expectUnpricedAssembly(
+        () => service.assembleClaim(actor, alfClaimInput),
+        /rhc facility kind unresolved/,
+      );
+      await admin.query("UPDATE facility SET status='active', merged_into_id=NULL WHERE id=$1", [
+        ALF_RHC_FACILITY,
+      ]);
+      // The locked reader is a lock-only capability: no PUBLIC execute, no write on canonical rows,
+      // and a malformed or oversized request is refused with its own message.
+      const readerAcl = await admin.query(
+        `SELECT has_function_privilege('chartwarden_app', 'm40_facility_kind_for_ids_locked(jsonb)', 'EXECUTE') AS app_execute,
+                has_function_privilege('public', 'm40_facility_kind_for_ids_locked(jsonb)', 'EXECUTE') AS public_execute,
+                has_table_privilege('chartwarden_app', 'facility', 'UPDATE') AS app_update`,
+      );
+      expect(readerAcl.rows).toEqual([
+        { app_execute: true, public_execute: false, app_update: false },
+      ]);
+      await expect(
+        admin.query(`SELECT * FROM m40_facility_kind_for_ids_locked('{}'::jsonb)`),
+      ).rejects.toThrow(/M40_FACILITY_KIND_READ_INPUT_INVALID/);
+      await expect(
+        admin.query(`SELECT * FROM m40_facility_kind_for_ids_locked('["not-a-uuid"]'::jsonb)`),
+      ).rejects.toThrow(/M40_FACILITY_KIND_READ_INPUT_INVALID/);
+      await expect(
+        admin.query(
+          `SELECT * FROM m40_facility_kind_for_ids_locked(
+             (SELECT jsonb_agg(gen_random_uuid()::text) FROM generate_series(1, 501)))`,
+        ),
+      ).rejects.toThrow(/M40_FACILITY_KIND_READ_LIMIT_EXCEEDED/);
       await admin.query("UPDATE patient_address SET effective_to='2026-11-01' WHERE id=$1", [
         ALF_RHC_ADDRESS,
       ]);
       await expectUnpricedAssembly(() =>
         service.assembleClaim(actor, { ...alfClaimInput, serviceFrom: "2026-11-02" }),
       );
-      await admin.query("UPDATE patient_address SET effective_to='2026-11-04' WHERE id=$1", [
+      // The residence outlives the claimed days (it is closed at 2026-11-04 only after the draft exists).
+      await admin.query("UPDATE patient_address SET effective_to='2026-11-30' WHERE id=$1", [
         ALF_RHC_ADDRESS,
       ]);
       const facilityDraft = await service.assembleClaim(actor, {
@@ -1240,6 +1340,22 @@ describe.skipIf(!DB_URL)(
         { rule_key: "medicaid_hospice_institutional_format_qualified", outcome: "fail" },
         { rule_key: "medicaid_payer_rate_policy_snapshot_verified", outcome: "pass" },
       ]);
+      // A move-out after the claimed days closes the open residence row. No claimed day changed, so the
+      // stored snapshot (bound to the claimed days only) must still verify.
+      await admin.query("UPDATE patient_address SET effective_to='2026-11-04' WHERE id=$1", [
+        ALF_RHC_ADDRESS,
+      ]);
+      const { validationRunId: movedOutRunId } = await service.validateClaim(
+        serviceActor,
+        facilityDraft.id,
+      );
+      const movedOutRule = await admin.query(
+        `SELECT outcome FROM medicaid_validation_result
+          WHERE organization_id=$1 AND medicaid_validation_run_id=$2
+            AND rule_key='medicaid_payer_rate_policy_snapshot_verified'`,
+        [ORG, movedOutRunId],
+      );
+      expect(movedOutRule.rows).toEqual([{ outcome: "pass" }]);
       await admin.query("UPDATE facility SET kind='other' WHERE id=$1", [ALF_RHC_FACILITY]);
       const { validationRunId: staleFacilityRunId } = await service.validateClaim(
         serviceActor,
@@ -1711,7 +1827,8 @@ describe.skipIf(!DB_URL)(
       // 2026-11-01 with the priced original and the legacy line, so the line-coverage check refuses the claim
       // first. That the verifier recomputes the price and refuses a stored estimate that differs is covered by
       // the unit test "fails closed when a tampered snapshot no longer matches the current plan"
-      // (rhc-pricing-snapshot.test.ts). The insert guard refuses a snapshot of a superseded evidence row, so the
+      // (rhc-pricing-snapshot.test.ts) and live by the `tamperedPricingRule` case above (a copied snapshot with a
+      // 999999 estimate on its own claim). The insert guard refuses a snapshot of a superseded evidence row, so the
       // forgery names the corrected head (its locality, version and verification instant) and is assessed after
       // that correction was verified. A rate must share the evidence locality, so the corrected locality gets its
       // own verified rate.

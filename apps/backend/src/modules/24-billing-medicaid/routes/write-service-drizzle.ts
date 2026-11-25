@@ -1066,6 +1066,28 @@ function pricingPreviewFromAssessment(
 }
 
 function rhcPricingRequiredInputs(reasonCode: string): readonly string[] {
+  // The profile/residence mismatches each have their own remedy; the generic residence text below would
+  // send the user to the wrong one (or, for the first two, to a rate that is not the problem).
+  switch (reasonCode) {
+    case "RHC_Q5001_REQUIRES_HOME_RESIDENCE":
+      return [
+        "Q5001 billing evidence prices a home residence: record Q5002 evidence for a facility residence, or correct the M5 residence",
+      ];
+    case "RHC_Q5002_REQUIRES_FACILITY_RESIDENCE":
+      return [
+        "Q5002 billing evidence prices an assisted-living facility residence: record the M5 facility residence, or use Q5001 evidence for a home residence",
+      ];
+    case "RHC_Q5002_REQUIRES_ASSISTED_LIVING":
+      return [
+        "Only an assisted-living facility is priced locally; this M5 residence is another facility kind and needs a reviewed pricing profile",
+      ];
+    case "RHC_DAILY_LOCAL_PROFILE_UNSUPPORTED":
+      return [
+        "Verified billing evidence coded Q5001 (home) or Q5002 (assisted living); no other local RHC code is priced",
+      ];
+    default:
+      break;
+  }
   if (reasonCode.includes("RESIDENCE") || reasonCode.includes("FACILITY_KIND")) {
     return [
       "An effective M5 patient residence covering every service day",
@@ -1093,6 +1115,8 @@ function unresolvedPricingPreview(input: {
   readonly serviceCategory?: AssemblyPreviewPricing["segments"][number]["serviceCategory"];
   readonly serviceLocationKind?: AssemblyPreviewPricing["segments"][number]["serviceLocationKind"];
   readonly status?: AssemblyPreviewPricing["status"];
+  /** The instant the caller assessed at, when it has one (a preview read under locks); otherwise now. */
+  readonly assessedAt?: string;
 }): AssemblyPreviewPricing {
   // The single segment is a placeholder spanning the request, not an assessment: no day was priced, so it
   // does not "cover" the period. An ambiguous or unsupported outcome keeps its own segment status. The RATE
@@ -1104,7 +1128,7 @@ function unresolvedPricingPreview(input: {
     outcome === "ambiguous" && !/^(MEDICAID_)?RATE_/.test(input.reasonCode) ? null : outcome;
   return {
     status: input.status ?? "unresolved",
-    assessedAt: new Date().toISOString(),
+    assessedAt: input.assessedAt ?? new Date().toISOString(),
     coversRequestedPeriod: false,
     requiredInputs: input.requiredInputs,
     segments: [
@@ -1388,8 +1412,9 @@ export interface FacilityNameResolverPort {
   ): Promise<{ readonly canonical: { readonly displayName: string } } | null>;
 }
 
-/** M5's LIVE `PatientAddressReader` seam. Local Q5001 daily-RHC pricing requires one verified home
- * residence span for the whole claim window; missing, facility, overlapping or changing facts fail closed. */
+/** M5's LIVE `PatientAddressReader` seam. Local daily-RHC pricing requires one verified primary residence
+ * span for the whole claim window: a home for Q5001 evidence, an M40 assisted-living facility for Q5002
+ * evidence. A missing, overlapping, changing, or other-kind residence fails closed. */
 export interface ResidenceReaderPort {
   residenceAt(
     organizationId: string,
@@ -1507,10 +1532,10 @@ export function buildDrizzleM24WriteService(
     spans: readonly { facilityId: string | null }[],
   ): Promise<ReadonlyMap<string, PlaceOfServiceFacilityKind>> {
     const ids = [...new Set(spans.flatMap((span) => (span.facilityId ? [span.facilityId] : [])))];
-    if (ids.length === 0 || !facilityKindReader) return new Map();
-    return facilityKindReader.kindsForInTransaction
-      ? facilityKindReader.kindsForInTransaction(tx, ids)
-      : facilityKindReader.kindsFor(ids);
+    // Pricing reads M40 only through the locked, status-filtered in-transaction method; without it no
+    // facility kind is known and a facility residence fails closed (RHC_FACILITY_KIND_UNRESOLVED).
+    if (ids.length === 0 || !facilityKindReader?.kindsForInTransaction) return new Map();
+    return facilityKindReader.kindsForInTransaction(tx, ids);
   }
 
   /**
@@ -2387,6 +2412,19 @@ export function buildDrizzleM24WriteService(
               programResponsibility.canonicalPayerId
             ) {
               const result = await withOrgContext(db, actor, async (tx) => {
+                // Same order as assembly: the rate and evidence advisory locks come before any M5 row lock
+                // (the residence read takes FOR SHARE on address rows) and before the clock is read, so a
+                // correction that commits while this waits is part of the instant assessed.
+                await lockHospiceBillingEvidenceScope(tx, {
+                  organizationId: actor.organizationId,
+                  providerEntityId: input.providerEntityId,
+                  patientId: input.patientId,
+                  admissionId: input.admissionId,
+                  canonicalPayerId: programResponsibility.canonicalPayerId!,
+                  programKind: "managed_care",
+                  serviceState: recordedEligibility.serviceState!,
+                });
+                const assessedAt = new Date().toISOString();
                 const scope = {
                   organizationId: actor.organizationId,
                   providerEntityId: input.providerEntityId,
@@ -2420,6 +2458,7 @@ export function buildDrizzleM24WriteService(
                   return {
                     plan: { status: "unresolved" as const, reasonCode: evidence.reasonCode },
                     serviceLocationKind,
+                    assessedAt,
                   };
                 }
                 const rateRows = await readMedicaidRatePolicyLineage(tx, {
@@ -2440,7 +2479,7 @@ export function buildDrizzleM24WriteService(
                   residenceSpans,
                   facilityKinds,
                 });
-                return { plan, serviceLocationKind };
+                return { plan, serviceLocationKind, assessedAt };
               });
               if (result.plan.status === "resolved") {
                 const segments = result.plan.lines.map((line) => ({
@@ -2488,7 +2527,7 @@ export function buildDrizzleM24WriteService(
                 }));
                 pricing = {
                   status: "fully_resolved",
-                  assessedAt,
+                  assessedAt: result.assessedAt,
                   coversRequestedPeriod: segmentsTilePeriod(
                     segments,
                     input.serviceFrom,
@@ -2515,6 +2554,7 @@ export function buildDrizzleM24WriteService(
                   serviceLocationKind: result.serviceLocationKind,
                   status: result.plan.status,
                   serviceCategory: "RHC",
+                  assessedAt: result.assessedAt,
                 });
               }
             } else {
@@ -3677,6 +3717,18 @@ export function buildDrizzleM24WriteService(
               claim.medicaidProgramKind === "managed_care" &&
               canonicalPayerReader?.medicaidProgramClassifications
             ) {
+              // Locks before the clock (as in assembly): a rate or evidence correction that commits while
+              // this waits is then part of the instant being assessed, so the stored snapshot is checked
+              // against the current head, never a superseded one.
+              await lockHospiceBillingEvidenceScope(tx, {
+                organizationId: actor.organizationId,
+                providerEntityId: claim.providerEntityId,
+                patientId: claim.patientId,
+                admissionId: claim.admissionId,
+                canonicalPayerId: claim.canonicalPayerId,
+                programKind: "managed_care",
+                serviceState: claim.serviceState,
+              });
               const assessedAt = new Date().toISOString();
               const rateRows = await readMedicaidRatePolicyLineage(tx, {
                 organizationId: actor.organizationId,

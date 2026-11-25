@@ -404,6 +404,14 @@ describe.skipIf(!DB_URL)(
       chargeEvidenceVersion: 1,
       serviceFrom: "2026-01-01",
       serviceTo: "2026-01-02",
+      // Migration 1554's supported-profile guard: a v1 snapshot is the home RHC profile, so it names its residence.
+      serviceLocation: {
+        patientAddressId: "00000000-0000-4000-8000-0000000000a1",
+        kind: "home",
+        facilityId: null,
+        effectiveFrom: "2026-01-01",
+        effectiveTo: "2026-01-02",
+      },
       locality: {
         code: "CBSA-FIX",
         evidenceReference: "evidence:synthetic-test/locality",

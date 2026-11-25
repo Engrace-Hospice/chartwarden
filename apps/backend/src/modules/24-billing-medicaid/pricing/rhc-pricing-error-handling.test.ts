@@ -18,7 +18,7 @@ const EVENT = "m24.test.pricing";
 const SECRET_MESSAGE = "synthetic-record-content-do-not-log";
 
 const refusals = {
-  conflict: new ConflictError("SYNTHETIC_CONFLICT", SECRET_MESSAGE),
+  conflict: new ConflictError(SECRET_MESSAGE),
   degraded: new DegradedError("SYNTHETIC_DEGRADED", SECRET_MESSAGE),
   validation: new ValidationError(SECRET_MESSAGE, []),
 };

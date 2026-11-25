@@ -122,7 +122,11 @@ export function assertSupportedRhcPricingSnapshotPayload(
     !location ||
     typeof location !== "object"
   ) {
-    throw new Error("unsupported or incomplete local daily RHC pricing snapshot");
+    throw new ChartWardenError(
+      "RHC_PRICING_SNAPSHOT_PROFILE_UNSUPPORTED",
+      "unsupported or incomplete local daily RHC pricing snapshot",
+      500,
+    );
   }
   const serviceLocation = location as Record<string, unknown>;
   if (
@@ -144,7 +148,11 @@ export function assertSupportedRhcPricingSnapshotPayload(
   ) {
     return snapshot as MedicaidClaimLinePricingSnapshotPayload;
   }
-  throw new Error("pricing snapshot does not match its supported daily RHC profile");
+  throw new ChartWardenError(
+    "RHC_PRICING_SNAPSHOT_PROFILE_UNSUPPORTED",
+    "pricing snapshot does not match its supported daily RHC profile",
+    500,
+  );
 }
 
 export type RHCPricePlanResult =
@@ -205,9 +213,12 @@ export async function lockMedicaidRatePolicyScopes(
 }
 
 /**
- * Advisory-lock order within one claim is FIXED everywhere (preview, assembly, validation, revalidation): the
- * rate-policy scope lock first, then the billing-evidence scope lock. Two paths taking them in opposite orders
- * can deadlock (40P01). Every path reads evidence through `readMedicaidHospiceBillingEvidence` and rate
+ * Lock order is FIXED everywhere (assembly, validation, revalidation): the claim's M6 admission row (FOR UPDATE)
+ * first, then the rate-policy scope advisory lock, then the billing-evidence scope advisory lock. (Preview takes
+ * no admission row lock; it starts at the rate lock. Assembly and validation also take the M5 patient and payer
+ * coverage FOR SHARE locks before the admission row: share locks are compatible with each other, and no
+ * FOR UPDATE holder of those rows waits on an admission or claim afterwards, so they add no cycle.) Two paths
+ * taking the locks above in opposite orders can deadlock (40P01). Every path reads evidence through `readMedicaidHospiceBillingEvidence` and rate
  * lineage through `readMedicaidRatePolicyLineage`, so taking the rate lock here before the evidence lock makes
  * the order rate -> evidence regardless of which read a caller issues first (advisory xact locks are
  * re-entrant). A path that holds the locks of several claims at once (the revalidation job) takes all its rate
@@ -502,10 +513,10 @@ export async function verifyStoredRhcPricingSnapshots(input: {
   const facilityIds = [
     ...new Set(residenceSpans.flatMap((span) => (span.facilityId ? [span.facilityId] : []))),
   ];
-  const facilityKinds = input.facilityKindReader
-    ? input.facilityKindReader.kindsForInTransaction
-      ? await input.facilityKindReader.kindsForInTransaction(input.tx, facilityIds)
-      : await input.facilityKindReader.kindsFor(facilityIds)
+  // Only the locked, in-transaction read is allowed to price a facility residence: the unlocked
+  // `kindsFor` is neither status-filtered nor serialised against an M40 merge or deactivation.
+  const facilityKinds = input.facilityKindReader?.kindsForInTransaction
+    ? await input.facilityKindReader.kindsForInTransaction(input.tx, facilityIds)
     : new Map<string, string>();
   const plan = resolveRhcDailyPricingPlan({
     scope,
@@ -976,6 +987,9 @@ function resolveSingleRhcDailyPricingPlan(input: {
       if (chargesCents === null)
         return { status: "unresolved", reasonCode: "BILLED_CHARGE_OVERFLOW" };
       const snapshotSchemaVersion = evidence.hcpcsCode === "Q5002" ? 2 : 1;
+      // The residence is bound to the CLAIMED days only (its span clipped to this line), like the LOC facts
+      // below: the planner already refused a span that does not cover them, so a later move-out that
+      // closes the open address row does not touch a single claimed day and must not stale the draft.
       const serviceLocation =
         evidence.hcpcsCode === "Q5002"
           ? {
@@ -983,15 +997,15 @@ function resolveSingleRhcDailyPricingPlan(input: {
               kind: residence.span.kind,
               facilityId: residence.span.facilityId,
               facilityKind: "alf",
-              effectiveFrom: residence.span.effectiveFrom,
-              effectiveTo: residence.span.effectiveTo,
+              effectiveFrom: segment.serviceFrom,
+              effectiveTo: segment.serviceTo,
             }
           : {
               patientAddressId: residence.span.addressId,
               kind: residence.span.kind,
               facilityId: residence.span.facilityId,
-              effectiveFrom: residence.span.effectiveFrom,
-              effectiveTo: residence.span.effectiveTo,
+              effectiveFrom: segment.serviceFrom,
+              effectiveTo: segment.serviceTo,
             };
       const facts: Record<string, unknown> = {
         schemaVersion: snapshotSchemaVersion,
@@ -1100,8 +1114,9 @@ function resolveSingleRhcDailyPricingPlan(input: {
 /**
  * Shared pricing pipeline for preview, assembly, and revalidation. Adjacent verified billing-evidence
  * heads are evaluated independently, then joined in date order. A segment-level contract ceiling is
- * applied once across contiguous lines that use the same rate identity, and its result is allocated in
- * integer minor units so evidence segmentation cannot multiply the ceiling.
+ * applied once across the contiguous lines of ONE M6 level-of-care period that use the same rate
+ * identity (the segment the engine caps; a second period is a second segment), and its result is
+ * allocated in integer minor units so evidence segmentation cannot multiply the ceiling.
  */
 export function resolveRhcDailyPricingPlan(input: {
   readonly scope: RHCPriceScope;
@@ -1180,6 +1195,7 @@ function applySegmentCeilingAcrossEvidence(
       const prior = lines[end - 1]!;
       const next = lines[end]!;
       if (
+        next.locPeriodId !== first.locPeriodId ||
         next.rate.id !== rate.id ||
         next.rate.version !== rate.version ||
         next.serviceFrom !== nextCalendarDate(prior.serviceTo)
@@ -1191,36 +1207,34 @@ function applySegmentCeilingAcrossEvidence(
       const group = lines.slice(start, end);
       const totalBase = group.reduce((sum, line) => sum + BigInt(line.baseReimbursementCents), 0n);
       const cap = rate.chargeCeilingCents;
-      if (cap === null || totalBase <= 0n || totalBase > 2_147_483_647n) return null;
+      if (cap === null || cap <= 0 || totalBase <= 0n || totalBase > 2_147_483_647n) return null;
       const totalEstimate = totalBase < BigInt(cap) ? totalBase : BigInt(cap);
-      let allocated = 0n;
+      // Largest-remainder allocation: every line gets the floor of its proportional share, then the cents
+      // left over go one each to the lines with the largest fractional remainder (earlier line on a tie).
+      // The shares sum exactly to the capped total, and because that total never exceeds the base total no
+      // line is ever allocated more than its own base amount.
+      const scaled = group.map((line) => totalEstimate * BigInt(line.baseReimbursementCents));
+      const shares = scaled.map((value) => value / totalBase);
+      let leftover = totalEstimate - shares.reduce((sum, share) => sum + share, 0n);
+      const byRemainder = scaled
+        .map((value, index) => ({ index, remainder: value % totalBase }))
+        .sort((a, b) =>
+          a.remainder === b.remainder ? a.index - b.index : a.remainder > b.remainder ? -1 : 1,
+        );
+      for (const { index } of byRemainder) {
+        if (leftover === 0n) break;
+        shares[index] = shares[index]! + 1n;
+        leftover -= 1n;
+      }
       for (let index = 0; index < group.length; index += 1) {
         const line = group[index]!;
-        const amount =
-          index === group.length - 1
-            ? totalEstimate - allocated
-            : (totalEstimate * BigInt(line.baseReimbursementCents)) / totalBase;
-        allocated += amount;
-        const ceilings =
-          index === group.length - 1 && totalBase > BigInt(cap)
-            ? [
-                {
-                  method: "contract_maximum" as const,
-                  amountCents: cap,
-                  boundary: "segment" as const,
-                },
-              ]
-            : [];
-        const integrityFacts = {
-          ...line.integrityFacts,
-          reimbursementEstimateCents: Number(amount),
-          appliedCeilings: ceilings,
-        };
+        const amount = shares[index]!;
+        // Each line keeps the ceiling record the engine produced for it (same rate row, so the same
+        // evidence reference/version); only the estimate is re-allocated across the group.
         lines[start + index] = {
           ...line,
           reimbursementEstimateCents: Number(amount),
-          appliedCeilings: ceilings,
-          integrityFacts,
+          integrityFacts: { ...line.integrityFacts, reimbursementEstimateCents: Number(amount) },
         };
       }
     }

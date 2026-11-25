@@ -736,7 +736,10 @@ controls:
       or lies more than five minutes ahead of the database clock. A missing or ambiguous rate, an unresolved election day, a pending evidence correction or a service window over
       366 days is refused with a code and nothing is priced. Assembly, manual validation and the nightly revalidation derive the price
       again from current scoped facts and refuse a claim whose stored snapshot no longer matches them. Every other service category
-      stays unpriced.
+      stays unpriced. A routine home care day lived in a facility is priced only for an assisted-living facility (billing code Q5002,
+      snapshot version 2): the planner and the snapshot trigger (1554) require the patient's effective M5 residence and an active,
+      unmerged M40 assisted-living facility, which M40's SECURITY DEFINER read function (1553) returns under a row lock without giving
+      the application role any write capability on canonical rows. Any other facility kind is refused.
     hipaa: ["164.312(c)(1)"]
     soc2: ["PI1.2", "PI1.3"]
     status: partial
@@ -750,7 +753,10 @@ controls:
       - file: packages/db/migrations/1550_m24_rate_policy_methodology_and_variants.sql
       - file: packages/db/migrations/1551_m24_immutable_hospice_pricing_snapshots.sql
       - file: packages/db/migrations/1552_m24_billing_evidence_lineage_integrity.sql
+      - file: packages/db/migrations/1553_m40_facility_kind_locked_reader.sql
+      - file: packages/db/migrations/1554_m24_generalized_daily_rhc_pricing_snapshots.sql
       - file: packages/db/src/schema/medicaid-billing/hospice-pricing.ts
+      - file: apps/backend/src/modules/40-mdm/facility-kind-reader.ts
       - file: packages/medicaid-adapters/src/payer-rate-policy.ts
       - file: packages/medicaid-adapters/src/hospice-pricing.ts
       - file: packages/medicaid-adapters/src/rules/cob-rate-rules.ts
@@ -763,6 +769,7 @@ controls:
       - file: packages/medicaid-adapters/__tests__/rules.test.ts
       - file: apps/backend/src/modules/24-billing-medicaid/pricing/billing-evidence-lineage.test.ts
       - file: apps/backend/src/modules/24-billing-medicaid/pricing/rhc-pricing-snapshot.test.ts
+      - file: apps/backend/src/modules/24-billing-medicaid/pricing/rhc-pricing-facility.test.ts
       - file: packages/db/migrations/__tests__/m24-rls-isolation.live.test.ts
       - file: apps/backend/__tests__/m24-claim-line-assembly.live.test.ts
       - file: docs/audits/billing-e2e/M24_1075_L8A2_CLINICAL_QUANTITY_AND_PRICING_SNAPSHOT_QUALIFICATION_20261125.md

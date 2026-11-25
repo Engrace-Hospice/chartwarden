@@ -369,9 +369,13 @@ transaction-bound consumer validation. The function accepts at most 500 UUIDs, f
 bounded merge chain, returns only requested/resolved identity, facility kind and status, and holds each
 resolved row with `FOR SHARE`. It is owned by `mdm_canonical_writer`, has a fixed `search_path`, and
 grants execution only to `chartwarden_app`; the application role receives no canonical UPDATE capability.
-M24 migration 1554 adds only the canonical-column SELECT needed by the existing non-transaction M40
-facility reader; the snapshot trigger calls this locked function. This read seam supports M24's synthetic assisted-living RHC
-snapshot integrity; it is not facility qualification for payer transmission.
+A facility id that was merged into another facility is answered with the survivor's identity here, and
+M24 refuses to price it (the planner and the snapshot trigger both require the resolved id to equal the
+requested id), so a residence that names a merged facility is re-recorded rather than silently re-pointed.
+No privilege on the `facility` table is granted for this: the application role already reads it for the
+non-transaction M40 facility reader, and the snapshot trigger reaches it only through this function. This
+read seam supports M24's synthetic assisted-living RHC snapshot integrity; it is not facility
+qualification for payer transmission.
 
 ### 2.6 Side Effects
 

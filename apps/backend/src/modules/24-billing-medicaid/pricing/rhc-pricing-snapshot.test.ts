@@ -217,7 +217,7 @@ describe("resolveRhcDailyPricingPlan", () => {
       resolveRhcDailyPricingPlan(
         planInput({ evidence: { ...EVIDENCE, effectiveFrom: "2026-11-02" } }),
       ),
-    ).toEqual({ status: "unresolved", reasonCode: "BILLING_EVIDENCE_STALE_OR_OUT_OF_RANGE" });
+    ).toEqual({ status: "unresolved", reasonCode: "BILLING_EVIDENCE_PERIOD_INCOMPLETE" });
   });
 
   it("fails closed on a non-RHC period, a gap between periods, and missing LOC evidence", () => {
@@ -595,5 +595,77 @@ describe("verifyStoredRhcPricingSnapshots", () => {
     expect((await verifyAgainst(stored, { locPeriods, claim })).pricingSnapshotVerified).toBe(
       false,
     );
+  });
+});
+
+describe("verifyStoredRhcPricingSnapshots for a facility (Q5002) residence", () => {
+  const FACILITY = "00000000-0000-4000-8000-0000000000f1";
+  const ALF_SPAN = {
+    addressId: "00000000-0000-4000-8000-0000000000f2",
+    kind: "facility",
+    facilityId: FACILITY,
+    effectiveFrom: "2026-10-01",
+    effectiveTo: null,
+  } as const;
+  const Q5002_EVIDENCE = { ...EVIDENCE, id: "evidence-q5002", hcpcsCode: "Q5002" };
+  const kinds = (kind: string) => new Map([[FACILITY, kind]]);
+  const stored = (() => {
+    const assembly = storedAssembly(
+      planInput({
+        evidence: Q5002_EVIDENCE,
+        residenceSpans: [ALF_SPAN],
+        facilityKinds: kinds("alf"),
+      }),
+    );
+    return { ...assembly, snapshot: { ...assembly.snapshot, snapshotSchemaVersion: 2 } };
+  })();
+  const verifyFacility = (
+    facilityKindReader: VerifyInput["facilityKindReader"],
+    residence: readonly (typeof ALF_SPAN)[] | readonly Record<string, unknown>[] = [ALF_SPAN],
+  ) =>
+    verifyStoredRhcPricingSnapshots({
+      tx: scriptedTx([ASSIGNMENT_ROWS, [Q5002_EVIDENCE], [stored.snapshot]]),
+      claim: CLAIM,
+      lines: [stored.line],
+      locPeriods: [OPEN_RHC_PERIOD],
+      admissionVersion: 3,
+      rateRows: [RATE_ROW],
+      payerReader: PAYER_READER,
+      residenceReader: {
+        residencesBetweenInTransaction: async () =>
+          residence as unknown as readonly (typeof ALF_SPAN)[],
+      },
+      facilityKindReader,
+      assessedAt: ASSESSED_AT,
+    });
+  const lockedReader = (kind: string) => ({
+    kindsFor: async () => kinds("alf"),
+    kindsForInTransaction: async () => kinds(kind),
+  });
+
+  it("verifies a stored v2 snapshot against an active assisted-living facility", async () => {
+    expect((await verifyFacility(lockedReader("alf"))).pricingSnapshotVerified).toBe(true);
+  });
+
+  it("stays verified when the residence closes after the claimed days", async () => {
+    const result = await verifyFacility(lockedReader("alf"), [
+      { ...ALF_SPAN, effectiveTo: "2026-11-20" },
+    ]);
+    expect(result.pricingSnapshotVerified).toBe(true);
+  });
+
+  it("fails closed when the facility is now another kind, or the locked kind is unavailable", async () => {
+    expect((await verifyFacility(lockedReader("snf"))).pricingSnapshotVerified).toBe(false);
+    const absent = {
+      kindsFor: async () => kinds("alf"),
+      kindsForInTransaction: async () => new Map(),
+    };
+    expect((await verifyFacility(absent)).pricingSnapshotVerified).toBe(false);
+  });
+
+  it("never falls back to the unlocked reader: without a locked read no facility kind is known", async () => {
+    const unlockedOnly = { kindsFor: async () => kinds("alf") };
+    expect((await verifyFacility(unlockedOnly)).pricingSnapshotVerified).toBe(false);
+    expect((await verifyFacility(undefined)).pricingSnapshotVerified).toBe(false);
   });
 });

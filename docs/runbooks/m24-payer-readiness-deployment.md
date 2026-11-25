@@ -120,8 +120,9 @@ Do not restart an old application image against the migrated schema.
           has_table_privilege('chartwarden_app', 'medicaid_era_review_history', 'INSERT') AS history_insert;
 
    -- Guards installed and enabled (tgenabled = 'O'): 23 rows (the six before the last are installed by 1551, the last by 1554).
+   -- tgparentid = 0 keeps the per-partition clones of the trigger on the partitioned medicaid_claim_line out of the count.
    SELECT tgrelid::regclass AS tbl, tgname, tgenabled FROM pg_trigger
-    WHERE tgname IN ('trg_medicaid_program_assignment_provider_entity', 'trg_medicaid_program_assignment_insert_status',
+    WHERE tgparentid = 0 AND tgname IN ('trg_medicaid_program_assignment_provider_entity', 'trg_medicaid_program_assignment_insert_status',
                      'trg_medicaid_program_assignment_location', 'trg_medicaid_program_assignment_update_guard',
                      'trg_medicaid_enrollment_evidence_provider_entity', 'trg_medicaid_enrollment_evidence_insert_status',
                      'trg_medicaid_enrollment_evidence_update_guard',
@@ -136,6 +137,16 @@ Do not restart an old application image against the migrated schema.
                      'trg_medicaid_claim_line_pricing_snapshot_insert', 'trg_medicaid_claim_line_pricing_snapshot_append_only',
                      'trg_medicaid_priced_claim_line_immutable',
                      'trg_medicaid_claim_line_pricing_snapshot_supported_profile') ORDER BY tgname;
+
+   -- 1553: the locked facility reader is owned by the canonical writer, SECURITY DEFINER, with a fixed search_path;
+   -- the application role can execute it, PUBLIC cannot, and the application role cannot UPDATE facility
+   -- (true, true, true, true, false, false).
+   SELECT pg_get_userbyid(p.proowner) = 'mdm_canonical_writer' AS owner_ok, p.prosecdef AS security_definer,
+          p.proconfig::text LIKE '%search_path=pg_catalog, public, pg_temp%' AS search_path_fixed,
+          has_function_privilege('chartwarden_app', p.oid, 'EXECUTE') AS app_can_execute,
+          has_function_privilege('public', p.oid, 'EXECUTE') AS public_can_execute,
+          has_table_privilege('chartwarden_app', 'facility', 'UPDATE') AS app_can_update_facility
+     FROM pg_proc p WHERE p.proname = 'm40_facility_kind_for_ids_locked';
 
    -- Audit triggers installed and enabled (tgenabled = 'O'): 9 rows. Without them the new tables change unrecorded.
    SELECT tgrelid::regclass AS tbl, tgname, tgenabled FROM pg_trigger

@@ -43,7 +43,11 @@ import {
   runMedicaidRules,
 } from "@chartwarden/medicaid-adapters";
 import { withOrgContext } from "@chartwarden/tenancy";
-import type { PatientAddressReader, PatientCoverageReader } from "@chartwarden/types";
+import {
+  DegradedError,
+  type PatientAddressReader,
+  type PatientCoverageReader,
+} from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray } from "drizzle-orm";
 import {
@@ -57,6 +61,7 @@ import {
   patientLifecycleServiceRangeIssue,
 } from "../claim-range-guards";
 import {
+  lockHospiceBillingEvidenceScope,
   lockMedicaidRatePolicyScopes,
   readInSavepoint,
   verifyStoredRhcPricingSnapshots,
@@ -69,6 +74,21 @@ import { readMedicaidRatePolicyLineage } from "../routes/write-service-drizzle";
 import { M24_QUEUES, M24_QUEUE_PARAMS } from "./queues";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+type ClaimRow = typeof schema.medicaidClaim.$inferSelect;
+
+/**
+ * The claims whose hospice pricing snapshots this job verifies, and so whose rate-policy scopes it locks. One
+ * predicate, so the pre-lock pass and the per-claim branch cannot drift apart.
+ */
+function isManagedCareHospiceClaim(
+  claim: ClaimRow,
+): claim is ClaimRow & { canonicalPayerId: string } {
+  return (
+    claim.kind !== "rb_only" &&
+    Boolean(claim.canonicalPayerId) &&
+    claim.medicaidProgramKind === "managed_care"
+  );
+}
 
 const M24_WORKER_SYSTEM_USER_ID = "";
 
@@ -335,7 +355,7 @@ export async function runMedicaidRevalidate(
   const VR = schema.medicaidValidationRun;
   const VRES = schema.medicaidValidationResult;
   const SH = schema.medicaidClaimStateHistory;
-  const now = (deps.now ?? (() => new Date()))();
+  const clock = deps.now ?? (() => new Date());
   const RULES_BY_KEY = new Map(DEFAULT_MEDICAID_RULES.map((r) => [r.key, r]));
 
   const claims = await tx
@@ -358,13 +378,36 @@ export async function runMedicaidRevalidate(
   // The pricing verification below takes a rate-policy lock per claim and holds it to the end of this
   // transaction. Take all of them first, in one fixed order, so two workers whose claims touch the same payers
   // in opposite order cannot deadlock (the evidence locks are per patient, so they cannot cross workers).
+  // Assembly and validation lock the claim's admission row BEFORE those advisory locks, so this job does too:
+  // taking a rate lock first and then waiting for an admission row an assembly holds would be a lock cycle.
+  // That includes the admission of every OTHER claim (rb_only, open-card, no payer): `resolvePayerContext` locks
+  // each claim's admission row, so all of them are locked here, sorted, before the first rate lock.
   if (deps.canonicalPayerReader?.medicaidProgramClassifications) {
+    const admissions = deps.admissions;
+    if (admissions) {
+      const admissionIds = new Set(claims.map((claim) => claim.admissionId));
+      for (const admissionId of [...admissionIds].sort()) {
+        // Only the row lock is wanted (the per-claim read below reports a refusal for the admission). But a
+        // lock that could not be taken must not be skipped: taking the rate locks without it is the inversion
+        // this pass prevents, so the job fails and retries.
+        const locked = await readInSavepoint(
+          tx,
+          "m24.claim_revalidate.admission_lock_unavailable",
+          (savepoint) =>
+            admissions.cadenceSnapshotInTransaction(savepoint, job.organizationId, admissionId),
+        );
+        if (!locked.ok) {
+          throw new DegradedError(
+            "m24-claim-revalidate",
+            "the admission row lock for revalidation could not be taken",
+          );
+        }
+      }
+    }
     await lockMedicaidRatePolicyScopes(
       tx,
       claims.flatMap((claim) =>
-        claim.kind !== "rb_only" &&
-        claim.canonicalPayerId &&
-        claim.medicaidProgramKind === "managed_care"
+        isManagedCareHospiceClaim(claim)
           ? [
               {
                 organizationId: claim.organizationId,
@@ -398,9 +441,7 @@ export async function runMedicaidRevalidate(
     let hospicePricingSnapshotVerified = claim.kind === "rb_only";
     let hospiceInstitutionalFormatQualified = claim.kind === "rb_only";
     if (
-      claim.kind !== "rb_only" &&
-      claim.canonicalPayerId &&
-      claim.medicaidProgramKind === "managed_care" &&
+      isManagedCareHospiceClaim(claim) &&
       deps.canonicalPayerReader?.medicaidProgramClassifications
     ) {
       const { resolvePayer, medicaidProgramClassifications } = deps.canonicalPayerReader;
@@ -414,7 +455,18 @@ export async function runMedicaidRevalidate(
         tx,
         "m24.claim_revalidate.pricing_snapshot_unverified",
         async (savepoint) => {
-          const assessedAt = now.toISOString();
+          // Rate locks were taken above; take this claim's evidence lock, THEN read the clock: a rate or
+          // evidence correction that commits while the job waits is then part of the instant assessed.
+          await lockHospiceBillingEvidenceScope(savepoint, {
+            organizationId: claim.organizationId,
+            providerEntityId: claim.providerEntityId,
+            patientId: claim.patientId,
+            admissionId: claim.admissionId,
+            canonicalPayerId,
+            programKind: "managed_care",
+            serviceState: claim.serviceState,
+          });
+          const assessedAt = clock().toISOString();
           const rateRows = await readMedicaidRatePolicyLineage(savepoint, {
             organizationId: claim.organizationId,
             providerEntityId: claim.providerEntityId,
@@ -520,6 +572,8 @@ export async function runMedicaidRevalidate(
     const summary = runMedicaidRules(DEFAULT_MEDICAID_RULES, ctx);
     const runId = randomUUID();
     const fromState = claim.state;
+    // Read after this claim's locks and pricing verification, so the run never completes before its own assessment.
+    const now = clock();
 
     await tx.insert(VR).values({
       id: runId,

@@ -18,11 +18,15 @@ DECLARE
   v_facility public.facility%ROWTYPE;
   v_hop integer;
 BEGIN
-  IF jsonb_typeof(p_facility_ids) IS DISTINCT FROM 'array' OR
-     jsonb_array_length(p_facility_ids) > 500 OR
-     EXISTS (SELECT 1 FROM jsonb_array_elements(p_facility_ids) AS item(value)
-              WHERE jsonb_typeof(item.value) <> 'string' OR item.value #>> '{}' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') THEN
+  IF jsonb_typeof(p_facility_ids) IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'M40_FACILITY_KIND_READ_INPUT_INVALID' USING ERRCODE = '22023';
+  END IF;
+  IF jsonb_array_length(p_facility_ids) > 500 THEN
     RAISE EXCEPTION 'M40_FACILITY_KIND_READ_LIMIT_EXCEEDED' USING ERRCODE = '22023';
+  END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_facility_ids) AS item(value)
+              WHERE jsonb_typeof(item.value) <> 'string' OR item.value #>> '{}' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') THEN
+    RAISE EXCEPTION 'M40_FACILITY_KIND_READ_INPUT_INVALID' USING ERRCODE = '22023';
   END IF;
 
   FOR v_requested_id IN

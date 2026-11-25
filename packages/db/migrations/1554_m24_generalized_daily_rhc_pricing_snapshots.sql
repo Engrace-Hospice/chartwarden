@@ -2,9 +2,8 @@
 -- L8A.2C1: preserve pricing snapshot v1 (home RHC/Q5001) and add one explicitly supported v2
 -- local-draft profile (assisted-living RHC/Q5002). No historical snapshot is rewritten.
 
--- M40 owns the canonical facility directory. Its established merge-resolved reader is used by M24 and M23;
--- grant only the columns needed by that projection and the snapshot trigger (canonical facility data, no PHI).
-GRANT SELECT (id, kind, primary_address, merged_into_id) ON facility TO chartwarden_app;--> statement-breakpoint
+-- No privilege on the M40-owned `facility` table is granted here: the snapshot trigger reads it only through
+-- 1553's SECURITY DEFINER function, and M23's established reader already reads it as the application role.
 
 ALTER TABLE medicaid_hospice_billing_evidence
   DROP CONSTRAINT medicaid_hospice_billing_evidence_pricing_facts;--> statement-breakpoint
@@ -26,7 +25,9 @@ ALTER TABLE medicaid_claim_line_pricing_snapshot
 ALTER TABLE medicaid_claim_line_pricing_snapshot
   DROP CONSTRAINT medicaid_claim_line_pricing_snapshot_shape;--> statement-breakpoint
 ALTER TABLE medicaid_claim_line_pricing_snapshot
-  ADD CONSTRAINT medicaid_claim_line_pricing_snapshot_shape CHECK (
+  -- IS TRUE: a snapshot missing `schemaVersion` or `postingAuthorized` makes an operand NULL, and a
+  -- CHECK accepts NULL, so without it a malformed document would pass.
+  ADD CONSTRAINT medicaid_claim_line_pricing_snapshot_shape CHECK ((
     jsonb_typeof(snapshot) = 'object' AND
     snapshot ->> 'schemaVersion' = snapshot_schema_version::text AND
     snapshot ->> 'postingAuthorized' = 'false' AND snapshot ? 'assessmentTimestamp' AND
@@ -39,7 +40,7 @@ ALTER TABLE medicaid_claim_line_pricing_snapshot
       snapshot #>> '{serviceLocation,kind}' = 'facility' AND
       snapshot #>> '{serviceLocation,facilityKind}' = 'alf' AND
       snapshot #>> '{serviceLocation,facilityId}' IS NOT NULL))
-  );--> statement-breakpoint
+  ) IS TRUE);--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION guard_medicaid_claim_line_pricing_snapshot_supported_profile() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
@@ -70,6 +71,15 @@ BEGIN
     RAISE EXCEPTION 'pricing snapshot v2 is restricted to the assisted-living daily RHC profile' USING ERRCODE='23514';
   END IF;
 
+  -- Well-formedness first, so a missing or malformed field is a 23514 refusal here instead of a NULL
+  -- comparison that skips the checks below: the service range's shape and both ids. (A calendar-impossible
+  -- date such as 2026-02-30 still raises 22008 from the ::date cast below: refused either way.)
+  IF (NEW.snapshot ->> 'serviceFrom' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$') IS NOT TRUE OR
+     (NEW.snapshot ->> 'serviceTo' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$') IS NOT TRUE OR
+     (NEW.snapshot #>> '{serviceLocation,patientAddressId}' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') IS NOT TRUE OR
+     (NEW.snapshot #>> '{serviceLocation,facilityId}' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') IS NOT TRUE THEN
+    RAISE EXCEPTION 'pricing snapshot v2 service range and residence identity must be well-formed' USING ERRCODE='23514';
+  END IF;
   v_address_id := (NEW.snapshot #>> '{serviceLocation,patientAddressId}')::uuid;
   v_facility_id := (NEW.snapshot #>> '{serviceLocation,facilityId}')::uuid;
   SELECT * INTO v_claim FROM medicaid_claim
@@ -82,9 +92,12 @@ BEGIN
    WHERE id = v_address_id AND organization_id = NEW.organization_id
      AND patient_id = v_claim.patient_id AND is_primary = true
    FOR SHARE;
+  -- The snapshot binds the residence to the CLAIMED days: its recorded bounds are the line's own service
+  -- days, and the live row must cover them. A later move-out that closes the open row changes no claimed
+  -- day, so it must not make a stored snapshot unverifiable.
   IF NOT FOUND OR v_address.kind <> 'facility' OR v_address.facility_id IS DISTINCT FROM v_facility_id OR
-     v_address.effective_from::text IS DISTINCT FROM NEW.snapshot #>> '{serviceLocation,effectiveFrom}' OR
-     v_address.effective_to::text IS DISTINCT FROM NEW.snapshot #>> '{serviceLocation,effectiveTo}' OR
+     NEW.snapshot #>> '{serviceLocation,effectiveFrom}' IS DISTINCT FROM NEW.snapshot ->> 'serviceFrom' OR
+     NEW.snapshot #>> '{serviceLocation,effectiveTo}' IS DISTINCT FROM NEW.snapshot ->> 'serviceTo' OR
      v_address.effective_from > (NEW.snapshot ->> 'serviceFrom')::date OR
      (v_address.effective_to IS NOT NULL AND v_address.effective_to < (NEW.snapshot ->> 'serviceTo')::date) THEN
     RAISE EXCEPTION 'pricing snapshot facility residence is not the effective M5 residence for this service range' USING ERRCODE='23514';

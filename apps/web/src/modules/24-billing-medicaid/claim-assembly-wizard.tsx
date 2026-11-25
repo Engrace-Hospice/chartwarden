@@ -43,8 +43,21 @@ const RATE_SOURCE_KIND_LABEL: Readonly<Record<string, string>> = {
   cco_contract: "CCO contract",
   other_payer_contract: "Other payer contract",
 };
+/** Local RHC refusals whose code `humanize` would garble ("Rhc q5002 requires ...") and whose remedy differs. */
+const PRICING_REASON_LABEL: Readonly<Record<string, string>> = {
+  RHC_Q5001_REQUIRES_HOME_RESIDENCE:
+    "Q5001 prices a home residence, but the recorded residence is a facility.",
+  RHC_Q5002_REQUIRES_FACILITY_RESIDENCE:
+    "Q5002 prices an assisted-living facility residence, but the recorded residence is a home.",
+  RHC_Q5002_REQUIRES_ASSISTED_LIVING:
+    "The recorded facility is not an assisted-living facility, the only facility kind priced locally.",
+  RHC_DAILY_LOCAL_PROFILE_UNSUPPORTED:
+    "The billing evidence uses a local RHC code that is not priced (only Q5001 and Q5002 are).",
+  RHC_FACILITY_KIND_UNRESOLVED:
+    "The recorded facility has no active M40 record (it may be merged, deactivated or unknown).",
+};
 const labelFor = (labels: Readonly<Record<string, string>>, value: string): string =>
-  labels[value] ?? humanize(value);
+  (Object.hasOwn(labels, value) ? labels[value] : undefined) ?? humanize(value);
 
 interface AssemblyPreview {
   primaryCoverage: { status: string; coverageKind: string | null; rank: number | null };
@@ -842,9 +855,11 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                       <strong>
                         {segment.serviceCategory
                           ? segment.serviceCategory === "RHC" &&
+                            segment.status === "resolved" &&
                             segment.serviceLocationKind === "facility"
                             ? "Facility-based RHC"
                             : segment.serviceCategory === "RHC" &&
+                                segment.status === "resolved" &&
                                 segment.serviceLocationKind === "home"
                               ? "Home RHC"
                               : labelFor(SERVICE_CATEGORY_LABEL, segment.serviceCategory)
@@ -861,7 +876,11 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                             ? "Conflicting rate evidence requires resolution."
                             : segment.rateStatus === "unverified"
                               ? "Rate source evidence is not verified."
-                              : "No exact qualified rate can be selected for this service span."}
+                              : segment.reasonCodes.some((reason) =>
+                                    Object.hasOwn(PRICING_REASON_LABEL, reason),
+                                  )
+                                ? "This service span cannot be priced locally."
+                                : "No exact qualified rate can be selected for this service span."}
                         </p>
                       )}
                       {segment.actualBilledChargeCents !== null ? (
@@ -889,7 +908,7 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                       ))}
                       {segment.reasonCodes.map((reason) => (
                         <p key={reason} style={mutedStyle}>
-                          {humanize(reason)}
+                          {labelFor(PRICING_REASON_LABEL, reason)}
                         </p>
                       ))}
                     </div>

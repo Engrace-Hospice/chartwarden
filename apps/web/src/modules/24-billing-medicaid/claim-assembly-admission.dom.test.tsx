@@ -463,6 +463,38 @@ describe("the billing context step shows what the server resolved", () => {
     expect(pricing).toHaveTextContent("actual billed amount remains unavailable");
     expect(fieldValue("Electronic submission")).toContain("Unavailable");
   });
+
+  it("does not label a facility span 'Facility-based RHC' when it cannot be priced, and says why", async () => {
+    previewBody = {
+      ...BLOCKED_ARRANGEMENT_PREVIEW,
+      pricing: {
+        ...BLOCKED_ARRANGEMENT_PREVIEW.pricing,
+        status: "unsupported",
+        requiredInputs: [
+          "Only an assisted-living facility is priced locally; this M5 residence is another facility kind and needs a reviewed pricing profile",
+        ],
+        segments: [
+          {
+            ...BLOCKED_ARRANGEMENT_PREVIEW.pricing.segments[0],
+            serviceCategory: "RHC",
+            serviceLocationKind: "facility",
+            status: "unsupported",
+            rateStatus: "unsupported",
+            reasonCodes: ["RHC_Q5002_REQUIRES_ASSISTED_LIVING"],
+          },
+        ],
+      },
+    };
+    await reachBillingContext();
+    const pricing = screen.getByRole("region", { name: "Pricing assessment" });
+    expect(pricing).not.toHaveTextContent("Facility-based RHC");
+    expect(pricing).toHaveTextContent("This service span cannot be priced locally.");
+    expect(pricing).toHaveTextContent(
+      "The recorded facility is not an assisted-living facility, the only facility kind priced locally.",
+    );
+    expect(pricing).not.toHaveTextContent("Rhc q5002");
+    expect(pricing).not.toHaveTextContent("No exact qualified rate");
+  });
 });
 
 describe("an ambiguous or unsupported pricing outcome is shown as such", () => {
