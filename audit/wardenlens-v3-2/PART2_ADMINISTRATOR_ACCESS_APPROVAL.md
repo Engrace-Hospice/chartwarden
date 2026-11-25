@@ -93,5 +93,5 @@ Effect on the conditions above:
 I approve Addendum 1.
 
 - Reviewer name: Fabrice Adjam
-- Approval date:
-- Signature or approval-system reference:
+- Approval date: 2026-11-25
+- Signature or approval-system reference: Fabrice Adjam, Privacy Officer (interim), 2026-11-25
