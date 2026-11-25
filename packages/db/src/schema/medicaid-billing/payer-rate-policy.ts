@@ -21,10 +21,10 @@ export const medicaidPayerRatePolicy = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id),
+      .references(() => organizations.id, { onDelete: "restrict" }),
     providerEntityId: uuid("provider_entity_id")
       .notNull()
-      .references(() => providerEntities.id),
+      .references(() => providerEntities.id, { onDelete: "restrict" }),
     canonicalPayerId: uuid("canonical_payer_id").notNull(),
     programKind: text("program_kind").notNull(),
     serviceState: text("service_state").notNull(),

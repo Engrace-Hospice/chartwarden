@@ -11,8 +11,21 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { businessRule } from "../../business-rules";
 import { organizations } from "../organizations";
 import { claimmdEraM25Stage } from "./claimmd-era";
+
+// Registered business rules (F-022 / #55): two callers racing past the service's own pre-check hit these unique keys,
+// and a `23505` on them answers 409 with this sentence instead of a bare 500. Declared outside `pgTable`'s lazily
+// invoked config callback so the error handler can see them.
+const ERA_REVIEW_HISTORY_IDEMPOTENCY_UQ = businessRule(
+  "medicaid_era_review_history_idempotency_uq",
+  "This Idempotency-Key was already used for another review action. Use a new key for a new action.",
+);
+const ERA_REVIEW_HISTORY_VERSION_UQ = businessRule(
+  "medicaid_era_review_history_version_uq",
+  "This review changed while the action was being saved. Reload it and try again.",
+);
 
 /** Tenant-owned, nonposting assessment. The only supported artifact source in L6B is Claim.MD raw X12. */
 export const medicaidEraReview = pgTable(
@@ -68,9 +81,49 @@ export const medicaidEraReview = pgTable(
               AND assessment_evidence_fingerprint ~ '^[0-9a-f]{64}$'
               AND assessment_observed_at IS NOT NULL)`,
     ),
+    // Column CHECKs of 1543 are inline there, so Postgres named them <table>_<column>_check.
     decisionStatus: check(
-      "medicaid_era_review_decision_status_ck",
+      "medicaid_era_review_decision_status_check",
       sql`decision_status IN ('review_required', 'payment_reported')`,
+    ),
+    vendor: check("medicaid_era_review_vendor_check", sql`vendor = 'claimmd'`),
+    sourceEnvironment: check(
+      "medicaid_era_review_source_environment_check",
+      sql`source_environment IN ('test', 'production')`,
+    ),
+    sourceDigest: check(
+      "medicaid_era_review_source_digest_check",
+      sql`source_digest ~ '^[0-9a-f]{64}$'`,
+    ),
+    reasonCodesArray: check(
+      "medicaid_era_review_reason_codes_check",
+      sql`jsonb_typeof(reason_codes) = 'array'`,
+    ),
+    duplicateStatus: check(
+      "medicaid_era_review_duplicate_status_check",
+      sql`duplicate_status IN ('none', 'exact', 'possible', 'conflict')`,
+    ),
+    safeSummaryObject: check(
+      "medicaid_era_review_safe_summary_check",
+      sql`jsonb_typeof(safe_summary) = 'object'`,
+    ),
+    workflowState: check(
+      "medicaid_era_review_workflow_state_check",
+      sql`workflow_state IN ('needs_review', 'investigating', 'follow_up_required', 'reviewed_not_posted', 'reopened')`,
+    ),
+    versionPositive: check("medicaid_era_review_version_check", sql`version > 0`),
+    stageOwner: check(
+      "medicaid_era_review_stage_owner_ck",
+      sql`organization_id IS NOT NULL AND provider_entity_id IS NOT NULL`,
+    ),
+    trustStatus: check(
+      "medicaid_era_review_assessment_trust_status_check",
+      sql`assessment_trust_status IN ('legacy_unverified', 'isolated_evaluator')`,
+    ),
+    // 1544: a stored summary can never authorize posting, at any depth.
+    nonpostingSummary: check(
+      "medicaid_era_review_nonposting_summary_ck",
+      sql`NOT jsonb_path_exists(safe_summary, '$.**.postingAuthorized ? (@ == true)')`,
     ),
     worklist: index("medicaid_era_review_worklist_ix").on(
       t.organizationId,
@@ -78,6 +131,8 @@ export const medicaidEraReview = pgTable(
       t.workflowState,
       t.createdAt,
     ),
+    // The stage FK is RESTRICT: its delete scan needs an index that leads with stage_id (1543).
+    stage: index("medicaid_era_review_stage_ix").on(t.stageId),
   }),
 );
 
@@ -104,8 +159,8 @@ export const medicaidEraReviewHistory = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    version: unique("medicaid_era_review_history_version_uq").on(t.reviewId, t.version),
-    idempotency: unique("medicaid_era_review_history_idempotency_uq").on(
+    version: unique(ERA_REVIEW_HISTORY_VERSION_UQ).on(t.reviewId, t.version),
+    idempotency: unique(ERA_REVIEW_HISTORY_IDEMPOTENCY_UQ).on(
       t.organizationId,
       t.idempotencyKeyHash,
     ),
@@ -114,6 +169,27 @@ export const medicaidEraReviewHistory = pgTable(
       t.providerEntityId,
       t.reviewId,
       t.version,
+    ),
+    versionPositive: check("medicaid_era_review_history_version_check", sql`version > 0`),
+    actionKnown: check(
+      "medicaid_era_review_history_action_check",
+      sql`action IN ('assessed', 'reassessed', 'note', 'investigating', 'follow_up_required', 'reviewed_not_posted', 'reopened')`,
+    ),
+    idempotencyKeyHashShape: check(
+      "medicaid_era_review_history_idempotency_key_hash_check",
+      sql`idempotency_key_hash IS NULL OR idempotency_key_hash ~ '^[0-9a-f]{64}$'`,
+    ),
+    owner: check(
+      "medicaid_era_review_history_owner_ck",
+      sql`organization_id IS NOT NULL AND provider_entity_id IS NOT NULL`,
+    ),
+    trustStatusKnown: check(
+      "medicaid_era_review_history_trust_status_check",
+      sql`trust_status IN ('legacy_unverified', 'isolated_evaluator')`,
+    ),
+    operationFingerprintShape: check(
+      "medicaid_era_review_history_operation_fingerprint_check",
+      sql`operation_fingerprint IS NULL OR operation_fingerprint ~ '^[0-9a-f]{64}$'`,
     ),
   }),
 );
@@ -140,15 +216,15 @@ export const medicaidEraReviewIdempotency = pgTable(
       columns: [t.organizationId, t.idempotencyKeyHash],
     }),
     keyHash: check(
-      "medicaid_era_review_idempotency_key_hash_ck",
+      "medicaid_era_review_idempotency_idempotency_key_hash_check",
       sql`idempotency_key_hash ~ '^[0-9a-f]{64}$'`,
     ),
     operation: check(
-      "medicaid_era_review_idempotency_operation_ck",
+      "medicaid_era_review_idempotency_operation_check",
       sql`operation IN ('evaluate','note','transition')`,
     ),
     fingerprint: check(
-      "medicaid_era_review_idempotency_fingerprint_ck",
+      "medicaid_era_review_idempotency_operation_fingerprint_check",
       sql`operation_fingerprint ~ '^[0-9a-f]{64}$'`,
     ),
     review: index("medicaid_era_review_idempotency_review_ix").on(
@@ -156,5 +232,7 @@ export const medicaidEraReviewIdempotency = pgTable(
       t.providerEntityId,
       t.reviewId,
     ),
+    // The review FK is RESTRICT: its delete scan needs an index that leads with review_id (1547).
+    reviewFk: index("medicaid_era_review_idempotency_review_fk_ix").on(t.reviewId),
   }),
 );

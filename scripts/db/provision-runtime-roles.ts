@@ -459,6 +459,9 @@ async function main(): Promise<void> {
       `ALTER ROLE ${quoteIdentifier(loginName)} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT PASSWORD ${quoteLiteral(password)};`,
     );
     await run(`GRANT ${quoteIdentifier(carrierName)} TO ${quoteIdentifier(loginName)};`);
+    // A rotated password must also cut the sessions opened with the old one (a leaked credential's connection would
+    // otherwise stay usable); the isolated process reconnects with the new secret file.
+    await terminateRoleSessions(loginName);
   };
   const revokeIsolatedLogin = async (loginName: string): Promise<void> => {
     await run(

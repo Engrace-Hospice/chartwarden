@@ -23,6 +23,9 @@ DO $$ BEGIN
           WHERE rolname IN ('chartwarden_m25_era_source','chartwarden_m25_era_source_resolver')
        )
        AND deptype = 'o'
+       -- Roles are cluster-global: only objects in THIS database (or shared ones, dbid 0) count, or a second database
+       -- on the cluster could never apply this file once the first one holds the resolver's function.
+       AND dbid IN (0, (SELECT oid FROM pg_database WHERE datname = current_database()))
   ) THEN
     RAISE EXCEPTION 'M25 ERA source roles own database objects; isolate or remove the roles before migration';
   END IF;
@@ -86,6 +89,12 @@ GRANT SELECT (inbox_id,resolution_id,resolution_version,vendor,account_reference
 GRANT EXECUTE ON FUNCTION audit_writer_insert_platform_event(text,text,uuid,text,text,text,jsonb,text)
   TO chartwarden_m25_era_source_resolver;
 --> statement-breakpoint
+-- The resolver audits each read through this definer function, and its search_path (0187) does not name pg_temp, so
+-- Postgres searches the caller's temp schema first: the source-login holder could create a TEMP audit_event, grant INSERT
+-- on it to PUBLIC, and have the audit row land there while the ciphertext is still returned. Pin pg_temp last.
+ALTER FUNCTION audit_writer_insert_platform_event(text,text,uuid,text,text,text,jsonb,text)
+  SET search_path = pg_catalog, public, pg_temp;
+--> statement-breakpoint
 CREATE FUNCTION m25_read_staged_claimmd_era(
   p_stage_id uuid,
   p_organization_id uuid,
@@ -111,7 +120,7 @@ CREATE FUNCTION m25_read_staged_claimmd_era(
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, public
+SET search_path = pg_catalog, public, pg_temp
 AS $$
 DECLARE
   s RECORD;
@@ -212,6 +221,10 @@ ON CONFLICT (organization_id,idempotency_key_hash) DO NOTHING;
 --> statement-breakpoint
 CREATE INDEX medicaid_era_review_idempotency_review_ix
   ON medicaid_era_review_idempotency(organization_id,provider_entity_id,review_id);
+-- The review FK is RESTRICT and medicaid_era_review is not a soft-deleted parent: its delete scan needs an index that
+-- leads with review_id (fk-index-coverage.live.test.ts); the index above leads with organization_id.
+CREATE INDEX medicaid_era_review_idempotency_review_fk_ix
+  ON medicaid_era_review_idempotency(review_id);
 --> statement-breakpoint
 ALTER TABLE medicaid_era_review_idempotency ENABLE ROW LEVEL SECURITY;
 ALTER TABLE medicaid_era_review_idempotency FORCE ROW LEVEL SECURITY;

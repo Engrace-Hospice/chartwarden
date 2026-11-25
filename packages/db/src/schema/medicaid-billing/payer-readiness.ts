@@ -5,12 +5,14 @@ import { sql } from "drizzle-orm";
 import {
   check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
   pgTable,
   text,
   timestamp,
+  unique,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -92,6 +94,20 @@ export const medicaidProgramAssignment = pgTable(
       "medicaid_program_assignment_revocation_reason",
       sql`revocation_reason IS NULL OR revocation_reason IN ('source_corrected', 'payer_withdrawal', 'coverage_changed', 'other')`,
     ),
+    verifiedHasConcreteProgram: check(
+      "medicaid_program_assignment_verified_program_kind",
+      sql`status <> 'verified' OR program_kind NOT IN ('unresolved', 'ambiguous')`,
+    ),
+    orgIdUnique: unique("medicaid_program_assignment_org_id_uq").on(t.organizationId, t.id),
+    supersedesSameOrg: foreignKey({
+      name: "medicaid_program_assignment_supersedes_org_fk",
+      columns: [t.organizationId, t.supersedesId],
+      foreignColumns: [t.organizationId, t.id],
+    }).onDelete("restrict"),
+    supersedes: index("medicaid_program_assignment_supersedes_ix").on(
+      t.organizationId,
+      t.supersedesId,
+    ),
   }),
 );
 
@@ -169,6 +185,14 @@ export const medicaidEnrollmentEvidence = pgTable(
          vendor_payer_id IS NOT NULL AND program_kind IS NOT NULL AND transaction_type = '835' AND
          effective_to IS NOT NULL AND evidence_fresh_until IS NOT NULL)`,
     ),
+    sourceEnvironmentValid: check(
+      "medicaid_enrollment_source_environment_ck",
+      sql`source_environment IS NULL OR source_environment IN ('test', 'production')`,
+    ),
+    vendorAccountRefShape: check(
+      "medicaid_enrollment_vendor_account_ref_ck",
+      sql`vendor_account_ref IS NULL OR vendor_account_ref ~ '^[A-Za-z0-9._:-]{1,128}$'`,
+    ),
     eraEvidenceFreshnessRange: check(
       "medicaid_enrollment_evidence_freshness_ck",
       sql`evidence_fresh_until IS NULL OR effective_from <= evidence_fresh_until`,
@@ -181,5 +205,28 @@ export const medicaidEnrollmentEvidence = pgTable(
       "medicaid_enrollment_evidence_revocation_reason",
       sql`revocation_reason IS NULL OR revocation_reason IN ('source_corrected', 'payer_withdrawal', 'coverage_changed', 'other')`,
     ),
+    verifiedHasConcreteProgram: check(
+      "medicaid_enrollment_verified_program_kind",
+      sql`status <> 'verified' OR program_kind IS NULL OR program_kind NOT IN ('unresolved', 'ambiguous')`,
+    ),
+    orgIdUnique: unique("medicaid_enrollment_evidence_org_id_uq").on(t.organizationId, t.id),
+    supersedesSameOrg: foreignKey({
+      name: "medicaid_enrollment_evidence_supersedes_org_fk",
+      columns: [t.organizationId, t.supersedesId],
+      foreignColumns: [t.organizationId, t.id],
+    }).onDelete("restrict"),
+    supersedes: index("medicaid_enrollment_supersedes_ix").on(t.organizationId, t.supersedesId),
+    eraAccountLookup: index("medicaid_enrollment_era_account_lookup_ix")
+      .on(
+        t.organizationId,
+        t.providerEntityId,
+        t.clearinghouse,
+        t.vendorAccountRef,
+        t.sourceEnvironment,
+        t.canonicalPayerId,
+        t.effectiveFrom,
+        t.effectiveTo,
+      )
+      .where(sql`evidence_kind = '835_era_enrollment' AND status = 'verified'`),
   }),
 );

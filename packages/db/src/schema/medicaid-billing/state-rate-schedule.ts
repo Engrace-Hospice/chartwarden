@@ -42,6 +42,9 @@ export const medicaidStateRateSchedule = pgTable(
       .on(t.stateCode, t.levelOfCare, t.canonicalPayerId, t.countyCode, t.effectiveFrom)
       .nullsNotDistinct(),
     byStateLoc: index("medicaid_state_rate_schedule_state_loc_idx").on(t.stateCode, t.levelOfCare),
+    verifiedPayerRange: index("medicaid_state_rate_schedule_verified_payer_range_ix")
+      .on(t.stateCode, t.canonicalPayerId, t.levelOfCare, t.effectiveFrom, t.effectiveTo)
+      .where(sql`verification_status = 'verified'`),
     ratePositive: check("medicaid_state_rate_schedule_rate_positive", sql`rate_cents > 0`),
     sourceKindValid: check(
       "medicaid_state_rate_schedule_source_kind_valid",

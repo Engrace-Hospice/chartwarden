@@ -33,7 +33,8 @@ CREATE TABLE medicaid_payer_rate_policy (
   -- One row per identity and effective date PER CHAIN POSITION: supersedes_id is part of the key, so a correcting row
   -- (which names the row it replaces) may repeat the identity and the effective date of a wrong or rejected one, while
   -- two heads (both NULL) or two corrections of the same row (a fork) are still refused. The table is append-only, so a
-  -- key that excluded supersedes_id would hold a wrong rate's identity forever.
+  -- key that excluded supersedes_id would hold a wrong rate's identity forever. The key alone would let an INSERT start
+  -- a second head by naming an unrelated row as its predecessor; the supersession trigger below refuses that.
   CONSTRAINT medicaid_payer_rate_policy_identity_uq UNIQUE NULLS NOT DISTINCT
     (organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
      locality_code, service_category, unit_basis, bucket_from, bucket_to, effective_from, supersedes_id),
@@ -87,8 +88,10 @@ CREATE POLICY medicaid_payer_rate_policy_org ON medicaid_payer_rate_policy FOR A
 GRANT SELECT, INSERT ON medicaid_payer_rate_policy TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON medicaid_payer_rate_policy TO chartwarden_admin;--> statement-breakpoint
 
+-- SECURITY INVOKER with pg_temp pinned last: a TEMP table named provider_entity must not shadow the real one (1535's
+-- guards pin the same way).
 CREATE OR REPLACE FUNCTION guard_medicaid_payer_rate_policy_status() RETURNS trigger
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE v_provider_org uuid;
 BEGIN
   SELECT organization_id INTO v_provider_org FROM provider_entity WHERE id = NEW.provider_entity_id;
@@ -104,6 +107,31 @@ CREATE TRIGGER trg_medicaid_payer_rate_policy_status
   BEFORE INSERT ON medicaid_payer_rate_policy
   FOR EACH ROW EXECUTE FUNCTION guard_medicaid_payer_rate_policy_status();--> statement-breakpoint
 
+-- A correcting row replaces a row of the SAME identity and effective date (see the identity key above). The foreign key
+-- only proves the predecessor is in the same organization, so without this an INSERT could name any other row of the
+-- organization, repeat an existing row's identity and date, and so create a second head for it.
+CREATE OR REPLACE FUNCTION guard_medicaid_payer_rate_policy_supersession() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
+DECLARE v_prior medicaid_payer_rate_policy%ROWTYPE;
+BEGIN
+  IF NEW.supersedes_id IS NULL THEN RETURN NEW; END IF;
+  SELECT * INTO v_prior FROM medicaid_payer_rate_policy
+   WHERE id = NEW.supersedes_id AND organization_id = NEW.organization_id;
+  IF NOT FOUND OR ROW(v_prior.provider_entity_id, v_prior.canonical_payer_id, v_prior.program_kind, v_prior.service_state,
+                      v_prior.locality_code, v_prior.service_category, v_prior.unit_basis, v_prior.bucket_from,
+                      v_prior.bucket_to, v_prior.effective_from)
+     IS DISTINCT FROM ROW(NEW.provider_entity_id, NEW.canonical_payer_id, NEW.program_kind, NEW.service_state,
+                          NEW.locality_code, NEW.service_category, NEW.unit_basis, NEW.bucket_from,
+                          NEW.bucket_to, NEW.effective_from) THEN
+    RAISE EXCEPTION 'medicaid_payer_rate_policy a correcting row must replace a row of the same identity and effective date'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+CREATE TRIGGER trg_medicaid_payer_rate_policy_supersession
+  BEFORE INSERT ON medicaid_payer_rate_policy
+  FOR EACH ROW EXECUTE FUNCTION guard_medicaid_payer_rate_policy_supersession();--> statement-breakpoint
+
 CREATE OR REPLACE FUNCTION guard_medicaid_payer_rate_policy_append_only() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -114,7 +142,7 @@ CREATE TRIGGER trg_medicaid_payer_rate_policy_append_only
   FOR EACH ROW EXECUTE FUNCTION guard_medicaid_payer_rate_policy_append_only();--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION audit_write_medicaid_payer_rate_policy() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE v_after jsonb;
 BEGIN
   v_after := audit_scrub(to_jsonb(NEW), ARRAY['source_document_ref']::text[]);

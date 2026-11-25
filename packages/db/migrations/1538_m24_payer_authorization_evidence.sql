@@ -77,8 +77,10 @@ CREATE POLICY medicaid_payer_authorization_event_org ON medicaid_payer_authoriza
 GRANT SELECT, INSERT ON medicaid_payer_authorization_event TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON medicaid_payer_authorization_event TO chartwarden_admin;--> statement-breakpoint
 
+-- SECURITY INVOKER with pg_temp pinned last: a TEMP table named provider_entity must not shadow the real one (1535's
+-- guards pin the same way).
 CREATE OR REPLACE FUNCTION guard_medicaid_payer_authorization_evidence_status() RETURNS trigger
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE v_provider_org uuid;
 BEGIN
   SELECT organization_id INTO v_provider_org FROM provider_entity WHERE id = NEW.provider_entity_id;
@@ -93,6 +95,11 @@ END $$;--> statement-breakpoint
 CREATE TRIGGER trg_medicaid_payer_authorization_evidence_status
   BEFORE INSERT ON medicaid_payer_authorization_event
   FOR EACH ROW EXECUTE FUNCTION guard_medicaid_payer_authorization_evidence_status();--> statement-breakpoint
+-- The siting must be one of this row's provider entity (1535 defines the function; a foreign key alone would accept
+-- another tenant's location).
+CREATE TRIGGER trg_medicaid_payer_authorization_event_location
+  BEFORE INSERT ON medicaid_payer_authorization_event
+  FOR EACH ROW EXECUTE FUNCTION guard_m24_readiness_location_provider();--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION guard_medicaid_payer_authorization_event_append_only() RETURNS trigger
 LANGUAGE plpgsql AS $$
@@ -104,7 +111,7 @@ CREATE TRIGGER trg_medicaid_payer_authorization_event_append_only
   FOR EACH ROW EXECUTE FUNCTION guard_medicaid_payer_authorization_event_append_only();--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION audit_write_medicaid_payer_authorization_event() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE v_after jsonb;
 BEGIN
   v_after := audit_scrub(to_jsonb(NEW), ARRAY[

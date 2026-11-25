@@ -64,6 +64,10 @@ export const medicaidPayerProgramClassification = pgTable(
       "mdm_medicaid_payer_program_classification_source_ck",
       sql`${t.sourceKind} IN ('state_registry', 'state_contract', 'payer_confirmation', 'other_authoritative')`,
     ),
+    sourceReferenceShape: check(
+      "mdm_medicaid_payer_program_classification_source_ref_ck",
+      sql`${t.sourceReference} IS NULL OR ${t.sourceReference} ~ '^(doc|registry|contract|approval):[A-Za-z0-9._/-]{1,190}$'`,
+    ),
     periodShape: check(
       "mdm_medicaid_payer_program_classification_period_ck",
       sql`${t.effectiveTo} IS NULL OR ${t.effectiveFrom} <= ${t.effectiveTo}`,

@@ -85,10 +85,21 @@ CREATE TABLE medicaid_program_assignment (
   ),
   CONSTRAINT medicaid_program_assignment_revocation_reason CHECK (
     revocation_reason IS NULL OR revocation_reason IN ('source_corrected', 'payer_withdrawal', 'coverage_changed', 'other')
-  )
+  ),
+  -- unresolved and ambiguous say "no concrete program": a verified row cannot carry either (it would resolve as verified).
+  CONSTRAINT medicaid_program_assignment_verified_program_kind CHECK (
+    status <> 'verified' OR program_kind NOT IN ('unresolved', 'ambiguous')
+  ),
+  -- A successor must name a row of the same organization (the foreign key alone would accept another tenant's id).
+  CONSTRAINT medicaid_program_assignment_org_id_uq UNIQUE (organization_id, id),
+  CONSTRAINT medicaid_program_assignment_supersedes_org_fk
+    FOREIGN KEY (organization_id, supersedes_id)
+    REFERENCES medicaid_program_assignment (organization_id, id) ON DELETE RESTRICT
 );--> statement-breakpoint
 CREATE INDEX medicaid_program_assignment_patient_range_ix ON medicaid_program_assignment
   (organization_id, patient_id, patient_payer_id, admission_id, provider_entity_id, effective_from, effective_to);--> statement-breakpoint
+CREATE INDEX medicaid_program_assignment_supersedes_ix ON medicaid_program_assignment
+  (organization_id, supersedes_id);--> statement-breakpoint
 
 CREATE TABLE medicaid_enrollment_evidence (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -134,10 +145,19 @@ CREATE TABLE medicaid_enrollment_evidence (
   ),
   CONSTRAINT medicaid_enrollment_evidence_revocation_reason CHECK (
     revocation_reason IS NULL OR revocation_reason IN ('source_corrected', 'payer_withdrawal', 'coverage_changed', 'other')
-  )
+  ),
+  CONSTRAINT medicaid_enrollment_verified_program_kind CHECK (
+    status <> 'verified' OR program_kind IS NULL OR program_kind NOT IN ('unresolved', 'ambiguous')
+  ),
+  CONSTRAINT medicaid_enrollment_evidence_org_id_uq UNIQUE (organization_id, id),
+  CONSTRAINT medicaid_enrollment_evidence_supersedes_org_fk
+    FOREIGN KEY (organization_id, supersedes_id)
+    REFERENCES medicaid_enrollment_evidence (organization_id, id) ON DELETE RESTRICT
 );--> statement-breakpoint
 CREATE INDEX medicaid_enrollment_provider_payer_range_ix ON medicaid_enrollment_evidence
   (organization_id, provider_entity_id, service_state, canonical_payer_id, evidence_kind, effective_from, effective_to);--> statement-breakpoint
+CREATE INDEX medicaid_enrollment_supersedes_ix ON medicaid_enrollment_evidence
+  (organization_id, supersedes_id);--> statement-breakpoint
 
 -- Org-only tenant policy per ADR-0010; provider/entity scope is enforced by M3 ABAC at route boundaries.
 ALTER TABLE medicaid_program_assignment ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
@@ -182,6 +202,24 @@ CREATE TRIGGER trg_medicaid_program_assignment_provider_entity
 CREATE TRIGGER trg_medicaid_enrollment_evidence_provider_entity
   BEFORE INSERT ON medicaid_enrollment_evidence
   FOR EACH ROW EXECUTE FUNCTION guard_m24_readiness_provider_entity_org();--> statement-breakpoint
+
+-- location_id is a foreign key only, and referential integrity bypasses RLS, so a row could name another tenant's
+-- location. The siting must be one of THIS row's provider entity (already proven to belong to the row's organization);
+-- another tenant's location is invisible to the caller and reads as not found. Shared with 1538's authorization event.
+CREATE OR REPLACE FUNCTION guard_m24_readiness_location_provider() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
+DECLARE v_location_provider uuid;
+BEGIN
+  IF NEW.location_id IS NULL THEN RETURN NEW; END IF;
+  SELECT provider_entity_id INTO v_location_provider FROM location WHERE id = NEW.location_id;
+  IF v_location_provider IS DISTINCT FROM NEW.provider_entity_id THEN
+    RAISE EXCEPTION '% location must belong to the record provider entity', TG_TABLE_NAME USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+CREATE TRIGGER trg_medicaid_program_assignment_location
+  BEFORE INSERT ON medicaid_program_assignment
+  FOR EACH ROW EXECUTE FUNCTION guard_m24_readiness_location_provider();--> statement-breakpoint
 
 -- The application role records a row as candidate or pending and nothing else (a pending row is what the write service
 -- inserts; candidate exists on the assignment only, hence the text comparison, which the other table's enum would refuse
@@ -287,7 +325,7 @@ CREATE TRIGGER trg_medicaid_enrollment_evidence_update_guard
 
 -- Audit only stable, non-sensitive fields. Patient id and evidence/document pointers are excluded.
 CREATE OR REPLACE FUNCTION audit_phi_write_medicaid_program_assignment() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE v_before jsonb; v_after jsonb;
 BEGIN
   v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), ARRAY['patient_id','patient_payer_id','admission_id','evidence_reference','payer_snapshot']::text[]) ELSE NULL END;
@@ -304,7 +342,7 @@ CREATE TRIGGER trg_audit_medicaid_program_assignment AFTER INSERT OR UPDATE OR D
   FOR EACH ROW EXECUTE FUNCTION audit_phi_write_medicaid_program_assignment();--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION audit_phi_write_medicaid_enrollment_evidence() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE v_before jsonb; v_after jsonb;
 BEGIN
   v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), ARRAY['evidence_reference']::text[]) ELSE NULL END;

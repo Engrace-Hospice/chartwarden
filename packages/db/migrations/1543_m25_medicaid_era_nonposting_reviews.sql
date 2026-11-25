@@ -31,6 +31,10 @@ CREATE TABLE medicaid_era_review (
 CREATE INDEX medicaid_era_review_worklist_ix ON medicaid_era_review
   (organization_id, provider_entity_id, workflow_state, created_at DESC);
 --> statement-breakpoint
+-- The stage FK is RESTRICT and the staged artifact is not a soft-deleted parent: its delete scan needs an index that
+-- leads with stage_id (fk-index-coverage.live.test.ts). The unique key leads with organization_id, so it does not serve.
+CREATE INDEX medicaid_era_review_stage_ix ON medicaid_era_review (stage_id);
+--> statement-breakpoint
 ALTER TABLE medicaid_era_review ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE medicaid_era_review FORCE ROW LEVEL SECURITY;
@@ -54,10 +58,32 @@ DO $$ BEGIN
   END IF;
 END $$;
 --> statement-breakpoint
-CREATE TRIGGER trg_audit_medicaid_era_review AFTER INSERT OR UPDATE OR DELETE ON medicaid_era_review
-  FOR EACH ROW EXECUTE FUNCTION chartwarden_audit_trigger();
+-- Audit with the actor attributed and the claim-level summary and the vendor account name scrubbed (the generic
+-- chartwarden_audit_trigger() would record them verbatim, as actor_kind 'system' with no user). pg_temp is pinned last
+-- so a caller's temporary audit_event table cannot shadow the real one.
+CREATE OR REPLACE FUNCTION audit_phi_write_medicaid_era_review() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+DECLARE v_before jsonb; v_after jsonb;
+BEGIN
+  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), ARRAY['account_reference','safe_summary']::text[]) ELSE NULL END;
+  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), ARRAY['account_reference','safe_summary']::text[]) ELSE NULL END;
+  INSERT INTO audit_event (organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id, correlation_id, outcome, severity, before, after, context, retention_class)
+  VALUES (COALESCE(NEW.organization_id, OLD.organization_id), NULLIF(current_setting('app.user_id', true), '')::uuid,
+    CASE WHEN COALESCE(current_setting('app.user_id', true), '') = '' THEN 'system' ELSE 'user' END::audit_actor_kind,
+    'medicaid_era_review.' || lower(TG_OP), TG_TABLE_NAME, COALESCE(NEW.id, OLD.id),
+    COALESCE(NULLIF(current_setting('app.correlation_id', true), ''), 'system'), 'success', 'info', v_before, v_after, '{}'::jsonb, 'compliance');
+  RETURN COALESCE(NEW, OLD);
+END $$;
 --> statement-breakpoint
-CREATE FUNCTION guard_medicaid_era_review_identity() RETURNS trigger LANGUAGE plpgsql AS $$
+ALTER FUNCTION audit_phi_write_medicaid_era_review() OWNER TO chartwarden_audit_writer;
+--> statement-breakpoint
+CREATE TRIGGER trg_audit_medicaid_era_review AFTER INSERT OR UPDATE OR DELETE ON medicaid_era_review
+  FOR EACH ROW EXECUTE FUNCTION audit_phi_write_medicaid_era_review();
+--> statement-breakpoint
+-- SECURITY INVOKER with pg_temp pinned last: the guard reads the staged artifact as the caller, and a TEMP table named
+-- claimmd_era_m25_stage must not shadow it (the same rule 1535's guards follow).
+CREATE FUNCTION guard_medicaid_era_review_identity() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE source_stage record;
 BEGIN
   SELECT organization_id, provider_entity_id, vendor, account_reference, usage, source_file_digest, state, safe_reason_code
@@ -98,6 +124,10 @@ BEGIN
     OR NEW.safe_summary IS DISTINCT FROM OLD.safe_summary)
     AND NEW.version <> OLD.version + 1 THEN
     RAISE EXCEPTION 'medicaid_era_review reassessment requires a version increment';
+  END IF;
+  -- Every workflow change takes the next version, which is the slot its history row (UNIQUE (review_id, version)) fills.
+  IF NEW.workflow_state IS DISTINCT FROM OLD.workflow_state AND NEW.version <> OLD.version + 1 THEN
+    RAISE EXCEPTION 'medicaid_era_review workflow transition requires a version increment';
   END IF;
   RETURN NEW;
 END $$;
@@ -153,5 +183,21 @@ BEGIN RAISE EXCEPTION 'medicaid_era_review_history is append-only'; END $$;
 CREATE TRIGGER medicaid_era_review_history_immutable BEFORE UPDATE OR DELETE ON medicaid_era_review_history
   FOR EACH ROW EXECUTE FUNCTION reject_medicaid_era_review_history_mutation();
 --> statement-breakpoint
+-- The note is free text (up to 1000 characters): scrubbed, with the actor attributed (see the review table's trigger).
+CREATE OR REPLACE FUNCTION audit_phi_write_medicaid_era_review_history() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+DECLARE v_after jsonb;
+BEGIN
+  v_after := audit_scrub(to_jsonb(NEW), ARRAY['note']::text[]);
+  INSERT INTO audit_event (organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id, correlation_id, outcome, severity, before, after, context, retention_class)
+  VALUES (NEW.organization_id, NULLIF(current_setting('app.user_id', true), '')::uuid,
+    CASE WHEN COALESCE(current_setting('app.user_id', true), '') = '' THEN 'system' ELSE 'user' END::audit_actor_kind,
+    'medicaid_era_review_history.insert', TG_TABLE_NAME, NEW.id,
+    COALESCE(NULLIF(current_setting('app.correlation_id', true), ''), 'system'), 'success', 'info', NULL, v_after, '{}'::jsonb, 'compliance');
+  RETURN NEW;
+END $$;
+--> statement-breakpoint
+ALTER FUNCTION audit_phi_write_medicaid_era_review_history() OWNER TO chartwarden_audit_writer;
+--> statement-breakpoint
 CREATE TRIGGER trg_audit_medicaid_era_review_history AFTER INSERT ON medicaid_era_review_history
-  FOR EACH ROW EXECUTE FUNCTION chartwarden_audit_trigger();
+  FOR EACH ROW EXECUTE FUNCTION audit_phi_write_medicaid_era_review_history();

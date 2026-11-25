@@ -265,9 +265,11 @@ describe.skipIf(!DB_URL)(
           `INSERT INTO medicaid_payer_authorization_event
              (organization_id, provider_entity_id, patient_id, patient_payer_id, admission_id,
               canonical_payer_id, service_state, service_from, service_to, event_kind,
-              evidence_status, evidence_source, evidence_reference, recorded_by_membership_id)
+              evidence_status, evidence_source, evidence_reference, recorded_by_membership_id,
+              clinical_document_id, encrypted_authorization_reference)
            VALUES ($1,$2,$3,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),$4,$5,$6,
-                   'authorization_pending','unverified','operator_record','payer-response:synthetic-test',$7)
+                   'authorization_pending','unverified','operator_record','payer-response:synthetic-test',$7,
+                   '55555555-5555-4555-8555-555555555555','synthetic-encrypted-authorization-reference')
            RETURNING id`,
           [org, pe, patient, st, from, to, m],
         )
@@ -277,9 +279,9 @@ describe.skipIf(!DB_URL)(
           `INSERT INTO medicaid_payer_rate_policy
              (organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
               locality_code, service_category, unit_basis, bucket_from, bucket_to, rate_cents,
-              source_kind, effective_from, recorded_by_membership_id)
+              source_kind, effective_from, recorded_by_membership_id, source_document_ref)
            VALUES ($1,$2,gen_random_uuid(),'managed_care','OR','CBSA-TEST','RHC','per_day',1,60,
-                   10000,'cco_contract',$3,$4) RETURNING id`,
+                   10000,'cco_contract',$3,$4,'doc:synthetic-rate-source') RETURNING id`,
           [org, pe, from, m],
         )
       ).rows[0].id as string;
@@ -646,9 +648,20 @@ describe.skipIf(!DB_URL)(
         [a.payerAuthorizationEvent],
       );
       expect(audit.rows).toHaveLength(1);
-      const payload = JSON.stringify(audit.rows[0].after);
+      const after = audit.rows[0].after as Record<string, unknown>;
+      const payload = JSON.stringify(after);
       expect(payload).not.toContain("44444444-4444-4444-4444-444444444444");
       expect(payload).not.toContain("payer-response:synthetic-test");
+      // The seed sets every scrubbed column, so each one reads "<changed>" (not an absent or NULL field).
+      expect(payload).not.toContain("55555555-5555-4555-8555-555555555555");
+      expect(payload).not.toContain("synthetic-encrypted-authorization-reference");
+      for (const column of [
+        "patient_id",
+        "evidence_reference",
+        "clinical_document_id",
+        "encrypted_authorization_reference",
+      ])
+        expect(after[column]).toBe("<changed>");
     });
 
     it("payer rate policy: application inserts cannot assert verification, and the locality CHECK holds", async () => {
@@ -688,8 +701,219 @@ describe.skipIf(!DB_URL)(
         [a.payerRatePolicy],
       );
       expect(audit.rows).toHaveLength(1);
-      const payload = JSON.stringify(audit.rows[0].after);
-      expect(payload).not.toContain("doc:synthetic");
+      const after = audit.rows[0].after as Record<string, unknown>;
+      expect(JSON.stringify(after)).not.toContain("doc:synthetic");
+      // The seed sets source_document_ref, so a missing scrub would leave the value here.
+      expect(after.source_document_ref).toBe("<changed>");
+    });
+
+    it("program assignment and enrollment evidence audit records land, attributed and scrubbed", async () => {
+      const assignmentAudit = await db.query<{ after: Record<string, unknown> }>(
+        `SELECT after FROM audit_event
+         WHERE resource_kind='medicaid_program_assignment' AND resource_id=$1
+         ORDER BY created_at DESC LIMIT 1`,
+        [a.programAssignment],
+      );
+      expect(assignmentAudit.rows).toHaveLength(1);
+      expect(assignmentAudit.rows[0].after.patient_id).toBe("<changed>");
+      expect(JSON.stringify(assignmentAudit.rows[0].after)).not.toContain(PATIENT);
+      // A verification UPDATE through the application role is audited with the acting user.
+      const user = randomUUID();
+      await db.query(`INSERT INTO "user" (id, email) VALUES ($1, 'm24-audit-actor@x.test')`, [
+        user,
+      ]);
+      const evidence = await insertRow("medicaid_enrollment_evidence", evidenceRow());
+      await db.query("SELECT set_config('app.user_id', $1, false)", [user]);
+      try {
+        await withOrg(ORG_A, () =>
+          db.query(
+            `UPDATE medicaid_enrollment_evidence SET status='verified', verification_source='state_registry',
+               evidence_reference='doc:synthetic-audit-evidence', verified_at=now(),
+               verified_by_membership_id=$2, version=version+1 WHERE id=$1`,
+            [evidence, REVIEWER],
+          ),
+        );
+      } finally {
+        await db.query("SELECT set_config('app.user_id', '', false)");
+      }
+      const updateAudit = await db.query<{
+        actor_kind: string;
+        actor_user_id: string | null;
+        after: Record<string, unknown>;
+      }>(
+        `SELECT actor_kind, actor_user_id, after FROM audit_event
+         WHERE resource_kind='medicaid_enrollment_evidence' AND resource_id=$1
+           AND event_type='medicaid_enrollment_evidence.update'`,
+        [evidence],
+      );
+      expect(updateAudit.rows).toHaveLength(1);
+      expect(updateAudit.rows[0]).toMatchObject({ actor_kind: "user", actor_user_id: user });
+      expect(updateAudit.rows[0].after.evidence_reference).toBe("<changed>");
+    });
+
+    it("the 1542 account, environment and freshness columns are frozen identity, for every role", async () => {
+      const era = await insertRow("medicaid_enrollment_evidence", {
+        ...evidenceRow({
+          evidence_kind: "835_era_enrollment",
+          transaction_type: "835",
+          status: "verified",
+          program_kind: "managed_care",
+          canonical_payer_id: randomUUID(),
+          clearinghouse: "claimmd",
+          vendor_account_ref: "synthetic-account",
+          source_environment: "test",
+          vendor_payer_id: "synthetic-payer",
+          effective_to: "2026-12-31",
+          evidence_fresh_until: "2026-12-31",
+        }),
+        ...evidenceVerification,
+        verification_source: "payer_written_confirmation",
+      });
+      // Control: a column outside the identity set still updates on the superuser connection.
+      await db.query(
+        "UPDATE medicaid_enrollment_evidence SET version = version + 1 WHERE id = $1",
+        [era],
+      );
+      for (const [column, value] of [
+        ["source_environment", "production"],
+        ["vendor_account_ref", "other-account"],
+        ["evidence_fresh_until", "2027-06-30"],
+      ] as const)
+        await expect(
+          db.query(`UPDATE medicaid_enrollment_evidence SET ${column} = $2 WHERE id = $1`, [
+            era,
+            value,
+          ]),
+        ).rejects.toThrow(/identity of an evidence row cannot be changed/);
+    });
+
+    it("a TEMP table named provider_entity cannot defeat the tenant guards of 1538 and 1539", async () => {
+      // chartwarden_app may create temporary tables; without a pinned search_path the guards would read this one.
+      const authorization = (pe: string) =>
+        db.query(
+          `INSERT INTO medicaid_payer_authorization_event
+             (organization_id, provider_entity_id, patient_id, patient_payer_id, admission_id,
+              canonical_payer_id, service_state, service_from, service_to, event_kind,
+              evidence_source, recorded_by_membership_id)
+           VALUES ($1,$2,$3,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),'OR',
+                   '2026-01-01','2026-01-31','authorization_pending','operator_record',$4)`,
+          [ORG_A, pe, PATIENT, RECORDER],
+        );
+      const ratePolicy = (pe: string) =>
+        db.query(
+          `INSERT INTO medicaid_payer_rate_policy
+             (organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
+              locality_code, service_category, unit_basis, rate_cents, source_kind, effective_from,
+              recorded_by_membership_id)
+           VALUES ($1,$2,gen_random_uuid(),'managed_care','OR','CBSA-SHADOW','RHC','per_day',
+                   10000,'cco_contract','2026-01-01',$3)`,
+          [ORG_A, pe, RECORDER],
+        );
+      await withOrg(ORG_A, async () => {
+        await db.query("CREATE TEMP TABLE provider_entity (id uuid, organization_id uuid)");
+        try {
+          await db.query("INSERT INTO pg_temp.provider_entity VALUES ($1, $2)", [b.pe, ORG_A]);
+          await expect(authorization(b.pe)).rejects.toThrow(
+            /provider entity must belong to the evidence organization/,
+          );
+          await expect(ratePolicy(b.pe)).rejects.toThrow(
+            /provider entity must belong to the rate organization/,
+          );
+        } finally {
+          await db.query("DROP TABLE IF EXISTS pg_temp.provider_entity");
+        }
+      });
+    });
+
+    it("a verified assignment or enrollment row cannot carry an unresolved or ambiguous program kind", async () => {
+      for (const kind of ["unresolved", "ambiguous"])
+        await expect(
+          insertRow(
+            "medicaid_program_assignment",
+            assignmentRow({
+              status: "verified",
+              program_kind: kind,
+              ...assignmentVerification,
+            }),
+          ),
+        ).rejects.toThrow(/medicaid_program_assignment_verified_program_kind/);
+      // Control: the same row with a concrete kind is valid, and an open row may still carry the sentinel.
+      expect(
+        await insertRow(
+          "medicaid_program_assignment",
+          assignmentRow({ status: "verified", ...assignmentVerification }),
+        ),
+      ).toBeTruthy();
+      expect(
+        await insertRow(
+          "medicaid_program_assignment",
+          assignmentRow({ program_kind: "unresolved" }),
+        ),
+      ).toBeTruthy();
+      await expect(
+        insertRow(
+          "medicaid_enrollment_evidence",
+          evidenceRow({ status: "verified", program_kind: "ambiguous", ...evidenceVerification }),
+        ),
+      ).rejects.toThrow(/medicaid_enrollment_verified_program_kind/);
+    });
+
+    it("a successor must name a row of the same organization (no dangling or foreign supersedes_id)", async () => {
+      await expect(
+        insertRow("medicaid_program_assignment", assignmentRow({ supersedes_id: randomUUID() })),
+      ).rejects.toThrow(/medicaid_program_assignment_supersedes_org_fk/);
+      await expect(
+        insertRow(
+          "medicaid_program_assignment",
+          assignmentRow({ supersedes_id: b.programAssignment }),
+        ),
+      ).rejects.toThrow(/medicaid_program_assignment_supersedes_org_fk/);
+      await expect(
+        insertRow(
+          "medicaid_enrollment_evidence",
+          evidenceRow({ supersedes_id: b.enrollmentEvidence }),
+        ),
+      ).rejects.toThrow(/medicaid_enrollment_evidence_supersedes_org_fk/);
+      // Control: the organization's own row is a valid predecessor.
+      expect(
+        await insertRow(
+          "medicaid_enrollment_evidence",
+          evidenceRow({ supersedes_id: a.enrollmentEvidence }),
+        ),
+      ).toBeTruthy();
+    });
+
+    it("payer rate policy: a correcting row cannot name an unrelated row as its predecessor", async () => {
+      const other = await insertRow("medicaid_payer_rate_policy", {
+        organization_id: ORG_A,
+        provider_entity_id: a.pe,
+        canonical_payer_id: randomUUID(),
+        program_kind: "managed_care",
+        service_state: "OR",
+        locality_code: "CBSA-OTHER",
+        service_category: "RHC",
+        unit_basis: "per_day",
+        rate_cents: 10000,
+        source_kind: "cco_contract",
+        effective_from: "2026-01-01",
+        recorded_by_membership_id: RECORDER,
+      });
+      // Same identity and date as a.payerRatePolicy, but naming `other` instead of the row it repeats.
+      await expect(
+        db.query(
+          `INSERT INTO medicaid_payer_rate_policy
+             (organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
+              locality_code, service_category, unit_basis, bucket_from, bucket_to, rate_cents,
+              source_kind, effective_from, recorded_by_membership_id, supersedes_id)
+           SELECT organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
+              locality_code, service_category, unit_basis, bucket_from, bucket_to, 9000,
+              source_kind, effective_from, recorded_by_membership_id, $2::uuid
+           FROM medicaid_payer_rate_policy WHERE id = $1`,
+          [a.payerRatePolicy, other],
+        ),
+      ).rejects.toThrow(
+        /correcting row must replace a row of the same identity and effective date/,
+      );
     });
 
     // ── A2 — siting: the patient-keyed 1535/1538 tables carry the same nullable location_id as every older M24
@@ -744,7 +968,23 @@ describe.skipIf(!DB_URL)(
           )
         ).rows[0].id as string;
         expect(await insertWith(location)).toBeTruthy();
-        await expect(insertWith(randomUUID())).rejects.toThrow(/violates foreign key constraint/);
+        // An unknown id is refused by the location guard (it fires before the foreign key is checked).
+        await expect(insertWith(randomUUID())).rejects.toThrow(
+          /location must belong to the record provider entity/,
+        );
+      });
+
+      it("refuses another tenant's location (the foreign key alone would accept it)", async () => {
+        const foreignLocation = (
+          await db.query(
+            `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
+             VALUES ($1,'Loc B','1 St','Town','OR','97000','America/Los_Angeles') RETURNING id`,
+            [b.pe],
+          )
+        ).rows[0].id as string;
+        await expect(insertWith(foreignLocation)).rejects.toThrow(
+          /location must belong to the record provider entity/,
+        );
       });
     });
 

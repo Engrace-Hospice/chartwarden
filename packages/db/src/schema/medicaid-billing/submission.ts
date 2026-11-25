@@ -6,6 +6,7 @@
 // (medicaid_claim is partitioned). vendor_payload_cipher / raw_payload_cipher are KMS-wrapped (audit-denylisted §3.6).
 import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   integer,
   jsonb,
@@ -81,6 +82,39 @@ export const medicaidSubmission = pgTable(
       t.createdAt,
     ),
     byNextPoll: index("medicaid_submission_by_next_poll").on(t.nextPollAt),
+    sourceEnvironmentValid: check(
+      "medicaid_submission_source_environment_ck",
+      sql`source_environment IS NULL OR source_environment IN ('test', 'production')`,
+    ),
+    sourceProvenanceStatusValid: check(
+      "medicaid_submission_source_provenance_status_ck",
+      sql`source_provenance_status IN ('unverified', 'verified')`,
+    ),
+    verifiedProvenanceComplete: check(
+      "medicaid_submission_verified_provenance_ck",
+      sql`source_provenance_status <> 'verified' OR
+        (source_account_ref IS NOT NULL AND source_environment IS NOT NULL AND canonical_payer_id_snapshot IS NOT NULL
+          AND payer_classification_id_snapshot IS NOT NULL
+          AND program_kind_snapshot IS NOT NULL
+          AND program_assignment_id_snapshot IS NOT NULL
+          AND program_assignment_version_snapshot IS NOT NULL AND program_assignment_version_snapshot > 0
+          AND submitted_claim_version IS NOT NULL
+          AND submitted_claim_version > 0 AND submitted_at IS NOT NULL AND vendor_transaction_id IS NOT NULL)`,
+    ),
+    programKindSnapshotValid: check(
+      "medicaid_submission_program_kind_snapshot_ck",
+      sql`program_kind_snapshot IS NULL OR program_kind_snapshot IN ('ffs_open_card', 'managed_care', 'other_managed_care', 'unsupported', 'unresolved', 'ambiguous')`,
+    ),
+    sourceIdentity: index("medicaid_submission_source_identity_ix")
+      .on(
+        t.organizationId,
+        t.providerEntityId,
+        t.adapterVendor,
+        t.sourceAccountRef,
+        t.sourceEnvironment,
+        t.canonicalPayerIdSnapshot,
+      )
+      .where(sql`source_account_ref IS NOT NULL`),
     sourceTransactionUnique: uniqueIndex("medicaid_submission_source_transaction_uq")
       .on(
         t.organizationId,
