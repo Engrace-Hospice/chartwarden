@@ -23,6 +23,10 @@ import {
 } from "@chartwarden/ui";
 import { type JSX, useEffect, useId, useState } from "react";
 import { type PanelStatusListener, useReportPanelStatus } from "../../../shell/panel-status";
+import {
+  type NoWoundConcernsControl,
+  useNoWoundConcernsStatement,
+} from "./no-wound-concerns-statement";
 import { measurementWithArea, shortDate } from "./wound-format";
 import { ETIOLOGY_LABELS, STAGE_LABELS, STATUS_LABELS, siteHeading } from "./wound-labels";
 import { WoundObservationFacts } from "./wound-observation-facts";
@@ -47,6 +51,11 @@ export interface VisitWoundsPanelProps {
   readonly onChanged?: () => void;
   /** Told whether a form holds unsaved input and whether a write is in flight (see `useReportPanelStatus`). */
   readonly onStatusChange?: PanelStatusListener;
+  /**
+   * The clinician's "No skin or wound concerns at this visit" statement, held in the section's free text by the composer. Absent: the
+   * panel offers no such statement. See `no-wound-concerns-statement.tsx`.
+   */
+  readonly noConcerns?: NoWoundConcernsControl;
 }
 
 /** One wound with the observation of it made at this visit, when there is one. */
@@ -139,6 +148,7 @@ export function VisitWoundsPanel({
   disabled = false,
   onChanged,
   onStatusChange,
+  noConcerns,
 }: VisitWoundsPanelProps): JSX.Element {
   const client = useApiClient();
   const headingId = useId();
@@ -152,13 +162,28 @@ export function VisitWoundsPanel({
   // Something was typed into the open form: leaving now would lose it (the form owns its draft, so the panel only learns that it changed).
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
+  // An observation saved from this panel is on the wound whatever the quiet re-read said (it may have failed: the panel then warns that
+  // the rows may be out of date), so the note states it and the section counts as documented.
+  const [savedHere, setSavedHere] = useState(false);
+
+  const rows = visit.data ?? [];
+  // The note states a wound only through an observation tagged to THIS encounter; a wound last observed at an earlier visit, one with no
+  // observation yet and one whose record could not be read (`atThisVisit` is null for each) state nothing at this visit.
+  const recorded = savedHere || rows.some((row) => row.atThisVisit !== null);
   useReportPanelStatus(onStatusChange, {
     dirty: touched && editing.kind !== "none",
     saving: busy,
+    recorded,
   });
 
-  const rows = visit.data ?? [];
   const idle = !disabled && !busy;
+  const statement = useNoWoundConcernsStatement({
+    control: noConcerns,
+    loaded: visit.data !== null,
+    woundOnFile: rows.length > 0 || savedHere,
+    disabled,
+    idle,
+  });
   // A reload (Try again, Refresh wounds) replaces the button that had focus: hand it to the panel instead of <body>.
   const focusRef = useReloadFocus<HTMLElement>(visit.loading);
 
@@ -197,6 +222,7 @@ export function VisitWoundsPanel({
     onChanged?.();
   }
   function saved(): void {
+    setSavedHere(true);
     startEditing(NOT_EDITING);
     changed();
   }
@@ -296,7 +322,14 @@ export function VisitWoundsPanel({
               ? "Nothing was recorded about a wound at this visit."
               : "If a wound is found at this visit, add it here and record its first observation."
           }
-          action={disabled ? undefined : addWound}
+          action={
+            disabled ? undefined : (
+              <div className="wx-action-row is-center">
+                {addWound}
+                {statement.controls}
+              </div>
+            )
+          }
         />
       ) : rows.length > 0 ? (
         <ul className="wx-form-stack" aria-label="Wounds of this patient">
@@ -375,6 +408,7 @@ export function VisitWoundsPanel({
           })}
         </ul>
       ) : null}
+      {statement.notices}
       {visit.stale ? (
         <>
           <InlineAlert tone="warning">

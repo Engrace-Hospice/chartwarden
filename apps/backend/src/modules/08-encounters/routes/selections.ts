@@ -6,6 +6,7 @@ import {
   type AssemblyContext,
   HearthnoteAssemblyError,
   type LinkedFall,
+  type PriorRecordedAdl,
   type RecordedAdl,
   type RecordedNutrition,
   type RecordedVitals,
@@ -301,6 +302,8 @@ export function assertSelectionsValid(
 export interface NoteFacts {
   readonly recordedVitals?: RecordedVitals;
   readonly recordedAdl?: RecordedAdl;
+  /** The ADL levels of the patient's previous signed visit, so the functional-status sentence can state the change since then. */
+  readonly priorAdl?: PriorRecordedAdl;
   readonly recordedNutrition?: RecordedNutrition;
   readonly recordedWounds?: readonly RecordedWound[];
   readonly linkedFall?: LinkedFall;
@@ -335,6 +338,7 @@ export function assembleSelections(
     serviceDate,
     ...(facts.recordedVitals === undefined ? {} : { recordedVitals: facts.recordedVitals }),
     ...(facts.recordedAdl === undefined ? {} : { recordedAdl: facts.recordedAdl }),
+    ...(facts.priorAdl === undefined ? {} : { priorAdl: facts.priorAdl }),
     ...(facts.recordedNutrition === undefined
       ? {}
       : { recordedNutrition: facts.recordedNutrition }),

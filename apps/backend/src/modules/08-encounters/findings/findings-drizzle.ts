@@ -17,9 +17,11 @@
 // write's `If-Match: 0` safe (the loser re-reads the committed record and gets 409 STALE_VERSION). The vitals and selections writes do
 // NOT take the lock: they also race finalize, but they are allowed on a finalized note by design (no pin rewrite) and are left as they are.
 import { type DbClient, schema } from "@chartwarden/db";
+import type { PriorRecordedAdl } from "@chartwarden/hearthnote";
 import { assertVersion } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { and, eq, sql } from "drizzle-orm";
+import { NotFoundError } from "@chartwarden/types";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { stampDraftOpened } from "../closure/clock-stamp";
 import { type EncounterRow, loadEncounterRow } from "../encounter-row";
@@ -38,8 +40,10 @@ import {
   sameColumns,
 } from "./findings-service";
 import { type NutritionColumns, planNutritionRecord, recordedNutritionFromRow } from "./nutrition";
-import { readWeightHistory, readWeightUnitMissing } from "./weight-history";
+import { PRIOR_ADL_READ_CAP, pickPriorAdl } from "./prior-adl";
+import { SIGNED_NOTE_STATUSES, readWeightHistory, readWeightUnitMissing } from "./weight-history";
 
+const ENC = schema.encounters;
 const ADL = schema.encounterAdlRecords;
 const NUTRITION = schema.encounterNutritionRecords;
 
@@ -114,9 +118,52 @@ export async function loadRecordedRecords(
 }
 
 /**
+ * The ADL levels of the patient's most recent EARLIER visit that assessed any ADL, for the note's change in dependence, or null.
+ * Only the patient's own signed, cosign-pending and cosigned encounters with an earlier service date count (the prior weight's
+ * rule: another clinician's unsigned record is not theirs to pin into this note). Read inside the caller's org-scoped transaction:
+ * RLS scopes every row by tenant and the organization filter is the explicit second lock; a missing or cross-tenant encounter is
+ * the non-leaking 404. Reads and returns levels only, so nothing here names a person or reaches a log.
+ */
+export async function readPriorAdl(
+  tx: DbClient,
+  args: { readonly organizationId: string; readonly encounterId: string },
+): Promise<PriorRecordedAdl | null> {
+  const { organizationId, encounterId } = args;
+  const [encounter] = await tx
+    .select({ patientId: ENC.patientId, serviceDate: ENC.serviceDate })
+    .from(ENC)
+    .where(and(eq(ENC.id, encounterId), eq(ENC.organizationId, organizationId)))
+    .limit(1);
+  if (!encounter) throw new NotFoundError("encounter");
+  const rows = await tx
+    .select({ adl: ADL, serviceDate: ENC.serviceDate })
+    .from(ADL)
+    .innerJoin(ENC, eq(ENC.id, ADL.encounterId))
+    .where(
+      and(
+        eq(ENC.organizationId, organizationId),
+        eq(ADL.organizationId, organizationId),
+        eq(ENC.patientId, encounter.patientId),
+        lt(ENC.serviceDate, encounter.serviceDate),
+        inArray(ENC.status, [...SIGNED_NOTE_STATUSES]),
+      ),
+    )
+    .orderBy(desc(ENC.serviceDate), desc(ADL.updatedAt))
+    .limit(PRIOR_ADL_READ_CAP);
+  return pickPriorAdl(
+    rows.map(({ adl, serviceDate }) => ({
+      serviceDate,
+      updatedAt: adl.updatedAt,
+      items: recordedAdlFromRow(adlColumnsOf(adl)).items,
+    })),
+  );
+}
+
+/**
  * Everything a visit note states from findings, read inside the note-facts transaction (the caller's tenant context): the ADL
- * record, the nutrition record and the patient's weight on an earlier signed visit. A finding with nothing recorded is absent
- * from the result. The previews and the assembly need all of it; the gate calls {@link loadRecordedRecords} alone.
+ * record, the nutrition record, the patient's weight on an earlier signed visit and, when this visit assessed any ADL, the ADL
+ * levels of the previous signed visit that did. A finding with nothing recorded is absent from the result. The previews and the
+ * assembly need all of it; the gate calls {@link loadRecordedRecords} alone, so the prior-visit reads never touch gate readiness.
  */
 export async function loadRecordedFindings(
   tx: DbClient,
@@ -124,7 +171,13 @@ export async function loadRecordedFindings(
 ): Promise<RecordedFindings> {
   const records = await loadRecordedRecords(tx, args);
   const { prior } = await readWeightHistory(tx, args, 1);
-  return { ...records, ...(prior ? { priorWeight: prior } : {}) };
+  // The previous visit's levels are only ever stated beside this visit's, so a visit with none recorded does not read them.
+  const priorAdl = records.adl?.items === undefined ? null : await readPriorAdl(tx, args);
+  return {
+    ...records,
+    ...(prior ? { priorWeight: prior } : {}),
+    ...(priorAdl ? { priorAdl } : {}),
+  };
 }
 
 export function createDrizzleFindingsService(deps: FindingsServiceDeps): FindingsService {

@@ -15,6 +15,7 @@ export type {
   NutritionSupport,
   PeriwoundCondition,
   PressureStage,
+  PriorRecordedAdl,
   RecordedAdl,
   RecordedNutrition,
   RecordedVitals,

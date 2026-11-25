@@ -4,7 +4,7 @@
 // leave prompt, a write in flight locks Save and Finalize, and a saved ADL or nutrition record documents the section that states it,
 // as the server's finalize gate counts it. Assertions are on what the clinician sees and on the requests that were (or were not) sent.
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -368,7 +368,7 @@ describe("the recorded panels in the composer", () => {
     ).toBeTruthy();
   });
 
-  it("does not count a wound panel as documenting anything: the server does not", async () => {
+  it("leaves the wound section Not started when no wound is recorded for the patient", async () => {
     const user = userEvent.setup();
     world.adl = STORED_ADL;
     mountCompose();
@@ -666,6 +666,76 @@ describe("the vitals panel", () => {
     await user.click(screen.getByRole("button", { name: "Vitals" }));
     return screen.findByRole("heading", { name: "Visit vitals" });
   };
+
+  it("shows the form inside the Vital Signs Review section, not behind the header button", async () => {
+    const user = userEvent.setup();
+    world.templateSections = [
+      section("assessment", "Assessment"),
+      section("vitals_review", "Vital Signs Review", { required: true }),
+    ];
+    mountCompose();
+    await screen.findByText("Documentation progress");
+
+    // Another section is open first: the form is not there yet.
+    expect(screen.queryByRole("heading", { name: "Visit vitals" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /^Vital Signs Review/ }));
+    const form = await screen.findByRole("heading", { name: "Visit vitals" });
+    expect(form.closest("[hidden]")).toBeNull();
+    expect(screen.getByRole("button", { name: "Record vitals" })).toBeEnabled();
+    // The header button takes the author to that section instead of opening a second copy of the form.
+    expect(screen.queryByRole("button", { name: "Close vitals" })).toBeNull();
+
+    // Typed input survives a switch to another section and back.
+    await user.type(screen.getByRole("textbox", { name: "Heart rate" }), "72");
+    await user.click(screen.getByRole("button", { name: /^Assessment/ }));
+    expect(form.closest("[hidden]")).not.toBeNull();
+    await user.click(screen.getByRole("button", { name: "Vitals" }));
+    expect(await screen.findByRole("textbox", { name: "Heart rate" })).toHaveValue("72");
+  });
+
+  it("heads the form one level below the section it sits in, and at the top level when it stands alone", async () => {
+    const user = userEvent.setup();
+    world.templateSections = [
+      section("assessment", "Assessment"),
+      section("vitals_review", "Vital Signs Review", { required: true }),
+    ];
+    mountCompose();
+    await screen.findByText("Documentation progress");
+    await user.click(screen.getByRole("button", { name: /^Vital Signs Review/ }));
+    expect(
+      await screen.findByRole("heading", { name: "Visit vitals", level: 3 }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Vital Signs Review", level: 2 }),
+    ).toBeInTheDocument();
+    cleanup();
+
+    world.templateSections = [section("assessment", "Assessment")];
+    mountCompose();
+    expect(await openVitals(user)).toHaveProperty("tagName", "H2");
+  });
+
+  it("takes the author to the section heading when the header's Vitals button is pressed, whether or not that section is open", async () => {
+    const user = userEvent.setup();
+    world.templateSections = [
+      section("assessment", "Assessment"),
+      section("vitals_review", "Vital Signs Review", { required: true }),
+    ];
+    mountCompose();
+    await screen.findByText("Documentation progress");
+
+    // Another section is open: the button opens the vitals section and focus follows.
+    await user.click(screen.getByRole("button", { name: "Vitals" }));
+    const heading = await screen.findByRole("heading", { name: "Vital Signs Review", level: 2 });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+
+    // Already open, with focus elsewhere: pressing it again brings focus back to the heading.
+    await user.click(screen.getByRole("textbox", { name: "Heart rate" }));
+    expect(document.activeElement).not.toBe(heading);
+    await user.click(screen.getByRole("button", { name: "Vitals" }));
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
 
   it("refuses a weight or height that is not a number, in words, and sends nothing", async () => {
     const user = userEvent.setup();

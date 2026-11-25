@@ -291,4 +291,82 @@ describe.skipIf(!DB_URL)("M9 Drizzle read service — LIVE Postgres (M9L)", () =
     const { licenses } = await service.listLicenses(ORG_A);
     expect(licenses.some((l) => l.scaleType === "morse" && l.vendor === "New Vendor")).toBe(true);
   });
+
+  // The composer's advisory ESAS-r symptom prompt reads the nine item scores off the series point (still under
+  // `assessment.read_trend`). Proven through the PRODUCTION service over the real table, as the app role: only the nine
+  // numbers come back, never the "other" symptom, the free-text note or who reported it.
+  describe("the ESAS-r item scores on a series point", () => {
+    const NINE = {
+      pain: 6,
+      tiredness: 4,
+      drowsiness: 1,
+      nausea: 0,
+      lackOfAppetite: 3,
+      shortnessOfBreath: 7,
+      depression: 2,
+      anxiety: 5,
+      wellbeing: 4,
+    };
+    const FREE_TEXT = "synthetic free-text note that must never leave the record";
+    const today = new Date().toISOString().slice(0, 10);
+
+    async function seedEsasr(org: string, data: Record<string, unknown>): Promise<string> {
+      const ids = seeded[org] as SeedIds;
+      return (
+        await admin.query(
+          `INSERT INTO clinical_assessment (organization_id, provider_entity_id, location_id, patient_id,
+             admission_id, scale_type, scale_version, data, score, score_interpretation, captured_at,
+             captured_by_membership_id, captured_by_discipline)
+           VALUES ($1,$2,$3,$4,$5,'esas_r','1.0',$6::jsonb, 32, 'ESAS-r total 32/90', now(), $7, 'RN')
+           RETURNING id`,
+          [
+            org,
+            ids.providerEntity,
+            ids.location,
+            PATIENT,
+            ADMISSION,
+            JSON.stringify(data),
+            ids.membership,
+          ],
+        )
+      ).rows[0].id as string;
+    }
+
+    it("returns exactly the nine numeric scores of an ESAS-r capture and no free text", async () => {
+      const id = await seedEsasr(ORG_A, {
+        ...NINE,
+        otherSymptom: { label: "itch", severity: 8 },
+        reportedBy: "patient",
+        otherSymptomText: FREE_TEXT,
+      });
+      const series = await service.seriesScale(ORG_A, PATIENT, "esas_r", today, today);
+      const point = series.points.find((pt) => pt.assessmentId === id);
+      expect(point?.score).toBe(32);
+      expect(point?.itemScores).toEqual(NINE);
+      expect(JSON.stringify(series)).not.toContain(FREE_TEXT);
+      expect(JSON.stringify(series)).not.toContain("otherSymptom");
+    });
+
+    it("leaves itemScores off a capture that does not hold all nine items, and off every other scale", async () => {
+      const partial = await seedEsasr(ORG_A, { pain: 6 });
+      const esas = await service.seriesScale(ORG_A, PATIENT, "esas_r", today, today);
+      const point = esas.points.find((pt) => pt.assessmentId === partial);
+      expect(point?.score).toBe(32);
+      expect(point).not.toHaveProperty("itemScores");
+
+      const pps = await service.seriesScale(ORG_A, PATIENT, "pps", today, today);
+      expect(pps.points.length).toBeGreaterThan(0);
+      for (const pt of pps.points) expect(pt).not.toHaveProperty("itemScores");
+    });
+
+    it("does not show org A's item scores to org B (RLS)", async () => {
+      // Seed here so the assertion holds when this test runs alone: org A must see the scores before org B is shown not to.
+      const id = await seedEsasr(ORG_A, NINE);
+      const seenByA = await service.seriesScale(ORG_A, PATIENT, "esas_r", today, today);
+      expect(seenByA.points.find((pt) => pt.assessmentId === id)?.itemScores).toEqual(NINE);
+
+      const series = await service.seriesScale(ORG_B, PATIENT, "esas_r", today, today);
+      expect(series.points).toEqual([]);
+    });
+  });
 });

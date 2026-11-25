@@ -3,6 +3,9 @@
 // last few readings. It reads the existing M9 series route; the draft's own sentences carry the change since the last visit, this is the
 // numbers beside them.
 //
+// Under the numbers sits the advisory ESAS-r symptom prompt (`esas-symptom-prompt.tsx`): the items of the latest reading at 4 or more of 10,
+// each with "consider a fuller assessment of this symptom". It is a prompt, not a finding, and blocks nothing.
+//
 // NO EMPTY FRAME: with no scored reading, or a viewer who may not read scales (403), nothing renders. A failed read says so once.
 // The readings are read per patient and service date; the visit time the draft names only filters what was read. On a same-day visit that time
 // is "now" and differs on every read of the draft, so it must not be what triggers a read (the panel would blink after every link or resolve).
@@ -17,6 +20,7 @@ import {
   trendOf,
   trendWindow,
 } from "./draft-model";
+import { EsasSymptomPrompt } from "./esas-symptom-prompt";
 
 export interface ComposerScoreTrendProps {
   readonly patientId: string;
@@ -108,6 +112,7 @@ export function ComposerScoreTrend({
       title="Scores and trend"
       icon="trending-up"
       description="Latest reading up to this visit, and the change since the reading before it."
+      stack
     >
       <dl className="wx-kv">
         {TREND_SCALES.map((scale) => {
@@ -136,6 +141,12 @@ export function ComposerScoreTrend({
           );
         })}
       </dl>
+      {trends.esas_r.latest ? (
+        <EsasSymptomPrompt
+          itemScores={trends.esas_r.latest.itemScores}
+          readOn={dayOf(trends.esas_r.latest.capturedAt)}
+        />
+      ) : null}
     </Panel>
   );
 }

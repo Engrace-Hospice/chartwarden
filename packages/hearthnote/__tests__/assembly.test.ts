@@ -247,7 +247,7 @@ describe("assembleLayer1 — recorded ADLs, nutrition and wounds (WF09)", () => 
     { site: "left heel", etiology: "diabetic_ulcer" },
   ];
   const ADL_SENTENCE =
-    "Functional status: needed limited assistance with bathing, extensive assistance with transferring; uses a walker.";
+    "Functional status: needed limited assistance with bathing, extensive assistance with transferring; dependent in 2 of 2 assessed ADLs (bathing and transferring); uses a walker.";
   const NUTRITION_SENTENCE = "Nutrition: appetite poor, receives oral supplements.";
   const WOUND_SENTENCES =
     "Sacrum pressure injury, stage 3, trend improving. Left heel diabetic ulcer.";
@@ -270,6 +270,32 @@ describe("assembleLayer1 — recorded ADLs, nutrition and wounds (WF09)", () => 
         `Skin and Wounds\n${WOUND_SENTENCES}`,
       ].join("\n\n"),
     );
+  });
+
+  it("states the change in dependence since the previous visit in the Functional Status section only", () => {
+    const { narrative } = assembleLayer1(rn, nothing, {
+      ...CONTEXT,
+      recordedAdl: ADL,
+      priorAdl: {
+        on: "2026-11-10",
+        items: { bathing: "supervision", transferring: "limited_assist" },
+      },
+    });
+    expect(blockOf(narrative, "Functional Status")).toBe(
+      "Functional Status\nFunctional status: needed limited assistance with bathing, extensive assistance with transferring; dependent in 2 of 2 assessed ADLs (bathing and transferring), up from 1 of 2 assessed at the visit on 2026-11-10; uses a walker.",
+    );
+    expect(narrative.match(/at the visit on/g)).toHaveLength(1);
+  });
+
+  it("states no change when no previous visit's ADLs were given, and never states a prior without this visit's ADLs", () => {
+    const withoutPrior = assembleLayer1(rn, nothing, { ...CONTEXT, recordedAdl: ADL });
+    expect(withoutPrior.narrative).toContain(ADL_SENTENCE);
+    expect(withoutPrior.narrative).not.toMatch(/up from|down from|unchanged from/);
+    const priorOnly = assembleLayer1(rn, nothing, {
+      ...CONTEXT,
+      priorAdl: { on: "2026-11-10", items: { bathing: "limited_assist" } },
+    });
+    expect(priorOnly.sectionsAssembled).toEqual([]);
   });
 
   it("places them after Assessment and before Symptom Management", () => {

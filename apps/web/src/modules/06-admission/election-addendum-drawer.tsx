@@ -6,6 +6,7 @@
 // that was furnished on paper outside ChartWarden (election-addendum-scan-form.tsx). Furnished versions are
 // read-only — a plan-of-care change makes a new version. The server validates every step; its message is
 // shown verbatim on refusal.
+import { mrnValue } from "@chartwarden/types";
 import {
   Button,
   Glyph,
@@ -294,7 +295,7 @@ export function ElectionAddendumDrawer({
             <dt>Patient</dt>
             <dd>{v.patientName ?? "—"}</dd>
             <dt>MRN</dt>
-            <dd className="wx-nums">{v.medicalRecordNumber ?? "—"}</dd>
+            <dd className="wx-nums">{mrnValue(v.medicalRecordNumber) || "—"}</dd>
             <dt>Due</dt>
             <dd className="wx-nums">{usDate(v.dueAt)}</dd>
             <dt>Furnished</dt>
