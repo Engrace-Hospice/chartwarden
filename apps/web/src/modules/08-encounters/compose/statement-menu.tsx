@@ -1,10 +1,11 @@
 // apps/web/src/modules/08-encounters/compose — the open section's statement menu in the composer: a single-choice select (with the reason's
 // suggestion hint and the fall link), a grid of tickable statements with their detail slots, or the note that a section has no presets
 // (moved out of encounter-compose.tsx unchanged).
-import { isPainAssessmentCode } from "@chartwarden/types";
+import { isDyspneaAssessmentCode, isPainAssessmentCode } from "@chartwarden/types";
 import { SelectField, StatusPill } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { humanize } from "../compose-text";
+import { DyspneaAssessmentHelper, showsDyspneaHelper } from "../dyspnea-assessment-helper";
 import {
   emptyVocabulary,
   emptyVocabularyText,
@@ -119,7 +120,7 @@ export function StatementMenu({
     );
   }
   // One statement, one place: a statement already recorded in another section is locked here so the note cannot carry it twice with
-  // different values. The statement cards and the pain helper's rows read the same rule.
+  // different values. The statement cards and the pain and dyspnea helpers' rows read the same rule.
   const recordedElsewhere = (code: string): TemplateSection | undefined =>
     draft[section.sectionId]?.entries.some((e) => e.code === code)
       ? undefined
@@ -131,7 +132,9 @@ export function StatementMenu({
   return (
     <div style={entryGrid}>
       {section.entries
-        .filter((entry) => !isPainAssessmentCode(entry.code))
+        .filter(
+          (entry) => !isPainAssessmentCode(entry.code) && !isDyspneaAssessmentCode(entry.code),
+        )
         .map((entry) => {
           const picked = draft[section.sectionId]?.entries.find((e) => e.code === entry.code);
           const elsewhere = recordedElsewhere(entry.code);
@@ -153,6 +156,18 @@ export function StatementMenu({
         <PainAssessmentHelper
           menu={section.entries}
           selected={draft[section.sectionId]?.entries ?? []}
+          disabled={disabled}
+          recordedElsewhere={recordedElsewhere}
+          onToggle={(entry) => onToggleEntry(section.sectionId, entry)}
+          onSlot={(code, slot, value) => onSetSlot(section.sectionId, code, slot, value)}
+          onOpenPlan={onOpenPlan}
+        />
+      ) : null}
+      {showsDyspneaHelper(section.entries, draft[section.sectionId]?.entries ?? []) ? (
+        <DyspneaAssessmentHelper
+          menu={section.entries}
+          selected={draft[section.sectionId]?.entries ?? []}
+          allSelected={Object.values(draft).flatMap((s) => s.entries)}
           disabled={disabled}
           recordedElsewhere={recordedElsewhere}
           onToggle={(entry) => onToggleEntry(section.sectionId, entry)}

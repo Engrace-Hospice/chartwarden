@@ -33,7 +33,8 @@ nccn.org) and the open JNCCN v2.2025 article (its text names the bands without n
 images and were not read). The current NCCN version is 2.2026 and its text needs a login, so nothing of it was read
 beyond the version label. ASPMN: the 2011 position statement (the board-accepted copy, not the journal's final text)
 and the 2024 recommendations were read; the 2019 papers and the 2024 position-statement body were abstract only.
-The other lead in this note is researched in [`ESAS_R_CUTOFFS_RESEARCH.md`](./ESAS_R_CUTOFFS_RESEARCH.md).
+The other leads in this note are researched in [`ESAS_R_CUTOFFS_RESEARCH.md`](./ESAS_R_CUTOFFS_RESEARCH.md) and
+[`DYSPNEA_ASSESSMENT_AND_PLAN_OF_CARE_RESEARCH.md`](./DYSPNEA_ASSESSMENT_AND_PLAN_OF_CARE_RESEARCH.md).
 
 ## Sources
 
@@ -136,3 +137,4 @@ Advisory only; nothing here blocks finalize or sign, and nothing changes a plan 
 - An **agency-specific** notification time (agency policy).
 - A numeric trigger for a **behavioral scale** (3.5, 3.6). Re-checked 2026-11-25 against ASPMN 2011 and 2024: the non-comparability rule stands and no ASPMN version gives a threshold; the low presence-of-pain cut-offs that exist (3.10c) are from other populations and are not hospice-validated, so none is built. ASPMN 2024 lists FLACC only as a paediatric tool, which weakens offering it to adults (sign-off row 2.31).
 - **ESAS-r** cut-offs: researched 2026-11-25 in [`ESAS_R_CUTOFFS_RESEARCH.md`](./ESAS_R_CUTOFFS_RESEARCH.md). The only sourced prompt (a score of 4 or more as a trigger for a fuller assessment, Oldenmenger 2013) is built as an item prompt in the composer; a severity tier, any "notify the physician" wording and any total-score band are not built.
+- A **dyspnea** equivalent: researched 2026-11-25 in [`DYSPNEA_ASSESSMENT_AND_PLAN_OF_CARE_RESEARCH.md`](./DYSPNEA_ASSESSMENT_AND_PLAN_OF_CARE_RESEARCH.md) and built as a helper with no numeric threshold, because no source defines a dyspnea severity band, rise threshold or trigger. `nv.sym.dyspnea_impact` stays as it was.

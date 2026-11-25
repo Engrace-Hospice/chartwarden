@@ -96,4 +96,5 @@ export * from "./tenant-slug";
 export * from "./messaging-inbox";
 export * from "./adl-dependence";
 export * from "./pain-assessment";
+export * from "./dyspnea-assessment";
 export * from "./esas-symptom-prompt";
