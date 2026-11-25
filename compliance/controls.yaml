@@ -1338,6 +1338,15 @@ controls:
     evidence:
       - script: test:m4:audit-integrity:live
       - script: test:m4:read-audit:live
+      # Every SECURITY DEFINER function, the audit-writing ones included, ends its search_path in pg_temp, so a temp table named
+      # audit_event cannot capture a row. The live suite reads the catalog of a freshly migrated database (generated and
+      # hand-written alike) and drives a generated trigger under that trap; the migration hardens the functions already
+      # deployed and warns when a deployed cluster still grants CREATE on public to PUBLIC (not proven by the suite: an operator
+      # check on a cluster upgraded from PostgreSQL 14 or older).
+      - script: test:definer:search-path:live
+      - file: apps/backend/__tests__/definer-search-path.live.test.ts
+      - file: packages/db/migrations/1556_definer_search_path_pg_temp_last.sql
+      - file: packages/audit/src/triggers/generate.ts
       # ADR-0113: a closure override grant, its revoke, a refused grant or revoke and a closure policy write each leave an explicit
       # compliance-retention event beside the row trigger; the live suite asserts each lands with its actor and that the row
       # snapshot never holds the reason.
