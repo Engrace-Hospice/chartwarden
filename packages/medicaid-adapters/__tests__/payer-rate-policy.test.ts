@@ -386,4 +386,35 @@ describe("resolvePayerRatePolicy", () => {
       rate,
     });
   });
+
+  it("follows multiple corrections and refuses conflicting supersession branches", () => {
+    const firstCorrection = {
+      ...rate,
+      id: "rate-v2-narrowed",
+      supersedesId: rate.id,
+      version: 2,
+      createdAt: "2026-01-20T00:00:00Z",
+      effectiveTo: "2026-01-20",
+    };
+    const revokedSuccessor = {
+      ...firstCorrection,
+      id: "rate-v3-revoked",
+      supersedesId: firstCorrection.id,
+      version: 3,
+      createdAt: "2026-01-25T00:00:00Z",
+      effectiveTo: "2026-01-10",
+      verificationStatus: "revoked" as const,
+    };
+    expect(resolvePayerRatePolicy(lookup, [rate, firstCorrection, revokedSuccessor])).toMatchObject(
+      { status: "unverified", rate: null },
+    );
+
+    const branchA = { ...rate, id: "rate-v2-a", supersedesId: rate.id, version: 2 };
+    const branchB = { ...rate, id: "rate-v2-b", supersedesId: rate.id, version: 2 };
+    expect(resolvePayerRatePolicy(lookup, [rate, branchA, branchB])).toMatchObject({
+      status: "ambiguous",
+      rate: null,
+      reasonCode: "MEDICAID_RATE_POLICY_AMBIGUOUS",
+    });
+  });
 });

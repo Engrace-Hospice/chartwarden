@@ -61,6 +61,25 @@ payer companion guide, provider enrollment, claim acceptance or production route
   and `replacementTob`/`voidTob` still derive the standard 817/818, an open owner decision.
 - Medicaid electronic submission remains unconditionally unavailable.
 
+### L8A.2 clinical quantity and pricing-snapshot status — 2026-11-25
+
+- The M24 preview's persisted rate reader now preserves the full as-of supersession lineage; it does not
+  discard narrower successor rows merely because their `effective_to` does not overlap the complete claim
+  window. The read is bounded and scoped to organization, provider, payer/program and state, and refuses
+  an oversized history rather than truncating it.
+- M24 reads M6 LOC periods inside the locked assembly transaction. The line snapshot validator now permits
+  multiple contiguous daily segments in one LOC period and rejects gaps, overlaps, mismatched LOC facts,
+  and historical lines with unknown `service_date_to`.
+- These checks do not create a payer-rate snapshot. A non-overridable platform validation rule now keeps
+  hospice lines without a current immutable payer-specific pricing snapshot from `READY`, including
+  background revalidation. No new migration or claim-line pricing schema was added.
+- The authoritative election-day sequence, billable CHC minutes, in-home respite service type/quantity,
+  service-date CBSA/locality, payer-applicable provider quality status, actual institutional billed charge
+  and qualified payer units/codes remain unresolved. The seven pricing-dependent assembly tests remain
+  skipped until an evidence-backed persisted pricing path exists. See the [L8A.2 qualification report](./M24_1075_L8A2_CLINICAL_QUANTITY_AND_PRICING_SNAPSHOT_QUALIFICATION_20261125.md).
+- No OHA or EOCCO rate, clinical quantity, locality, quality status, authorization or claim charge was
+  invented. F04 and F06 remain open; F07 is only partially addressed. Medicaid submission remains disabled.
+
 ### L8A.1 implementation and source recheck (2026-11-25)
 
 - The official [OHA FY2027 hospice rate memo](https://www.oregon.gov/oha/HSD/OHP/Announcements/Hospice-Rates1026.pdf)

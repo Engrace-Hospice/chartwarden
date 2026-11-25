@@ -194,6 +194,8 @@ export interface MedicaidValidationContext {
   readonly rbClaimSnapshotVerified: boolean;
   /** True only when stored hospice lines match the complete current M6 LOC partition for the service range. */
   readonly hospiceClaimSnapshotVerified: boolean;
+  /** True only when each persisted hospice line has a current, immutable, payer-specific pricing snapshot. */
+  readonly hospicePricingSnapshotVerified: boolean;
   readonly rateLookups: readonly RateLookupSnapshot[];
   readonly payerResponsibility: MedicaidPayerResponsibilitySnapshot;
   readonly evvBrackets: readonly EvvBracketSnapshot[];

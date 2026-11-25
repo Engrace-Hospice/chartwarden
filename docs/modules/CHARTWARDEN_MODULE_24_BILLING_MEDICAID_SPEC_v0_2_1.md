@@ -86,6 +86,30 @@ quantity or production claim format. See the [L8A.1 qualification report](../aud
   normal operator process. Its defaults preserve historical rows as unqualified. Submission, financial
   posting and priced assembly remain disabled.
 
+### As-built L8A.2 note — LOC integrity and pricing readiness hold (2026-11-25)
+
+This increment does not complete persisted payer-specific pricing. It records the integrity work and
+the remaining owner-data contract needed before a priced M24 draft can be assembled.
+
+- The M24 preview reads effective-dated rate lineage without dropping narrower successors whose end date
+  does not overlap the whole service window. The selector receives the supersession evidence needed to
+  avoid reviving an open-ended predecessor. The reader has a fixed fail-closed row bound.
+- Assembly reads current M6 LOC periods on the same transaction that locks and verifies the admission.
+  Stored daily claim lines may be split at a qualified boundary within one LOC period; validation requires
+  exact inclusive coverage with no gaps or overlaps. Historical lines whose end date is unknown remain
+  unusable for this validation.
+- `medicaid_payer_rate_policy_snapshot_verified` is a non-overridable platform rule. Current M24 manual
+  validation and the background revalidation worker mark the evidence unavailable, so hospice lines cannot
+  reach `READY` based only on legacy shared-schedule amounts. Rule set version 6 records the new rule.
+- No schema migration or immutable payer-rate snapshot column was added. M6 has not published the complete
+  election-day/CHC-minute/in-home-respite quantity contract; M5/M6/M40 have no qualified service-locality
+  reader; M30 quality output is not yet bound to payer pricing; and no authoritative actual institutional
+  billed-charge or complete payer-unit source is available. The pricing engine's reimbursement estimate
+  must not be copied into provider charge fields.
+- A fully evidenced priced local-draft persistence path remains a blocker. Do not unskip pricing-dependent
+  assembly scenarios or represent an unresolved preview as a priced claim. See the [L8A.2 qualification
+  report](../audits/billing-e2e/M24_1075_L8A2_CLINICAL_QUANTITY_AND_PRICING_SNAPSHOT_QUALIFICATION_20261125.md).
+
 ## 1. Purpose & Scope
 
 ### 1.1 What This Module Does

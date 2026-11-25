@@ -388,6 +388,8 @@ export async function runMedicaidRevalidate(
       // performs those transaction-bound checks.
       rbClaimSnapshotVerified: false,
       hospiceClaimSnapshotVerified,
+      // The worker has no payer-specific rate snapshot reader yet; never promote legacy line facts to READY.
+      hospicePricingSnapshotVerified: false,
       rateLookups: [],
       payerResponsibility: resolvedPayer.payerResponsibility,
       evvBrackets: [],

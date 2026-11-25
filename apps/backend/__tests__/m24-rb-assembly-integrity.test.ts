@@ -460,6 +460,7 @@ describe("M24 hospice claim lines remain aligned with current M6 periods", () =>
     medicaidClaimId: claim.claimId,
     locPeriodId: periodId,
     serviceDate,
+    serviceDateTo: new Date(Date.parse(`${serviceDate}T00:00:00.000Z`) + (units - 1) * 86_400_000),
     units,
     levelOfCare,
     revenueCode,
@@ -476,6 +477,43 @@ describe("M24 hospice claim lines remain aligned with current M6 periods", () =>
 
   it("accepts one-to-one line snapshots covering the current M6 partition", () => {
     expect(hospiceClaimLineSnapshotIssue({ ...claim, lines, periods })).toBeNull();
+  });
+
+  it("accepts multiple contiguous daily lines within one LOC period", () => {
+    const first = {
+      ...lines[0]!,
+      id: "rhc-rate-a",
+      serviceDate: "2026-02-01",
+      serviceDateTo: "2026-02-05",
+      units: 5,
+      chargesCents: 50_000,
+    };
+    const second = {
+      ...lines[0]!,
+      id: "rhc-rate-b",
+      serviceDate: "2026-02-06",
+      serviceDateTo: "2026-02-10",
+      units: 5,
+      rateAtAssemblyCents: 12_000,
+      chargesCents: 60_000,
+    };
+    expect(
+      hospiceClaimLineSnapshotIssue({ ...claim, lines: [first, second, lines[1]!], periods }),
+    ).toBeNull();
+    expect(
+      hospiceClaimLineSnapshotIssue({
+        ...claim,
+        lines: [{ ...first, serviceDateTo: null }, second, lines[1]!],
+        periods,
+      }),
+    ).toMatchObject({ code: "MEDICAID_CLAIM_LINE_LOC_SNAPSHOT_STALE" });
+    expect(
+      hospiceClaimLineSnapshotIssue({
+        ...claim,
+        lines: [first, { ...second, serviceDate: "2026-02-07", units: 4 }, lines[1]!],
+        periods,
+      }),
+    ).toMatchObject({ code: "MEDICAID_CLAIM_LINE_LOC_SNAPSHOT_STALE" });
   });
 
   it("assigns a same-day LOC transition to the new period using M6's exclusive end date", () => {

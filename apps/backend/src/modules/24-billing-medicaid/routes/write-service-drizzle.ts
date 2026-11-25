@@ -125,6 +125,64 @@ class DegradedError extends ChartWardenError {
   }
 }
 
+/** A lineage cap makes the historical read bounded; exceeding it refuses pricing instead of truncating. */
+export const MEDICAID_RATE_POLICY_LINEAGE_MAX_ROWS = 5_000;
+
+export interface MedicaidRatePolicyLineageScope {
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  readonly canonicalPayerId: string;
+  readonly programKind: "oregon_ffs" | "managed_care";
+  readonly serviceState: string;
+  readonly serviceTo: string;
+  readonly assessedAt: string;
+}
+
+/**
+ * Read the complete in-scope rate correction lineage as of an explicit assessment instant.
+ * Deliberately do not filter effective_to: a correction may narrow or revoke the predecessor's
+ * former range, and dropping that successor would make the superseded predecessor appear active.
+ * `effective_from <= serviceTo` excludes rates that cannot govern this window; `created_at` preserves
+ * the engine's point-in-time semantics. The row cap is fail-closed, never a silent truncation.
+ */
+export async function readMedicaidRatePolicyLineage(
+  tx: Tx,
+  scope: MedicaidRatePolicyLineageScope,
+): Promise<(typeof schema.medicaidPayerRatePolicy.$inferSelect)[]> {
+  const assessedAt = new Date(scope.assessedAt);
+  if (!Number.isFinite(assessedAt.getTime())) {
+    throw new DegradedError(
+      "MEDICAID_RATE_POLICY_ASSESSMENT_TIME_INVALID",
+      "the payer-rate assessment time is invalid; pricing cannot be resolved",
+    );
+  }
+  await assertTxScopedToOrg(tx, scope.organizationId);
+  const rate = schema.medicaidPayerRatePolicy;
+  const rows = await tx
+    .select()
+    .from(rate)
+    .where(
+      and(
+        eq(rate.organizationId, scope.organizationId),
+        eq(rate.providerEntityId, scope.providerEntityId),
+        eq(rate.canonicalPayerId, scope.canonicalPayerId),
+        eq(rate.programKind, scope.programKind),
+        eq(rate.serviceState, scope.serviceState),
+        lte(rate.effectiveFrom, scope.serviceTo),
+        lte(rate.createdAt, assessedAt),
+      ),
+    )
+    .orderBy(rate.effectiveFrom, rate.id)
+    .limit(MEDICAID_RATE_POLICY_LINEAGE_MAX_ROWS + 1);
+  if (rows.length > MEDICAID_RATE_POLICY_LINEAGE_MAX_ROWS) {
+    throw new DegradedError(
+      "MEDICAID_RATE_POLICY_LINEAGE_LIMIT_EXCEEDED",
+      "payer-rate history exceeds the supported assessment limit; pricing remains unresolved",
+    );
+  }
+  return rows;
+}
+
 const iso = (d: Date | string | null): string =>
   d === null ? "" : d instanceof Date ? d.toISOString() : new Date(d).toISOString();
 const day = (d: Date | string | null): string => iso(d).slice(0, 10);
@@ -2145,30 +2203,16 @@ export function buildDrizzleM24WriteService(
           });
         } else {
           try {
-            const policyRows = await withOrgContext(db, actor, async (tx) =>
-              tx
-                .select()
-                .from(schema.medicaidPayerRatePolicy)
-                .where(
-                  and(
-                    eq(schema.medicaidPayerRatePolicy.organizationId, actor.organizationId),
-                    eq(schema.medicaidPayerRatePolicy.providerEntityId, input.providerEntityId),
-                    eq(
-                      schema.medicaidPayerRatePolicy.canonicalPayerId,
-                      programResponsibility.canonicalPayerId!,
-                    ),
-                    eq(schema.medicaidPayerRatePolicy.programKind, rateProgramKind),
-                    eq(
-                      schema.medicaidPayerRatePolicy.serviceState,
-                      recordedEligibility.serviceState!,
-                    ),
-                    lte(schema.medicaidPayerRatePolicy.effectiveFrom, input.serviceTo),
-                    or(
-                      isNull(schema.medicaidPayerRatePolicy.effectiveTo),
-                      gte(schema.medicaidPayerRatePolicy.effectiveTo, input.serviceFrom),
-                    ),
-                  ),
-                ),
+            const policyRows = await withOrgContext(db, actor, (tx) =>
+              readMedicaidRatePolicyLineage(tx, {
+                organizationId: actor.organizationId,
+                providerEntityId: input.providerEntityId,
+                canonicalPayerId: programResponsibility.canonicalPayerId!,
+                programKind: rateProgramKind,
+                serviceState: recordedEligibility.serviceState!,
+                serviceTo: input.serviceTo,
+                assessedAt,
+              }),
             );
             const days: Parameters<typeof assessHospicePricing>[0]["days"][number][] = [];
             for (const period of rawPeriods ?? []) {
@@ -2502,13 +2546,14 @@ export function buildDrizzleM24WriteService(
           throw new ConflictError(admissionIssue.code, admissionIssue.message);
         }
         const inclusiveLocEndDate = inclusiveLocEndDateForAdmission(admission);
-        if (!locPeriodReader) {
+        if (!admissionCadenceReader.periodsForAdmissionInTransaction) {
           throw new DegradedError(
-            "MEDICAID_LOC_PERIOD_READER_UNBOUND",
-            "claim assembly requires the M6 level-of-care period reader (not bound in this environment)",
+            "MEDICAID_LOC_PERIOD_TRANSACTION_READER_UNBOUND",
+            "claim assembly requires M6's transaction-bound level-of-care reader",
           );
         }
-        const rawPeriods = await locPeriodReader.periodsForAdmission(
+        const rawPeriods = await admissionCadenceReader.periodsForAdmissionInTransaction(
+          tx,
           actor.organizationId,
           input.admissionId,
         );
@@ -3362,6 +3407,9 @@ export function buildDrizzleM24WriteService(
           // Every persisted R&B line above was matched to its current arrangement, billed day and M6 LOC snapshot.
           rbClaimSnapshotVerified: true,
           hospiceClaimSnapshotVerified,
+          // No payer-specific immutable snapshot field/reader exists yet; the platform-required rule
+          // prevents old shared-schedule lines from being promoted through READY or an override.
+          hospicePricingSnapshotVerified: false,
           rateLookups: [],
           payerResponsibility: { status: "permitted", reasonCode: null },
           evvBrackets: [],

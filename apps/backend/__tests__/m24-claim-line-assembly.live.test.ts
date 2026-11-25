@@ -18,15 +18,18 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import type { PlaceOfServiceFacilityKind } from "@chartwarden/medicaid-adapters";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildProviderEntityCcnResolver } from "../src/bootstrap/provider-entity-resolver";
 import { createAdmissionLocPeriodsReader } from "../src/modules/06-admission";
+import type { WriteOutboxPort } from "../src/modules/24-billing-medicaid/routes/write-service";
 import {
   type AdmissionCadenceReaderPort,
   type LevelOfCarePeriodReaderPort,
   type SignedEncounterWindowReaderPort,
   buildDrizzleM24WriteService as buildProductionM24WriteService,
+  readMedicaidRatePolicyLineage,
 } from "../src/modules/24-billing-medicaid/routes/write-service-drizzle";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
@@ -79,13 +82,25 @@ const testCadenceReader: AdmissionCadenceReaderPort = {
       revocationDate: null,
     },
   }),
-  periodsForAdmissionInTransaction: async () => [],
 };
 
 function buildDrizzleM24WriteServiceWithCadence(
   cadenceReader: AdmissionCadenceReaderPort,
   ...args: Parameters<typeof buildProductionM24WriteService>
 ): ReturnType<typeof buildProductionM24WriteService> {
+  const cadence = args[11] ?? cadenceReader;
+  // Only test fakes bridge their fixture LOC list through this method. Production binds M6's
+  // transaction-bound implementation and never uses this compatibility adapter.
+  const cadenceWithLocSnapshot = cadence.periodsForAdmissionInTransaction
+    ? cadence
+    : {
+        ...cadence,
+        periodsForAdmissionInTransaction: async (
+          _tx: unknown,
+          organizationId: string,
+          admissionId: string,
+        ) => (args[5] ? args[5].periodsForAdmission(organizationId, admissionId) : []),
+      };
   return buildProductionM24WriteService(
     args[0],
     args[1],
@@ -98,7 +113,7 @@ function buildDrizzleM24WriteServiceWithCadence(
     args[8],
     args[9],
     args[10],
-    args[11] ?? cadenceReader,
+    cadenceWithLocSnapshot,
     args[12] ?? {
       adapterForState: () => ({ replacementTob: () => "817", voidTob: () => "818" }),
     },
@@ -299,6 +314,83 @@ describe.skipIf(!DB_URL)(
       await insert(null, "001");
     });
 
+    it("the RLS rate reader retains out-of-window successors and excludes later-recorded evidence", async () => {
+      const payer = "8b36eb1c-bb19-4df0-84b0-8934624799a4";
+      const assessedAt = "2026-03-01T00:00:00.000Z";
+      const predecessorId = randomUUID();
+      const narrowedId = randomUUID();
+      const futureRecordedId = randomUUID();
+      const locality = "synthetic-locality-lineage";
+      const insertRate = (input: {
+        id: string;
+        supersedesId: string | null;
+        effectiveTo: string | null;
+        createdAt: string;
+      }) =>
+        admin.query(
+          `INSERT INTO medicaid_payer_rate_policy
+             (id, organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
+              locality_code, service_category, unit_basis, rate_cents, pricing_method,
+              quantity_conversion_method, minimum_duration_method, methodology_version, rounding_mode,
+              rounding_boundary, charge_ceiling_method, charge_ceiling_boundary,
+              quality_reporting_applicability, quality_reporting_status, source_kind, verification_status,
+              effective_from, effective_to, source_document_ref, verified_at, verified_by_membership_id,
+              recorded_by_membership_id, supersedes_id, version, created_at)
+           VALUES ($1,$2,$3,$4,'managed_care','OR',$5,'RHC','per_day',12000,'per_day',
+                   'daily_units','not_applicable',1,'not_applicable','service_day','none','not_applicable',
+                   'not_required','not_applicable','cco_contract','verified','2026-01-01',$6,
+                   'doc:synthetic/rate-lineage','2025-12-01T00:00:00Z',$7,$8,$9,$10,$11)`,
+          [
+            input.id,
+            ORG,
+            peId,
+            payer,
+            locality,
+            input.effectiveTo,
+            randomUUID(),
+            USER,
+            input.supersedesId,
+            input.supersedesId ? 2 : 1,
+            input.createdAt,
+          ],
+        );
+
+      await insertRate({
+        id: predecessorId,
+        supersedesId: null,
+        effectiveTo: null,
+        createdAt: "2026-01-01T00:00:00Z",
+      });
+      await insertRate({
+        id: narrowedId,
+        supersedesId: predecessorId,
+        effectiveTo: "2026-02-28",
+        createdAt: "2026-02-01T00:00:00Z",
+      });
+      await insertRate({
+        id: futureRecordedId,
+        supersedesId: narrowedId,
+        effectiveTo: "2026-02-15",
+        createdAt: "2026-04-01T00:00:00Z",
+      });
+
+      const rows = await withOrgContext(handle.db, { organizationId: ORG, userId: USER }, (tx) =>
+        readMedicaidRatePolicyLineage(tx, {
+          organizationId: ORG,
+          providerEntityId: peId,
+          canonicalPayerId: payer,
+          programKind: "managed_care",
+          serviceState: "OR",
+          serviceTo: "2026-03-10",
+          assessedAt,
+        }),
+      );
+
+      expect(rows.map((row) => row.id).sort()).toEqual([predecessorId, narrowedId].sort());
+      expect(rows.find((row) => row.id === narrowedId)?.effectiveTo).toBe("2026-02-28");
+      expect(rows.some((row) => row.id === futureRecordedId)).toBe(false);
+    });
+
     it("migration 1536 rejects a line whose inclusive through-date exceeds its parent claim", async () => {
       const parent = await admin.query(
         `INSERT INTO medicaid_claim
@@ -353,6 +445,97 @@ describe.skipIf(!DB_URL)(
           },
         ),
       );
+    });
+
+    it("records a non-overridable pricing hold instead of validating legacy hospice lines to READY", async () => {
+      const seeded = await admin.query(
+        `INSERT INTO medicaid_claim
+           (organization_id, provider_entity_id, patient_id, patient_payer_id, admission_id,
+            service_state, kind, tob, service_from, service_to, state_plan_code_id,
+            state_plan_code_snapshot, medicaid_claim_control_number, created_by_membership_id,
+            updated_by_membership_id)
+         VALUES ($1,$2,$3,$4,$5,'OR','hospice_only','811','2026-01-01','2026-01-01',
+                 gen_random_uuid(),'synthetic-test-plan',$6,$7,$7)
+         RETURNING id`,
+        [ORG, peId, PATIENT, PAYER, ADMISSION, `T-${randomUUID().slice(0, 24)}`, USER],
+      );
+      const claimId = seeded.rows[0].id as string;
+      await admin.query(
+        `INSERT INTO medicaid_claim_line
+           (organization_id, provider_entity_id, medicaid_claim_id, line_number,
+            service_date, service_date_to, revenue_code, q_code, level_of_care, loc_period_id,
+            units, rate_at_assembly_cents, state_rate_schedule_id_snapshot, charges_cents)
+         VALUES ($1,$2,$3,1,'2026-01-01','2026-01-01','0651','Q5001','RHC',$4,1,12000,$5,12000)`,
+        [ORG, peId, claimId, LOC_1, randomUUID()],
+      );
+      const emittedEvents: string[] = [];
+      const captureOutbox: WriteOutboxPort = {
+        async publish(_tx, emission) {
+          emittedEvents.push(emission.eventName);
+        },
+      };
+      const svc = buildDrizzleM24WriteService(
+        handle.db,
+        captureOutbox,
+        OPEN_CIPHER,
+        coverage,
+        ccnReader,
+        locPeriodReader([
+          {
+            id: LOC_1,
+            levelOfCare: "routine_home_care",
+            effectiveAt: new Date("2026-01-01"),
+            endedAt: new Date("2026-01-02"),
+          },
+        ]),
+        noEncounters(),
+      );
+
+      const actor = { organizationId: ORG, userId: USER, roles: ["billing_manager"] };
+      const { validationRunId } = await svc.validateClaim(actor, claimId);
+      const after = await admin.query(
+        "SELECT state FROM medicaid_claim WHERE organization_id=$1 AND id=$2",
+        [ORG, claimId],
+      );
+      expect(after.rows[0].state).toBe("FAILED_VALIDATION");
+      const runs = await admin.query(
+        `SELECT r.id, r.rule_registry_version, v.outcome
+           FROM medicaid_validation_run r
+           JOIN medicaid_validation_result v
+             ON v.organization_id = r.organization_id
+            AND v.medicaid_validation_run_id = r.id
+          WHERE r.organization_id=$1 AND r.medicaid_claim_id=$2
+            AND r.id=$3 AND v.rule_key='medicaid_payer_rate_policy_snapshot_verified'`,
+        [ORG, claimId, validationRunId],
+      );
+      expect(runs.rows).toEqual([
+        expect.objectContaining({
+          id: validationRunId,
+          rule_registry_version: "6",
+          outcome: "fail",
+        }),
+      ]);
+      expect(emittedEvents).toContain("m24.medicaid_claim.validation_failed");
+      expect(emittedEvents).not.toContain("m24.medicaid_claim.ready_for_submission");
+
+      const result = await admin.query(
+        `SELECT id FROM medicaid_validation_result
+          WHERE organization_id=$1 AND medicaid_validation_run_id=$2
+            AND rule_key='medicaid_payer_rate_policy_snapshot_verified'`,
+        [ORG, validationRunId],
+      );
+      await expect(
+        svc.applyOverride(actor, result.rows[0].id as string, {
+          overrideRoleClaimed: "billing_manager",
+          reason: "Synthetic attempt to override the platform pricing snapshot gate.",
+        }),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      const overrides = await admin.query(
+        `SELECT count(*)::int AS n FROM medicaid_validation_override
+          WHERE organization_id=$1 AND medicaid_validation_result_id=$2`,
+        [ORG, result.rows[0].id],
+      );
+      expect(overrides.rows[0].n).toBe(0);
     });
 
     it("assembly preview scopes eligibility to provider and selected coverage, marks stale evidence, and writes no billing rows", async () => {

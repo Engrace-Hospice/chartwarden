@@ -18,6 +18,8 @@ export interface HospiceClaimLineForSnapshot {
   readonly providerEntityId: string;
   readonly medicaidClaimId: string;
   readonly serviceDate: Date | string;
+  /** Inclusive end of the persisted line; null historical spans cannot be revalidated for priced use. */
+  readonly serviceDateTo: Date | string | null;
   readonly revenueCode: string;
   readonly levelOfCare: string;
   readonly locPeriodId: string | null;
@@ -97,9 +99,10 @@ const inclusiveDays = (from: string, to: string): number =>
   Math.round((dateValue(to) - dateValue(from)) / DAY_MS) + 1;
 
 /**
- * Verify that persisted non-R&B claim lines still correspond one-for-one to the complete current M6 LOC
- * partition of the claim range. Caller must first lock the M6 admission row and read these periods on the
- * same transaction. The helper validates the saved line arithmetic but deliberately does not reprice it.
+ * Verify that persisted non-R&B daily claim lines still form a complete, nonoverlapping partition of the
+ * current M6 LOC window. A LOC period may contain multiple lines when a qualified rate/policy boundary
+ * split it. Caller must lock the M6 admission row and read the periods on the same transaction. This legacy
+ * validator checks only daily arithmetic and does not attest a payer-rate snapshot or reprice a claim.
  */
 export function hospiceClaimLineSnapshotIssue(input: {
   readonly lines: readonly HospiceClaimLineForSnapshot[];
@@ -140,38 +143,52 @@ export function hospiceClaimLineSnapshotIssue(input: {
     }))
     .sort((left, right) => left.from.localeCompare(right.from));
 
-  const lineByPeriod = new Map<string, HospiceClaimLineForSnapshot>();
+  const linesByPeriod = new Map<string, HospiceClaimLineForSnapshot[]>();
   for (const line of lines) {
-    if (!line.locPeriodId || lineByPeriod.has(line.locPeriodId)) return refusal();
-    lineByPeriod.set(line.locPeriodId, line);
+    if (!line.locPeriodId) return refusal();
+    const existing = linesByPeriod.get(line.locPeriodId) ?? [];
+    existing.push(line);
+    linesByPeriod.set(line.locPeriodId, existing);
   }
 
   let expectedFrom = input.serviceFrom;
   for (const period of periods) {
     if (period.from !== expectedFrom || period.to < period.from) return refusal();
-    const line = lineByPeriod.get(period.id);
-    if (!line) return refusal();
-    const expectedUnits = inclusiveDays(period.from, period.to);
-    if (
-      line.organizationId !== input.organizationId ||
-      line.providerEntityId !== input.providerEntityId ||
-      line.medicaidClaimId !== input.claimId ||
-      line.isRb ||
-      line.rbDayId !== null ||
-      isoDay(line.serviceDate) !== period.from ||
-      line.levelOfCare !== period.levelOfCare ||
-      line.revenueCode !== REVENUE_BY_LOC[period.levelOfCare] ||
-      line.units !== expectedUnits ||
-      line.rateAtAssemblyCents <= 0 ||
-      line.stateRateScheduleIdSnapshot === null ||
-      line.chargesCents !== line.rateAtAssemblyCents * line.units
-    ) {
-      return refusal();
+    const periodLines = (linesByPeriod.get(period.id) ?? []).sort((left, right) =>
+      isoDay(left.serviceDate).localeCompare(isoDay(right.serviceDate)),
+    );
+    if (periodLines.length === 0) return refusal();
+    let expectedSegmentFrom = period.from;
+    for (const line of periodLines) {
+      if (line.serviceDateTo === null) return refusal();
+      const lineFrom = isoDay(line.serviceDate);
+      const lineTo = isoDay(line.serviceDateTo);
+      const expectedUnits = inclusiveDays(lineFrom, lineTo);
+      if (
+        line.organizationId !== input.organizationId ||
+        line.providerEntityId !== input.providerEntityId ||
+        line.medicaidClaimId !== input.claimId ||
+        line.isRb ||
+        line.rbDayId !== null ||
+        lineFrom !== expectedSegmentFrom ||
+        lineTo < lineFrom ||
+        lineTo > period.to ||
+        line.levelOfCare !== period.levelOfCare ||
+        line.revenueCode !== REVENUE_BY_LOC[period.levelOfCare] ||
+        line.units !== expectedUnits ||
+        line.rateAtAssemblyCents <= 0 ||
+        line.stateRateScheduleIdSnapshot === null ||
+        line.chargesCents !== line.rateAtAssemblyCents * line.units
+      ) {
+        return refusal();
+      }
+      expectedSegmentFrom = addDays(lineTo, 1);
     }
-    lineByPeriod.delete(period.id);
+    if (expectedSegmentFrom !== addDays(period.to, 1)) return refusal();
+    linesByPeriod.delete(period.id);
     expectedFrom = addDays(period.to, 1);
   }
 
-  if (lineByPeriod.size > 0 || expectedFrom !== addDays(input.serviceTo, 1)) return refusal();
+  if (linesByPeriod.size > 0 || expectedFrom !== addDays(input.serviceTo, 1)) return refusal();
   return null;
 }

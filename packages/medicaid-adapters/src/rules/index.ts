@@ -10,6 +10,7 @@ import type { MedicaidRule } from "./types";
 
 import {
   medicaidMedicareClaimLinkageSupported,
+  medicaidPayerRatePolicySnapshotVerified,
   medicaidPayerResponsibilityResolved,
   medicaidRateSchedulePresentForServiceDate,
   medicarePrimaryRequiredForDual,
@@ -47,6 +48,7 @@ export {
   medicaidRbContractEffectiveForServiceDate,
   medicarePrimaryRequiredForDual,
   medicaidRateSchedulePresentForServiceDate,
+  medicaidPayerRatePolicySnapshotVerified,
   medicaidStateSpecificModifiersValid,
   medicaidStateSpecificDocumentation,
   medicaidEvvBracketCoherence,
@@ -68,6 +70,7 @@ export const DEFAULT_MEDICAID_RULES: readonly MedicaidRule[] = Object.freeze([
   medicaidMedicareClaimLinkageSupported,
   medicarePrimaryRequiredForDual,
   medicaidRateSchedulePresentForServiceDate,
+  medicaidPayerRatePolicySnapshotVerified,
   medicaidStateSpecificModifiersValid,
   medicaidStateSpecificDocumentation,
   medicaidEvvBracketCoherence,
