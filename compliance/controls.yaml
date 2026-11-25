@@ -461,7 +461,7 @@ controls:
       - file: apps/backend/src/modules/34-saas-tenant-platform/alert-rules.ts
       - file: apps/backend/__tests__/m34-support-session.live.test.ts
       - file: packages/db/migrations/1487_m34_support_session_ledger_integrity.sql
-      - file: packages/db/migrations/1547_m34_support_session_trigger_fixes.sql
+      - file: packages/db/migrations/1555_m34_support_session_trigger_fixes.sql
       - file: apps/backend/src/modules/34-saas-tenant-platform/wardenlens-support-access.ts
       - file: apps/backend/src/modules/22-documents/extraction/review-workspace.ts
       - file: apps/backend/src/modules/22-documents/extraction/review-workspace-routes.ts
