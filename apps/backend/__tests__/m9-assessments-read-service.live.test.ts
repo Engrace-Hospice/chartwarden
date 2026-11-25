@@ -11,10 +11,23 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import {
+  createInMemoryEffectivePermissionStore,
+  createPredicateRegistry,
+  registerAbacRegistry,
+  registerEffectivePermissionResolver,
+  resetAbacRegistry,
+  resetAuthorizationContract,
+  resetRbacEngine,
+} from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
+import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildServer } from "../src/bootstrap/index";
+import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/abac-predicates";
 import { createDbAssessmentRouteService } from "../src/modules/09-assessments/assessments-route-service-db";
+import { registerAssessmentRoutes } from "../src/modules/09-assessments/index";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -367,6 +380,87 @@ describe.skipIf(!DB_URL)("M9 Drizzle read service — LIVE Postgres (M9L)", () =
 
       const series = await service.seriesScale(ORG_B, PATIENT, "esas_r", today, today);
       expect(series.points).toEqual([]);
+    });
+
+    // The series route declares `auditRead: { resourceKind: "assessment_scale", patientIdParam: "patientId" }` and no `resourceIdParam`,
+    // so the read-audit plugin accounts the read against the patient itself (read-audit.ts falls back to the patient id). The service
+    // calls above never reach that plugin; this goes through the real host (Fastify inject, the real read-audit plugin, the app role),
+    // the way the series is read in production, and looks for the row in `audit_event`.
+    describe("the series route's read audit event (route level)", () => {
+      const headerAuth = (request: FastifyRequest): void => {
+        request.context.userId = USER;
+        request.context.attributes.membershipId = seeded[ORG_A]?.membership;
+        request.context.organizationId = ORG_A;
+        request.context.roles = ["rn"];
+      };
+
+      /** The real host over the production read service, granted `assessment.read_trend` only. `caseload_or_scope` is stubbed open: scope is not under test. */
+      function makeApp() {
+        resetAuthorizationContract();
+        resetRbacEngine();
+        resetAbacRegistry();
+        registerEffectivePermissionResolver(
+          createInMemoryEffectivePermissionStore([
+            {
+              orgId: ORG_A,
+              userId: USER,
+              grants: [
+                {
+                  roleKey: "seed",
+                  enabled: true,
+                  expiresAt: null,
+                  permissionKeys: ["assessment.read_trend"],
+                },
+              ],
+            },
+          ]).store,
+        );
+        const registry = createPredicateRegistry();
+        registry.register(
+          "caseload_or_scope",
+          buildCarePlanAbacPredicates({
+            resolver: {
+              loadPlan: async () => null,
+              loadProblem: async () => null,
+              loadVersion: async () => null,
+            },
+            isInCaseload: async () => true,
+          }).caseload_or_scope,
+        );
+        registerAbacRegistry(registry);
+        const app = buildServer({
+          db: handle.db,
+          authenticate: headerAuth,
+          security: { rateLimitEnabled: false },
+        });
+        registerAssessmentRoutes(app, { service });
+        return app;
+      }
+
+      it("writes assessment_scale.viewed against the patient when the series is read for an ESAS-r patient with item scores", async () => {
+        const id = await seedEsasr(ORG_A, NINE);
+        await admin.query("DELETE FROM audit_event WHERE organization_id = $1", [ORG_A]);
+        const app = makeApp();
+        const res = await app.inject({
+          method: "GET",
+          url: `/api/v1/patients/${PATIENT}/scales/esas_r/series?from=${today}&to=${today}`,
+        });
+        await app.close();
+
+        expect(res.statusCode).toBe(200);
+        const points = res.json().points as Array<{ assessmentId: string; itemScores?: unknown }>;
+        expect(points.find((pt) => pt.assessmentId === id)?.itemScores).toEqual(NINE);
+
+        const { rows } = await admin.query(
+          `SELECT resource_id::text, context FROM audit_event
+            WHERE organization_id = $1 AND event_type = 'assessment_scale.viewed'`,
+          [ORG_A],
+        );
+        expect(rows).toHaveLength(1);
+        // No `resourceIdParam` on the route, so the patient is the resource, and the §164.528 accounting finds it on `context.patientId`.
+        expect(rows[0].resource_id).toBe(PATIENT);
+        expect(rows[0].context.patientId).toBe(PATIENT);
+      });
     });
   });
 });

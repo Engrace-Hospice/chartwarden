@@ -78,7 +78,7 @@ Module 9 owns the **clinical-scale assessment library** that hospice clinicians 
 - **Scale-summary PDF rendering.** Module 22 owns the PDF generator; M9 emits a typed `m9.assessment.summary_requested` outbox event with the domain payload (current scales, 30-day trend, significant-change markers). M22 renders. M9 has no PDF code.
 - **FHIR `Observation` HTTP surface.** Module 28 owns FHIR R4 endpoints; M9 publishes the typed mapping (assessment row → FHIR Observation with the scale's LOINC code on the value and per-item LOINC codes on the components) consumed by M28. M9 has no FHIR HTTP surface.
 - **Care plan goals or interventions.** Module 7 owns goals and interventions. A goal may *reference* an assessment scale ("PPS will be ≥ 50 at 30-day review" is a measurable goal) but M7 owns the goal row; M9 just provides the score that evaluates whether the goal is met.
-- **Symptom-management orders.** Module 11 owns orders. M9 may *surface* an order-suggestion banner when ESAS-r pain ≥ 7 fires, but M9 doesn't create the order; the RN clicks through to M11. The order, if created, references `triggering_assessment_id` so the order trail back to the surfacing scale is preserved.
+- **Symptom-management orders.** Module 11 owns orders. When any one ESAS-r item scores 7 or more (`esas_symptom_ge_7`), M11 holds an order-suggestion entry for it (a suggested order kind only, no drug or dose; no screen shows the entry yet), but M9 doesn't create the order; the RN clicks through to M11. The order, if created, references `triggering_assessment_id` so the order trail back to the surfacing scale is preserved.
 - **Cosignature for LPN entries.** Module 8 (encounter cosign workflow) owns the cosignature pattern. M9 follows it for LPN-recorded scales that require RN review (PPS, KPS, FAST per the discipline matrix): the scale row is `cosign_required=true` until the supervising RN's cosignature row attaches.
 
 ### 1.3 Regulatory Drivers
@@ -835,6 +835,7 @@ export const RecordEsasrRequest = Type.Object({
   }),
 })
 // Server computes total = sum of 9 numeric items (other symptom NOT included in total per ESAS-r convention).
+// A missing item, a decimal, or an item outside 0..10 answers 422 INVALID_ITEM_SCORE (§4.4); the route's `data` is a free record, so the scorer is what checks it.
 
 // PAINAD — Pain Assessment in Advanced Dementia; 5 items 0..2 each, total 0..10
 export const RecordPainadRequest = Type.Object({
@@ -978,6 +979,7 @@ export const SignificantChangeDto = Type.Object({
 | `SUD_DISCLOSURE_DENIED` | 403 | **Disclosure/read path only** — a non-treatment recipient requested an SUD-context (`sud_context=true`) AIMS row without an active 42 CFR Part 2 release (M5 PrivacyFlag + M39 `consent.evaluate`). *Never raised on the write/create path — recording an SUD-context row is always permitted (M09-F05 / ADR-0014 D1).* Default read behavior is the redacted-shape row (§7.6), not this error; this code is for egress boundaries that must hard-deny. |
 | `DPOA_CONSENT_REQUIRED` | 403 | `acting_as='patient_representative'` attempted without active `dpoa_healthcare` |
 | `SCORE_OUT_OF_RANGE` | 500 | Server-computed score is out of published range — indicates scoring-function bug; client retry won't help (always 500, not 4xx) |
+| `INVALID_ITEM_SCORE` | 422 | An ESAS-r item the client sent is missing, not a whole number, or outside 0 to 10 (all nine items are required). Client error, unlike `SCORE_OUT_OF_RANGE`: the 0 to 90 total can look valid while an item is not (pain 11, the rest 0), and a stored item the `esas_symptom_ge_7` rule cannot read would leave the record saying "severe" with no alert |
 | `CORRECTION_MISMATCH` | 422 | Correction-target row scale-type / patient / admission disagrees with this row |
 | `CORRECTION_TARGET_NOT_ACTIVE` | 409 | Correction target is already `superseded` (DB trigger surfaced) |
 | `COSIGN_REQUIRED` | 412 | Read path refusing to surface in a context that requires cosignature (e.g., CTI narrative); the row is recorded but not yet cosigned |
@@ -1336,7 +1338,7 @@ ABAC predicates in this matrix (registered with Module 3 per §4.7).
 
 ### 7.2 Significant-change detection on ESAS-r pain
 
-**Done means:** RN records ESAS-r 9 days into the admission. Pain score is 8. Server computes the total (35), inserts the row, *and within the same transaction* runs the significant-change rule engine: rule `esas_symptom_ge_7` fires (pain ≥ 7). A `significant_change_event` row is inserted; an `m9.assessment.significant_change` outbox event is published; M36 delivers a typed alert to the care-team channel and the case manager's typed-alert inbox; M11 (Orders, future) surfaces an order-suggestion banner on the patient's chart ("Comfort-order suggestion: ESAS-r pain at 8 — consider PRN morphine"). Status of the event is `open`. The RN can acknowledge it inline; ack moves it to `acknowledged` and clears the chart banner.
+**Done means:** RN records ESAS-r 9 days into the admission. Pain score is 8. Server computes the total (35), inserts the row, *and within the same transaction* runs the significant-change rule engine: rule `esas_symptom_ge_7` fires (any one of the nine items ≥ 7, here pain; the optional "other" symptom does not count). A `significant_change_event` row is inserted at `medium` severity with status `open`; an `m9.assessment.significant_change` outbox event is published. The event shows on the patient's significant-change worklist (the chart's "Severe symptom" alert) and in M14's since-last-IDG slot; M11 holds an order-suggestion entry for it (a suggested order kind only, `comfort_kit`, no drug or dose; M11 never creates the order and no screen shows the entry yet). Nothing sends it as a message (no M36 consumer reads it today), and it stays `medium` until someone acknowledges it: only the three critical rules escalate (§7.3). The RN can acknowledge it from the worklist; ack moves it to `acknowledged`.
 
 ### 7.3 24h-no-ack CRITICAL escalation
 
@@ -1505,7 +1507,7 @@ The eraser implementation:
 
 - RN admit-visit workflow: open encounter (mocked M8 form), click "Record PPS," enter values, submit; verify chart shows PPS captured.
 - LPN records PPS → supervisor sees cosign queue → cosigns → CTI surface now uses the PPS.
-- ESAS-r pain ≥ 7 → toast + care-team channel notification appears; ack from inbox.
+- An ESAS-r item ≥ 7 → an open `medium` alert appears on the patient's significant-change worklist; acknowledge it there (no toast and no message is sent).
 - Correction modal: enter a correction; verify original strikes through; history shows both.
 - AIMS in SUD context with no consent: record is **created** (non-blocking nudge shown with a link to the consent surface — M09-F05 / ADR-0014 D1), then a non-consented read returns the redacted-shape row and portal/FHIR egress withholds it.
 - License lapse: simulate via test-clock; PPS form disappears for clinicians; org admin sees the lapsed banner; renewal restores.

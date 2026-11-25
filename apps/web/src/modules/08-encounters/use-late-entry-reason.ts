@@ -1,7 +1,7 @@
 // apps/web/src/modules/08-encounters — the composer's late-entry reason: what the author typed, whether the box is on screen, and what
 // the finalize call carries. See late-entry-reason.ts for the rule and the words. The reason is held in memory for ONE encounter (another
 // note starts empty) and is never stored, logged or put in a URL.
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { WriteResult } from "./encounters-api";
 import {
   type LateEntryEstimate,
@@ -13,10 +13,22 @@ import {
   reasonToSend,
   tierNeedsReason,
 } from "./late-entry-reason";
-import { useNow } from "./use-now";
 
 /** How often the device day is re-read (a composer left open across midnight moves to the next day within this). */
 const DAY_CHECK_MS = 5 * 60_000;
+
+/**
+ * The device's calendar day, re-read on a timer. Only the day string is held, so a tick on the same day bails out of the render
+ * (a `Date` per tick would re-render the whole composer every few minutes); a tick across midnight changes it.
+ */
+function useLocalCalendarDay(intervalMs: number): string {
+  const [day, setDay] = useState(() => localCalendarDay(new Date()));
+  useEffect(() => {
+    const timer = window.setInterval(() => setDay(localCalendarDay(new Date())), intervalMs);
+    return () => window.clearInterval(timer);
+  }, [intervalMs]);
+  return day;
+}
 
 interface Held {
   readonly encounterId: string;
@@ -57,7 +69,7 @@ export function useLateEntryReason(input: {
   readonly editable: boolean;
 }): LateEntryReasonState {
   const { encounterId, serviceDate, editable } = input;
-  const now = useNow(DAY_CHECK_MS);
+  const today = useLocalCalendarDay(DAY_CHECK_MS);
   const [held, setHeld] = useState<Held | null>(null);
   // Another note (Back or Forward between composer URLs) starts empty, and coming back to this one finds nothing held either.
   const [heldFor, setHeldFor] = useState(encounterId);
@@ -101,7 +113,7 @@ export function useLateEntryReason(input: {
   );
   const clear = useCallback((): void => setHeld(null), []);
 
-  const estimate = estimateLateEntry(serviceDate, localCalendarDay(now));
+  const estimate = estimateLateEntry(serviceDate, today);
   const visible = editable && (refused || (estimate !== null && tierNeedsReason(estimate.tier)));
   const short = !reasonIsLongEnough(reason);
   return {

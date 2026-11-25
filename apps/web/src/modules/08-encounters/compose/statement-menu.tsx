@@ -1,6 +1,6 @@
 // apps/web/src/modules/08-encounters/compose — the open section's statement menu in the composer: a single-choice select (with the reason's
 // suggestion hint and the fall link), a grid of tickable statements with their detail slots, or the note that a section has no presets
-// (moved out of encounter-compose.tsx unchanged).
+// (moved out of encounter-compose.tsx).
 import { isDyspneaAssessmentCode, isPainAssessmentCode } from "@chartwarden/types";
 import { SelectField, StatusPill } from "@chartwarden/ui";
 import type { JSX } from "react";
@@ -156,6 +156,7 @@ export function StatementMenu({
         <PainAssessmentHelper
           menu={section.entries}
           selected={draft[section.sectionId]?.entries ?? []}
+          allSelected={Object.values(draft).flatMap((s) => s.entries)}
           disabled={disabled}
           recordedElsewhere={recordedElsewhere}
           onToggle={(entry) => onToggleEntry(section.sectionId, entry)}

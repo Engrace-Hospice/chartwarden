@@ -1,5 +1,6 @@
-// The link the visit note's "Schedule next visit" opens: the Calendar reads the patient, the purpose and the day from the URL, opens the
-// New Visit form on them, and drops the purpose and the day (not the patient) when the form closes. Synthetic ids only.
+// The link the visit note's "Schedule next visit" opens: the Calendar reads the patient from the URL, opens the New Visit form for that
+// patient (the purpose and the day are chosen in the form, never carried in the URL), and drops `newVisit` (not the patient) when the form
+// closes. Synthetic ids only.
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -71,19 +72,15 @@ afterEach(() => {
 });
 
 describe("Calendar opened from the visit note's Schedule next visit link", () => {
-  it("opens New Visit for the patient on the purpose and the day in the link", async () => {
-    mount(
-      `/calendar?patient=${PATIENT}&newVisit=1&newVisitPurpose=aide_poc&newVisitDate=2026-12-05`,
-    );
+  it("opens New Visit on the scheduler's own default purpose", async () => {
+    mount(`/calendar?patient=${PATIENT}&newVisit=1`);
 
     const purpose = (await screen.findByLabelText(/visit purpose/i)) as HTMLSelectElement;
-    await waitFor(() => expect(purpose.value).toBe("aide_poc"));
+    expect(purpose.value).toBe("routine_visit");
   });
 
-  it("drops the purpose and the day, and keeps the patient, when the form is closed", async () => {
-    mount(
-      `/calendar?patient=${PATIENT}&newVisit=1&newVisitPurpose=aide_poc&newVisitDate=2026-12-05`,
-    );
+  it("drops newVisit, and keeps the patient, when the form is closed", async () => {
+    mount(`/calendar?patient=${PATIENT}&newVisit=1`);
     await screen.findByLabelText(/visit purpose/i);
 
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^close$/i }));
@@ -92,15 +89,6 @@ describe("Calendar opened from the visit note's Schedule next visit link", () =>
       const params = new URLSearchParams(document.body.dataset.search);
       expect(params.get("patient")).toBe(PATIENT);
       expect(params.has("newVisit")).toBe(false);
-      expect(params.has("newVisitPurpose")).toBe(false);
-      expect(params.has("newVisitDate")).toBe(false);
     });
-  });
-
-  it("ignores a purpose that is not one the scheduler knows", async () => {
-    mount(`/calendar?patient=${PATIENT}&newVisit=1&newVisitPurpose=constructor`);
-
-    const purpose = (await screen.findByLabelText(/visit purpose/i)) as HTMLSelectElement;
-    expect(purpose.value).toBe("routine_visit");
   });
 });

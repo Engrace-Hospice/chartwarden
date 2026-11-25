@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 // "Plan and Next Visit" in the note composer: the section says what a plan entry covers and where each item comes from, shows the
 // patient's upcoming visits against what the plan of care orders for the author's discipline, flags (advisory only) when nothing is
-// scheduled or the schedule is short, links to Scheduling's New Visit form started on what the note knows, and writes the entry's
-// structured fields into the section's free text without touching the words already there. Synthetic data only.
+// scheduled or the schedule is short, links to Scheduling's New Visit form for the patient (the link carries nothing but the patient id), and
+// writes the entry's structured fields into the section's free text without touching the words already there; words typed into those
+// fields and not added hold Finalize and the leave prompt. Synthetic data only.
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -189,7 +190,7 @@ function mountCompose(permissions: string[] = ["visit.read", "visit.create"]) {
     ],
     { initialEntries: [`/patients/${PATIENT}/encounters/${ENCOUNTER}/compose`] },
   );
-  return render(
+  const view = render(
     <ApiClientProvider client={client}>
       <SessionProvider session={SESSION(permissions)}>
         <ToastProvider>
@@ -198,6 +199,7 @@ function mountCompose(permissions: string[] = ["visit.read", "visit.create"]) {
       </SessionProvider>
     </ApiClientProvider>,
   );
+  return Object.assign(view, { router });
 }
 
 beforeEach(() => {
@@ -216,6 +218,11 @@ const openPlan = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.click(await screen.findByRole("button", { name: /^Plan and Next Visit/ }));
 };
 const schedule = () => screen.findByRole("region", { name: "Next visit and schedule" });
+// Other sections have their own "Save" and "Clear" buttons: the entry form's are found inside its own group.
+const entryButton = (name: string) =>
+  within(screen.getByRole("group", { name: "Write the entry (optional)" })).getByRole("button", {
+    name,
+  });
 const visitReads = () => calls.filter((c) => c.method === "GET" && c.path === "/api/v1/visits");
 
 describe("Plan and Next Visit section", () => {
@@ -260,9 +267,8 @@ describe("Plan and Next Visit section", () => {
     expect(href.pathname).toBe("/calendar");
     expect(href.searchParams.get("patient")).toBe(PATIENT);
     expect(href.searchParams.get("newVisit")).toBe("1");
-    expect(href.searchParams.get("newVisitPurpose")).toBe("routine_visit");
-    // No readable ordered frequency: no day is guessed.
-    expect(href.searchParams.has("newVisitDate")).toBe(false);
+    // The patient id and nothing else: no visit purpose or day is put in the URL.
+    expect([...href.searchParams.keys()]).toEqual(["patient", "newVisit"]);
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toContain("noopener");
     // The new tab is said in the hint beside the link, and the link is described by it.
@@ -322,7 +328,9 @@ describe("Plan and Next Visit section", () => {
     const later = (ms: number): void => {
       vi.setSystemTime(new Date(Date.now() + ms));
     };
-    const AFTER_THE_LAST_READ_MS = 3000;
+    // Reads are spaced 30 s apart: a return after this is read, a return before it (WITHIN_THE_GAP_MS) is not.
+    const AFTER_THE_LAST_READ_MS = 31_000;
+    const WITHIN_THE_GAP_MS = 29_000;
     // A read is sent a moment after the event that asks for it: wait that moment before asserting that none was.
     const settle = (): Promise<void> =>
       act(async () => {
@@ -382,12 +390,19 @@ describe("Plan and Next Visit section", () => {
       await schedule();
       await waitFor(() => expect(visitReads()).toHaveLength(1));
 
-      // Straight after a read nothing is read again.
+      // Straight after a read, and for the rest of the gap, nothing is read again.
       act(comeBack);
       await settle();
       expect(visitReads()).toHaveLength(1);
+      later(WITHIN_THE_GAP_MS);
+      act(() => {
+        comeBack();
+        becomeVisible("visible");
+      });
+      await settle();
+      expect(visitReads()).toHaveLength(1);
 
-      later(AFTER_THE_LAST_READ_MS);
+      later(AFTER_THE_LAST_READ_MS - WITHIN_THE_GAP_MS);
       act(() => {
         comeBack();
         becomeVisible("visible");
@@ -491,28 +506,28 @@ describe("Plan and Next Visit section", () => {
     it("works the schedule out from the time of the read, not from when the section was first opened", async () => {
       const user = userEvent.setup();
       vi.setSystemTime(new Date(2026, 11, 1, 12, 0));
-      carePlan = planWith([rnOrder("1:visit:day", "1 visit/day")]);
+      visits = [visitRow("v-soon", 2)];
       mountCompose();
       await openPlan(user);
       const region = await schedule();
-      const suggestedDay = (): string | null =>
-        new URL(
-          within(region)
-            .getByRole("link", { name: "Schedule next visit" })
-            .getAttribute("href") as string,
-          "http://localhost",
-        ).searchParams.get("newVisitDate");
-      await waitFor(() => expect(suggestedDay()).toBe("2026-12-02"));
+      expect(
+        await within(region).findByRole("list", { name: "Upcoming scheduled visits" }),
+      ).toBeTruthy();
 
-      // Three days on, the note still open: the next read puts the suggestion three days later too.
+      // Three days on, the note still open: the same visit is now in the past, so the next read no longer lists it as upcoming.
       vi.setSystemTime(new Date(2026, 11, 4, 12, 0));
       act(comeBack);
 
-      await waitFor(() => expect(suggestedDay()).toBe("2026-12-05"));
+      expect(
+        await within(region).findByText(
+          "No visits that you can see are scheduled in the next 30 days.",
+        ),
+      ).toBeTruthy();
+      expect(within(region).queryByRole("list", { name: "Upcoming scheduled visits" })).toBeNull();
     });
   });
 
-  it("suggests a day from the ordered frequency and flags a schedule short of it", async () => {
+  it("flags a schedule short of the ordered frequency, and still links with the patient id only", async () => {
     const user = userEvent.setup();
     carePlan = planWith([rnOrder("2:visit:week", "2 visits/week")]);
     visits = [
@@ -537,13 +552,9 @@ describe("Plan and Next Visit section", () => {
     expect(
       within(region).getByRole("list", { name: "Upcoming scheduled visits" }).children,
     ).toHaveLength(2);
-    const href = new URL(
-      within(region)
-        .getByRole("link", { name: "Schedule next visit" })
-        .getAttribute("href") as string,
-      "http://localhost",
-    );
-    expect(href.searchParams.get("newVisitDate")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(
+      within(region).getByRole("link", { name: "Schedule next visit" }).getAttribute("href"),
+    ).toBe(`/calendar?patient=${PATIENT}&newVisit=1`);
   });
 
   it("says the schedule includes the ordered visits when it does", async () => {
@@ -614,15 +625,241 @@ describe("Plan and Next Visit section", () => {
     await user.type(freeText, "Continue current plan.");
     await user.type(screen.getByLabelText("Next visit date"), "2026-12-05");
     await user.type(screen.getByLabelText("Call the hospice if"), "New fever or a fall");
-    await user.click(screen.getByRole("button", { name: "Add to the note" }));
+    await user.click(entryButton("Save"));
 
     expect(freeText.value).toBe(
       "Continue current plan.\nNext visit: Dec 5, 2026.\nCall the hospice if: New fever or a fall",
     );
-    expect(screen.getByRole("button", { name: "Add to the note" })).toHaveProperty(
-      "disabled",
-      true,
+    expect(entryButton("Save")).toHaveProperty("disabled", true);
+  });
+
+  it("hands focus to the first field when saving clears the fields and disables the button that was pressed", async () => {
+    const user = userEvent.setup();
+    mountCompose();
+    await openPlan(user);
+    await schedule();
+
+    await user.type(screen.getByLabelText("Call the hospice if"), "New fever or a fall");
+    await user.click(entryButton("Save"));
+
+    expect(entryButton("Save")).toBeDisabled();
+    expect(screen.getByLabelText("Next visit by")).toHaveFocus();
+    expect(
+      screen.getByText("Added to the free text below. Save the note to refresh the preview."),
+    ).toBeTruthy();
+  });
+
+  it("offers Save, Discard entries and Clear, all disabled while nothing is typed", async () => {
+    const user = userEvent.setup();
+    mountCompose();
+    await openPlan(user);
+    await schedule();
+
+    expect(entryButton("Save")).toBeDisabled();
+    expect(entryButton("Discard entries")).toBeDisabled();
+    expect(entryButton("Clear")).toBeDisabled();
+
+    await user.type(screen.getByLabelText("Call the hospice if"), "New fever or a fall");
+
+    expect(entryButton("Save")).toBeEnabled();
+    expect(entryButton("Discard entries")).toBeEnabled();
+    expect(entryButton("Clear")).toBeEnabled();
+  });
+
+  it("empties every field, the by and date choice included, when the entries are discarded, adding nothing to the note", async () => {
+    const user = userEvent.setup();
+    mountCompose();
+    await openPlan(user);
+    await schedule();
+    const freeText = (await screen.findByLabelText("Additional notes")) as HTMLTextAreaElement;
+    await user.selectOptions(screen.getByLabelText("Next visit by"), "rn");
+    await user.type(screen.getByLabelText("Next visit date"), "2026-12-05");
+    await user.type(screen.getByLabelText("Focus of next visit"), "Wound check");
+    await user.type(screen.getByLabelText("Call the hospice if"), "New fever or a fall");
+
+    await user.click(entryButton("Discard entries"));
+
+    expect((screen.getByLabelText("Next visit by") as HTMLSelectElement).value).toBe("");
+    expect((screen.getByLabelText("Next visit date") as HTMLInputElement).value).toBe("");
+    for (const label of [
+      "Focus of next visit",
+      "Follow-ups from this visit",
+      "Orders and supplies pending",
+      "Teaching and instructions given",
+      "Call the hospice if",
+    ]) {
+      expect((screen.getByLabelText(label) as HTMLTextAreaElement).value).toBe("");
+    }
+    expect(freeText.value).toBe("");
+    expect(screen.getByLabelText("Next visit by")).toHaveFocus();
+    expect(entryButton("Discard entries")).toBeDisabled();
+  });
+
+  it("hides the confirmation when the entries are discarded after a Save", async () => {
+    const user = userEvent.setup();
+    mountCompose();
+    await openPlan(user);
+    await schedule();
+    await user.type(screen.getByLabelText("Call the hospice if"), "New fever or a fall");
+    await user.click(entryButton("Save"));
+    const confirmation = "Added to the free text below. Save the note to refresh the preview.";
+    expect(screen.getByText(confirmation)).toBeTruthy();
+    await user.type(
+      screen.getByLabelText("Teaching and instructions given"),
+      "Turning every 2 hours",
     );
+
+    await user.click(entryButton("Discard entries"));
+
+    expect(screen.queryByText(confirmation)).toBeNull();
+  });
+
+  it("empties only the five free-text boxes on Clear, keeping the by and date choice, and hands focus to the first box", async () => {
+    const user = userEvent.setup();
+    mountCompose();
+    await openPlan(user);
+    await schedule();
+    await user.selectOptions(screen.getByLabelText("Next visit by"), "rn");
+    await user.type(screen.getByLabelText("Next visit date"), "2026-12-05");
+    await user.type(screen.getByLabelText("Focus of next visit"), "Wound check");
+    await user.type(screen.getByLabelText("Follow-ups from this visit"), "Call the pharmacy");
+    await user.type(screen.getByLabelText("Orders and supplies pending"), "Dressings");
+    await user.type(screen.getByLabelText("Teaching and instructions given"), "Turning");
+    await user.type(screen.getByLabelText("Call the hospice if"), "New fever or a fall");
+
+    await user.click(entryButton("Clear"));
+
+    for (const label of [
+      "Focus of next visit",
+      "Follow-ups from this visit",
+      "Orders and supplies pending",
+      "Teaching and instructions given",
+      "Call the hospice if",
+    ]) {
+      expect((screen.getByLabelText(label) as HTMLTextAreaElement).value).toBe("");
+    }
+    expect((screen.getByLabelText("Next visit by") as HTMLSelectElement).value).toBe("rn");
+    expect((screen.getByLabelText("Next visit date") as HTMLInputElement).value).toBe("2026-12-05");
+    expect(screen.getByLabelText("Focus of next visit")).toHaveFocus();
+    expect(entryButton("Clear")).toBeDisabled();
+    expect(entryButton("Save")).toBeEnabled();
+  });
+
+  describe("words typed into the entry fields and not added to the note", () => {
+    const finalizeNote = () => screen.getByRole("button", { name: "Finalize note" });
+    const unsavedNotice =
+      "Save or discard the unsaved entries in Plan and Next Visit before finalizing.";
+    const selectionWrites = () =>
+      calls.filter((c) => c.method === "PATCH" && c.path === `${BASE}/selections`);
+
+    it("hold Finalize, name the section, bring it into view, and guard the browser and the router", async () => {
+      const user = userEvent.setup();
+      const { router } = mountCompose();
+      await openPlan(user);
+      await schedule();
+      await user.type(screen.getByLabelText("Call the hospice if"), "New fever or a fall");
+      await user.click(screen.getByRole("button", { name: /^Assessment/ }));
+      expect(screen.getByLabelText("Call the hospice if")).not.toBeVisible();
+
+      expect(window.dispatchEvent(new Event("beforeunload", { cancelable: true }))).toBe(false);
+      await user.click(finalizeNote());
+
+      expect(await screen.findByText("Unsaved entries in a section")).toBeTruthy();
+      expect(screen.getByText(unsavedNotice)).toBeTruthy();
+      expect(screen.getByLabelText("Call the hospice if")).toBeVisible();
+      expect(selectionWrites()).toHaveLength(0);
+
+      await act(async () => {
+        await router.navigate("/elsewhere");
+      });
+      expect(screen.getByRole("alertdialog", { name: "Leave without saving?" })).toBeTruthy();
+    });
+
+    it("let Finalize go ahead once they are saved with the form's Save button, and take the notice away", async () => {
+      const user = userEvent.setup();
+      mountCompose();
+      await openPlan(user);
+      await schedule();
+      await user.type(screen.getByLabelText("Call the hospice if"), "New fever or a fall");
+      await user.click(finalizeNote());
+      expect(await screen.findByText(unsavedNotice)).toBeTruthy();
+      expect(screen.getByText(/Use that section's own Save button/)).toBeTruthy();
+
+      await user.click(entryButton("Save"));
+      expect(screen.queryByText(unsavedNotice)).toBeNull();
+      await user.click(finalizeNote());
+
+      await waitFor(() => expect(selectionWrites()).toHaveLength(1));
+      expect(screen.queryByText(unsavedNotice)).toBeNull();
+    });
+
+    it("let Finalize go ahead once they are discarded with Discard entries", async () => {
+      const user = userEvent.setup();
+      mountCompose();
+      await openPlan(user);
+      await schedule();
+      await user.selectOptions(screen.getByLabelText("Next visit by"), "rn");
+      await user.type(screen.getByLabelText("Call the hospice if"), "New fever or a fall");
+      await user.click(finalizeNote());
+      expect(await screen.findByText(unsavedNotice)).toBeTruthy();
+
+      await user.click(entryButton("Discard entries"));
+      expect(screen.queryByText(unsavedNotice)).toBeNull();
+      await user.click(finalizeNote());
+
+      await waitFor(() => expect(selectionWrites()).toHaveLength(1));
+      expect(screen.queryByText(unsavedNotice)).toBeNull();
+      expect((screen.getByLabelText("Additional notes") as HTMLTextAreaElement).value).toBe("");
+    });
+
+    it("keep holding Finalize after Clear while the by or date choice is still filled, and release it once that goes too", async () => {
+      const user = userEvent.setup();
+      mountCompose();
+      await openPlan(user);
+      await schedule();
+      await user.type(screen.getByLabelText("Next visit date"), "2026-12-05");
+      await user.type(screen.getByLabelText("Call the hospice if"), "New fever or a fall");
+
+      await user.click(entryButton("Clear"));
+      await user.click(finalizeNote());
+
+      expect(await screen.findByText(unsavedNotice)).toBeTruthy();
+      expect(selectionWrites()).toHaveLength(0);
+
+      await user.click(entryButton("Discard entries"));
+      expect(screen.queryByText(unsavedNotice)).toBeNull();
+      await user.click(finalizeNote());
+
+      await waitFor(() => expect(selectionWrites()).toHaveLength(1));
+    });
+
+    it("stop holding Finalize after Clear when only the free-text boxes were typed", async () => {
+      const user = userEvent.setup();
+      mountCompose();
+      await openPlan(user);
+      await schedule();
+      await user.type(screen.getByLabelText("Call the hospice if"), "New fever or a fall");
+      await user.click(finalizeNote());
+      expect(await screen.findByText(unsavedNotice)).toBeTruthy();
+
+      await user.click(entryButton("Clear"));
+      expect(screen.queryByText(unsavedNotice)).toBeNull();
+      await user.click(finalizeNote());
+
+      await waitFor(() => expect(selectionWrites()).toHaveLength(1));
+    });
+
+    it("do not hold Finalize when the fields are empty or only blank", async () => {
+      const user = userEvent.setup();
+      mountCompose();
+      await openPlan(user);
+      await schedule();
+      await user.type(screen.getByLabelText("Call the hospice if"), "   ");
+      await user.click(finalizeNote());
+
+      await waitFor(() => expect(selectionWrites()).toHaveLength(1));
+      expect(screen.queryByText(unsavedNotice)).toBeNull();
+    });
   });
 
   it("fills the next visit's day and discipline from the scheduled visit when asked", async () => {

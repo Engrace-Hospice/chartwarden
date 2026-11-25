@@ -86,7 +86,7 @@ async function readDraftProposals(
 
 export interface NextVisitContext {
   readonly schedule: Remote<readonly UpcomingVisit[]>;
-  /** When the read that produced `schedule` was made: the moment its windows and suggested days are worked out from. Null until one lands. */
+  /** When the read that produced `schedule` was made: the moment its windows are worked out from. Null until one lands. */
   readonly scheduleReadAt: Date | null;
   readonly plan: Remote<PlanReading>;
   /** This visit's proposed plan changes still waiting (drafts, or pending the case manager's review). */
@@ -101,8 +101,11 @@ interface ScheduleReading {
 
 const LOADING_SCHEDULE: ScheduleReading = { remote: LOADING, readAt: null };
 
-/** Two reads of the schedule are never started closer together than this: coming back to a tab fires focus and visibility together. */
-const MIN_SCHEDULE_READ_GAP_MS = 2000;
+/**
+ * Two reads of the schedule are never started closer together than this. Coming back to a tab fires focus and visibility together, and
+ * each return reads 30 days of the patient's visits; a visit booked in the other tab is picked up by the next return after the gap.
+ */
+const MIN_SCHEDULE_READ_GAP_MS = 30_000;
 
 /**
  * A re-read that failed (not a refusal) leaves the schedule the clinician already has on screen: a dropped connection is not news about
@@ -114,16 +117,16 @@ function nextSchedule(held: ScheduleReading, read: ScheduleReading): ScheduleRea
 }
 
 /**
- * Read the schedule, the plan and this visit's proposals. `refreshKey` re-reads the proposals only (the plan-of-care step below changes
- * them). The plan is read once per note. The schedule is read again whenever the clinician comes back to this window or tab, and when
- * `listening` turns on again: the panel sends them to Scheduling in a new tab to book, so the schedule can change while this screen is
- * open. Reads are spaced, only the latest is kept, a failed one keeps the schedule already shown, and none is made while `listening` is
- * off (the panel is mounted but hidden).
+ * Read the schedule, the plan and this visit's proposals. The proposals are read again when `planStepBusy` goes from true to false, i.e.
+ * when a save in the plan-of-care step below has finished (a read made mid-save would be stale). The plan is read once per note. The
+ * schedule is read again whenever the clinician comes back to this window or tab, and when `listening` turns on again: the panel sends
+ * them to Scheduling in a new tab to book, so the schedule can change while this screen is open. Reads are spaced, only the latest is
+ * kept, a failed one keeps the schedule already shown, and none is made while `listening` is off (the panel is mounted but hidden).
  */
 export function useNextVisitContext(
   patientId: string,
   encounterId: string,
-  refreshKey: unknown,
+  planStepBusy: boolean,
   listening: boolean,
 ): NextVisitContext {
   const client = useApiClient();
@@ -132,6 +135,13 @@ export function useNextVisitContext(
   const refreshSchedule = useRef<() => void>(() => undefined);
   const [plan, setPlan] = useState<Remote<PlanReading>>(LOADING);
   const [proposals, setProposals] = useState<Remote<number>>(LOADING);
+  // Counts the plan-of-care saves that have finished: derived while rendering, so the render that sees the step go idle already has it.
+  const [wasBusy, setWasBusy] = useState(planStepBusy);
+  const [savesFinished, setSavesFinished] = useState(0);
+  if (wasBusy !== planStepBusy) {
+    setWasBusy(planStepBusy);
+    if (wasBusy) setSavesFinished((count) => count + 1);
+  }
 
   useEffect(() => {
     let active = true;
@@ -184,14 +194,14 @@ export function useNextVisitContext(
     };
   }, [client, patientId]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey re-reads the proposals after the plan-of-care step saved something.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: savesFinished re-reads the proposals after the plan-of-care step saved something.
   useEffect(() => {
     let active = true;
     void readDraftProposals(client, patientId, encounterId).then((r) => active && setProposals(r));
     return () => {
       active = false;
     };
-  }, [client, patientId, encounterId, refreshKey]);
+  }, [client, patientId, encounterId, savesFinished]);
 
   return { schedule: schedule.remote, scheduleReadAt: schedule.readAt, plan, proposals };
 }

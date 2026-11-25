@@ -387,12 +387,21 @@ describe("trendOf", () => {
 });
 
 describe("trendWindow", () => {
-  it("covers the 90 days up to the service date", () => {
-    expect(trendWindow("2026-11-17")).toEqual({ from: "2026-08-19", to: "2026-11-17" });
+  it("covers the 90 days up to the service date, and reads to the end of the next UTC day for a reading stamped after local midnight", () => {
+    expect(trendWindow("2026-11-17")).toEqual({ from: "2026-08-19", to: "2026-11-18" });
+  });
+
+  it("rolls the day after over a month and a year end without a time-zone drift", () => {
+    expect(trendWindow("2026-11-30")?.to).toBe("2026-12-01");
+    expect(trendWindow("2026-12-31")?.to).toBe("2027-01-01");
+    expect(trendWindow("2028-02-28")?.to).toBe("2028-02-29");
   });
 
   it("takes only the date of a date-time", () => {
-    expect(trendWindow("2026-11-17T08:00:00.000Z")?.to).toBe("2026-11-17");
+    expect(trendWindow("2026-11-17T08:00:00.000Z")).toEqual({
+      from: "2026-08-19",
+      to: "2026-11-18",
+    });
   });
 
   it("has no window for a service date it cannot read, instead of throwing", () => {

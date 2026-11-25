@@ -15,8 +15,9 @@
 // The corpus is DATA with D11-pinned bytes: the choice strings below are interpolated verbatim and are copied, not imported,
 // from `@chartwarden/types`, so editing a constant there can never reword a shipped phrase.
 //
-// DRAFT WORDING. The phrases state what the clinician typed or chose and carry no clinical judgement, but no clinician has read
-// them (see `CORPUS_CLINICAL_REVIEW`). Sources for the content: docs/research/PAIN_ASSESSMENT_AND_PLAN_OF_CARE_TRIGGERS_RESEARCH.md.
+// The phrases state what the clinician typed or chose and carry no clinical judgement. Lora, RN signed the sheet's section 2c off as a
+// whole on 2026-11-25 (not item by item); `CORPUS_CLINICAL_REVIEW` stays `pending` (reviewer ADA) and gates only the per-tenant draft
+// switch. Sources for the content: docs/research/PAIN_ASSESSMENT_AND_PLAN_OF_CARE_TRIGGERS_RESEARCH.md.
 import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
 import type { SlotSpec, VocabEntry } from "./types";
 

@@ -4,7 +4,8 @@
 //
 // Every item is traced, with URL, section and retrieval date, in docs/research/HOSPICE_VISIT_PLAN_AND_NEXT_VISIT_RESEARCH.md
 // (retrieved 2026-11-24). Nothing that could not be sourced is here: no federal rule sets a minimum visit frequency or a note format, and
-// none is claimed. The clinical wording needs a clinician's sign-off before release.
+// none is claimed. The clinical wording (section 3 of docs/clinical-review/CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md) was signed off by
+// Lora, RN on 2026-11-25 with sections 1-6, not item by item.
 
 export type GuideBasis = "regulation" | "guidance" | "guideline" | "practice";
 
