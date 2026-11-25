@@ -43,7 +43,10 @@ import { registerDocLensPendingAddressRoutes } from "./extraction/pending-addres
 import { createProspectSummaryService } from "./extraction/prospect-summary-db";
 import { registerDocLensProspectSummaryRoutes } from "./extraction/prospect-summary-routes";
 import { createReviewWorkspaceService } from "./extraction/review-workspace";
-import { registerDocLensReviewWorkspaceRoutes } from "./extraction/review-workspace-routes";
+import {
+  type WardenLensPlatformSupportAccess,
+  registerDocLensReviewWorkspaceRoutes,
+} from "./extraction/review-workspace-routes";
 import type { ExtractionWritebackDeps } from "./extraction/writeback-commit-db";
 import { selectOutboundFaxTransport } from "./fax/outbound-fax";
 import { createDbRecordsRequestService } from "./records-request/records-request-db";
@@ -81,6 +84,7 @@ export function mountDocumentRoutes(
   flags?: _DocumentFeatureFlagReader,
   writeback: ExtractionWritebackDeps = {},
   intake?: DocLensIntakeEnqueue,
+  platformSupportAccess?: WardenLensPlatformSupportAccess,
 ): void {
   // F-238 — requesting a prospect's older records (cover sheet + code); the upload route links by hand.
   const recordsRequests = createDbRecordsRequestService(db);
@@ -272,6 +276,7 @@ export function mountDocumentRoutes(
           }),
       },
     }),
+    platformSupportAccess,
   );
   // F-238 — the prospect summary of a COMPLETED review (reviewer-approved values only; deterministic).
   registerDocLensProspectSummaryRoutes(

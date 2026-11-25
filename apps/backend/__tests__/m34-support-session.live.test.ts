@@ -52,6 +52,7 @@ import {
   withOrgContext,
   withPlatformContext,
 } from "@chartwarden/tenancy";
+import { ConflictError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -64,6 +65,7 @@ import {
   createDrizzleSupportLedgerRecorder,
   createSupportGrantOperationsOver,
   createSupportSessionPorts,
+  createWardenLensSupportAccess,
   mountTenantPlatformRoutes,
 } from "../src/modules/34-saas-tenant-platform/index";
 import {
@@ -950,6 +952,491 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
         grantId,
       ]);
       expect(still?.revoked_at).toBeNull();
+    });
+
+    it("authorizes and audits WardenLens reads only inside the actor-bound consent scope", async () => {
+      let accessClock = clock;
+      const access = createWardenLensSupportAccess({
+        platformDb: platform.db,
+        auditBypass,
+        platformJobId: JOB_ID,
+        now: () => accessClock,
+      });
+      const base = {
+        actorMembershipId: OPERATOR.membership,
+        organizationId: TENANT_ORG,
+        supportSessionId: sessionId,
+      } as const;
+
+      await expect(
+        access.runAuthorizedRead(
+          {
+            ...base,
+            actorMembershipId: OPERATOR_TWO.membership,
+            resourceKind: "intake_review_workspace",
+            resourceId: "99999999-9999-4999-8999-999999999998",
+            correlationId: "wardenlens-live-wrong-actor",
+            actorIp: null,
+            route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+          },
+          async () => TENANT_PATIENT,
+          async () => undefined,
+        ),
+      ).rejects.toThrow(/active tenant-consented support session/);
+      await expect(
+        access.runAuthorizedRead(
+          {
+            ...base,
+            resourceKind: "intake_review_workspace",
+            resourceId: "99999999-9999-4999-8999-999999999999",
+            correlationId: "wardenlens-live-org-scope",
+            actorIp: "127.0.0.1",
+            route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+          },
+          async () => TENANT_PATIENT,
+          async (organizationId, _patientId, scope) => `${organizationId}:${scope}`,
+        ),
+      ).resolves.toBe(`${TENANT_ORG}:organization_scoped`);
+
+      const [ledger] = await q<{ patient_id: string; context: Record<string, unknown> }>(
+        `SELECT patient_id, context FROM support_session_event
+          WHERE support_session_id = $1 AND event_kind = 'ops.read'
+          ORDER BY occurred_at DESC LIMIT 1`,
+        [sessionId],
+      );
+      expect(ledger).toMatchObject({
+        patient_id: TENANT_PATIENT,
+        context: {
+          method: "GET",
+          route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+        },
+      });
+      const [audit] = await q<{ severity: string; context: Record<string, unknown> }>(
+        `SELECT severity, context FROM audit_event
+          WHERE event_type = 'support_session.wardenlens_read'
+            AND correlation_id = 'wardenlens-live-org-scope'`,
+      );
+      expect(audit).toMatchObject({
+        severity: "critical",
+        context: {
+          organizationId: TENANT_ORG,
+          actorMembershipId: OPERATOR.membership,
+          supportSessionId: sessionId,
+          supportConsentGrantId: grantId,
+          authorizationBasis: "superadmin_support_session",
+          actorKind: "superadmin_via_support_session",
+        },
+      });
+      await expect(
+        access.runAuthorizedRead(
+          {
+            ...base,
+            resourceKind: "intake_review_workspace",
+            resourceId: "99999999-9999-4999-8999-999999999997",
+            correlationId: "wardenlens-live-expiry-during-read",
+            actorIp: null,
+            route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+          },
+          async () => TENANT_PATIENT,
+          async () => {
+            accessClock = new Date(clock.getTime() + 9 * HOUR);
+            return "must-be-discarded";
+          },
+        ),
+      ).rejects.toThrow(/active tenant-consented support session/);
+      accessClock = clock;
+
+      const patientGrant = await issue(ADMIN, "patient_scoped", {
+        patientIdsInScope: [TENANT_PATIENT],
+      });
+      expect(patientGrant.statusCode).toBe(201);
+      const patientSession = await start(patientGrant.body.id);
+      expect(patientSession.statusCode).toBe(201);
+      const patientBase = { ...base, supportSessionId: patientSession.body.sessionId };
+      await expect(
+        access.runAuthorizedRead(
+          {
+            ...patientBase,
+            resourceKind: "intake_page_image",
+            resourceId: "88888888-8888-4888-8888-888888888888",
+            correlationId: "wardenlens-live-out-of-scope",
+            actorIp: null,
+            route:
+              "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/pages/:page/image",
+          },
+          async () => OTHER_PATIENT,
+          async () => undefined,
+        ),
+      ).rejects.toThrow(/active tenant-consented support session/);
+      await expect(
+        access.runAuthorizedRead(
+          {
+            ...patientBase,
+            resourceKind: "intake_review_workspace",
+            resourceId: "88888888-8888-4888-8888-888888888885",
+            correlationId: "wardenlens-live-in-scope",
+            actorIp: null,
+            route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+          },
+          async () => TENANT_PATIENT,
+          async (_organizationId, _patientId, scope) => scope,
+        ),
+      ).resolves.toBe("patient_scoped");
+      const closed = await send(
+        "POST",
+        `/api/v1/platform/support-sessions/${patientSession.body.sessionId}/close`,
+        headersOf(OPERATOR),
+        {},
+      );
+      expect(closed.statusCode).toBe(200);
+      await expect(
+        access.runAuthorizedRead(
+          {
+            ...patientBase,
+            resourceKind: "intake_review_workspace",
+            resourceId: "88888888-8888-4888-8888-888888888887",
+            correlationId: "wardenlens-live-closed",
+            actorIp: null,
+            route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+          },
+          async () => TENANT_PATIENT,
+          async () => undefined,
+        ),
+      ).rejects.toThrow(/active tenant-consented support session/);
+
+      // A session of one organization cannot read another, and a session already expired at entry cannot read
+      // at all; neither refusal runs the read or leaves a critical audit behind.
+      await expect(
+        access.runAuthorizedRead(
+          {
+            ...base,
+            organizationId: OTHER_ORG,
+            resourceKind: "intake_review_workspace",
+            resourceId: "88888888-8888-4888-8888-888888888884",
+            correlationId: "wardenlens-live-cross-org",
+            actorIp: null,
+            route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+          },
+          async () => TENANT_PATIENT,
+          async () => "must-not-run",
+        ),
+      ).rejects.toThrow(/active tenant-consented support session/);
+      accessClock = new Date(clock.getTime() + 9 * HOUR);
+      await expect(
+        access.runAuthorizedRead(
+          {
+            ...base,
+            resourceKind: "intake_review_workspace",
+            resourceId: "88888888-8888-4888-8888-888888888883",
+            correlationId: "wardenlens-live-expired-at-entry",
+            actorIp: null,
+            route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+          },
+          async () => TENANT_PATIENT,
+          async () => "must-not-run",
+        ),
+      ).rejects.toThrow(/active tenant-consented support session/);
+      accessClock = clock;
+      const [refused] = await q<{ count: string }>(
+        `SELECT count(*)::text AS count FROM audit_event
+          WHERE event_type = 'support_session.wardenlens_read'
+            AND correlation_id = ANY($1::text[])`,
+        [["wardenlens-live-cross-org", "wardenlens-live-expired-at-entry"]],
+      );
+      expect(refused?.count).toBe("0");
+      // Each refusal is recorded on its own, with identifiers only, because the authorization transaction rolled back.
+      const denials = await q<{
+        correlation_id: string;
+        outcome: string;
+        severity: string;
+        context: Record<string, unknown>;
+      }>(
+        `SELECT correlation_id, outcome, severity, context FROM audit_event
+          WHERE event_type = 'support_session.wardenlens_read_denied'
+            AND correlation_id = ANY($1::text[])
+          ORDER BY correlation_id`,
+        [["wardenlens-live-cross-org", "wardenlens-live-expired-at-entry"]],
+      );
+      expect(denials).toHaveLength(2);
+      expect(denials[0]).toMatchObject({
+        correlation_id: "wardenlens-live-cross-org",
+        outcome: "denied",
+        severity: "warn",
+        context: {
+          requestedOrganizationId: OTHER_ORG,
+          actorMembershipId: OPERATOR.membership,
+          supportSessionId: sessionId,
+          reason: "authorization_denied",
+        },
+      });
+      expect(denials[1]?.correlation_id).toBe("wardenlens-live-expired-at-entry");
+
+      const revokedGrant = await issue(ADMIN, "organization_scoped");
+      const revokedSession = await start(revokedGrant.body.id);
+      expect((await revoke(ADMIN, revokedGrant.body.id)).statusCode).toBe(200);
+      await expect(
+        access.runAuthorizedRead(
+          {
+            ...base,
+            supportSessionId: revokedSession.body.sessionId,
+            resourceKind: "intake_review_workspace",
+            resourceId: "88888888-8888-4888-8888-888888888886",
+            correlationId: "wardenlens-live-revoked",
+            actorIp: null,
+            route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+          },
+          async () => TENANT_PATIENT,
+          async () => undefined,
+        ),
+      ).rejects.toThrow(/active tenant-consented support session/);
+    });
+
+    it("audits each kind of refusal, never records a server error as one, and leaves no row behind a failed read", async () => {
+      const access = createWardenLensSupportAccess({
+        platformDb: platform.db,
+        auditBypass,
+        platformJobId: JOB_ID,
+        now: () => clock,
+      });
+      const route = "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace";
+      const read = <T>(
+        supportSessionId: string,
+        correlationId: string,
+        resolvePatient: (organizationId: string) => Promise<string | null>,
+        doRead: () => Promise<T>,
+        port = access,
+      ) =>
+        port.runAuthorizedRead(
+          {
+            actorMembershipId: OPERATOR.membership,
+            organizationId: TENANT_ORG,
+            supportSessionId,
+            resourceKind: "intake_review_workspace",
+            resourceId: "66666666-6666-4666-8666-666666666666",
+            correlationId,
+            actorIp: null,
+            route,
+          },
+          resolvePatient,
+          doRead,
+        );
+      const wardenlensAudits = (correlationId: string) =>
+        q<{ event_type: string; context: Record<string, unknown> }>(
+          `SELECT event_type, context FROM audit_event
+            WHERE correlation_id = $1 AND event_type LIKE 'support_session.wardenlens_read%'
+            ORDER BY event_type`,
+          [correlationId],
+        );
+      const opsReads = async (supportSessionId: string): Promise<number> =>
+        Number(
+          (
+            await q<{ count: string }>(
+              `SELECT count(*)::text AS count FROM support_session_event
+                WHERE support_session_id = $1 AND event_kind = 'ops.read'`,
+              [supportSessionId],
+            )
+          )[0]?.count,
+        );
+      const denied = (reason: string) => [
+        { event_type: "support_session.wardenlens_read_denied", context: { reason } },
+      ];
+      const mustNotRun = async (): Promise<string> => "must-not-run";
+
+      // An assist grant is non-PHI: a WardenLens read on it is refused and recorded.
+      const assistGrant = await issue(ADMIN, "assist");
+      const assistSession = (await start(assistGrant.body.id)).body.sessionId as string;
+      await expect(
+        read(assistSession, "wardenlens-live-assist", async () => TENANT_PATIENT, mustNotRun),
+      ).rejects.toThrow(/active tenant-consented support session/);
+      expect(await wardenlensAudits("wardenlens-live-assist")).toMatchObject(
+        denied("authorization_denied"),
+      );
+      expect(await opsReads(assistSession)).toBe(0);
+
+      // A patient-scoped session must not learn that a batch does not exist: the not-found case reads as a refusal.
+      const patientGrant = await issue(ADMIN, "patient_scoped", {
+        patientIdsInScope: [TENANT_PATIENT],
+      });
+      const patientSession = (await start(patientGrant.body.id)).body.sessionId as string;
+      await expect(
+        read(
+          patientSession,
+          "wardenlens-live-unknown-batch-patient",
+          async () => {
+            throw new NotFoundError("intake upload");
+          },
+          mustNotRun,
+        ),
+      ).rejects.toThrow(/active tenant-consented support session/);
+      expect(await wardenlensAudits("wardenlens-live-unknown-batch-patient")).toMatchObject(
+        denied("authorization_denied"),
+      );
+
+      const orgGrant = await issue(ADMIN, "organization_scoped");
+      const orgSession = (await start(orgGrant.body.id)).body.sessionId as string;
+      // An organization-scoped session sees the real answer, and each refusal leaves a trace and no success row.
+      await expect(
+        read(
+          orgSession,
+          "wardenlens-live-unknown-batch-org",
+          async () => {
+            throw new NotFoundError("intake upload");
+          },
+          mustNotRun,
+        ),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      expect(await wardenlensAudits("wardenlens-live-unknown-batch-org")).toMatchObject(
+        denied("target_not_found"),
+      );
+      await expect(
+        read(
+          orgSession,
+          "wardenlens-live-refiled",
+          async () => TENANT_PATIENT,
+          async () => {
+            throw new ConflictError("the batch was re-filed");
+          },
+        ),
+      ).rejects.toBeInstanceOf(ConflictError);
+      expect(await wardenlensAudits("wardenlens-live-refiled")).toMatchObject(
+        denied("target_conflict"),
+      );
+      await expect(
+        read(
+          orgSession,
+          "wardenlens-live-content-refused",
+          async () => TENANT_PATIENT,
+          async () => {
+            throw new ForbiddenError("the filed patient is not proven");
+          },
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenError);
+      expect(await wardenlensAudits("wardenlens-live-content-refused")).toMatchObject(
+        denied("content_scope_refused"),
+      );
+
+      // A server error is not a refusal: it surfaces as itself and is not recorded as a denial.
+      await expect(
+        read(
+          orgSession,
+          "wardenlens-live-server-error",
+          async () => TENANT_PATIENT,
+          async () => {
+            throw new Error("connection pool exhausted");
+          },
+        ),
+      ).rejects.toThrow("connection pool exhausted");
+      expect(await wardenlensAudits("wardenlens-live-server-error")).toEqual([]);
+
+      // Authority that expires while the ledger and audit rows are written rolls both rows back.
+      let clockCalls = 0;
+      const expiresAfterWrites = createWardenLensSupportAccess({
+        platformDb: platform.db,
+        auditBypass,
+        platformJobId: JOB_ID,
+        now: () => (++clockCalls >= 3 ? new Date(clock.getTime() + 9 * HOUR) : clock),
+      });
+      await expect(
+        read(
+          orgSession,
+          "wardenlens-live-expiry-after-writes",
+          async () => TENANT_PATIENT,
+          async () => "must-be-discarded",
+          expiresAfterWrites,
+        ),
+      ).rejects.toThrow(/active tenant-consented support session/);
+      expect(await wardenlensAudits("wardenlens-live-expiry-after-writes")).toMatchObject(
+        denied("authorization_denied"),
+      );
+
+      // None of those left a ledger row, and one successful read does.
+      expect(await opsReads(orgSession)).toBe(0);
+      await expect(
+        read(
+          orgSession,
+          "wardenlens-live-after-refusals",
+          async () => TENANT_PATIENT,
+          async () => "ok",
+        ),
+      ).resolves.toBe("ok");
+      expect(await opsReads(orgSession)).toBe(1);
+      expect(
+        (await wardenlensAudits("wardenlens-live-after-refusals")).map((a) => a.event_type),
+      ).toEqual(["support_session.wardenlens_read"]);
+
+      // Revoking closes the three sessions this test opened, so the expiry sweep below starts from a clean slate.
+      for (const grant of [assistGrant, patientGrant, orgGrant]) {
+        expect((await revoke(ADMIN, grant.body.id)).statusCode).toBe(200);
+      }
+    });
+
+    it("holds consent stable while a WardenLens disclosure is prepared, then lets revocation close it", async () => {
+      const grant = await issue(ADMIN, "organization_scoped");
+      expect(grant.statusCode).toBe(201);
+      const opened = await start(grant.body.id);
+      expect(opened.statusCode).toBe(201);
+      const access = createWardenLensSupportAccess({
+        platformDb: platform.db,
+        auditBypass,
+        platformJobId: JOB_ID,
+        now: () => clock,
+      });
+
+      let markReadStarted: (() => void) | undefined;
+      const readStarted = new Promise<void>((resolve) => {
+        markReadStarted = resolve;
+      });
+      let releaseRead: (() => void) | undefined;
+      const mayFinishRead = new Promise<void>((resolve) => {
+        releaseRead = resolve;
+      });
+      const prepared = access.runAuthorizedRead(
+        {
+          actorMembershipId: OPERATOR.membership,
+          organizationId: TENANT_ORG,
+          supportSessionId: opened.body.sessionId,
+          resourceKind: "intake_review_workspace",
+          resourceId: "77777777-9999-4999-8999-999999999999",
+          correlationId: "wardenlens-live-revoke-race",
+          actorIp: "127.0.0.1",
+          route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+        },
+        async () => TENANT_PATIENT,
+        async () => {
+          markReadStarted?.();
+          await mayFinishRead;
+          return "prepared";
+        },
+      );
+      await readStarted;
+
+      let revokeSettled = false;
+      const revocation = revoke(ADMIN, grant.body.id).then((result) => {
+        revokeSettled = true;
+        return result;
+      });
+      await new Promise<void>((resolve) => setTimeout(resolve, 25));
+      expect(revokeSettled).toBe(false);
+
+      releaseRead?.();
+      await expect(prepared).resolves.toBe("prepared");
+      expect((await revocation).statusCode).toBe(200);
+      await expect(
+        access.runAuthorizedRead(
+          {
+            actorMembershipId: OPERATOR.membership,
+            organizationId: TENANT_ORG,
+            supportSessionId: opened.body.sessionId,
+            resourceKind: "intake_review_workspace",
+            resourceId: "77777777-9999-4999-8999-999999999998",
+            correlationId: "wardenlens-live-after-revoke",
+            actorIp: null,
+            route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+          },
+          async () => TENANT_PATIENT,
+          async () => undefined,
+        ),
+      ).rejects.toThrow(/active tenant-consented support session/);
     });
 
     it("refuses the same person under another seat (D16 at the person level), and records nothing", async () => {

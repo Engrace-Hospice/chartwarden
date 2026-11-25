@@ -1,6 +1,6 @@
 # ADR-0112 — `superadmin`: one platform-owned role that supersedes `administrator` and `org_admin` and holds every platform role
 
-- **Status:** **Proposed** (2026-11-16). The owner asked for a single account above sysadmin and orgadmin that belongs to ChartWarden, not to a tenant, and chose a real catalog role over a dev-only seed. Acceptance, and the names of the people who may hold it, are the owner's.
+- **Status:** **Accepted** (2026-11-25), by the owner, who validated it after Proposed (2026-11-16). The owner asked for a single account above sysadmin and orgadmin that belongs to ChartWarden, not to a tenant, and chose a real catalog role over a dev-only seed. The names of the people who may hold it are still the owner's to record: production has no holder, and a grant is a separate, ticketed change (OPS_RUNBOOK §16.5) made only once `CHARTWARDEN_MFA_ENFORCEMENT=true` is verified.
 - **Date:** 2026-11-16
 - **Related:** [ADR-0090](ADR-0090-administrator-and-org-admin-org-wide-patient-scope.md) (`administrator` and `org_admin` are the org-wide roles), Module 3 spec D3 (`org_admin` / `platform_ops` are roles in the catalog, not flags), Module 34 (platform ops; the consented support session), Security Hardening section 5.1.2 (passkey for high-privilege roles) and section 17 (break-glass), GAP-003 / GAP-096 (platform authority lives only on platform-owned role rows).
 - **Amends:** nothing. It adds one key to the set GAP-003 reserved.

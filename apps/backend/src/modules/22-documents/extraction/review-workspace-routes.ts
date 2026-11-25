@@ -1,4 +1,10 @@
-import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
+import {
+  type GuardRequest,
+  isReservedPlatformRoleKey,
+  requireAbac,
+  requirePermission,
+  requireRole,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/22-documents/extraction/review-workspace-routes.ts — the DocLens review screen's
 // routes (§5.1 INTAKE.ReviewSideBySide; F-237).
 //
@@ -11,8 +17,9 @@ import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/
 //
 // Authorization is the server's: `intake.read` for the queue, `intake.review` for everything that shows
 // values or decides; the SUD resolution additionally needs the high-risk licence (the
-// `extraction_reviewer_eligible` predicate's `sudReview` arm) and refuses AI principals. Every PHI read
-// carries an `auditRead` declaration, so the host's read-audit hook records who looked at which batch.
+// `extraction_reviewer_eligible` predicate's `sudReview` arm) and refuses AI principals. ADR-0115 permits a
+// human tenant administrator to read SUD evidence on the workspace/page routes only. Every PHI read carries
+// an `auditRead` declaration, so the host's read-audit hook records who looked at which batch.
 import {
   type PreHandler,
   pageQuery,
@@ -20,11 +27,11 @@ import {
   requireIdempotencyKey,
   writeActorOf,
 } from "@chartwarden/shared/route-kit";
-import { UnauthorizedError } from "@chartwarden/types";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import { type Static, Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "../routes/documents-typebox";
-import type { ReviewWorkspaceService } from "./review-workspace";
+import type { ReviewWorkspaceService, SupportReadScope } from "./review-workspace";
 import type { SudContentAccess } from "./sud-content-gate";
 
 const Box = Type.Tuple([Type.Number(), Type.Number(), Type.Number(), Type.Number()]);
@@ -267,6 +274,18 @@ const PageParams = Type.Object({
   id: Type.String({ format: "uuid" }),
   page: Type.Integer({ minimum: 1, maximum: 10_000 }),
 });
+const PlatformBatchParams = Type.Object({
+  organizationId: Type.String({ format: "uuid" }),
+  id: Type.String({ format: "uuid" }),
+});
+const PlatformPageParams = Type.Object({
+  organizationId: Type.String({ format: "uuid" }),
+  id: Type.String({ format: "uuid" }),
+  page: Type.Integer({ minimum: 1, maximum: 10_000 }),
+});
+export const PlatformSupportQuery = Type.Object({
+  supportSessionId: Type.String({ format: "uuid" }),
+});
 
 // Compile-time pins: the published schema matches what the service returns.
 type Conforms<T extends V, V> = T;
@@ -277,9 +296,17 @@ type _Workspace = Conforms<
 
 const INTAKE_READ = requirePermission("intake.read") as PreHandler;
 const INTAKE_REVIEW = requirePermission("intake.review") as PreHandler;
+const SUPERADMIN = requireRole("superadmin") as PreHandler;
 const REJECT_AI = rejectAiActor(
   "AI principals cannot commit a WardenLens extraction review",
 ) as PreHandler;
+const REQUIRE_HUMAN_SUPPORT_ACTOR: PreHandler = async (request) => {
+  if (request.context.attributes.actorKind !== "user") {
+    throw new ForbiddenError(
+      "WardenLens support-session access requires an authenticated human superadmin",
+    );
+  }
+};
 const IDEMPOTENT = requireIdempotencyKey() as PreHandler;
 // §7.4 W4 — confirming or rejecting a Part 2 detection is a high-risk act: RN-or-above, like a
 // medication field. The target is a constant flag; nothing about it comes from the request.
@@ -296,7 +323,10 @@ const ABAC_SUD_REVIEWER = requireAbac("intake.review", "extraction_reviewer_elig
 // is captured later), a CONFIRMED batch needs both. `requireAbac` throws on denial; for a READ a denial
 // is not a refusal of the whole request but a redaction, so the throw is the answer, caught here and turned
 // into `false`. Any error (an unregistered predicate, a down consent seam) is a `false` too: fail closed.
-// Not break-glass-bypassable: an emergency grant is not a Part 2 need-to-know.
+// ADR-0115 adds a separate, explicit human tenant-administrator read probe; it is not break glass and never
+// admits a reserved platform role. The policy approves a future superadmin path only after M34's consented,
+// PHI-elevated support session is composed server-side; this generic tenant route has no such context. The
+// underlying ABAC checks remain non-break-glass-bypassable.
 const SUD_READ_ELIGIBLE = requireAbac("intake.review", "extraction_reviewer_eligible", {
   getTarget: () => ({ sudReview: true }),
   breakGlassBypassable: false,
@@ -312,6 +342,20 @@ function sudContentAccessOf(request: FastifyRequest): SudContentAccess {
   // Each probe is a registered ABAC predicate; a denial or a throw reaches the gate as a rejection, which it
   // turns into `false` (fail closed). Which probes a batch needs depends on its state: see sud-content-gate.
   return {
+    // ADR-0115 — a human tenant administrator is admitted only without reserved platform authority. A
+    // platform-owned superadmin is deliberately denied here: ADR-0112 prevents tenant membership, and this
+    // route has no server-derived support-session identity/elevation. The ordinary RBAC permission, tenant
+    // context/RLS, AI refusal on decisions, review ownership and every candidate-level rule continue to apply.
+    administratorOverride: async () => {
+      const roles = request.context.roles;
+      const tenantAdministrator = roles.includes("administrator") || roles.includes("org_admin");
+      const carriesPlatformAuthority = roles.some(isReservedPlatformRoleKey);
+      return (
+        request.context.attributes.actorKind === "user" &&
+        tenantAdministrator &&
+        !carriesPlatformAuthority
+      );
+    },
     reviewerEligible: async () => {
       await SUD_READ_ELIGIBLE(guardRequest);
       return true;
@@ -323,9 +367,48 @@ function sudContentAccessOf(request: FastifyRequest): SudContentAccess {
   };
 }
 
+/** M34-owned narrow port: the route never reads support-session tables or trusts a client tenant claim. */
+export interface WardenLensPlatformSupportAccess {
+  runAuthorizedRead<T>(
+    input: {
+      actorMembershipId: string;
+      organizationId: string;
+      supportSessionId: string;
+      resourceKind: "intake_review_workspace" | "intake_page_image";
+      resourceId: string;
+      correlationId: string;
+      actorIp: string | null;
+      route: string;
+      pageNumber?: number;
+    },
+    resolvePatient: (organizationId: string) => Promise<string | null>,
+    read: (
+      organizationId: string,
+      patientId: string | null,
+      scope: "organization_scoped" | "patient_scoped",
+    ) => Promise<T>,
+  ): Promise<T>;
+}
+
+/** A patient-scoped consent grant covers the batch's filed patient only (see `SupportReadScope`). */
+const supportReadScopeOf = (
+  scope: "organization_scoped" | "patient_scoped",
+  authorizedPatientId: string | null,
+): SupportReadScope => ({
+  patientContentOnly: scope === "patient_scoped",
+  expectedPatientId: authorizedPatientId,
+});
+
+const SUPPORT_SESSION_SUD_ACCESS: SudContentAccess = {
+  administratorOverride: async () => true,
+  reviewerEligible: async () => false,
+  consentPresent: async () => false,
+};
+
 export function registerDocLensReviewWorkspaceRoutes(
   app: FastifyInstance,
   service: ReviewWorkspaceService,
+  platformSupportAccess?: WardenLensPlatformSupportAccess,
 ): void {
   app.get(
     "/api/v1/intake/uploads",
@@ -346,11 +429,144 @@ export function registerDocLensReviewWorkspaceRoutes(
     },
   );
 
+  // ADR-0115 / ADR-0112 — the platform-owned superadmin is never admitted through the generic tenant
+  // route. This dedicated read-only path composes an exact superadmin role with M34's actor-bound,
+  // tenant-consented support session. M34 resolves the tenant, enforces grant/patient scope and writes
+  // the durable support-session + critical audit records before this handler returns any PHI.
+  if (platformSupportAccess) {
+    app.get(
+      "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+      {
+        preHandler: [SUPERADMIN, REQUIRE_HUMAN_SUPPORT_ACTOR, INTAKE_REVIEW],
+        config: {
+          auditRead: {
+            resourceKind: "intake_review_workspace",
+            resourceIdParam: "id",
+            organizationIdParam: "organizationId",
+            patientIdContextAttribute: "readAuditPatientId",
+            severity: "critical",
+            failClosed: true,
+          },
+        },
+      },
+      async (request, reply) => {
+        const { membershipId } = writeActorOf(request);
+        const { organizationId: requestedOrganizationId, id } = parse(
+          PlatformBatchParams,
+          request.params,
+        );
+        const { supportSessionId } = parse(PlatformSupportQuery, request.query ?? {});
+        let auditedPatientId: string | null = null;
+        const workspace = await platformSupportAccess.runAuthorizedRead(
+          {
+            actorMembershipId: membershipId,
+            organizationId: requestedOrganizationId,
+            supportSessionId,
+            resourceKind: "intake_review_workspace",
+            resourceId: id,
+            correlationId: request.id,
+            actorIp: request.ip ?? null,
+            route: "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
+          },
+          async (authorizedOrganizationId) => {
+            auditedPatientId = await service.getBatchPatientId(authorizedOrganizationId, id);
+            return auditedPatientId;
+          },
+          (authorizedOrganizationId, authorizedPatientId, scope) =>
+            service.getWorkspace(
+              authorizedOrganizationId,
+              id,
+              membershipId,
+              SUPPORT_SESSION_SUD_ACCESS,
+              supportReadScopeOf(scope, authorizedPatientId),
+            ),
+        );
+        request.context.attributes.readAuditPatientId = auditedPatientId;
+        return reply.header("cache-control", "no-store").send(workspace);
+      },
+    );
+
+    app.get(
+      "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/pages/:page/image",
+      {
+        preHandler: [SUPERADMIN, REQUIRE_HUMAN_SUPPORT_ACTOR, INTAKE_REVIEW],
+        config: {
+          auditRead: {
+            resourceKind: "intake_page_image",
+            resourceIdParam: "id",
+            organizationIdParam: "organizationId",
+            patientIdContextAttribute: "readAuditPatientId",
+            severity: "critical",
+            failClosed: true,
+          },
+        },
+      },
+      async (request, reply) => {
+        const { membershipId } = writeActorOf(request);
+        const {
+          organizationId: requestedOrganizationId,
+          id,
+          page,
+        } = parse(PlatformPageParams, {
+          ...(request.params as Record<string, unknown>),
+          page: Number((request.params as { page?: string }).page),
+        });
+        const { supportSessionId } = parse(PlatformSupportQuery, request.query ?? {});
+        let auditedPatientId: string | null = null;
+        const out = await platformSupportAccess.runAuthorizedRead(
+          {
+            actorMembershipId: membershipId,
+            organizationId: requestedOrganizationId,
+            supportSessionId,
+            resourceKind: "intake_page_image",
+            resourceId: id,
+            correlationId: request.id,
+            actorIp: request.ip ?? null,
+            route:
+              "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/pages/:page/image",
+            pageNumber: page,
+          },
+          async (authorizedOrganizationId) => {
+            auditedPatientId = await service.getBatchPatientId(authorizedOrganizationId, id);
+            return auditedPatientId;
+          },
+          (authorizedOrganizationId, authorizedPatientId, scope) =>
+            service.renderPage(
+              authorizedOrganizationId,
+              id,
+              page,
+              request.id,
+              SUPPORT_SESSION_SUD_ACCESS,
+              supportReadScopeOf(scope, authorizedPatientId),
+            ),
+        );
+        request.context.attributes.readAuditPatientId = auditedPatientId;
+        return (
+          reply
+            .header("content-type", "image/png")
+            // A revoked/expired support session must not leave a reusable Part 2 page in browser or
+            // intermediary caches. Tenant review keeps its existing short private cache below.
+            .header("cache-control", "no-store")
+            .header("x-page-width", String(out.pageWidth))
+            .header("x-page-height", String(out.pageHeight))
+            .send(Buffer.from(out.png))
+        );
+      },
+    );
+  }
+
   app.get(
     "/api/v1/intake/uploads/:id/workspace",
     {
       preHandler: [INTAKE_REVIEW],
-      config: { auditRead: { resourceKind: "intake_review_workspace", resourceIdParam: "id" } },
+      // The patient the packet is filed under joins the read to a patient, for the accounting of disclosures.
+      config: {
+        auditRead: {
+          resourceKind: "intake_review_workspace",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "batch.patientId",
+        },
+      },
     },
     async (request) => {
       const { organizationId, membershipId } = writeActorOf(request);
@@ -363,7 +579,14 @@ export function registerDocLensReviewWorkspaceRoutes(
     "/api/v1/intake/uploads/:id/pages/:page/image",
     {
       preHandler: [INTAKE_REVIEW],
-      config: { auditRead: { resourceKind: "intake_page_image", resourceIdParam: "id" } },
+      config: {
+        auditRead: {
+          resourceKind: "intake_page_image",
+          resourceIdParam: "id",
+          // The render knows the patient the packet is filed under; the audit names it.
+          patientIdContextAttribute: "readAuditPatientId",
+        },
+      },
     },
     async (request, reply) => {
       const { organizationId } = writeActorOf(request);
@@ -378,6 +601,7 @@ export function registerDocLensReviewWorkspaceRoutes(
         request.id,
         sudContentAccessOf(request),
       );
+      if (out.patientId) request.context.attributes.readAuditPatientId = out.patientId;
       return reply
         .header("content-type", "image/png")
         .header("cache-control", "private, max-age=300")

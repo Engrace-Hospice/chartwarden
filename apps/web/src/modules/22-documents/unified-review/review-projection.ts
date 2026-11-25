@@ -51,6 +51,7 @@ export interface ReviewProjection {
   readonly sections: readonly ReviewSectionProjection[];
   readonly groups: readonly ReviewFieldGroupProjection[];
   readonly candidateIds: readonly string[];
+  readonly excludedCandidateIds: readonly string[];
   readonly candidateCount: number;
   readonly decidedCount: number;
   readonly reviewedSectionCount: number;
@@ -86,6 +87,12 @@ function documentForPage(
   return documents.find((document) => page >= document.pageFrom && page <= document.pageTo) ?? null;
 }
 
+export function candidateIsOtherPatient(workspace: Workspace, candidate: Candidate): boolean {
+  return (
+    documentForPage(workspace.documents, candidate.page)?.identity.resolution === "other_patient"
+  );
+}
+
 function categoryFor(candidate: Candidate): string {
   if (candidate.fieldPath.startsWith("patient.address.")) return "Address";
   if (candidate.fieldPath.startsWith("patient.")) return "Patient information";
@@ -115,6 +122,7 @@ function groupId(sectionId: ReviewSectionId, candidates: readonly Candidate[]): 
 export function projectReviewGroups(workspace: Workspace): readonly ReviewFieldGroupProjection[] {
   const grouped = new Map<string, Candidate[]>();
   for (const candidate of workspace.candidates) {
+    if (candidateIsOtherPatient(workspace, candidate)) continue;
     const sectionId = sectionForField(candidate.fieldPath);
     const key = `${sectionId}|${candidateGroupingKey(candidate)}`;
     const current = grouped.get(key) ?? [];
@@ -188,15 +196,19 @@ export function projectUnifiedReview(
     } satisfies ReviewSectionProjection;
   });
   const candidateIds = workspace.candidates.map((candidate) => candidate.id).sort();
-  const decidedCount = workspace.candidates.filter(
-    (candidate) => candidate.decision !== null,
-  ).length;
+  const excludedCandidateIds = workspace.candidates
+    .filter((candidate) => candidateIsOtherPatient(workspace, candidate))
+    .map((candidate) => candidate.id)
+    .sort();
+  const candidateCount = groups.reduce((total, group) => total + group.candidateIds.length, 0);
+  const decidedCount = groups.reduce((total, group) => total + group.decidedCount, 0);
   return {
     workspace,
     sections,
     groups,
     candidateIds,
-    candidateCount: candidateIds.length,
+    excludedCandidateIds,
+    candidateCount,
     decidedCount,
     reviewedSectionCount: sections.filter((section) => section.state === "reviewed").length,
   };

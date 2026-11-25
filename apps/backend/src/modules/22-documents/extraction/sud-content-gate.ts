@@ -4,7 +4,8 @@
 // `getWorkspace` decrypts every candidate value and the SUD evidence, and `renderPage` serves the raw page —
 // for any `intake.review` holder. A batch whose detection is pending or confirmed carries Part 2 content, so
 // the reviewer must ALSO be a high-risk-licensed reviewer (`extraction_reviewer_eligible`, `sudReview` arm)
-// and pass the Part 2 need-to-know check. The need-to-know depends on the batch's detection state (spec §7.4
+// and pass the Part 2 need-to-know check, unless ADR-0115's narrow human tenant-administrator read exception
+// applies. The ordinary need-to-know depends on the batch's detection state (spec §7.4
 // W4: the reviewer adjudicates a detection BEFORE any consent exists — consent is captured later, step 7):
 //   not_detected / rejected  not Part 2 content (a rejection is a documented false positive): readable.
 //   detected (pending)       the licensed reviewer is adjudicating it — internal use by the receiving program,
@@ -42,11 +43,17 @@ interface RedactableWorkspace<C extends RedactableCandidate> {
 }
 
 /**
- * The two probes the route composes from named ABAC predicates. Each answers for THIS caller. The consent
- * probe is asked about the batch's own (server-loaded) patient — never a request value. Supplied by the route;
- * absent means "no".
+ * The access probes the route composes for THIS caller: an explicit administrator policy probe plus two
+ * named ABAC predicates. The consent probe is asked about the batch's own (server-loaded) patient — never a
+ * request value. Supplied by the route; absent means "no".
  */
 export interface SudContentAccess {
+  /**
+   * ADR-0115: an authorized human administrator may read Part 2 content in this internal intake-review
+   * workspace without satisfying the clinical-licence or patient-consent probes. The route owns this
+   * answer; absent, false or throwing means no override.
+   */
+  readonly administratorOverride?: () => Promise<boolean>;
   /** The licence arm of `extraction_reviewer_eligible` (`sudReview`). */
   readonly reviewerEligible: () => Promise<boolean>;
   /** M39 `sud_consent_present` for `patientId`. */
@@ -76,9 +83,10 @@ async function probe(fn: () => Promise<boolean>): Promise<boolean> {
 
 /**
  * May this caller read Part 2 content of the batch? Fail closed: no access, a throw, or anything but `true`
- * is a denial. A non-Part-2 state needs nothing; a pending detection needs only the licence (the consent
- * probe is not even consulted, so a down consent seam cannot blind the adjudicator); a confirmed batch needs
- * the licence AND consent for its patient (a patientless confirmed batch has no consent to evaluate: denied).
+ * is a denial. A non-Part-2 state needs nothing. ADR-0115's administrator route probe, when present
+ * and true, admits this internal read before the clinical probes. Otherwise a pending detection needs only the
+ * licence (the consent probe is not even consulted, so a down consent seam cannot blind the adjudicator); a
+ * confirmed batch needs the licence AND consent for its patient (a patientless confirmed batch is denied).
  */
 export async function resolveSudContentAccess(
   access: SudContentAccess | undefined,
@@ -86,6 +94,7 @@ export async function resolveSudContentAccess(
 ): Promise<boolean> {
   if (!isSudContentState(target.sudStatus)) return true;
   if (!access) return false;
+  if (access.administratorOverride && (await probe(access.administratorOverride))) return true;
   if (!(await probe(access.reviewerEligible))) return false;
   if (target.sudStatus === "detected") return true;
   const { patientId } = target;
