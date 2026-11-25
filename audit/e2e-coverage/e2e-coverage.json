@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 223,
-  "e2eReachedCount": 209,
-  "axeReachedCount": 209,
+  "totalStaticWebScreens": 224,
+  "e2eReachedCount": 210,
+  "axeReachedCount": 210,
   "zeroE2eCoverage": [
     {
       "id": "saas.help",
@@ -231,7 +231,7 @@
       "axeReached": false
     }
   ],
-  "dynamicWebScreens": 122,
+  "dynamicWebScreens": 123,
   "dynamicAxeReachedCount": 43,
   "dynamicExcluded": [
     {
@@ -547,6 +547,11 @@
     {
       "id": "prescribing.refill-detail",
       "path": "/refills/:id",
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "remittance.medicaid-era-review",
+      "path": "/remittance/medicaid-era-reviews/:id",
       "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
@@ -1956,6 +1961,14 @@
       "module": "25-remittance",
       "path": "/remittance/denials",
       "permission": "denial.worklist.read",
+      "e2eReached": true,
+      "axeReached": true
+    },
+    {
+      "id": "remittance.medicaid-era-reviews",
+      "module": "25-remittance",
+      "path": "/remittance/medicaid-era-reviews",
+      "permission": "remittance.read",
       "e2eReached": true,
       "axeReached": true
     },
