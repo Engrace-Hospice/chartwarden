@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 120 documented screen specs · 45 module screen-sets registered · 408 screens wired across web/portal/admin.
+**Coverage:** 121 documented screen specs · 45 module screen-sets registered · 410 screens wired across web/portal/admin.
 - **admin**: 44 screen(s)
 - **portal**: 19 screen(s)
-- **web**: 345 screen(s)
+- **web**: 347 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -22,7 +22,7 @@
 - **mobile**: 1 spec(s)
 - **platform**: 5 spec(s)
 - **portal**: 11 spec(s)
-- **revenue**: 18 spec(s)
+- **revenue**: 19 spec(s)
 - **staffing**: 3 spec(s)
 
 ## Implemented surface (registered screens)
@@ -278,6 +278,8 @@
 | web | 24-billing-medicaid | `medicaid.surveyor-read` | `/admin/medicaid-billing-audit/:claimId` | `medicaid.claim.read` | ✅ |
 | web | 25-remittance | `remittance.worklist` | `/remittance` | `remittance.read` | ✅ |
 | web | 25-remittance | `remittance.claimmd-era-review` | `/remittance/claimmd-era-review` | `remittance.read` | ✅ |
+| web | 25-remittance | `remittance.medicaid-era-reviews` | `/remittance/medicaid-era-reviews` | `remittance.read` | ✅ |
+| web | 25-remittance | `remittance.medicaid-era-review` | `/remittance/medicaid-era-reviews/:id` | `remittance.read` | ✅ |
 | web | 25-remittance | `remittance.denials` | `/remittance/denials` | `denial.worklist.read` | ✅ |
 | web | 25-remittance | `remittance.adrs` | `/remittance/adrs` | `adr.read` | ✅ |
 | web | 25-remittance | `remittance.audits` | `/remittance/audits` | `audit_request.read` | ✅ |

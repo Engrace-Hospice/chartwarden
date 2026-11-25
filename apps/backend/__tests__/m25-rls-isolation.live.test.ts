@@ -16,11 +16,13 @@ import { spawn, spawnSync } from "node:child_process";
  *     for a local PG without pgvector, set CHARTWARDEN_TEST_NO_PGVECTOR=1).
  */
 import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import AxeBuilder from "@axe-core/playwright";
 import { createDbClient } from "@chartwarden/db";
+import { chromium } from "@playwright/test";
 import { makeSignature } from "better-auth/crypto";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -72,7 +74,7 @@ async function freeTcpPort(): Promise<number> {
 
 async function evaluatorContainerFetch(
   containerName: string,
-  input: RequestInfo | URL,
+  input: Parameters<typeof fetch>[0],
   init?: RequestInit,
 ): Promise<Response> {
   const request = input instanceof Request ? input : undefined;
@@ -674,102 +676,110 @@ describe.skipIf(!DB_URL)(
       }
     });
 
-    it("persists a synthetic Claim.MD 835 through the isolated evaluator runtime and restricted writer", async () => {
-      const providerEntityId = "33333333-3333-4333-8333-333333333390";
-      const payerId = "44444444-4444-4444-8444-444444444490";
-      const actorMembershipId = "66666666-6666-4666-8666-666666666690";
-      const actorUserId = "55555555-5555-4555-8555-555555555590";
-      const actorSessionId = "77777777-7777-4777-8777-777777777790";
-      const reviewerMembershipId = "66666666-6666-4666-8666-666666666691";
-      const accountReference = "synthetic-l6b-integration";
-      const eraId = "76001";
-      const rawX12 = readFileSync(
-        join(__dirname, "../../../packages/x12-835-client/samples/01-clean-routine-home-care.835"),
-        "utf8",
-      )
-        .trim()
-        .replace("N1*PR*SYNTHETIC MAC*XV*99999", "N1*PR*SYNTHETIC MAC*PI*99999")
-        .replaceAll("1999999999", "1234567893")
-        .replaceAll("1AA1AA1AA11", "1EG4TE5MK73");
-      const capturedFiles = [rawX12];
-      const rawFileDigest = createHash("sha256").update(rawX12, "utf8").digest("hex");
-      const captureDigest = createHash("sha256")
-        .update(JSON.stringify(capturedFiles), "utf8")
-        .digest("hex");
-      const sourceKey = Buffer.alloc(32, 0x31);
-      const sourceKeyRing = {
-        activeId: "synthetic-l6b",
-        byId: new Map([["synthetic-l6b", sourceKey]]),
-      };
-      const sourceCipher = createClaimMdProtectedPayloadCipher(sourceKeyRing, "claimmd-era:v1");
-      const detailsCipher = createClaimMdProtectedPayloadCipher(sourceKeyRing, "claimmd-era:v1");
-
-      await db.query(
-        `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
-         VALUES ($1,$2,'0000390','Synthetic Review Provider','1234567893','synthetic-cipher','0930')`,
-        [providerEntityId, ORG_A],
-      );
-      await db.query(
-        `INSERT INTO "user" (id,email,name) VALUES ($1,'synthetic-l6c2@example.test','Synthetic L6C2 Reviewer')`,
-        [actorUserId],
-      );
-      await db.query(
-        `INSERT INTO membership (id,user_id,organization_id,status,default_provider_entity_id) VALUES ($1,$2,$3,'active',$4)`,
-        [actorMembershipId, actorUserId, ORG_A, providerEntityId],
-      );
-      const evaluatorRoleId = (
-        await db.query(
-          `INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'billing_specialist','Synthetic billing specialist','billing_finance',true) RETURNING id`,
-          [ORG_A],
+    it(
+      "persists a synthetic Claim.MD 835 through the isolated evaluator runtime and restricted writer",
+      async () => {
+        const providerEntityId = "33333333-3333-4333-8333-333333333390";
+        const payerId = "44444444-4444-4444-8444-444444444490";
+        const actorMembershipId = "66666666-6666-4666-8666-666666666690";
+        const actorUserId = "55555555-5555-4555-8555-555555555590";
+        const actorSessionId = "77777777-7777-4777-8777-777777777790";
+        const reviewerMembershipId = "66666666-6666-4666-8666-666666666691";
+        const accountReference = "synthetic-l6b-integration";
+        const eraId = "76001";
+        const rawX12 = readFileSync(
+          join(
+            __dirname,
+            "../../../packages/x12-835-client/samples/01-clean-routine-home-care.835",
+          ),
+          "utf8",
         )
-      ).rows[0].id as string;
-      await db.query(
-        `INSERT INTO role_permission (organization_id,role_id,permission_key)
+          .trim()
+          .replace("N1*PR*SYNTHETIC MAC*XV*99999", "N1*PR*SYNTHETIC MAC*PI*99999")
+          .replaceAll("1999999999", "1234567893")
+          .replaceAll("1AA1AA1AA11", "1EG4TE5MK73");
+        const capturedFiles = [rawX12];
+        const rawFileDigest = createHash("sha256").update(rawX12, "utf8").digest("hex");
+        const captureDigest = createHash("sha256")
+          .update(JSON.stringify(capturedFiles), "utf8")
+          .digest("hex");
+        const sourceKey = Buffer.alloc(32, 0x31);
+        const sourceKeyRing = {
+          activeId: "synthetic-l6b",
+          byId: new Map([["synthetic-l6b", sourceKey]]),
+        };
+        const sourceCipher = createClaimMdProtectedPayloadCipher(sourceKeyRing, "claimmd-era:v1");
+        const detailsCipher = createClaimMdProtectedPayloadCipher(
+          sourceKeyRing,
+          "claimmd-era-stage:v1",
+        );
+
+        await db.query(
+          `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+         VALUES ($1,$2,'0000390','Synthetic Review Provider','1234567893','synthetic-cipher','0930')`,
+          [providerEntityId, ORG_A],
+        );
+        await db.query(
+          `INSERT INTO "user" (id,email,name) VALUES ($1,'synthetic-l6c2@example.test','Synthetic L6C2 Reviewer')`,
+          [actorUserId],
+        );
+        await db.query(
+          `INSERT INTO membership (id,user_id,organization_id,status,default_provider_entity_id) VALUES ($1,$2,$3,'active',$4)`,
+          [actorMembershipId, actorUserId, ORG_A, providerEntityId],
+        );
+        const evaluatorRoleId = (
+          await db.query(
+            `INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'billing_specialist','Synthetic billing specialist','billing_finance',true) RETURNING id`,
+            [ORG_A],
+          )
+        ).rows[0].id as string;
+        await db.query(
+          `INSERT INTO role_permission (organization_id,role_id,permission_key)
          VALUES ($1,$2,'remittance.read'),($1,$2,'remittance.match_review'),($1,$2,'remittance.financial_review')`,
-        [ORG_A, evaluatorRoleId],
-      );
-      await db.query(
-        `INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)`,
-        [ORG_A, actorMembershipId, evaluatorRoleId],
-      );
-      await db.query(
-        `INSERT INTO "session" (id,user_id,active_organization_id,token,expires_at) VALUES ($1,$2,$3,'synthetic-l6c2-token',now()+interval '1 day')`,
-        [actorSessionId, actorUserId, ORG_A],
-      );
-      const unauthorizedUserId = "55555555-5555-4555-8555-555555555591";
-      const unauthorizedMembershipId = "66666666-6666-4666-8666-666666666692";
-      const unauthorizedSessionId = "77777777-7777-4777-8777-777777777791";
-      await db.query(
-        `INSERT INTO "user" (id,email,name) VALUES ($1,'synthetic-l6d-no-permission@example.test','Synthetic Unprivileged Reviewer')`,
-        [unauthorizedUserId],
-      );
-      await db.query(
-        `INSERT INTO membership (id,user_id,organization_id,status,default_provider_entity_id)
+          [ORG_A, evaluatorRoleId],
+        );
+        await db.query(
+          `INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)`,
+          [ORG_A, actorMembershipId, evaluatorRoleId],
+        );
+        await db.query(
+          `INSERT INTO "session" (id,user_id,active_organization_id,token,expires_at) VALUES ($1,$2,$3,'synthetic-l6c2-token',now()+interval '1 day')`,
+          [actorSessionId, actorUserId, ORG_A],
+        );
+        const unauthorizedUserId = "55555555-5555-4555-8555-555555555591";
+        const unauthorizedMembershipId = "66666666-6666-4666-8666-666666666692";
+        const unauthorizedSessionId = "77777777-7777-4777-8777-777777777791";
+        await db.query(
+          `INSERT INTO "user" (id,email,name) VALUES ($1,'synthetic-l6d-no-permission@example.test','Synthetic Unprivileged Reviewer')`,
+          [unauthorizedUserId],
+        );
+        await db.query(
+          `INSERT INTO membership (id,user_id,organization_id,status,default_provider_entity_id)
          VALUES ($1,$2,$3,'active',$4)`,
-        [unauthorizedMembershipId, unauthorizedUserId, ORG_A, providerEntityId],
-      );
-      await db.query(
-        `INSERT INTO "session" (id,user_id,active_organization_id,token,expires_at)
+          [unauthorizedMembershipId, unauthorizedUserId, ORG_A, providerEntityId],
+        );
+        await db.query(
+          `INSERT INTO "session" (id,user_id,active_organization_id,token,expires_at)
          VALUES ($1,$2,$3,'synthetic-l6d-unprivileged-token',now()+interval '1 day')`,
-        [unauthorizedSessionId, unauthorizedUserId, ORG_A],
-      );
-      await db.query(
-        `INSERT INTO payer (id,kind,state_code,payer_id,name,status)
+          [unauthorizedSessionId, unauthorizedUserId, ORG_A],
+        );
+        await db.query(
+          `INSERT INTO payer (id,kind,state_code,payer_id,name,status)
          VALUES ($1,'medicaid','OR','99999','Synthetic Oregon Medicaid','active')`,
-        [payerId],
-      );
-      const classificationId = (
-        await db.query<{ id: string }>(
-          `INSERT INTO mdm_medicaid_payer_program_classification
+          [payerId],
+        );
+        const classificationId = (
+          await db.query<{ id: string }>(
+            `INSERT INTO mdm_medicaid_payer_program_classification
            (canonical_payer_id,state_code,classification,effective_from,effective_to,verification_status,
             source_kind,source_reference,verified_at,verified_by)
          VALUES ($1,'OR','oregon_ffs','2026-01-01','2026-12-31','verified','state_registry',
             'registry:synthetic-l6b-ffs',now(),'synthetic-reviewer') RETURNING id`,
-          [payerId],
-        )
-      ).rows[0]!.id;
-      await db.query(
-        `INSERT INTO medicaid_enrollment_evidence
+            [payerId],
+          )
+        ).rows[0]!.id;
+        await db.query(
+          `INSERT INTO medicaid_enrollment_evidence
            (organization_id,provider_entity_id,service_state,program_kind,canonical_payer_id,clearinghouse,
             vendor_account_ref,source_environment,vendor_payer_id,transaction_type,evidence_kind,status,
             effective_from,effective_to,evidence_fresh_until,verification_source,evidence_reference,verified_at,
@@ -777,142 +787,142 @@ describe.skipIf(!DB_URL)(
          VALUES ($1,$2,'OR','ffs_open_card',$3,'claimmd',$4,'test','99999','835','835_era_enrollment','verified',
             '2026-01-01','2026-12-31','2026-12-31','payer_confirmation','approval:synthetic-l6b-era',
             '2026-01-02T00:00:00Z',$5,$6)`,
-        [
-          ORG_A,
-          providerEntityId,
-          payerId,
-          accountReference,
-          reviewerMembershipId,
-          actorMembershipId,
-        ],
-      );
+          [
+            ORG_A,
+            providerEntityId,
+            payerId,
+            accountReference,
+            reviewerMembershipId,
+            actorMembershipId,
+          ],
+        );
 
-      const streamId = randomUUID();
-      const inboxId = randomUUID();
-      const stageId = randomUUID();
-      const sourceMetadata = "{}";
-      const sourceMetadataDigest = createHash("sha256").update(sourceMetadata).digest("hex");
-      const encryptedFiles = sourceCipher.seal(
-        streamId,
-        `${eraId}:835`,
-        JSON.stringify(capturedFiles),
-      );
-      const encryptedDetails = detailsCipher.seal(streamId, `${eraId}:details`, "{}");
-      await db.query(
-        `INSERT INTO claimmd_era_stream (id,account_reference,usage,cursor)
+        const streamId = randomUUID();
+        const inboxId = randomUUID();
+        const stageId = randomUUID();
+        const sourceMetadata = "{}";
+        const sourceMetadataDigest = createHash("sha256").update(sourceMetadata).digest("hex");
+        const encryptedFiles = sourceCipher.seal(
+          streamId,
+          `${eraId}:835`,
+          JSON.stringify(capturedFiles),
+        );
+        const encryptedDetails = detailsCipher.seal(streamId, `${eraId}:details`, "{}");
+        await db.query(
+          `INSERT INTO claimmd_era_stream (id,account_reference,usage,cursor)
          VALUES ($1,$2,'test','0')`,
-        [streamId, accountReference],
-      );
-      await db.query(
-        `INSERT INTO claimmd_era_inbox
+          [streamId, accountReference],
+        );
+        await db.query(
+          `INSERT INTO claimmd_era_inbox
            (id,stream_id,account_reference,usage,era_id,source_metadata_cipher,source_metadata_key_id,
             source_metadata_digest,capture_state,original_835_cipher,original_835_key_id,original_835_digest,
             original_835_file_count,structured_details_cipher,structured_details_key_id,structured_details_digest,
             discovery_page_digest,captured_at)
          VALUES ($1,$2,$3,'test',$4,'synthetic-metadata','synthetic-l6b',$5,'captured',$6,'synthetic-l6b',$7,1,
             $8,'synthetic-l6b',$9,repeat('a',64),'2026-06-16T12:00:00Z')`,
-        [
-          inboxId,
-          streamId,
-          accountReference,
-          eraId,
-          sourceMetadataDigest,
-          encryptedFiles.toString("base64"),
-          captureDigest,
-          encryptedDetails.toString("base64"),
-          createHash("sha256").update("{}").digest("hex"),
-        ],
-      );
-      const resolutionId = randomUUID();
-      await db.query(
-        `INSERT INTO claimmd_era_resolution
+          [
+            inboxId,
+            streamId,
+            accountReference,
+            eraId,
+            sourceMetadataDigest,
+            encryptedFiles.toString("base64"),
+            captureDigest,
+            encryptedDetails.toString("base64"),
+            createHash("sha256").update("{}").digest("hex"),
+          ],
+        );
+        const resolutionId = randomUUID();
+        await db.query(
+          `INSERT INTO claimmd_era_resolution
            (id,inbox_id,vendor,account_reference,usage,original_835_digest,status,organization_id,
             provider_entity_id,algorithm_version,decision_cipher,decision_key_id,decision_digest)
          VALUES ($1,$2,'claimmd',$3,'test',$4,'verified',$5,$6,'BIL141A_V1','synthetic-resolution',
             'synthetic-l6b',repeat('b',64))`,
-        [resolutionId, inboxId, accountReference, captureDigest, ORG_A, providerEntityId],
-      );
-      await db.query(
-        `INSERT INTO claimmd_era_m25_stage
+          [resolutionId, inboxId, accountReference, captureDigest, ORG_A, providerEntityId],
+        );
+        await db.query(
+          `INSERT INTO claimmd_era_m25_stage
            (id,organization_id,provider_entity_id,source_inbox_id,account_reference,usage,era_id,file_index,
             interchange_control_number,transaction_set_control_number,original_835_digest,source_file_digest,
             resolution_id,resolution_version,source_evidence,state)
          VALUES ($1,$2,$3,$4,$5,'test',$6,0,'100000001','0001',$7,$8,$9,1,
             '{"codes":["SYNTHETIC_TEST_FIXTURE"]}'::jsonb,'staged')`,
-        [
-          stageId,
-          ORG_A,
-          providerEntityId,
-          inboxId,
-          accountReference,
-          eraId,
-          captureDigest,
-          rawFileDigest,
-          resolutionId,
-        ],
-      );
-      await db.query(
-        `INSERT INTO claimmd_era_delivery
+          [
+            stageId,
+            ORG_A,
+            providerEntityId,
+            inboxId,
+            accountReference,
+            eraId,
+            captureDigest,
+            rawFileDigest,
+            resolutionId,
+          ],
+        );
+        await db.query(
+          `INSERT INTO claimmd_era_delivery
            (inbox_id,resolution_id,resolution_version,account_reference,usage,era_id,original_835_digest,
             organization_id,provider_entity_id,idempotency_key,state,tenant_finalized,stage_ids)
          VALUES ($1,$2,1,$3,'test',$4,$5,$6,$7,repeat('1',64),'delivered',true,ARRAY[$8::uuid])`,
-        [
-          inboxId,
-          resolutionId,
-          accountReference,
-          eraId,
-          captureDigest,
-          ORG_A,
-          providerEntityId,
-          stageId,
-        ],
-      );
+          [
+            inboxId,
+            resolutionId,
+            accountReference,
+            eraId,
+            captureDigest,
+            ORG_A,
+            providerEntityId,
+            stageId,
+          ],
+        );
 
-      const appUrl = new URL(DB_URL as string);
-      appUrl.username = "chartwarden_app";
-      appUrl.password = "chartwarden_app_live_test";
-      await db.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'chartwarden_app_live_test'");
-      const appHandle = createDbClient({ connectionString: appUrl.toString(), max: 5 });
-      const platformUrl = new URL(DB_URL as string);
-      platformUrl.username = "chartwarden_platform_login";
-      platformUrl.password = "synthetic-platform-l6b";
-      const platformSql = new Client({ connectionString: platformUrl.toString() });
-      await platformSql.connect();
-      await db.query(
-        "CREATE ROLE chartwarden_m25_evaluator_login LOGIN SUPERUSER CREATEDB CREATEROLE REPLICATION BYPASSRLS PASSWORD 'synthetic-evaluator-overprivileged'",
-      );
-      await db.query(
-        "GRANT chartwarden_platform TO chartwarden_m25_evaluator_login WITH ADMIN OPTION",
-      );
-      await db.query(
-        "CREATE ROLE chartwarden_m25_era_source_login LOGIN SUPERUSER CREATEDB CREATEROLE REPLICATION BYPASSRLS PASSWORD 'synthetic-source-overprivileged'",
-      );
-      await db.query(
-        "GRANT chartwarden_platform TO chartwarden_m25_era_source_login WITH ADMIN OPTION",
-      );
-      await db.query("GRANT chartwarden_m25_evaluator_login TO chartwarden_platform_login");
-      await db.query("GRANT chartwarden_m25_era_source_login TO chartwarden_platform_login");
-      provisionM25RuntimeRoles({
-        CHARTWARDEN_M25_EVALUATOR_PASSWORD: "synthetic-m25-evaluator-first",
-        CHARTWARDEN_M25_ERA_SOURCE_PASSWORD: "synthetic-m25-era-source-first",
-      });
-      const normalizedRoles = await db.query<{
-        rolname: string;
-        rolsuper: boolean;
-        rolcreatedb: boolean;
-        rolcreaterole: boolean;
-        rolreplication: boolean;
-        rolbypassrls: boolean;
-        rolcanlogin: boolean;
-        rolinherit: boolean;
-        carrier_member: boolean;
-        carrier_admin: boolean;
-        platform_member: boolean;
-        has_unexpected_membership: boolean;
-        reverse_platform_membership: boolean;
-        reverse_member_count: number;
-      }>(
-        `SELECT r.rolname,r.rolsuper,r.rolcreatedb,r.rolcreaterole,r.rolreplication,r.rolbypassrls,r.rolcanlogin,r.rolinherit,
+        const appUrl = new URL(DB_URL as string);
+        appUrl.username = "chartwarden_app";
+        appUrl.password = "chartwarden_app_live_test";
+        await db.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'chartwarden_app_live_test'");
+        const appHandle = createDbClient({ connectionString: appUrl.toString(), max: 5 });
+        const platformUrl = new URL(DB_URL as string);
+        platformUrl.username = "chartwarden_platform_login";
+        platformUrl.password = "synthetic-platform-l6b";
+        const platformSql = new Client({ connectionString: platformUrl.toString() });
+        await platformSql.connect();
+        await db.query(
+          "CREATE ROLE chartwarden_m25_evaluator_login LOGIN SUPERUSER CREATEDB CREATEROLE REPLICATION BYPASSRLS PASSWORD 'synthetic-evaluator-overprivileged'",
+        );
+        await db.query(
+          "GRANT chartwarden_platform TO chartwarden_m25_evaluator_login WITH ADMIN OPTION",
+        );
+        await db.query(
+          "CREATE ROLE chartwarden_m25_era_source_login LOGIN SUPERUSER CREATEDB CREATEROLE REPLICATION BYPASSRLS PASSWORD 'synthetic-source-overprivileged'",
+        );
+        await db.query(
+          "GRANT chartwarden_platform TO chartwarden_m25_era_source_login WITH ADMIN OPTION",
+        );
+        await db.query("GRANT chartwarden_m25_evaluator_login TO chartwarden_platform_login");
+        await db.query("GRANT chartwarden_m25_era_source_login TO chartwarden_platform_login");
+        provisionM25RuntimeRoles({
+          CHARTWARDEN_M25_EVALUATOR_PASSWORD: "synthetic-m25-evaluator-first",
+          CHARTWARDEN_M25_ERA_SOURCE_PASSWORD: "synthetic-m25-era-source-first",
+        });
+        const normalizedRoles = await db.query<{
+          rolname: string;
+          rolsuper: boolean;
+          rolcreatedb: boolean;
+          rolcreaterole: boolean;
+          rolreplication: boolean;
+          rolbypassrls: boolean;
+          rolcanlogin: boolean;
+          rolinherit: boolean;
+          carrier_member: boolean;
+          carrier_admin: boolean;
+          platform_member: boolean;
+          has_unexpected_membership: boolean;
+          reverse_platform_membership: boolean;
+          reverse_member_count: number;
+        }>(
+          `SELECT r.rolname,r.rolsuper,r.rolcreatedb,r.rolcreaterole,r.rolreplication,r.rolbypassrls,r.rolcanlogin,r.rolinherit,
                 pg_has_role(r.rolname,CASE WHEN r.rolname='chartwarden_m25_evaluator_login'
                   THEN 'chartwarden_m25_evaluator' ELSE 'chartwarden_m25_era_source' END,'member') AS carrier_member,
                 COALESCE((SELECT membership.admin_option FROM pg_auth_members membership
@@ -928,1210 +938,1593 @@ describe.skipIf(!DB_URL)(
                   WHERE reverse_membership.roleid=r.oid) AS reverse_member_count
            FROM pg_roles r WHERE r.rolname IN ('chartwarden_m25_evaluator_login','chartwarden_m25_era_source_login')
            ORDER BY r.rolname`,
-      );
-      expect(normalizedRoles.rows).toHaveLength(2);
-      for (const role of normalizedRoles.rows) {
-        expect(role).toMatchObject({
-          rolsuper: false,
-          rolcreatedb: false,
-          rolcreaterole: false,
-          rolreplication: false,
-          rolbypassrls: false,
-          rolcanlogin: true,
-          rolinherit: true,
-          carrier_member: true,
-          carrier_admin: false,
-          platform_member: false,
-          has_unexpected_membership: false,
-          reverse_platform_membership: false,
-          reverse_member_count: 0,
-        });
-      }
-      const sourceUrl = new URL(DB_URL as string);
-      sourceUrl.username = "chartwarden_m25_era_source_login";
-      sourceUrl.password = "synthetic-m25-era-source-first";
-      const sourceSql = new Client({ connectionString: sourceUrl.toString() });
-      sourceSql.on("error", () => undefined);
-      await sourceSql.connect();
-      expect(
-        (await sourceSql.query<{ current_user: string }>("SELECT current_user")).rows[0]
-          ?.current_user,
-      ).toBe("chartwarden_m25_era_source_login");
-      await db.query("GRANT chartwarden_m25_era_source_login TO chartwarden_platform_login");
-      provisionM25RuntimeRoles({ CHARTWARDEN_M25_ERA_SOURCE_REVOKE: "true" });
-      const revokedSource = await db.query<{
-        login: boolean;
-        inherit_memberships: boolean;
-        password_cleared: boolean;
-        member: boolean;
-        reverse_platform_membership: boolean;
-        reverse_member_count: number;
-        sessions: number;
-      }>(
-        `SELECT role.rolcanlogin AS login,role.rolinherit AS inherit_memberships,
+        );
+        expect(normalizedRoles.rows).toHaveLength(2);
+        for (const role of normalizedRoles.rows) {
+          expect(role).toMatchObject({
+            rolsuper: false,
+            rolcreatedb: false,
+            rolcreaterole: false,
+            rolreplication: false,
+            rolbypassrls: false,
+            rolcanlogin: true,
+            rolinherit: true,
+            carrier_member: true,
+            carrier_admin: false,
+            platform_member: false,
+            has_unexpected_membership: false,
+            reverse_platform_membership: false,
+            reverse_member_count: 0,
+          });
+        }
+        const sourceUrl = new URL(DB_URL as string);
+        sourceUrl.username = "chartwarden_m25_era_source_login";
+        sourceUrl.password = "synthetic-m25-era-source-first";
+        const sourceSql = new Client({ connectionString: sourceUrl.toString() });
+        sourceSql.on("error", () => undefined);
+        await sourceSql.connect();
+        expect(
+          (await sourceSql.query<{ current_user: string }>("SELECT current_user")).rows[0]
+            ?.current_user,
+        ).toBe("chartwarden_m25_era_source_login");
+        await db.query("GRANT chartwarden_m25_era_source_login TO chartwarden_platform_login");
+        provisionM25RuntimeRoles({ CHARTWARDEN_M25_ERA_SOURCE_REVOKE: "true" });
+        const revokedSource = await db.query<{
+          login: boolean;
+          inherit_memberships: boolean;
+          password_cleared: boolean;
+          member: boolean;
+          reverse_platform_membership: boolean;
+          reverse_member_count: number;
+          sessions: number;
+        }>(
+          `SELECT role.rolcanlogin AS login,role.rolinherit AS inherit_memberships,
                 (SELECT auth.rolpassword IS NULL FROM pg_authid auth WHERE auth.oid=role.oid) AS password_cleared,
                 pg_has_role('chartwarden_m25_era_source_login','chartwarden_m25_era_source','member') AS member,
                 pg_has_role('chartwarden_platform_login','chartwarden_m25_era_source_login','member') AS reverse_platform_membership,
                 (SELECT count(*)::int FROM pg_auth_members reverse_membership WHERE reverse_membership.roleid=role.oid) AS reverse_member_count,
                 (SELECT count(*)::int FROM pg_stat_activity WHERE usename='chartwarden_m25_era_source_login') AS sessions
            FROM pg_roles role WHERE role.rolname='chartwarden_m25_era_source_login'`,
-      );
-      expect(revokedSource.rows[0]).toEqual({
-        login: false,
-        inherit_memberships: false,
-        password_cleared: true,
-        member: false,
-        reverse_platform_membership: false,
-        reverse_member_count: 0,
-        sessions: 0,
-      });
-      await sourceSql.end().catch(() => undefined);
-      provisionM25RuntimeRoles({
-        CHARTWARDEN_M25_EVALUATOR_PASSWORD: "synthetic-m25-evaluator-rotated",
-        CHARTWARDEN_M25_ERA_SOURCE_PASSWORD: "synthetic-m25-era-source-rotated",
-      });
-      sourceUrl.password = "synthetic-m25-era-source-rotated";
-      const sourceReaderSql = new Client({ connectionString: sourceUrl.toString() });
-      await sourceReaderSql.connect();
-      await expect(
-        sourceReaderSql.query("SELECT original_835_cipher FROM claimmd_era_inbox"),
-      ).rejects.toThrow(/permission denied/);
-      const sourceProjection = await sourceReaderSql.query<{
-        stage_id: string;
-        stage_digest: string;
-      }>("SELECT stage_id,stage_digest FROM m25_read_staged_claimmd_era($1,$2,$3)", [
-        stageId,
-        ORG_A,
-        providerEntityId,
-      ]);
-      expect(sourceProjection.rows).toEqual([{ stage_id: stageId, stage_digest: rawFileDigest }]);
-      const foreignSourceProjection = await sourceReaderSql.query(
-        "SELECT * FROM m25_read_staged_claimmd_era($1,$2,$3)",
-        [stageId, ORG_B, providerEntityId],
-      );
-      expect(foreignSourceProjection.rows).toEqual([]);
-      const evaluatorUrl = new URL(DB_URL as string);
-      evaluatorUrl.username = "chartwarden_m25_evaluator_login";
-      evaluatorUrl.password = "synthetic-m25-evaluator-rotated";
-      let runtimeProcess: ReturnType<typeof spawn> | null = null;
-      let apiProcess: ReturnType<typeof spawn> | null = null;
-      let runtimeDirectory: string | null = null;
-      let sourceReaderHandle: ReturnType<typeof createDbClient> | null = null;
-      const runtimeContainerName = `m25-l6c2-${randomUUID().slice(0, 8)}`;
-      const apiContainerName = `m25-l6d-api-${randomUUID().slice(0, 8)}`;
-      const runtimeNetworkName = `m25-l6c2-net-${randomUUID().slice(0, 8)}`;
-      const apiEdgeNetworkName = `m25-l6d-edge-${randomUUID().slice(0, 8)}`;
-      const repositoryRoot = join(__dirname, "../../..");
-      const postgresContainerName = process.env.M25_TEST_POSTGRES_CONTAINER;
-      const useRuntimeContainer = process.env.M25_TEST_EVALUATOR_CONTAINER === "1";
-      try {
-        registerMdmSeams({ store: createDbMdmStore(appHandle.db) });
-        registerM24PublishedSeams(appHandle.db);
-        const sourceReaderClient = createDbClient({
-          connectionString: sourceUrl.toString(),
-          max: 1,
+        );
+        expect(revokedSource.rows[0]).toEqual({
+          login: false,
+          inherit_memberships: false,
+          password_cleared: true,
+          member: false,
+          reverse_platform_membership: false,
+          reverse_member_count: 0,
+          sessions: 0,
         });
-        sourceReaderHandle = sourceReaderClient;
-        const store = createClaimMdEraStore({
-          sourceReaderDb: sourceReaderClient.db,
-          keyRing: sourceKeyRing,
+        await sourceSql.end().catch(() => undefined);
+        provisionM25RuntimeRoles({
+          CHARTWARDEN_M25_EVALUATOR_PASSWORD: "synthetic-m25-evaluator-rotated",
+          CHARTWARDEN_M25_ERA_SOURCE_PASSWORD: "synthetic-m25-era-source-rotated",
         });
-        const actor = {
-          organizationId: ORG_A,
-          userId: actorUserId,
-          roles: ["billing_specialist"],
-          providerEntityScope: [providerEntityId, "33333333-3333-3333-3333-333333333333"],
-          membershipId: actorMembershipId,
-          sessionId: actorSessionId,
-          stepUpRecent: true,
-        } as const;
-        const readers = buildDrizzleMedicaidEraReviewReaders(appHandle.db, store);
-        const evaluator = createMedicaidEraReviewService(readers);
-        expect((await evaluator.inspect(actor, stageId)).status).toBe("review_only");
-        const workflow = buildDrizzleMedicaidEraReviewWorkflow(appHandle.db, evaluator);
-        runtimeDirectory = mkdtempSync(join(tmpdir(), "cw-l6c2-"));
-        const { privateKey, publicKey } = generateKeyPairSync("ed25519");
-        writeFileSync(
-          join(runtimeDirectory, "db-url"),
-          (useRuntimeContainer ? containerDatabaseUrl(evaluatorUrl) : evaluatorUrl).toString(),
-          { mode: 0o600 },
+        sourceUrl.password = "synthetic-m25-era-source-rotated";
+        const sourceReaderSql = new Client({ connectionString: sourceUrl.toString() });
+        await sourceReaderSql.connect();
+        await expect(
+          sourceReaderSql.query("SELECT original_835_cipher FROM claimmd_era_inbox"),
+        ).rejects.toThrow(/permission denied/);
+        const sourceProjection = await sourceReaderSql.query<{
+          stage_id: string;
+          stage_digest: string;
+        }>("SELECT stage_id,stage_digest FROM m25_read_staged_claimmd_era($1,$2,$3)", [
+          stageId,
+          ORG_A,
+          providerEntityId,
+        ]);
+        expect(sourceProjection.rows).toEqual([{ stage_id: stageId, stage_digest: rawFileDigest }]);
+        const foreignSourceProjection = await sourceReaderSql.query(
+          "SELECT * FROM m25_read_staged_claimmd_era($1,$2,$3)",
+          [stageId, ORG_B, providerEntityId],
         );
-        writeFileSync(
-          join(runtimeDirectory, "app-db-url"),
-          (useRuntimeContainer ? containerDatabaseUrl(appUrl) : appUrl).toString(),
-          { mode: 0o600 },
-        );
-        writeFileSync(
-          join(runtimeDirectory, "source-db-url"),
-          (useRuntimeContainer ? containerDatabaseUrl(sourceUrl) : sourceUrl).toString(),
-          { mode: 0o600 },
-        );
-        writeFileSync(
-          join(runtimeDirectory, "keyring"),
-          JSON.stringify({
-            activeId: "synthetic-l6b",
-            keys: { "synthetic-l6b": sourceKey.toString("base64url") },
-          }),
-          { mode: 0o600 },
-        );
-        writeFileSync(
-          join(runtimeDirectory, "public"),
-          publicKey.export({ format: "der", type: "spki" }).toString("base64url"),
-          { mode: 0o600 },
-        );
-        writeFileSync(
-          join(runtimeDirectory, "private"),
-          privateKey.export({ format: "der", type: "pkcs8" }).toString("base64url"),
-          { mode: 0o600 },
-        );
-        if (useRuntimeContainer) {
-          if (!postgresContainerName)
-            throw new Error("M25_TEST_POSTGRES_CONTAINER is required for isolated runtime testing");
-          const network = spawnSync(
-            "docker",
-            ["network", "create", "--internal", runtimeNetworkName],
-            { stdio: "ignore" },
-          );
-          if (network.status !== 0)
-            throw new Error("could not create isolated evaluator test network");
-          const edgeNetwork = spawnSync("docker", ["network", "create", apiEdgeNetworkName], {
-            stdio: "ignore",
-          });
-          if (edgeNetwork.status !== 0)
-            throw new Error("could not create the disposable API ingress test network");
-          const connected = spawnSync(
-            "docker",
-            [
-              "network",
-              "connect",
-              "--alias",
-              "postgres",
-              runtimeNetworkName,
-              postgresContainerName,
-            ],
-            { stdio: "ignore" },
-          );
-          if (connected.status !== 0)
-            throw new Error("could not attach disposable PostgreSQL to evaluator test network");
-        }
-        const childProcess = useRuntimeContainer
-          ? spawn(
-              "docker",
-              [
-                "run",
-                "--name",
-                runtimeContainerName,
-                "--network",
-                runtimeNetworkName,
-                "--network-alias",
-                "m25-evaluator",
-                "--read-only",
-                "--tmpfs",
-                "/tmp:rw,noexec,nosuid,size=16m",
-                "--tmpfs",
-                "/run/secrets:rw,noexec,nosuid,size=1m",
-                "--cap-drop=ALL",
-                "--security-opt=no-new-privileges",
-                "--pids-limit=64",
-                "--memory=768m",
-                "--cpus=1",
-                "--user=1000:1000",
-                "--mount",
-                `type=bind,src=${join(runtimeDirectory, "public")},dst=/run/secrets/public,readonly`,
-                "--mount",
-                `type=bind,src=${join(runtimeDirectory, "db-url")},dst=/run/secrets/db-url,readonly`,
-                "--mount",
-                `type=bind,src=${join(runtimeDirectory, "app-db-url")},dst=/run/secrets/app-db-url,readonly`,
-                "--mount",
-                `type=bind,src=${join(runtimeDirectory, "source-db-url")},dst=/run/secrets/source-db-url,readonly`,
-                "--mount",
-                `type=bind,src=${join(runtimeDirectory, "keyring")},dst=/run/secrets/keyring,readonly`,
-                "--mount",
-                `type=bind,src=${join(repositoryRoot, "apps/backend/src")},dst=/app/apps/backend/src,readonly`,
-                "--mount",
-                `type=bind,src=${join(repositoryRoot, "packages")},dst=/app/packages,readonly`,
-                "--mount",
-                `type=bind,src=${join(repositoryRoot, "node_modules")},dst=/app/node_modules,readonly`,
-                "--env",
-                "M25_EVALUATOR_DATABASE_URL_FILE=/run/secrets/db-url",
-                "--env",
-                "M25_EVALUATOR_APP_DATABASE_URL_FILE=/run/secrets/app-db-url",
-                "--env",
-                "M25_EVALUATOR_ERA_SOURCE_DATABASE_URL_FILE=/run/secrets/source-db-url",
-                "--env",
-                "M25_EVALUATOR_CLAIMMD_KEYRING_FILE=/run/secrets/keyring",
-                "--env",
-                "M25_EVALUATOR_PUBLIC_KEY_FILE=/run/secrets/public",
-                "--env",
-                "M25_EVALUATOR_SIGNING_KEY_ID=synthetic-l6d",
-                "--env",
-                "M25_EVALUATOR_PORT=3012",
-                process.env.M25_EVALUATOR_TEST_IMAGE ?? "wardenx-api:latest",
-                "bun",
-                "run",
-                "apps/backend/src/m25-evaluator.ts",
-              ],
-              { stdio: ["ignore", "pipe", "pipe"] },
-            )
-          : spawn("bun", ["run", "apps/backend/src/m25-evaluator.ts"], {
-              cwd: join(__dirname, "../../.."),
-              stdio: ["ignore", "pipe", "pipe"],
-              env: {
-                PATH: process.env.PATH ?? "",
-                HOME: process.env.HOME ?? tmpdir(),
-                TMPDIR: process.env.TMPDIR ?? tmpdir(),
-                M25_EVALUATOR_DATABASE_URL_FILE: join(runtimeDirectory, "db-url"),
-                M25_EVALUATOR_APP_DATABASE_URL_FILE: join(runtimeDirectory, "app-db-url"),
-                M25_EVALUATOR_ERA_SOURCE_DATABASE_URL_FILE: join(runtimeDirectory, "source-db-url"),
-                M25_EVALUATOR_CLAIMMD_KEYRING_FILE: join(runtimeDirectory, "keyring"),
-                M25_EVALUATOR_PUBLIC_KEY_FILE: join(runtimeDirectory, "public"),
-                M25_EVALUATOR_SIGNING_KEY_ID: "synthetic-l6d",
-                M25_EVALUATOR_PORT: "39125",
-              },
-            });
-        runtimeProcess = childProcess;
-        let runtimeOutput = "";
-        childProcess.stderr.on("data", (chunk) => {
-          runtimeOutput += String(chunk);
-        });
-        childProcess.on("error", (error) => {
-          runtimeOutput += `runtime spawn failed (${error.name})`;
-        });
-        for (let attempt = 0; attempt < 80; attempt++) {
-          const isReady = useRuntimeContainer
-            ? await evaluatorContainerFetch(runtimeContainerName, "http://evaluator/ready")
-                .then((response) => response.ok)
-                .catch(() => false)
-            : await fetch("http://127.0.0.1:39125/ready")
-                .then((response) => response.ok)
-                .catch(() => false);
-          if (isReady) break;
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          if (childProcess.exitCode !== null)
-            throw new Error(`isolated evaluator exited: ${runtimeOutput}`);
-        }
-        if (useRuntimeContainer) {
-          const envInspection = spawnSync(
-            "docker",
-            ["inspect", "--format", "{{json .Config.Env}}", runtimeContainerName],
-            { encoding: "utf8" },
-          );
-          expect(envInspection.status).toBe(0);
-          const runtimeEnv = JSON.parse(envInspection.stdout.trim()) as string[];
-          expect(runtimeEnv.some((entry) => entry.startsWith("DATABASE_PLATFORM_URL="))).toBe(
-            false,
-          );
-          expect(runtimeEnv.some((entry) => entry.startsWith("DATABASE_URL="))).toBe(false);
-          expect(
-            runtimeEnv.some((entry) => entry.startsWith("CLAIMMD_RESPONSE_INBOX_KEYRING=")),
-          ).toBe(false);
-          expect(
-            runtimeEnv.every(
-              (entry) =>
-                !entry.includes("synthetic-m25-evaluator-rotated") &&
-                !entry.includes("synthetic-m25-era-source-rotated") &&
-                !entry.includes(sourceKey.toString("base64url")),
-            ),
-          ).toBe(true);
-          const mountsInspection = spawnSync(
-            "docker",
-            ["inspect", "--format", "{{json .Mounts}}", runtimeContainerName],
-            { encoding: "utf8" },
-          );
-          expect(mountsInspection.status).toBe(0);
-          const secretMounts = JSON.parse(mountsInspection.stdout.trim()) as {
-            Destination: string;
-            RW: boolean;
-          }[];
-          for (const destination of [
-            "/run/secrets/public",
-            "/run/secrets/db-url",
-            "/run/secrets/app-db-url",
-            "/run/secrets/source-db-url",
-            "/run/secrets/keyring",
-          ])
-            expect(secretMounts).toContainEqual(
-              expect.objectContaining({ Destination: destination, RW: false }),
-            );
-          expect(
-            secretMounts.some(
-              (mount) =>
-                mount.Destination === "/var/run/docker.sock" ||
-                mount.Destination === "/app/.env.production",
-            ),
-          ).toBe(false);
-          const networkInspection = spawnSync(
-            "docker",
-            ["network", "inspect", "--format", "{{.Internal}}", runtimeNetworkName],
-            { encoding: "utf8" },
-          );
-          expect(networkInspection.status).toBe(0);
-          expect(networkInspection.stdout.trim()).toBe("true");
-          const containerInspection = spawnSync(
-            "docker",
-            ["inspect", "--format", "{{.HostConfig.ReadonlyRootfs}}", runtimeContainerName],
-            { encoding: "utf8" },
-          );
-          expect(containerInspection.status).toBe(0);
-          expect(containerInspection.stdout.trim()).toBe("true");
-          const publishedPorts = spawnSync(
-            "docker",
-            ["inspect", "--format", "{{json .HostConfig.PortBindings}}", runtimeContainerName],
-            { encoding: "utf8" },
-          );
-          expect(publishedPorts.status).toBe(0);
-          expect(JSON.parse(publishedPorts.stdout.trim())).toEqual({});
-        }
-        const apiPort = await freeTcpPort();
-        const apiUrl = useRuntimeContainer
-          ? `http://127.0.0.1:${apiPort}`
-          : `http://127.0.0.1:${apiPort}`;
-        const apiDatabaseUrl = (
-          useRuntimeContainer ? containerDatabaseUrl(appUrl) : appUrl
-        ).toString();
-        const apiEvaluatorUrl = useRuntimeContainer
-          ? "http://m25-evaluator:3012"
-          : "http://127.0.0.1:39125";
+        expect(foreignSourceProjection.rows).toEqual([]);
+        const evaluatorUrl = new URL(DB_URL as string);
+        evaluatorUrl.username = "chartwarden_m25_evaluator_login";
+        evaluatorUrl.password = "synthetic-m25-evaluator-rotated";
+        let runtimeProcess: ReturnType<typeof spawn> | null = null;
+        let apiProcess: ReturnType<typeof spawn> | null = null;
+        let runtimeDirectory: string | null = null;
+        let sourceReaderHandle: ReturnType<typeof createDbClient> | null = null;
+        const runtimeContainerName = `m25-l6c2-${randomUUID().slice(0, 8)}`;
+        const apiContainerName = `m25-l6d-api-${randomUUID().slice(0, 8)}`;
+        const runtimeNetworkName = `m25-l6c2-net-${randomUUID().slice(0, 8)}`;
+        const apiEdgeNetworkName = `m25-l6d-edge-${randomUUID().slice(0, 8)}`;
+        const repositoryRoot = join(__dirname, "../../..");
+        const postgresContainerName = process.env.M25_TEST_POSTGRES_CONTAINER;
+        const useRuntimeContainer = process.env.M25_TEST_EVALUATOR_CONTAINER === "1";
+        const useImmutableImage = process.env.M25_TEST_IMMUTABLE_IMAGE === "1";
+        const useBrowserJourney = process.env.M25_TEST_BROWSER_E2E === "1";
         const apiImage = process.env.M25_EVALUATOR_TEST_IMAGE ?? "wardenx-api:latest";
-        const apiEnvironment = {
-          NODE_ENV: "test",
-          PORT: "3000",
-          DATABASE_URL: apiDatabaseUrl,
-          BETTER_AUTH_SECRET: TEST_BETTER_AUTH_SECRET,
-          BETTER_AUTH_URL: useRuntimeContainer
-            ? "http://localhost:3000"
-            : `http://127.0.0.1:${apiPort}`,
-          M25_TEST_API_RUNTIME: "1",
-          M25_EVALUATOR_ENABLED: "true",
-          M25_EVALUATOR_URL: apiEvaluatorUrl,
-          M25_EVALUATOR_SIGNING_KEY_ID: "synthetic-l6d",
-          M25_EVALUATOR_SIGNING_KEY_FILE: "/run/secrets/private",
-        };
-        const apiChild = useRuntimeContainer
-          ? spawn(
+        const webImage = process.env.M25_WEB_TEST_IMAGE;
+        if (useImmutableImage && (!useRuntimeContainer || apiImage === "wardenx-api:latest"))
+          throw new Error(
+            "immutable image qualification requires the current API image and container mode",
+          );
+        if (useBrowserJourney && (!useImmutableImage || !webImage))
+          throw new Error("the browser journey requires current immutable API and web images");
+        let webContainerName: string | null = null;
+        let proxyConfigPath: string | null = null;
+        try {
+          registerMdmSeams({ store: createDbMdmStore(appHandle.db) });
+          registerM24PublishedSeams(appHandle.db);
+          const sourceReaderClient = createDbClient({
+            connectionString: sourceUrl.toString(),
+            max: 1,
+          });
+          sourceReaderHandle = sourceReaderClient;
+          const store = createClaimMdEraStore({
+            sourceReaderDb: sourceReaderClient.db,
+            keyRing: sourceKeyRing,
+          });
+          const actor = {
+            organizationId: ORG_A,
+            userId: actorUserId,
+            roles: ["billing_specialist"],
+            providerEntityScope: [providerEntityId, "33333333-3333-3333-3333-333333333333"],
+            membershipId: actorMembershipId,
+            sessionId: actorSessionId,
+            stepUpRecent: true,
+          } as const;
+          const readers = buildDrizzleMedicaidEraReviewReaders(appHandle.db, store);
+          const evaluator = createMedicaidEraReviewService(readers);
+          expect((await evaluator.inspect(actor, stageId)).status).toBe("review_only");
+          const workflow = buildDrizzleMedicaidEraReviewWorkflow(appHandle.db, evaluator);
+          runtimeDirectory = mkdtempSync(join(tmpdir(), "cw-l6c2-"));
+          const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+          writeFileSync(
+            join(runtimeDirectory, "db-url"),
+            (useRuntimeContainer ? containerDatabaseUrl(evaluatorUrl) : evaluatorUrl).toString(),
+            { mode: 0o600 },
+          );
+          writeFileSync(
+            join(runtimeDirectory, "app-db-url"),
+            (useRuntimeContainer ? containerDatabaseUrl(appUrl) : appUrl).toString(),
+            { mode: 0o600 },
+          );
+          writeFileSync(
+            join(runtimeDirectory, "source-db-url"),
+            (useRuntimeContainer ? containerDatabaseUrl(sourceUrl) : sourceUrl).toString(),
+            { mode: 0o600 },
+          );
+          writeFileSync(
+            join(runtimeDirectory, "keyring"),
+            JSON.stringify({
+              activeId: "synthetic-l6b",
+              keys: { "synthetic-l6b": sourceKey.toString("base64url") },
+            }),
+            { mode: 0o600 },
+          );
+          writeFileSync(
+            join(runtimeDirectory, "public"),
+            publicKey.export({ format: "der", type: "spki" }).toString("base64url"),
+            { mode: 0o600 },
+          );
+          writeFileSync(
+            join(runtimeDirectory, "private"),
+            privateKey.export({ format: "der", type: "pkcs8" }).toString("base64url"),
+            { mode: 0o600 },
+          );
+          if (useRuntimeContainer) {
+            if (!postgresContainerName)
+              throw new Error(
+                "M25_TEST_POSTGRES_CONTAINER is required for isolated runtime testing",
+              );
+            const network = spawnSync(
+              "docker",
+              ["network", "create", "--internal", runtimeNetworkName],
+              { stdio: "ignore" },
+            );
+            if (network.status !== 0)
+              throw new Error("could not create isolated evaluator test network");
+            const edgeNetwork = spawnSync("docker", ["network", "create", apiEdgeNetworkName], {
+              stdio: "ignore",
+            });
+            if (edgeNetwork.status !== 0)
+              throw new Error("could not create the disposable API ingress test network");
+            const connected = spawnSync(
               "docker",
               [
-                "run",
-                "--name",
-                apiContainerName,
-                "--network",
+                "network",
+                "connect",
+                "--alias",
+                "postgres",
                 runtimeNetworkName,
-                "--publish",
-                `127.0.0.1:${apiPort}:3000`,
-                "--read-only",
-                "--tmpfs",
-                "/tmp:rw,noexec,nosuid,size=16m",
-                "--tmpfs",
-                "/run/secrets:rw,noexec,nosuid,size=1m",
-                "--cap-drop=ALL",
-                "--security-opt=no-new-privileges",
-                "--pids-limit=128",
-                "--memory=1536m",
-                "--cpus=2",
-                "--user=1000:1000",
-                "--mount",
-                `type=bind,src=${join(runtimeDirectory, "private")},dst=/run/secrets/private,readonly`,
-                "--mount",
-                `type=bind,src=${join(repositoryRoot, "apps/backend/src")},dst=/app/apps/backend/src,readonly`,
-                "--mount",
-                `type=bind,src=${join(repositoryRoot, "apps/backend/__tests__")},dst=/app/apps/backend/__tests__,readonly`,
-                "--mount",
-                `type=bind,src=${join(repositoryRoot, "packages")},dst=/app/packages,readonly`,
-                "--mount",
-                `type=bind,src=${join(repositoryRoot, "node_modules")},dst=/app/node_modules,readonly`,
-                ...Object.entries(apiEnvironment).flatMap(([key, value]) => [
-                  "--env",
-                  `${key}=${value}`,
-                ]),
-                apiImage,
-                "bun",
-                "run",
-                "apps/backend/__tests__/m25-review-api-runtime.ts",
+                postgresContainerName,
               ],
-              { stdio: ["ignore", "pipe", "pipe"] },
-            )
-          : spawn("bun", ["run", "apps/backend/__tests__/m25-review-api-runtime.ts"], {
-              cwd: repositoryRoot,
-              stdio: ["ignore", "pipe", "pipe"],
-              env: {
-                PATH: process.env.PATH ?? "",
-                HOME: process.env.HOME ?? tmpdir(),
-                TMPDIR: process.env.TMPDIR ?? tmpdir(),
-                ...apiEnvironment,
-              },
-            });
-        apiProcess = apiChild;
-        let apiOutput = "";
-        apiChild.stderr.on("data", (chunk) => {
-          apiOutput += String(chunk);
-        });
-        apiChild.on("error", (error) => {
-          apiOutput += `API runtime spawn failed (${error.name})`;
-        });
-        if (useRuntimeContainer) {
-          let attached = false;
+              { stdio: "ignore" },
+            );
+            if (connected.status !== 0)
+              throw new Error("could not attach disposable PostgreSQL to evaluator test network");
+          }
+          const childProcess = useRuntimeContainer
+            ? spawn(
+                "docker",
+                [
+                  "run",
+                  "--name",
+                  runtimeContainerName,
+                  "--network",
+                  runtimeNetworkName,
+                  "--network-alias",
+                  "m25-evaluator",
+                  "--read-only",
+                  "--tmpfs",
+                  "/tmp:rw,noexec,nosuid,size=16m",
+                  "--tmpfs",
+                  "/run/secrets:rw,noexec,nosuid,size=1m",
+                  "--cap-drop=ALL",
+                  "--security-opt=no-new-privileges",
+                  "--pids-limit=64",
+                  "--memory=768m",
+                  "--cpus=1",
+                  "--user=1000:1000",
+                  "--mount",
+                  `type=bind,src=${join(runtimeDirectory, "public")},dst=/run/secrets/public,readonly`,
+                  "--mount",
+                  `type=bind,src=${join(runtimeDirectory, "db-url")},dst=/run/secrets/db-url,readonly`,
+                  "--mount",
+                  `type=bind,src=${join(runtimeDirectory, "app-db-url")},dst=/run/secrets/app-db-url,readonly`,
+                  "--mount",
+                  `type=bind,src=${join(runtimeDirectory, "source-db-url")},dst=/run/secrets/source-db-url,readonly`,
+                  "--mount",
+                  `type=bind,src=${join(runtimeDirectory, "keyring")},dst=/run/secrets/keyring,readonly`,
+                  ...(useImmutableImage
+                    ? []
+                    : [
+                        "--mount",
+                        `type=bind,src=${join(repositoryRoot, "apps/backend/src")},dst=/app/apps/backend/src,readonly`,
+                        "--mount",
+                        `type=bind,src=${join(repositoryRoot, "packages")},dst=/app/packages,readonly`,
+                        "--mount",
+                        `type=bind,src=${join(repositoryRoot, "node_modules")},dst=/app/node_modules,readonly`,
+                      ]),
+                  "--env",
+                  "M25_EVALUATOR_DATABASE_URL_FILE=/run/secrets/db-url",
+                  "--env",
+                  "M25_EVALUATOR_APP_DATABASE_URL_FILE=/run/secrets/app-db-url",
+                  "--env",
+                  "M25_EVALUATOR_ERA_SOURCE_DATABASE_URL_FILE=/run/secrets/source-db-url",
+                  "--env",
+                  "M25_EVALUATOR_CLAIMMD_KEYRING_FILE=/run/secrets/keyring",
+                  "--env",
+                  "M25_EVALUATOR_PUBLIC_KEY_FILE=/run/secrets/public",
+                  "--env",
+                  "M25_EVALUATOR_SIGNING_KEY_ID=synthetic-l6d",
+                  "--env",
+                  "M25_EVALUATOR_PORT=3012",
+                  apiImage,
+                  "bun",
+                  "run",
+                  "apps/backend/src/m25-evaluator.ts",
+                ],
+                { stdio: ["ignore", "pipe", "pipe"] },
+              )
+            : spawn("bun", ["run", "apps/backend/src/m25-evaluator.ts"], {
+                cwd: join(__dirname, "../../.."),
+                stdio: ["ignore", "pipe", "pipe"],
+                env: {
+                  PATH: process.env.PATH ?? "",
+                  HOME: process.env.HOME ?? tmpdir(),
+                  TMPDIR: process.env.TMPDIR ?? tmpdir(),
+                  M25_EVALUATOR_DATABASE_URL_FILE: join(runtimeDirectory, "db-url"),
+                  M25_EVALUATOR_APP_DATABASE_URL_FILE: join(runtimeDirectory, "app-db-url"),
+                  M25_EVALUATOR_ERA_SOURCE_DATABASE_URL_FILE: join(
+                    runtimeDirectory,
+                    "source-db-url",
+                  ),
+                  M25_EVALUATOR_CLAIMMD_KEYRING_FILE: join(runtimeDirectory, "keyring"),
+                  M25_EVALUATOR_PUBLIC_KEY_FILE: join(runtimeDirectory, "public"),
+                  M25_EVALUATOR_SIGNING_KEY_ID: "synthetic-l6d",
+                  M25_EVALUATOR_PORT: "39125",
+                },
+              });
+          runtimeProcess = childProcess;
+          let runtimeOutput = "";
+          childProcess.stderr.on("data", (chunk) => {
+            runtimeOutput += String(chunk);
+          });
+          childProcess.on("error", (error) => {
+            runtimeOutput += `runtime spawn failed (${error.name})`;
+          });
           for (let attempt = 0; attempt < 80; attempt++) {
-            const inspect = spawnSync(
+            const isReady = useRuntimeContainer
+              ? await evaluatorContainerFetch(runtimeContainerName, "http://evaluator/ready")
+                  .then((response) => response.ok)
+                  .catch(() => false)
+              : await fetch("http://127.0.0.1:39125/ready")
+                  .then((response) => response.ok)
+                  .catch(() => false);
+            if (isReady) break;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            if (childProcess.exitCode !== null)
+              throw new Error(`isolated evaluator exited: ${runtimeOutput}`);
+          }
+          if (useRuntimeContainer) {
+            const envInspection = spawnSync(
               "docker",
-              ["inspect", "--format", "{{.State.Running}}", apiContainerName],
+              ["inspect", "--format", "{{json .Config.Env}}", runtimeContainerName],
               { encoding: "utf8" },
             );
-            if (inspect.status === 0 && inspect.stdout.trim() === "true") {
-              const connection = spawnSync(
-                "docker",
-                ["network", "connect", apiEdgeNetworkName, apiContainerName],
-                { stdio: "ignore" },
+            expect(envInspection.status).toBe(0);
+            const runtimeEnv = JSON.parse(envInspection.stdout.trim()) as string[];
+            expect(runtimeEnv.some((entry) => entry.startsWith("DATABASE_PLATFORM_URL="))).toBe(
+              false,
+            );
+            expect(runtimeEnv.some((entry) => entry.startsWith("DATABASE_URL="))).toBe(false);
+            expect(
+              runtimeEnv.some((entry) => entry.startsWith("CLAIMMD_RESPONSE_INBOX_KEYRING=")),
+            ).toBe(false);
+            expect(
+              runtimeEnv.every(
+                (entry) =>
+                  !entry.includes("synthetic-m25-evaluator-rotated") &&
+                  !entry.includes("synthetic-m25-era-source-rotated") &&
+                  !entry.includes(sourceKey.toString("base64url")),
+              ),
+            ).toBe(true);
+            const mountsInspection = spawnSync(
+              "docker",
+              ["inspect", "--format", "{{json .Mounts}}", runtimeContainerName],
+              { encoding: "utf8" },
+            );
+            expect(mountsInspection.status).toBe(0);
+            const secretMounts = JSON.parse(mountsInspection.stdout.trim()) as {
+              Destination: string;
+              RW: boolean;
+            }[];
+            for (const destination of [
+              "/run/secrets/public",
+              "/run/secrets/db-url",
+              "/run/secrets/app-db-url",
+              "/run/secrets/source-db-url",
+              "/run/secrets/keyring",
+            ])
+              expect(secretMounts).toContainEqual(
+                expect.objectContaining({ Destination: destination, RW: false }),
               );
-              attached = connection.status === 0;
-              if (attached) break;
+            expect(
+              secretMounts.some(
+                (mount) =>
+                  mount.Destination === "/var/run/docker.sock" ||
+                  mount.Destination === "/app/.env.production",
+              ),
+            ).toBe(false);
+            if (useImmutableImage)
+              expect(secretMounts.some((mount) => mount.Destination.startsWith("/app/"))).toBe(
+                false,
+              );
+            const networkInspection = spawnSync(
+              "docker",
+              ["network", "inspect", "--format", "{{.Internal}}", runtimeNetworkName],
+              { encoding: "utf8" },
+            );
+            expect(networkInspection.status).toBe(0);
+            expect(networkInspection.stdout.trim()).toBe("true");
+            const containerInspection = spawnSync(
+              "docker",
+              ["inspect", "--format", "{{.HostConfig.ReadonlyRootfs}}", runtimeContainerName],
+              { encoding: "utf8" },
+            );
+            expect(containerInspection.status).toBe(0);
+            expect(containerInspection.stdout.trim()).toBe("true");
+            const publishedPorts = spawnSync(
+              "docker",
+              ["inspect", "--format", "{{json .HostConfig.PortBindings}}", runtimeContainerName],
+              { encoding: "utf8" },
+            );
+            expect(publishedPorts.status).toBe(0);
+            expect(JSON.parse(publishedPorts.stdout.trim())).toEqual({});
+          }
+          const apiPort = await freeTcpPort();
+          const apiUrl = useRuntimeContainer
+            ? `http://127.0.0.1:${apiPort}`
+            : `http://127.0.0.1:${apiPort}`;
+          const apiDatabaseUrl = (
+            useRuntimeContainer ? containerDatabaseUrl(appUrl) : appUrl
+          ).toString();
+          const apiEvaluatorUrl = useRuntimeContainer
+            ? "http://m25-evaluator:3012"
+            : "http://127.0.0.1:39125";
+          const apiEnvironment = {
+            NODE_ENV: "test",
+            PORT: "3000",
+            DATABASE_URL: apiDatabaseUrl,
+            BETTER_AUTH_SECRET: TEST_BETTER_AUTH_SECRET,
+            BETTER_AUTH_URL: useRuntimeContainer
+              ? "http://localhost:3000"
+              : `http://127.0.0.1:${apiPort}`,
+            M25_TEST_API_RUNTIME: "1",
+            M25_EVALUATOR_ENABLED: "true",
+            M25_EVALUATOR_URL: apiEvaluatorUrl,
+            M25_EVALUATOR_SIGNING_KEY_ID: "synthetic-l6d",
+            M25_EVALUATOR_SIGNING_KEY_FILE: "/run/secrets/private",
+            ...(useBrowserJourney ? { M25_TEST_CLAIMMD_KEYRING_FILE: "/run/secrets/keyring" } : {}),
+          };
+          const apiChild = useRuntimeContainer
+            ? spawn(
+                "docker",
+                [
+                  "run",
+                  "--name",
+                  apiContainerName,
+                  "--network",
+                  runtimeNetworkName,
+                  "--publish",
+                  `127.0.0.1:${apiPort}:3000`,
+                  "--read-only",
+                  "--tmpfs",
+                  "/tmp:rw,noexec,nosuid,size=16m",
+                  "--tmpfs",
+                  "/run/secrets:rw,noexec,nosuid,size=1m",
+                  "--cap-drop=ALL",
+                  "--security-opt=no-new-privileges",
+                  "--pids-limit=128",
+                  "--memory=1536m",
+                  "--cpus=2",
+                  "--user=1000:1000",
+                  "--mount",
+                  `type=bind,src=${join(runtimeDirectory, "private")},dst=/run/secrets/private,readonly`,
+                  ...(useBrowserJourney
+                    ? [
+                        "--mount",
+                        `type=bind,src=${join(runtimeDirectory, "keyring")},dst=/run/secrets/keyring,readonly`,
+                      ]
+                    : []),
+                  ...(useImmutableImage
+                    ? []
+                    : [
+                        "--mount",
+                        `type=bind,src=${join(repositoryRoot, "apps/backend/src")},dst=/app/apps/backend/src,readonly`,
+                        "--mount",
+                        `type=bind,src=${join(repositoryRoot, "apps/backend/__tests__")},dst=/app/apps/backend/__tests__,readonly`,
+                        "--mount",
+                        `type=bind,src=${join(repositoryRoot, "packages")},dst=/app/packages,readonly`,
+                        "--mount",
+                        `type=bind,src=${join(repositoryRoot, "node_modules")},dst=/app/node_modules,readonly`,
+                      ]),
+                  ...Object.entries(apiEnvironment).flatMap(([key, value]) => [
+                    "--env",
+                    `${key}=${value}`,
+                  ]),
+                  apiImage,
+                  "bun",
+                  "run",
+                  "apps/backend/__tests__/m25-review-api-runtime.ts",
+                ],
+                { stdio: ["ignore", "pipe", "pipe"] },
+              )
+            : spawn("bun", ["run", "apps/backend/__tests__/m25-review-api-runtime.ts"], {
+                cwd: repositoryRoot,
+                stdio: ["ignore", "pipe", "pipe"],
+                env: {
+                  PATH: process.env.PATH ?? "",
+                  HOME: process.env.HOME ?? tmpdir(),
+                  TMPDIR: process.env.TMPDIR ?? tmpdir(),
+                  ...apiEnvironment,
+                },
+              });
+          apiProcess = apiChild;
+          let apiOutput = "";
+          apiChild.stderr.on("data", (chunk) => {
+            apiOutput += String(chunk);
+          });
+          apiChild.on("error", (error) => {
+            apiOutput += `API runtime spawn failed (${error.name})`;
+          });
+          if (useRuntimeContainer) {
+            let attached = false;
+            for (let attempt = 0; attempt < 80; attempt++) {
+              const inspect = spawnSync(
+                "docker",
+                ["inspect", "--format", "{{.State.Running}}", apiContainerName],
+                { encoding: "utf8" },
+              );
+              if (inspect.status === 0 && inspect.stdout.trim() === "true") {
+                const connection = spawnSync(
+                  "docker",
+                  ["network", "connect", "--alias", "api", apiEdgeNetworkName, apiContainerName],
+                  { stdio: "ignore" },
+                );
+                attached = connection.status === 0;
+                if (attached) break;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 100));
+              if (apiChild.exitCode !== null)
+                throw new Error(`disposable Fastify API exited: ${apiOutput}`);
             }
+            if (!attached)
+              throw new Error("disposable API did not join the isolated ingress network");
+          }
+          const resolvedApiUrl = apiUrl;
+          let apiReady = false;
+          for (let attempt = 0; attempt < 100; attempt++) {
+            apiReady = await fetch(`${resolvedApiUrl}/ready`)
+              .then((response) => response.ok)
+              .catch(() => false);
+            if (apiReady) break;
             await new Promise((resolve) => setTimeout(resolve, 100));
             if (apiChild.exitCode !== null)
               throw new Error(`disposable Fastify API exited: ${apiOutput}`);
           }
-          if (!attached)
-            throw new Error("disposable API did not join the isolated ingress network");
-        }
-        const resolvedApiUrl = apiUrl;
-        let apiReady = false;
-        for (let attempt = 0; attempt < 100; attempt++) {
-          apiReady = await fetch(`${resolvedApiUrl}/ready`)
-            .then((response) => response.ok)
-            .catch(() => false);
-          if (apiReady) break;
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          if (apiChild.exitCode !== null)
-            throw new Error(`disposable Fastify API exited: ${apiOutput}`);
-        }
-        if (!apiReady) throw new Error(`disposable Fastify API did not become ready: ${apiOutput}`);
-        if (useRuntimeContainer) {
-          const apiEnvInspection = spawnSync(
-            "docker",
-            ["inspect", "--format", "{{json .Config.Env}}", apiContainerName],
-            { encoding: "utf8" },
+          if (!apiReady)
+            throw new Error(`disposable Fastify API did not become ready: ${apiOutput}`);
+          if (useRuntimeContainer) {
+            const apiEnvInspection = spawnSync(
+              "docker",
+              ["inspect", "--format", "{{json .Config.Env}}", apiContainerName],
+              { encoding: "utf8" },
+            );
+            expect(apiEnvInspection.status).toBe(0);
+            const apiEnv = JSON.parse(apiEnvInspection.stdout.trim()) as string[];
+            expect(apiEnv).toContain("M25_EVALUATOR_URL=http://m25-evaluator:3012");
+            expect(apiEnv.some((entry) => entry.startsWith("M25_EVALUATOR_DATABASE_URL"))).toBe(
+              false,
+            );
+            expect(
+              apiEnv.some((entry) => entry.startsWith("M25_EVALUATOR_ERA_SOURCE_DATABASE_URL")),
+            ).toBe(false);
+            expect(apiEnv.some((entry) => entry.startsWith("M25_EVALUATOR_CLAIMMD_KEYRING"))).toBe(
+              false,
+            );
+            expect(apiEnv.some((entry) => entry.includes("synthetic-m25-evaluator-rotated"))).toBe(
+              false,
+            );
+            expect(apiEnv.some((entry) => entry.includes("synthetic-m25-era-source-rotated"))).toBe(
+              false,
+            );
+            const apiMountInspection = spawnSync(
+              "docker",
+              ["inspect", "--format", "{{json .Mounts}}", apiContainerName],
+              { encoding: "utf8" },
+            );
+            expect(apiMountInspection.status).toBe(0);
+            const apiMounts = JSON.parse(apiMountInspection.stdout.trim()) as {
+              Destination: string;
+              RW: boolean;
+            }[];
+            expect(apiMounts).toContainEqual(
+              expect.objectContaining({ Destination: "/run/secrets/private", RW: false }),
+            );
+            if (!useBrowserJourney)
+              expect(apiMounts.some((mount) => mount.Destination === "/run/secrets/keyring")).toBe(
+                false,
+              );
+            expect(apiMounts.some((mount) => mount.Destination === "/var/run/docker.sock")).toBe(
+              false,
+            );
+            if (useBrowserJourney) {
+              expect(apiMounts).toContainEqual(
+                expect.objectContaining({ Destination: "/run/secrets/keyring", RW: false }),
+              );
+              expect(apiEnv.some((entry) => entry.includes(sourceKey.toString("base64url")))).toBe(
+                false,
+              );
+            }
+            if (useImmutableImage)
+              expect(apiMounts.some((mount) => mount.Destination.startsWith("/app/"))).toBe(false);
+            const apiNetworkInspection = spawnSync(
+              "docker",
+              ["inspect", "--format", `{{json .NetworkSettings.Networks}}`, apiContainerName],
+              { encoding: "utf8" },
+            );
+            expect(apiNetworkInspection.status).toBe(0);
+            expect(apiNetworkInspection.stdout).toContain(runtimeNetworkName);
+            expect(apiNetworkInspection.stdout).toContain(apiEdgeNetworkName);
+          }
+          let browserBaseUrl: string | null = null;
+          if (useBrowserJourney) {
+            webContainerName = `m25-l7v-web-${randomUUID().slice(0, 8)}`;
+            const webPort = await freeTcpPort();
+            proxyConfigPath = join(runtimeDirectory!, "web-test.conf");
+            const productionWebConfig = readFileSync(
+              join(repositoryRoot, "deploy/production/web-nginx.conf"),
+              "utf8",
+            );
+            const routeMarker = "    # React Router is client-side:";
+            if (!productionWebConfig.includes(routeMarker))
+              throw new Error(
+                "production web routing changed; browser proxy fixture must be reviewed",
+              );
+            const apiProxyLocation = `    location ^~ /api/ {\n      proxy_http_version 1.1;\n      proxy_set_header Host $host;\n      proxy_set_header X-Real-IP $remote_addr;\n      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n      proxy_set_header X-Forwarded-Proto $scheme;\n      proxy_pass http://api:3000;\n    }\n\n`;
+            writeFileSync(
+              proxyConfigPath,
+              productionWebConfig.replace(routeMarker, `${apiProxyLocation}${routeMarker}`),
+              { mode: 0o644 },
+            );
+            const startedWeb = spawnSync(
+              "docker",
+              [
+                "run",
+                "--detach",
+                "--name",
+                webContainerName,
+                "--network",
+                apiEdgeNetworkName,
+                "--network-alias",
+                "web",
+                "--publish",
+                `127.0.0.1:${webPort}:8080`,
+                "--memory=128m",
+                "--cpus=0.5",
+                "--pids-limit=64",
+                "--security-opt=no-new-privileges",
+                "--cap-drop=ALL",
+                "--mount",
+                `type=bind,src=${proxyConfigPath},dst=/etc/nginx/conf.d/default.conf,readonly`,
+                webImage!,
+              ],
+              { encoding: "utf8" },
+            );
+            if (startedWeb.status !== 0)
+              throw new Error(`immutable web runtime did not start: ${startedWeb.stderr}`);
+            browserBaseUrl = `http://127.0.0.1:${webPort}`;
+            let webReady = false;
+            for (let attempt = 0; attempt < 80; attempt++) {
+              webReady = await fetch(browserBaseUrl)
+                .then((response) => response.ok)
+                .catch(() => false);
+              if (webReady) break;
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+            if (!webReady) throw new Error("immutable web runtime did not serve the staff SPA");
+            const webInspection = spawnSync(
+              "docker",
+              ["inspect", "--format", "{{json .Mounts}}", webContainerName],
+              { encoding: "utf8" },
+            );
+            expect(webInspection.status).toBe(0);
+            const webMounts = JSON.parse(webInspection.stdout.trim()) as {
+              Destination: string;
+              RW: boolean;
+            }[];
+            expect(webMounts).toContainEqual(
+              expect.objectContaining({ Destination: "/etc/nginx/conf.d/default.conf", RW: false }),
+            );
+            expect(
+              webMounts.some((mount) => mount.Destination.startsWith("/usr/share/nginx/html")),
+            ).toBe(false);
+          }
+          const sessionCookie = await signedBetterAuthCookie("synthetic-l6c2-token");
+          const initialListResponse = await fetch(
+            `${resolvedApiUrl}/api/v1/remittance/medicaid-era-reviews?limit=25`,
+            { headers: { cookie: sessionCookie } },
           );
-          expect(apiEnvInspection.status).toBe(0);
-          const apiEnv = JSON.parse(apiEnvInspection.stdout.trim()) as string[];
-          expect(apiEnv).toContain("M25_EVALUATOR_URL=http://m25-evaluator:3012");
-          expect(apiEnv.some((entry) => entry.startsWith("M25_EVALUATOR_DATABASE_URL"))).toBe(
-            false,
-          );
-          expect(
-            apiEnv.some((entry) => entry.startsWith("M25_EVALUATOR_ERA_SOURCE_DATABASE_URL")),
-          ).toBe(false);
-          expect(apiEnv.some((entry) => entry.startsWith("M25_EVALUATOR_CLAIMMD_KEYRING"))).toBe(
-            false,
-          );
-          expect(apiEnv.some((entry) => entry.includes("synthetic-m25-evaluator-rotated"))).toBe(
-            false,
-          );
-          expect(apiEnv.some((entry) => entry.includes("synthetic-m25-era-source-rotated"))).toBe(
-            false,
-          );
-          const apiMountInspection = spawnSync(
-            "docker",
-            ["inspect", "--format", "{{json .Mounts}}", apiContainerName],
-            { encoding: "utf8" },
-          );
-          expect(apiMountInspection.status).toBe(0);
-          const apiMounts = JSON.parse(apiMountInspection.stdout.trim()) as {
-            Destination: string;
-            RW: boolean;
-          }[];
-          expect(apiMounts).toContainEqual(
-            expect.objectContaining({ Destination: "/run/secrets/private", RW: false }),
-          );
-          expect(apiMounts.some((mount) => mount.Destination === "/run/secrets/keyring")).toBe(
-            false,
-          );
-          expect(apiMounts.some((mount) => mount.Destination === "/var/run/docker.sock")).toBe(
-            false,
-          );
-          const apiNetworkInspection = spawnSync(
-            "docker",
-            ["inspect", "--format", `{{json .NetworkSettings.Networks}}`, apiContainerName],
-            { encoding: "utf8" },
-          );
-          expect(apiNetworkInspection.status).toBe(0);
-          expect(apiNetworkInspection.stdout).toContain(runtimeNetworkName);
-          expect(apiNetworkInspection.stdout).toContain(apiEdgeNetworkName);
-        }
-        const sessionCookie = await signedBetterAuthCookie("synthetic-l6c2-token");
-        const initialListResponse = await fetch(
-          `${resolvedApiUrl}/api/v1/remittance/medicaid-era-reviews?limit=25`,
-          { headers: { cookie: sessionCookie } },
-        );
-        expect(initialListResponse.status).toBe(200);
-        const initialList = (await initialListResponse.json()) as {
-          items: { id: string; assessmentSemantics: string }[];
-        };
-        // The seeded legacy row belongs to a different provider entity. The mounted API must
-        // apply provider ABAC and must not reveal that review in this actor's worklist.
-        expect(initialList.items.some((item) => item.id === a.medicaidEraReview)).toBe(false);
-        const listReadAudit = await db.query<{ n: number }>(
-          `SELECT count(*)::int AS n FROM audit_event
+          expect(initialListResponse.status).toBe(200);
+          const initialList = (await initialListResponse.json()) as {
+            items: { id: string; assessmentSemantics: string }[];
+          };
+          // The seeded legacy row belongs to a different provider entity. The mounted API must
+          // apply provider ABAC and must not reveal that review in this actor's worklist.
+          expect(initialList.items.some((item) => item.id === a.medicaidEraReview)).toBe(false);
+          const listReadAudit = await db.query<{ n: number }>(
+            `SELECT count(*)::int AS n FROM audit_event
              WHERE organization_id=$1 AND actor_user_id=$2
                AND event_type='medicaid_era_review.list_viewed'
                AND resource_kind='medicaid_era_review'`,
-          [ORG_A, actorUserId],
-        );
-        expect(listReadAudit.rows[0]?.n).toBeGreaterThanOrEqual(1);
-        const setCookieHeaders = (
-          initialListResponse.headers as Headers & { getSetCookie?: () => string[] }
-        ).getSetCookie?.() ?? [initialListResponse.headers.get("set-cookie") ?? ""];
-        const csrfCookie = setCookieHeaders
-          .map((value) => value.match(/(?:^|,\s*)chartwarden_csrf=([^;,]+)/)?.[1])
-          .find((value): value is string => typeof value === "string");
-        expect(csrfCookie).toBeTruthy();
-        const authenticatedCookie = `${sessionCookie}; chartwarden_csrf=${csrfCookie}`;
-        const apiRequest = async (
-          method: "GET" | "POST",
-          path: string,
-          options: {
-            body?: Readonly<Record<string, unknown>>;
-            idempotencyKey?: string;
-            cookie?: string;
-            csrf?: boolean;
-          } = {},
-        ) => {
-          const headers: Record<string, string> = { cookie: options.cookie ?? authenticatedCookie };
-          if (options.body) headers["content-type"] = "application/json";
-          if (options.idempotencyKey) headers["idempotency-key"] = options.idempotencyKey;
-          if (options.csrf !== false && method === "POST") headers["x-csrf-token"] = csrfCookie!;
-          return fetch(`${resolvedApiUrl}${path}`, {
-            method,
-            headers,
-            ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+            [ORG_A, actorUserId],
+          );
+          expect(listReadAudit.rows[0]?.n).toBeGreaterThanOrEqual(1);
+          const setCookieHeaders = (
+            initialListResponse.headers as Headers & { getSetCookie?: () => string[] }
+          ).getSetCookie?.() ?? [initialListResponse.headers.get("set-cookie") ?? ""];
+          const csrfCookie = setCookieHeaders
+            .map((value) => value.match(/(?:^|,\s*)chartwarden_csrf=([^;,]+)/)?.[1])
+            .find((value): value is string => typeof value === "string");
+          expect(csrfCookie).toBeTruthy();
+          const authenticatedCookie = `${sessionCookie}; chartwarden_csrf=${csrfCookie}`;
+          const apiRequest = async (
+            method: "GET" | "POST",
+            path: string,
+            options: {
+              body?: Readonly<Record<string, unknown>>;
+              idempotencyKey?: string;
+              cookie?: string;
+              csrf?: boolean;
+            } = {},
+          ) => {
+            const headers: Record<string, string> = {
+              cookie: options.cookie ?? authenticatedCookie,
+            };
+            if (options.body) headers["content-type"] = "application/json";
+            if (options.idempotencyKey) headers["idempotency-key"] = options.idempotencyKey;
+            if (options.csrf !== false && method === "POST") headers["x-csrf-token"] = csrfCookie!;
+            return fetch(`${resolvedApiUrl}${path}`, {
+              method,
+              headers,
+              ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+            });
+          };
+          const outboxBefore = await db.query<{ count: number }>(
+            "SELECT count(*)::int AS count FROM outbox_event WHERE organization_id=$1",
+            [ORG_A],
+          );
+          const signCommand = createEvaluatorCommandSigner({
+            kid: "synthetic-l6d",
+            key: privateKey,
           });
-        };
-        const outboxBefore = await db.query<{ count: number }>(
-          "SELECT count(*)::int AS count FROM outbox_event WHERE organization_id=$1",
-          [ORG_A],
-        );
-        const signCommand = createEvaluatorCommandSigner({
-          kid: "synthetic-l6d",
-          key: privateKey,
-        });
-        const transport = createHttpEvaluatorTransport({
-          url: "http://127.0.0.1:39125",
-          signer: signCommand,
-          ...(useRuntimeContainer
-            ? { fetchImpl: (url, init) => evaluatorContainerFetch(runtimeContainerName, url, init) }
-            : {}),
-        });
-        const forgedActor = { ...actor, userId: "55555555-5555-4555-8555-555555555599" };
-        const forgedActorCommand = {
-          operation: "evaluate" as const,
-          artifactId: stageId,
-          idempotencyKey: "synthetic-l6c2-forged-actor-0001",
-        };
-        const forgedUrl = useRuntimeContainer
-          ? "http://evaluator/internal/m25/commands"
-          : "http://127.0.0.1:39125/internal/m25/commands";
-        const forgedActorResponse = await (useRuntimeContainer
-          ? evaluatorContainerFetch(runtimeContainerName, forgedUrl, {
-              method: "POST",
-              headers: {
-                "content-type": "application/json",
-                [M25_EVALUATOR_ASSERTION_HEADER]: signCommand(forgedActor, forgedActorCommand),
-              },
-              body: JSON.stringify(forgedActorCommand),
-            })
-          : fetch(forgedUrl, {
-              method: "POST",
-              headers: {
-                "content-type": "application/json",
-                [M25_EVALUATOR_ASSERTION_HEADER]: signCommand(forgedActor, forgedActorCommand),
-              },
-              body: JSON.stringify(forgedActorCommand),
-            }));
-        expect(forgedActorResponse.status).toBe(403);
-        expect(await forgedActorResponse.json()).toEqual({ error: "authority_denied" });
-        expect(
-          (
-            await (useRuntimeContainer
-              ? evaluatorContainerFetch(runtimeContainerName, "http://evaluator/ready")
-              : fetch("http://127.0.0.1:39125/ready"))
-          ).status,
-        ).toBe(200);
-        await db.query(`UPDATE "session" SET expires_at=now()-interval '1 minute' WHERE id=$1`, [
-          actorSessionId,
-        ]);
-        const expiredSessionCommand = {
-          operation: "evaluate" as const,
-          artifactId: stageId,
-          idempotencyKey: "synthetic-l6c2-expired-session-0001",
-        };
-        const expiredSessionUrl = useRuntimeContainer
-          ? "http://evaluator/internal/m25/commands"
-          : "http://127.0.0.1:39125/internal/m25/commands";
-        const expiredSessionInit = {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            [M25_EVALUATOR_ASSERTION_HEADER]: signCommand(actor, expiredSessionCommand),
-          },
-          body: JSON.stringify(expiredSessionCommand),
-        };
-        const expiredSessionResponse = await (useRuntimeContainer
-          ? evaluatorContainerFetch(runtimeContainerName, expiredSessionUrl, expiredSessionInit)
-          : fetch(expiredSessionUrl, expiredSessionInit));
-        expect(expiredSessionResponse.status).toBe(403);
-        expect(await expiredSessionResponse.json()).toEqual({ error: "authority_denied" });
-        expect(
-          (
-            await (useRuntimeContainer
-              ? evaluatorContainerFetch(runtimeContainerName, "http://evaluator/ready")
-              : fetch("http://127.0.0.1:39125/ready"))
-          ).status,
-        ).toBe(200);
-        await db.query(`UPDATE "session" SET expires_at=now()+interval '1 day' WHERE id=$1`, [
-          actorSessionId,
-        ]);
-        expect(
-          await transport.execute(actor, {
-            operation: "evaluate",
-            artifactId: b.eraStage,
-            idempotencyKey: "synthetic-l6c2-foreign-stage-0001",
-          }),
-        ).toEqual({ status: "unavailable", reasonCode: "SOURCE_ARTIFACT_UNAVAILABLE" });
-        await db.query(`
+          const transport = createHttpEvaluatorTransport({
+            url: "http://127.0.0.1:39125",
+            signer: signCommand,
+            ...(useRuntimeContainer
+              ? {
+                  fetchImpl: (url, init) =>
+                    evaluatorContainerFetch(runtimeContainerName, url, init),
+                }
+              : {}),
+          });
+          const forgedActor = { ...actor, userId: "55555555-5555-4555-8555-555555555599" };
+          const forgedActorCommand = {
+            operation: "evaluate" as const,
+            artifactId: stageId,
+            idempotencyKey: "synthetic-l6c2-forged-actor-0001",
+          };
+          const forgedUrl = useRuntimeContainer
+            ? "http://evaluator/internal/m25/commands"
+            : "http://127.0.0.1:39125/internal/m25/commands";
+          const forgedActorResponse = await (useRuntimeContainer
+            ? evaluatorContainerFetch(runtimeContainerName, forgedUrl, {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  [M25_EVALUATOR_ASSERTION_HEADER]: signCommand(forgedActor, forgedActorCommand),
+                },
+                body: JSON.stringify(forgedActorCommand),
+              })
+            : fetch(forgedUrl, {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  [M25_EVALUATOR_ASSERTION_HEADER]: signCommand(forgedActor, forgedActorCommand),
+                },
+                body: JSON.stringify(forgedActorCommand),
+              }));
+          expect(forgedActorResponse.status).toBe(403);
+          expect(await forgedActorResponse.json()).toEqual({ error: "authority_denied" });
+          expect(
+            (
+              await (useRuntimeContainer
+                ? evaluatorContainerFetch(runtimeContainerName, "http://evaluator/ready")
+                : fetch("http://127.0.0.1:39125/ready"))
+            ).status,
+          ).toBe(200);
+          await db.query(`UPDATE "session" SET expires_at=now()-interval '1 minute' WHERE id=$1`, [
+            actorSessionId,
+          ]);
+          const expiredSessionCommand = {
+            operation: "evaluate" as const,
+            artifactId: stageId,
+            idempotencyKey: "synthetic-l6c2-expired-session-0001",
+          };
+          const expiredSessionUrl = useRuntimeContainer
+            ? "http://evaluator/internal/m25/commands"
+            : "http://127.0.0.1:39125/internal/m25/commands";
+          const expiredSessionInit = {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              [M25_EVALUATOR_ASSERTION_HEADER]: signCommand(actor, expiredSessionCommand),
+            },
+            body: JSON.stringify(expiredSessionCommand),
+          };
+          const expiredSessionResponse = await (useRuntimeContainer
+            ? evaluatorContainerFetch(runtimeContainerName, expiredSessionUrl, expiredSessionInit)
+            : fetch(expiredSessionUrl, expiredSessionInit));
+          expect(expiredSessionResponse.status).toBe(403);
+          expect(await expiredSessionResponse.json()).toEqual({ error: "authority_denied" });
+          expect(
+            (
+              await (useRuntimeContainer
+                ? evaluatorContainerFetch(runtimeContainerName, "http://evaluator/ready")
+                : fetch("http://127.0.0.1:39125/ready"))
+            ).status,
+          ).toBe(200);
+          await db.query(`UPDATE "session" SET expires_at=now()+interval '1 day' WHERE id=$1`, [
+            actorSessionId,
+          ]);
+          expect(
+            await transport.execute(actor, {
+              operation: "evaluate",
+              artifactId: b.eraStage,
+              idempotencyKey: "synthetic-l6c2-foreign-stage-0001",
+            }),
+          ).toEqual({ status: "unavailable", reasonCode: "SOURCE_ARTIFACT_UNAVAILABLE" });
+          await db.query(`
           CREATE OR REPLACE FUNCTION m25_l6d_test_delay_assessment_insert() RETURNS trigger
           LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(1.25); RETURN NEW; END $$
         `);
-        await db.query(`
+          await db.query(`
           CREATE TRIGGER m25_l6d_test_delay_assessment_insert
           BEFORE INSERT ON medicaid_era_review
           FOR EACH ROW EXECUTE FUNCTION m25_l6d_test_delay_assessment_insert()
         `);
-        let maximumConcurrentEvaluatorStatements = 0;
-        let observedArtifactLockWait = false;
-        let completedApiEvaluations = 0;
-        let concurrentEvaluationResults: Awaited<ReturnType<typeof workflow.evaluate>>[] = [];
-        try {
-          const apiEvaluations = [
-            apiRequest("POST", `/api/v1/remittance/medicaid-era-artifacts/${stageId}/evaluate`, {
-              idempotencyKey: "synthetic-l6d-api-eval-0001",
-            }).finally(() => {
-              completedApiEvaluations += 1;
-            }),
-            apiRequest("POST", `/api/v1/remittance/medicaid-era-artifacts/${stageId}/evaluate`, {
-              idempotencyKey: "synthetic-l6d-api-eval-0002",
-            }).finally(() => {
-              completedApiEvaluations += 1;
-            }),
-          ];
-          const deadline = Date.now() + 10_000;
-          while (completedApiEvaluations < 2 && Date.now() < deadline) {
-            const active = await db.query<{ count: number; lock_wait: boolean }>(
-              `SELECT count(*)::int AS count,
+          let maximumConcurrentEvaluatorStatements = 0;
+          let observedArtifactLockWait = false;
+          let completedApiEvaluations = 0;
+          let concurrentEvaluationResults: Awaited<ReturnType<typeof workflow.evaluate>>[] = [];
+          try {
+            const apiEvaluations = [
+              apiRequest("POST", `/api/v1/remittance/medicaid-era-artifacts/${stageId}/evaluate`, {
+                idempotencyKey: "synthetic-l6d-api-eval-0001",
+              }).finally(() => {
+                completedApiEvaluations += 1;
+              }),
+              apiRequest("POST", `/api/v1/remittance/medicaid-era-artifacts/${stageId}/evaluate`, {
+                idempotencyKey: "synthetic-l6d-api-eval-0002",
+              }).finally(() => {
+                completedApiEvaluations += 1;
+              }),
+            ];
+            const deadline = Date.now() + 10_000;
+            while (completedApiEvaluations < 2 && Date.now() < deadline) {
+              const active = await db.query<{ count: number; lock_wait: boolean }>(
+                `SELECT count(*)::int AS count,
                       coalesce(bool_or(wait_event_type='Lock'),false) AS lock_wait
                  FROM pg_stat_activity
                 WHERE usename='chartwarden_m25_evaluator_login' AND state='active'
                   AND (lower(query) LIKE '%insert into "medicaid_era_review"%'
                        OR lower(query) LIKE '%pg_advisory_xact_lock%')`,
+              );
+              maximumConcurrentEvaluatorStatements = Math.max(
+                maximumConcurrentEvaluatorStatements,
+                active.rows[0]?.count ?? 0,
+              );
+              observedArtifactLockWait ||= active.rows[0]?.lock_wait ?? false;
+              await new Promise((resolve) => setTimeout(resolve, 20));
+            }
+            const responses = await Promise.all(apiEvaluations);
+            expect(responses.map((response) => response.status)).toEqual([200, 200]);
+            concurrentEvaluationResults = (await Promise.all(
+              responses.map((response) => response.json()),
+            )) as Awaited<ReturnType<typeof workflow.evaluate>>[];
+          } finally {
+            await db.query(
+              "DROP TRIGGER IF EXISTS m25_l6d_test_delay_assessment_insert ON medicaid_era_review",
             );
-            maximumConcurrentEvaluatorStatements = Math.max(
-              maximumConcurrentEvaluatorStatements,
-              active.rows[0]?.count ?? 0,
-            );
-            observedArtifactLockWait ||= active.rows[0]?.lock_wait ?? false;
-            await new Promise((resolve) => setTimeout(resolve, 20));
+            await db.query("DROP FUNCTION IF EXISTS m25_l6d_test_delay_assessment_insert()");
           }
-          const responses = await Promise.all(apiEvaluations);
-          expect(responses.map((response) => response.status)).toEqual([200, 200]);
-          concurrentEvaluationResults = (await Promise.all(
-            responses.map((response) => response.json()),
-          )) as Awaited<ReturnType<typeof workflow.evaluate>>[];
-        } finally {
-          await db.query(
-            "DROP TRIGGER IF EXISTS m25_l6d_test_delay_assessment_insert ON medicaid_era_review",
-          );
-          await db.query("DROP FUNCTION IF EXISTS m25_l6d_test_delay_assessment_insert()");
-        }
-        expect(maximumConcurrentEvaluatorStatements).toBeGreaterThanOrEqual(2);
-        expect(observedArtifactLockWait).toBe(true);
-        expect(concurrentEvaluationResults).toHaveLength(2);
-        expect(
-          concurrentEvaluationResults.filter(
+          expect(maximumConcurrentEvaluatorStatements).toBeGreaterThanOrEqual(2);
+          expect(observedArtifactLockWait).toBe(true);
+          expect(concurrentEvaluationResults).toHaveLength(2);
+          expect(
+            concurrentEvaluationResults.filter(
+              (item) => item.status === "review_saved" && item.replay === false,
+            ),
+          ).toHaveLength(1);
+          expect(
+            concurrentEvaluationResults.filter(
+              (item) => item.status === "review_saved" && item.replay === true,
+            ),
+          ).toHaveLength(1);
+          const persisted = concurrentEvaluationResults.find(
             (item) => item.status === "review_saved" && item.replay === false,
-          ),
-        ).toHaveLength(1);
-        expect(
-          concurrentEvaluationResults.filter(
-            (item) => item.status === "review_saved" && item.replay === true,
-          ),
-        ).toHaveLength(1);
-        const persisted = concurrentEvaluationResults.find(
-          (item) => item.status === "review_saved" && item.replay === false,
-        )!;
-        expect(persisted).toMatchObject({ status: "review_saved", version: 1, replay: false });
-        if (persisted.status !== "review_saved")
-          throw new Error("synthetic evaluation was not persisted");
-        const trusted = await workflow.detail(actor, persisted.reviewId);
-        expect(trusted).toMatchObject({
-          assessmentTrustStatus: "isolated_evaluator",
-          sourceDigest: rawFileDigest,
-          assessmentVersion: "l6d-v2",
-          assessmentObservedAt: expect.any(Date),
-        });
-        expect(trusted).not.toHaveProperty("assessmentEvidenceFingerprint");
-        const persistedSnapshot = await db.query<{
-          assessment_evidence_fingerprint: string | null;
-          assessment_observed_at: Date | null;
-        }>(
-          `SELECT assessment_evidence_fingerprint, assessment_observed_at
+          )!;
+          expect(persisted).toMatchObject({ status: "review_saved", version: 1, replay: false });
+          if (persisted.status !== "review_saved")
+            throw new Error("synthetic evaluation was not persisted");
+          const trusted = await workflow.detail(actor, persisted.reviewId);
+          expect(trusted).toMatchObject({
+            assessmentTrustStatus: "isolated_evaluator",
+            sourceDigest: rawFileDigest,
+            assessmentVersion: "l6d-v2",
+            assessmentObservedAt: expect.any(Date),
+          });
+          expect(trusted).not.toHaveProperty("assessmentEvidenceFingerprint");
+          const persistedSnapshot = await db.query<{
+            assessment_evidence_fingerprint: string | null;
+            assessment_observed_at: Date | null;
+          }>(
+            `SELECT assessment_evidence_fingerprint, assessment_observed_at
              FROM medicaid_era_review WHERE id=$1`,
-          [persisted.reviewId],
-        );
-        expect(persistedSnapshot.rows[0]).toMatchObject({
-          assessment_evidence_fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
-          assessment_observed_at: expect.any(Date),
-        });
-        await expect(
-          db.query(
-            `UPDATE medicaid_era_review
+            [persisted.reviewId],
+          );
+          expect(persistedSnapshot.rows[0]).toMatchObject({
+            assessment_evidence_fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
+            assessment_observed_at: expect.any(Date),
+          });
+          await expect(
+            db.query(
+              `UPDATE medicaid_era_review
                 SET assessment_evidence_fingerprint=NULL, assessment_observed_at=now()
               WHERE id=$1`,
-            [persisted.reviewId],
-          ),
-        ).rejects.toThrow(/observation provenance cannot be removed/);
-        await expect(
-          db.query(
-            `UPDATE medicaid_era_review
+              [persisted.reviewId],
+            ),
+          ).rejects.toThrow(/observation provenance cannot be removed/);
+          await expect(
+            db.query(
+              `UPDATE medicaid_era_review
                 SET assessment_observed_at=now(), version=version+1
               WHERE id=$1`,
-            [a.medicaidEraReview],
-          ),
-        ).rejects.toThrow(/medicaid_era_review_evidence_fingerprint_ck/);
-        await expect(
-          db.query(
-            `UPDATE medicaid_era_review
+              [a.medicaidEraReview],
+            ),
+          ).rejects.toThrow(/medicaid_era_review_evidence_fingerprint_ck/);
+          await expect(
+            db.query(
+              `UPDATE medicaid_era_review
                 SET assessment_evidence_fingerprint=repeat('a',64), assessment_observed_at=NULL,
                     version=version+1
               WHERE id=$1`,
-            [a.medicaidEraReview],
-          ),
-        ).rejects.toThrow(/medicaid_era_review_evidence_fingerprint_ck/);
-        await expect(
-          db.query(
-            `UPDATE medicaid_era_review
+              [a.medicaidEraReview],
+            ),
+          ).rejects.toThrow(/medicaid_era_review_evidence_fingerprint_ck/);
+          await expect(
+            db.query(
+              `UPDATE medicaid_era_review
                 SET assessment_evidence_fingerprint=repeat('b',64), assessment_observed_at=now()
               WHERE id=$1`,
-            [persisted.reviewId],
-          ),
-        ).rejects.toThrow(/requires a version increment/);
-        const apiDetailResponse = await apiRequest(
-          "GET",
-          `/api/v1/remittance/medicaid-era-reviews/${persisted.reviewId}`,
-        );
-        expect(apiDetailResponse.status).toBe(200);
-        const apiDetail = (await apiDetailResponse.json()) as Record<string, unknown>;
-        expect(apiDetail).toMatchObject({
-          assessmentTrustStatus: "isolated_evaluator",
-          assessmentSemantics: "point_in_time_nonposting",
-          sourceDigest: rawFileDigest,
-          workflowState: "needs_review",
-          version: 1,
-        });
-        const detailReadAudit = await db.query<{ n: number }>(
-          `SELECT count(*)::int AS n FROM audit_event
+              [persisted.reviewId],
+            ),
+          ).rejects.toThrow(/requires a version increment/);
+          const apiDetailResponse = await apiRequest(
+            "GET",
+            `/api/v1/remittance/medicaid-era-reviews/${persisted.reviewId}`,
+          );
+          expect(apiDetailResponse.status).toBe(200);
+          const apiDetail = (await apiDetailResponse.json()) as Record<string, unknown>;
+          expect(apiDetail).toMatchObject({
+            assessmentTrustStatus: "isolated_evaluator",
+            assessmentSemantics: "point_in_time_nonposting",
+            sourceDigest: rawFileDigest,
+            workflowState: "needs_review",
+            version: 1,
+          });
+          const detailReadAudit = await db.query<{ n: number }>(
+            `SELECT count(*)::int AS n FROM audit_event
              WHERE organization_id=$1 AND actor_user_id=$2
                AND event_type='medicaid_era_review.viewed'
                AND resource_kind='medicaid_era_review' AND resource_id=$3`,
-          [ORG_A, actorUserId, persisted.reviewId],
-        );
-        expect(detailReadAudit.rows[0]?.n).toBeGreaterThanOrEqual(1);
-        const apiHistoryResponse = await apiRequest(
-          "GET",
-          `/api/v1/remittance/medicaid-era-reviews/${persisted.reviewId}/history`,
-        );
-        expect(apiHistoryResponse.status).toBe(200);
-        expect(await apiHistoryResponse.json()).toMatchObject({
-          items: [{ version: 1, action: "assessed", trustStatus: "isolated_evaluator" }],
-        });
-        const historyReadAudit = await db.query<{ n: number }>(
-          `SELECT count(*)::int AS n FROM audit_event
+            [ORG_A, actorUserId, persisted.reviewId],
+          );
+          expect(detailReadAudit.rows[0]?.n).toBeGreaterThanOrEqual(1);
+          const apiHistoryResponse = await apiRequest(
+            "GET",
+            `/api/v1/remittance/medicaid-era-reviews/${persisted.reviewId}/history`,
+          );
+          expect(apiHistoryResponse.status).toBe(200);
+          expect(await apiHistoryResponse.json()).toMatchObject({
+            items: [{ version: 1, action: "assessed", trustStatus: "isolated_evaluator" }],
+          });
+          const historyReadAudit = await db.query<{ n: number }>(
+            `SELECT count(*)::int AS n FROM audit_event
              WHERE organization_id=$1 AND actor_user_id=$2
                AND event_type='medicaid_era_review.viewed'
                AND resource_kind='medicaid_era_review' AND resource_id=$3`,
-          [ORG_A, actorUserId, persisted.reviewId],
-        );
-        expect(historyReadAudit.rows[0]?.n).toBeGreaterThanOrEqual(2);
-        expect(
-          (
-            await apiRequest(
-              "GET",
-              `/api/v1/remittance/medicaid-era-reviews/${b.medicaidEraReview}`,
-            )
-          ).status,
-        ).toBe(404);
-        expect(
-          (
-            await apiRequest("GET", "/api/v1/remittance/medicaid-era-reviews", {
-              cookie: await signedBetterAuthCookie("synthetic-l6d-unprivileged-token"),
-            })
-          ).status,
-        ).toBe(403);
-        expect(
-          (
-            await apiRequest(
-              "POST",
-              `/api/v1/remittance/medicaid-era-artifacts/${stageId}/evaluate`,
-              { idempotencyKey: "synthetic-l6d-no-csrf-0001", csrf: false },
-            )
-          ).status,
-        ).toBe(403);
-        expect(
-          (
-            await apiRequest(
-              "POST",
-              `/api/v1/remittance/medicaid-era-artifacts/${stageId}/evaluate`,
-            )
-          ).status,
-        ).not.toBe(200);
-        expect(
-          await transport.execute(actor, {
-            operation: "evaluate",
-            artifactId: stageId,
-            idempotencyKey: "synthetic-l6d-direct-eval-0003",
-          }),
-        ).toMatchObject({
-          status: "review_saved",
-          replay: true,
-        });
-        await expect(
-          transport.execute(actor, {
-            operation: "note",
-            reviewId: persisted.reviewId,
-            expectedVersion: 1,
-            reasonCode: "REUSE_EVALUATION_KEY",
-            idempotencyKey: "synthetic-l6d-direct-eval-0003",
-          }),
-        ).rejects.toThrow(/conflicts with current state/);
-        const notePath = `/api/v1/remittance/medicaid-era-reviews/${persisted.reviewId}/notes`;
-        const failedHistoryKey = "synthetic-l6d-atomic-history-failure-0001";
-        const failedHistoryKeyHash = createHash("sha256").update(failedHistoryKey).digest("hex");
-        const beforeAtomicFailure = await db.query<{
-          version: number;
-          history_count: number;
-        }>(
-          `SELECT review.version,
+            [ORG_A, actorUserId, persisted.reviewId],
+          );
+          expect(historyReadAudit.rows[0]?.n).toBeGreaterThanOrEqual(2);
+          const reassessPath = `/api/v1/remittance/medicaid-era-reviews/${persisted.reviewId}/reassess`;
+          const reassessBefore = await db.query<{ version: number; history_count: number }>(
+            `SELECT review.version,
                   (SELECT count(*)::int FROM medicaid_era_review_history AS history
                     WHERE history.review_id=review.id) AS history_count
              FROM medicaid_era_review AS review WHERE review.id=$1`,
-          [persisted.reviewId],
-        );
-        await db.query(`
-          CREATE OR REPLACE FUNCTION m25_l6d_test_fail_history_insert() RETURNS trigger
-          LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic atomic history failure'; END $$
-        `);
-        await db.query(`
-          CREATE TRIGGER m25_l6d_test_fail_history_insert
-          BEFORE INSERT ON medicaid_era_review_history
-          FOR EACH ROW EXECUTE FUNCTION m25_l6d_test_fail_history_insert()
-        `);
-        try {
-          const failedHistoryResponse = await apiRequest("POST", notePath, {
-            body: { expectedVersion: 1, reasonCode: "ATOMIC_FAILURE_TEST" },
-            idempotencyKey: failedHistoryKey,
+            [persisted.reviewId],
+          );
+          const reassessKey = "synthetic-l7v-mounted-reassess-replay-0001";
+          const reassessed = await apiRequest("POST", reassessPath, {
+            idempotencyKey: reassessKey,
           });
-          expect(failedHistoryResponse.status).toBeGreaterThanOrEqual(500);
-          const afterAtomicFailure = await db.query<{
+          expect(reassessed.status).toBe(200);
+          const reassessResult = await reassessed.json();
+          expect(reassessResult).toMatchObject({
+            status: "review_saved",
+            reviewId: persisted.reviewId,
+            version: 1,
+            replay: true,
+          });
+          expect(
+            await (await apiRequest("POST", reassessPath, { idempotencyKey: reassessKey })).json(),
+          ).toEqual(reassessResult);
+          const reassessAfter = await db.query<{ version: number; history_count: number }>(
+            `SELECT review.version,
+                  (SELECT count(*)::int FROM medicaid_era_review_history AS history
+                    WHERE history.review_id=review.id) AS history_count
+             FROM medicaid_era_review AS review WHERE review.id=$1`,
+            [persisted.reviewId],
+          );
+          expect(reassessAfter.rows).toEqual(reassessBefore.rows);
+          expect(
+            (
+              await apiRequest(
+                "POST",
+                `/api/v1/remittance/medicaid-era-reviews/${persisted.reviewId}/notes`,
+                {
+                  body: { expectedVersion: 1, reasonCode: "SOURCE_CONTEXT_REVIEWED" },
+                  idempotencyKey: reassessKey,
+                },
+              )
+            ).status,
+          ).toBe(409);
+          for (const hiddenReviewId of [b.medicaidEraReview, a.medicaidEraReview])
+            expect(
+              (
+                await apiRequest(
+                  "POST",
+                  `/api/v1/remittance/medicaid-era-reviews/${hiddenReviewId}/reassess`,
+                  { idempotencyKey: `synthetic-l7v-hidden-reassess-${hiddenReviewId.slice(-4)}` },
+                )
+              ).status,
+            ).toBe(404);
+          expect(
+            (
+              await apiRequest("POST", reassessPath, {
+                cookie: await signedBetterAuthCookie("synthetic-l6d-unprivileged-token"),
+                idempotencyKey: "synthetic-l7v-no-permission-reassess-0001",
+              })
+            ).status,
+          ).toBe(403);
+          await db.query("UPDATE membership SET status='revoked' WHERE id=$1", [actorMembershipId]);
+          const revokedMembershipResponse = await apiRequest("POST", reassessPath, {
+            idempotencyKey: "synthetic-l7v-revoked-membership-reassess-0001",
+          });
+          expect(revokedMembershipResponse.status).toBeGreaterThanOrEqual(401);
+          expect(revokedMembershipResponse.status).toBeLessThan(500);
+          await db.query("UPDATE membership SET status='active' WHERE id=$1", [actorMembershipId]);
+          expect(
+            (
+              await apiRequest(
+                "GET",
+                `/api/v1/remittance/medicaid-era-reviews/${b.medicaidEraReview}`,
+              )
+            ).status,
+          ).toBe(404);
+          expect(
+            (
+              await apiRequest("GET", "/api/v1/remittance/medicaid-era-reviews", {
+                cookie: await signedBetterAuthCookie("synthetic-l6d-unprivileged-token"),
+              })
+            ).status,
+          ).toBe(403);
+          expect(
+            (
+              await apiRequest(
+                "POST",
+                `/api/v1/remittance/medicaid-era-artifacts/${stageId}/evaluate`,
+                { idempotencyKey: "synthetic-l6d-no-csrf-0001", csrf: false },
+              )
+            ).status,
+          ).toBe(403);
+          expect(
+            (
+              await apiRequest(
+                "POST",
+                `/api/v1/remittance/medicaid-era-artifacts/${stageId}/evaluate`,
+              )
+            ).status,
+          ).not.toBe(200);
+          expect(
+            await transport.execute(actor, {
+              operation: "evaluate",
+              artifactId: stageId,
+              idempotencyKey: "synthetic-l6d-direct-eval-0003",
+            }),
+          ).toMatchObject({
+            status: "review_saved",
+            replay: true,
+          });
+          await expect(
+            transport.execute(actor, {
+              operation: "note",
+              reviewId: persisted.reviewId,
+              expectedVersion: 1,
+              reasonCode: "REUSE_EVALUATION_KEY",
+              idempotencyKey: "synthetic-l6d-direct-eval-0003",
+            }),
+          ).rejects.toThrow(/conflicts with current state/);
+          const notePath = `/api/v1/remittance/medicaid-era-reviews/${persisted.reviewId}/notes`;
+          const failedHistoryKey = "synthetic-l6d-atomic-history-failure-0001";
+          const failedHistoryKeyHash = createHash("sha256").update(failedHistoryKey).digest("hex");
+          const beforeAtomicFailure = await db.query<{
             version: number;
             history_count: number;
           }>(
             `SELECT review.version,
+                  (SELECT count(*)::int FROM medicaid_era_review_history AS history
+                    WHERE history.review_id=review.id) AS history_count
+             FROM medicaid_era_review AS review WHERE review.id=$1`,
+            [persisted.reviewId],
+          );
+          await db.query(`
+          CREATE OR REPLACE FUNCTION m25_l6d_test_fail_history_insert() RETURNS trigger
+          LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic atomic history failure'; END $$
+        `);
+          await db.query(`
+          CREATE TRIGGER m25_l6d_test_fail_history_insert
+          BEFORE INSERT ON medicaid_era_review_history
+          FOR EACH ROW EXECUTE FUNCTION m25_l6d_test_fail_history_insert()
+        `);
+          try {
+            const failedHistoryResponse = await apiRequest("POST", notePath, {
+              body: { expectedVersion: 1, reasonCode: "ATOMIC_FAILURE_TEST" },
+              idempotencyKey: failedHistoryKey,
+            });
+            expect(failedHistoryResponse.status).toBeGreaterThanOrEqual(500);
+            const afterAtomicFailure = await db.query<{
+              version: number;
+              history_count: number;
+            }>(
+              `SELECT review.version,
                     (SELECT count(*)::int FROM medicaid_era_review_history AS history
                       WHERE history.review_id=review.id) AS history_count
                FROM medicaid_era_review AS review WHERE review.id=$1`,
-            [persisted.reviewId],
-          );
-          const failedIdempotency = await db.query(
-            `SELECT 1 FROM medicaid_era_review_idempotency
+              [persisted.reviewId],
+            );
+            const failedIdempotency = await db.query(
+              `SELECT 1 FROM medicaid_era_review_idempotency
               WHERE organization_id=$1 AND idempotency_key_hash=$2`,
-            [ORG_A, failedHistoryKeyHash],
-          );
-          expect(afterAtomicFailure.rows).toEqual(beforeAtomicFailure.rows);
-          expect(failedIdempotency.rows).toHaveLength(0);
-        } finally {
-          await db.query(
-            "DROP TRIGGER IF EXISTS m25_l6d_test_fail_history_insert ON medicaid_era_review_history",
-          );
-          await db.query("DROP FUNCTION IF EXISTS m25_l6d_test_fail_history_insert()");
-        }
-        const noteBody = { expectedVersion: 1, reasonCode: "INVESTIGATION_STARTED" };
-        const noteResponse = await apiRequest("POST", notePath, {
-          body: noteBody,
-          idempotencyKey: "synthetic-l6d-api-note-0001",
-        });
-        expect(noteResponse.status).toBe(200);
-        expect(await noteResponse.json()).toMatchObject({ version: 2, replay: false });
-        // The Fastify idempotency middleware replays the original HTTP response, while the
-        // evaluator's domain-level key independently returns a replay result.
-        expect(
-          await (
-            await apiRequest("POST", notePath, {
-              body: noteBody,
-              idempotencyKey: "synthetic-l6d-api-note-0001",
-            })
-          ).json(),
-        ).toMatchObject({ version: 2, replay: false });
-        expect(
-          await transport.execute(actor, {
-            operation: "note",
-            reviewId: persisted.reviewId,
-            expectedVersion: 1,
-            reasonCode: "INVESTIGATION_STARTED",
-            idempotencyKey: "synthetic-l6d-api-note-0001",
-          }),
-        ).toMatchObject({ version: 2, replay: true });
-        expect(
-          (
-            await apiRequest("POST", notePath, {
-              body: { expectedVersion: 2, reasonCode: "DIFFERENT_NOTE" },
-              idempotencyKey: "synthetic-l6d-api-note-0001",
-            })
-          ).status,
-        ).toBe(409);
-        expect(
-          (
-            await apiRequest("POST", notePath, {
-              body: { expectedVersion: 1, reasonCode: "STALE_NOTE" },
-              idempotencyKey: "synthetic-l6d-api-note-stale-0001",
-            })
-          ).status,
-        ).toBe(409);
-        const dispositionPath = `/api/v1/remittance/medicaid-era-reviews/${persisted.reviewId}/disposition`;
-        expect(
-          (
-            await apiRequest("POST", dispositionPath, {
-              body: {
-                expectedVersion: 1,
-                state: "reviewed_not_posted",
-                reasonCode: "REVIEW_COMPLETE",
-              },
-              idempotencyKey: "synthetic-l6d-api-disposition-stale-0001",
-            })
-          ).status,
-        ).toBe(409);
-        const dispositionBody = {
-          expectedVersion: 2,
-          state: "reviewed_not_posted",
-          reasonCode: "REVIEW_COMPLETE",
-        };
-        const dispositionResponse = await apiRequest("POST", dispositionPath, {
-          body: dispositionBody,
-          idempotencyKey: "synthetic-l6d-api-disposition-0001",
-        });
-        expect(dispositionResponse.status).toBe(200);
-        expect(await dispositionResponse.json()).toMatchObject({
-          version: 3,
-          workflowState: "reviewed_not_posted",
-          replay: false,
-        });
-        expect(
-          await (
-            await apiRequest("POST", dispositionPath, {
-              body: { expectedVersion: 3, state: "reopened", reasonCode: "FOLLOW_UP_REOPENED" },
-              idempotencyKey: "synthetic-l6d-api-reopen-0001",
-            })
-          ).json(),
-        ).toMatchObject({ version: 4, workflowState: "reopened", replay: false });
-        expect(await workflow.history(actor, persisted.reviewId)).toMatchObject([
-          { version: 1, action: "assessed", trustStatus: "isolated_evaluator" },
-          { version: 2, action: "note", trustStatus: "isolated_evaluator" },
-          { version: 3, action: "reviewed_not_posted", trustStatus: "isolated_evaluator" },
-          { version: 4, action: "reopened", trustStatus: "isolated_evaluator" },
-        ]);
-        const outboxAfter = await db.query<{ count: number }>(
-          "SELECT count(*)::int AS count FROM outbox_event WHERE organization_id=$1",
-          [ORG_A],
-        );
-        expect(outboxAfter.rows[0]?.count).toBe(outboxBefore.rows[0]?.count);
-        if (useRuntimeContainer) {
-          const historyBeforeFailure = await workflow.history(actor, persisted.reviewId);
-          const stopped = spawnSync("docker", ["stop", runtimeContainerName], {
-            encoding: "utf8",
-          });
-          expect(stopped.status).toBe(0);
-          const unavailableResponse = await apiRequest(
-            "POST",
-            `/api/v1/remittance/medicaid-era-artifacts/${stageId}/evaluate`,
-            { idempotencyKey: "synthetic-l6d-api-failure-0001" },
-          );
-          expect(unavailableResponse.status).toBe(503);
-          expect(await workflow.history(actor, persisted.reviewId)).toEqual(historyBeforeFailure);
-          const restarted = spawnSync("docker", ["start", runtimeContainerName], {
-            encoding: "utf8",
-          });
-          expect(restarted.status).toBe(0);
-          let evaluatorReady = false;
-          for (let attempt = 0; attempt < 100; attempt++) {
-            evaluatorReady = await evaluatorContainerFetch(
-              runtimeContainerName,
-              "http://evaluator/ready",
-            )
-              .then((response) => response.ok)
-              .catch(() => false);
-            if (evaluatorReady) break;
-            await new Promise((resolve) => setTimeout(resolve, 100));
+              [ORG_A, failedHistoryKeyHash],
+            );
+            expect(afterAtomicFailure.rows).toEqual(beforeAtomicFailure.rows);
+            expect(failedIdempotency.rows).toHaveLength(0);
+          } finally {
+            await db.query(
+              "DROP TRIGGER IF EXISTS m25_l6d_test_fail_history_insert ON medicaid_era_review_history",
+            );
+            await db.query("DROP FUNCTION IF EXISTS m25_l6d_test_fail_history_insert()");
           }
-          expect(evaluatorReady).toBe(true);
-          const recovered = await apiRequest(
-            "POST",
-            `/api/v1/remittance/medicaid-era-artifacts/${stageId}/evaluate`,
-            { idempotencyKey: "synthetic-l6d-api-recovery-0001" },
-          );
-          expect(recovered.status).toBe(200);
-          expect(await recovered.json()).toMatchObject({
-            status: "review_saved",
-            reviewId: persisted.reviewId,
-            replay: true,
+          const noteBody = { expectedVersion: 1, reasonCode: "INVESTIGATION_STARTED" };
+          const noteResponse = await apiRequest("POST", notePath, {
+            body: noteBody,
+            idempotencyKey: "synthetic-l6d-api-note-0001",
           });
-          expect(await workflow.history(actor, persisted.reviewId)).toEqual(historyBeforeFailure);
-        }
-        await db.query(
-          `UPDATE claimmd_era_delivery
+          expect(noteResponse.status).toBe(200);
+          expect(await noteResponse.json()).toMatchObject({ version: 2, replay: false });
+          // The Fastify idempotency middleware replays the original HTTP response, while the
+          // evaluator's domain-level key independently returns a replay result.
+          expect(
+            await (
+              await apiRequest("POST", notePath, {
+                body: noteBody,
+                idempotencyKey: "synthetic-l6d-api-note-0001",
+              })
+            ).json(),
+          ).toMatchObject({ version: 2, replay: false });
+          expect(
+            await transport.execute(actor, {
+              operation: "note",
+              reviewId: persisted.reviewId,
+              expectedVersion: 1,
+              reasonCode: "INVESTIGATION_STARTED",
+              idempotencyKey: "synthetic-l6d-api-note-0001",
+            }),
+          ).toMatchObject({ version: 2, replay: true });
+          expect(
+            (
+              await apiRequest("POST", notePath, {
+                body: { expectedVersion: 2, reasonCode: "DIFFERENT_NOTE" },
+                idempotencyKey: "synthetic-l6d-api-note-0001",
+              })
+            ).status,
+          ).toBe(409);
+          expect(
+            (
+              await apiRequest("POST", notePath, {
+                body: { expectedVersion: 1, reasonCode: "STALE_NOTE" },
+                idempotencyKey: "synthetic-l6d-api-note-stale-0001",
+              })
+            ).status,
+          ).toBe(409);
+          const dispositionPath = `/api/v1/remittance/medicaid-era-reviews/${persisted.reviewId}/disposition`;
+          expect(
+            (
+              await apiRequest("POST", dispositionPath, {
+                body: {
+                  expectedVersion: 1,
+                  state: "reviewed_not_posted",
+                  reasonCode: "REVIEW_COMPLETE",
+                },
+                idempotencyKey: "synthetic-l6d-api-disposition-stale-0001",
+              })
+            ).status,
+          ).toBe(409);
+          const dispositionBody = {
+            expectedVersion: 2,
+            state: "reviewed_not_posted",
+            reasonCode: "REVIEW_COMPLETE",
+          };
+          const dispositionResponse = await apiRequest("POST", dispositionPath, {
+            body: dispositionBody,
+            idempotencyKey: "synthetic-l6d-api-disposition-0001",
+          });
+          expect(dispositionResponse.status).toBe(200);
+          expect(await dispositionResponse.json()).toMatchObject({
+            version: 3,
+            workflowState: "reviewed_not_posted",
+            replay: false,
+          });
+          expect(
+            await (
+              await apiRequest("POST", dispositionPath, {
+                body: { expectedVersion: 3, state: "reopened", reasonCode: "FOLLOW_UP_REOPENED" },
+                idempotencyKey: "synthetic-l6d-api-reopen-0001",
+              })
+            ).json(),
+          ).toMatchObject({ version: 4, workflowState: "reopened", replay: false });
+          expect(await workflow.history(actor, persisted.reviewId)).toMatchObject([
+            { version: 1, action: "assessed", trustStatus: "isolated_evaluator" },
+            { version: 2, action: "note", trustStatus: "isolated_evaluator" },
+            { version: 3, action: "reviewed_not_posted", trustStatus: "isolated_evaluator" },
+            { version: 4, action: "reopened", trustStatus: "isolated_evaluator" },
+          ]);
+          const outboxAfter = await db.query<{ count: number }>(
+            "SELECT count(*)::int AS count FROM outbox_event WHERE organization_id=$1",
+            [ORG_A],
+          );
+          expect(outboxAfter.rows[0]?.count).toBe(outboxBefore.rows[0]?.count);
+          if (useRuntimeContainer) {
+            const historyBeforeFailure = await workflow.history(actor, persisted.reviewId);
+            const stopped = spawnSync("docker", ["stop", runtimeContainerName], {
+              encoding: "utf8",
+            });
+            expect(stopped.status).toBe(0);
+            const unavailableResponse = await apiRequest(
+              "POST",
+              `/api/v1/remittance/medicaid-era-artifacts/${stageId}/evaluate`,
+              { idempotencyKey: "synthetic-l6d-api-failure-0001" },
+            );
+            expect(unavailableResponse.status).toBe(503);
+            const unavailableReassessment = await apiRequest(
+              "POST",
+              `/api/v1/remittance/medicaid-era-reviews/${persisted.reviewId}/reassess`,
+              { idempotencyKey: "synthetic-l7v-evaluator-unavailable-reassess-0001" },
+            );
+            expect(unavailableReassessment.status).toBe(503);
+            expect(await workflow.history(actor, persisted.reviewId)).toEqual(historyBeforeFailure);
+            const restarted = spawnSync("docker", ["start", runtimeContainerName], {
+              encoding: "utf8",
+            });
+            expect(restarted.status).toBe(0);
+            let evaluatorReady = false;
+            for (let attempt = 0; attempt < 100; attempt++) {
+              evaluatorReady = await evaluatorContainerFetch(
+                runtimeContainerName,
+                "http://evaluator/ready",
+              )
+                .then((response) => response.ok)
+                .catch(() => false);
+              if (evaluatorReady) break;
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+            expect(evaluatorReady).toBe(true);
+            const recovered = await apiRequest(
+              "POST",
+              `/api/v1/remittance/medicaid-era-artifacts/${stageId}/evaluate`,
+              { idempotencyKey: "synthetic-l6d-api-recovery-0001" },
+            );
+            expect(recovered.status).toBe(200);
+            expect(await recovered.json()).toMatchObject({
+              status: "review_saved",
+              reviewId: persisted.reviewId,
+              replay: true,
+            });
+            expect(await workflow.history(actor, persisted.reviewId)).toEqual(historyBeforeFailure);
+          }
+          await db.query(
+            `UPDATE claimmd_era_delivery
               SET state='possible_duplicate', safe_error_code='POSSIBLE_CROSS_SOURCE_DUPLICATE', updated_at=now()
             WHERE inbox_id=$1`,
-          [inboxId],
-        );
-        const revalidationWriter = createDbClient({
-          connectionString: evaluatorUrl.toString(),
-          max: 1,
-        });
-        try {
-          let inspections = 0;
-          const changingEvaluator = {
-            async inspect(reviewActor: typeof actor, artifactReference: string) {
-              const assessment = await evaluator.inspect(reviewActor, artifactReference);
-              inspections += 1;
-              if (inspections === 1)
-                await db.query(
-                  `UPDATE claimmd_era_delivery
+            [inboxId],
+          );
+          const revalidationWriter = createDbClient({
+            connectionString: evaluatorUrl.toString(),
+            max: 1,
+          });
+          try {
+            let inspections = 0;
+            const changingEvaluator = {
+              async inspect(reviewActor: typeof actor, artifactReference: string) {
+                const assessment = await evaluator.inspect(reviewActor, artifactReference);
+                inspections += 1;
+                if (inspections === 1)
+                  await db.query(
+                    `UPDATE claimmd_era_delivery
                       SET state='exact_duplicate', safe_error_code='EXACT_CROSS_SOURCE_DUPLICATE', updated_at=now()
                     WHERE inbox_id=$1`,
-                  [inboxId],
-                );
-              return assessment;
-            },
-          };
-          const staleWorkflow = buildDrizzleMedicaidEraReviewWorkflow(
-            appHandle.db,
-            changingEvaluator,
-            revalidationWriter.db,
+                    [inboxId],
+                  );
+                return assessment;
+              },
+            };
+            const staleWorkflow = buildDrizzleMedicaidEraReviewWorkflow(
+              appHandle.db,
+              changingEvaluator,
+              revalidationWriter.db,
+            );
+            await expect(
+              staleWorkflow.evaluate(actor, stageId, "synthetic-l6c2-stale-eval-0001"),
+            ).rejects.toThrow(/authoritative ERA evidence changed/);
+            expect(await workflow.detail(actor, persisted.reviewId)).toMatchObject({ version: 4 });
+          } finally {
+            await revalidationWriter.close();
+          }
+          const changedEvidenceReassessment = await apiRequest(
+            "POST",
+            `/api/v1/remittance/medicaid-era-reviews/${persisted.reviewId}/reassess`,
+            { idempotencyKey: "synthetic-l7v-changed-evidence-reassess-0001" },
           );
-          await expect(
-            staleWorkflow.evaluate(actor, stageId, "synthetic-l6c2-stale-eval-0001"),
-          ).rejects.toThrow(/authoritative ERA evidence changed/);
-          expect(await workflow.detail(actor, persisted.reviewId)).toMatchObject({ version: 4 });
-        } finally {
-          await revalidationWriter.close();
-        }
-        expect(
-          await transport.execute(actor, {
-            operation: "evaluate",
-            artifactId: stageId,
-            idempotencyKey: "synthetic-l6d-eval-0004",
-          }),
-        ).toMatchObject({ status: "review_saved", version: 5, replay: false });
-        expect(await workflow.detail(actor, persisted.reviewId)).toMatchObject({
-          version: 5,
-          duplicateStatus: "exact",
-        });
-        expect(await workflow.history(actor, persisted.reviewId)).toMatchObject([
-          { version: 1, action: "assessed", trustStatus: "isolated_evaluator" },
-          { version: 2, action: "note", trustStatus: "isolated_evaluator" },
-          { version: 3, action: "reviewed_not_posted", trustStatus: "isolated_evaluator" },
-          { version: 4, action: "reopened", trustStatus: "isolated_evaluator" },
-          { version: 5, action: "reassessed", trustStatus: "isolated_evaluator" },
-        ]);
-        // Simulate a historical row that retained an exact current fingerprint but was not
-        // written by the isolated evaluator. Fingerprint equality alone must trigger reassessment.
-        await db.query(
-          `UPDATE medicaid_era_review
+          expect(changedEvidenceReassessment.status).toBe(200);
+          expect(await changedEvidenceReassessment.json()).toMatchObject({
+            status: "review_saved",
+            reviewId: persisted.reviewId,
+            version: 5,
+            replay: false,
+          });
+          expect(await workflow.detail(actor, persisted.reviewId)).toMatchObject({
+            version: 5,
+            duplicateStatus: "exact",
+          });
+          expect(await workflow.history(actor, persisted.reviewId)).toMatchObject([
+            { version: 1, action: "assessed", trustStatus: "isolated_evaluator" },
+            { version: 2, action: "note", trustStatus: "isolated_evaluator" },
+            { version: 3, action: "reviewed_not_posted", trustStatus: "isolated_evaluator" },
+            { version: 4, action: "reopened", trustStatus: "isolated_evaluator" },
+            { version: 5, action: "reassessed", trustStatus: "isolated_evaluator" },
+          ]);
+          // Simulate a historical row that retained an exact current fingerprint but was not
+          // written by the isolated evaluator. Fingerprint equality alone must trigger reassessment.
+          await db.query(
+            `UPDATE medicaid_era_review
               SET assessment_trust_status='legacy_unverified', version=version+1, updated_at=now()
             WHERE id=$1 AND version=5 AND assessment_trust_status='isolated_evaluator'`,
-          [persisted.reviewId],
-        );
-        await db.query(
-          `INSERT INTO medicaid_era_review_history
+            [persisted.reviewId],
+          );
+          await db.query(
+            `INSERT INTO medicaid_era_review_history
              (organization_id,provider_entity_id,review_id,version,action,reason_code,
               actor_membership_id,trust_status)
            VALUES ($1,$2,$3,6,'assessed','LEGACY_FIXTURE',gen_random_uuid(),'legacy_unverified')`,
-          [ORG_A, providerEntityId, persisted.reviewId],
-        );
-        const legacyReassessmentResponse = await apiRequest(
-          "POST",
-          `/api/v1/remittance/medicaid-era-artifacts/${stageId}/evaluate`,
-          { idempotencyKey: "synthetic-l6d-legacy-fingerprint-match-0001" },
-        );
-        expect(legacyReassessmentResponse.status).toBe(200);
-        expect(await legacyReassessmentResponse.json()).toMatchObject({
-          status: "review_saved",
-          version: 7,
-          replay: false,
-        });
-        const legacyPromotionHistory = await workflow.history(actor, persisted.reviewId);
-        expect(
-          legacyPromotionHistory.map(({ version, action, trustStatus }) => ({
-            version,
-            action,
-            trustStatus,
-          })),
-        ).toEqual([
-          { version: 1, action: "assessed", trustStatus: "isolated_evaluator" },
-          { version: 2, action: "note", trustStatus: "isolated_evaluator" },
-          { version: 3, action: "reviewed_not_posted", trustStatus: "isolated_evaluator" },
-          { version: 4, action: "reopened", trustStatus: "isolated_evaluator" },
-          { version: 5, action: "reassessed", trustStatus: "isolated_evaluator" },
-          { version: 6, action: "legacy_unverified", trustStatus: "legacy_unverified" },
-          { version: 7, action: "reassessed", trustStatus: "isolated_evaluator" },
-        ]);
-        const legacyDetail = await workflow.detail(actor, a.medicaidEraReview);
-        expect(legacyDetail).toMatchObject({
-          organizationId: ORG_A,
-          providerEntityId: "33333333-3333-3333-3333-333333333333",
-          assessmentTrustStatus: "legacy_unverified",
-          accountReference: null,
-          sourceEnvironment: null,
-          sourceDigest: null,
-          stageId: null,
-          canonicalPayerId: null,
-          programId: null,
-          decisionStatus: "unverified",
-          reasonCodes: ["LEGACY_ASSESSMENT_UNVERIFIED"],
-          claimMatchStatus: "UNVERIFIED",
-          duplicateStatus: "unverified",
-          safeSummary: null,
-        });
-        const legacyHistory = await workflow.history(actor, a.medicaidEraReview);
-        expect(legacyHistory).toHaveLength(1);
-        expect(legacyHistory[0]).toMatchObject({
-          version: 1,
-          action: "legacy_unverified",
-          reasonCode: null,
-          actorMembershipId: null,
-          trustStatus: "legacy_unverified",
-        });
-        const legacyPage = await workflow.list(actor);
-        expect(legacyPage.items.find((item) => item.id === a.medicaidEraReview)).toMatchObject({
-          assessmentTrustStatus: "legacy_unverified",
-          assessmentObservedAt: null,
-          sourceEnvironment: null,
-          canonicalPayerId: null,
-          programId: null,
-          decisionStatus: "unverified",
-          claimMatchStatus: "UNVERIFIED",
-          duplicateStatus: "unverified",
-        });
+            [ORG_A, providerEntityId, persisted.reviewId],
+          );
+          const beforeLegacyReassess = await db.query<{ version: number; history_count: number }>(
+            `SELECT review.version,
+                  (SELECT count(*)::int FROM medicaid_era_review_history AS history
+                    WHERE history.review_id=review.id) AS history_count
+             FROM medicaid_era_review AS review WHERE review.id=$1`,
+            [persisted.reviewId],
+          );
+          const legacyReassessResponse = await apiRequest(
+            "POST",
+            `/api/v1/remittance/medicaid-era-reviews/${persisted.reviewId}/reassess`,
+            { idempotencyKey: "synthetic-l7v-legacy-reassess-held-0001" },
+          );
+          expect(legacyReassessResponse.status).toBe(200);
+          expect(await legacyReassessResponse.json()).toEqual({
+            status: "held",
+            reasonCode: "REASSESSMENT_SOURCE_UNAVAILABLE",
+          });
+          const afterLegacyReassess = await db.query<{ version: number; history_count: number }>(
+            `SELECT review.version,
+                  (SELECT count(*)::int FROM medicaid_era_review_history AS history
+                    WHERE history.review_id=review.id) AS history_count
+             FROM medicaid_era_review AS review WHERE review.id=$1`,
+            [persisted.reviewId],
+          );
+          expect(afterLegacyReassess.rows).toEqual(beforeLegacyReassess.rows);
+          const legacyReassessmentResponse = await apiRequest(
+            "POST",
+            `/api/v1/remittance/medicaid-era-artifacts/${stageId}/evaluate`,
+            { idempotencyKey: "synthetic-l6d-legacy-fingerprint-match-0001" },
+          );
+          expect(legacyReassessmentResponse.status).toBe(200);
+          expect(await legacyReassessmentResponse.json()).toMatchObject({
+            status: "review_saved",
+            version: 7,
+            replay: false,
+          });
+          const legacyPromotionHistory = await workflow.history(actor, persisted.reviewId);
+          expect(
+            legacyPromotionHistory.map(({ version, action, trustStatus }) => ({
+              version,
+              action,
+              trustStatus,
+            })),
+          ).toEqual([
+            { version: 1, action: "assessed", trustStatus: "isolated_evaluator" },
+            { version: 2, action: "note", trustStatus: "isolated_evaluator" },
+            { version: 3, action: "reviewed_not_posted", trustStatus: "isolated_evaluator" },
+            { version: 4, action: "reopened", trustStatus: "isolated_evaluator" },
+            { version: 5, action: "reassessed", trustStatus: "isolated_evaluator" },
+            { version: 6, action: "legacy_unverified", trustStatus: "legacy_unverified" },
+            { version: 7, action: "reassessed", trustStatus: "isolated_evaluator" },
+          ]);
+          const legacyDetail = await workflow.detail(actor, a.medicaidEraReview);
+          expect(legacyDetail).toMatchObject({
+            organizationId: ORG_A,
+            providerEntityId: "33333333-3333-3333-3333-333333333333",
+            assessmentTrustStatus: "legacy_unverified",
+            accountReference: null,
+            sourceEnvironment: null,
+            sourceDigest: null,
+            stageId: null,
+            canonicalPayerId: null,
+            programId: null,
+            decisionStatus: "unverified",
+            reasonCodes: ["LEGACY_ASSESSMENT_UNVERIFIED"],
+            claimMatchStatus: "UNVERIFIED",
+            duplicateStatus: "unverified",
+            safeSummary: null,
+          });
+          const legacyHistory = await workflow.history(actor, a.medicaidEraReview);
+          expect(legacyHistory).toHaveLength(1);
+          expect(legacyHistory[0]).toMatchObject({
+            version: 1,
+            action: "legacy_unverified",
+            reasonCode: null,
+            actorMembershipId: null,
+            trustStatus: "legacy_unverified",
+          });
+          const legacyPage = await workflow.list(actor);
+          expect(legacyPage.items.find((item) => item.id === a.medicaidEraReview)).toMatchObject({
+            assessmentTrustStatus: "legacy_unverified",
+            assessmentObservedAt: null,
+            sourceEnvironment: null,
+            canonicalPayerId: null,
+            programId: null,
+            decisionStatus: "unverified",
+            claimMatchStatus: "UNVERIFIED",
+            duplicateStatus: "unverified",
+          });
 
-        // The general platform SQL credential is the same role used by the API and generic workers.
-        // Even a fully source-bound row and an evaluator-shaped summary must be rejected at SQL.
-        await expect(
-          platformSql.query(
-            `INSERT INTO medicaid_era_review (organization_id, provider_entity_id, stage_id, vendor,
+          if (useBrowserJourney) {
+            if (!browserBaseUrl) throw new Error("the immutable web runtime was not started");
+            const browser = await chromium.launch({
+              headless: true,
+              args: ["--no-sandbox"],
+              ...(process.env.M25_TEST_CHROMIUM_EXECUTABLE_PATH
+                ? { executablePath: process.env.M25_TEST_CHROMIUM_EXECUTABLE_PATH }
+                : {}),
+            });
+            try {
+              const context = await browser.newContext({
+                viewport: { width: 1440, height: 1000 },
+                reducedMotion: "reduce",
+              });
+              const sessionValue = sessionCookie.slice("better-auth.session_token=".length);
+              await context.addCookies([
+                {
+                  name: "better-auth.session_token",
+                  value: sessionValue,
+                  url: browserBaseUrl,
+                  httpOnly: true,
+                  sameSite: "Lax",
+                },
+              ]);
+              const page = await context.newPage();
+              const browserErrors: string[] = [];
+              const browserApiResponses: string[] = [];
+              page.on("pageerror", (error) => browserErrors.push(error.name));
+              page.on("response", (response) => {
+                const url = new URL(response.url());
+                if (url.pathname.startsWith("/api/"))
+                  browserApiResponses.push(
+                    `${response.request().method()} ${url.pathname} ${response.status()}`,
+                  );
+              });
+              const screenshotDir = join(repositoryRoot, "scratchpad", "l7-v-qualification");
+              mkdirSync(screenshotDir, { recursive: true });
+              const sideEffectsBeforeBrowser = await db.query<{
+                medicaidClaims: number;
+                remittanceAdvices: number;
+                postingEvents: number;
+                outboxEvents: number;
+              }>(
+                `SELECT
+                 (SELECT count(*)::int FROM medicaid_claim WHERE organization_id=$1) AS "medicaidClaims",
+                 (SELECT count(*)::int FROM remittance_advice WHERE organization_id=$1) AS "remittanceAdvices",
+                 (SELECT count(*)::int FROM claimmd_era_posting_event WHERE organization_id=$1) AS "postingEvents",
+                 (SELECT count(*)::int FROM outbox_event WHERE organization_id=$1) AS "outboxEvents"`,
+                [ORG_A],
+              );
+              const sourceNavigation = await page.goto(
+                `${browserBaseUrl}/remittance/claimmd-era-review`,
+              );
+              const sourceHeading = await page
+                .getByRole("heading", { name: "Billing / Claim.MD ERA Review" })
+                .waitFor({ timeout: 8_000 })
+                .then(() => true)
+                .catch(() => false);
+              if (!sourceHeading)
+                throw new Error(
+                  `synthetic source page did not render (path=${new URL(page.url()).pathname}, navigation=${sourceNavigation?.status() ?? "none"}, api=${browserApiResponses.join(" | ") || "none"}, pageErrors=${browserErrors.join(",") || "none"})`,
+                );
+              await page
+                .getByRole("button", { name: /Review remittance from/ })
+                .first()
+                .click();
+              await page.getByRole("button", { name: "Evaluate for Medicaid" }).waitFor();
+              const sourceA11y = await new AxeBuilder({ page })
+                .include(".mer-source-action")
+                .analyze();
+              expect(sourceA11y.violations.map((violation) => violation.id)).toEqual([]);
+              await page.screenshot({
+                path: join(screenshotDir, "claimmd-source-desktop.png"),
+                fullPage: true,
+              });
+              await page.getByRole("button", { name: "Evaluate for Medicaid" }).click();
+              await page.waitForURL(`**/remittance/medicaid-era-reviews/${persisted.reviewId}`);
+              await page.getByRole("heading", { name: "Medicaid ERA investigation" }).waitFor();
+              await page
+                .getByText("This is not current eligibility verification or payment authorization.")
+                .waitFor();
+              expect(
+                await page
+                  .getByRole("button", { name: /post payment|approve posting|force match/i })
+                  .count(),
+              ).toBe(0);
+              const detailA11y = await new AxeBuilder({ page })
+                .include(".mer-detail-layout")
+                .analyze();
+              expect(detailA11y.violations.map((violation) => violation.id)).toEqual([]);
+              await page.screenshot({
+                path: join(screenshotDir, "medicaid-investigation-desktop.png"),
+                fullPage: true,
+              });
+              await page.getByRole("button", { name: "Re-evaluate evidence" }).click();
+              await page.getByText("The existing nonposting assessment is current.").waitFor();
+              await page.getByLabel("Investigation reason").selectOption("SOURCE_CONTEXT_REVIEWED");
+              await page.getByRole("button", { name: "Record investigation reason" }).click();
+              await page
+                .getByText("Investigation reason recorded. No payment or claim state was changed.")
+                .waitFor();
+              page.once("dialog", (dialog) => void dialog.accept());
+              await page.getByRole("button", { name: "Complete review — no posting" }).click();
+              await page.getByText("Complete review — no posting recorded.").waitFor();
+              await page.getByRole("button", { name: "Reopen investigation" }).click();
+              await page.getByText("Reopen investigation recorded.").waitFor();
+              await page
+                .getByRole("list", { name: "Assessment and investigation history" })
+                .getByText("Investigation reopened")
+                .last()
+                .waitFor();
+              await page.setViewportSize({ width: 375, height: 812 });
+              await expect
+                .poll(() =>
+                  page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"),
+                )
+                .toBe(true);
+              await page.screenshot({
+                path: join(screenshotDir, "medicaid-investigation-mobile.png"),
+                fullPage: true,
+              });
+              expect(browserErrors).toEqual([]);
+              const browserDetail = await workflow.detail(actor, persisted.reviewId);
+              expect(browserDetail).toMatchObject({
+                assessmentTrustStatus: "isolated_evaluator",
+                version: 10,
+                workflowState: "reopened",
+                safeSummary: {
+                  claims: [
+                    expect.objectContaining({
+                      postingAuthorized: false,
+                    }),
+                  ],
+                },
+              });
+              expect((await workflow.history(actor, persisted.reviewId)).slice(-3)).toMatchObject([
+                { version: 8, action: "note", reasonCode: "SOURCE_CONTEXT_REVIEWED" },
+                { version: 9, action: "reviewed_not_posted" },
+                { version: 10, action: "reopened" },
+              ]);
+              const sideEffectsAfterBrowser = await db.query(
+                `SELECT
+                 (SELECT count(*)::int FROM medicaid_claim WHERE organization_id=$1) AS "medicaidClaims",
+                 (SELECT count(*)::int FROM remittance_advice WHERE organization_id=$1) AS "remittanceAdvices",
+                 (SELECT count(*)::int FROM claimmd_era_posting_event WHERE organization_id=$1) AS "postingEvents",
+                 (SELECT count(*)::int FROM outbox_event WHERE organization_id=$1) AS "outboxEvents"`,
+                [ORG_A],
+              );
+              expect(sideEffectsAfterBrowser.rows).toEqual(sideEffectsBeforeBrowser.rows);
+            } finally {
+              await browser.close();
+            }
+          }
+
+          // The general platform SQL credential is the same role used by the API and generic workers.
+          // Even a fully source-bound row and an evaluator-shaped summary must be rejected at SQL.
+          await expect(
+            platformSql.query(
+              `INSERT INTO medicaid_era_review (organization_id, provider_entity_id, stage_id, vendor,
              account_reference, source_environment, canonical_payer_id, program_id, source_digest,
              assessment_fingerprint, assessment_version, decision_status, reason_codes, claim_match_status,
              duplicate_status, safe_summary)
@@ -2140,69 +2533,69 @@ describe.skipIf(!DB_URL)(
                'payment_reported', '[]'::jsonb, 'MATCHED', 'none',
                '{"claims":[{"postingAuthorized":true,"amounts":{"claimPaidCents":999999}}]}'::jsonb
              FROM claimmd_era_m25_stage WHERE id=$1`,
-            [stageId],
-          ),
-        ).rejects.toThrow(/permission denied/);
-        await expect(
-          platformSql.query(
-            `UPDATE medicaid_era_review SET decision_status='payment_reported',
+              [stageId],
+            ),
+          ).rejects.toThrow(/permission denied/);
+          await expect(
+            platformSql.query(
+              `UPDATE medicaid_era_review SET decision_status='payment_reported',
                safe_summary='{"claims":[{"postingAuthorized":true}]}'::jsonb,
                version=version+1 WHERE id=$1`,
-            [a.medicaidEraReview],
-          ),
-        ).rejects.toThrow(/permission denied/);
-        await expect(
-          db.query(
-            `UPDATE medicaid_era_review SET safe_summary=
+              [a.medicaidEraReview],
+            ),
+          ).rejects.toThrow(/permission denied/);
+          await expect(
+            db.query(
+              `UPDATE medicaid_era_review SET safe_summary=
                '{"claims":[{"postingAuthorized":true}]}'::jsonb, version=version+1 WHERE id=$1`,
-            [a.medicaidEraReview],
-          ),
-        ).rejects.toThrow(/medicaid_era_review_nonposting_summary_ck/);
-        await expect(
-          platformSql.query(
-            `INSERT INTO medicaid_era_review_history
+              [a.medicaidEraReview],
+            ),
+          ).rejects.toThrow(/medicaid_era_review_nonposting_summary_ck/);
+          await expect(
+            platformSql.query(
+              `INSERT INTO medicaid_era_review_history
                (organization_id,provider_entity_id,review_id,version,action,actor_membership_id)
              VALUES ($1,$2,$3,99,'assessed',gen_random_uuid())`,
-            [ORG_A, providerEntityId, a.medicaidEraReview],
-          ),
-        ).rejects.toThrow(/permission denied/);
-        await expect(platformSql.query("SET ROLE chartwarden_m25_evaluator")).rejects.toThrow(
-          /permission denied/,
-        );
-        const platformPrivilege = await db.query<{
-          can_insert: boolean;
-          can_update: boolean;
-          can_read: boolean;
-          can_write_history: boolean;
-          can_update_summary_column: boolean;
-          can_insert_history_actor_column: boolean;
-        }>(
-          `SELECT has_table_privilege('chartwarden_platform_login','medicaid_era_review','INSERT') AS can_insert,
+              [ORG_A, providerEntityId, a.medicaidEraReview],
+            ),
+          ).rejects.toThrow(/permission denied/);
+          await expect(platformSql.query("SET ROLE chartwarden_m25_evaluator")).rejects.toThrow(
+            /permission denied/,
+          );
+          const platformPrivilege = await db.query<{
+            can_insert: boolean;
+            can_update: boolean;
+            can_read: boolean;
+            can_write_history: boolean;
+            can_update_summary_column: boolean;
+            can_insert_history_actor_column: boolean;
+          }>(
+            `SELECT has_table_privilege('chartwarden_platform_login','medicaid_era_review','INSERT') AS can_insert,
                   has_table_privilege('chartwarden_platform_login','medicaid_era_review','UPDATE') AS can_update,
                   has_table_privilege('chartwarden_platform_login','medicaid_era_review','SELECT') AS can_read,
                   has_table_privilege('chartwarden_platform_login','medicaid_era_review_history','INSERT') AS can_write_history,
                   has_column_privilege('chartwarden_platform_login','medicaid_era_review','safe_summary','UPDATE') AS can_update_summary_column,
                   has_column_privilege('chartwarden_platform_login','medicaid_era_review_history','actor_membership_id','INSERT') AS can_insert_history_actor_column`,
-        );
-        expect(platformPrivilege.rows[0]).toEqual({
-          can_insert: false,
-          can_update: false,
-          can_read: false,
-          can_write_history: false,
-          can_update_summary_column: false,
-          can_insert_history_actor_column: false,
-        });
-        const evaluatorPrivilege = await db.query<{
-          superuser: boolean;
-          create_role: boolean;
-          create_database: boolean;
-          bypass_rls: boolean;
-          can_assume: boolean;
-          platform_can_assume: boolean;
-          app_can_assume: boolean;
-          can_post_financials: boolean;
-        }>(
-          `SELECT role.rolsuper AS superuser,
+          );
+          expect(platformPrivilege.rows[0]).toEqual({
+            can_insert: false,
+            can_update: false,
+            can_read: false,
+            can_write_history: false,
+            can_update_summary_column: false,
+            can_insert_history_actor_column: false,
+          });
+          const evaluatorPrivilege = await db.query<{
+            superuser: boolean;
+            create_role: boolean;
+            create_database: boolean;
+            bypass_rls: boolean;
+            can_assume: boolean;
+            platform_can_assume: boolean;
+            app_can_assume: boolean;
+            can_post_financials: boolean;
+          }>(
+            `SELECT role.rolsuper AS superuser,
                   role.rolcreaterole AS create_role,
                   role.rolcreatedb AS create_database,
                   role.rolbypassrls AS bypass_rls,
@@ -2211,106 +2604,113 @@ describe.skipIf(!DB_URL)(
                   pg_has_role('chartwarden_app','chartwarden_m25_evaluator','member') AS app_can_assume,
                   has_table_privilege('chartwarden_m25_evaluator_login','patient_responsibility_ledger','INSERT') AS can_post_financials
              FROM pg_roles role WHERE role.rolname='chartwarden_m25_evaluator_login'`,
-        );
-        expect(evaluatorPrivilege.rows[0]).toEqual({
-          superuser: false,
-          create_role: false,
-          create_database: false,
-          bypass_rls: false,
-          can_assume: true,
-          platform_can_assume: false,
-          app_can_assume: false,
-          can_post_financials: false,
-        });
-        const sourceReaderPrivilege = await db.query<{
-          superuser: boolean;
-          bypass_rls: boolean;
-          platform_member: boolean;
-          direct_inbox_read: boolean;
-          direct_delivery_read: boolean;
-          function_execute: boolean;
-        }>(
-          `SELECT role.rolsuper AS superuser,role.rolbypassrls AS bypass_rls,
+          );
+          expect(evaluatorPrivilege.rows[0]).toEqual({
+            superuser: false,
+            create_role: false,
+            create_database: false,
+            bypass_rls: false,
+            can_assume: true,
+            platform_can_assume: false,
+            app_can_assume: false,
+            can_post_financials: false,
+          });
+          const sourceReaderPrivilege = await db.query<{
+            superuser: boolean;
+            bypass_rls: boolean;
+            platform_member: boolean;
+            direct_inbox_read: boolean;
+            direct_delivery_read: boolean;
+            function_execute: boolean;
+          }>(
+            `SELECT role.rolsuper AS superuser,role.rolbypassrls AS bypass_rls,
                   pg_has_role('chartwarden_m25_era_source_login','chartwarden_platform','member') AS platform_member,
                   has_table_privilege('chartwarden_m25_era_source_login','claimmd_era_inbox','SELECT') AS direct_inbox_read,
                   has_table_privilege('chartwarden_m25_era_source_login','claimmd_era_delivery','SELECT') AS direct_delivery_read,
                   has_function_privilege('chartwarden_m25_era_source_login',
                     'm25_read_staged_claimmd_era(uuid,uuid,uuid)','EXECUTE') AS function_execute
              FROM pg_roles role WHERE role.rolname='chartwarden_m25_era_source_login'`,
-        );
-        expect(sourceReaderPrivilege.rows[0]).toEqual({
-          superuser: false,
-          bypass_rls: false,
-          platform_member: false,
-          direct_inbox_read: false,
-          direct_delivery_read: false,
-          function_execute: true,
-        });
-        await expect(
-          platformSql.query(
-            "ALTER TABLE medicaid_era_review DISABLE TRIGGER medicaid_era_review_identity_immutable",
-          ),
-        ).rejects.toThrow(/must be owner|permission denied/);
-        await expect(
-          platformSql.query(
-            "UPDATE medicaid_era_review_history SET trust_status='isolated_evaluator' WHERE review_id=$1",
-            [persisted.reviewId],
-          ),
-        ).rejects.toThrow(/permission denied/);
-        await expect(
-          platformSql.query("DELETE FROM medicaid_era_review_history WHERE review_id=$1", [
-            persisted.reviewId,
-          ]),
-        ).rejects.toThrow(/permission denied/);
-        const bypassAuditRows = await db.query<{ n: number }>(
-          `SELECT count(*)::int AS n FROM audit_event
+          );
+          expect(sourceReaderPrivilege.rows[0]).toEqual({
+            superuser: false,
+            bypass_rls: false,
+            platform_member: false,
+            direct_inbox_read: false,
+            direct_delivery_read: false,
+            function_execute: true,
+          });
+          await expect(
+            platformSql.query(
+              "ALTER TABLE medicaid_era_review DISABLE TRIGGER medicaid_era_review_identity_immutable",
+            ),
+          ).rejects.toThrow(/must be owner|permission denied/);
+          await expect(
+            platformSql.query(
+              "UPDATE medicaid_era_review_history SET trust_status='isolated_evaluator' WHERE review_id=$1",
+              [persisted.reviewId],
+            ),
+          ).rejects.toThrow(/permission denied/);
+          await expect(
+            platformSql.query("DELETE FROM medicaid_era_review_history WHERE review_id=$1", [
+              persisted.reviewId,
+            ]),
+          ).rejects.toThrow(/permission denied/);
+          const bypassAuditRows = await db.query<{ n: number }>(
+            `SELECT count(*)::int AS n FROM audit_event
              WHERE event_type='platform.bypass_invoked'
                AND context->>'jobId' = $1`,
-          ["m25-evaluator-source-reader"],
-        );
-        expect(bypassAuditRows.rows[0]?.n).toBeGreaterThanOrEqual(2);
-      } finally {
-        if (useRuntimeContainer) {
-          spawnSync("docker", ["rm", "--force", apiContainerName], { stdio: "ignore" });
-          spawnSync("docker", ["rm", "--force", runtimeContainerName], { stdio: "ignore" });
-        }
-        if (!useRuntimeContainer && apiProcess && apiProcess.exitCode === null) {
-          const apiExited = new Promise<void>((resolve) =>
-            apiProcess?.once("exit", () => resolve()),
+            ["m25-evaluator-source-reader"],
           );
-          apiProcess.kill("SIGTERM");
-          const apiKillTimer = setTimeout(() => apiProcess?.kill("SIGKILL"), 3_000);
-          await Promise.race([
-            apiExited,
-            new Promise<void>((resolve) => setTimeout(resolve, 3_500)),
-          ]);
-          clearTimeout(apiKillTimer);
+          expect(bypassAuditRows.rows[0]?.n).toBeGreaterThanOrEqual(2);
+        } finally {
+          if (webContainerName)
+            spawnSync("docker", ["rm", "--force", webContainerName], { stdio: "ignore" });
+          if (useRuntimeContainer) {
+            spawnSync("docker", ["rm", "--force", apiContainerName], { stdio: "ignore" });
+            spawnSync("docker", ["rm", "--force", runtimeContainerName], { stdio: "ignore" });
+          }
+          if (!useRuntimeContainer && apiProcess && apiProcess.exitCode === null) {
+            const apiExited = new Promise<void>((resolve) =>
+              apiProcess?.once("exit", () => resolve()),
+            );
+            apiProcess.kill("SIGTERM");
+            const apiKillTimer = setTimeout(() => apiProcess?.kill("SIGKILL"), 3_000);
+            await Promise.race([
+              apiExited,
+              new Promise<void>((resolve) => setTimeout(resolve, 3_500)),
+            ]);
+            clearTimeout(apiKillTimer);
+          }
+          if (runtimeProcess && runtimeProcess.exitCode === null) {
+            const exited = new Promise<void>((resolve) =>
+              runtimeProcess?.once("exit", () => resolve()),
+            );
+            runtimeProcess.kill("SIGTERM");
+            const killTimer = setTimeout(() => runtimeProcess?.kill("SIGKILL"), 3_000);
+            await Promise.race([
+              exited,
+              new Promise<void>((resolve) => setTimeout(resolve, 3_500)),
+            ]);
+            clearTimeout(killTimer);
+          }
+          if (useRuntimeContainer && postgresContainerName) {
+            spawnSync(
+              "docker",
+              ["network", "disconnect", "--force", runtimeNetworkName, postgresContainerName],
+              { stdio: "ignore" },
+            );
+            spawnSync("docker", ["network", "rm", runtimeNetworkName], { stdio: "ignore" });
+            spawnSync("docker", ["network", "rm", apiEdgeNetworkName], { stdio: "ignore" });
+          }
+          if (runtimeDirectory) rmSync(runtimeDirectory, { recursive: true, force: true });
+          await sourceReaderSql.end().catch(() => undefined);
+          await sourceReaderHandle?.close();
+          await platformSql.end();
+          await appHandle.close();
         }
-        if (runtimeProcess && runtimeProcess.exitCode === null) {
-          const exited = new Promise<void>((resolve) =>
-            runtimeProcess?.once("exit", () => resolve()),
-          );
-          runtimeProcess.kill("SIGTERM");
-          const killTimer = setTimeout(() => runtimeProcess?.kill("SIGKILL"), 3_000);
-          await Promise.race([exited, new Promise<void>((resolve) => setTimeout(resolve, 3_500))]);
-          clearTimeout(killTimer);
-        }
-        if (useRuntimeContainer && postgresContainerName) {
-          spawnSync(
-            "docker",
-            ["network", "disconnect", "--force", runtimeNetworkName, postgresContainerName],
-            { stdio: "ignore" },
-          );
-          spawnSync("docker", ["network", "rm", runtimeNetworkName], { stdio: "ignore" });
-          spawnSync("docker", ["network", "rm", apiEdgeNetworkName], { stdio: "ignore" });
-        }
-        if (runtimeDirectory) rmSync(runtimeDirectory, { recursive: true, force: true });
-        await sourceReaderSql.end().catch(() => undefined);
-        await sourceReaderHandle?.close();
-        await platformSql.end();
-        await appHandle.close();
-      }
-    }, 120_000);
+      },
+      process.env.M25_TEST_BROWSER_E2E === "1" ? 300_000 : 120_000,
+    );
 
     it("does not treat a test-account digest as a production duplicate", async () => {
       await db.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'chartwarden_app_live_test'");

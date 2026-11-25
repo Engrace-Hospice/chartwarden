@@ -15,6 +15,9 @@ const classification = (
   sourceKind: "state_registry",
   sourceReference: "registry:synthetic-source",
   supersedesId: null,
+  verifiedAt: "2026-01-01T00:00:00.000Z",
+  verifiedBy: "synthetic-verifier-membership",
+  recordedAt: "2025-12-01T00:00:00.000Z",
   ...overrides,
 });
 

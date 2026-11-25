@@ -46,6 +46,8 @@ describe("medicaid ERA enrollment seam", () => {
         environment: "test" as const,
         canonicalPayerId: "payer-id",
         programId: "classification-id",
+        evidenceId: "synthetic-enrollment-evidence-id",
+        evidenceVersion: 1,
         payerIdentifier: "synthetic-payer-id",
         billingNpi: "1234567893",
         billingTin: null,
@@ -53,6 +55,8 @@ describe("medicaid ERA enrollment seam", () => {
         effectiveTo: "2026-12-31",
         evidenceReference: "approval:synthetic-era-enrollment",
         verifiedAt: "2026-01-01T00:00:00.000Z",
+        classificationRecordedAt: "2026-01-01T00:00:00.000Z",
+        sourceEvidenceFingerprint: "synthetic-source-evidence-fingerprint",
         evidenceFreshUntil: "2026-12-31T00:00:00.000Z",
       },
     ]);

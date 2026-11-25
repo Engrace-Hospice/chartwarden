@@ -326,6 +326,7 @@ export function buildDrizzleMedicaidEraReviewWorkflow(
           );
         }
         if (
+          existing &&
           isTrustedAssessmentReplay(existing, assessmentFingerprint, evaluationSnapshotFingerprint)
         ) {
           await tx.insert(IDEMPOTENCY).values({
