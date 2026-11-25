@@ -142,6 +142,15 @@ describe("ElectionAddendumPanel", () => {
     expect(screen.getByText(/Election addendum \(5 days\)/)).toBeTruthy();
   });
 
+  it("prints the MRN once under its label (the stored value already starts with MRN-)", async () => {
+    renderPanel(fakeApi(overview(version())));
+    fireEvent.click(await screen.findByRole("button", { name: "Open version 1" }));
+    const drawer = await screen.findByRole("complementary", { name: "Addendum version 1" });
+
+    const label = within(drawer).getByText("MRN", { selector: "dt" });
+    expect(label.nextElementSibling?.textContent).toBe("0001");
+  });
+
   it("furnishes the selected draft with the chosen method", async () => {
     const api = fakeApi(overview(version()));
     renderPanel(api);

@@ -84,6 +84,8 @@ export interface VitalsPanelProps {
   readonly onSaved: () => void;
   /** Told whether the form holds unsaved input and whether the capture is in flight (see `useReportPanelStatus`). */
   readonly onStatusChange?: PanelStatusListener;
+  /** The form's heading level: 3 when it sits inside a section (whose own heading is an h2), 2 when it stands alone. */
+  readonly headingLevel?: 2 | 3;
 }
 
 export function VitalsPanel({
@@ -91,7 +93,9 @@ export function VitalsPanel({
   disabled,
   onSaved,
   onStatusChange,
+  headingLevel = 2,
 }: VitalsPanelProps): JSX.Element {
+  const Heading = headingLevel === 3 ? "h3" : "h2";
   const client = useApiClient();
   const mounted = useIsMounted();
   const [busy, setBusy] = useState(false);
@@ -180,7 +184,7 @@ export function VitalsPanel({
       <header style={vitalsHeader}>
         <div>
           <div style={eyebrow}>Quick capture</div>
-          <h2 style={vitalsTitle}>Visit vitals</h2>
+          <Heading style={vitalsTitle}>Visit vitals</Heading>
           <p style={vitalsDescription}>
             Record the measurements available for this visit. Leave unavailable fields blank.
           </p>

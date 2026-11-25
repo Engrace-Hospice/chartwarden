@@ -104,6 +104,13 @@ export const NARRATIVE_VOCAB_RELEASES: readonly NarrativeVocabRelease[] = [
     id: "8b98ab6c-dd33-4e80-8ffc-f1dc711210d5",
     releasedOn: "2026-11-22",
   },
+  // The pain and dyspnea assessment statements behind the composer's pain and dyspnea helpers (sixteen `nv.sym.pain_*` and fifteen
+  // `nv.sym.dyspnea_*` entries). Additive: no earlier phrase changed.
+  {
+    version: "narrative-vocab@2026.12.6",
+    id: "36d7be8e-db80-4e39-a93c-114974a70ddf",
+    releasedOn: "2026-11-24",
+  },
 ];
 
 /** Raised when {@link VOCAB_VERSION} names a release this registry does not carry. */

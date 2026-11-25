@@ -6,7 +6,11 @@
 // `onStatusChange`, whether it holds unsaved input, has a write in flight, and has a saved record.
 import { type JSX, memo } from "react";
 import type { PanelStatus } from "../../shell/panel-status";
-import { VisitWoundsPanel } from "../09-assessments";
+import {
+  type NoWoundConcernsChange,
+  type NoWoundConcernsState,
+  VisitWoundsPanel,
+} from "../09-assessments";
 import type { TemplateSection } from "./encounters-api";
 import { AdlPanel, NutritionPanel } from "./findings";
 
@@ -23,6 +27,11 @@ export interface RecordedPanelsProps {
   /** A panel saved something the note states: re-read the note. The kind says which panel, since only some records are a source of the draft. */
   readonly onChanged: (panel: RecordedPanelKind) => void;
   readonly onStatusChange: (panel: RecordedPanelKind, status: PanelStatus) => void;
+  /** What the wounds section's free text says about "no skin or wound concerns at this visit", and how the panel adds or removes that sentence. */
+  readonly noConcernsState: NoWoundConcernsState;
+  readonly onNoConcernsChange: (change: NoWoundConcernsChange) => void;
+  /** The wounds panel took the sentence out by itself (a wound is on file); stable, so typing does not re-render the panels. */
+  readonly onNoConcernsRemoved: (message: string) => void;
 }
 
 function RecordedPanelsView({
@@ -33,6 +42,9 @@ function RecordedPanelsView({
   disabled,
   onChanged,
   onStatusChange,
+  noConcernsState,
+  onNoConcernsChange,
+  onNoConcernsRemoved,
 }: RecordedPanelsProps): JSX.Element {
   return (
     <>
@@ -63,6 +75,11 @@ function RecordedPanelsView({
                 disabled={disabled}
                 onChanged={() => onChanged(kind)}
                 onStatusChange={report}
+                noConcerns={{
+                  state: noConcernsState,
+                  onChange: onNoConcernsChange,
+                  onRemoved: onNoConcernsRemoved,
+                }}
               />
             )}
           </div>

@@ -351,6 +351,39 @@ describe("trendOf", () => {
     const points = [1, 2, 3, 4, 5, 6].map((n) => point(`2026-11-0${n}T10:00:00Z`, n * 10));
     expect(trendOf(points).recent).toHaveLength(4);
   });
+
+  describe("the ESAS-r item scores of a reading", () => {
+    const earlier = {
+      pain: 2,
+      tiredness: 2,
+      drowsiness: 0,
+      nausea: 0,
+      lackOfAppetite: 0,
+      shortnessOfBreath: 0,
+      depression: 0,
+      anxiety: 0,
+      wellbeing: 2,
+    };
+    const later = { ...earlier, pain: 6 };
+
+    it("rides with the latest reading up to the visit time, and only that one", () => {
+      const trend = trendOf(
+        [
+          { capturedAt: "2026-11-10T10:00:00Z", score: 6, itemScores: earlier },
+          { capturedAt: "2026-11-17T10:00:00Z", score: 10, itemScores: later },
+          { capturedAt: "2026-11-19T10:00:00Z", score: 30, itemScores: { ...later, pain: 10 } },
+        ],
+        "2026-11-17T23:59:59.999Z",
+      );
+      expect(trend.latest?.itemScores).toEqual(later);
+      expect(trend.previous?.itemScores).toEqual(earlier);
+    });
+
+    it("is absent from a reading that came without them", () => {
+      const trend = trendOf([point("2026-11-10T10:00:00Z", 6)]);
+      expect(trend.latest).not.toHaveProperty("itemScores");
+    });
+  });
 });
 
 describe("trendWindow", () => {

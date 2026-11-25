@@ -191510,6 +191510,68 @@
                           },
                           "significantChange": {
                             "type": "boolean"
+                          },
+                          "itemScores": {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "pain",
+                              "tiredness",
+                              "drowsiness",
+                              "nausea",
+                              "lackOfAppetite",
+                              "shortnessOfBreath",
+                              "depression",
+                              "anxiety",
+                              "wellbeing"
+                            ],
+                            "properties": {
+                              "pain": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "tiredness": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "drowsiness": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "nausea": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "lackOfAppetite": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "shortnessOfBreath": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "depression": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "anxiety": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "wellbeing": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              }
+                            }
                           }
                         }
                       }
@@ -285725,6 +285787,68 @@
                           },
                           "significantChange": {
                             "type": "boolean"
+                          },
+                          "itemScores": {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "pain",
+                              "tiredness",
+                              "drowsiness",
+                              "nausea",
+                              "lackOfAppetite",
+                              "shortnessOfBreath",
+                              "depression",
+                              "anxiety",
+                              "wellbeing"
+                            ],
+                            "properties": {
+                              "pain": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "tiredness": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "drowsiness": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "nausea": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "lackOfAppetite": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "shortnessOfBreath": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "depression": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "anxiety": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "wellbeing": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              }
+                            }
                           }
                         }
                       }

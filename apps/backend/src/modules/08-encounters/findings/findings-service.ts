@@ -9,6 +9,7 @@ import type {
   ContinenceLevel,
   FluidIntakeLevel,
   NutritionSupport,
+  PriorRecordedAdl,
   RecordedAdl,
   RecordedNutrition,
   SwallowingLevel,
@@ -72,6 +73,8 @@ export interface RecordedFindings {
   readonly nutrition?: RecordedNutrition;
   /** The patient's weight on an earlier encounter, for the note's `RecordedVitals.priorWeight`. */
   readonly priorWeight?: WeightReading;
+  /** The ADL levels of the patient's previous signed visit that assessed any, for the note's change in dependence. */
+  readonly priorAdl?: PriorRecordedAdl;
 }
 
 export interface FindingsService {

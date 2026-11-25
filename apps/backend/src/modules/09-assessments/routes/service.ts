@@ -35,6 +35,7 @@ import type {
   SignificantChangeStatus,
 } from "@chartwarden/types";
 import { NotFoundError } from "@chartwarden/types";
+import { seriesItemScores } from "./series-item-scores";
 
 /** The §4.7 recorder facts the `m9.cosigner_role_match` predicate resolves for one row (RLS-backstopped). */
 export interface AssessmentAbacFacts {
@@ -653,6 +654,7 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
             score: redacted ? null : r.score,
             scoreInterpretation: redacted ? null : r.scoreInterpretation,
             significantChange: false,
+            ...seriesItemScores(r.scaleType, r.data, redacted),
           };
         });
       return { scaleType, patientId, from: fromI, to: toI, points };

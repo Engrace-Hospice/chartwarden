@@ -1,6 +1,7 @@
 // apps/web/src/modules/08-encounters — the pure rules behind the visit-note draft screens (ADR-0114). No I/O, no clock: the words a
 // clinician reads for each section state, which sections still need them, how the server's refusals read, and the score trend. The
 // server decides every state; this only names it.
+import type { EsasrItemScores } from "@chartwarden/types";
 import type { StatusTone } from "@chartwarden/ui";
 import type {
   DraftOrigin,
@@ -326,11 +327,14 @@ export function resolutionNote(
 export interface ScorePoint {
   readonly capturedAt: string;
   readonly score: number | null;
+  /** The nine item scores of an ESAS-r reading, when the server sent them (older records and other scales have none). */
+  readonly itemScores?: EsasrItemScores;
 }
 
 export interface ScoredReading {
   readonly capturedAt: string;
   readonly score: number;
+  readonly itemScores?: EsasrItemScores;
 }
 
 export interface ScoreTrend {
@@ -350,7 +354,13 @@ export function trendOf(points: readonly ScorePoint[], notAfter?: string): Score
   const scored = points
     .flatMap((point): ScoredReading[] =>
       point.score !== null && Date.parse(point.capturedAt) <= ceiling
-        ? [{ capturedAt: point.capturedAt, score: point.score }]
+        ? [
+            {
+              capturedAt: point.capturedAt,
+              score: point.score,
+              ...(point.itemScores ? { itemScores: point.itemScores } : {}),
+            },
+          ]
         : [],
     )
     .sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt));

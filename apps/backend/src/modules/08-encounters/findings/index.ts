@@ -2,6 +2,7 @@
 export * from "./adl";
 export * from "./nutrition";
 export * from "./weight-history";
+export * from "./prior-adl";
 export * from "./findings-guards";
 export * from "./findings-service";
 export * from "./findings-typebox";
@@ -11,5 +12,6 @@ export {
   createDrizzleFindingsService,
   loadRecordedFindings,
   loadRecordedRecords,
+  readPriorAdl,
 } from "./findings-drizzle";
 export { type FindingsRouteDeps, registerFindingsRoutes } from "./findings-routes";

@@ -84,7 +84,7 @@ const ORDER_CODES = ["nv.adm.med_active", "nv.adm.med_active_prn"];
 
 describe("corpus release", () => {
   it("is a new release, registered with its own uuid and a date", () => {
-    expect(VOCAB_VERSION).toBe("narrative-vocab@2026.12.5");
+    expect(VOCAB_VERSION).toBe("narrative-vocab@2026.12.6");
     expect(NARRATIVE_VOCAB_RELEASES.map((r) => r.version)).toEqual([
       "narrative-vocab@2026.06.0",
       "narrative-vocab@2026.11.0",
@@ -95,9 +95,10 @@ describe("corpus release", () => {
       "narrative-vocab@2026.12.3",
       "narrative-vocab@2026.12.4",
       "narrative-vocab@2026.12.5",
+      "narrative-vocab@2026.12.6",
     ]);
     expect(activeNarrativeVocabRelease(VOCAB_VERSION).version).toBe(VOCAB_VERSION);
-    expect(activeNarrativeVocabRelease(VOCAB_VERSION).releasedOn).toBe("2026-11-22");
+    expect(activeNarrativeVocabRelease(VOCAB_VERSION).releasedOn).toBe("2026-11-24");
     expect(new Set(NARRATIVE_VOCAB_RELEASES.map((r) => r.id)).size).toBe(
       NARRATIVE_VOCAB_RELEASES.length,
     );

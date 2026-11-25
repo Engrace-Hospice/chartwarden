@@ -5,10 +5,14 @@
 // Seven activities each take one level of help, bladder and bowel take a continence level, and the assistive devices in use are ticked.
 // Any of them may be left at "Not assessed", which is how it is stored: absent. One Save sends the WHOLE form, because the PUT replaces the
 // stored record. The panel loads what is already recorded and shows it; a signed note (the `disabled` prop, or a 409 on Save) is read-only.
+// Under the levels, the dependence score (how many assessed activities need hands-on help) follows the form live: an advisory for the
+// clinician, derived from the form and never saved or read by the note gate.
+import { statesAdlItemLevel } from "@chartwarden/types";
 import { SelectField } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { type PanelStatusListener, useReportPanelStatus } from "../../../shell/panel-status";
+import { AdlDependenceSummary } from "./adl-dependence-summary";
 import { type AdlBody, type AdlView, loadAdl, saveAdl } from "./findings-api";
 import { FindingsFrame, SaveRow } from "./findings-frame";
 import {
@@ -86,7 +90,9 @@ function AdlFields({ initial, record, readOnly, onStatusChange }: AdlFieldsProps
   useReportPanelStatus(onStatusChange, {
     dirty,
     saving: record.saving,
-    recorded: record.loaded.phase === "ready" && record.loaded.record !== null,
+    // A record documents its section only through an ADL level: a devices- or continence-only record is stored but states nothing,
+    // and the server's gate does not count it (`statesAdlItemLevel` is the one rule both use).
+    recorded: record.loaded.phase === "ready" && statesAdlItemLevel(record.loaded.record?.items),
   });
   /** Back to the record as it is stored (or as it was last saved). */
   function discard(): void {
@@ -120,6 +126,7 @@ function AdlFields({ initial, record, readOnly, onStatusChange }: AdlFieldsProps
           ))}
         </div>
       </fieldset>
+      <AdlDependenceSummary items={form.items} />
       <fieldset className="wx-form-stack wx-fieldset-reset" disabled={readOnly}>
         <legend>Continence</legend>
         <div className="wx-form-grid">

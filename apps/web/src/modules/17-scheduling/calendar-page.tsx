@@ -21,6 +21,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useSession } from "../../shell/session";
+import { newVisitPrefillFromParams } from "./new-visit-prefill";
 import { PURPOSES, VISIT_TONE, purposeLabel, stateLabel } from "./scheduling-status";
 import {
   type EncounterLink,
@@ -230,6 +231,7 @@ export function CalendarPage(): JSX.Element {
   const staffPanelRequested = params.get("panel") === "staff";
   const selectedId = params.get("visit");
   const creating = params.get("newVisit") === "1";
+  const newVisitPrefill = useMemo(() => newVisitPrefillFromParams(params), [params]);
   const contextPatientId = params.get("patient");
   const [contextPatient, setContextPatient] = useState<PatientSummary | null>(null);
   const [contextPatientError, setContextPatientError] = useState(false);
@@ -852,12 +854,15 @@ export function CalendarPage(): JSX.Element {
               }
             : null
         }
+        initialPrefill={newVisitPrefill}
         onClose={() => {
-          updateCalendarParams({ newVisit: null });
+          updateCalendarParams({ newVisit: null, newVisitPurpose: null, newVisitDate: null });
         }}
         onCreated={(visit) => {
           updateCalendarParams({
             newVisit: null,
+            newVisitPurpose: null,
+            newVisitDate: null,
             visit: visit.id,
             date: visit.serviceDate,
           });

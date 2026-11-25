@@ -12,6 +12,7 @@ import type { JSX, ReactNode } from "react";
 import { Button } from "../components/button";
 import { Glyph, type GlyphName } from "../system/glyphs";
 import { ghostBorder, t } from "../theme/tokens";
+import { withoutMrnLabel } from "./mrn-label";
 
 /** Page Header — screen title and page-level actions. Route breadcrumbs live in the shell. */
 export interface PageHeaderProps {
@@ -504,7 +505,7 @@ export function PatientBanner({
             {chips ?? (
               <>
                 {/* MRN is an identifier → IBM Plex Mono (§3.1). */}
-                {field("MRN", mrn, true)}
+                {field("MRN", withoutMrnLabel(mrn), true)}
                 {field("DOB", dob)}
                 {field("Code", codeStatus)}
                 {field("Allergies", allergies)}

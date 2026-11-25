@@ -1,7 +1,9 @@
 // @chartwarden/assessments — server-authoritative scoring (§4.3, §7.1, §7.2, D6) — M9-T03.
 import { describe, expect, it } from "vitest";
+import { SIGNIFICANT_CHANGE_THRESHOLDS } from "../src/detector";
 import type { EsasrData, FastData, PainadData, PpsData } from "../src/scale-types";
 import { esasrScorer } from "../src/scales/esas-r";
+import { ESAS_R_SEVERE_ITEM_MIN_SCORE } from "../src/scales/esas-r/severe-item";
 import { FAST_STAGE_ORDER, fastScorer } from "../src/scales/fast";
 import { painadScorer } from "../src/scales/painad";
 import { ppsScorer } from "../src/scales/pps";
@@ -95,11 +97,64 @@ describe("ESAS-r scorer (§7.2 — 9-item total, other excluded)", () => {
 
   it("flags severe (≥7) items in the interpretation (§7.2 pain at 8)", () => {
     const r = scoreAssessment("esas_r", { ...baseEsasr, pain: 8 });
-    expect(r.interpretation).toMatch(/severe.*pain/);
+    expect(r.interpretation).toBe("ESAS-r total 8/90; severe (≥7): pain");
   });
 
-  it("interprets an all-zero capture as no symptom burden", () => {
-    expect(esasrScorer.interpret(baseEsasr)).toMatch(/no symptom burden/);
+  it("lists an item at exactly 7 and not one at 6, from the same cut-off the alert rule uses", () => {
+    expect(esasrScorer.interpret({ ...baseEsasr, pain: 6 })).toBe("ESAS-r total 6/90");
+    expect(esasrScorer.interpret({ ...baseEsasr, shortnessOfBreath: 7 })).toBe(
+      "ESAS-r total 7/90; severe (≥7): shortness of breath",
+    );
+    // One number for both: the record's line and the esas_symptom_ge_7 rule cannot drift apart.
+    expect(SIGNIFICANT_CHANGE_THRESHOLDS.esas_symptom_ge_7).toMatchObject({
+      platform: ESAS_R_SEVERE_ITEM_MIN_SCORE,
+      floor: ESAS_R_SEVERE_ITEM_MIN_SCORE,
+    });
+  });
+
+  it("states the total as a number with no band: no source gives cut-offs for the 0 to 90 total", () => {
+    const all = (score: number): EsasrData => ({
+      ...baseEsasr,
+      pain: score,
+      tiredness: score,
+      drowsiness: score,
+      nausea: score,
+      lackOfAppetite: score,
+      shortnessOfBreath: score,
+      depression: score,
+      anxiety: score,
+      wellbeing: score,
+    });
+    expect(esasrScorer.interpret(all(0))).toBe("ESAS-r total 0/90");
+    for (const score of [0, 4, 7, 10]) {
+      expect(esasrScorer.interpret(all(score))).not.toMatch(/mild|moderate|high|burden/i);
+    }
+  });
+
+  it("rejects a reading with an item that is not a whole number from 0 to 10 (422), so the record and the alert cannot disagree", () => {
+    const bad: ReadonlyArray<Partial<Record<keyof EsasrData, unknown>>> = [
+      { pain: 11 }, // total 11 is inside 0..90, the item is not
+      { pain: 9, nausea: -1 },
+      { pain: 9, nausea: null },
+      { pain: 9, nausea: "3" },
+      { pain: 6.5 },
+      { pain: Number.NaN },
+    ];
+    for (const patch of bad) {
+      expect(() => scoreAssessment("esas_r", { ...baseEsasr, ...patch } as EsasrData)).toThrowError(
+        expect.objectContaining({ code: "INVALID_ITEM_SCORE", statusCode: 422 }),
+      );
+    }
+    // A missing item is the same refusal, not a NaN total that surfaced as a 500.
+    const { nausea: _omitted, ...missing } = baseEsasr;
+    expect(() => scoreAssessment("esas_r", missing as unknown as EsasrData)).toThrowError(
+      expect.objectContaining({ code: "INVALID_ITEM_SCORE", statusCode: 422 }),
+    );
+  });
+
+  it("accepts the bounds 0 and 10 on every item", () => {
+    expect(scoreAssessment("esas_r", { ...baseEsasr, pain: 10, wellbeing: 10 }).score).toBe(20);
+    expect(scoreAssessment("esas_r", baseEsasr).score).toBe(0);
   });
 });
 

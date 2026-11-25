@@ -20,6 +20,7 @@ import type {
   SignificantChangeRuleId,
 } from "@chartwarden/types";
 import { require_ } from "./errors";
+import { ESAS_R_SEVERE_ITEM_MIN_SCORE } from "./scales/esas-r/severe-item";
 import { RULE_SCALE, firstEmissionSeverity } from "./significant-change";
 
 /** How a rule's numeric `threshold` is compared to the observed value, which fixes the "tighten" direction
@@ -51,7 +52,12 @@ export const SIGNIFICANT_CHANGE_THRESHOLDS: {
     floor: 10,
     windowDays: 7,
   },
-  esas_symptom_ge_7: { comparator: "ge", platform: 7, floor: 7 },
+  // Any ONE of the nine ESAS-r items at the severe cut-off. Pinned (floor = platform): a tenant may not move it. Source and limits: ./scales/esas-r/severe-item.ts.
+  esas_symptom_ge_7: {
+    comparator: "ge",
+    platform: ESAS_R_SEVERE_ITEM_MIN_SCORE,
+    floor: ESAS_R_SEVERE_ITEM_MIN_SCORE,
+  },
   painad_ge_4: { comparator: "ge", platform: 4, floor: 4 },
   braden_le_12: { comparator: "le", platform: 12, floor: 12 },
   morse_ge_51: { comparator: "ge", platform: 51, floor: 51 },
