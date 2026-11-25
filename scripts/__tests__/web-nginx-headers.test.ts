@@ -65,9 +65,25 @@ describe("deploy/production SPA security headers (SECURITY_HARDENING §9.6)", ()
     const csp = snippet.match(/Content-Security-Policy "([^"]*)"/)?.[1] ?? "";
     expect(csp).toMatch(/img-src [^;]* https:;/);
     expect(csp).toMatch(/frame-src [^;]* https:;/);
+    expect(csp).toMatch(/connect-src [^;]* https:;/);
     expect(read(".github/workflows/release-tenant-web.yml")).toContain(
       "CSP_STORAGE_ORIGIN=https://storage.",
     );
+  });
+
+  // The verified upload PUTs the file straight from the browser to the presigned storage URL
+  // (documents-api.ts, step 3). `connect-src 'self' wss:` blocked that PUT before it left the browser,
+  // so the staff app showed "Failed to fetch" on every upload.
+  it("connect-src lets the browser reach the storage origin, and the Dockerfile pin narrows it to that origin", () => {
+    const csp = snippet.match(/Content-Security-Policy "([^"]*)"/)?.[1] ?? "";
+    const connectSrc = (value: string): string[] =>
+      (value.match(/connect-src ([^;]*);/)?.[1] ?? "").split(/\s+/);
+    expect(connectSrc(csp)).toContain("https:");
+    // The Dockerfile's pin: sed "s# https:;# <origin>;#g" (exact same pattern, so a drift fails here).
+    expect(read("Dockerfile.web")).toContain('sed -i "s# https:;# ${CSP_STORAGE_ORIGIN};#g"');
+    const pinned = csp.replaceAll(" https:;", " https://storage.example.test;");
+    expect(connectSrc(pinned)).toEqual(["'self'", "wss:", "https://storage.example.test"]);
+    expect(pinned).not.toContain(" https:;");
   });
 
   it("smoke.sh asserts the headers on the live SPA response", () => {
