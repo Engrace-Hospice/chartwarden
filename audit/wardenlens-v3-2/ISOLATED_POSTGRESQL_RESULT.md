@@ -36,10 +36,10 @@ they were not introduced by PR #1112.
 1. WardenLens support access locked `organization` and `tenant_account` rows with `FOR SHARE`, which needs an UPDATE privilege
    the platform role does not hold: "permission denied for table organization". The lock now covers only the session and grant rows.
 2. Migration 1487's `grant_revoked` close trigger ran `INSERT ... ON CONFLICT` as `chartwarden_admin`, which has no SELECT policy on
-   `support_session_event`, so every `grant_revoked` close failed the RLS check. Migration `1547` removes the clause.
+   `support_session_event`, so every `grant_revoked` close failed the RLS check. Migration `1555` removes the clause.
 3. 1487 also moved the two support-session audit triggers to `search_path = pg_catalog, public` with unqualified names, so a TEMP
-   `audit_event` table created by the app role would capture their rows. Migration `1547` restores the `pg_temp`-last,
+   `audit_event` table created by the app role would capture their rows. Migration `1555` restores the `pg_temp`-last,
    schema-qualified form from 1486.
 4. One test closed a session as `grant_revoked` before revoking the grant, which 1487 forbids. It revokes first now.
 
-Migration `1547` is `-- compat: expand`. 1487 is already on `origin/main`, so a deploy of this branch applies 1547.
+Migration `1555` is `-- compat: expand`. 1487 is already on `origin/main`, so a deploy of this branch applies 1555.
