@@ -1953,7 +1953,7 @@ registerDataEraser({
 - External-source eligibility branch (D16): the `m6-eligibility-worker` builds `external_source_metadata` only when `source='hl7_external'`; internal-source plans leave the column NULL.
 - First-contact gate (D18): `initiateBereavementContact` refuses with `external_source_cosign_pending` for pending external-source plans and with `tenant_gate_death_certificate_missing` when the tenant override requires a death certificate.
 
-### 9.2 Integration Tests (Testcontainers — Postgres + Valkey + MinIO)
+### 9.2 Integration Tests (Testcontainers — Postgres + Valkey + RustFS, S3-compatible)
 
 - End-to-end intake: M6 outbox event → M16 worker → plan created with idempotency.
 - Counselor assignment + roster seed + activation: full happy path emits expected outbox events and creates expected rows.

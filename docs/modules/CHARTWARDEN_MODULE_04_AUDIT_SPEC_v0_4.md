@@ -72,7 +72,7 @@ Module 1 created the *place* audit lives (the append-only partitioned table and 
 - **Accounting of Disclosures (HIPAA §164.528).** A patient's right to an accounting of disclosures of their PHI. Module 4 turns the read/disclosure trail into the regulated report.
 - **Audit query & reporting surface.** Permissioned search across actor, patient, resource, time, event type, outcome, severity — for Compliance, surveys, and incident investigation. Includes the data behind Module 3's auditor-engagement summaries.
 - **Integrity & tamper-evidence.** Verifies the append-only GRANT model holds; emits the **audit-of-audit** meta-event on any elevated read of the audit table; cross-references against backups; provides an optional hash-chain seal (Phase 2) so any post-hoc modification is detectable.
-- **Retention, destruction & legal hold.** Enforces the retention matrix (architecture §24) for the audit classes (`operational` 1 yr, `compliance` 6+ yr, `legal_hold` indefinite), drives partition hot→warm→cold tiering, runs the Certificate-of-Destruction workflow (§24.2), and applies/releases legal holds (§24.3) with state-variation overrides (§24.4).
+- **Retention, destruction & legal hold.** Enforces the retention matrix (architecture §24) for the audit classes (`operational` 1 yr, `compliance` 6+ yr, `legal_hold` indefinite), drives partition hot→warm→cold tiering (as built, M1's class-agnostic `audit.archive` job: Ops Runbook §5.2.3), runs the Certificate-of-Destruction workflow (§24.2), and applies/releases legal holds (§24.3) with state-variation overrides (§24.4).
 - **42 CFR Part 2 audit retention enforcement.** Audit rows tagged with the `compliance_42cfr_part2` retention class follow stricter rules than HIPAA `compliance`: indefinite retention during patient lifetime, lifetime + 6 years afterward, and erasure refused even with an approved destruction certificate while the patient is alive. The Part 2 patient-accounting right (42 CFR §2.13) is broader than HIPAA's §164.528 — the accounting endpoint serves Part 2 disclosures over the patient's lifetime (no 6-year clamp), and Part 2 accounting requests themselves are audited at `compliance_42cfr_part2`.
 
 ### 1.2 What This Module Does Not Do
@@ -465,7 +465,7 @@ export const destructionCertificates = pgTable('destruction_certificate', {
   status: destructionStatus('status').notNull().default('pending'),
   approvedBy: uuid('approved_by').references(() => users.id),
   executedAt: timestamp('executed_at',{withTimezone:true}),
-  certificatePdfRef: uuid('certificate_pdf_ref'),  // MinIO doc id
+  certificatePdfRef: uuid('certificate_pdf_ref'),  // object-store doc id
   createdAt: timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
 }, (t) => ({ orgIdx: index('destruction_cert_org_idx').on(t.organizationId) }))
 
@@ -485,7 +485,7 @@ export const auditExports = pgTable('audit_export', {
   scope: jsonb('scope').notNull(),              // {patientIds?, actorIds?, resourceKinds?, eventTypes?, from, to}
   format: auditExportFormat('format').notNull(),
   watermarked: boolean('watermarked').notNull().default(true),
-  fileRef: uuid('file_ref'),                    // MinIO object id (null until job completes)
+  fileRef: uuid('file_ref'),                    // object-store object id (null until job completes)
   recordCount: integer('record_count'),
   status: text('status').notNull().default('pending'), // pending|building|ready|failed
   requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
@@ -866,7 +866,7 @@ Type.Object({
 **GET /api/v1/audit/exports/:id** — `audit.export`
 ```typescript
 // Params {id:uuid}  200 -> { id, status, format, recordCount, downloadUrl?:string, expiresAt }
-// downloadUrl is a short-lived presigned MinIO URL; only present when status='ready'. 404 if not owner-org.
+// downloadUrl is a short-lived presigned object-store URL; only present when status='ready'. 404 if not owner-org.
 ```
 
 **GET /api/v1/legal-holds** — `legalhold.read`
@@ -939,12 +939,12 @@ Type.Object({
 
 | Queue | Trigger | Work |
 |---|---|---|
-| `audit.archive` (M1) | scheduled | tier closed partitions hot→warm (MinIO) per class |
+| `audit.archive` (M1) | scheduled | tier closed partitions hot→warm (object store) per class. As built the job is class-agnostic: it archives every closed partition older than the hot window and detaches only when `AUDIT_ARCHIVE_DETACH=true`; a partition holding held rows may detach after a verified manifest, held rows are never destroyed (M4 destruction skips them), and destruction waits for an approved certificate (Ops Runbook §5.2.3) |
 | `audit.retention_scan` | scheduled (daily) | find expired partitions/objects by class + state override → create pending destruction certs; skip `legal_hold` and `compliance_42cfr_part2` rows whose patient is alive / <6yr post-death |
 | `audit.execute_destruction` | on cert approval | partition detach + cryptographic erasure; emit cert + audit; Part 2 rows refused → `partial_refused` |
 | `audit.seal_partition` (phase 2) | on partition close | compute + store chain hash |
 | `audit.integrity_sample` | scheduled (quarterly) | sample 100 events vs pgBackRest backup; alert on mismatch (Security Hardening T6 validation). **As built:** the reference is the `audit_seal` hash chain (check every `prev_chain_hash` link, recompute a random sample of sealed months), not a backup — **the pgBackRest comparison is NOT built** (no backup reader; each run records `backup_cross_reference = unavailable_no_backup_reader`). Gated per org by `audit_hash_chain_enabled` (default off); run history in `audit_integrity_run` (migration 0510); a mismatch alerts (`m4.audit.integrity_mismatch`) and fails the job. See `docs/history/auditor-redemption-and-audit-integrity-sample.md`. |
-| `audit.build_export` | on export request | render watermarked file to MinIO |
+| `audit.build_export` | on export request | render watermarked file to the object store |
 
 ### 4.5 Permission Keys Registered into Module 3
 
@@ -1521,7 +1521,7 @@ The audit log is mostly machinery; the visible surfaces serve Compliance, survey
 | Cross-tenant audit read without break-glass | denied; attempt audited |
 | Accounting requested beyond 6-year right (HIPAA scope) | clamped to 6 years with a note; Part 2 scope is lifetime, no clamp |
 | High-volume list view | aggregate event recorded; individual chart opens still individual |
-| Partition archived to MinIO then queried | query transparently spans hot + warm tiers |
+| Partition archived to the object store then queried | query transparently spans hot + warm tiers (TARGET: no code reads a warm tier, and a detached range is no longer searched through `audit_event`, Ops Runbook §5.2.3) |
 | Action used in code with no catalog entry | runtime audit-write fails; boot fails if discovered at startup |
 | Module registers an action outside its `mN.` prefix | M4 boot refuses startup (namespace violation) |
 | Destruction batch reaches a Part 2 row while patient alive | eraser refuses; certificate → `partial_refused`; non-Part-2 rows still erased |
@@ -1601,7 +1601,7 @@ The audit log is mostly machinery; the visible surfaces serve Compliance, survey
 
 ### 12.4 RLS Isolation
 
-- Org A's audit events invisible under Org B context, including across warm-tier (MinIO) reads.
+- Org A's audit events invisible under Org B context, including across warm-tier (object store) reads (TARGET: no warm-tier read is built).
 - Cross-tenant audit read requires break-glass; denied otherwise; denial audited.
 
 ### 12.5 E2E (Playwright)
@@ -1631,7 +1631,7 @@ The audit log is mostly machinery; the visible surfaces serve Compliance, survey
 | 2 | Write-audit trigger generator (`packages/audit/triggers`) | M | 1 |
 | 3 | Read-audit helper + route `auditRead` config + `require-read-audit` lint | M | M3 |
 | 4 | Schema: legal_hold/destruction_certificate/state_retention_override/audit_export + migration `0004` + RLS | M | M1 |
-| 5 | Audit query/search API (faceted, cursor-paginated, hot+warm spanning) | L | 4 |
+| 5 | Audit query/search API (faceted, cursor-paginated, hot+warm spanning; TARGET: no warm-tier read is built) | L | 4 |
 | 6 | Patient access history + Accounting of Disclosures (§164.528) | M | 5 |
 | 7 | Retention scan + class lifecycle + state override resolution | M | 4 |
 | 8 | Destruction certificate workflow (pending→approve/hold→execute→cert PDF) | L | 7, M22(pdf) |

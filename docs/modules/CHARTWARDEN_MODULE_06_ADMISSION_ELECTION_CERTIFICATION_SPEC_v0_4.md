@@ -3718,7 +3718,7 @@ Property tests (`fast-check`):
 
 ### 9.2 Integration Tests (Testcontainers)
 
-Living at `apps/backend/test/integration/m6/*.test.ts` per architecture §6.4. Each test stands up Postgres + Valkey + a small MinIO via Testcontainers.
+Living at `apps/backend/test/integration/m6/*.test.ts` per architecture §6.4. Each test stands up Postgres + Valkey + a small S3-compatible store (RustFS, as in local dev and CI) via Testcontainers.
 
 | Suite | Scope |
 |---|---|

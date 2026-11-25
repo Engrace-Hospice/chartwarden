@@ -198,7 +198,9 @@ describe("spec 4.4 M10_SFV_COMPLETION_INCOMPLETE: no record is inserted, and the
 describe("spec 4.10.1: the MinIO storage and adapter resilience are marked design only where they are described", () => {
   it("carries its own banner, and no non-test app code uses the breaker, key builder or object-lock constants", () => {
     const head = between("#### 4.10.1", "**Circuit-breaker configuration");
-    expect(head).toContain("**Design only: not built (adapter resilience and MinIO storage).**");
+    expect(head).toContain(
+      "**Design only: not built (adapter resilience and object-store storage).**",
+    );
     expect(head).toContain("`createUnboundIqiesAdapter`");
     const app = sourcesUnder("apps");
     for (const name of [
