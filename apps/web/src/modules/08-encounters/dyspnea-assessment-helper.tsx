@@ -24,32 +24,20 @@ import {
   dyspneaPlanReviewReasons,
   isDyspneaAssessmentCode,
 } from "@chartwarden/types";
-import { StatusPill, TextField } from "@chartwarden/ui";
-import { Fragment, useId } from "react";
-import type { CSSProperties, JSX } from "react";
-import { hairline, slotGrid } from "./encounter-compose-styles";
+import { Fragment } from "react";
+import type { JSX } from "react";
+import {
+  CharacteristicChips,
+  type GroupDef,
+  GroupFields,
+  body,
+  changeField,
+  panel,
+  small,
+  summaryStyle,
+} from "./assessment-helper-fields";
 import type { DraftEntry, MenuEntry, TemplateSection } from "./encounters-api";
 import { PlanReviewPrompt } from "./plan-review-prompt";
-import { MAX_TEXT_LENGTH, SlotInput } from "./slot-input";
-
-/** One field of a statement: its slot, and a hint (a choice or a number also carries its own bounds). */
-interface FieldDef {
-  readonly slot: string;
-  readonly label: string;
-  readonly hint?: string;
-}
-
-/** One statement of the helper, as the clinician sees it. */
-interface RowDef {
-  readonly code: string;
-  readonly fields: readonly FieldDef[];
-}
-
-interface GroupDef {
-  readonly title: string;
-  readonly note?: string;
-  readonly rows: readonly RowDef[];
-}
 
 const PLAN_GROUP_TITLE = "Plan of care";
 
@@ -183,149 +171,6 @@ export interface DyspneaAssessmentHelperProps {
   readonly onOpenPlan: () => void;
 }
 
-const panel: CSSProperties = {
-  border: hairline,
-  borderRadius: "0.7rem",
-  background: "var(--color-surface)",
-  padding: "0.6rem 0.8rem 0.8rem",
-};
-const summaryStyle: CSSProperties = { cursor: "pointer", fontSize: "0.82rem", fontWeight: 650 };
-const body: CSSProperties = { display: "grid", gap: "0.8rem", marginTop: "0.6rem" };
-const small: CSSProperties = {
-  margin: 0,
-  fontSize: "0.72rem",
-  lineHeight: 1.45,
-  color: "var(--color-on-surface-variant)",
-};
-const chips: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: "0.35rem",
-  margin: 0,
-  padding: 0,
-};
-const groupTitle: CSSProperties = { fontSize: "0.74rem", fontWeight: 700 };
-const rowStyle: CSSProperties = { display: "grid", gap: "0.2rem" };
-const fieldsetStyle: CSSProperties = {
-  border: 0,
-  margin: 0,
-  padding: 0,
-  display: "grid",
-  gap: "0.5rem",
-};
-
-const slotText = (held: DraftEntry | undefined, slot: string): string =>
-  String(held?.params[slot] ?? "");
-
-interface FieldInputProps {
-  readonly entry: MenuEntry;
-  readonly def: FieldDef;
-  readonly value: string;
-  readonly disabled: boolean;
-  /** The id of the "Already recorded in ..." paragraph of a locked row; the control's description includes it. */
-  readonly lockNoteId?: string;
-  readonly onChange: (value: string) => void;
-}
-
-function FieldInput({
-  entry,
-  def,
-  value,
-  disabled,
-  lockNoteId,
-  onChange,
-}: FieldInputProps): JSX.Element {
-  const hintId = useId();
-  const spec = entry.slotSpecs[def.slot];
-  if (spec === undefined) {
-    // TextField ties its own hint to the control and keeps this id after it.
-    return (
-      <TextField
-        label={def.label}
-        hint={def.hint}
-        maxLength={MAX_TEXT_LENGTH}
-        aria-describedby={lockNoteId}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    );
-  }
-  const describedBy = [def.hint ? hintId : null, lockNoteId].filter(Boolean).join(" ") || undefined;
-  return (
-    <div style={rowStyle}>
-      <SlotInput
-        slot={def.slot}
-        spec={spec}
-        label={def.label}
-        value={value}
-        disabled={disabled}
-        describedBy={describedBy}
-        onChange={onChange}
-      />
-      {def.hint ? (
-        <p id={hintId} style={small}>
-          {def.hint}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-interface GroupFieldsProps {
-  readonly group: GroupDef;
-  readonly entries: readonly MenuEntry[];
-  readonly selected: readonly DraftEntry[];
-  readonly disabled: boolean;
-  readonly recordedElsewhere: (code: string) => TemplateSection | undefined;
-  readonly onChange: (entry: MenuEntry, slot: string, value: string) => void;
-}
-
-function GroupFields({
-  group,
-  entries,
-  selected,
-  disabled,
-  recordedElsewhere,
-  onChange,
-}: GroupFieldsProps): JSX.Element {
-  const idBase = useId();
-  return (
-    <fieldset style={fieldsetStyle}>
-      <legend style={groupTitle}>{group.title}</legend>
-      {group.note ? <p style={small}>{group.note}</p> : null}
-      <div style={slotGrid}>
-        {entries.flatMap((entry) => {
-          const row = group.rows.find((r) => r.code === entry.code);
-          const held = selected.find((e) => e.code === entry.code);
-          const elsewhere = recordedElsewhere(entry.code);
-          const lockNoteId =
-            elsewhere === undefined ? undefined : `${idBase}-${entry.code}-elsewhere`;
-          const fields = (row?.fields ?? []).map((def) => (
-            <FieldInput
-              key={def.slot}
-              entry={entry}
-              def={def}
-              value={slotText(held, def.slot)}
-              disabled={disabled || elsewhere !== undefined}
-              lockNoteId={lockNoteId}
-              onChange={(value) => onChange(entry, def.slot, value)}
-            />
-          ));
-          return elsewhere === undefined
-            ? fields
-            : [
-                ...fields,
-                <p key={`${entry.code}-elsewhere`} id={lockNoteId} style={small}>
-                  Already recorded in {elsewhere.heading}
-                </p>,
-              ];
-        })}
-      </div>
-    </fieldset>
-  );
-}
-
 export function DyspneaAssessmentHelper({
   menu,
   selected,
@@ -339,16 +184,8 @@ export function DyspneaAssessmentHelper({
   const completeness = dyspneaCompleteness(allSelected);
   const reasons = dyspneaPlanReviewReasons(allSelected);
 
-  function change(entry: MenuEntry, slot: string, value: string): void {
-    const held = selected.find((e) => e.code === entry.code);
-    // A statement with nothing left in it is unselected, so the note never carries an empty one.
-    if (value.trim() === "") {
-      if (held) onToggle(entry);
-      return;
-    }
-    if (!held) onToggle(entry);
-    onSlot(entry.code, slot, value);
-  }
+  const change = (entry: MenuEntry, slot: string, value: string): void =>
+    changeField({ selected, onToggle, onSlot }, entry, slot, value);
 
   return (
     // `details` is a group; the pain helper beside it uses the same field names and legends, so this one is named by its subject.
@@ -358,16 +195,12 @@ export function DyspneaAssessmentHelper({
       </summary>
       <div style={body}>
         <p style={small}>{INTRO}</p>
-        <ul style={chips} aria-label="Characteristics of a dyspnea assessment">
-          {DYSPNEA_CHARACTERISTICS.map((c) => (
-            <li key={c} style={{ listStyle: "none" }}>
-              <StatusPill
-                label={`${DYSPNEA_CHARACTERISTIC_LABELS[c]}${completeness.documented.includes(c) ? ": documented" : ""}`}
-                tone={completeness.documented.includes(c) ? "success" : "neutral"}
-              />
-            </li>
-          ))}
-        </ul>
+        <CharacteristicChips
+          label="Characteristics of a dyspnea assessment"
+          characteristics={DYSPNEA_CHARACTERISTICS}
+          names={DYSPNEA_CHARACTERISTIC_LABELS}
+          documented={completeness.documented}
+        />
 
         {GROUPS.map((group) => {
           const entries = group.rows.flatMap((row) => menu.filter((e) => e.code === row.code));

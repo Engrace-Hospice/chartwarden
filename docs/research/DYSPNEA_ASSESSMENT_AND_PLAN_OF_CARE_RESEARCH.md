@@ -5,8 +5,9 @@ Researched 2026-11-25 for the visit-note composer's dyspnea helper (M8, `package
 [`PAIN_ASSESSMENT_AND_PLAN_OF_CARE_TRIGGERS_RESEARCH.md`](./PAIN_ASSESSMENT_AND_PLAN_OF_CARE_TRIGGERS_RESEARCH.md)
 section 6 ("a dyspnea equivalent is not built: the research did not cover dyspnea assessment or triggers").
 
-**This is research input, not clinical sign-off.** A hospice clinician (the corpus reviewer or the medical
-director) must read the wording before release. Anything a source did not confirm is marked
+**This is research input, not clinical sign-off.** The wording built on it is section 7 of
+[`CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md`](../clinical-review/CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md),
+signed off by Lora, RN on 2026-11-25 as a whole, per-row boxes left blank. Anything a source did not confirm is marked
 **NOT CONFIRMED** and is not in the code.
 
 ## Headline
@@ -111,5 +112,6 @@ sign-off rows 2.12 and 2.13).
 ## Still unread
 
 ASCO 2021, ACCP 2010, ESMO 2015, NCCN Palliative Care, Selby 2010 and Oldenmenger 2013 in full text; the 2017 and 2019
-RDOS papers. The helper's wording needs clinician sign-off (a new section of
-[`CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md`](../clinical-review/CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md)).
+RDOS papers. The helper's wording is section 7 of
+[`CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md`](../clinical-review/CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md),
+signed off 2026-11-25 as above.

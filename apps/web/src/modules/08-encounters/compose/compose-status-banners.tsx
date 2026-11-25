@@ -1,6 +1,6 @@
 // apps/web/src/modules/08-encounters/compose — what the composer tells the author about the note as a whole, above the workspace: the
 // documentation progress bar, the save-state line, the save/finalize notice, the "preview not refreshed" notice, and the
-// required-documentation card (moved out of encounter-compose.tsx unchanged).
+// required-documentation card (moved out of encounter-compose.tsx).
 import { Button } from "@chartwarden/ui";
 import type { JSX } from "react";
 import type { UiFeedback } from "../compose-feedback";
@@ -94,6 +94,8 @@ export interface SaveStateLineProps {
   readonly savingPanelCount: number;
   readonly selectionsDirty: boolean;
   readonly panelsDirty: boolean;
+  /** A late-entry reason is typed that no save has sent (only Finalize sends it): "All changes saved" would say too much. */
+  readonly lateReasonUnsent?: boolean;
 }
 
 export function SaveStateLine({
@@ -101,6 +103,7 @@ export function SaveStateLine({
   savingPanelCount,
   selectionsDirty,
   panelsDirty,
+  lateReasonUnsent = false,
 }: SaveStateLineProps): JSX.Element {
   return (
     <output className="wx-encounter-save-state" aria-live="polite">
@@ -114,7 +117,9 @@ export function SaveStateLine({
               ? "Unsaved changes"
               : panelsDirty
                 ? "Unsaved entries in a section. Use that section's own Save button."
-                : "All changes saved"}
+                : lateReasonUnsent
+                  ? "Late-entry reason not sent yet"
+                  : "All changes saved"}
     </output>
   );
 }

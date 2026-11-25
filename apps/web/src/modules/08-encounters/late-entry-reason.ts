@@ -113,7 +113,7 @@ export function lateEntryTierName(estimate: LateEntryEstimate | null): string {
 
 /** Why a reason is asked for: the one sentence every tier shares. */
 export const LATE_ENTRY_WHY =
-  "A note entered after the visit has to be identified as late, with the reason, so the record shows why it was not documented sooner (Medicare Program Integrity Manual, ch. 3, section 3.3.2.5). Your reason is saved with the note.";
+  "A note entered after the visit has to be identified as late, with the reason, so the record shows why it was not documented sooner (Medicare Program Integrity Manual, ch. 3, section 3.3.2.5). Your reason is sent when you finalize the note.";
 
 /** What must happen after finalizing, for the tiers that need an approval before the note can be signed (Module 8 §2.5); "" for the others. */
 export function lateEntryApprovalNote(estimate: LateEntryEstimate | null): string {

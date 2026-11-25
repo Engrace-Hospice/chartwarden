@@ -5,8 +5,9 @@ Researched 2026-11-24 for the visit-note composer's "Symptom impact: pain limiti
 section or page, and a type. Anything a source did not confirm is marked **NOT CONFIRMED** and is not in
 the code.
 
-**This is research input, not clinical sign-off.** A hospice clinician (the corpus reviewer, ADA, or the
-medical director) must read the wording and the thresholds before release.
+**This is research input, not clinical sign-off.** The wording and thresholds built on it are section 2 of
+[`CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md`](../clinical-review/CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md),
+signed off by Lora, RN on 2026-11-25 with sections 1-6, not item by item.
 
 ## Claim types
 

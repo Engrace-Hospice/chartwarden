@@ -21,7 +21,7 @@ const SACRUM = "dddddddd-4444-4444-8444-dddddddddd02";
 const BASE = `/api/v1/encounters/${ENCOUNTER}`;
 const WOUNDS = `/api/v1/patients/${PATIENT}/wounds`;
 const BUTTON = "No skin or wound concerns at this visit";
-const RECORDED = "Recorded: no skin or wound concerns at this visit";
+const RECORDED = "Added to the note: no skin or wound concerns at this visit";
 const REMOVED = `Removed '${SENTENCE}' because a wound was recorded.`;
 const SECTION_COUNT = 3;
 const SESSION = {
@@ -327,8 +327,9 @@ describe("No skin or wound concerns, in the composer", () => {
     await user.selectOptions(register.getByLabelText(/^Cause/), "pressure_injury");
     await user.click(register.getByRole("button", { name: "Register wound" }));
 
-    // Said in the panel and in the composer's own notice above the note.
+    // Said in the panel and in the composer's own notice above the note, which carries a title.
     expect((await screen.findAllByText(REMOVED)).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Sentence removed")).toBeInTheDocument();
     expect((await notes()).value).toBe("Skin warm and dry.");
     expect(screen.queryByText(RECORDED)).toBeNull();
   });
@@ -374,8 +375,15 @@ describe("No skin or wound concerns, in the composer", () => {
     // Another section is open, so the wounds panel is hidden: the notice has to be outside it.
     await waitFor(() => expect(screen.getByText("Unsaved changes")).toBeTruthy());
     await waitFor(() => {
-      const visibleNotices = screen.getAllByRole("status").map((notice) => notice.textContent);
-      expect(visibleNotices).toContain(REMOVED);
+      const visibleNotices = screen
+        .getAllByRole("status")
+        .map((notice) => notice.textContent ?? "");
+      // The notice is titled, so its text is the title followed by the removal sentence.
+      expect(
+        visibleNotices.some(
+          (text) => text.startsWith("Sentence removed") && text.endsWith(REMOVED),
+        ),
+      ).toBe(true);
     });
   });
 

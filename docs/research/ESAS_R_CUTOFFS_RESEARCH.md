@@ -5,7 +5,8 @@ Researched 2026-11-25 for the visit-note composer's ESAS-r item prompt (M8 compo
 [`PAIN_ASSESSMENT_AND_PLAN_OF_CARE_TRIGGERS_RESEARCH.md`](./PAIN_ASSESSMENT_AND_PLAN_OF_CARE_TRIGGERS_RESEARCH.md)
 section 6.
 
-**This is research input, not clinical sign-off.** Anything a source did not confirm is marked **NOT CONFIRMED**.
+**This is research input, not clinical sign-off.** Anything a source did not confirm is marked **NOT CONFIRMED**. The composer prompt built on it is
+section 8 of [`CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md`](../clinical-review/CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md), signed off by Lora, RN on 2026-11-25, not item by item.
 
 ## Headline
 

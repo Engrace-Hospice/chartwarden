@@ -35,7 +35,7 @@ interface Options {
   readonly idle: boolean;
 }
 
-export const RECORDED_NO_CONCERNS = "Recorded: no skin or wound concerns at this visit";
+export const RECORDED_NO_CONCERNS = "Added to the note: no skin or wound concerns at this visit";
 const REMOVED_NO_CONCERNS = `Removed '${NO_WOUND_CONCERNS_SENTENCE}' because a wound was recorded.`;
 
 export function useNoWoundConcernsStatement({

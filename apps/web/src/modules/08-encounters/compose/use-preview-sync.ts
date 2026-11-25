@@ -1,5 +1,5 @@
 // apps/web/src/modules/08-encounters/compose — how the composer keeps the note's text in step with the server: read what is stored, show it,
-// and re-read it when a panel saved something the note states (moved out of encounter-compose.tsx unchanged).
+// and re-read it when a panel saved something the note states (moved out of encounter-compose.tsx).
 import type { ApiClient } from "@chartwarden/ui";
 import { type Dispatch, type MutableRefObject, type SetStateAction, useCallback } from "react";
 import { type SelectionsView, loadSelections } from "../encounters-api";

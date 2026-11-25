@@ -353,13 +353,21 @@ describe("leaving the page with a reason typed that no save has sent", () => {
 
     await user.type(await reasonBox(), "Family needed me");
     expect(unloadIsWarned()).toBe(true);
-    // Save draft does not send the reason, so the save line still describes the draft only.
-    expect(screen.getByText("All changes saved")).toBeInTheDocument();
+    // Save draft does not send the reason, so the save line must not say everything is saved.
+    expect(screen.getByText("Late-entry reason not sent yet")).toBeInTheDocument();
+    expect(screen.queryByText("All changes saved")).toBeNull();
 
     await act(async () => {
       await router.navigate("/patients");
     });
-    expect(await screen.findByRole("alertdialog", { name: "Leave without saving?" })).toBeVisible();
+    const leave = await screen.findByRole("alertdialog", { name: "Leave without saving?" });
+    expect(leave).toBeVisible();
+    // Only the reason would be lost (the note is saved), and the dialog says so.
+    expect(
+      within(leave).getByText(
+        "Your late-entry reason has not been sent. Keep editing or discard it before leaving.",
+      ),
+    ).toBeVisible();
     expect(screen.getByRole("heading", { name: "Compose visit note" })).toBeInTheDocument();
   });
 

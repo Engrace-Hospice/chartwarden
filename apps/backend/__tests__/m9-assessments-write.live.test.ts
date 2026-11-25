@@ -754,6 +754,12 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
     ).rows[0].payload as { severity: string; ruleId: string };
     expect(payload.ruleId).toBe("esas_symptom_ge_7");
     expect(payload.severity).toBe("medium");
+    // The fired event is audited as it is written: the DB trigger `audit_phi_write_significant_change_event` (migration 0033) records the insert.
+    const insertAudit = await admin.query(
+      "SELECT 1 FROM audit_event WHERE resource_id = $1 AND event_type = 'significant_change_event.insert'",
+      [evId],
+    );
+    expect(insertAudit.rows.length).toBeGreaterThan(0);
 
     // The optional "other" symptom is outside the nine scored items, as it is outside the total.
     const other = await sitedSvc.recordAssessment(

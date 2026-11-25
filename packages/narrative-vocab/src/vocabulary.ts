@@ -75,10 +75,10 @@ export type ClinicalReviewStatus = "pending" | "approved";
  * the benefit period, the face-to-face's facts, the benefit period) and in `narrative-vocab@2026.12.1` (the 5 admission entries: the
  * orders in effect, the caregivers on record, the advance directive acknowledgment on file) is DRAFT WORDING. It was written to be neutral and factual (numbers and dates, no clinical judgement), but
  * it has not been read by a clinician. The platform-side reviewer named by the owner on 2026-11-18 is ADA.
- * The 16 pain assessment statements of `narrative-vocab@2026.12.6` are unreviewed wording too. The 15 dyspnea assessment statements of the same release
- * were signed off as a whole by Lora, RN on 2026-11-25 (sign-off sheet section 7; per-row boxes left blank). Neither set is part of
- * the visit-note draft: the clinician selects them, and each states only what the clinician typed or chose. `CORPUS_CLINICAL_REVIEW` below stays
- * `pending` and still gates only the per-tenant draft switch.
+ * The 16 pain and 15 dyspnea assessment statements of `narrative-vocab@2026.12.6` are not part of the visit-note draft: the clinician selects
+ * them, and each states only what the clinician typed or chose. They were signed off on the clinical-review sheet (pain: section 2c; dyspnea:
+ * section 7; docs/clinical-review/CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md) by Lora, RN on 2026-11-25, not item by item (the
+ * dyspnea per-row boxes are blank); that does not change this constant.
  *
  * `status` stays "pending" until ADA approves the wording; the approval is a deliberate edit to this
  * constant in its own commit. A later PR (the per-tenant switch, VN-D17) REFUSES to enable the draft for
