@@ -554,6 +554,27 @@ describe("Medicaid ERA operator worklist and investigation", () => {
     expect(screen.queryByText(/Reason details unavailable/)).toBeNull();
   });
 
+  it("labels the history reasons a reassessment records when it reopens or promotes a review", async () => {
+    historyResponse = {
+      items: [
+        historyItem({
+          version: 2,
+          action: "reassessed",
+          reasonCode: "COMPLETED_REVIEW_REOPENED_BY_REASSESSMENT",
+        }),
+        historyItem({
+          version: 3,
+          action: "reassessed",
+          reasonCode: "LEGACY_REVIEW_REASSESSED_NEEDS_REVIEW",
+        }),
+      ],
+    };
+    mount(`/remittance/medicaid-era-reviews/${REVIEW}`);
+    expect(await screen.findByText(/the completed review was reopened/)).toBeTruthy();
+    expect(screen.getByText(/the review needs a fresh look/)).toBeTruthy();
+    expect(screen.queryByText(/Reason details unavailable/)).toBeNull();
+  });
+
   it("words an unavailable evaluation as an unreadable or out-of-scope source", async () => {
     reassessResponse = { status: "unavailable", reasonCode: "SOURCE_ARTIFACT_UNAVAILABLE" };
     mount(`/remittance/medicaid-era-reviews/${REVIEW}`);

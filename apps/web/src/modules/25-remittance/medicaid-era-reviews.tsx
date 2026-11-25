@@ -1309,6 +1309,10 @@ function duplicateLabel(value: string): string {
 const EVALUATOR_REASON_LABELS: Readonly<Record<string, string>> = {
   NONPOSTING_ASSESSMENT: "Assessed",
   CURRENT_SOURCE_FACTS_REASSESSED: "Reassessed against current source facts",
+  COMPLETED_REVIEW_REOPENED_BY_REASSESSMENT:
+    "Reassessed against changed source facts; the completed review was reopened",
+  LEGACY_REVIEW_REASSESSED_NEEDS_REVIEW:
+    "Reassessed with evaluator attestation; the review needs a fresh look",
 };
 
 function reasonCodeLabel(code: string): string {
