@@ -1,5 +1,11 @@
 // CW-RUST-M02 P1 — assertion signer and bridge configuration.
-import { createPrivateKey, createPublicKey, generateKeyPairSync, verify } from "node:crypto";
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  verify,
+} from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { collectEnvProblems } from "../../env";
 import {
@@ -26,13 +32,13 @@ const SUBJECT = {
 };
 
 /**
- * Cross-language golden vector. The Rust verifier (chartwarden-rust cw-actor test
- * `accepts_the_bun_signer_golden_vector`) accepts exactly this token with public key
- * 6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw at now = 1_800_000_000. Ed25519 is deterministic, so any change to
- * the header, claim names, claim order or encoding changes the token and fails here first.
+ * Cross-language golden vector fingerprint. The Rust verifier (chartwarden-rust cw-actor test
+ * `accepts_the_bun_signer_golden_vector`) accepts the exact deterministic token pinned by this
+ * digest with public key 6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw at now = 1_800_000_000.
+ * Keeping only the digest avoids checking in a bearer-shaped token. Ed25519 is deterministic,
+ * so header, claim, ordering or encoding changes still fail here.
  */
-const GOLDEN =
-  "eyJhbGciOiJFZERTQSIsImtpZCI6InZlYyIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjdy1idW4iLCJhdWQiOiJjdy1ydXN0Iiwic3ViIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwib3JnIjoiMjIyMjIyMjItMjIyMi00MjIyLTgyMjItMjIyMjIyMjIyMjIyIiwic2lkIjoicy0xIiwiY2xzIjoic3RhZmYiLCJtdGgiOiJHRVQiLCJwdGgiOiIvYXBpL3YxL21lL3Blcm1pc3Npb25zIiwicmlkIjoici0xIiwianRpIjoicTZ1cnE2dXJxNnVycTZ1cnE2dXJxdyIsImlhdCI6MTgwMDAwMDAwMCwiZXhwIjoxODAwMDAwMDMwfQ.UIotSSkL2hLtGC00l7a8SyX9l3xePbSdZ2nm5j5nF_B29xKUouQ4rwYoE1tdGm59LFVICUvTEkC-ujPx-Sc9Aw";
+const GOLDEN_SHA256 = "f76239c3779c8a97d8dddab8cdae9131383cf35db3285bd646b757f6de3cf2c8";
 
 describe("createAssertionSigner", () => {
   it("reproduces the cross-language golden vector byte for byte", () => {
@@ -40,7 +46,7 @@ describe("createAssertionSigner", () => {
       { kid: "vec", key },
       { nowSecs: () => 1_800_000_000, random: (n) => Buffer.alloc(n, 0xab) },
     );
-    expect(signer.sign(SUBJECT)).toBe(GOLDEN);
+    expect(createHash("sha256").update(signer.sign(SUBJECT)).digest("hex")).toBe(GOLDEN_SHA256);
     expect((createPublicKey(key).export({ format: "jwk" }) as { x: string }).x).toBe(
       "6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw",
     );
