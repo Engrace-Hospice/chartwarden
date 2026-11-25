@@ -3,11 +3,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import { describe, expect, it } from "vitest";
-import { OBJECT_STORE_ENV_PAIRS } from "./object-store-env-pairs";
 
-// Object-store environment contract (additive compatibility release): the application reads OBJECT_STORE_*, production
-// provisions from SEAWEEDFS_*, MINIO_* survive only as rollback aliases (same values) or as variables of a REAL legacy
-// MinIO / restore drill. These tests pin that mapping in the files that carry it, so a drift fails here and not on a host.
+// Object-store environment contract: the application reads OBJECT_STORE_*, production provisions from SEAWEEDFS_*. The
+// MinIO rollback window is closed: no compose service, profile, volume or env twin carries a MINIO_* name any more.
+// These tests pin that mapping in the files that carry it, so a drift fails here and not on a host.
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (rel: string): string => readFileSync(join(ROOT, rel), "utf8");
@@ -44,29 +43,30 @@ const required = (name: string): string => `\${${name}:?set in .env.production}`
 const APP_SERVICES = ["api", "worker", "tenant-buckets", "hl7-listener"] as const;
 const SEAWEEDFS_ENDPOINT = "http://seaweedfs:8333";
 
-describe("deploy.sh: the credential pairs it reconciles", () => {
-  it("are exactly the pairs the deployment tests assume", () => {
+describe("deploy.sh: the object-store variables it keeps", () => {
+  it("generates the five canonical names and nothing else (no MINIO_* alias, no pair reconciliation)", () => {
     const script = read("deploy/production/deploy.sh");
-    const block = /OBJECT_STORE_ENV_PAIRS="([^"]+)"/.exec(script)?.[1] ?? "";
-    const declared = block
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((l) => {
-        const [canonical, legacy] = l.split(":");
-        return { canonical, legacy };
-      });
-    expect(declared).toEqual(OBJECT_STORE_ENV_PAIRS.map((p) => ({ ...p })));
+    const names = /for object_store_name in ([A-Z_ ]+); do/.exec(script)?.[1]?.trim().split(" ");
+    expect(names).toEqual([
+      "SEAWEEDFS_ADMIN_ACCESS_KEY",
+      "SEAWEEDFS_ADMIN_SECRET_KEY",
+      "SEAWEEDFS_APP_ACCESS_KEY",
+      "SEAWEEDFS_APP_SECRET_KEY",
+      "OBJECT_STORE_AUDIT_WEBHOOK_TOKEN",
+    ]);
+    expect(script).not.toMatch(/MINIO_(ROOT|APP|ACCESS_LOG)/);
+    expect(script).not.toContain("legacy-minio");
   });
 
-  it("keeps the real legacy-MinIO and backup variables it reads (they are not aliases)", () => {
-    // The backup overlay is enabled by the real read-only source key, which has nothing to do with the pairs.
-    expect(read("deploy/production/deploy.sh")).toContain("BACKUP_SOURCE_MINIO_ACCESS_KEY");
+  it("enables the backup overlay by the renamed read-only source key", () => {
+    expect(read("deploy/production/deploy.sh")).toContain(
+      "grep -q '^BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY=.' .env.production",
+    );
   });
 });
 
 describe("deploy/production/compose.yml: canonical variables point to SeaweedFS", () => {
-  it("object-store-provision is fed the canonical SEAWEEDFS_* credentials, never the MINIO_* names", () => {
+  it("object-store-provision is fed the canonical SEAWEEDFS_* credentials, never a MINIO_* name", () => {
     const e = env(compose, "object-store-provision");
     for (const name of [
       "SEAWEEDFS_ADMIN_ACCESS_KEY",
@@ -90,87 +90,107 @@ describe("deploy/production/compose.yml: canonical variables point to SeaweedFS"
   });
 
   it.each(["api", "worker", "hl7-listener"] as const)(
-    "%s: the public endpoint (presigned URLs) is STORAGE_PUBLIC_ORIGIN under both names",
+    "%s: the public endpoint (presigned URLs) is STORAGE_PUBLIC_ORIGIN",
     (service) => {
-      const e = env(compose, service);
-      expect(e.OBJECT_STORE_PUBLIC_ENDPOINT).toBe(required("STORAGE_PUBLIC_ORIGIN"));
-      expect(e.MINIO_PUBLIC_ENDPOINT).toBe(e.OBJECT_STORE_PUBLIC_ENDPOINT);
+      expect(env(compose, service).OBJECT_STORE_PUBLIC_ENDPOINT).toBe(
+        required("STORAGE_PUBLIC_ORIGIN"),
+      );
     },
   );
 
   it("tenant-buckets makes no presigned URLs, so it carries no public endpoint", () => {
-    const e = env(compose, "tenant-buckets");
-    expect(e.OBJECT_STORE_PUBLIC_ENDPOINT).toBeUndefined();
-    expect(e.MINIO_PUBLIC_ENDPOINT).toBeUndefined();
+    expect(env(compose, "tenant-buckets").OBJECT_STORE_PUBLIC_ENDPOINT).toBeUndefined();
   });
 
-  it.each(APP_SERVICES)(
-    "%s: every MINIO_* rollback twin has EXACTLY its OBJECT_STORE_* value",
-    (service) => {
-      const e = env(compose, service);
-      for (const suffix of ["ENDPOINT", "ACCESS_KEY", "SECRET_KEY", "REGION"]) {
-        expect(e[`MINIO_${suffix}`], `MINIO_${suffix} present`).toBeDefined();
-        expect(e[`MINIO_${suffix}`], `MINIO_${suffix}`).toBe(e[`OBJECT_STORE_${suffix}`]);
-      }
-    },
-  );
-
-  it("api receives the audit bearer under both names, from the canonical variable", () => {
-    const e = env(compose, "api");
-    expect(e.OBJECT_STORE_AUDIT_WEBHOOK_TOKEN).toBe(required("OBJECT_STORE_AUDIT_WEBHOOK_TOKEN"));
-    expect(e.MINIO_ACCESS_LOG_WEBHOOK_TOKEN).toBe(e.OBJECT_STORE_AUDIT_WEBHOOK_TOKEN);
+  it("no compose service carries a MINIO_* variable, and the retired MinIO / migration services, profile and volume are gone", () => {
+    for (const [name, svc] of Object.entries(compose.services)) {
+      const keys = Object.keys(svc.environment ?? {}).filter((k) => k.startsWith("MINIO_"));
+      expect(keys, `${name} MINIO_* env`).toEqual([]);
+      expect(svc.profiles ?? [], `${name} profiles`).not.toContain("legacy-minio");
+    }
+    expect(compose.services.minio).toBeUndefined();
+    expect(compose.services["object-store-migrate"]).toBeUndefined();
+    const text = read("deploy/production/compose.yml");
+    expect(text).not.toMatch(/MINIO_/);
+    expect(text).not.toContain("legacy-minio");
+    expect(text).not.toMatch(/minio-data/);
   });
 
-  it("keeps fluent-bit on the rollback-safe legacy path with the canonical token", () => {
+  it("api receives the audit bearer from the canonical variable only", () => {
+    expect(env(compose, "api").OBJECT_STORE_AUDIT_WEBHOOK_TOKEN).toBe(
+      required("OBJECT_STORE_AUDIT_WEBHOOK_TOKEN"),
+    );
+  });
+
+  it("fluent-bit posts to the canonical audit path with the canonical token", () => {
     const e = env(compose, "fluent-bit");
-    expect(e.AUDIT_SINK_PATH).toBe("/api/v1/webhooks/minio/access-log");
+    expect(e.AUDIT_SINK_PATH).toBe("/api/v1/webhooks/object-store/access-log");
     expect(e.AUDIT_SINK_TOKEN).toBe(required("OBJECT_STORE_AUDIT_WEBHOOK_TOKEN"));
     expect(e.AUDIT_SINK_HOST).toBe("api");
   });
 
-  it("the legacy MinIO and its one-time migration still run on the real MinIO root credentials", () => {
-    const minio = compose.services.minio;
-    expect(minio?.profiles).toEqual(["legacy-minio"]);
-    const minioEnv = env(compose, "minio");
-    expect(minioEnv.MINIO_ROOT_USER).toBe(required("MINIO_ROOT_USER"));
-    expect(minioEnv.MINIO_ROOT_PASSWORD).toBe(required("MINIO_ROOT_PASSWORD"));
-
-    const migrate = compose.services["object-store-migrate"];
-    expect(migrate?.profiles).toEqual(["legacy-minio"]);
-    expect(JSON.stringify(migrate?.command)).toContain("scripts/object-store-copy.ts");
-    const m = env(compose, "object-store-migrate");
-    // Source: the real legacy MinIO.
-    expect(m.SOURCE_S3_ENDPOINT).toBe("http://minio:9000");
-    expect(m.SOURCE_S3_ACCESS_KEY).toBe(required("MINIO_ROOT_USER"));
-    expect(m.SOURCE_S3_SECRET_KEY).toBe(required("MINIO_ROOT_PASSWORD"));
-    // Target: SeaweedFS, through the canonical admin credentials.
-    expect(m.TARGET_S3_ENDPOINT).toBe(SEAWEEDFS_ENDPOINT);
-    expect(m.TARGET_S3_ACCESS_KEY).toBe(required("SEAWEEDFS_ADMIN_ACCESS_KEY"));
-    expect(m.TARGET_S3_SECRET_KEY).toBe(required("SEAWEEDFS_ADMIN_SECRET_KEY"));
-    expect(m.ALLOW_MASS_DELETE).toBe("${OBJECT_STORE_MIGRATE_ALLOW_MASS_DELETE:-}");
-  });
-
-  it("the real backup / restore-drill MinIO variables are untouched", () => {
-    expect(read("deploy/production/compose.backup.yml")).toContain(
-      "BACKUP_SOURCE_MINIO_ACCESS_KEY",
-    );
+  it("the backup overlay and the restore tooling use the OBJECT_STORE names for the source and restore stores", () => {
+    const overlay = read("deploy/production/compose.backup.yml");
+    for (const name of [
+      "BACKUP_SOURCE_OBJECT_STORE_URL",
+      "BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY",
+      "BACKUP_SOURCE_OBJECT_STORE_SECRET_KEY_FILE",
+      "backup_source_object_store_secret_key",
+    ]) {
+      expect(overlay, name).toContain(name);
+    }
     const restore = read("deploy/production/backup/restore.sh");
     for (const name of [
-      "RESTORE_MINIO_ACCESS_KEY",
-      "RESTORE_MINIO_SECRET_KEY",
-      "RESTORE_MINIO_PORT",
-      "MINIO_ROOT_USER",
+      "RESTORE_OBJECT_STORE_ACCESS_KEY",
+      "RESTORE_OBJECT_STORE_SECRET_KEY",
+      "RESTORE_OBJECT_STORE_PORT",
+      "RESTORE_OBJECT_STORE_IMAGE",
     ]) {
       expect(restore, name).toContain(name);
     }
     const verify = read("scripts/backup/verify-restore.ts");
     for (const name of [
-      "RESTORE_MINIO_ENDPOINT",
-      "RESTORE_MINIO_ACCESS_KEY",
-      "RESTORE_MINIO_SECRET_KEY",
+      "RESTORE_OBJECT_STORE_ENDPOINT",
+      "RESTORE_OBJECT_STORE_ACCESS_KEY",
+      "RESTORE_OBJECT_STORE_SECRET_KEY",
     ]) {
       expect(verify, name).toContain(name);
     }
+  });
+
+  it("the old BACKUP_SOURCE_MINIO_* / RESTORE_MINIO_* names survive only where they must: the host migration, preflight, the plain-secret guard and the marked TEMPORARY ALIAS blocks", () => {
+    const OLD = /BACKUP_SOURCE_MINIO_|RESTORE_MINIO_|backup_source_minio_secret_key/;
+    // Files that never name the old spelling.
+    for (const file of [
+      "deploy/production/compose.yml",
+      "deploy/production/backup/cw-backup.sh",
+      "scripts/backup/coordinated-drill.ts",
+      "scripts/backup/verify-restore.ts",
+    ]) {
+      expect(read(file), file).not.toMatch(OLD);
+    }
+    // Files that carry a bridge for the digest-pinned backup image: every old-name line sits inside a block marked
+    // `TEMPORARY ALIAS: delete when CHARTWARDEN_BACKUP_IMAGE is repinned ...` (or is the plain-secret guard / a comment).
+    for (const file of [
+      "deploy/production/compose.backup.yml",
+      "deploy/production/backup/restore.sh",
+    ]) {
+      const text = read(file);
+      expect(text, file).toContain(
+        "TEMPORARY ALIAS: delete when CHARTWARDEN_BACKUP_IMAGE is repinned to an image built from this commit",
+      );
+    }
+    const overlay = read("deploy/production/compose.backup.yml");
+    const alias = overlay.slice(
+      overlay.indexOf("# TEMPORARY ALIAS"),
+      overlay.indexOf("# END TEMPORARY ALIAS"),
+    );
+    expect(alias).toContain("BACKUP_SOURCE_MINIO_ACCESS_KEY");
+    // Outside the marked block the overlay names only the new spelling.
+    expect(overlay.replace(alias, "")).not.toMatch(/BACKUP_SOURCE_MINIO_[A-Z_]+:/);
+    // The drill still stands up a real MinIO container: its own root login variables stay.
+    expect(read("deploy/production/backup/restore.sh")).toContain("MINIO_ROOT_USER");
+    expect(read("deploy/production/backup/cw-backup.sh")).toContain("MINIO_ROOT_PASSWORD");
   });
 });
 
@@ -183,7 +203,7 @@ describe("local docker-compose.yml (RustFS) and CI use the OBJECT_STORE_* contra
       expect(e.OBJECT_STORE_ACCESS_KEY).toBe("chartwarden");
       expect(e.OBJECT_STORE_SECRET_KEY).toBe("chartwarden-object-store-dev-secret");
       expect(e.OBJECT_STORE_REGION).toBe("us-east-1");
-      // Built from this tree: no old image reads MINIO_*, so no alias is carried.
+      // Built from this tree and the backend no longer reads MINIO_*: no alias is carried.
       expect(Object.keys(e).filter((k) => k.startsWith("MINIO_"))).toEqual([]);
     },
   );
@@ -212,44 +232,13 @@ describe("local docker-compose.yml (RustFS) and CI use the OBJECT_STORE_* contra
     expect(e.OBJECT_STORE_ACCESS_KEY).toBe("chartwarden");
     expect(e.OBJECT_STORE_SECRET_KEY).toBe("chartwarden-object-store-ci-secret");
     expect(e.OBJECT_STORE_REGION).toBe("us-east-1");
-    // No CI test verifies the legacy names, so none is kept.
+    // The backend reads no MINIO_* name, so none is set.
     expect(ciText).not.toMatch(/^\s*MINIO_(ENDPOINT|ACCESS_KEY|SECRET_KEY|REGION)\s*:/m);
   });
 
-  it("the production compose dry run mirrors deploy.sh rollback aliases without changing the template", () => {
+  it("the production compose dry run needs no MINIO_* export: the template alone satisfies compose.yml", () => {
     const gate = read(".github/workflows/pr-image-gate.yml");
-    expect(gate).toContain('export MINIO_ROOT_USER="$SEAWEEDFS_ADMIN_ACCESS_KEY"');
-    expect(gate).toContain('export MINIO_ROOT_PASSWORD="$SEAWEEDFS_ADMIN_SECRET_KEY"');
+    expect(gate).not.toMatch(/MINIO_/);
     expect(gate).toContain("docker compose --env-file .env.production -f compose.yml config -q");
-  });
-});
-
-describe("deploy/production/README.md documents the contract", () => {
-  const readme = read("deploy/production/README.md");
-
-  it("names each layer of the contract and the two audit paths", () => {
-    for (const needle of [
-      "OBJECT_STORE_*",
-      "SEAWEEDFS_ADMIN_ACCESS_KEY",
-      "SEAWEEDFS_APP_SECRET_KEY",
-      "OBJECT_STORE_AUDIT_WEBHOOK_TOKEN",
-      "/api/v1/webhooks/object-store/access-log",
-      "/api/v1/webhooks/minio/access-log",
-      "RustFS",
-      "legacy-minio",
-      "RESTORE_MINIO_*",
-    ]) {
-      expect(readme, needle).toContain(needle);
-    }
-  });
-
-  it("documents every pair and the fail-closed mismatch", () => {
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      expect(readme, p.canonical).toContain(`\`${p.canonical}\``);
-      expect(readme, p.legacy).toContain(`\`${p.legacy}\``);
-    }
-    expect(readme).toContain("Fail closed on a mismatch");
-    expect(readme).toContain("exits 78");
-    expect(readme).toContain("never rotates a credential");
   });
 });

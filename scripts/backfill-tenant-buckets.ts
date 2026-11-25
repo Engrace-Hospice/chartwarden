@@ -4,7 +4,7 @@
  *
  * M34 provisions the bucket at onboarding, but orgs that predate that (the dev demo org, older tenants) have none, so
  * the first object write 404s. Idempotent (HEAD, then PUT; an "already exists" 409 is success): safe to re-run, and
- * the compose `migrate` step runs it on every `up`. It also applies the `m25-835/` staging expiry rule (#675). Needs DATABASE_ADMIN_URL (or DATABASE_URL) and MINIO_*.
+ * the compose `migrate` step runs it on every `up`. It also applies the `m25-835/` staging expiry rule (#675). Needs DATABASE_ADMIN_URL (or DATABASE_URL) and OBJECT_STORE_*.
  *
  * Run:   bun run scripts/backfill-tenant-buckets.ts
  */
@@ -22,7 +22,7 @@ async function main(): Promise<void> {
   const connectionString = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
   const config = s3ObjectStoreConfigFromEnv(process.env);
   if (!connectionString || !config) {
-    console.error("DATABASE_ADMIN_URL (or DATABASE_URL) and MINIO_* must be set");
+    console.error("DATABASE_ADMIN_URL (or DATABASE_URL) and OBJECT_STORE_* must be set");
     process.exit(1);
   }
   const provisioner = createS3TenantStorageProvisioner(config);

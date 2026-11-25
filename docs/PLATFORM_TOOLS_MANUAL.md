@@ -11,11 +11,11 @@ Oct 2, 2026 · @FabDev · imported into the repo 2026-10-05
 > - tenant hosts follow ADR-0049;
 > - the cosign signature policy is stage 1;
 > - Valkey holds durable BullMQ queues (`noeviction`);
-> - local development keeps MinIO;
+> - local development kept MinIO at the import; since 2026-11-05 local development and CI use RustFS and production uses SeaweedFS (chapter 8);
 > - document blobs are **not** yet encrypted before upload (an open gap, chapter 8);
 > - leftover NATS references are removed.
 
-**Updated 2026-10-02 to match the ChartWarden codebase and the ChartWarden Infrastructure Build Plan (external).** Main changes: Pangolin is now the public edge, with Envoy Gateway as internal ingress behind it. OpenBao moves to stage 1 because production keys must leave `.env.production`. Valkey is required, since the code runs its job queues on BullMQ. NATS is deferred, since the code uses a transactional outbox (ADR-0036). Garage holds one bucket per tenant. Chapters with changes carry an "Update" note under their stage line.
+**Updated 2026-10-02 to match the ChartWarden codebase and the ChartWarden Infrastructure Build Plan (external).** Main changes: Pangolin is now the public edge, with Envoy Gateway as internal ingress behind it. OpenBao moves to stage 1 because production keys must leave `.env.production`. Valkey is required, since the code runs its job queues on BullMQ. NATS is deferred, since the code uses a transactional outbox (ADR-0036). The object store holds one bucket per tenant (Garage at the time of this update; superseded by SeaweedFS on 2026-11-05, chapter 8). Chapters with changes carry an "Update" note under their stage line.
 
 ## 1. About this manual
 
@@ -37,7 +37,7 @@ Each tool chapter follows the same structure:
 Stage tags tie each tool to the staged build plan:
 
 - **Stage 0 (now) — Hostinger test cluster.** A three-node Talos / Kubernetes cluster on Hostinger servers, used to
-  build and rehearse the whole platform (Argo CD, OpenBao, CloudNativePG, Garage, Envoy Gateway behind Pangolin).
+  build and rehearse the whole platform (Argo CD, OpenBao, CloudNativePG, SeaweedFS, Envoy Gateway behind Pangolin).
   **Synthetic data only, never PHI**, unless Hostinger signs a BAA. The existing Docker Compose VPS stays
   production until the stage-1 cutover.
 - **Stage 1 — OVHcloud production.** One region (Oregon), three bare-metal nodes on OVHcloud under a signed BAA:
@@ -64,7 +64,7 @@ CI can only hand production a signed image and a reviewed commit; production can
 
 Three rules govern the whole platform:
 
-1. PostgreSQL is the source of truth. The transactional outbox in PostgreSQL carries events, Valkey runs the BullMQ job queues and caches, Garage stores files. Nothing else is authoritative for clinical data.
+1. PostgreSQL is the source of truth. The transactional outbox in PostgreSQL carries events, Valkey runs the BullMQ job queues and caches, the object store (SeaweedFS in production) stores files. Nothing else is authoritative for clinical data.
 2. Production changes come only from Git, through Argo CD, after policy checks and human approval. No one runs `kubectl apply` against production, and no AI agent has production credentials.
 3. A backup that has not been restored is not a backup. Restore drills are scheduled work, not optional.
 
@@ -78,7 +78,7 @@ Three rules govern the whole platform:
 | Cilium | Networking and policy | 1 | Production |
 | Envoy Gateway, cert-manager | Internal ingress behind Pangolin | 1 | Production |
 | PostgreSQL, CloudNativePG, PgBouncer | Database | 1 | Production |
-| Garage | Object storage, one bucket per tenant | 1 | Production |
+| SeaweedFS | Object storage, one bucket per tenant (single node on the Compose host today; the cluster layout is TARGET) | 1 | Production |
 | Valkey | Job queues (BullMQ) and cache | 1 (required) | Production |
 | OpenBao | Secrets and platform KEKs | 1 | Security and recovery |
 | Argo CD | GitOps delivery | 1 | Production |
@@ -178,7 +178,7 @@ Namespaces:
 | `chartwarden-workers` | Background jobs, HOPE/claims processors |
 | `chartwarden-integration` | Clearinghouse, eFax, external connectors |
 | `database` | CloudNativePG clusters, PgBouncer |
-| `storage` | Garage |
+| `storage` | SeaweedFS (TARGET layout; today a Compose service) |
 | `messaging` | Reserved for NATS (deferred, ADR-0036); not created |
 | `cache` | Valkey |
 | `identity` | authentik |
@@ -250,7 +250,7 @@ Allowed application flows:
 | Gateway | `chartwarden-prod` web and API | HTTP |
 | `chartwarden-prod` API | PgBouncer (`database`) | 5432 |
 | `chartwarden-prod`, `chartwarden-workers` | Valkey | 6379 |
-| `chartwarden-prod`, `chartwarden-workers` | Garage S3 API | 3900 |
+| `chartwarden-prod`, `chartwarden-workers` | SeaweedFS S3 gateway | 8333 |
 | `chartwarden-integration` | Named external FQDNs only | 443 |
 | All PHI namespaces | OpenBao | 8200 |
 
@@ -368,7 +368,7 @@ PostgreSQL holds every clinical, billing, and audit record. CloudNativePG (CNPG)
 - Synchronous replication with at least one synchronous standby.
 - WAL archive and daily base backups go **directly** (barman-cloud) to off-site, BAA-covered object storage with
   Object Lock, written with credentials that cannot delete, so the recovery point never depends on a copy job.
-  A nightly copy into in-region Garage speeds up routine restores. Retention: 30 days of PITR minimum.
+  A nightly copy into the in-region object store (SeaweedFS) speeds up routine restores (TARGET). Retention: 30 days of PITR minimum.
 - Pooler in transaction mode for the application; a separate session-mode path for migrations and tools that need
   session features. Transaction mode is compatible with the tenancy GUC, because the code sets it with
   `set_config('app.org_id', …, true)` inside each transaction (`packages/tenancy/src/context.ts`). Prove it with
@@ -417,67 +417,69 @@ Targets (engineering objectives, proven only by drills):
 - Put the only backup copy in the same cluster or region as the database.
 - Grant the application role superuser, `BYPASSRLS`, or DDL rights.
 
-## 8. Garage
+## 8. Object storage (SeaweedFS; Garage superseded)
 
 **Stage 1 · Production · S3-compatible object storage**
 
 **Update (2026-11-05) · superseded.** The product owner chose **SeaweedFS** for production object storage and **RustFS** for local development, CI and the second copy of the primary; Garage lacks object versioning, noncurrent-version expiry, an audit feed and Object Lock, all of which the code now uses. The rationale, the findings and the test suites are in the 2026-11-05 amendment to [ADR-0050](./adr/ADR-0050-talos-kubernetes-platform.md) D6. This chapter is kept for its cluster-operation notes until a SeaweedFS chapter replaces it.
 
-**Update (2026-10-02):** The code uses **one bucket per tenant** (`deriveTenantBucket` in M22), not a single `chartwarden-documents` bucket. Tenant buckets are created and destroyed through the M34 provision gateway, which does not exist yet and must call Garage's admin API. The adapter (`s3-object-store.ts`) is plain SigV4 with path-style URLs and 300-second presigned GETs, so it works with Garage by setting `OBJECT_STORE_ENDPOINT` and `OBJECT_STORE_REGION` (Garage's region, `garage` by default). Platform buckets (`cnpg-wal`, `cnpg-base`) stay as listed below. Local development keeps MinIO (product-owner decision, 2026-10-05). CI runs a live suite that exercises the real
-adapter against a Garage container, so production's store is still tested (ADR-0050 D6).
+**Update (2026-10-02, restated 2026-11-05):** The code uses **one bucket per tenant** (`deriveTenantBucket` in M22), not a single `chartwarden-documents` bucket. The adapter (`apps/backend/src/modules/22-documents/seams/s3-object-store.ts`) is plain SigV4 with path-style URLs and 300-second presigned GETs, so it works with any S3-compatible store by setting `OBJECT_STORE_ENDPOINT` and `OBJECT_STORE_REGION`. Tenant buckets are created with a plain S3 `CreateBucket` through that adapter (the M34 provision worker and the `tenant-buckets` one-shot); the app key cannot delete a bucket. Platform buckets (`cnpg-wal`, `cnpg-base`) belong to the cluster layout below and are TARGET. Local development and CI run RustFS. CI's live suite exercises the real adapter against SeaweedFS and RustFS, so production's store is tested (ADR-0050 D6).
+
+**Today vs TARGET.** TODAY production runs one SeaweedFS container on the Docker Compose host (`deploy/production/compose.yml`, operated through `deploy/production/README.md` and Ops Runbook §6). The three-node Talos / Kubernetes layout described below (namespace `storage`, per-node volumes, in-cluster S3 only) is TARGET: the repo has no SeaweedFS cluster manifests.
 
 ### Role in ChartWarden
 
-Garage stores files: signed consent forms, scanned documents, PDFs, attachments, exports, and the PostgreSQL WAL archive. It speaks the S3 API, so ChartWarden code uses an `ObjectStore` interface with a Garage adapter in the private cloud and an S3 adapter anywhere else. Garage replaces MinIO, whose open-source edition is no longer a stable foundation.
+SeaweedFS stores files: signed consent forms, scanned documents, PDFs, attachments and exports. In the TARGET layout it also holds the in-region copy of the PostgreSQL backups. ChartWarden code reaches it only through M22's SigV4 adapter, which also runs against RustFS in local development and CI, so no code branch depends on which store is behind it.
 
 ### Key concepts
 
-- **Layout:** the map of nodes, their zones (failure domains), and capacity. Changes are staged and then applied with a version number.
-- **Replication factor:** how many copies of each object exist. ChartWarden uses 3, one per zone.
-- **Zones:** Garage places each copy in a different zone. Map zones to physical hosts (single region) or to sites.
-- **Buckets and keys:** S3 buckets with per-key access grants (read, write, owner).
-- **Metadata vs data:** metadata lives in an embedded database on fast disk; object data can sit on larger disks.
+- **All-in-one server:** production runs `weed server -s3`: master, volume server, filer and the S3 gateway in one process. Only the S3 gateway (port 8333) listens on the network; master, volume and filer bind to the container's loopback, because the filer's API is unauthenticated and would bypass S3 authentication.
+- **One volume per bucket:** volume growth is set to 1, which keeps file handles bounded as tenants (and so buckets) grow.
+- **No in-store replication:** the single node holds one copy. TODAY the separate-host second copy (RustFS) is built but not enabled in production. Per the owner the backup sidecar runs in production and the off-site Object-Lock mirror is enabled, so snapshots are taken (the repo holds no evidence of it; DR/BCP §4.8.7 are the operator steps); loading the mirror into a new SeaweedFS is not a tested procedure, and the restore drill itself still targets a MinIO stand-in, not SeaweedFS.
+- **Identities and policies:** `object-store-provision` renders `s3.json` with `scripts/storage/seaweedfs-identities.ts`: an admin identity (a standing credential on the host, used only by operators and `--restore`), the app identity bound to the IAM policy document `deploy/production/object-store/app-policy.json`, and read-only identities bound to `deploy/production/object-store/reader-policy.json` for the backup and the second copy. SeaweedFS reads its identities at start only, so a credential change recreates the container.
+- **Buckets:** `tenant-<orgId>` per tenant, plus `chartwarden-*` platform buckets. The app key may create buckets (`tenant-*`, `chartwarden-*`) and manage lifecycle on `tenant-*`; it cannot delete a bucket or change versioning or bucket policy.
 
 ### Deployment baseline
 
-- Three Garage nodes on three distinct physical hosts, each its own zone, replication factor 3.
-- Metadata on NVMe; data on dedicated volumes.
-- Buckets: one per tenant (`deriveTenantBucket`), created by the provisioning path through Garage's admin API,
-  plus platform buckets such as the in-region copy of the CNPG backups. One access key per consumer, scoped to
-  its buckets.
+- TODAY: a single SeaweedFS container (pinned by digest) with its data in the `seaweedfs-data` volume. The S3 gateway is on the Compose network, and `127.0.0.1:9000` on the host maps to it as the storage vhost's nginx upstream (presigned URLs). Health: `GET /healthz`. The api and worker hold the scoped app key, never the admin pair.
+- TODAY: every S3 call writes an audit record (Fluent forward protocol) that `fluent-bit` posts to the api, which records successful object GETs on `tenant-*` buckets as `signed_url_consumed` in `document_access_log`. Known limits (CW-AU-01): ingest is best-effort; any GET on a key within 15 minutes of a signed-URL issue is attributed to that issue, including the backup and second-copy readers' GETs; and no live test drives the chain end to end.
+- TARGET: three nodes on three distinct physical hosts in namespace `storage`, S3 reachable only inside the cluster, the admin surface only on the management network. The repo has no SeaweedFS topology, volume-placement or replication settings for it.
 - **Application-level encryption is not built yet.** M22's renderer uploads document bytes as-is
-  (`apps/backend/src/modules/22-documents/seams/renderer.ts`, `putObject`), so Garage holds **plaintext PHI**. Today
-  that data is protected only by Talos disk encryption and access control. Envelope-encrypting blobs before upload,
+  (`apps/backend/src/modules/22-documents/seams/renderer.ts`, `putObject`), so the store holds **plaintext PHI**. TODAY
+  that data is protected only by host disk encryption (no gate checks it; `compliance/controls.yaml` CW-AC-05, partial) and access control; on the TARGET cluster, by Talos disk encryption. A host that went through the SeaweedFS cutover and has not removed the retired `<prefix>_minio-data` volume also holds a plaintext copy of every document outside the backups, with no recorded removal deadline (the owner decides; `deploy/production/README.md`). Envelope-encrypting blobs before upload,
   under the per-tenant DEK (ADR-0038), is an open gap to close before stage 1.
-- S3 API reachable only inside the cluster; the admin API only on the management network.
-- Garage, as far as known, does not offer S3 Object Lock. Immutable backup copies therefore go to external, BAA-covered object storage that supports Object Lock.
+- TODAY nothing is locked on the primary or on the second copy, and objects persist on the primary until M22's eraser removes them. The off-site bucket (enabled in production per the owner) carries a COMPLIANCE lock, default retention of at least 100 days, that the operator creates and `cw-backup.sh` verifies on every snapshot: the snapshot fails when the mode is not COMPLIANCE or the days are below `BACKUP_OFFSITE_MIN_LOCK_DAYS` (default 100). Noncurrent versions expire at 120 days (operator-set and unchecked), and the lock is not a 7-year control.
 
 ### Day-2 operations
 
-- **Adding capacity:** add a node, assign zone and capacity in the layout, apply; Garage rebalances in the background.
-- **Health:** `garage status` and `garage stats`; alert on any node down or resync queue growth.
-- **Repairs:** run `garage repair` tasks after node replacement to verify all objects have their full copy count.
-- **Upgrades:** rolling, one node at a time, after reading release notes for layout or metadata changes.
+- **Health:** the `seaweedfs` container healthcheck (`/healthz`) and the api's `/ready` object-store check; also keep `fluent-bit` running, because a down `fluent-bit` loses audit records without blocking any S3 request.
+- **Upgrades:** the image is pinned by digest. On a bump, re-run `test:object-store:conformance:live` and `test:object-store:resilience:live` (CI job `object-store-conformance-live`) against the same image and the same `deploy/production/object-store/` files.
+- **Credentials:** rotate the app secret by setting `SEAWEEDFS_APP_SECRET_KEY` to the new value and deploying (the old `MINIO_*` names are no longer read and may be deleted); `object-store-provision` rewrites `s3.json` and `deploy.sh` recreates `seaweedfs` (a few seconds of storage downtime). Ops Runbook §8.1.
+- **Capacity:** the host disk behind `seaweedfs-data`; an optional hard per-tenant cap is a bucket quota set with `s3.bucket.quota` through `weed shell` (Ops Runbook §6.5).
+- **Second copy and recovery:** `scripts/object-store-copy.ts` syncs every `tenant-*` / `chartwarden-*` bucket to RustFS on another host, and back with `--restore`; it keeps each object's SHA-256. Ops Runbook §6.4.
+- **Not available in the repo today:** the Garage-specific steps this chapter used to carry (layout and zones, replication factor, adding a node, resync and repair tasks, quorum recovery) were removed with the Garage text, and the repo has no SeaweedFS equivalent for adding nodes, rebalancing or repairing a multi-node cluster.
 
 ### Security and HIPAA notes
 
-- Documents are PHI. Never put patient identifiers in object keys (the code uses opaque, PHI-free keys), log every
+- Documents are PHI. Object keys carry no name, DOB or MRN, but they do carry internal patient and document UUIDs (`documents/<patientId>/...`, `deriveObjectKey`): never add free text or a clinical identifier to a key. Log every
   access through the ChartWarden audit ledger, and close the encrypt-before-upload gap above.
 - Download URLs given to browsers are short-lived presigned URLs, issued only after an authorization check.
+- The admin identity is not an application credential; the app key is scoped by `app-policy.json`.
 
 ### Failure modes
 
 | Symptom | Likely cause | First response |
 | --- | --- | --- |
-| Writes fail with quorum error | Two of three nodes down | Restore a node; reads may still succeed |
-| Growing resync queue | Node slow or recently returned | Check disk and network on that node |
-| Metadata corruption on one node | Disk or power fault | Wipe and re-add the node; data re-replicates from peers |
+| Uploads and downloads fail; `/ready` reports the object store failing | `seaweedfs` container down or unhealthy | Check `docker compose ps seaweedfs` and its logs; restart it |
+| Download confirmations (`signed_url_consumed`) stop arriving | `fluent-bit` down: it loses audit records but never blocks S3 | Restart `fluent-bit` |
+| A restored or copied object is refused on read | The copy dropped the stored `x-amz-checksum-sha256` (generic copy tools do) | Redo the copy with `scripts/object-store-copy.ts` |
+| Host disk filling | Tenant growth in `seaweedfs-data` | Ops Runbook §6.5 and §10.4.3 |
 
 ### Do not
 
-- Put two zones on the same physical host.
-- Treat Garage as the only backup location for anything.
-- Expose buckets publicly or use long-lived presigned URLs.
+- Treat the primary as the only copy of anything: the only archive the repo builds is the off-site Object-Lock mirror (enabled in production per the owner), and the second copy is a sync, not an archive: an erasure on the primary reaches it on the next run, and `--restore` resurrects destroyed objects. A D12 shred or DEK destruction never reaches the mirror: its objects are SSE-C encrypted under one platform backup key, not the tenant's DEK, and nothing deletes them there.
+- Copy objects with `rclone` or `mc mirror`: they drop the stored SHA-256, and the app's verified reads then refuse the objects.
+- Give the application the admin identity, or expose buckets publicly, or use long-lived presigned URLs.
 
 ## 9. NATS JetStream
 
@@ -726,7 +728,7 @@ Standard pipeline:
 
 1. Lint, type-check, unit tests
 2. Gitleaks secret scan and Semgrep SAST
-3. Integration tests against ephemeral PostgreSQL, Valkey and Garage (and Floci where AWS adapters are under test)
+3. Integration tests against ephemeral PostgreSQL, Valkey and RustFS (the `object-store-conformance-live` job also runs the real adapter against SeaweedFS), and Floci where AWS adapters are under test
 4. Build container image
 5. Syft SBOM, Trivy/Grype vulnerability scan, license check
 6. Push to Harbor, sign with Cosign
@@ -779,7 +781,7 @@ Harbor is the private registry for every container image and Helm chart ChartWar
 
 ### Deployment baseline
 
-- Harbor in the software-factory domain with external PostgreSQL (CNPG) and Garage or local storage for blobs.
+- Harbor in the software-factory domain with external PostgreSQL (CNPG) and S3-compatible object storage (SeaweedFS in the TARGET layout) or local storage for blobs.
 - Projects: `chartwarden` (application images, private), `platform` (mirrored platform images pinned by digest), proxy caches for Docker Hub, GHCR, and Quay.
 - Tag immutability on `chartwarden`; deployments reference images by digest anyway.
 - Built-in Trivy scanning on push; policy prevents pulls of images with critical vulnerabilities that have a fix available.
@@ -835,9 +837,9 @@ Argo CD is the only thing that changes production. It watches the `gitops` repos
 
 - Argo CD in `gitops`, UI on the internal Gateway only, reached through Pangolin's authentication. SSO via authentik
   arrives at stage 2. Local admin is disabled after setup (break-glass kept sealed).
-- App-of-apps or ApplicationSet structure: `platform/*` (Cilium, CNPG, Garage, OpenBao, External Secrets, Kyverno,
+- App-of-apps or ApplicationSet structure: `platform/*` (Cilium, CNPG, SeaweedFS, OpenBao, External Secrets, Kyverno,
   observability) and `apps/chartwarden`.
-- Auto-sync with self-heal. Prune is on for app resources and **off** for data services (CNPG `Cluster`, Garage,
+- Auto-sync with self-heal. Prune is on for app resources and **off** for data services (CNPG `Cluster`, SeaweedFS,
   OpenBao), so a bad commit can never delete a database (ADR-0050 D4). The production app syncs only after the
   `gitops` PR merges.
 - Sync waves: CRDs and operators → databases and storage → migration Job (PreSync hook) → application → smoke-test Job (PostSync hook).
@@ -1046,7 +1048,7 @@ This stack answers "is ChartWarden healthy, and if not, why?" OpenTelemetry inst
 | OpenTelemetry SDK + Collector | Instruments code; receives, processes, and exports telemetry | Fastify/Go services emit traces, metrics, logs; the Collector scrubs attributes and routes data |
 | Prometheus | Time-series metrics, scraped from targets | Request rates, error rates, latency, queue lag, database and node health |
 | Alertmanager | Deduplicates, groups, silences, routes alerts | Pages for user-facing outages; tickets for slow-burn issues |
-| Grafana | Dashboards and exploration across all sources | Service overview, database, BullMQ queues, Garage, cluster, SLO dashboards |
+| Grafana | Dashboards and exploration across all sources | Service overview, database, BullMQ queues, object store (SeaweedFS), cluster, SLO dashboards |
 | Loki | Log storage indexed by labels only | Application and platform logs, Kubernetes audit log, gateway access logs |
 | Tempo | Distributed traces stored in object storage | Follow one request from gateway through API, database, and workers |
 
@@ -1060,7 +1062,7 @@ This stack answers "is ChartWarden healthy, and if not, why?" OpenTelemetry inst
 ### Deployment baseline
 
 - kube-prometheus-stack (Prometheus Operator, Alertmanager, Grafana, node and kube-state exporters) in `observability`.
-- Loki in simple scalable or monolithic mode with chunks in Garage; Tempo with traces in Garage.
+- Loki in simple scalable or monolithic mode with chunks in the platform object store, and Tempo with traces in the same store (SeaweedFS; TARGET: no Loki or Tempo bucket is provisioned in the repo today).
 - OpenTelemetry Collector as a gateway Deployment: receives OTLP from apps, runs attribute-scrubbing processors, exports to Prometheus, Loki, Tempo.
 - Retention: metrics 30 days locally; logs 30 to 90 days; traces 7 to 14 days. Security-relevant logs follow the longer audit retention in the security domain.
 - Grafana SSO via authentik, on the internal Gateway only.
@@ -1183,7 +1185,7 @@ Velero backs up Kubernetes objects (and, where needed, persistent volumes) to ob
 ### Do not
 
 - Rely on Velero for PostgreSQL recovery.
-- Store Velero backups in the same Garage cluster that runs in production.
+- Store Velero backups in the same SeaweedFS store that runs in production.
 
 ## 22. OpenTofu and Ansible
 
@@ -1257,8 +1259,9 @@ infrastructure/
 
 **Dev/CI only · Software factory · Local AWS API emulation**
 
-**Update (2026-10-05):** The code uses the PostgreSQL outbox and BullMQ on Valkey, not NATS. Local development keeps
-MinIO, and CI runs a Garage live suite so production's store is still exercised.
+**Update (2026-10-05):** The code uses the PostgreSQL outbox and BullMQ on Valkey, not NATS.
+**Update (2026-11-05):** Local development and CI use RustFS (it replaced MinIO), and CI runs an object-store live suite
+against SeaweedFS and RustFS so production's store is still exercised.
 
 ### Role in ChartWarden
 
@@ -1268,9 +1271,9 @@ Floci emulates AWS service APIs (such as S3, SQS, and SNS) locally, so code path
 
 | Environment | Object storage | Messaging | Cache | AWS adapters tested with |
 | --- | --- | --- | --- | --- |
-| Developer laptop | MinIO (container) | Outbox + BullMQ | Valkey | Floci, when working on adapters |
-| CI integration tests | MinIO, plus a Garage live suite | Outbox + BullMQ | Valkey | Floci, in a dedicated adapter-test job |
-| Production | Garage | Outbox + BullMQ | Valkey | Not present |
+| Developer laptop | RustFS (container) | Outbox + BullMQ | Valkey | Floci, when working on adapters |
+| CI integration tests | RustFS, plus a SeaweedFS and RustFS live suite | Outbox + BullMQ | Valkey | Floci, in a dedicated adapter-test job |
+| Production | SeaweedFS | Outbox + BullMQ | Valkey | Not present |
 
 The main test suite runs against the same kinds of components production uses. Emulating a broker production does not run would test the wrong thing.
 
@@ -1278,7 +1281,7 @@ The main test suite runs against the same kinds of components production uses. E
 
 - Run Floci as a container in the local Compose file and as an ephemeral service in the CI adapter-test job; destroy it after each run.
 - Point the AWS SDK at Floci's endpoint through configuration, never through code branches.
-- Contract tests: the same test suite runs against both adapters (Garage and Floci S3) to prove they behave the same for the operations ChartWarden uses.
+- Contract tests: the same test suite runs against both S3 targets, the production store (SeaweedFS) and Floci S3, to prove they behave the same for the operations ChartWarden uses. Today `object-store-conformance-live` runs it against SeaweedFS and RustFS; the Floci run is TARGET.
 - Pin the Floci version; confirm which AWS APIs and features it supports against its documentation before relying on them.
 
 ### Security and HIPAA notes

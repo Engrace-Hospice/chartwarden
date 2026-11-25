@@ -8,9 +8,9 @@
 #
 # Refuses (exit 1, nothing changed) when: a container still uses a source volume (stop the stack first, a live postgres
 # directory is not a consistent copy); a destination volume already holds data (remove the incomplete one yourself
-# after looking at it); the postgres source is missing, or neither object-store source (seaweedfs-data, or the legacy
-# minio-data before the SeaweedFS cutover) exists. Every object-store volume present is copied; valkey/clamav are caches
-# and seaweedfs-config is re-rendered by each deploy, so those are skipped when absent.
+# after looking at it); the postgres source is missing, or the object-store source (seaweedfs-data) is. valkey/clamav
+# are caches and seaweedfs-config is re-rendered by each deploy, so those are skipped when absent. A leftover
+# <from>_minio-data volume (the retired MinIO) is not copied.
 # Destination volumes get the labels Compose puts on its own volumes, so `compose up` adopts them without a warning.
 # Env: COPY_IMAGE (default alpine:3), TO_PROJECT (compose project label, default <to-prefix>), VERIFY_DEEP=0 skips the
 # per-file sha256 pass (sizes, modes, owners and the file list are still compared; symlink targets are not).
@@ -28,8 +28,7 @@ image=${COPY_IMAGE:-alpine:3}
 project=${TO_PROJECT:-$to}
 deep=${VERIFY_DEEP:-1}
 required="postgres-data"
-# The object store: SeaweedFS after the cutover, MinIO before it (both while the legacy volume is kept).
-object_store="seaweedfs-data minio-data"
+object_store="seaweedfs-data"
 optional="seaweedfs-config valkey-data clamav-data"
 
 docker info >/dev/null 2>&1 </dev/null || die "docker is not reachable"
@@ -64,7 +63,7 @@ object_store_found=0
 for n in $object_store; do
   if vol_exists "${from}_$n"; then names="$names $n"; object_store_found=1; else echo "skip ${from}_$n (absent)"; fi
 done
-[ "$object_store_found" -eq 1 ] || die "no object-store source volume (${from}_seaweedfs-data or ${from}_minio-data) exists"
+[ "$object_store_found" -eq 1 ] || die "no object-store source volume (${from}_seaweedfs-data) exists"
 for n in $optional; do
   if vol_exists "${from}_$n"; then names="$names $n"; else echo "skip ${from}_$n (absent)"; fi
 done

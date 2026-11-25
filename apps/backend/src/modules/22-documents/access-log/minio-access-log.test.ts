@@ -143,7 +143,7 @@ describe("bearerMatches", () => {
 });
 
 describe("objectStoreAuditWebhookTokenFromEnv", () => {
-  it("prefers the vendor-neutral token and accepts the legacy token during rollback compatibility", () => {
+  it("reads only the vendor-neutral token; the retired MINIO_ACCESS_LOG_WEBHOOK_TOKEN is ignored", () => {
     expect(
       objectStoreAuditWebhookTokenFromEnv({
         OBJECT_STORE_AUDIT_WEBHOOK_TOKEN: "object-token",
@@ -152,7 +152,7 @@ describe("objectStoreAuditWebhookTokenFromEnv", () => {
     ).toBe("object-token");
     expect(
       objectStoreAuditWebhookTokenFromEnv({ MINIO_ACCESS_LOG_WEBHOOK_TOKEN: "legacy-token" }),
-    ).toBe("legacy-token");
+    ).toBeUndefined();
   });
 });
 
@@ -201,13 +201,13 @@ describe("POST /api/v1/webhooks/object-store/access-log", () => {
     expect(res.json()).toMatchObject({ received: 0, recorded: 0 });
   });
 
-  it("keeps the legacy MinIO path as a compatibility alias", async () => {
+  it("no longer serves the retired /api/v1/webhooks/minio/access-log path (404, even with a valid bearer)", async () => {
     const res = await post(
       make("s3cret"),
       "Bearer s3cret",
       get({ name: "HeadObject" }),
       "/api/v1/webhooks/minio/access-log",
     );
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(404);
   });
 });

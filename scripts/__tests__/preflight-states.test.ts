@@ -69,7 +69,7 @@ const SMOKE = [
 const LEGACY_VOLUMES = [
   "wardenx_postgres-data",
   "wardenx_valkey-data",
-  "wardenx_minio-data",
+  "wardenx_seaweedfs-data",
   "wardenx_clamav-data",
 ];
 const NEW_VOLUMES = LEGACY_VOLUMES.map((v) => v.replace("wardenx_", "chartwarden_"));
@@ -81,28 +81,41 @@ describe("preflight.sh across the infra-rename windows", () => {
     expect(r.out).toContain("preflight ok");
   });
 
-  it("requires a repository-owned digest pin when the backup overlay is enabled", () => {
-    const digest = `sha256:${"a".repeat(64)}`;
-    const good = run({
-      env: [
-        "BACKUP_SOURCE_MINIO_ACCESS_KEY=reader",
-        `CHARTWARDEN_BACKUP_IMAGE=ghcr.io/engrace-hospice/chartwarden-backup:18-tools-sha-abc@${digest}`,
-      ],
-    });
-    expect(good.code, good.out).toBe(0);
-
-    for (const image of [
-      "chartwarden-backup:local",
-      "ghcr.io/engrace-hospice/chartwarden-backup:latest",
-      `ghcr.io/other/chartwarden-backup:18-tools-sha-abc@${digest}`,
-      "ghcr.io/engrace-hospice/chartwarden-backup:18-tools-sha-abc@sha256:abc",
-    ]) {
-      const bad = run({
-        env: ["BACKUP_SOURCE_MINIO_ACCESS_KEY=reader", `CHARTWARDEN_BACKUP_IMAGE=${image}`],
+  // The key was renamed (BACKUP_SOURCE_MINIO_ACCESS_KEY -> BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY). Preflight runs before
+  // deploy.sh copies the old name to the new one on a host's first deploy, so EITHER name must enable the check.
+  describe.each(["BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY", "BACKUP_SOURCE_MINIO_ACCESS_KEY"])(
+    "requires a repository-owned digest pin when the backup overlay is enabled by %s",
+    (key) => {
+      it("accepts the published tag@sha256 digest", () => {
+        const digest = `sha256:${"a".repeat(64)}`;
+        const good = run({
+          env: [
+            `${key}=reader`,
+            `CHARTWARDEN_BACKUP_IMAGE=ghcr.io/engrace-hospice/chartwarden-backup:18-tools-sha-abc@${digest}`,
+          ],
+        });
+        expect(good.code, good.out).toBe(0);
       });
-      expect(bad.code, `${image}\n${bad.out}`).toBe(67);
-      expect(bad.out).toContain("CHARTWARDEN_BACKUP_IMAGE");
-    }
+
+      it("refuses a local, mutable, foreign or malformed image", () => {
+        const digest = `sha256:${"a".repeat(64)}`;
+        for (const image of [
+          "chartwarden-backup:local",
+          "ghcr.io/engrace-hospice/chartwarden-backup:latest",
+          `ghcr.io/other/chartwarden-backup:18-tools-sha-abc@${digest}`,
+          "ghcr.io/engrace-hospice/chartwarden-backup:18-tools-sha-abc@sha256:abc",
+        ]) {
+          const bad = run({ env: [`${key}=reader`, `CHARTWARDEN_BACKUP_IMAGE=${image}`] });
+          expect(bad.code, `${image}\n${bad.out}`).toBe(67);
+          expect(bad.out).toContain("CHARTWARDEN_BACKUP_IMAGE");
+        }
+      });
+    },
+  );
+
+  it("does not check the backup image when neither name enables the overlay", () => {
+    const r = run({ env: ["CHARTWARDEN_BACKUP_IMAGE=chartwarden-backup:local"] });
+    expect(r.code, r.out).toBe(0);
   });
 
   it("accepts the live state today: wardenx_* volumes, prefix + db pinned to wardenx", () => {
@@ -170,17 +183,62 @@ describe("preflight.sh across the infra-rename windows", () => {
       pgProjects: ["chartwarden"],
     });
     expect(r.code).toBe(67);
-    expect(r.out).toContain("chartwarden_minio-data");
+    expect(r.out).toContain("chartwarden_seaweedfs-data");
   });
 
-  it("refuses a half-finished copy of the SeaweedFS volume (post-cutover object store)", () => {
-    const r = run({
-      env: ["CHARTWARDEN_VOLUME_PREFIX=chartwarden", "CHARTWARDEN_DB_NAME=wardenx", ...SMOKE],
-      volumes: ["wardenx_postgres-data", "wardenx_seaweedfs-data", "chartwarden_postgres-data"],
-      pgProjects: ["chartwarden"],
+  // The MinIO -> SeaweedFS cutover machinery is gone from deploy.sh, so nothing starts the copy any more: a host that still
+  // has a *_minio-data volume and NO *_seaweedfs-data volume would get an EMPTY SeaweedFS (every document looks lost).
+  describe("the retired MinIO volume", () => {
+    const env = ["CHARTWARDEN_VOLUME_PREFIX=chartwarden", "CHARTWARDEN_DB_NAME=wardenx", ...SMOKE];
+
+    it("refuses a host that has *_minio-data but no *_seaweedfs-data volume (the cutover never ran)", () => {
+      for (const minio of ["chartwarden_minio-data", "wardenx_minio-data"]) {
+        const r = run({
+          env,
+          volumes: ["chartwarden_postgres-data", minio],
+          pgProjects: ["chartwarden"],
+        });
+        expect(r.code, `${minio}\n${r.out}`).toBe(67);
+        expect(r.out).toContain(minio);
+        expect(r.out).toContain("EMPTY");
+        expect(r.out).toMatch(/do not deploy/i);
+      }
     });
-    expect(r.code).toBe(67);
-    expect(r.out).toContain("chartwarden_seaweedfs-data");
+
+    it("refuses it on the legacy prefix too (the copy of postgres done, SeaweedFS never created)", () => {
+      const r = run({
+        env: ["CHARTWARDEN_VOLUME_PREFIX=wardenx", "CHARTWARDEN_DB_NAME=wardenx", ...SMOKE],
+        volumes: ["wardenx_postgres-data", "wardenx_minio-data"],
+        pgProjects: ["chartwarden"],
+      });
+      expect(r.code, r.out).toBe(67);
+      expect(r.out).toContain("wardenx_minio-data");
+    });
+
+    it("a migrated host (SeaweedFS volume present) with a leftover minio-data volume deploys, with a WARNING", () => {
+      const r = run({
+        env,
+        volumes: [...NEW_VOLUMES, "wardenx_minio-data"],
+        pgProjects: ["chartwarden"],
+      });
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toContain("preflight WARNING");
+      expect(r.out).toContain("wardenx_minio-data");
+      expect(r.out).toContain("plaintext");
+      expect(r.out).toContain("backups");
+    });
+
+    it("a migrated host without any minio-data volume prints no MinIO warning", () => {
+      const r = run({ env, volumes: NEW_VOLUMES, pgProjects: ["chartwarden"] });
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).not.toContain("minio-data");
+    });
+
+    it("a fresh host (no volumes at all) is untouched by the check", () => {
+      const r = run({ env: [] });
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).not.toContain("minio-data");
+    });
   });
 
   it("refuses when the key says chartwarden but the cluster still holds wardenx (rename not run)", () => {

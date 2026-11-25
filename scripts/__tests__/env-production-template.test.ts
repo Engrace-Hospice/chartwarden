@@ -4,7 +4,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { collectEnvProblems } from "../../apps/backend/src/bootstrap/env";
-import { CANONICAL_OF_LEGACY, OBJECT_STORE_ENV_PAIRS } from "./object-store-env-pairs";
 
 // GAP-176 — `deploy/production/.env.production.example` is the file bootstrap-vps.sh renders on a fresh
 // host / DR rebuild. It was referenced but never committed (the `.env.*` ignore glob swallowed it), so
@@ -47,21 +46,12 @@ describe("deploy/production/.env.production.example", () => {
     for (const t of tokens) expect(KNOWN_TOKENS).toContain(t);
   });
 
-  it("defines every ${VAR:?...} that compose.yml requires of .env.production (a MINIO_* rollback alias is derived by deploy.sh)", () => {
+  it("defines every ${VAR:?...} that compose.yml requires of .env.production", () => {
     const compose = readFileSync(COMPOSE, "utf8");
     const required = [...compose.matchAll(/\$\{([A-Z0-9_]+):\?/g)].map((m) => m[1] ?? "");
     const defined = Object.keys(render(text));
-    for (const key of required) {
-      const canonical = CANONICAL_OF_LEGACY.get(key);
-      if (canonical === undefined) {
-        expect(defined).toContain(key);
-      } else {
-        // compose still requires the legacy name (the legacy-minio profile and the rollback twins), but the template
-        // must not define it: deploy.sh writes it, identical to its canonical counterpart, before any compose call.
-        expect(defined, `${key} is a deploy.sh-derived alias`).not.toContain(key);
-        expect(defined, `${key} derives from ${canonical}`).toContain(canonical);
-      }
-    }
+    expect(required.length).toBeGreaterThan(0);
+    for (const key of required) expect(defined, key).toContain(key);
   });
 
   it("ships the SeaweedFS provisioning credentials and the audit token under their canonical names", () => {
@@ -72,20 +62,9 @@ describe("deploy/production/.env.production.example", () => {
     expect(text).toMatch(/^OBJECT_STORE_AUDIT_WEBHOOK_TOKEN=REPLACE_WITH_AT_LEAST_32_CHARACTERS$/m);
   });
 
-  it("never defines a rollback alias: independently generated old and new secrets are what deploy.sh's mismatch check refuses", () => {
-    const defined = Object.keys(render(text));
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      expect(defined, p.legacy).not.toContain(p.legacy);
-      expect(defined, p.canonical).toContain(p.canonical);
-    }
-    expect(text).not.toMatch(/^MINIO_/m);
-  });
-
-  it("explains that deploy.sh creates the MINIO_* aliases with identical values and never rotates a credential", () => {
-    expect(text).toContain("ROLLBACK ALIASES");
-    expect(text).toMatch(/`deploy\.sh` creates each of them with a value IDENTICAL/);
-    expect(text).toMatch(/never rotates a credential/);
-    for (const p of OBJECT_STORE_ENV_PAIRS) expect(text, p.legacy).toContain(p.legacy);
+  it("carries no MINIO_* name at all: the retired rollback aliases are gone", () => {
+    expect(Object.keys(render(text)).filter((k) => k.includes("MINIO"))).toEqual([]);
+    expect(text).not.toMatch(/MINIO/);
   });
 
   it("gives each object-store secret its own fresh value", () => {

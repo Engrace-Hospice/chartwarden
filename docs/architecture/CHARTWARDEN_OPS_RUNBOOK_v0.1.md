@@ -96,7 +96,7 @@ Maintenance windows announced to customers ≥ 7 days in advance via status page
 | Time | Task | Owner |
 |---|---|---|
 | 08:00 | Review overnight alerts and dismiss noise | On-call |
-| 08:30 | Check backup job status (pgBackRest, MinIO replication, PBS) — all green? | On-call |
+| 08:30 | Check backup job status (pgBackRest, off-site object mirror, the `object-copy` second copy once enabled, PBS) — all green? | On-call |
 | 09:00 | Review SEV-3 and SEV-4 incidents from prior 24 hr | On-call |
 | 17:00 | End-of-day check — any open watch items? | On-call |
 | Continuous | Respond to alerts | On-call |
@@ -121,7 +121,7 @@ Maintenance windows announced to customers ≥ 7 days in advance via status page
 | 5th | Alert fatigue review — which alerts fired most often? Retune. | On-call |
 | 10th | Tenant census report to compliance — active orgs, active CCNs, active users | Compliance |
 | 15th | Dependency update review — Renovate PRs reviewed and merged | Engineering |
-| 20th | Backup restoration verification — random sample of MinIO objects | On-call |
+| 20th | Backup restoration verification — random sample of restored object-store objects | On-call |
 | 25th | Audit log review — sample of high-risk events (admin actions, PHI exports, RLS denials) | Compliance |
 | End of month | Closeout — incident summary; SLO measurement | Engineering |
 
@@ -596,39 +596,35 @@ the detached table into the parent (they route correctly now), then re-attach an
 `ACCESS EXCLUSIVE` lock is held for the whole thing, so do this at the first opportunity rather than the
 convenient one — the table is still accepting writes into DEFAULT while you wait.
 
-#### 5.2.3 Manual Partition Operations
+#### 5.2.3 Archiving Audit Partitions (never by hand)
 
-Detach an expired partition for archival:
+A partition is never detached, exported or dropped by hand. The built path is the monthly `audit.archive` job
+(`apps/backend/src/bootstrap/jobs/audit-archive.ts`, cron `30 3 2 * *`, M01 spec §4.8):
 
-```sql
--- Detach Jan 2026 audit partition (compliance class) for archival
-ALTER TABLE audit_event DETACH PARTITION audit_event_2026_01;
+- For each CLOSED `audit_event` partition older than `AUDIT_ARCHIVE_HOT_MONTHS` (default 13; the partition's upper bound is at
+  least that many months before the start of the current month) it writes gzip NDJSON parts
+  plus a checksummed `manifest.json` to `AUDIT_ARCHIVE_BUCKET` (under `AUDIT_ARCHIVE_PREFIX`, default `audit-archive`),
+  verifies every object back from the store (server-enforced SHA-256 plus an inspect), and checks that the archived row
+  total equals the partition's row count. A run takes at most `DEFAULT_MAX_PARTITIONS_PER_RUN` = 3 partitions, oldest first,
+  and skips empty ones, so a backlog drains over months.
+- It detaches a verified partition from the hot table only when `AUDIT_ARCHIVE_DETACH=true` (off by default), through
+  `audit_archive_detach`, which re-counts and refuses on any mismatch. A detached range is no longer searched through
+  `audit_event`; the detached table is kept, and `ALTER TABLE audit_event ATTACH PARTITION` re-attaches it (migration 0432).
+- With `AUDIT_ARCHIVE_BUCKET` unset it reports `skipped: "unconfigured"` and touches nothing, so the hot tier keeps every
+  partition. TODAY the repo sets no `AUDIT_ARCHIVE_BUCKET`; whether the production env file sets one is unevidenced. The
+  bucket must already exist, and the app key reaches only `tenant-*` and `chartwarden-*` buckets.
+- It never drops a partition. Destruction is M4's certificate-driven act (an approved destruction certificate, M4 spec
+  §2.4.2): never `DROP TABLE` a partition by hand, which bypasses the certificate, the legal-hold overlay and the 42 CFR
+  Part 2 refusal.
+- The Parquet export to `platform/cold-storage/<table>/<year>/<month>.parquet` (M01 D5) is the original design, not what
+  was built: the archive format is gzip NDJSON, and no command loads an archived range back into `audit_event` (re-attach
+  the kept table instead).
 
--- Export to Parquet for cold storage
-COPY audit_event_2026_01 TO '/tmp/audit_2026_01.parquet' WITH (FORMAT 'parquet');
-
--- Upload to MinIO cold storage
-mc cp /tmp/audit_2026_01.parquet chartwarden-primary/platform/cold-storage/audit/2026/
-
--- Drop the partition
-DROP TABLE audit_event_2026_01;
-
--- Audit the destruction
-INSERT INTO audit_event (event_type, resource_kind, ..., context)
-VALUES ('audit.partition_archived', 'partition', ..., '{"partition": "audit_event_2026_01"}');
-```
-
-For partitions in `operational` retention class (1-year retention):
-
-- Detach 13 months after creation
-- Cold storage in MinIO `platform/cold-storage/<table>/<year>/<month>.parquet`
-- Original partition dropped
-- Restorable on-demand if needed for investigation
-
-For `legal_hold` retention class:
-
-- Never detach
-- Skip in retention job
+The job is class-agnostic: it has no retention-class logic and treats every closed partition older than the hot window the
+same, whether its rows are `operational`, `compliance` or held. A partition holding actively-held rows may detach once its
+manifest is verified (migration 1053; the job always passes the attestation after verifying), because detach is not
+destruction. Held rows are never destroyed: M4 destruction skips them (ADR-0051: `audit_event` has no `legal_hold` class
+flip, a hold is an overlay), and destruction of any class waits for an approved M4 destruction certificate.
 
 ### 5.3 Connection Pool Management
 
@@ -794,16 +790,16 @@ FROM pg_stat_progress_create_index;
 
 ### 5.7 Backups and Restore Drills (single-host stack, #857)
 
-The design, variables and key handling are in DR/BCP §4.8; this is the operating loop. Everything runs from the
+The design, variables and key handling are in DR/BCP §4.8; this is the operating loop. Per the owner the sidecar runs in production and the off-site mirror is enabled; the repo holds no evidence of it. Everything runs from the
 deploy directory with the overlay: `docker compose --env-file .env.production -f compose.yml -f compose.backup.yml`
 (below: `dc`).
 
 | When | What | Pass |
 | --- | --- | --- |
-| Continuous | `backup` sidecar: WAL archiving, a coordinated snapshot every 15 min, a base backup daily (full on Sunday) | no `backup.*` ops notice on `OPS_ALERT_WEBHOOK_URL`; heartbeat (`BACKUP_HEARTBEAT_URL`) not overdue |
+| Continuous | `backup` sidecar: WAL archiving, a coordinated snapshot 15 min after the previous one ends, a base backup daily (full on Sunday) | no `backup.*` ops notice on `OPS_ALERT_WEBHOOK_URL`; heartbeat (`BACKUP_HEARTBEAT_URL`) not overdue |
 | Daily (08:30 check) | `dc ps backup` is `healthy`; `dc exec backup cw-backup.sh marker` shows a snapshot under 45 min old; `dc exec -u postgres backup pgbackrest --stanza=chartwarden info` lists today's base backup on repo1 and repo2 | all three |
 | Monthly (first Saturday) | isolated restore + verify (DR/BCP §4.8.6): `backup/restore.sh latest`, `backup:verify-restore`, record under `audit/restore-drill/<date>-production-restore.md`, `restore.sh destroy` | verifier exit 0; restore wall time inside the 1 h RTO target |
-| Quarterly | the monthly drill restoring from the OFF-SITE copy only, on a host other than production, with the escrowed keys (not the host's `.env.production`) | as monthly, and the keys open the backup |
+| Quarterly | the monthly drill restoring from the OFF-SITE copy only, on a host other than production, with the escrowed keys (not the host's `./secrets/` files or its environment file) | as monthly, and the keys open the backup |
 | Every change to `deploy/production/backup/` | `bun run backup:coordinated-drill` on a workstation (private containers) | the new `audit/restore-drill/<date>-coordinated-backup-drill.md` reads PASS |
 
 **Alerts** (mandatory https `OPS_ALERT_WEBHOOK_URL`; the sidecar will not start without it).
@@ -831,7 +827,7 @@ the sidecar, read-only for restores; DR/BCP §4.8.5). Example, the WAL key (`BAC
 ```
 
 The bucket's default retention is COMPLIANCE for >= 100 days (each snapshot checks it); its lifecycle expires
-noncurrent versions and delete markers after 120 days (longer than the lock) and aborts incomplete multipart uploads
+noncurrent versions and delete markers after 120 days (longer than the lock; operator-set, unchecked) and aborts incomplete multipart uploads
 after 7 days. The backup key adds bucket-wide get/put/list and `s3:DeleteObject` ONLY under `pgbackrest/backup/*`
 and `pgbackrest/archive/*` (pgBackRest expire; never `objects/` or `snapshots/`); it never has
 `s3:DeleteObjectVersion`, `s3:BypassGovernanceRetention`, `s3:PutObjectRetention` or any `s3:PutBucket*`. The restore
@@ -843,123 +839,84 @@ run `pgbackrest verify`, restore with `RESTORE_REPO_TARGET_TIME` if a segment wa
 delete markers; rotate it, then restore with `RESTORE_REPO_TARGET_TIME=<before the incident>` or, as the bucket owner,
 delete the markers by version id (DR/BCP §4.8.5, "Removing delete markers").
 
+**Drill stand-in, today.** `restore.sh` restores the snapshot's objects into a throwaway MinIO container on its own network, not into SeaweedFS; it reads the off-site backup, never the production store. Production's own backup reader is a read-only SeaweedFS key (`reader-policy.json`).
+
 **Never** run `restore.sh` output against the live stack, and never point `backup:verify-restore` at the production
 database: the restore runs with `archive_mode=off` on its own network precisely so it cannot write into the
 production repository.
 
 ---
 
-## 6. Storage Operations (MinIO)
+## 6. Storage Operations (object store)
 
-### 6.1 Bucket Health Monitoring
+**Which store.** Production's object store is **SeaweedFS**: compose service `seaweedfs` (pinned image in `deploy/production/compose.yml`), a single-node all-in-one `weed server -s3` with one volume per bucket and no in-store replication (ADR-0050 D6, amendment 2026-11-05). Local development and CI run **RustFS**. The second copy, not enabled in production yet, is RustFS on another host (§6.4). The application reaches every one of them through the vendor-neutral `OBJECT_STORE_*` variables (formerly `MINIO_*`; the backend no longer reads any `MINIO_*` name, so the old lines may be deleted from `.env.production`; a pre-SeaweedFS commit must not be redeployed, see `deploy/production/README.md`, "Retired: the MinIO rollback window").
+
+The `mc` commands this chapter used to carry (`mc admin info`, `mc du`, `mc replicate`, `mc ilm`, `mc retention`, `mc admin policy`) have no SeaweedFS equivalent in the repo, so they were removed, not translated. Each section below gives what the repo does provide; anything else is marked "not available in the repo today". All commands run from the production deploy directory.
+
+### 6.1 Health Monitoring
 
 ```bash
-# Bucket inventory
-mc admin info chartwarden-primary
+# Container health: the healthcheck is GET /healthz on the S3 gateway (200 once it reaches its filer)
+docker compose --env-file .env.production -f compose.yml ps seaweedfs fluent-bit
 
-# Per-bucket size and object count
-mc du chartwarden-primary/tenants/<org>/
-
-# Replication status
-mc replicate status chartwarden-primary/tenants
-
-# Quota check
-mc admin user info chartwarden-primary <tenant-user>
+# The same probe from the host (127.0.0.1:9000 is the storage vhost's nginx upstream)
+curl -sf http://127.0.0.1:9000/healthz && echo ok
 ```
+
+- The api's `/ready` includes the object-store check (key `objectStore`, formerly `minio`), so an unreachable store also shows there (tier 2 of `smoke.sh`, `deploy/production/README.md`).
+- SeaweedFS writes an audit record per S3 call to `fluent-bit`, which posts it to the api. A down `fluent-bit` loses audit records (signed-URL download confirmations) but never blocks an S3 request, so check it with the store.
+- Bucket inventory, per-bucket size and object count, per-tenant usage and a quota read-back: **not available in the repo today.** The one quota operation the repo documents is setting a cap (§6.5).
 
 ### 6.2 Lifecycle Policy Verification
 
-Each PHI bucket has a lifecycle policy. Verify monthly:
+TODAY, code applies exactly one lifecycle rule: the 30-day expiry of the `m25-835/` prefix (rule id `cw-expire:m25-835/`, current and noncurrent versions) on each `tenant-*` bucket. The `tenant-buckets` one-shot applies it on every deploy, and M25 applies it when it stages an advice (`ensurePrefixExpiry` in `apps/backend/src/modules/22-documents/seams/s3-object-store.ts`, constants in `apps/backend/src/m25-staged-835-config.ts`). The app key may read and write lifecycle configuration on `tenant-*` buckets and nothing else on policy (`deploy/production/object-store/app-policy.json`).
 
-```bash
-# Get lifecycle policy
-mc ilm rule list chartwarden-primary/tenants/<org>/intake
+TARGET: expire incomplete multipart uploads after 7 days and delete `intake` objects after 30 days. No code or provisioning step applies either rule today, so there is nothing to verify for them.
 
-# Expected output should match:
-# - Expire incomplete multipart after 7 days
-# - Delete after 30 days
-```
-
-If discrepancy, restore policy from `infra/minio/policies/` in Git.
+Reading a bucket's lifecycle rules back from an operator shell (the former monthly `mc ilm rule list` check): **not available in the repo today.**
 
 ### 6.3 Object Lock Verification (Compliance Buckets)
 
-```bash
-# Verify object lock on claims bucket
-mc retention info chartwarden-primary/tenants/<org>/claims/
-# Expected: COMPLIANCE mode with 7-year retention
+TARGET: the `claims` and `cost-reports` data under COMPLIANCE-mode Object Lock with a 7-year default retention, so that not even an admin can delete an object until retention passes.
 
-# Object lock prevents deletion even by admin (compliance mode)
-# Until retention period passes
-```
+TODAY the primary and the second copy have no Object Lock, so there is no lock to verify on a `tenant-*` bucket. The off-site bucket (enabled in production per the owner; the repo holds no evidence of it) carries a COMPLIANCE lock, default retention >= 100 days, that the operator creates and `cw-backup.sh` verifies on every snapshot: the snapshot fails (`backup.snapshot_failed`, §5.7) when the mode is not COMPLIANCE or the days are below `BACKUP_OFFSITE_MIN_LOCK_DAYS` (default 100). Its 120-day noncurrent-version lifecycle is operator-set and unchecked, and the lock is not a 7-year control. Partition rotation (§5.2) covers database rows, not object bytes: objects persist on the primary until M22's eraser removes them.
 
 ### 6.4 Replication Health
 
+The primary has no in-store replication (single node): the cross-site `mc replicate` checks this chapter used to carry do not apply. The only second copy the repo provides is `object-copy`: RustFS on another host, a one-way sync run by `scripts/object-store-copy.ts --every` (default every 3600 s, `OBJECT_COPY_INTERVAL_S`). **It is not enabled in production yet** (`deploy/production/README.md`, "Object store: second copy"). When it is:
+
 ```bash
-# Replication status all buckets
-for bucket in $(mc ls chartwarden-primary | awk '{print $5}'); do
-  echo "Bucket: $bucket"
-  mc replicate status chartwarden-primary/$bucket
-done
-
-# Lag check
-mc replicate status chartwarden-primary/tenants --json | jq '.ReplicationStats'
-
-# Expected: PendingCount low, FailedCount zero
+docker compose --env-file .env.production -f compose.yml -f compose.object-copy.yml ps object-copy
+docker compose --env-file .env.production -f compose.yml -f compose.object-copy.yml logs -f object-copy   # one JSON summary per run
 ```
+
+- Expected: a clean JSON summary per run and a `healthy` container. A failed run posts `object_copy.failed` to `OPS_ALERT_WEBHOOK_URL` (counts and bucket/key ids, never content); the container turns unhealthy when no run has been clean for three intervals.
+- Exposure: the data-loss window of the copy equals the copy interval (hourly by default). In production the object RPO is the off-site mirror's snapshot interval (default 15 minutes, plus up to two snapshot run times), because the mirror runs inside every sidecar snapshot.
+- It is a sync, not an archive: an erasure on the primary reaches the copy on the next run, with three limits: a large erasure is held by the mass-delete guard until an operator names the bucket, a bucket dropped on the primary is never removed from the copy, and `--restore` after an erasure resurrects the destroyed objects. A D12 shred or DEK destruction does not reach the off-site mirror (enabled in production per the owner): its objects are SSE-C encrypted under one platform backup key, not the tenant's DEK, so destroying a DEK does not make them unreadable; erased objects stay there because nothing deletes them (no `--remove`, the backup key cannot delete under `objects/`, the lifecycle expires only noncurrent versions and delete markers); and the COMPLIANCE lock blocks even the bucket owner until it expires.
+- The guard is narrow: it refuses a bucket's deletions only when the source bucket is empty or a run would delete more than max(10, 10% of the target count) (refused and paged; `ALLOW_MASS_DELETE` names a bucket to let one through). A loss under that threshold, such as a primary missing a few percent of its objects, propagates to the copy on the next run.
+- Per-bucket lag or pending counts: **not available in the repo today.**
+
+Recovery from the copy has no promote-the-copy procedure in the repo. The documented path is: provision a new SeaweedFS, run `scripts/object-store-copy.ts --restore` (`SOURCE_S3_*` = the replica, `TARGET_S3_*` = the new primary's admin; it never deletes), then run the `tenant-buckets` backfill (the copy carries objects, not bucket versioning or expiry rules). Stop `object-copy` first (`restart: unless-stopped`, it syncs hourly and deletes from the target) and keep it stopped until `--restore` and the per-bucket object-count checks finish; after the restore, re-run the D12 erasures, because a restore resurrects destroyed objects (DR/BCP §6.3). The only archive the repo builds is the off-site Object-Lock mirror (§5.7), enabled in production per the owner; loading it into a new SeaweedFS is not a tested procedure (DR/BCP §4.8.6). The second copy described here is not enabled in production, so today's live recovery source is that mirror.
 
 ### 6.5 Capacity Management
 
+The store's capacity is the host disk behind the `seaweedfs-data` volume. Watch the host disk with the §13.1.4 alerts (70% warning, 85% critical).
+
 ```bash
-# Total capacity
-mc admin info chartwarden-primary
-
-# Per-tenant utilization
-for org in $(get_active_org_ids); do
-  size=$(mc du chartwarden-primary/tenants/$org/ --json | jq .size)
-  echo "$org: $(numfmt --to=iec --suffix=B $size)"
-done
-
-# Alert thresholds:
-# - Bucket > 100 GB → review for cleanup opportunities
-# - Volume > 80% utilization → plan capacity expansion
-# - Single object > 500 MB → investigate
+# Hard per-tenant cap (optional); sets a SeaweedFS bucket quota on one tenant bucket
+docker compose --env-file .env.production -f compose.yml exec seaweedfs \
+  sh -c 'echo "s3.bucket.quota -name=tenant-<orgId> -op=set -sizeMB=<n>" | weed shell'
 ```
+
+Store-level capacity and per-tenant utilization reports: **not available in the repo today.** TARGET thresholds, measurable only once such a report exists: bucket > 100 GB, review for cleanup; single object > 500 MB, investigate. Volume > 80% utilization: plan expansion (§10.4.3).
 
 ### 6.6 Tenant Bucket Provisioning
 
-When a new tenant is onboarded:
+Each tenant has one bucket, `tenant-<orgId>` (`deriveTenantBucket` in `apps/backend/src/modules/22-documents/lifecycle/storage.ts`). The `documents`, `generated`, `intake`, `claims`, `cost-reports` and `exports` areas are key prefixes inside it: nothing is created per prefix. The M34 provision worker creates the bucket at onboarding (a HEAD, then a PUT when the bucket is missing; "already exists" is success).
 
-```bash
-# Create buckets per Module 40 / tenant onboarding workflow
-for subbucket in documents generated intake claims cost-reports exports; do
-  mc mb chartwarden-primary/tenants/<new-org-id>/$subbucket
-done
+There is no per-tenant store credential and no per-tenant IAM user: api and worker use the one scoped app key (`SEAWEEDFS_APP_ACCESS_KEY` / `_SECRET_KEY`, handed to the application as `OBJECT_STORE_ACCESS_KEY` / `_SECRET_KEY`). `deploy/production/object-store/app-policy.json` gives it object and bucket operations on `tenant-*` and `chartwarden-*` and lifecycle on `tenant-*`, with no bucket delete and no versioning or policy change. Lifecycle and Object Lock for the new bucket: §6.2 and §6.3 (TARGET beyond the `m25-835/` rule).
 
-# Apply lifecycle policy
-mc ilm rule import chartwarden-primary/tenants/<new-org-id>/intake \
-  < infra/minio/policies/intake-30-day-lifecycle.json
-
-# Apply object lock on compliance buckets
-mc retention set --default COMPLIANCE 7y \
-  chartwarden-primary/tenants/<new-org-id>/claims
-
-mc retention set --default COMPLIANCE 7y \
-  chartwarden-primary/tenants/<new-org-id>/cost-reports
-
-# Generate tenant-scoped access key
-mc admin user add chartwarden-primary tenant-<new-org-id> <generated-secret>
-
-# Apply IAM policy scoping to that tenant's prefix
-mc admin policy attach chartwarden-primary tenant-<new-org-id> --user tenant-<new-org-id>
-
-# Verify
-mc admin user info chartwarden-primary tenant-<new-org-id>
-```
-
-**Backfill (current deployment).** The application's per-tenant bucket is `tenant-<orgId>`, created by the M34 provisioner at
-onboarding. Orgs that predate that lack it: run `bun run ops:backfill-tenant-buckets` (compose: the `tenant-buckets` one-shot,
-which `deploy.sh` runs every deploy). It is idempotent; "already exists" is success.
+**Backfill (current deployment).** Orgs that predate the M34 provisioner lack the bucket: run `bun run ops:backfill-tenant-buckets` (compose: the `tenant-buckets` one-shot, which `deploy.sh` runs every deploy). It is idempotent, applies the `m25-835/` expiry, prints `tenant buckets: <n> created, <n> already present, <n> failed` and exits non-zero on any failure. `bun run storage:reconcile-tenants` does the same bucket creation for every active tenant from the platform database (`DATABASE_PLATFORM_URL`, the `chartwarden_platform_login` credential, and `OBJECT_STORE_*`).
 
 **Attachment scanner (ClamAV).** Message attachments are delivered only after a clamd verdict of clean. The `clamav` sidecar is
 internal-network only; its config is `deploy/clamav/clamd.conf` (alerts on encrypted and over-limit files). Alert on attachments
@@ -1067,8 +1024,8 @@ Maintained in `infra/secrets/inventory.yaml` (encrypted via SOPS):
 | `DATABASE_URL` (wardenx_replicator) | Replication | Annual | | |
 | `BETTER_AUTH_SECRET` | Backend | Annual | | |
 | `VALKEY_PASSWORD` | All services | Annual | | |
-| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | Admin only | Annual | | |
-| `MINIO_TENANT_<org>_ACCESS_KEY` / `_SECRET` | Per-tenant data plane | On suspicion or annual | | |
+| `SEAWEEDFS_ADMIN_ACCESS_KEY` / `SEAWEEDFS_ADMIN_SECRET_KEY` (object store admin) | Operators and the one-time migration only, never the application | Annual; same alias rule as the next row | | |
+| `SEAWEEDFS_APP_ACCESS_KEY` / `SEAWEEDFS_APP_SECRET_KEY` (compose hands them to api and worker as `OBJECT_STORE_ACCESS_KEY` / `OBJECT_STORE_SECRET_KEY`) | api and worker data plane: one key for all tenants, scoped to `tenant-*` and `chartwarden-*` by `deploy/production/object-store/app-policy.json` (there is no per-tenant store credential) | On suspicion or annual. Set `SEAWEEDFS_APP_SECRET_KEY` to the new value, then deploy: `object-store-provision` rewrites `s3.json` and `deploy.sh` recreates `seaweedfs` (a few seconds of storage downtime). The old `MINIO_*` names are no longer read and may be deleted (`deploy/production/README.md`, "Retired: the MinIO rollback window") | | |
 | `ANTHROPIC_API_KEY` | Backend, ml-worker | Quarterly or on suspicion | | |
 | `DOSESPOT_CLIENT_ID` / `_SECRET` / per-clinic creds | Backend | Per DoseSpot contract | | |
 | `TWILIO_ACCOUNT_SID` / `_AUTH_TOKEN` | Backend (notifications) | Annual | | |
@@ -1394,7 +1351,7 @@ done
 For emergency admin access when normal channels unavailable:
 
 - One break-glass `chartwarden_admin` PostgreSQL credential, password sealed in offline envelope
-- One break-glass MinIO root credential, similarly sealed
+- The object-store admin credential (the SeaweedFS admin pair, §8.1) is not sealed and not break-glass in the strict sense: it is a standing credential on the host (`deploy.sh` generates it into `.env.production` and `object-store-provision` renders it into `s3.json` on every deploy), used only by operators and `scripts/object-store-copy.ts --restore`
 - One break-glass SSH key for `chartwarden-edge-01` (host of last resort), sealed
 
 **Usage triggers:**
@@ -1643,7 +1600,7 @@ Tests run from at least 2 external locations (avoiding single-point-of-monitorin
 | Twilio | SMS volume; per-tenant attribution; spike investigation if >2× baseline |
 | Postmark | Email volume; bounce rate trends |
 | Stripe | Fee analysis; chargebacks; failed payment trends |
-| MinIO storage (if cloud) | Storage growth rate; bandwidth costs |
+| Object storage (if cloud) | Storage growth rate; bandwidth costs |
 | Proxmox hosting (if colocated) | Power, bandwidth, hardware service |
 
 Monthly review consolidates into a vendor-spend report stored in `docs/ops/cost-reports/<YYYY-MM>.md` (**`docs/ops/` does not exist** — create on first report).
@@ -1730,13 +1687,13 @@ If chartwarden-db-01 needs more resources:
 
 #### 10.4.3 Scale Storage
 
-When MinIO approaching capacity:
+TODAY the object store is a single-node SeaweedFS whose data lives in the `seaweedfs-data` volume of the production host (`deploy/production/compose.yml`), so its capacity is that host's disk. When it approaches capacity (disk alerts, §13.1.4; §6.5):
 
-1. Add disk to chartwarden-storage-01 VM via Proxmox
-2. Extend MinIO server with new disk
-3. Verify capacity in MinIO console
+1. Take a fresh coordinated backup first (§5.7).
+2. Grow the host disk through the host or hosting provider.
+3. Optionally cap a fast-growing tenant with a bucket quota (§6.5).
 
-If single VM can't grow, transition to distributed MinIO (multi-node mode) — major operational change requiring planning.
+Adding volumes or nodes to SeaweedFS, verifying capacity from the store, and per-tenant usage reports: **not available in the repo today.** TARGET: a multi-node layout on the cluster platform (ADR-0050); the repo has no procedure for it, so plan it as a major operational change.
 
 ### 10.5 Budget Forecasting
 
@@ -1775,7 +1732,7 @@ curl -sf -X POST $API/api/v1/platform/tenants \
 
 # 3. Create initial Locations  →  NOT IMPLEMENTED as an operator route (same as step 2).
 
-# 4. Provision MinIO buckets (§6.6) — per-tenant bucket is `tenant-<organizationId>`.
+# 4. Provision the object-store bucket (§6.6) — per-tenant bucket is `tenant-<organizationId>`.
 
 # 5+6. Invite the first admin. Self-serve signup (M34 §5) mints this as part of the signup-intent
 #      flow; for a sales-led tenant, use the tenant-scoped invitation surface:
@@ -2125,10 +2082,10 @@ Alert: disk_usage_high (70% warning, 85% critical)
 ```
 
 1. Identify which VM and which mount
-2. Common: PG data dir, audit_event partitions (rotate older to cold), MinIO buckets
+2. Common: PG data dir, audit_event partitions (rotate older to cold), object-store data (the `seaweedfs-data` volume)
 3. Procedure:
    - PG: vacuum, archive old partitions, possibly grow volume
-   - MinIO: lifecycle policy review, possible bucket cleanup
+   - Object store: lifecycle rule review (§6.2; only the `m25-835/` expiry is applied today), per-tenant bucket quota (§6.5), disk growth (§10.4.3)
    - Backup VM: extend retention vs. archive to off-site
 
 #### 13.1.5 Certificate Expiration Approaching
@@ -2457,7 +2414,7 @@ Phase 1 is platform-ops-driven (Phase 3 self-serve is gated behind `m34.self_ser
 - [ ] Provision worker (single-concurrency, **idempotent on `tenant_account_id`**) completed each step:
   - [ ] `tenant_account(status='provisioning')` inserted
   - [ ] `m34_provision_tenant_key_ring(...)` (SECURITY DEFINER) created the key ring with `current_dek_version='v1'`, KEK-wrapped DEK populated
-  - [ ] Per-tenant MinIO prefixes created with retention policies per §6.6 (`documents,generated,intake,claims,cost-reports,exports`)
+  - [ ] Per-tenant bucket `tenant-<orgId>` created, with the logical prefix set `documents,generated,intake,claims,cost-reports,exports` inside it (§6.6). Retention and lifecycle rules per prefix are TARGET (§6.2, §6.3): the worker creates the bucket only
   - [ ] M2 `createOrganization(...)` returned `orgId`, patched onto `tenant_account.organization_id`
   - [ ] Eleven canonical `onboarding_task` rows seeded from `onboarding_task_template`
   - [ ] `tenant_invitation` issued (magic link, `expires_at = NOW()+14d`) and dispatched via M36 PHI-sanitized channel
@@ -2465,7 +2422,7 @@ Phase 1 is platform-ops-driven (Phase 3 self-serve is gated behind `m34.self_ser
 - [ ] **Verification (surveyor query):** `tenant_account_status_event` trail + per-step `audit_event` reconstruct provisioning end-to-end, in order, with actor identity preserved
 - [ ] **BAA gate noted:** the `onboarding → active` transition refuses unless an `executed` BAA exists with >90 days to expiry (§18.3 / M34 §7.5)
 
-**Idempotent resume (per M34 §7.7).** If the worker failed mid-way, re-run it — partial rows survive and it resumes from the last completed step. If the DEK was created but the MinIO prefix was not, the re-run creates the prefix and proceeds. If MinIO is down, the worker fails and backs off; the tenant remains in `provisioning` until manual intervention. Never hand-craft the key ring or MinIO prefixes outside the worker.
+**Idempotent resume (per M34 §7.7).** If the worker failed mid-way, re-run it — partial rows survive and it resumes from the last completed step. If the DEK was created but the tenant bucket was not, the re-run creates the bucket and proceeds. If the object store is down, the worker fails and backs off; the tenant remains in `provisioning` until manual intervention. Never hand-craft the key ring or the tenant bucket outside the worker.
 
 ### 18.2 Cryptographic Shred Approval Workflow (M34 §7.2)
 
@@ -2539,8 +2496,9 @@ psql -h chartwarden-db-02 -U postgres -c "SELECT NOW() - pg_last_xact_replay_tim
 # Valkey ping
 redis-cli -h chartwarden-data-01 PING
 
-# MinIO health
-mc admin info chartwarden-primary
+# Object store health (production: SeaweedFS; run from the deploy directory)
+docker compose --env-file .env.production -f compose.yml ps seaweedfs
+curl -sf http://127.0.0.1:9000/healthz && echo ok
 
 # Backup status (single-host stack, §5.7)
 docker compose --env-file .env.production -f compose.yml -f compose.backup.yml exec backup cw-backup.sh marker

@@ -72,7 +72,7 @@ import {
  * live (document library + detail, version ledger, intake batch/classification/job/candidate/review,
  * form-template catalog + overlays + fills); metadata/review writes are live, and upload/version creation
  * (GAP-068) and signed-URL presigning run over the bound MinIO/S3 store, answering a typed `DegradedError`
- * 503 only when MINIO_* is unset. Replaces the
+ * 503 only when OBJECT_STORE_* is unset. Replaces the
  * in-memory clinical-core scaffold mount for M22.
  */
 export function mountDocumentRoutes(
@@ -136,7 +136,7 @@ export function mountDocumentRoutes(
     recordsRequests,
   });
   // GAP-141 — the object-store audit receiver (download confirmation -> `signed_url_consumed`); fail-closed 503
-  // until its bearer is set. MINIO_* remains a rollback-compatible alias for one release window.
+  // until its bearer (OBJECT_STORE_AUDIT_WEBHOOK_TOKEN) is set.
   registerMinioAccessLogRoute(app, {
     db,
     token: objectStoreAuditWebhookTokenFromEnv(process.env),

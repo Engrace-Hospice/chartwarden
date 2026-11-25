@@ -259,8 +259,8 @@ sed -i \
 sed -i \
   "s|^CHARTWARDEN_WEB_IMAGE=.*|CHARTWARDEN_WEB_IMAGE=chartwarden-web:manual-${COMMIT_SHA}|" \
   /opt/chartwarden/.env.production
-Vérifiez que le stockage objet (SeaweedFS) reste configuré (les noms MINIO_* sont le contrat d'env de l'adaptateur) :
-grep -cE '^(CHARTWARDEN_IMAGE|CHARTWARDEN_WEB_IMAGE|STORAGE_PUBLIC_ORIGIN|MINIO_ROOT_USER|MINIO_ROOT_PASSWORD)=' \
+Vérifiez que le stockage objet (SeaweedFS) reste configuré (le contrat d'env de l'adaptateur est OBJECT_STORE_*, alimenté par les comptes SEAWEEDFS_APP_*) :
+grep -cE '^(CHARTWARDEN_IMAGE|CHARTWARDEN_WEB_IMAGE|STORAGE_PUBLIC_ORIGIN|SEAWEEDFS_APP_ACCESS_KEY|SEAWEEDFS_APP_SECRET_KEY)=' \
   /opt/chartwarden/.env.production   # attendu : 5 (compte les clés, n'affiche aucune valeur)
 Rendez les identités SeaweedFS et démarrez le stockage (recréez seaweedfs si s3.json a changé) :
 cd /opt/chartwarden
