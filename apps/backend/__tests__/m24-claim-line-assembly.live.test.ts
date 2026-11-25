@@ -17,20 +17,29 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
+import { createMdmEntityProvider } from "@chartwarden/mdm";
 import type { PlaceOfServiceFacilityKind } from "@chartwarden/medicaid-adapters";
 import { withOrgContext } from "@chartwarden/tenancy";
+import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildProviderEntityCcnResolver } from "../src/bootstrap/provider-entity-resolver";
+import { buildPatientAddressReader } from "../src/modules/05-patient/address-reader";
+import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-reader";
 import { createAdmissionLocPeriodsReader } from "../src/modules/06-admission";
+import { runMedicaidRevalidate } from "../src/modules/24-billing-medicaid/jobs/revalidate-jobs";
+import { readMedicaidHospiceBillingEvidence } from "../src/modules/24-billing-medicaid/pricing/rhc-pricing-snapshot";
 import type { WriteOutboxPort } from "../src/modules/24-billing-medicaid/routes/write-service";
 import {
   type AdmissionCadenceReaderPort,
+  type CanonicalPayerIdentityReader,
   type LevelOfCarePeriodReaderPort,
   type SignedEncounterWindowReaderPort,
+  buildM24MedicaidCoverageResolver,
   buildDrizzleM24WriteService as buildProductionM24WriteService,
   readMedicaidRatePolicyLineage,
 } from "../src/modules/24-billing-medicaid/routes/write-service-drizzle";
+import { createDbMdmStore } from "../src/modules/40-mdm";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -45,6 +54,17 @@ const RB_ADMISSION = "77777777-7777-7777-7777-777777777777";
 const STATUS_READER_PATIENT = "abababab-abab-abab-abab-abababababab";
 const PREVIEW_ADMISSION = "abababab-abab-abab-abab-abababababac";
 const PREVIEW_OTHER_PE_PAYER = "abababab-abab-abab-abab-abababababad";
+const RHC_PATIENT = "abababab-abab-abab-abab-abababababa1";
+const RHC_ADMISSION = "abababab-abab-abab-abab-abababababa2";
+const RHC_COVERAGE = "abababab-abab-abab-abab-abababababa3";
+const RHC_PAYER = "abababab-abab-abab-abab-abababababa4";
+const RHC_CLASSIFICATION = "abababab-abab-abab-abab-abababababa5";
+const RHC_LOC = "abababab-abab-abab-abab-abababababa6";
+const RHC_EVIDENCE = "abababab-abab-abab-abab-abababababa7";
+const RHC_RATE_EARLY = "abababab-abab-abab-abab-abababababa8";
+const RHC_RATE_LATE = "abababab-abab-abab-abab-abababababa9";
+const RHC_ASSIGNMENT = "abababab-abab-abab-abab-abababababaa";
+const RHC_ADDRESS = "abababab-abab-abab-abab-abababababac";
 const LOC_1 = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
 const LOC_2 = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 let TEST_PE_ID = "";
@@ -281,12 +301,625 @@ describe.skipIf(!DB_URL)(
       const before = await admin.query(
         "SELECT (SELECT count(*)::int FROM medicaid_claim) AS claims, (SELECT count(*)::int FROM medicaid_claim_line) AS lines",
       );
-      await expect(operation()).rejects.toMatchObject({ code: "MEDICAID_RATE_POLICY_UNRESOLVED" });
+      await expect(operation()).rejects.toMatchObject({
+        code: expect.stringMatching(
+          /^MEDICAID_(RATE_POLICY_UNRESOLVED|BILLING_EVIDENCE_UNRESOLVED)$/,
+        ),
+      });
       const after = await admin.query(
         "SELECT (SELECT count(*)::int FROM medicaid_claim) AS claims, (SELECT count(*)::int FROM medicaid_claim_line) AS lines",
       );
       expect(after.rows[0]).toEqual(before.rows[0]);
     }
+
+    it("persists an evidence-backed synthetic daily RHC draft across an effective rate boundary", async () => {
+      const locationId = randomUUID();
+      const verifierId = "33333333-3333-3333-3333-333333333334";
+      const m5Reader = buildPatientCoverageReader(handle.db);
+      const patientAddressReader = buildPatientAddressReader(handle.db);
+      const coverageResolver = buildM24MedicaidCoverageResolver(() => m5Reader);
+      const m6Reader = createAdmissionLocPeriodsReader(handle.db);
+      const mdmProvider = createMdmEntityProvider(createDbMdmStore(handle.db));
+      const canonicalPayerReader: CanonicalPayerIdentityReader = {
+        async resolvePayer(organizationId, canonicalPayerId) {
+          const resolved = await mdmProvider.resolvePayer(organizationId, canonicalPayerId);
+          return resolved
+            ? {
+                id: resolved.id,
+                displayName: resolved.canonical.displayName,
+                kind: resolved.canonical.kind,
+                stateCode: resolved.canonical.stateCode,
+                status: resolved.status,
+              }
+            : null;
+        },
+        medicaidProgramClassifications: (organizationId, payerId, state, from, to) =>
+          mdmProvider.medicaidPayerProgramClassifications(organizationId, payerId, state, from, to),
+      };
+
+      await admin.query(
+        `INSERT INTO location (id,provider_entity_id,name,address_line1,city,state,postal_code,timezone)
+         VALUES ($1,$2,'Synthetic RHC location','123 Test St','Testville','OR','00000','America/Los_Angeles')`,
+        [locationId, peId],
+      );
+      await admin.query(
+        `INSERT INTO payer (id,kind,state_code,payer_id,name,status)
+         VALUES ($1,'medicaid','OR',NULL,'Synthetic Medicaid CCO for qualification','active')`,
+        [RHC_PAYER],
+      );
+      await admin.query(
+        `INSERT INTO mdm_medicaid_payer_program_classification
+           (id,canonical_payer_id,state_code,classification,effective_from,verification_status,
+            source_kind,source_reference,verified_at,verified_by)
+         VALUES ($1,$2,'OR','medicaid_cco','2026-01-01','verified','state_contract',
+                 'contract:synthetic-rhc/classification','2026-01-01T00:00:00Z','synthetic-qualification-reviewer')`,
+        [RHC_CLASSIFICATION, RHC_PAYER],
+      );
+      await admin.query(
+        `INSERT INTO patient
+           (id,organization_id,provider_entity_id,location_id,mrn,legal_first_name,legal_last_name,
+            dob,sex_assigned_at_birth,status)
+         VALUES ($1,$2,$3,$4,'SYN-RHC-0001','Riley','Testpatient','1950-01-01','unknown','active')`,
+        [RHC_PATIENT, ORG, peId, locationId],
+      );
+      await admin.query(
+        `INSERT INTO patient_address
+           (id,patient_id,organization_id,provider_entity_id,kind,line1,city,state,postal_code,
+            country,is_primary,effective_from)
+         VALUES ($1,$2,$3,$4,'home','123 Test St','Testville','OR','00000','US',true,'2026-11-01')`,
+        [RHC_ADDRESS, RHC_PATIENT, ORG, peId],
+      );
+      await admin.query(
+        `INSERT INTO patient_payer
+           (id,patient_id,organization_id,provider_entity_id,location_id,payer_id,rank,coverage_kind,
+            subscriber_id,effective_from,effective_to)
+         VALUES ($1,$2,$3,$4,$5,$6,1,'medicaid','SYNTHETIC-MEMBER-RHC-01','2026-01-01',NULL)`,
+        [RHC_COVERAGE, RHC_PATIENT, ORG, peId, locationId, RHC_PAYER],
+      );
+      await admin.query(
+        `INSERT INTO admission
+           (id,organization_id,provider_entity_id,location_id,patient_id,status,admission_at,activated_at,
+            admitted_by_physician_id,service_address_line1,service_address_city,service_address_state,
+            service_address_postal_code,service_address_country)
+         VALUES ($1,$2,$3,$4,$5,'active','2026-11-01T00:00:00Z','2026-11-01T00:00:00Z',$6,
+                 '123 Test St','Testville','OR','00000','US')`,
+        [RHC_ADMISSION, ORG, peId, locationId, RHC_PATIENT, USER],
+      );
+      await admin.query(
+        `INSERT INTO level_of_care_period
+           (id,organization_id,admission_id,level_of_care,status,effective_at,ended_at,
+            assigned_by,reason,q_code,version)
+         VALUES ($1,$2,$3,'routine_home_care','ended','2026-11-01T00:00:00Z',
+                 '2026-11-05T00:00:00Z',$4,'Synthetic qualification fixture','Q5001',0)`,
+        [RHC_LOC, ORG, RHC_ADMISSION, USER],
+      );
+      await admin.query(
+        `INSERT INTO medicaid_program_assignment
+           (id,organization_id,patient_id,patient_payer_id,admission_id,provider_entity_id,location_id,
+            service_state,program_kind,canonical_payer_id,canonical_payer_classification_id,
+            payer_snapshot,status,effective_from,effective_to,source_kind,verification_source,
+            evidence_reference,verified_at,verified_by_membership_id,recorded_by_membership_id,version)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'OR','managed_care',$8,$9,
+                 jsonb_build_object('id',$8::uuid::text,'displayName','Synthetic Medicaid CCO','kind','medicaid','stateCode','OR'),
+                 'verified','2026-11-01','2026-11-04','payer_confirmation','synthetic_qualification_fixture',
+                 'doc:synthetic-rhc/program-assignment','2026-01-01T00:00:00Z',$10,$11,1)`,
+        [
+          RHC_ASSIGNMENT,
+          ORG,
+          RHC_PATIENT,
+          RHC_COVERAGE,
+          RHC_ADMISSION,
+          peId,
+          locationId,
+          RHC_PAYER,
+          RHC_CLASSIFICATION,
+          verifierId,
+          USER,
+        ],
+      );
+
+      const noEvidenceService = buildProductionM24WriteService(
+        handle.db,
+        NOOP_OUTBOX,
+        OPEN_CIPHER,
+        coverageResolver,
+        { ccnForProviderEntity: buildProviderEntityCcnResolver(handle.db).ccnFor },
+        m6Reader,
+        noEncounters(),
+        undefined,
+        {
+          async residenceAt(organizationId, patientId, asOfDate) {
+            return patientAddressReader.residenceAt(organizationId, patientId, asOfDate);
+          },
+          async residencesBetweenInTransaction(transaction, organizationId, patientId, from, to) {
+            const read = patientAddressReader.residencesBetweenInTransaction;
+            if (!read) throw new Error("transaction-bound M5 residence reader unavailable");
+            const rows = await read(transaction, organizationId, patientId, from, to);
+            return rows.flatMap((row) =>
+              row.addressId ? [{ ...row, addressId: row.addressId }] : [],
+            );
+          },
+        },
+        undefined,
+        () => false,
+        m6Reader,
+        undefined,
+        undefined,
+        canonicalPayerReader,
+      );
+      await expectUnpricedAssembly(() =>
+        noEvidenceService.assembleClaim(
+          { organizationId: ORG, userId: USER, roles: ["billing_manager"] },
+          {
+            patientId: RHC_PATIENT,
+            admissionId: RHC_ADMISSION,
+            providerEntityId: peId,
+            serviceFrom: "2026-11-01",
+            serviceTo: "2026-11-04",
+            kind: "hospice_only",
+          },
+        ),
+      );
+
+      const evidenceValues = [
+        RHC_EVIDENCE,
+        ORG,
+        peId,
+        RHC_PATIENT,
+        RHC_ADMISSION,
+        RHC_PAYER,
+        USER,
+        verifierId,
+      ];
+      await admin.query(
+        `INSERT INTO medicaid_hospice_billing_evidence
+           (id,organization_id,provider_entity_id,patient_id,admission_id,admission_version,
+            canonical_payer_id,program_kind,service_state,locality_code,locality_evidence_reference,
+            locality_evidence_version,quality_reporting_applicability,quality_reporting_status,
+            quality_evidence_reference,quality_evidence_version,service_category,quantity_policy,
+            quantity_evidence_owner,billing_unit,revenue_code,hcpcs_code,coding_profile,
+            coding_evidence_reference,coding_evidence_version,billed_charge_cents_per_unit,
+            charge_evidence_reference,charge_evidence_version,verification_status,effective_from,
+            effective_to,source_document_reference,verified_at,verified_by_membership_id,
+            recorded_by_membership_id,version)
+         VALUES ($1,$2,$3,$4,$5,0,$6,'managed_care','OR','synthetic-locality-lineage',
+                 'evidence:synthetic-rhc/locality',1,'not_required','not_applicable',
+                 'evidence:synthetic-rhc/quality-applicability',1,'RHC','active_rhc_loc_calendar_day',
+                 'm6_level_of_care_period','daily','0651','Q5001','local_draft_only',
+                 'evidence:synthetic-rhc/coding',1,15000,'evidence:synthetic-rhc/charge',1,
+                 'verified','2026-11-01','2026-11-04','doc:synthetic-rhc/billing-profile',
+                 '2026-01-01T00:00:00Z',$8,$7,1)`,
+        evidenceValues,
+      );
+
+      const rateInsert = async (
+        id: string,
+        effectiveFrom: string,
+        effectiveTo: string,
+        cents: number,
+      ) => {
+        await admin.query(
+          `INSERT INTO medicaid_payer_rate_policy
+             (id,organization_id,provider_entity_id,canonical_payer_id,program_kind,service_state,
+              locality_code,service_category,unit_basis,rate_cents,pricing_method,
+              quantity_conversion_method,minimum_duration_method,methodology_version,rounding_mode,
+              rounding_boundary,charge_ceiling_method,charge_ceiling_boundary,
+              quality_reporting_applicability,quality_reporting_status,source_kind,verification_status,
+              effective_from,effective_to,source_document_ref,verified_at,verified_by_membership_id,
+              recorded_by_membership_id,version)
+           VALUES ($1,$2,$3,$4,'managed_care','OR','synthetic-locality-lineage','RHC','per_day',$5,
+                   'per_day','daily_units','not_applicable',1,'exact_only','service_day','none',
+                   'not_applicable','not_required','not_applicable','cco_contract','verified',$6,$7,
+                   'doc:synthetic-rhc/rate','2026-01-01T00:00:00Z',$8,$9,1)`,
+          [id, ORG, peId, RHC_PAYER, cents, effectiveFrom, effectiveTo, verifierId, USER],
+        );
+      };
+      await rateInsert(RHC_RATE_EARLY, "2026-11-01", "2026-11-02", 12000);
+      await rateInsert(RHC_RATE_LATE, "2026-11-03", "2026-11-04", 13000);
+
+      const ccn = buildProviderEntityCcnResolver(handle.db);
+      const events: string[] = [];
+      const outbox: WriteOutboxPort = {
+        async publish(_tx, event) {
+          events.push(event.eventName);
+        },
+      };
+      const service = buildProductionM24WriteService(
+        handle.db,
+        outbox,
+        OPEN_CIPHER,
+        coverageResolver,
+        { ccnForProviderEntity: ccn.ccnFor },
+        m6Reader,
+        noEncounters(),
+        undefined,
+        {
+          async residenceAt(organizationId, patientId, asOfDate) {
+            return patientAddressReader.residenceAt(organizationId, patientId, asOfDate);
+          },
+          async residencesBetweenInTransaction(transaction, organizationId, patientId, from, to) {
+            const read = patientAddressReader.residencesBetweenInTransaction;
+            if (!read) throw new Error("transaction-bound M5 residence reader unavailable");
+            const rows = await read(transaction, organizationId, patientId, from, to);
+            return rows.flatMap((row) =>
+              row.addressId ? [{ ...row, addressId: row.addressId }] : [],
+            );
+          },
+        },
+        undefined,
+        () => false,
+        m6Reader,
+        undefined,
+        undefined,
+        canonicalPayerReader,
+      );
+      const actor = { organizationId: ORG, userId: USER, roles: ["billing_manager"] } as const;
+      const readEvidenceInScope = (organizationId: string, providerEntityId: string) =>
+        withOrgContext(handle.db, { organizationId, userId: USER }, (tx) =>
+          readMedicaidHospiceBillingEvidence(tx, {
+            organizationId,
+            providerEntityId,
+            patientId: RHC_PATIENT,
+            admissionId: RHC_ADMISSION,
+            admissionVersion: 0,
+            canonicalPayerId: RHC_PAYER,
+            programKind: "managed_care",
+            serviceState: "OR",
+            serviceFrom: "2026-11-01",
+            serviceTo: "2026-11-04",
+            assessedAt: new Date().toISOString(),
+          }),
+        );
+      await expect(readEvidenceInScope(ORG, randomUUID())).resolves.toMatchObject({
+        status: "unresolved",
+        reasonCode: "BILLING_EVIDENCE_MISSING",
+      });
+      await expect(
+        readEvidenceInScope("22222222-2222-2222-2222-222222222222", peId),
+      ).resolves.toMatchObject({
+        status: "unresolved",
+        reasonCode: "BILLING_EVIDENCE_MISSING",
+      });
+      const assemblyInput = {
+        patientId: RHC_PATIENT,
+        admissionId: RHC_ADMISSION,
+        providerEntityId: peId,
+        serviceFrom: "2026-11-01",
+        serviceTo: "2026-11-04",
+        kind: "hospice_only" as const,
+      };
+      const assemblyAttempts = await Promise.allSettled([
+        service.assembleClaim(actor, assemblyInput),
+        service.assembleClaim(actor, assemblyInput),
+      ]);
+      const assembledAttempts = assemblyAttempts.filter(
+        (
+          attempt,
+        ): attempt is PromiseFulfilledResult<Awaited<ReturnType<typeof service.assembleClaim>>> =>
+          attempt.status === "fulfilled",
+      );
+      const refusedAttempts = assemblyAttempts.filter((attempt) => attempt.status === "rejected");
+      expect(assembledAttempts).toHaveLength(1);
+      expect(refusedAttempts).toMatchObject([
+        { status: "rejected", reason: { code: "MEDICAID_HOSPICE_SERVICE_RANGE_ALREADY_CLAIMED" } },
+      ]);
+      const claim = assembledAttempts[0]!.value;
+      expect(claim.state).toBe("DRAFT");
+      expect(claim.medicaidProgramKind).toBe("managed_care");
+      expect(claim.canonicalPayerId).toBe(RHC_PAYER);
+      const claimCountsBeforeDuplicate = await admin.query(
+        `SELECT (SELECT count(*)::int FROM medicaid_claim WHERE admission_id=$1) AS claims,
+                (SELECT count(*)::int FROM medicaid_claim_line WHERE medicaid_claim_id IN
+                   (SELECT id FROM medicaid_claim WHERE admission_id=$1)) AS lines`,
+        [RHC_ADMISSION],
+      );
+      await expect(
+        service.assembleClaim(
+          { organizationId: ORG, userId: USER, roles: ["billing_manager"] },
+          {
+            patientId: RHC_PATIENT,
+            admissionId: RHC_ADMISSION,
+            providerEntityId: peId,
+            serviceFrom: "2026-11-01",
+            serviceTo: "2026-11-04",
+            kind: "hospice_only",
+          },
+        ),
+      ).rejects.toMatchObject({ code: "MEDICAID_HOSPICE_SERVICE_RANGE_ALREADY_CLAIMED" });
+      const claimCountsAfterDuplicate = await admin.query(
+        `SELECT (SELECT count(*)::int FROM medicaid_claim WHERE admission_id=$1) AS claims,
+                (SELECT count(*)::int FROM medicaid_claim_line WHERE medicaid_claim_id IN
+                   (SELECT id FROM medicaid_claim WHERE admission_id=$1)) AS lines`,
+        [RHC_ADMISSION],
+      );
+      expect(claimCountsAfterDuplicate.rows).toEqual(claimCountsBeforeDuplicate.rows);
+
+      const lines = await admin.query(
+        `SELECT id,line_number,service_date::date::text AS service_from,
+                service_date_to::date::text AS service_to,units,rate_at_assembly_cents,
+                state_rate_schedule_id_snapshot,payer_rate_policy_id_snapshot,charges_cents
+           FROM medicaid_claim_line WHERE medicaid_claim_id=$1 ORDER BY line_number`,
+        [claim.id],
+      );
+      expect(lines.rows).toEqual([
+        expect.objectContaining({
+          line_number: 1,
+          service_from: "2026-11-01",
+          service_to: "2026-11-02",
+          units: 2,
+          rate_at_assembly_cents: 12000,
+          state_rate_schedule_id_snapshot: null,
+          payer_rate_policy_id_snapshot: RHC_RATE_EARLY,
+          charges_cents: 30000,
+        }),
+        expect.objectContaining({
+          line_number: 2,
+          service_from: "2026-11-03",
+          service_to: "2026-11-04",
+          units: 2,
+          rate_at_assembly_cents: 13000,
+          state_rate_schedule_id_snapshot: null,
+          payer_rate_policy_id_snapshot: RHC_RATE_LATE,
+          charges_cents: 30000,
+        }),
+      ]);
+      const snapshots = await admin.query(
+        `SELECT s.fingerprint,s.snapshot_schema_version,s.snapshot,s.payer_rate_policy_id,
+                s.billing_evidence_id,l.id AS line_id
+           FROM medicaid_claim_line_pricing_snapshot s
+           JOIN medicaid_claim_line l ON l.id=s.medicaid_claim_line_id
+          WHERE s.medicaid_claim_id=$1 ORDER BY l.line_number`,
+        [claim.id],
+      );
+      expect(snapshots.rows).toHaveLength(2);
+      expect(snapshots.rows.map((row) => row.snapshot.reimbursementEstimateCents)).toEqual([
+        24000, 26000,
+      ]);
+      expect(snapshots.rows.map((row) => row.snapshot.billedChargeCents)).toEqual([30000, 30000]);
+      expect(snapshots.rows.every((row) => row.snapshot.postingAuthorized === false)).toBe(true);
+      expect(
+        snapshots.rows.every(
+          (row) =>
+            row.snapshot.serviceLocation?.patientAddressId === RHC_ADDRESS &&
+            row.snapshot.serviceLocation?.kind === "home",
+        ),
+      ).toBe(true);
+      expect(snapshots.rows.map((row) => row.payer_rate_policy_id)).toEqual([
+        RHC_RATE_EARLY,
+        RHC_RATE_LATE,
+      ]);
+      expect(snapshots.rows.every((row) => row.billing_evidence_id === RHC_EVIDENCE)).toBe(true);
+      const ownSnapshotRead = await withOrgContext(
+        handle.db,
+        { organizationId: ORG, userId: USER },
+        (tx) =>
+          tx.execute(sql`SELECT count(*)::int AS n FROM medicaid_claim_line_pricing_snapshot
+            WHERE medicaid_claim_id=${claim.id}`),
+      );
+      expect(ownSnapshotRead.rows[0]?.n).toBe(2);
+      const foreignSnapshotRead = await withOrgContext(
+        handle.db,
+        { organizationId: "22222222-2222-2222-2222-222222222222", userId: USER },
+        (tx) =>
+          tx.execute(sql`SELECT count(*)::int AS n FROM medicaid_claim_line_pricing_snapshot
+            WHERE medicaid_claim_id=${claim.id}`),
+      );
+      expect(foreignSnapshotRead.rows[0]?.n).toBe(0);
+      expect(events).not.toContain("m24.medicaid_claim.ready_for_submission");
+      expect(events).not.toContain("m24.medicaid_claim.submission_requested");
+      const submissions = await admin.query(
+        "SELECT count(*)::int AS n FROM medicaid_submission WHERE medicaid_claim_id=$1",
+        [claim.id],
+      );
+      expect(submissions.rows[0].n).toBe(0);
+
+      const currentLines = await admin.query(
+        `SELECT * FROM medicaid_claim_line WHERE medicaid_claim_id=$1 ORDER BY line_number`,
+        [claim.id],
+      );
+      const payer = await admin.query("SELECT id,kind,state_code,status FROM payer WHERE id=$1", [
+        RHC_PAYER,
+      ]);
+      expect(payer.rows[0]).toMatchObject({ id: RHC_PAYER, kind: "medicaid", state_code: "OR" });
+      const serviceActor = { organizationId: ORG, userId: USER, roles: ["billing_manager"] };
+      const { validationRunId } = await service.validateClaim(serviceActor, claim.id);
+      const manualRule = await admin.query(
+        `SELECT outcome FROM medicaid_validation_result
+          WHERE organization_id=$1 AND medicaid_validation_run_id=$2
+            AND rule_key='medicaid_payer_rate_policy_snapshot_verified'`,
+        [ORG, validationRunId],
+      );
+      expect(manualRule.rows).toEqual([{ outcome: "pass" }]);
+      const manualFormatRule = await admin.query(
+        `SELECT outcome FROM medicaid_validation_result
+          WHERE organization_id=$1 AND medicaid_validation_run_id=$2
+            AND rule_key='medicaid_hospice_institutional_format_qualified'`,
+        [ORG, validationRunId],
+      );
+      expect(manualFormatRule.rows).toEqual([{ outcome: "fail" }]);
+      const afterManualValidation = await admin.query(
+        "SELECT state FROM medicaid_claim WHERE id=$1",
+        [claim.id],
+      );
+      expect(afterManualValidation.rows).toEqual([{ state: "FAILED_VALIDATION" }]);
+      const appSnapshotUpdate = withOrgContext(
+        handle.db,
+        { organizationId: ORG, userId: USER },
+        async (tx) =>
+          tx.execute(sql`UPDATE medicaid_claim_line_pricing_snapshot
+            SET fingerprint=${"0".repeat(64)} WHERE medicaid_claim_id=${claim.id}`),
+      );
+      await expect(appSnapshotUpdate).rejects.toBeDefined();
+      await expect(
+        admin.query(
+          `UPDATE medicaid_claim_line_pricing_snapshot SET fingerprint=$2 WHERE medicaid_claim_line_id=$1`,
+          [currentLines.rows[0].id, "0".repeat(64)],
+        ),
+      ).rejects.toThrow(/append-only/);
+      await expect(
+        admin.query("UPDATE medicaid_claim_line SET charges_cents=charges_cents+1 WHERE id=$1", [
+          currentLines.rows[0].id,
+        ]),
+      ).rejects.toThrow(/immutable/);
+
+      const backgroundEvents: string[] = [];
+      const workerDeps = {
+        connection: { host: "127.0.0.1", port: 6379 },
+        db: handle.db,
+        coverages: m5Reader,
+        admissions: m6Reader,
+        canonicalPayerReader,
+        patientAddresses: patientAddressReader,
+        outbox: {
+          async publish(_tx: unknown, event: { eventName: string }) {
+            backgroundEvents.push(event.eventName);
+          },
+        },
+      };
+      const eventId = randomUUID();
+      await withOrgContext(handle.db, { organizationId: ORG, userId: USER }, (tx) =>
+        runMedicaidRevalidate(tx, workerDeps, {
+          organizationId: ORG,
+          patientId: RHC_PATIENT,
+          eventId,
+          eventName: "m24.medicaid_claim.revalidate_requested",
+        }),
+      );
+      const backgroundRun = await admin.query(
+        `SELECT r.id,v.outcome,c.state
+           FROM medicaid_validation_run r
+           JOIN medicaid_validation_result v ON v.organization_id=r.organization_id
+             AND v.medicaid_validation_run_id=r.id
+           JOIN medicaid_claim c ON c.id=r.medicaid_claim_id
+          WHERE r.medicaid_claim_id=$1 AND r.trigger_signal_id=$2
+            AND v.rule_key='medicaid_payer_rate_policy_snapshot_verified'`,
+        [claim.id, eventId],
+      );
+      expect(backgroundRun.rows).toHaveLength(1);
+      expect(backgroundRun.rows[0].outcome).toBe("pass");
+      expect(backgroundRun.rows[0].state).toBe("FAILED_VALIDATION");
+      const backgroundFormatRule = await admin.query(
+        `SELECT outcome FROM medicaid_validation_result
+          WHERE organization_id=$1 AND medicaid_validation_run_id=$2
+            AND rule_key='medicaid_hospice_institutional_format_qualified'`,
+        [ORG, backgroundRun.rows[0].id],
+      );
+      expect(backgroundFormatRule.rows).toEqual([{ outcome: "fail" }]);
+      expect(backgroundEvents).not.toContain("m24.medicaid_claim.ready_for_submission");
+
+      await admin.query(
+        `INSERT INTO medicaid_hospice_billing_evidence
+           (id,organization_id,provider_entity_id,patient_id,admission_id,admission_version,
+            canonical_payer_id,program_kind,service_state,locality_code,locality_evidence_reference,
+            locality_evidence_version,quality_reporting_applicability,quality_reporting_status,
+            quality_evidence_reference,quality_evidence_version,service_category,quantity_policy,
+            quantity_evidence_owner,billing_unit,revenue_code,hcpcs_code,coding_profile,
+            coding_evidence_reference,coding_evidence_version,billed_charge_cents_per_unit,
+            charge_evidence_reference,charge_evidence_version,verification_status,effective_from,
+            effective_to,source_document_reference,verified_at,verified_by_membership_id,
+            recorded_by_membership_id,supersedes_id,version)
+         SELECT $1,organization_id,provider_entity_id,patient_id,admission_id,admission_version,
+                canonical_payer_id,program_kind,service_state,'synthetic-locality-corrected',
+                'evidence:synthetic-rhc/locality-correction',locality_evidence_version+1,
+                quality_reporting_applicability,quality_reporting_status,quality_evidence_reference,
+                quality_evidence_version,service_category,quantity_policy,quantity_evidence_owner,
+                billing_unit,revenue_code,hcpcs_code,coding_profile,coding_evidence_reference,
+                coding_evidence_version,billed_charge_cents_per_unit,charge_evidence_reference,
+                charge_evidence_version,'verified',effective_from,effective_to,
+                'doc:synthetic-rhc/billing-profile-correction',now(),$3,$4,id,version+1
+           FROM medicaid_hospice_billing_evidence WHERE id=$2`,
+        [randomUUID(), RHC_EVIDENCE, verifierId, USER],
+      );
+      const { validationRunId: staleRunId } = await service.validateClaim(serviceActor, claim.id);
+      const staleRule = await admin.query(
+        `SELECT outcome FROM medicaid_validation_result
+          WHERE organization_id=$1 AND medicaid_validation_run_id=$2
+            AND rule_key='medicaid_payer_rate_policy_snapshot_verified'`,
+        [ORG, staleRunId],
+      );
+      expect(staleRule.rows).toEqual([{ outcome: "fail" }]);
+      const unchangedSnapshots = await admin.query(
+        `SELECT count(*)::int AS n FROM medicaid_claim_line_pricing_snapshot
+          WHERE medicaid_claim_id=$1 AND billing_evidence_id=$2`,
+        [claim.id, RHC_EVIDENCE],
+      );
+      expect(unchangedSnapshots.rows[0].n).toBe(2);
+
+      const staleWorkerEventId = randomUUID();
+      await withOrgContext(handle.db, { organizationId: ORG, userId: USER }, (tx) =>
+        runMedicaidRevalidate(tx, workerDeps, {
+          organizationId: ORG,
+          patientId: RHC_PATIENT,
+          eventId: staleWorkerEventId,
+          eventName: "m24.medicaid_claim.revalidate_requested",
+        }),
+      );
+      const staleWorkerResult = await admin.query(
+        `SELECT result.outcome,claim.state
+           FROM medicaid_validation_run run
+           JOIN medicaid_validation_result result ON result.organization_id=run.organization_id
+             AND result.medicaid_validation_run_id=run.id
+           JOIN medicaid_claim claim ON claim.id=run.medicaid_claim_id
+          WHERE run.medicaid_claim_id=$1 AND run.trigger_signal_id=$2
+            AND result.rule_key='medicaid_payer_rate_policy_snapshot_verified'`,
+        [claim.id, staleWorkerEventId],
+      );
+      expect(staleWorkerResult.rows).toEqual([{ outcome: "fail", state: "FAILED_VALIDATION" }]);
+
+      // chartwarden_app may edit legacy lines, so the deferred integrity check also covers a pricing
+      // source transition from a legacy schedule to a payer-rate policy.
+      const legacyLineId = randomUUID();
+      const legacyScheduleId = randomUUID();
+      await admin.query(
+        `INSERT INTO medicaid_claim_line
+           (id,organization_id,provider_entity_id,medicaid_claim_id,line_number,service_date,
+            service_date_to,revenue_code,q_code,level_of_care,loc_period_id,units,
+            rate_at_assembly_cents,state_rate_schedule_id_snapshot,charges_cents,is_rb)
+         VALUES ($1,$2,$3,$4,99,'2026-11-01','2026-11-01','0651','Q5001','RHC',$5,1,
+                 12000,$6,15000,false)`,
+        [legacyLineId, ORG, peId, claim.id, RHC_LOC, legacyScheduleId],
+      );
+      const appSql = new Client({ connectionString: appRoleUrl(DB_URL as string) });
+      await appSql.connect();
+      let snapshotConstraintFailure: { code?: string; message?: string } | null = null;
+      try {
+        await appSql.query("BEGIN");
+        await appSql.query("SELECT set_config($1,$2,true),set_config($3,$4,true)", [
+          "app.org_id",
+          ORG,
+          "app.user_id",
+          USER,
+        ]);
+        await appSql.query(
+          `UPDATE medicaid_claim_line
+              SET state_rate_schedule_id_snapshot=NULL,
+                  payer_rate_policy_id_snapshot=$1
+            WHERE id=$2`,
+          [RHC_RATE_EARLY, legacyLineId],
+        );
+        try {
+          await appSql.query("COMMIT");
+        } catch (error) {
+          const pgError = error as { code?: string; message?: string };
+          snapshotConstraintFailure = { code: pgError.code, message: pgError.message };
+          await appSql.query("ROLLBACK");
+        }
+      } finally {
+        await appSql.end();
+      }
+      expect(snapshotConstraintFailure?.code).toBe("23514");
+      expect(snapshotConstraintFailure?.message).toMatch(
+        /payer-rate-priced claim line requires an immutable pricing snapshot/,
+      );
+      const legacyAfterRejectedUpdate = await admin.query(
+        `SELECT payer_rate_policy_id_snapshot,state_rate_schedule_id_snapshot
+           FROM medicaid_claim_line WHERE id=$1`,
+        [legacyLineId],
+      );
+      expect(legacyAfterRejectedUpdate.rows).toEqual([
+        { payer_rate_policy_id_snapshot: null, state_rate_schedule_id_snapshot: legacyScheduleId },
+      ]);
+    });
 
     it("migration 1537 treats nullable payer/locality keys as one rate identity", async () => {
       const identity = {
@@ -511,7 +1144,7 @@ describe.skipIf(!DB_URL)(
       expect(runs.rows).toEqual([
         expect.objectContaining({
           id: validationRunId,
-          rule_registry_version: "6",
+          rule_registry_version: "7",
           outcome: "fail",
         }),
       ]);
@@ -821,11 +1454,10 @@ describe.skipIf(!DB_URL)(
       expect(after.rows[0]).toEqual(before.rows[0]);
     });
 
-    // The `it.skip` cases below (cadence, 817 replacement, Q5002/Q5006, encounter linking) each assemble a hospice
-    // level-of-care segment, and `rateByLoc` is always empty (no qualified payer-specific rate policy), so
-    // assembly throws 503 MEDICAID_RATE_POLICY_UNRESOLVED before the behaviour under test runs. Unskipped on a
-    // private database every one of them fails with exactly that error, so the skip stays until a rate policy
-    // exists. R&B-only assembly never prices a hospice line and runs.
+    // The persisted synthetic RHC path above proves daily pricing and duplicate-window refusal. These older
+    // fixtures remain skipped individually: September/October cadence lacks its own scoped verified evidence;
+    // 817/818 paths require replacement/void pricing lineage; Q5002 and Q5006 require qualified ALF/IPU coding;
+    // signed encounter linkage requires the owner-backed M8 evidence reader. R&B-only assembly remains separate.
     it.skip("serializes concurrent original-claim cadence on the M6 admission row (requires qualified pricing)", async () => {
       const admissionId = "40404040-4040-4040-4040-404040404040";
       const locId = "41414141-4141-4141-4141-414141414141";

@@ -721,15 +721,20 @@ controls:
       - file: apps/backend/src/modules/35-subscription/pricing/contract-service.ts
       - file: apps/backend/src/modules/35-subscription/pricing/plan-service.ts
       - file: apps/backend/__tests__/m35-tenant-pricing.live.test.ts
-      # M24 L8A.2 adds a separate fail-closed guard against treating a hospice claim as priced
-      # without an immutable, payer-specific pricing snapshot. These are source/test references;
-      # its disposable PostgreSQL execution is documented in the qualification report, not CI.
+      # M24 L8A.2/L8A.2R add a separate fail-closed guard and append-only payer-rate snapshots;
+      # pricing is accepted only when the stored evidence matches current scoped source facts.
+      # These are source/test references. Disposable PostgreSQL execution is documented in the
+      # L8A.2R report and is not represented as CI evidence; control status remains unchanged.
       - file: packages/medicaid-adapters/src/rules/cob-rate-rules.ts
       - file: apps/backend/src/modules/24-billing-medicaid/routes/write-service-drizzle.ts
+      - file: apps/backend/src/modules/24-billing-medicaid/pricing/rhc-pricing-snapshot.ts
       - file: apps/backend/src/modules/24-billing-medicaid/jobs/revalidate-jobs.ts
+      - file: packages/db/migrations/1551_m24_immutable_hospice_pricing_snapshots.sql
+      - file: packages/db/src/schema/medicaid-billing/hospice-pricing.ts
       - file: packages/medicaid-adapters/__tests__/rules.test.ts
       - file: apps/backend/__tests__/m24-claim-line-assembly.live.test.ts
       - file: docs/audits/billing-e2e/M24_1075_L8A2_CLINICAL_QUANTITY_AND_PRICING_SNAPSHOT_QUALIFICATION_20261125.md
+      - file: docs/audits/billing-e2e/M24_1075_L8A2R_PRICING_SNAPSHOT_PERSISTENCE_QUALIFICATION_20261125.md
 
   - id: CW-PI-02
     title: The manual iQIES hand-off keeps its integrity — assemble packages only records that are still packageable and have no unresolved ERROR finding, judged again under the share lock; a result import that cannot store every item verdict rolls back with a 409; and a cancelled package cannot be handed onward (download, mark-uploaded and result import refuse a cancelled HOPE batch with 409 M10_SUBMISSION_CANCELLED, and a correction whose package was cancelled is in progress again, never resubmitted)

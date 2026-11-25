@@ -223,6 +223,22 @@ describe("assessHospicePricing", () => {
     });
   });
 
+  it("accepts the initial M6 LOC revision as authoritative daily quantity evidence", () => {
+    const result = assessHospicePricing({
+      serviceFrom: "2026-03-01",
+      serviceTo: "2026-03-01",
+      assessedAt,
+      days: [
+        day("2026-03-01", {
+          quantityEvidence: { ...quantityEvidence("2026-03-01"), version: 0 },
+        }),
+      ],
+      rates: [rate("synthetic-rate", 100, "2026-03-01", null)],
+    });
+    expect(result.status).toBe("fully_resolved");
+    expect(result.reimbursementEstimateTotalCents).toBe(100);
+  });
+
   it("uses explicit synthetic hourly minutes and exact configured rounding", () => {
     const hourlyRate = rate("synthetic-hourly", 90, "2026-03-01", null, {
       serviceCategory: "CHC",

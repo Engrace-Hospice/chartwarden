@@ -20,7 +20,6 @@ import {
   type PlaceOfServiceFacilityKind,
   type PlaceOfServiceResidenceKind,
   assessHospicePricing,
-  buildHospiceLines,
   claimStructureFailure,
   deriveMedicaidControlNumber,
   deriveMedicaidTobFromAdmission,
@@ -59,6 +58,14 @@ import {
 } from "../claim-range-guards";
 import type { CredentialCipherPort } from "../credential-crypto";
 import { qualifyMedicaidProgramClassification } from "../medicaid-payer-classification";
+import {
+  databasePricingSnapshotFingerprint,
+  lockMedicaidRatePolicyScope,
+  rateRowAsFact,
+  readMedicaidHospiceBillingEvidence,
+  resolveRhcDailyPricingPlan,
+  verifyStoredRhcPricingSnapshots,
+} from "../pricing/rhc-pricing-snapshot";
 import type { M24Actor } from "./actor";
 import {
   ENROLLMENT_REQUIREMENTS,
@@ -157,6 +164,12 @@ export async function readMedicaidRatePolicyLineage(
     );
   }
   await assertTxScopedToOrg(tx, scope.organizationId);
+  await lockMedicaidRatePolicyScope(tx, {
+    organizationId: scope.organizationId,
+    providerEntityId: scope.providerEntityId,
+    canonicalPayerId: scope.canonicalPayerId,
+    serviceState: scope.serviceState,
+  });
   const rate = schema.medicaidPayerRatePolicy;
   const rows = await tx
     .select()
@@ -1160,6 +1173,7 @@ export interface AdmissionCadenceReaderPort {
   ): Promise<{
     patientId: string;
     providerEntityId: string | null;
+    version?: number;
     locationId: string | null;
     serviceAddressState: string | null;
     dischargedAt: Date | null;
@@ -1181,6 +1195,7 @@ export interface AdmissionCadenceReaderPort {
   ): Promise<{
     patientId: string;
     providerEntityId: string | null;
+    version?: number;
     locationId: string | null;
     serviceAddressState: string | null;
     dischargedAt: Date | null;
@@ -1203,6 +1218,8 @@ export interface AdmissionCadenceReaderPort {
   ): Promise<
     ReadonlyArray<{
       id: string;
+      version?: number;
+      updatedAt?: Date;
       levelOfCare:
         | "routine_home_care"
         | "continuous_home_care"
@@ -1247,6 +1264,8 @@ export interface LevelOfCarePeriodReaderPort {
       endedAt: Date | null;
       facilityId: string | null;
       ipuBedAssignmentId: string | null;
+      version?: number;
+      updatedAt?: Date;
     }>
   >;
 }
@@ -1280,16 +1299,30 @@ export interface FacilityNameResolverPort {
   ): Promise<{ readonly canonical: { readonly displayName: string } } | null>;
 }
 
-/** M5's LIVE `PatientAddressReader` seam (place-of-service follow-up) — the patient's residence kind/
- * facility as of a given date, for RHC/CHC's home-vs-facility Q-code disambiguation. Optional: an absent
- * binding degrades to the LOC-based Q-code default (via `resolvePlaceOfServiceQCode`'s own fallback), not
- * a hard failure — residence is a refinement, not a required input to assembling the claim. */
+/** M5's LIVE `PatientAddressReader` seam. Local Q5001 daily-RHC pricing requires one verified home
+ * residence span for the whole claim window; missing, facility, overlapping or changing facts fail closed. */
 export interface ResidenceReaderPort {
   residenceAt(
     organizationId: string,
     patientId: string,
     asOfDate: string,
   ): Promise<{ kind: PlaceOfServiceResidenceKind; facilityId: string | null } | null>;
+  /** Transaction-bound effective residence history used to qualify local RHC service location. */
+  residencesBetweenInTransaction(
+    transaction: unknown,
+    organizationId: string,
+    patientId: string,
+    from: string,
+    to: string,
+  ): Promise<
+    readonly {
+      addressId: string;
+      kind: PlaceOfServiceResidenceKind;
+      facilityId: string | null;
+      effectiveFrom: string;
+      effectiveTo: string | null;
+    }[]
+  >;
 }
 
 /** M8's LIVE `SignedEncountersReader` seam, narrowed to what claim assembly needs (backing-encounter
@@ -2203,99 +2236,237 @@ export function buildDrizzleM24WriteService(
           });
         } else {
           try {
-            const policyRows = await withOrgContext(db, actor, (tx) =>
-              readMedicaidRatePolicyLineage(tx, {
-                organizationId: actor.organizationId,
-                providerEntityId: input.providerEntityId,
-                canonicalPayerId: programResponsibility.canonicalPayerId!,
-                programKind: rateProgramKind,
-                serviceState: recordedEligibility.serviceState!,
-                serviceTo: input.serviceTo,
-                assessedAt,
-              }),
-            );
-            const days: Parameters<typeof assessHospicePricing>[0]["days"][number][] = [];
-            for (const period of rawPeriods ?? []) {
-              const serviceCategory = PRICING_LOC_BY_M6[period.levelOfCare];
-              const periodFrom = period.effectiveAt.toISOString().slice(0, 10);
-              const periodTo = m6LocClaimEndDate(period.endedAt) ?? input.serviceTo;
-              const from = periodFrom < input.serviceFrom ? input.serviceFrom : periodFrom;
-              const to = periodTo > input.serviceTo ? input.serviceTo : periodTo;
-              if (from > to) continue;
-              const startMs = Date.parse(`${from}T00:00:00.000Z`);
-              const endMs = Date.parse(`${to}T00:00:00.000Z`);
-              for (let time = startMs; time <= endMs; time += 86_400_000) {
-                days.push({
-                  serviceDate: new Date(time).toISOString().slice(0, 10),
-                  serviceCategory,
-                  unitBasis: serviceCategory === "CHC" ? "per_hour" : "per_day",
-                  localityCode: null,
-                  localityEvidence: null,
-                  electionDayEvidence: null,
-                  inpatientRespiteDayEvidence: null,
-                  quantity: null,
-                  quantityEvidence: null,
-                  providerUsualCharge: null,
-                  payerContext: {
-                    organizationId: actor.organizationId,
-                    providerEntityId: input.providerEntityId,
-                    canonicalPayerId: programResponsibility.canonicalPayerId!,
-                    programKind: rateProgramKind,
-                    serviceState: recordedEligibility.serviceState!,
-                    assessedAt,
-                    qualityReporting: {
-                      applicability: "unknown",
-                      providerStatus: "unknown",
-                      evidenceReference: null,
-                      evidenceVersion: null,
-                      verifiedAt: null,
-                      effectiveFrom: null,
-                      effectiveTo: null,
-                    },
-                  },
+            const rhcOnly =
+              Boolean(rawPeriods?.length) &&
+              rawPeriods!.every((period) => {
+                const from = day(period.effectiveAt);
+                const to = m6LocClaimEndDate(period.endedAt) ?? input.serviceTo;
+                return (
+                  from > input.serviceTo ||
+                  to < input.serviceFrom ||
+                  period.levelOfCare === "routine_home_care"
+                );
+              });
+            const admissionVersion = previewReads.admissionSnapshot.version;
+            if (
+              rateProgramKind === "managed_care" &&
+              rhcOnly &&
+              rawPeriods &&
+              admissionVersion !== undefined &&
+              programResponsibility.canonicalPayerId
+            ) {
+              const result = await withOrgContext(db, actor, async (tx) => {
+                const scope = {
+                  organizationId: actor.organizationId,
+                  providerEntityId: input.providerEntityId,
+                  patientId: input.patientId,
+                  admissionId: input.admissionId,
+                  admissionVersion,
+                  canonicalPayerId: programResponsibility.canonicalPayerId!,
+                  programKind: "managed_care" as const,
+                  serviceState: recordedEligibility.serviceState!,
+                  serviceFrom: input.serviceFrom,
+                  serviceTo: input.serviceTo,
+                  assessedAt,
+                };
+                const evidence = await readMedicaidHospiceBillingEvidence(tx, scope);
+                if (evidence.status !== "verified") {
+                  return { status: "unresolved" as const, reasonCode: evidence.reasonCode };
+                }
+                const residenceSpans = residenceReader
+                  ? await residenceReader.residencesBetweenInTransaction(
+                      tx,
+                      actor.organizationId,
+                      input.patientId,
+                      input.serviceFrom,
+                      input.serviceTo,
+                    )
+                  : [];
+                const rateRows = await readMedicaidRatePolicyLineage(tx, {
+                  organizationId: actor.organizationId,
+                  providerEntityId: input.providerEntityId,
+                  canonicalPayerId: programResponsibility.canonicalPayerId!,
+                  programKind: "managed_care",
+                  serviceState: recordedEligibility.serviceState!,
+                  serviceTo: input.serviceTo,
+                  assessedAt,
+                });
+                const plan = resolveRhcDailyPricingPlan({
+                  scope,
+                  evidence: evidence.row,
+                  locPeriods: rawPeriods,
+                  rates: rateRows.map(rateRowAsFact),
+                  residenceSpans,
+                });
+                return plan;
+              });
+              if (result.status === "resolved") {
+                const segments = result.lines.map((line) => ({
+                  serviceFrom: line.serviceFrom,
+                  serviceTo: line.serviceTo,
+                  serviceCategory: "RHC" as const,
+                  status: "resolved" as const,
+                  rateStatus: "qualified" as const,
+                  unitBasis: "per_day" as const,
+                  rateCents: line.rateCents,
+                  rateLocalityCode: line.rate.localityCode,
+                  rateEffectiveFrom: line.rate.effectiveFrom,
+                  rateEffectiveTo: line.rate.effectiveTo,
+                  rateSourceKind: line.rate.sourceKind,
+                  rateEvidenceVersion: line.rate.version,
+                  methodologyVersion: line.rate.methodologyVersion,
+                  pricingMethod: line.rate.pricingMethod as
+                    | "per_day"
+                    | "per_hour"
+                    | "fixed_contract_unit",
+                  quantityConversionMethod: line.rate.quantityConversionMethod as
+                    | "daily_units"
+                    | "hourly_prorated_minutes"
+                    | "hourly_each_hour_or_part",
+                  minimumDurationMethod: line.rate.minimumDurationMethod as
+                    | "not_applicable"
+                    | "not_required"
+                    | "minimum_minutes",
+                  minimumClinicalMinutes: line.rate.minimumClinicalMinutes,
+                  roundingBoundary: line.rate.roundingBoundary as
+                    | "not_applicable"
+                    | "service_day"
+                    | "segment",
+                  chargeCeilingMethod: line.rate.chargeCeilingMethod as
+                    | "none"
+                    | "lower_of_rate_and_usual_charge"
+                    | "contract_maximum",
+                  quantityStatus: "verified" as const,
+                  baseReimbursementCents: line.baseReimbursementCents,
+                  reimbursementEstimateCents: line.reimbursementEstimateCents,
+                  actualBilledChargeCents: line.chargesCents,
+                  reasonCodes: line.appliedCeilings.length > 0 ? ["CONTRACT_CEILING_APPLIED"] : [],
+                  chargeCeilings: line.appliedCeilings,
+                }));
+                pricing = {
+                  status: "fully_resolved",
+                  assessedAt,
+                  coversRequestedPeriod: true,
+                  requiredInputs: [],
+                  segments,
+                  reimbursementEstimateTotalCents: result.lines.reduce(
+                    (total, line) => total + line.reimbursementEstimateCents,
+                    0,
+                  ),
+                  actualBilledChargeTotalCents: result.lines.reduce(
+                    (total, line) => total + line.chargesCents,
+                    0,
+                  ),
+                  submissionAvailable: false,
+                };
+              } else {
+                pricing = unresolvedPricingPreview({
+                  from: input.serviceFrom,
+                  to: input.serviceTo,
+                  reasonCode: result.reasonCode,
+                  requiredInputs: [
+                    "Verified locality, quality-reporting, charge, coding and daily RHC evidence",
+                    "A qualified payer-specific rate covering every service date",
+                  ],
+                  status: result.status,
+                  serviceCategory: "RHC",
                 });
               }
-            }
-            const assessment = assessHospicePricing({
-              serviceFrom: input.serviceFrom,
-              serviceTo: input.serviceTo,
-              assessedAt,
-              days,
-              rates: policyRows.map(ratePolicyFactFromRow),
-            });
-            const requiredInputs = new Set<string>([
-              rateProgramKind === "oregon_ffs"
-                ? "Service-location CBSA or other authoritative OHA rate locality"
-                : "Authoritative service-location locality required by the provider-specific contract",
-              "Verified quality-reporting applicability and provider status required by the selected rate evidence",
-              "Authoritative clinical quantity for each service date",
-              ...(days.some((entry) => entry.serviceCategory === "RHC") &&
-              rateProgramKind === "oregon_ffs"
-                ? ["Authoritative hospice election day number for RHC bucket selection"]
-                : []),
-              ...(days.some((entry) => entry.serviceCategory === "IRC")
-                ? ["Authoritative consecutive inpatient-respite day and episode evidence"]
-                : []),
-            ]);
-            if (
-              policyRows.some(
-                (row) =>
-                  row.verificationStatus === "verified" &&
-                  row.chargeCeilingMethod === "lower_of_rate_and_usual_charge",
-              )
-            ) {
-              requiredInputs.add(
-                "Provider usual-charge evidence required by the selected rate policy",
+            } else {
+              const policyRows = await withOrgContext(db, actor, (tx) =>
+                readMedicaidRatePolicyLineage(tx, {
+                  organizationId: actor.organizationId,
+                  providerEntityId: input.providerEntityId,
+                  canonicalPayerId: programResponsibility.canonicalPayerId!,
+                  programKind: rateProgramKind,
+                  serviceState: recordedEligibility.serviceState!,
+                  serviceTo: input.serviceTo,
+                  assessedAt,
+                }),
               );
-            }
-            if (!policyRows.some((row) => row.verificationStatus === "verified")) {
-              requiredInputs.add(
+              const days: Parameters<typeof assessHospicePricing>[0]["days"][number][] = [];
+              for (const period of rawPeriods ?? []) {
+                const serviceCategory = PRICING_LOC_BY_M6[period.levelOfCare];
+                const periodFrom = period.effectiveAt.toISOString().slice(0, 10);
+                const periodTo = m6LocClaimEndDate(period.endedAt) ?? input.serviceTo;
+                const from = periodFrom < input.serviceFrom ? input.serviceFrom : periodFrom;
+                const to = periodTo > input.serviceTo ? input.serviceTo : periodTo;
+                if (from > to) continue;
+                const startMs = Date.parse(`${from}T00:00:00.000Z`);
+                const endMs = Date.parse(`${to}T00:00:00.000Z`);
+                for (let time = startMs; time <= endMs; time += 86_400_000) {
+                  days.push({
+                    serviceDate: new Date(time).toISOString().slice(0, 10),
+                    serviceCategory,
+                    unitBasis: serviceCategory === "CHC" ? "per_hour" : "per_day",
+                    localityCode: null,
+                    localityEvidence: null,
+                    electionDayEvidence: null,
+                    inpatientRespiteDayEvidence: null,
+                    quantity: null,
+                    quantityEvidence: null,
+                    providerUsualCharge: null,
+                    payerContext: {
+                      organizationId: actor.organizationId,
+                      providerEntityId: input.providerEntityId,
+                      canonicalPayerId: programResponsibility.canonicalPayerId!,
+                      programKind: rateProgramKind,
+                      serviceState: recordedEligibility.serviceState!,
+                      assessedAt,
+                      qualityReporting: {
+                        applicability: "unknown",
+                        providerStatus: "unknown",
+                        evidenceReference: null,
+                        evidenceVersion: null,
+                        verifiedAt: null,
+                        effectiveFrom: null,
+                        effectiveTo: null,
+                      },
+                    },
+                  });
+                }
+              }
+              const assessment = assessHospicePricing({
+                serviceFrom: input.serviceFrom,
+                serviceTo: input.serviceTo,
+                assessedAt,
+                days,
+                rates: policyRows.map(ratePolicyFactFromRow),
+              });
+              const requiredInputs = new Set<string>([
                 rateProgramKind === "oregon_ffs"
-                  ? "Verified, source-backed OHA fee-for-service rate evidence"
-                  : "Verified provider-specific contractual rate evidence for this payer and service",
-              );
+                  ? "Service-location CBSA or other authoritative OHA rate locality"
+                  : "Authoritative service-location locality required by the provider-specific contract",
+                "Verified quality-reporting applicability and provider status required by the selected rate evidence",
+                "Authoritative clinical quantity for each service date",
+                ...(days.some((entry) => entry.serviceCategory === "RHC") &&
+                rateProgramKind === "oregon_ffs"
+                  ? ["Authoritative hospice election day number for RHC bucket selection"]
+                  : []),
+                ...(days.some((entry) => entry.serviceCategory === "IRC")
+                  ? ["Authoritative consecutive inpatient-respite day and episode evidence"]
+                  : []),
+              ]);
+              if (
+                policyRows.some(
+                  (row) =>
+                    row.verificationStatus === "verified" &&
+                    row.chargeCeilingMethod === "lower_of_rate_and_usual_charge",
+                )
+              ) {
+                requiredInputs.add(
+                  "Provider usual-charge evidence required by the selected rate policy",
+                );
+              }
+              if (!policyRows.some((row) => row.verificationStatus === "verified")) {
+                requiredInputs.add(
+                  rateProgramKind === "oregon_ffs"
+                    ? "Verified, source-backed OHA fee-for-service rate evidence"
+                    : "Verified provider-specific contractual rate evidence for this payer and service",
+                );
+              }
+              pricing = pricingPreviewFromAssessment(assessment, [...requiredInputs]);
             }
-            pricing = pricingPreviewFromAssessment(assessment, [...requiredInputs]);
           } catch {
             pricing = unresolvedPricingPreview({
               from: input.serviceFrom,
@@ -2462,14 +2633,12 @@ export function buildDrizzleM24WriteService(
     // service-address snapshot. A trading-partner credential only configures transport after that state
     // is determined and cannot establish payer responsibility or permission to transmit.
     //
-    // PER-LINE ASSEMBLY (WX-PR-011 follow-up, closed): walks M6 LOC periods into hospice-LOC lines
-    // (RHC/CHC/IRC/GIP, one line per contiguous same-LOC segment clipped to the claim window, rate from
-    // the M24-owned `medicaid_state_rate_schedule` platform catalog) and M24's own `rb_day` sweep output
-    // into R&B lines (NF_RB, one line per billable day, rate = the facility's own contracted per-diem —
-    // never the state schedule, per audit finding M24-F02). `kind` gates which family runs
-    // (`hospice_only`/`rb_only` skip the other). Backing M8 encounter evidence links via
-    // `medicaid_claim_line_encounter` when the signed-encounters reader is bound (optional — supplementary
-    // audit evidence, not a structural input).
+    // PER-LINE ASSEMBLY: M6 LOC periods are transaction-bound. The currently implemented hospice pricing
+    // slice is evidence-backed managed-care Oregon daily RHC; it splits at LOC and payer-rate boundaries
+    // and persists immutable pricing snapshots. Unsupported LOC/program/quantity/coding cases fail closed.
+    // M24's `rb_day` sweep still creates separate NF_RB lines from the facility's own contracted per-diem,
+    // never the state schedule (audit finding M24-F02). `kind` gates which family runs. Backing M8 encounter
+    // links remain supplementary and are written only when the signed-encounters reader is bound.
     async assembleClaim(actor: M24Actor, input: AssembleClaimInput): Promise<ClaimView> {
       assertAssemblyRequestShape(input);
       if (!coverage) {
@@ -2817,11 +2986,33 @@ export function buildDrizzleM24WriteService(
           attemptIndex: 0,
         });
         const priorClaims = await tx
-          .select({ state: C.state, tob: C.tob })
+          .select({
+            state: C.state,
+            tob: C.tob,
+            kind: C.kind,
+            serviceFrom: C.serviceFrom,
+            serviceTo: C.serviceTo,
+          })
           .from(C)
           .where(
             and(eq(C.organizationId, actor.organizationId), eq(C.admissionId, input.admissionId)),
           );
+        const overlappingHospiceClaim =
+          input.kind === "rb_only"
+            ? null
+            : priorClaims.find(
+                (prior) =>
+                  prior.kind !== "rb_only" &&
+                  isMedicaidCadenceBearingClaim(prior) &&
+                  day(prior.serviceFrom) <= input.serviceTo &&
+                  day(prior.serviceTo) >= input.serviceFrom,
+              );
+        if (overlappingHospiceClaim) {
+          throw new ConflictError(
+            "MEDICAID_HOSPICE_SERVICE_RANGE_ALREADY_CLAIMED",
+            "An active hospice claim already covers one or more service dates in this range. Reconcile or correct the existing claim before assembling another draft.",
+          );
+        }
         const hasPriorClaimForAdmission = priorClaims.some(isMedicaidCadenceBearingClaim);
         const tob = deriveMedicaidTobFromAdmission({
           hasPriorClaimForAdmission,
@@ -2891,58 +3082,21 @@ export function buildDrizzleM24WriteService(
           })
           .returning();
 
-        // ── per-line assembly (WX-PR-011 follow-up): walk M6 LOC periods into hospice-LOC lines
-        // (RHC/CHC/IRC/GIP) and M24's own `rb_day` sweep output into R&B lines (NF_RB). Header-only
-        // assembly (zero lines) was the prior scope cut; this closes it for real for both line families.
+        // Per-line assembly writes only the currently supported, source-backed RHC daily pricing slice.
+        // R&B remains on its existing path; CHC/IRC/GIP/FFS without their own qualified evidence fail closed.
         let nextLineNumber = 1;
         if (input.kind !== "rb_only") {
-          // place-of-service (WX-PR-011 follow-up #2): resolve the real facts per period BEFORE calling
-          // the pure buildHospiceLines — one residence lookup + one batched facility-kind lookup, anchored
-          // to each period's own start date (not the claim's), so a mid-claim LOC change resolves against
-          // the address/facility that was actually current when that period began.
-          const facilityIdsToResolve = new Set<string>();
-          for (const p of rawPeriods) if (p.facilityId) facilityIdsToResolve.add(p.facilityId);
-          const residenceByPeriod = new Map<
-            string,
-            { kind: PlaceOfServiceResidenceKind; facilityId: string | null } | null
-          >();
-          if (residenceReader) {
-            for (const p of rawPeriods) {
-              const residence = await residenceReader.residenceAt(
-                actor.organizationId,
-                input.patientId,
-                day(p.effectiveAt),
-              );
-              residenceByPeriod.set(p.id, residence);
-              if (residence?.facilityId) facilityIdsToResolve.add(residence.facilityId);
-            }
-          }
-          const facilityKinds = facilityKindReader
-            ? await facilityKindReader.kindsFor([...facilityIdsToResolve])
-            : new Map<string, PlaceOfServiceFacilityKind>();
-          const inclusiveDeathPeriodId = inclusiveDeathLocPeriodId(rawPeriods, inclusiveLocEndDate);
-          const locPeriods = rawPeriods.map((p) => {
-            const residence = residenceByPeriod.get(p.id) ?? null;
-            return {
-              levelOfCarePeriodId: p.id,
-              levelOfCare: LOC_BY_M6_ENUM[p.levelOfCare],
-              from: day(p.effectiveAt),
-              to: m6LocClaimEndDate(
-                p.endedAt,
-                p.id === inclusiveDeathPeriodId ? inclusiveLocEndDate : null,
-              ),
-              placeOfService: {
-                ownIpuBed: p.ipuBedAssignmentId !== null,
-                locPeriodFacilityKind: p.facilityId
-                  ? (facilityKinds.get(p.facilityId) ?? null)
-                  : null,
-                residenceKind: residence?.kind ?? null,
-                residenceFacilityKind: residence?.facilityId
-                  ? (facilityKinds.get(residence.facilityId) ?? null)
-                  : null,
-              },
-            };
+          const hasOverlappingLocDays = rawPeriods.some((period) => {
+            const periodFrom = day(period.effectiveAt);
+            const periodTo = m6LocClaimEndDate(period.endedAt) ?? day(input.serviceTo);
+            return periodFrom <= day(input.serviceTo) && periodTo >= day(input.serviceFrom);
           });
+          if (!hasOverlappingLocDays) {
+            throw new ConflictError(
+              "MEDICAID_NO_BILLABLE_LOC_DAYS",
+              "no supported hospice level-of-care days overlap this claim window",
+            );
+          }
           const encounters = signedEncounters
             ? await signedEncounters.encountersInWindow(
                 actor.organizationId,
@@ -2951,66 +3105,128 @@ export function buildDrizzleM24WriteService(
                 input.serviceTo,
               )
             : [];
-          // This table does not yet carry the effective service CBSA, OHA's charge ceiling, provider
-          // quality-reporting tier, or the election-day/CHC-hour units required by Oregon's published
-          // rates. Until that policy context is implemented, no schedule row can price this claim safely.
-          // In particular, never substitute an unverified statewide CMS-derived row or an EOCCO contract
-          // price in the platform-shared reference table.
-          const rateByLoc = new Map<string, { rateCents: number; scheduleId: string }>();
-          const { lines: hospiceLines, missingRateSegments } = buildHospiceLines({
-            serviceFrom: day(input.serviceFrom),
-            serviceTo: day(input.serviceTo),
-            locPeriods,
-            rateFor: (loc) => rateByLoc.get(loc) ?? null,
-            encounters,
-            startingLineNumber: nextLineNumber,
-          });
-          if (missingRateSegments.length > 0) {
+          if (
+            programResolution.status !== "verified" ||
+            programResolution.programKind !== "managed_care" ||
+            !programResolution.canonicalPayerId
+          ) {
             throw new DegradedError(
               "MEDICAID_RATE_POLICY_UNRESOLVED",
-              `no qualified payer-specific rate policy can price ${missingRateSegments
-                .map((s) => `${s.levelOfCare} ${s.from}..${s.to}`)
-                .join(
-                  ", ",
-                )} — resolve geography, billing units, payer scope, and effective rate source before priced assembly`,
+              "the supported local RHC pricing path requires verified managed-care payer identity",
             );
           }
-          if (hospiceLines.length === 0) {
+          const assessedAt = new Date().toISOString();
+          const priceScope = {
+            organizationId: actor.organizationId,
+            providerEntityId: input.providerEntityId,
+            patientId: input.patientId,
+            admissionId: input.admissionId,
+            admissionVersion: admission.version,
+            canonicalPayerId: programResolution.canonicalPayerId,
+            programKind: "managed_care" as const,
+            serviceState,
+            serviceFrom: day(input.serviceFrom),
+            serviceTo: day(input.serviceTo),
+            assessedAt,
+          };
+          const evidenceResult = await readMedicaidHospiceBillingEvidence(tx, priceScope);
+          if (evidenceResult.status !== "verified") {
+            throw new DegradedError(
+              "MEDICAID_BILLING_EVIDENCE_UNRESOLVED",
+              `source-backed locality, quality, charge, and local coding evidence is ${evidenceResult.reasonCode.toLowerCase().replaceAll("_", " ")}`,
+            );
+          }
+          const residenceSpans = residenceReader
+            ? await residenceReader.residencesBetweenInTransaction(
+                tx,
+                actor.organizationId,
+                input.patientId,
+                priceScope.serviceFrom,
+                priceScope.serviceTo,
+              )
+            : [];
+          const rateRows = await readMedicaidRatePolicyLineage(tx, {
+            organizationId: actor.organizationId,
+            providerEntityId: input.providerEntityId,
+            canonicalPayerId: programResolution.canonicalPayerId,
+            programKind: "managed_care",
+            serviceState,
+            serviceTo: priceScope.serviceTo,
+            assessedAt,
+          });
+          const pricingPlan = resolveRhcDailyPricingPlan({
+            scope: priceScope,
+            evidence: evidenceResult.row,
+            locPeriods: rawPeriods,
+            rates: rateRows.map(rateRowAsFact),
+            residenceSpans,
+          });
+          if (pricingPlan.status !== "resolved") {
+            throw new DegradedError(
+              "MEDICAID_RATE_POLICY_UNRESOLVED",
+              `the local RHC daily pricing facts are ${pricingPlan.reasonCode.toLowerCase().replaceAll("_", " ")}`,
+            );
+          }
+          if (pricingPlan.lines.length === 0) {
             throw new ConflictError(
               "MEDICAID_NO_BILLABLE_LOC_DAYS",
-              "no M6 level-of-care period overlaps this claim's service window — nothing to bill",
+              "no supported RHC service days overlap this claim window",
             );
           }
-          for (const ln of hospiceLines) {
+          for (const planLine of pricingPlan.lines) {
             const insertedLine = await tx
               .insert(L)
               .values({
                 organizationId: actor.organizationId,
                 providerEntityId: input.providerEntityId,
                 medicaidClaimId: claimId,
-                lineNumber: ln.lineNumber,
-                serviceDate: new Date(ln.serviceDate),
-                serviceDateTo: new Date(ln.serviceDateTo),
-                revenueCode: ln.revenueCode,
-                qCode: ln.qCode,
-                levelOfCare: ln.levelOfCare,
-                locPeriodId: ln.locPeriodId,
-                units: ln.units,
-                rateAtAssemblyCents: ln.rateCents,
-                stateRateScheduleIdSnapshot: ln.stateRateScheduleId,
-                chargesCents: ln.chargesCents,
+                lineNumber: nextLineNumber,
+                serviceDate: new Date(planLine.serviceFrom),
+                serviceDateTo: new Date(planLine.serviceTo),
+                revenueCode: planLine.revenueCode,
+                qCode: planLine.hcpcsCode,
+                levelOfCare: "RHC",
+                locPeriodId: planLine.locPeriodId,
+                units: planLine.units,
+                rateAtAssemblyCents: planLine.rateCents,
+                stateRateScheduleIdSnapshot: null,
+                payerRatePolicyIdSnapshot: planLine.rate.id,
+                chargesCents: planLine.chargesCents,
                 isRb: false,
               })
               .returning({ id: L.id });
-            for (const encounterId of ln.backingEncounterIds) {
+            const snapshotFacts = {
+              ...planLine.integrityFacts,
+              medicaidClaimId: claimId,
+              claimLineId: insertedLine[0]!.id,
+              assessmentTimestamp: assessedAt,
+            };
+            await tx.insert(schema.medicaidClaimLinePricingSnapshot).values({
+              organizationId: actor.organizationId,
+              providerEntityId: input.providerEntityId,
+              medicaidClaimId: claimId,
+              medicaidClaimLineId: insertedLine[0]!.id,
+              payerRatePolicyId: planLine.rate.id,
+              billingEvidenceId: planLine.evidence.id,
+              snapshotSchemaVersion: 1,
+              assessedAt: new Date(assessedAt),
+              fingerprint: await databasePricingSnapshotFingerprint(tx, snapshotFacts),
+              snapshot: snapshotFacts,
+              createdByMembershipId: actor.userId,
+            });
+            for (const encounter of encounters.filter(
+              (candidate) =>
+                candidate.serviceDate >= planLine.serviceFrom &&
+                candidate.serviceDate <= planLine.serviceTo,
+            )) {
               await tx.insert(LE).values({
                 medicaidClaimLineId: insertedLine[0]!.id,
-                encounterId,
+                encounterId: encounter.encounterId,
                 organizationId: actor.organizationId,
               });
             }
+            nextLineNumber += 1;
           }
-          nextLineNumber += hospiceLines.length;
         }
         if (input.kind !== "hospice_only" && rbArrangement) {
           for (const rbd of selectedRbDays) {
@@ -3249,6 +3465,8 @@ export function buildDrizzleM24WriteService(
         const rbLines = lineRows.filter((line) => line.isRb);
         let currentLocPeriods: readonly CurrentLocPeriodForClaim[] | null = null;
         let hospiceClaimSnapshotVerified = claim.kind === "rb_only";
+        let hospicePricingSnapshotVerified = claim.kind === "rb_only";
+        let hospiceInstitutionalFormatQualified = claim.kind === "rb_only";
         if (claim.kind !== "rb_only") {
           if (!admissionCadenceReader.periodsForAdmissionInTransaction) {
             throw new DegradedError(
@@ -3273,6 +3491,45 @@ export function buildDrizzleM24WriteService(
           });
           if (snapshotIssue) throw new ConflictError(snapshotIssue.code, snapshotIssue.message);
           hospiceClaimSnapshotVerified = true;
+          try {
+            if (
+              claim.canonicalPayerId &&
+              claim.medicaidProgramKind === "managed_care" &&
+              canonicalPayerReader?.medicaidProgramClassifications
+            ) {
+              const assessedAt = new Date().toISOString();
+              const rateRows = await readMedicaidRatePolicyLineage(tx, {
+                organizationId: actor.organizationId,
+                providerEntityId: claim.providerEntityId,
+                canonicalPayerId: claim.canonicalPayerId,
+                programKind: "managed_care",
+                serviceState: claim.serviceState,
+                serviceTo: day(claim.serviceTo),
+                assessedAt,
+              });
+              const pricingVerification = await verifyStoredRhcPricingSnapshots({
+                tx,
+                claim,
+                lines: lineRows,
+                locPeriods: currentLocPeriods,
+                admissionVersion: admission.version,
+                rateRows,
+                payerReader: {
+                  resolvePayer: canonicalPayerReader.resolvePayer,
+                  medicaidProgramClassifications:
+                    canonicalPayerReader.medicaidProgramClassifications,
+                },
+                residenceReader,
+                assessedAt,
+              });
+              hospicePricingSnapshotVerified = pricingVerification.pricingSnapshotVerified;
+              hospiceInstitutionalFormatQualified =
+                pricingVerification.institutionalFormatQualified;
+            }
+          } catch {
+            hospicePricingSnapshotVerified = false;
+            hospiceInstitutionalFormatQualified = false;
+          }
         }
         if (rbLines.length > 0) {
           if (
@@ -3407,9 +3664,10 @@ export function buildDrizzleM24WriteService(
           // Every persisted R&B line above was matched to its current arrangement, billed day and M6 LOC snapshot.
           rbClaimSnapshotVerified: true,
           hospiceClaimSnapshotVerified,
-          // No payer-specific immutable snapshot field/reader exists yet; the platform-required rule
-          // prevents old shared-schedule lines from being promoted through READY or an override.
-          hospicePricingSnapshotVerified: false,
+          // Repriced against current M6 LOC, M24 source evidence/rate lineage, and M40 payer identity.
+          // Historical legacy lines, stale evidence, and unsupported LOCs remain false.
+          hospicePricingSnapshotVerified,
+          hospiceInstitutionalFormatQualified,
           rateLookups: [],
           payerResponsibility: { status: "permitted", reasonCode: null },
           evvBrackets: [],

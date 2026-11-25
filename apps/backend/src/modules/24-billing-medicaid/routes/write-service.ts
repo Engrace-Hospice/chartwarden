@@ -117,11 +117,11 @@ export interface AssemblyPreviewPricing {
     quantityStatus: "verified" | "missing" | "unverified";
     baseReimbursementCents: number | null;
     reimbursementEstimateCents: number | null;
-    actualBilledChargeCents: null;
+    actualBilledChargeCents: number | null;
     reasonCodes: readonly string[];
   }[];
   reimbursementEstimateTotalCents: number | null;
-  actualBilledChargeTotalCents: null;
+  actualBilledChargeTotalCents: number | null;
   submissionAvailable: false;
 }
 export interface AssemblyPreviewView {

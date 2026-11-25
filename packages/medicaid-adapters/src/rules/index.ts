@@ -21,6 +21,7 @@ import {
   medicaidRecipientIdFormat,
 } from "./eligibility-rules";
 import { medicaidCapCoherence, medicaidEvvBracketCoherence } from "./evv-cap-rules";
+import { medicaidHospiceInstitutionalFormatQualified } from "./institutional-format-rules";
 import { medicaidMcoAssignmentRoutes } from "./mco-rules";
 import {
   medicaidHospiceClaimSnapshotVerified,
@@ -49,6 +50,7 @@ export {
   medicarePrimaryRequiredForDual,
   medicaidRateSchedulePresentForServiceDate,
   medicaidPayerRatePolicySnapshotVerified,
+  medicaidHospiceInstitutionalFormatQualified,
   medicaidStateSpecificModifiersValid,
   medicaidStateSpecificDocumentation,
   medicaidEvvBracketCoherence,
@@ -71,6 +73,7 @@ export const DEFAULT_MEDICAID_RULES: readonly MedicaidRule[] = Object.freeze([
   medicarePrimaryRequiredForDual,
   medicaidRateSchedulePresentForServiceDate,
   medicaidPayerRatePolicySnapshotVerified,
+  medicaidHospiceInstitutionalFormatQualified,
   medicaidStateSpecificModifiersValid,
   medicaidStateSpecificDocumentation,
   medicaidEvvBracketCoherence,

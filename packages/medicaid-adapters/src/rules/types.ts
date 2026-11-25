@@ -196,6 +196,8 @@ export interface MedicaidValidationContext {
   readonly hospiceClaimSnapshotVerified: boolean;
   /** True only when each persisted hospice line has a current, immutable, payer-specific pricing snapshot. */
   readonly hospicePricingSnapshotVerified: boolean;
+  /** True only when the stored hospice coding profile is qualified for the applicable institutional format. */
+  readonly hospiceInstitutionalFormatQualified?: boolean;
   readonly rateLookups: readonly RateLookupSnapshot[];
   readonly payerResponsibility: MedicaidPayerResponsibilitySnapshot;
   readonly evvBrackets: readonly EvvBracketSnapshot[];

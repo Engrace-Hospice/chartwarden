@@ -142,11 +142,11 @@ interface AssemblyPreview {
       quantityStatus: "verified" | "missing" | "unverified";
       baseReimbursementCents: number | null;
       reimbursementEstimateCents: number | null;
-      actualBilledChargeCents: null;
+      actualBilledChargeCents: number | null;
       reasonCodes: string[];
     }[];
     reimbursementEstimateTotalCents: number | null;
-    actualBilledChargeTotalCents: null;
+    actualBilledChargeTotalCents: number | null;
     submissionAvailable: false;
   };
   electronicSubmissionAvailable: false;
@@ -811,6 +811,11 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                       ? `Estimated reimbursement: $${(preview.pricing.reimbursementEstimateTotalCents / 100).toFixed(2)}. This is not the provider's billed charge, payer-allowed amount, or payment.`
                       : "No complete reimbursement estimate is available. Missing facts are not shown as a zero amount."}
                   </p>
+                  {preview.pricing.actualBilledChargeTotalCents !== null ? (
+                    <p style={mutedStyle}>
+                      {`Evidence-based draft billed charge: $${(preview.pricing.actualBilledChargeTotalCents / 100).toFixed(2)}. This is separate from the reimbursement estimate and is not payer-allowed or paid.`}
+                    </p>
+                  ) : null}
                   {preview.pricing.segments.map((segment, index) => (
                     <div
                       key={`${segment.serviceFrom}-${segment.serviceTo}-${segment.serviceCategory ?? "unknown"}-${index}`}
@@ -835,6 +840,11 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                               : "No exact qualified rate can be selected for this service span."}
                         </p>
                       )}
+                      {segment.actualBilledChargeCents !== null ? (
+                        <p style={mutedStyle}>
+                          {`Draft billed charge for this segment: $${(segment.actualBilledChargeCents / 100).toFixed(2)}.`}
+                        </p>
+                      ) : null}
                       {segment.quantityConversionMethod ? (
                         <p style={mutedStyle}>
                           {`Quantity conversion: ${humanize(segment.quantityConversionMethod)}${segment.minimumDurationMethod === "minimum_minutes" && segment.minimumClinicalMinutes !== null ? ` · minimum ${segment.minimumClinicalMinutes} clinical minutes per service day` : ""}. This does not establish the claim's 837I units.`}

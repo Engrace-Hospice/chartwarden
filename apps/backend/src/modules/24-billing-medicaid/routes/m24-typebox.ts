@@ -267,7 +267,7 @@ const AssemblyPreviewPricingSegment = Type.Object({
   quantityStatus: lit(["verified", "missing", "unverified"] as const),
   baseReimbursementCents: Type.Union([cents(), Type.Null()]),
   reimbursementEstimateCents: Type.Union([cents(), Type.Null()]),
-  actualBilledChargeCents: Type.Null(),
+  actualBilledChargeCents: Type.Union([cents(), Type.Null()]),
   reasonCodes: Type.Array(Type.String()),
 });
 export const AssemblyPreviewResponse = Type.Object({
@@ -409,7 +409,7 @@ export const AssemblyPreviewResponse = Type.Object({
     requiredInputs: Type.Array(Type.String()),
     segments: Type.Array(AssemblyPreviewPricingSegment),
     reimbursementEstimateTotalCents: Type.Union([cents(), Type.Null()]),
-    actualBilledChargeTotalCents: Type.Null(),
+    actualBilledChargeTotalCents: Type.Union([cents(), Type.Null()]),
     submissionAvailable: Type.Literal(false),
   }),
   electronicSubmissionAvailable: Type.Literal(false),

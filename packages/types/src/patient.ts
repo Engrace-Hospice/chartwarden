@@ -725,10 +725,12 @@ export interface PatientResidenceSnapshot {
 
 /**
  * One PRIMARY address-history row overlapping a queried date range (F-213 — M23 claim place-of-service).
- * Kind + facility id + its effective window ONLY: no street/city/postal/state (no PHI beyond what the
- * residence kind implies). `effectiveTo` null = still current.
+ * Stable address-history identity, kind, facility id and effective window ONLY: no street/city/postal/state
+ * (no PHI beyond what the residence kind implies). `effectiveTo` null = still current.
  */
 export interface PatientResidenceSpan {
+  /** Stable M5 address-history identity. Consumers should persist only when needed for provenance. */
+  readonly addressId: string;
   readonly kind: PatientAddressKind;
   /** M40 Facility id, set only when `kind === "facility"`. */
   readonly facilityId: string | null;
@@ -791,6 +793,19 @@ export interface PatientAddressReader {
    * `residenceAt` point read cannot (F-213: a claim's service range can span a move).
    */
   residencesBetween(
+    organizationId: string,
+    patientId: string,
+    from: string,
+    to: string,
+  ): Promise<readonly PatientResidenceSpan[]>;
+  /**
+   * Same PHI-minimal interval projection on a caller-owned org transaction. The implementation must
+   * assert the transaction's organization scope and must not open a second transaction. Optional during
+   * rollout so existing consumers keep their published seam contract; billing that requires atomic
+   * effective-date evidence must fail closed when this method is not bound.
+   */
+  residencesBetweenInTransaction?(
+    transaction: unknown,
     organizationId: string,
     patientId: string,
     from: string,

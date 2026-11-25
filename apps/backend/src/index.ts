@@ -5680,6 +5680,25 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       };
       return reader.residenceAt(organizationId, patientId, asOfDate);
     },
+    async residencesBetweenInTransaction(
+      transaction: unknown,
+      organizationId: string,
+      patientId: string,
+      from: string,
+      to: string,
+    ) {
+      const reader = getSeam("PatientAddressReader") as PatientAddressReader;
+      if (!reader.residencesBetweenInTransaction) {
+        throw new Error("PatientAddressReader.residencesBetweenInTransaction is unavailable");
+      }
+      return reader.residencesBetweenInTransaction(
+        transaction,
+        organizationId,
+        patientId,
+        from,
+        to,
+      );
+    },
   };
   // M24 → M8 (WX-PR-011 line-assembly follow-up) — the LIVE `SignedEncountersReader` seam (registered by
   // M8 at boot), narrowed to the encounter-window shape claim assembly needs. Resolved lazily per call
@@ -12046,6 +12065,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       db: dbHandle.db,
       coverages: getSeam("PatientCoverageReader"),
       admissions: m24LocPeriodReader,
+      canonicalPayerReader: m24CanonicalPayerReader,
+      patientAddresses: getSeam("PatientAddressReader") as PatientAddressReader,
       outbox: m24OutboxPublisher,
     });
     app.addHook("onClose", async () => {

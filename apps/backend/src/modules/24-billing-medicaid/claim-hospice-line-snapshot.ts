@@ -1,6 +1,8 @@
 /** Transaction-bound M6 LOC evidence used to decide whether stored hospice lines may become READY. */
 export interface CurrentLocPeriodForClaim {
   readonly id: string;
+  readonly version?: number;
+  readonly updatedAt?: Date;
   readonly levelOfCare:
     | "routine_home_care"
     | "continuous_home_care"
@@ -26,6 +28,8 @@ export interface HospiceClaimLineForSnapshot {
   readonly units: number;
   readonly rateAtAssemblyCents: number;
   readonly stateRateScheduleIdSnapshot: string | null;
+  /** Present for immutable payer-rate snapshots; it is not a legacy state schedule identity. */
+  readonly payerRatePolicyIdSnapshot?: string | null;
   readonly chargesCents: number;
   readonly isRb: boolean;
   readonly rbDayId: string | null;
@@ -164,6 +168,7 @@ export function hospiceClaimLineSnapshotIssue(input: {
       const lineFrom = isoDay(line.serviceDate);
       const lineTo = isoDay(line.serviceDateTo);
       const expectedUnits = inclusiveDays(lineFrom, lineTo);
+      const payerRatePriced = line.payerRatePolicyIdSnapshot != null;
       if (
         line.organizationId !== input.organizationId ||
         line.providerEntityId !== input.providerEntityId ||
@@ -177,8 +182,10 @@ export function hospiceClaimLineSnapshotIssue(input: {
         line.revenueCode !== REVENUE_BY_LOC[period.levelOfCare] ||
         line.units !== expectedUnits ||
         line.rateAtAssemblyCents <= 0 ||
-        line.stateRateScheduleIdSnapshot === null ||
-        line.chargesCents !== line.rateAtAssemblyCents * line.units
+        (payerRatePriced
+          ? line.stateRateScheduleIdSnapshot !== null || line.chargesCents <= 0
+          : line.stateRateScheduleIdSnapshot === null ||
+            line.chargesCents !== line.rateAtAssemblyCents * line.units)
       ) {
         return refusal();
       }

@@ -267,7 +267,8 @@ function quantityValid(day: HospicePricingDayInput): boolean {
     day.quantityEvidence.serviceCategory === day.serviceCategory &&
     day.quantityEvidence.unitBasis === day.unitBasis &&
     Number.isSafeInteger(day.quantityEvidence.version) &&
-    day.quantityEvidence.version > 0 &&
+    // M6 LOC rows begin at version 0; that is the authoritative initial revision, not missing evidence.
+    day.quantityEvidence.version >= 0 &&
     Number.isFinite(verified) &&
     verified <= Date.parse(day.payerContext.assessedAt) &&
     day.quantity.unitBasis === day.unitBasis

@@ -2479,6 +2479,13 @@
       "when": 1795592916381,
       "tag": "1550_m24_rate_policy_methodology_and_variants",
       "breakpoints": true
+    },
+    {
+      "idx": 354,
+      "version": "7",
+      "when": 1795620000000,
+      "tag": "1551_m24_immutable_hospice_pricing_snapshots",
+      "breakpoints": true
     }
   ]
 }

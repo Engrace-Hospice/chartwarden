@@ -516,6 +516,45 @@ describe("M24 hospice claim lines remain aligned with current M6 periods", () =>
     ).toMatchObject({ code: "MEDICAID_CLAIM_LINE_LOC_SNAPSHOT_STALE" });
   });
 
+  it("accepts payer-rate RHC lines with a separate billed charge and no legacy schedule id", () => {
+    const first = {
+      ...lines[0]!,
+      id: "payer-rate-rhc-a",
+      serviceDate: "2026-02-01",
+      serviceDateTo: "2026-02-05",
+      units: 5,
+      rateAtAssemblyCents: 12_000,
+      stateRateScheduleIdSnapshot: null,
+      payerRatePolicyIdSnapshot: "synthetic-payer-rate-early",
+      chargesCents: 30_000,
+    };
+    const second = {
+      ...first,
+      id: "payer-rate-rhc-b",
+      serviceDate: "2026-02-06",
+      serviceDateTo: "2026-02-10",
+      rateAtAssemblyCents: 13_000,
+      payerRatePolicyIdSnapshot: "synthetic-payer-rate-late",
+      chargesCents: 32_500,
+    };
+    expect(
+      hospiceClaimLineSnapshotIssue({
+        ...claim,
+        serviceTo: "2026-02-10",
+        lines: [first, second],
+        periods: [periods[0]!],
+      }),
+    ).toBeNull();
+    expect(
+      hospiceClaimLineSnapshotIssue({
+        ...claim,
+        serviceTo: "2026-02-10",
+        lines: [{ ...first, payerRatePolicyIdSnapshot: null }, second],
+        periods: [periods[0]!],
+      }),
+    ).toMatchObject({ code: "MEDICAID_CLAIM_LINE_LOC_SNAPSHOT_STALE" });
+  });
+
   it("assigns a same-day LOC transition to the new period using M6's exclusive end date", () => {
     const transitionPeriods = [
       {

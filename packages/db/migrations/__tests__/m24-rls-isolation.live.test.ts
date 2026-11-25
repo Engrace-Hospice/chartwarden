@@ -50,6 +50,7 @@ type SeedIds = {
   enrollmentEvidence: string;
   payerAuthorizationEvent: string;
   payerRatePolicy: string;
+  hospiceBillingEvidence: string;
 };
 
 const COVERED: { table: string; key: keyof SeedIds; idCol?: string }[] = [
@@ -71,6 +72,7 @@ const COVERED: { table: string; key: keyof SeedIds; idCol?: string }[] = [
   { table: "medicaid_enrollment_evidence", key: "enrollmentEvidence" },
   { table: "medicaid_payer_authorization_event", key: "payerAuthorizationEvent" },
   { table: "medicaid_payer_rate_policy", key: "payerRatePolicy" },
+  { table: "medicaid_hospice_billing_evidence", key: "hospiceBillingEvidence" },
 ];
 
 /**
@@ -285,6 +287,28 @@ describe.skipIf(!DB_URL)(
           [org, pe, from, m],
         )
       ).rows[0].id as string;
+      const hospiceBillingEvidence = (
+        await db.query(
+          `INSERT INTO medicaid_hospice_billing_evidence
+             (organization_id,provider_entity_id,patient_id,admission_id,admission_version,
+              canonical_payer_id,program_kind,service_state,locality_code,locality_evidence_reference,
+              locality_evidence_version,quality_reporting_applicability,quality_reporting_status,
+              quality_evidence_reference,quality_evidence_version,service_category,quantity_policy,
+              quantity_evidence_owner,billing_unit,revenue_code,hcpcs_code,coding_profile,
+              coding_evidence_reference,coding_evidence_version,billed_charge_cents_per_unit,
+              charge_evidence_reference,charge_evidence_version,verification_status,effective_from,
+              effective_to,source_document_reference,verified_at,verified_by_membership_id,
+              recorded_by_membership_id)
+           VALUES ($1,$2,$3,gen_random_uuid(),0,gen_random_uuid(),'managed_care','OR','CBSA-TEST',
+                   'evidence:synthetic-test/locality',1,'not_required','not_applicable',
+                   'evidence:synthetic-test/quality',1,'RHC','active_rhc_loc_calendar_day',
+                   'm6_level_of_care_period','daily','0651','Q5001','local_draft_only',
+                   'evidence:synthetic-test/coding',1,10000,'evidence:synthetic-test/charge',1,
+                   'verified',$4,$5,'doc:synthetic-test/billing-profile',now(),$6,$7)
+           RETURNING id`,
+          [org, pe, patient, from, to, REVIEWER, m],
+        )
+      ).rows[0].id as string;
       const claim = (
         await db.query(
           `INSERT INTO medicaid_claim (organization_id, provider_entity_id, patient_id, patient_payer_id, admission_id,
@@ -417,6 +441,7 @@ describe.skipIf(!DB_URL)(
         enrollmentEvidence,
         payerAuthorizationEvent,
         payerRatePolicy,
+        hospiceBillingEvidence,
       };
     }
 
@@ -578,6 +603,7 @@ describe.skipIf(!DB_URL)(
     const APPEND_ONLY = [
       { table: "medicaid_payer_authorization_event", key: "payerAuthorizationEvent" },
       { table: "medicaid_payer_rate_policy", key: "payerRatePolicy" },
+      { table: "medicaid_hospice_billing_evidence", key: "hospiceBillingEvidence" },
     ] as const;
 
     it.each(APPEND_ONLY)(
