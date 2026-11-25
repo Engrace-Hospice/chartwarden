@@ -1,5 +1,5 @@
 // apps/web/src/modules/08-encounters/compose — the composer's "Note as it reads" card: the server-assembled note (or the author's edit of
-// it), a stale-edit warning, the edit box, and the edit / save actions (moved out of encounter-compose.tsx unchanged).
+// it), a stale-edit warning, the edit box, and the edit / save actions (moved out of encounter-compose.tsx).
 import { Button, TextAreaField } from "@chartwarden/ui";
 import type { JSX } from "react";
 import {

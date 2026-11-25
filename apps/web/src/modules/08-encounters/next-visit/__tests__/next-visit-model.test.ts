@@ -2,32 +2,19 @@
 // discipline, which of the patient's scheduled visits count toward it, and when the section flags that nothing is scheduled or the
 // schedule falls short. Synthetic ids and dates only. The machine form of a frequency and the purpose-to-discipline table are owned by
 // packages/scheduling (apps/web does not depend on it), so the copies here are checked against that source.
-//
-// The suggested day is the clinician's own calendar day, so this file pins a zone BEHIND UTC (before any Date is built): in UTC, which CI
-// runs in, the local day and the UTC day are the same and a UTC-day bug would pass.
-const ORIGINAL_TZ = process.env.TZ;
-process.env.TZ = "America/Los_Angeles";
-
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   type PlanIntervention,
   type UpcomingVisit,
   assessSchedule,
-  defaultNextPurpose,
   noteDisciplineGroup,
   orderedVisitFrequency,
   parseVisitFrequency,
   scheduleNextVisitHref,
-  suggestedNextVisitDate,
   visitByOf,
 } from "../next-visit-model";
-
-afterAll(() => {
-  if (ORIGINAL_TZ === undefined) Reflect.deleteProperty(process.env, "TZ");
-  else process.env.TZ = ORIGINAL_TZ;
-});
 
 const NOW = new Date("2026-12-01T15:00:00.000Z");
 const DAY = 24 * 60 * 60 * 1000;
@@ -332,62 +319,13 @@ describe("assessSchedule", () => {
   });
 });
 
-describe("suggestedNextVisitDate", () => {
-  it("is the visit date plus the whole-day spacing the ordered frequency implies", () => {
-    const noon = new Date(2026, 11, 1, 12, 0); // built from local parts: the same day in every time zone
-    const week2 = orderedVisitFrequency([intervention()], "rn").ordered;
-    expect(suggestedNextVisitDate(noon, week2)).toBe("2026-12-05"); // round(7/2) = 4 days, as M17's proposal worker spaces it
-    const daily = orderedVisitFrequency(
-      [intervention({ frequencyText: "1 visit/day", frequencyValue: "1:visit:day" })],
-      "rn",
-    ).ordered;
-    expect(suggestedNextVisitDate(noon, daily)).toBe("2026-12-02");
-  });
-
-  it("suggests no date when the plan orders no readable visit frequency", () => {
-    expect(suggestedNextVisitDate(NOW, null)).toBeNull();
-  });
-
-  it("counts the spacing from the clinician's own calendar day, not the UTC day", () => {
-    const daily = orderedVisitFrequency(
-      [intervention({ frequencyText: "1 visit/day", frequencyValue: "1:visit:day" })],
-      "rn",
-    ).ordered;
-    const week2 = orderedVisitFrequency([intervention()], "rn").ordered;
-    // 20:00 local on 1 Dec: in a zone behind UTC the UTC day is already 2 Dec, which made a daily order suggest 3 Dec.
-    const evening = new Date(2026, 11, 1, 20, 0);
-    expect(suggestedNextVisitDate(evening, daily)).toBe("2026-12-02");
-    expect(suggestedNextVisitDate(evening, week2)).toBe("2026-12-05");
-    // 00:30 local on 1 Dec: in a zone ahead of UTC the UTC day is still 30 Nov, which made a daily order suggest 1 Dec.
-    const justAfterMidnight = new Date(2026, 11, 1, 0, 30);
-    expect(suggestedNextVisitDate(justAfterMidnight, daily)).toBe("2026-12-02");
-  });
-
-  it("crosses a month and a year end on the local calendar", () => {
-    const week2 = orderedVisitFrequency([intervention()], "rn").ordered;
-    expect(suggestedNextVisitDate(new Date(2026, 11, 29, 23, 30), week2)).toBe("2027-01-02");
-  });
-});
-
 describe("scheduleNextVisitHref", () => {
-  it("opens the New Visit form for the patient with the purpose and day suggested", () => {
-    expect(
-      scheduleNextVisitHref({ patientId: "p-1", purpose: "routine_visit", date: "2026-12-05" }),
-    ).toBe(
-      "/calendar?patient=p-1&newVisit=1&newVisitPurpose=routine_visit&newVisitDate=2026-12-05",
-    );
-  });
-
-  it("carries only the patient when nothing is suggested", () => {
-    expect(scheduleNextVisitHref({ patientId: "p-1", purpose: null, date: null })).toBe(
-      "/calendar?patient=p-1&newVisit=1",
-    );
+  it("opens the New Visit form for the patient and carries nothing else", () => {
+    expect(scheduleNextVisitHref("p-1")).toBe("/calendar?patient=p-1&newVisit=1");
   });
 
   it("encodes the id rather than trusting it", () => {
-    expect(scheduleNextVisitHref({ patientId: "a&b=c", purpose: null, date: null })).toBe(
-      "/calendar?patient=a%26b%3Dc&newVisit=1",
-    );
+    expect(scheduleNextVisitHref("a&b=c")).toBe("/calendar?patient=a%26b%3Dc&newVisit=1");
   });
 });
 
@@ -398,30 +336,19 @@ describe("visitByOf", () => {
     expect(visitByOf("f2f")).toBe("md_np");
     expect(visitByOf("future_purpose")).toBe("");
   });
-});
 
-describe("defaultNextPurpose", () => {
-  it("names the routine visit of each discipline that has one, and nothing for the rest", () => {
-    expect(defaultNextPurpose("rn")).toBe("routine_visit");
-    expect(defaultNextPurpose("lpn")).toBe("routine_visit");
-    expect(defaultNextPurpose("chha")).toBe("aide_poc");
-    expect(defaultNextPurpose("msw")).toBe("msw_followup");
-    expect(defaultNextPurpose("chaplain")).toBe("chaplain_visit");
-    expect(defaultNextPurpose("volunteer")).toBe("volunteer_visit");
-    expect(defaultNextPurpose("pt")).toBeNull();
-    expect(defaultNextPurpose("md")).toBeNull();
-  });
-
-  it("only names a purpose the scheduler accepts that discipline for", () => {
+  it("names, for every purpose packages/scheduling schedules, the first discipline it accepts for that purpose", () => {
     const source = readFileSync(
       join(__dirname, "../../../../../../../packages/scheduling/src/policy.ts"),
       "utf8",
     );
-    for (const discipline of ["rn", "lpn", "chha", "msw", "chaplain", "volunteer"]) {
-      const purpose = defaultNextPurpose(discipline);
-      expect(purpose, discipline).not.toBeNull();
-      const line = new RegExp(`^ {2}${purpose}: \\[([^\\]]*)\\],`, "m").exec(source)?.[1] ?? "";
-      expect(line, `${discipline} -> ${purpose}`).toContain(`"${discipline}"`);
+    const block = source.match(
+      /export const VISIT_PURPOSE_DISCIPLINES[^=]*=\s*\{([\s\S]*?)\n\} as const;/,
+    )?.[1];
+    const entries = [...(block ?? "").matchAll(/^ {2}(\w+): \["([a-z]+)"/gm)];
+    expect(entries.length).toBeGreaterThan(0);
+    for (const [, purpose, first] of entries) {
+      expect(visitByOf(purpose as string), purpose).toBe(first === "md" ? "md_np" : first);
     }
   });
 });

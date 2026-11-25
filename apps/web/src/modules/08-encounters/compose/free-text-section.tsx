@@ -1,5 +1,5 @@
 // apps/web/src/modules/08-encounters/compose — the "Additional clinical notes" box under a section's statements in the composer: the
-// author's own words, stored verbatim (moved out of encounter-compose.tsx unchanged).
+// author's own words, stored verbatim (moved out of encounter-compose.tsx).
 import { TextAreaField } from "@chartwarden/ui";
 import type { JSX } from "react";
 import {

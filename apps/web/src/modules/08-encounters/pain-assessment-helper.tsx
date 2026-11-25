@@ -20,32 +20,20 @@ import {
   painCompleteness,
   painPlanReviewReasons,
 } from "@chartwarden/types";
-import { StatusPill, TextField } from "@chartwarden/ui";
 import { Fragment } from "react";
-import type { CSSProperties, JSX } from "react";
-import { hairline, slotGrid } from "./encounter-compose-styles";
+import type { JSX } from "react";
+import {
+  CharacteristicChips,
+  type GroupDef,
+  GroupFields,
+  body,
+  changeField,
+  panel,
+  small,
+  summaryStyle,
+} from "./assessment-helper-fields";
 import type { DraftEntry, MenuEntry, TemplateSection } from "./encounters-api";
 import { PlanReviewPrompt } from "./plan-review-prompt";
-import { MAX_TEXT_LENGTH, SlotInput } from "./slot-input";
-
-/** One field of a statement: its slot, and a hint for free text (a choice or a number carries its own bounds). */
-interface FieldDef {
-  readonly slot: string;
-  readonly label: string;
-  readonly hint?: string;
-}
-
-/** One statement of the helper, as the clinician sees it. */
-interface RowDef {
-  readonly code: string;
-  readonly fields: readonly FieldDef[];
-}
-
-interface GroupDef {
-  readonly title: string;
-  readonly note?: string;
-  readonly rows: readonly RowDef[];
-}
 
 // The hints name what the sources name: the descriptors and the nonverbal indicators are CMS's own examples (State Operations
 // Manual, Appendix M, 418.54(c); HOPE v1.03 J0910 "Nonverbal Indicators"); the bowel regimen is National Consensus Project 2.3.2.
@@ -228,6 +216,12 @@ export interface PainAssessmentHelperProps {
   readonly menu: readonly MenuEntry[];
   /** What is selected in this section. */
   readonly selected: readonly DraftEntry[];
+  /**
+   * Every statement selected anywhere in the note. The count, the chips and the reasons read these, so a finding recorded in another
+   * section (the admission template offers the pain statements in two) still counts here, the same as in the Plan section's card. The
+   * fields themselves read `selected`. Defaults to `selected`.
+   */
+  readonly allSelected?: readonly DraftEntry[];
   /** The note cannot take a write right now (finalized, being edited, or busy). */
   readonly disabled: boolean;
   /**
@@ -242,55 +236,21 @@ export interface PainAssessmentHelperProps {
   readonly onOpenPlan: () => void;
 }
 
-const panel: CSSProperties = {
-  border: hairline,
-  borderRadius: "0.7rem",
-  background: "var(--color-surface)",
-  padding: "0.6rem 0.8rem 0.8rem",
-};
-const summaryStyle: CSSProperties = { cursor: "pointer", fontSize: "0.82rem", fontWeight: 650 };
-const body: CSSProperties = { display: "grid", gap: "0.8rem", marginTop: "0.6rem" };
-const small: CSSProperties = {
-  margin: 0,
-  fontSize: "0.72rem",
-  lineHeight: 1.45,
-  color: "var(--color-on-surface-variant)",
-};
-const chips: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: "0.35rem",
-  margin: 0,
-  padding: 0,
-};
-const groupTitle: CSSProperties = { fontSize: "0.74rem", fontWeight: 700 };
-const rowStyle: CSSProperties = { display: "grid", gap: "0.2rem" };
-
 export function PainAssessmentHelper({
   menu,
   selected,
+  allSelected = selected,
   disabled,
   recordedElsewhere,
   onToggle,
   onSlot,
   onOpenPlan,
 }: PainAssessmentHelperProps): JSX.Element {
-  const completeness = painCompleteness(selected);
-  const reasons = painPlanReviewReasons(selected);
+  const completeness = painCompleteness(allSelected);
+  const reasons = painPlanReviewReasons(allSelected);
 
-  function change(entry: MenuEntry, slot: string, value: string): void {
-    const held = selected.find((e) => e.code === entry.code);
-    const othersFilled = entry.slots.some(
-      (s) => s !== slot && String(held?.params[s] ?? "").trim() !== "",
-    );
-    // A statement with nothing left in it is unselected, so the note never carries an empty one.
-    if (value.trim() === "" && !othersFilled) {
-      if (held) onToggle(entry);
-      return;
-    }
-    if (!held) onToggle(entry);
-    onSlot(entry.code, slot, value);
-  }
+  const change = (entry: MenuEntry, slot: string, value: string): void =>
+    changeField({ selected, onToggle, onSlot }, entry, slot, value);
 
   /** A statement of several fields that is only part filled: the note cannot state it until every field is. */
   function isHalfFilled(entry: MenuEntry): boolean {
@@ -302,36 +262,12 @@ export function PainAssessmentHelper({
     );
   }
 
-  function field(entry: MenuEntry, def: FieldDef, locked: boolean): JSX.Element {
-    const value = String(selected.find((e) => e.code === entry.code)?.params[def.slot] ?? "");
-    const spec = entry.slotSpecs[def.slot];
-    if (spec === undefined) {
-      return (
-        <TextField
-          key={def.slot}
-          label={def.label}
-          hint={def.hint}
-          maxLength={MAX_TEXT_LENGTH}
-          value={value}
-          disabled={disabled || locked}
-          onChange={(e) => change(entry, def.slot, e.target.value)}
-        />
-      );
-    }
-    return (
-      <div key={def.slot} style={rowStyle}>
-        <SlotInput
-          slot={def.slot}
-          spec={spec}
-          label={def.label}
-          value={value}
-          disabled={disabled || locked}
-          onChange={(v) => change(entry, def.slot, v)}
-        />
-        {def.hint ? <p style={small}>{def.hint}</p> : null}
-      </div>
-    );
-  }
+  const incompleteNote = (entry: MenuEntry): JSX.Element | null =>
+    isHalfFilled(entry) ? (
+      <output style={{ ...small, display: "block" }}>
+        Fill in every field here, or clear them, before this note is finalized.
+      </output>
+    ) : null;
 
   return (
     <details open style={panel}>
@@ -343,16 +279,12 @@ export function PainAssessmentHelper({
           Record what you assessed. Every field is optional; the note states only what you enter, in
           your own words. A comprehensive pain assessment covers seven characteristics.
         </p>
-        <ul style={chips} aria-label="Characteristics of a comprehensive pain assessment">
-          {PAIN_CHARACTERISTICS.map((c) => (
-            <li key={c} style={{ listStyle: "none" }}>
-              <StatusPill
-                label={`${PAIN_CHARACTERISTIC_LABELS[c]}${completeness.documented.includes(c) ? ": documented" : ""}`}
-                tone={completeness.documented.includes(c) ? "success" : "neutral"}
-              />
-            </li>
-          ))}
-        </ul>
+        <CharacteristicChips
+          label="Characteristics of a comprehensive pain assessment"
+          characteristics={PAIN_CHARACTERISTICS}
+          names={PAIN_CHARACTERISTIC_LABELS}
+          documented={completeness.documented}
+        />
         <p style={small}>
           {completeness.meetsQualityMeasureBenchmark
             ? `That reaches the CMS quality measure's ${PAIN_HQRP_MIN_CHARACTERISTICS} of 7 for an admission pain assessment.`
@@ -360,52 +292,25 @@ export function PainAssessmentHelper({
         </p>
 
         {GROUPS.map((group) => {
-          const rows = group.rows.filter((r) => menu.some((e) => e.code === r.code));
+          const entries = group.rows.flatMap((row) => menu.filter((e) => e.code === row.code));
           // The prompt does not depend on the section offering the decision statement: it comes before the plan group either way.
           const isPlanGroup = group.title === PLAN_GROUP_TITLE;
-          if (rows.length === 0 && !isPlanGroup) return null;
+          if (entries.length === 0 && !isPlanGroup) return null;
           return (
             <Fragment key={group.title}>
               {isPlanGroup ? (
                 <PlanReviewPrompt reasons={reasons} onOpenPlan={onOpenPlan} disabled={disabled} />
               ) : null}
-              {rows.length === 0 ? null : (
-                <fieldset
-                  style={{ border: 0, margin: 0, padding: 0, display: "grid", gap: "0.5rem" }}
-                >
-                  <legend style={groupTitle}>{group.title}</legend>
-                  {group.note ? <p style={small}>{group.note}</p> : null}
-                  <div style={slotGrid}>
-                    {rows.flatMap((row) => {
-                      const entry = menu.find((e) => e.code === row.code);
-                      if (entry === undefined) return [];
-                      const elsewhere = recordedElsewhere(entry.code);
-                      const fields = row.fields.map((def) =>
-                        field(entry, def, elsewhere !== undefined),
-                      );
-                      if (elsewhere !== undefined) {
-                        return [
-                          ...fields,
-                          <p key={`${entry.code}-elsewhere`} style={small}>
-                            Already recorded in {elsewhere.heading}
-                          </p>,
-                        ];
-                      }
-                      return isHalfFilled(entry)
-                        ? [
-                            ...fields,
-                            <output
-                              key={`${entry.code}-incomplete`}
-                              style={{ ...small, display: "block" }}
-                            >
-                              Fill in every field here, or clear them, before this note is
-                              finalized.
-                            </output>,
-                          ]
-                        : fields;
-                    })}
-                  </div>
-                </fieldset>
+              {entries.length === 0 ? null : (
+                <GroupFields
+                  group={group}
+                  entries={entries}
+                  selected={selected}
+                  disabled={disabled}
+                  recordedElsewhere={recordedElsewhere}
+                  onChange={change}
+                  rowNote={incompleteNote}
+                />
               )}
             </Fragment>
           );

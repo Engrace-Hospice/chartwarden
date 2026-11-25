@@ -4,10 +4,12 @@
 //
 // ADVISORY ONLY and nothing here is required. The section stays what it was: required, counted by the server gate on its statements or its
 // free text, free text stored verbatim. The fields only add lines to that free text (the clinician edits them there); the schedule and the
-// plan of care are read, never changed.
+// plan of care are read, never changed. Words typed into the fields and not yet added are the panel's unsaved input: it says so through
+// `onStatusChange`, so the composer holds Finalize and the leave prompt for them like it does for the other forms.
 import { Button, InlineAlert, SelectField, TextAreaField, TextField } from "@chartwarden/ui";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
+import { type PanelStatusListener, useReportPanelStatus } from "../../../shell/panel-status";
 import { localCalendarDay } from "../late-entry-reason";
 import { upcomingVisits, visitByOf } from "./next-visit-model";
 import { NextVisitSchedule } from "./next-visit-schedule";
@@ -30,8 +32,10 @@ export interface PlanNextVisitPanelProps {
   readonly currentVisitId: string | null;
   /** The note cannot be edited right now (finalized, being edited, or a write is in flight). */
   readonly disabled: boolean;
-  /** True while the plan-of-care step below is saving: the proposals read here is repeated when it flips. */
+  /** True while the plan-of-care step below is saving: the proposals read here is repeated when that save ends. */
   readonly planStepBusy: boolean;
+  /** Told whether the entry fields hold words not yet added to the note (see `useReportPanelStatus`). */
+  readonly onStatusChange?: PanelStatusListener;
   /** Add lines below what is already in the section's free text. */
   readonly onAddToNote: (text: string) => void;
   /** Bring the composer's plan-of-care step into view. */
@@ -64,6 +68,7 @@ function PlanNextVisitBody({
   currentVisitId,
   disabled,
   planStepBusy,
+  onStatusChange,
   onAddToNote,
   onShowPlanOfCare,
   followUpSlot,
@@ -72,12 +77,15 @@ function PlanNextVisitBody({
   const headingId = useId();
   const [openedAt] = useState(() => now ?? new Date());
   const context = useNextVisitContext(patientId, encounterId, planStepBusy, active);
-  // The schedule is worked out from the moment it was read, so a note left open keeps its windows and suggested day current.
+  // The schedule is worked out from the moment it was read, so a note left open keeps its windows current.
   const readAt = context.scheduleReadAt ?? openedAt;
   const [fields, setFields] = useState<PlanEntryFields>(EMPTY_PLAN_ENTRY);
   const [added, setAdded] = useState(false);
 
   const text = planEntryText(fields);
+  useReportPanelStatus(onStatusChange, { dirty: text.length > 0, saving: false });
+  // Adding clears the fields and disables the button that was pressed: focus goes to the first field instead of being lost.
+  const entryFields = useRef<HTMLFieldSetElement>(null);
   const set = (change: Partial<PlanEntryFields>): void => {
     setAdded(false);
     setFields((held) => ({ ...held, ...change }));
@@ -86,6 +94,32 @@ function PlanNextVisitBody({
     onAddToNote(text);
     setFields(EMPTY_PLAN_ENTRY);
     setAdded(true);
+    entryFields.current?.querySelector("select")?.focus();
+  };
+  // Discard entries empties every field, the "Next visit by" choice and date included; Clear empties only the five free-text boxes and
+  // keeps that choice and date (they usually come from "Use the next scheduled visit"). Neither adds anything to the note.
+  const freeTextEmpty =
+    fields.nextVisitFocus === "" &&
+    fields.followUps === "" &&
+    fields.pendingOrders === "" &&
+    fields.teaching === "" &&
+    fields.whenToCall === "";
+  const discard = (): void => {
+    setFields(EMPTY_PLAN_ENTRY);
+    setAdded(false);
+    entryFields.current?.querySelector("select")?.focus();
+  };
+  const clearFreeText = (): void => {
+    setFields((held) => ({
+      ...held,
+      nextVisitFocus: "",
+      followUps: "",
+      pendingOrders: "",
+      teaching: "",
+      whenToCall: "",
+    }));
+    setAdded(false);
+    entryFields.current?.querySelector("textarea")?.focus();
   };
 
   // The earliest committed visit, offered as the entry's "next visit" so the note states what the schedule holds.
@@ -148,11 +182,11 @@ function PlanNextVisitBody({
 
       {followUpSlot}
 
-      <fieldset className="wx-form-stack" disabled={disabled}>
+      <fieldset ref={entryFields} className="wx-form-stack" disabled={disabled}>
         <legend>Write the entry (optional)</legend>
         <p className="wx-form-hint">
-          Fill in what applies. Pressing Add puts your words, unchanged, into the free text below as
-          fixed lines you can edit there.
+          Fill in what applies. Pressing Save puts your words, unchanged, into the free text below
+          as fixed lines you can edit there.
         </p>
         <div className="wx-form-grid">
           <SelectField
@@ -210,7 +244,13 @@ function PlanNextVisitBody({
         />
         <div className="wx-form-actions">
           <Button onClick={add} disabled={text.length === 0}>
-            Add to the note
+            Save
+          </Button>
+          <Button tone="tertiary" onClick={discard} disabled={text.length === 0}>
+            Discard entries
+          </Button>
+          <Button tone="tertiary" onClick={clearFreeText} disabled={freeTextEmpty}>
+            Clear
           </Button>
         </div>
         {added ? (

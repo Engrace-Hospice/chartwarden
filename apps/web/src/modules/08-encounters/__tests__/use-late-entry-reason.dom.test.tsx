@@ -2,7 +2,7 @@
 // What the composer holds for the late-entry reason: when the box is up, what the finalize call carries, and that one note's reason never
 // follows the author to another note.
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WriteResult } from "../encounters-api";
 import { LATE_ENTRY_REASON_MIN_CHARS, localCalendarDay } from "../late-entry-reason";
 import { useLateEntryReason } from "../use-late-entry-reason";
@@ -142,6 +142,48 @@ describe("useLateEntryReason", () => {
     act(() => result.current.clear());
 
     expect(result.current.unsent).toBe(false);
+  });
+
+  describe("the device day clock", () => {
+    const FIVE_MINUTES = 5 * 60_000;
+    afterEach(() => vi.useRealTimers());
+
+    const mountCounting = (serviceDate: string) => {
+      let renders = 0;
+      const hook = renderHook(
+        (props: Props) => {
+          renders += 1;
+          return useLateEntryReason(props);
+        },
+        { initialProps: { encounterId: "a", serviceDate, editable: true } },
+      );
+      return { ...hook, renders: () => renders };
+    };
+
+    it("does not re-render the consumer on a tick that stays on the same day", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 10, 25, 10, 0, 0));
+      const { renders } = mountCounting("2026-11-20");
+      const rendersAtMount = renders();
+
+      act(() => vi.advanceTimersByTime(FIVE_MINUTES * 3));
+
+      expect(renders()).toBe(rendersAtMount);
+    });
+
+    it("re-renders on a tick across midnight and measures against the new day", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 10, 25, 23, 58, 0));
+      // Visit on 11-23: two days late on the 25th (late_entry), three on the 26th (significant_late_entry).
+      const { result, renders } = mountCounting("2026-11-23");
+      const rendersAtMount = renders();
+      expect(result.current.estimate?.daysLate).toBe(2);
+
+      act(() => vi.advanceTimersByTime(FIVE_MINUTES));
+
+      expect(renders()).toBeGreaterThan(rendersAtMount);
+      expect(result.current.estimate?.daysLate).toBe(3);
+    });
   });
 
   it("lets go of the reason once the note is finalized", () => {

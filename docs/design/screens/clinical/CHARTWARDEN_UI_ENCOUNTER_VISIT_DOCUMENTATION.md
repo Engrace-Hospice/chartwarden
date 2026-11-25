@@ -67,7 +67,7 @@ Common encounter types: `routine_visit`, `admission_visit`, `recert_visit`,
 
 For the server the section is unchanged: required, counted by the gate on its statements or its free text,
 free text stored verbatim, nothing assembled from it beyond that text. In the editor, above the free text, it
-shows a panel that is advisory throughout and requires nothing. The sources and their strength (Medicare rule,
+shows a panel that is advisory, except that words typed in the entry fields and not saved hold Finalize and the leave prompt. The sources and their strength (Medicare rule,
 CMS guidance, guideline, common practice) are in
 [`docs/research/HOSPICE_VISIT_PLAN_AND_NEXT_VISIT_RESEARCH.md`](../../../research/HOSPICE_VISIT_PLAN_AND_NEXT_VISIT_RESEARCH.md);
 its clinical wording was signed off by Lora, RN on 2026-11-25 (section 3 of
@@ -85,19 +85,19 @@ its clinical wording was signed off by Lora, RN on 2026-11-25 (section 3 of
   never counted. A refused or failed read says so; it never reads as an empty schedule. This note's own visit
   is not counted as upcoming.
 - **Schedule next visit** — a link, opened in a new tab so the note and anything unsaved stay put, to
-  `/calendar?patient=<id>&newVisit=1&newVisitPurpose=<purpose>&newVisitDate=<day>`: the Scheduling New Visit
-  form for this patient, started on the discipline's routine visit purpose and, when the plan orders a
-  readable frequency, the day it implies (`round(span / count)` days after today, the spacing M17's proposal
-  worker uses). Both stay editable and the scheduler's own checks (eligibility, credentials, caseload, time
-  off) decide; the note books nothing. A viewer with `visit.read` but not `visit.create` gets a link to the
+  `/calendar?patient=<id>&newVisit=1`: the Scheduling New Visit form for this patient. The link carries the
+  patient id and nothing else (no visit purpose and no date in the URL, which reaches browser history and
+  access logs): the clinician chooses the purpose and the day in the scheduler, whose own checks
+  (eligibility, credentials, caseload, time off) decide; the note books nothing. A viewer with `visit.read` but not `visit.create` gets a link to the
   patient's schedule instead.
 - **Follow-ups from this visit** — the plan-of-care changes proposed from this visit (drafts and pending) with a
   button to the Plan of care step, and the pain helper's plan-of-care review prompt when the note raises one.
 - **Write the entry (optional)** — next visit by / date, focus, follow-ups, orders and supplies pending,
-  teaching and instructions given, and "call the hospice if". Pressing **Add to the note** puts the filled
+  teaching and instructions given, and "call the hospice if". Pressing **Save** puts the filled
   fields into the free text below as fixed sentences, each field's words exactly as typed, under what the
-  clinician already wrote; adding the same lines twice adds nothing. **Use the next scheduled visit** fills the
-  day and the discipline from the earliest upcoming visit.
+  clinician already wrote; adding the same lines twice adds nothing, and focus moves to the first field. **Discard entries** empties every field;
+  **Clear** empties only the five free-text boxes and keeps the discipline and the date. **Use the next
+  scheduled visit** fills the day and the discipline from the earliest upcoming visit.
 
 Not built: the aide's 14-day supervisory visit due date (M15's aide-supervision roster needs the discipline
 plan id), a prospective last-days-of-life visit expectation (the SIA calculator is retrospective billing,

@@ -1,5 +1,5 @@
 // apps/web/src/modules/08-encounters/compose — the edits the composer makes to the author's working draft: tick or untick a statement, pick
-// one of a single-choice section, fill a statement's detail, type or append free text (moved out of encounter-compose.tsx unchanged).
+// one of a single-choice section, fill a statement's detail, type or append free text (moved out of encounter-compose.tsx).
 // Not a hook: called each render, like the closures it replaces, so each edit sees the template and draft of the render that made it.
 import type { Dispatch, SetStateAction } from "react";
 import type { DraftSections, MenuEntry, TemplateSection, TemplateView } from "../encounters-api";

@@ -1,5 +1,5 @@
 // apps/web/src/modules/08-encounters/compose — what the composer's buttons do to the server: start and apply an edit of the note text, save
-// the draft, and finalize the note (moved out of encounter-compose.tsx unchanged). The server decides every refusal; this words it
+// the draft, and finalize the note (moved out of encounter-compose.tsx). The server decides every refusal; this words it
 // and keeps the screen in step with what the server now holds.
 // Not a hook: called each render, like the closures it replaces, so each write sees the draft, version and saved baseline of the render
 // that made it.

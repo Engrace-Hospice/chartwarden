@@ -1,5 +1,5 @@
 // apps/web/src/modules/08-encounters/compose — the "Leave without saving?" dialog the composer shows when a navigation is blocked (moved out
-// of encounter-compose.tsx unchanged).
+// of encounter-compose.tsx).
 import { Button, Modal } from "@chartwarden/ui";
 import type { JSX } from "react";
 import {

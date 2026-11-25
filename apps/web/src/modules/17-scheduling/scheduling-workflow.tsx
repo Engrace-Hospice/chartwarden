@@ -11,7 +11,6 @@ import {
 } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
 import { stashStepUpDraft, stepUpRedirectFor, takeStepUpDraft } from "../../shell/step-up-redirect";
-import { type NewVisitPrefill, moveWindowToDay } from "./new-visit-prefill";
 import {
   type CreateVisitBody,
   type VisitPurpose,
@@ -177,14 +176,11 @@ export function NewVisitModal({
   onClose,
   onCreated,
   initialPatient,
-  initialPrefill,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: (visit: VisitView) => void;
   initialPatient?: { id: string; label: string } | null;
-  /** A purpose and a day the form starts with (the visit note's "Schedule next visit"); both stay editable. */
-  initialPrefill?: NewVisitPrefill | null;
 }): JSX.Element | null {
   const client = useApiClient();
   const [patientId, setPatientId] = useState("");
@@ -218,19 +214,6 @@ export function NewVisitModal({
     setPatientId(initialPatient.id);
     setPatientLabel(initialPatient.label);
   }, [open, initialPatient]);
-
-  // Keyed on the two values, not on the prefill object: a parent re-render hands over a new object and must not overwrite an edit.
-  const prefillPurpose = initialPrefill?.purpose ?? null;
-  const prefillDate = initialPrefill?.date ?? null;
-  useEffect(() => {
-    if (!open) return;
-    if (prefillPurpose !== null) setVisitPurpose(prefillPurpose);
-    if (prefillDate !== null) {
-      const moved = moveWindowToDay(defaultVisitWindow(), prefillDate);
-      setStart(moved.start);
-      setEnd(moved.end);
-    }
-  }, [open, prefillPurpose, prefillDate]);
 
   // A step change can remove the focused button: advancing 3 -> 4 swaps Continue for Create Visit (distinct
   // keys, see the footer) and Back is absent on step 1. Focus would fall to <body>, where the modal's Escape

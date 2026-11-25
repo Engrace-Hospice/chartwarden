@@ -1,5 +1,5 @@
 // apps/web/src/modules/08-encounters/compose — the reason a scheduled visit's purpose suggests for the note (moved out of
-// encounter-compose.tsx unchanged).
+// encounter-compose.tsx).
 import { visitPurposeLabel } from "@chartwarden/types";
 import type { ApiClient } from "@chartwarden/ui";
 import { type Dispatch, type SetStateAction, useEffect } from "react";

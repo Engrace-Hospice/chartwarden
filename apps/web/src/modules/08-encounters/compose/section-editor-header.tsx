@@ -1,5 +1,5 @@
 // apps/web/src/modules/08-encounters/compose — the heading of the open section in the composer: its title and chip, what to do in it, and how
-// many statements are selected (moved out of encounter-compose.tsx unchanged).
+// many statements are selected (moved out of encounter-compose.tsx).
 import type { JSX, RefObject } from "react";
 import {
   editorDescription,

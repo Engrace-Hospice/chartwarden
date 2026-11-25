@@ -149,6 +149,25 @@ describe("the pain helper on the admission RN template", () => {
     });
   });
 
+  it("counts a characteristic recorded in the other section, as the Plan section's card and the dyspnea helper do", async () => {
+    const user = userEvent.setup();
+    render(<Harness openSectionId="symptom_management" />);
+
+    await user.click(screen.getByRole("checkbox", { name: /pain limiting function/ }));
+    await user.type(screen.getByRole("textbox", { name: "Location" }), "left hip");
+    await user.click(screen.getByRole("checkbox", { name: /pain limiting function/ }));
+
+    await user.click(screen.getByRole("button", { name: "Open Baseline Symptoms" }));
+    await user.click(screen.getByRole("checkbox", { name: /pain limiting function/ }));
+
+    // Location is recorded in Symptom Management (its row here is locked) and "limiting function" is picked here: both count, 2 of 7
+    // (the helper read only its own section, so it said 1 of 7 and raised no plan-of-care reason for the other section's finding).
+    expect(screen.getByRole("textbox", { name: "Location" })).toBeDisabled();
+    expect(screen.getByText(/characteristics documented/).textContent).toBe(
+      "Pain assessment: 2 of 7 characteristics documented",
+    );
+  });
+
   it("does not lock a row in the section that holds it", async () => {
     const user = userEvent.setup();
     render(<Harness openSectionId="symptom_management" />);

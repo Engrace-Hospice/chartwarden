@@ -1,5 +1,5 @@
 // apps/web/src/modules/08-encounters/compose — the composer's section rail: one button per template section, with where the section stands
-// and the state of its drafted text (moved out of encounter-compose.tsx unchanged).
+// and the state of its drafted text (moved out of encounter-compose.tsx).
 import type { JSX } from "react";
 import type { DraftView } from "../draft-api";
 import { STATE_LABEL, draftedStateOf } from "../draft-model";

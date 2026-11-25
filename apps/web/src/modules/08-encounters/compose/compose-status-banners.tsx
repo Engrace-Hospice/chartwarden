@@ -1,6 +1,6 @@
 // apps/web/src/modules/08-encounters/compose — what the composer tells the author about the note as a whole, above the workspace: the
 // documentation progress bar, the save-state line, the save/finalize notice, the "preview not refreshed" notice, and the
-// required-documentation card (moved out of encounter-compose.tsx unchanged).
+// required-documentation card (moved out of encounter-compose.tsx).
 import { Button } from "@chartwarden/ui";
 import type { JSX } from "react";
 import type { UiFeedback } from "../compose-feedback";
