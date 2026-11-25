@@ -89,6 +89,7 @@ const BLOCKED_ARRANGEMENT_PREVIEW = {
         serviceFrom: "2026-01-01",
         serviceTo: "2026-01-31",
         serviceCategory: "RHC",
+        serviceLocationKind: null,
         status: "unresolved",
         rateStatus: "missing",
         unitBasis: null,
@@ -418,6 +419,7 @@ describe("the billing context step shows what the server resolved", () => {
         segments: [
           {
             ...BLOCKED_ARRANGEMENT_PREVIEW.pricing.segments[0],
+            serviceLocationKind: "facility",
             status: "resolved",
             rateStatus: "qualified",
             unitBasis: "per_day",
@@ -444,6 +446,7 @@ describe("the billing context step shows what the server resolved", () => {
     };
     await reachBillingContext();
     const pricing = screen.getByRole("region", { name: "Pricing assessment" });
+    expect(pricing).toHaveTextContent("Facility-based RHC");
     expect(pricing).toHaveTextContent("Estimated reimbursement: $12.00");
     expect(pricing).toHaveTextContent("locality SYNTHETIC-LOCALITY");
     expect(fieldValue("Clinical quantity")).toContain(

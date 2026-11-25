@@ -59,6 +59,7 @@ import {
 import type { CredentialCipherPort } from "../credential-crypto";
 import { qualifyMedicaidProgramClassification } from "../medicaid-payer-classification";
 import {
+  assertSupportedRhcPricingSnapshotPayload,
   databasePricingSnapshotFingerprint,
   lockMedicaidRatePolicyScope,
   rateRowAsFact,
@@ -936,6 +937,29 @@ function ratePolicyFactFromRow(
   };
 }
 
+function serviceLocationKindFromPricingFacts(
+  facts: Record<string, unknown>,
+): "home" | "facility" | null {
+  const serviceLocation = facts.serviceLocation;
+  if (!serviceLocation || typeof serviceLocation !== "object") return null;
+  const kind = (serviceLocation as Record<string, unknown>).kind;
+  return kind === "home" || kind === "facility" ? kind : null;
+}
+
+function serviceLocationKindFromResidenceSpans(
+  spans: readonly { kind: string; effectiveFrom: string; effectiveTo: string | null }[],
+  from: string,
+  to: string,
+): "home" | "facility" | null {
+  const covering = spans.filter(
+    (span) => span.effectiveFrom <= from && (span.effectiveTo === null || span.effectiveTo >= to),
+  );
+  if (covering.length !== 1) return null;
+  return covering[0]!.kind === "home" || covering[0]!.kind === "facility"
+    ? covering[0]!.kind
+    : null;
+}
+
 function pricingPreviewFromAssessment(
   assessment: ReturnType<typeof assessHospicePricing>,
   requiredInputs: readonly string[],
@@ -949,6 +973,7 @@ function pricingPreviewFromAssessment(
       serviceFrom: segment.serviceFrom,
       serviceTo: segment.serviceTo,
       serviceCategory: segment.serviceCategory,
+      serviceLocationKind: null,
       status: segment.status,
       rateStatus: segment.rateEvidence
         ? "qualified"
@@ -1011,12 +1036,33 @@ function pricingPreviewFromAssessment(
   };
 }
 
+function rhcPricingRequiredInputs(reasonCode: string): readonly string[] {
+  if (reasonCode.includes("RESIDENCE") || reasonCode.includes("FACILITY_KIND")) {
+    return [
+      "An effective M5 patient residence covering every service day",
+      "For facility residence, an active M40 facility classified as assisted living",
+      "Verified local RHC coding and billed-charge evidence",
+    ];
+  }
+  if (reasonCode.includes("OVERLAPPING") || reasonCode.includes("AMBIGUOUS")) {
+    return ["Resolve conflicting or overlapping billing evidence before pricing"];
+  }
+  if (reasonCode.includes("PERIOD_INCOMPLETE") || reasonCode.includes("COVERAGE_GAP")) {
+    return ["Verified billing evidence must cover every service date without gaps"];
+  }
+  return [
+    "Verified locality, quality-reporting, charge, coding and daily RHC evidence",
+    "A qualified payer-specific rate covering every service date",
+  ];
+}
+
 function unresolvedPricingPreview(input: {
   readonly from: string;
   readonly to: string;
   readonly reasonCode: string;
   readonly requiredInputs: readonly string[];
   readonly serviceCategory?: AssemblyPreviewPricing["segments"][number]["serviceCategory"];
+  readonly serviceLocationKind?: AssemblyPreviewPricing["segments"][number]["serviceLocationKind"];
   readonly status?: AssemblyPreviewPricing["status"];
 }): AssemblyPreviewPricing {
   return {
@@ -1029,6 +1075,7 @@ function unresolvedPricingPreview(input: {
         serviceFrom: input.from,
         serviceTo: input.to,
         serviceCategory: input.serviceCategory ?? null,
+        serviceLocationKind: input.serviceLocationKind ?? null,
         status: input.status === "unsupported" ? "unsupported" : "unresolved",
         rateStatus: input.status === "unsupported" ? "unsupported" : "missing",
         unitBasis: null,
@@ -1277,6 +1324,11 @@ export interface FacilityKindReaderPort {
   kindsFor(
     facilityIds: readonly string[],
   ): Promise<ReadonlyMap<string, PlaceOfServiceFacilityKind>>;
+  /** M40-backed read on the M24 assembly/validation transaction when supported by the composition. */
+  kindsForInTransaction?(
+    transaction: unknown,
+    facilityIds: readonly string[],
+  ): Promise<ReadonlyMap<string, PlaceOfServiceFacilityKind>>;
 }
 
 /**
@@ -1411,6 +1463,17 @@ export function buildDrizzleM24WriteService(
     const rows = await (lockForUpdate ? q.for("update") : q);
     if (!rows[0]) throw new NotFoundError("medicaid claim not found");
     return rows[0];
+  }
+
+  async function facilityKindsInTransaction(
+    tx: Tx,
+    spans: readonly { facilityId: string | null }[],
+  ): Promise<ReadonlyMap<string, PlaceOfServiceFacilityKind>> {
+    const ids = [...new Set(spans.flatMap((span) => (span.facilityId ? [span.facilityId] : [])))];
+    if (ids.length === 0 || !facilityKindReader) return new Map();
+    return facilityKindReader.kindsForInTransaction
+      ? facilityKindReader.kindsForInTransaction(tx, ids)
+      : facilityKindReader.kindsFor(ids);
   }
 
   /**
@@ -2286,10 +2349,6 @@ export function buildDrizzleM24WriteService(
                   serviceTo: input.serviceTo,
                   assessedAt,
                 };
-                const evidence = await readMedicaidHospiceBillingEvidence(tx, scope);
-                if (evidence.status !== "verified") {
-                  return { status: "unresolved" as const, reasonCode: evidence.reasonCode };
-                }
                 const residenceSpans = residenceReader
                   ? await residenceReader.residencesBetweenInTransaction(
                       tx,
@@ -2299,6 +2358,18 @@ export function buildDrizzleM24WriteService(
                       input.serviceTo,
                     )
                   : [];
+                const serviceLocationKind = serviceLocationKindFromResidenceSpans(
+                  residenceSpans,
+                  input.serviceFrom,
+                  input.serviceTo,
+                );
+                const evidence = await readMedicaidHospiceBillingEvidence(tx, scope);
+                if (evidence.status !== "verified" && evidence.status !== "segmentation_required") {
+                  return {
+                    plan: { status: "unresolved" as const, reasonCode: evidence.reasonCode },
+                    serviceLocationKind,
+                  };
+                }
                 const rateRows = await readMedicaidRatePolicyLineage(tx, {
                   organizationId: actor.organizationId,
                   providerEntityId: input.providerEntityId,
@@ -2308,20 +2379,23 @@ export function buildDrizzleM24WriteService(
                   serviceTo: input.serviceTo,
                   assessedAt,
                 });
+                const facilityKinds = await facilityKindsInTransaction(tx, residenceSpans);
                 const plan = resolveRhcDailyPricingPlan({
                   scope,
-                  evidence: evidence.row,
+                  evidence: evidence.status === "verified" ? evidence.row : evidence.rows,
                   locPeriods: rawPeriods,
                   rates: rateRows.map(rateRowAsFact),
                   residenceSpans,
+                  facilityKinds,
                 });
-                return plan;
+                return { plan, serviceLocationKind };
               });
-              if (result.status === "resolved") {
-                const segments = result.lines.map((line) => ({
+              if (result.plan.status === "resolved") {
+                const segments = result.plan.lines.map((line) => ({
                   serviceFrom: line.serviceFrom,
                   serviceTo: line.serviceTo,
                   serviceCategory: "RHC" as const,
+                  serviceLocationKind: serviceLocationKindFromPricingFacts(line.integrityFacts),
                   status: "resolved" as const,
                   rateStatus: "qualified" as const,
                   unitBasis: "per_day" as const,
@@ -2366,11 +2440,11 @@ export function buildDrizzleM24WriteService(
                   coversRequestedPeriod: true,
                   requiredInputs: [],
                   segments,
-                  reimbursementEstimateTotalCents: result.lines.reduce(
+                  reimbursementEstimateTotalCents: result.plan.lines.reduce(
                     (total, line) => total + line.reimbursementEstimateCents,
                     0,
                   ),
-                  actualBilledChargeTotalCents: result.lines.reduce(
+                  actualBilledChargeTotalCents: result.plan.lines.reduce(
                     (total, line) => total + line.chargesCents,
                     0,
                   ),
@@ -2380,12 +2454,10 @@ export function buildDrizzleM24WriteService(
                 pricing = unresolvedPricingPreview({
                   from: input.serviceFrom,
                   to: input.serviceTo,
-                  reasonCode: result.reasonCode,
-                  requiredInputs: [
-                    "Verified locality, quality-reporting, charge, coding and daily RHC evidence",
-                    "A qualified payer-specific rate covering every service date",
-                  ],
-                  status: result.status,
+                  reasonCode: result.plan.reasonCode,
+                  requiredInputs: rhcPricingRequiredInputs(result.plan.reasonCode),
+                  serviceLocationKind: result.serviceLocationKind,
+                  status: result.plan.status,
                   serviceCategory: "RHC",
                 });
               }
@@ -3147,7 +3219,10 @@ export function buildDrizzleM24WriteService(
             assessedAt,
           };
           const evidenceResult = await readMedicaidHospiceBillingEvidence(tx, priceScope);
-          if (evidenceResult.status !== "verified") {
+          if (
+            evidenceResult.status !== "verified" &&
+            evidenceResult.status !== "segmentation_required"
+          ) {
             throw new DegradedError(
               "MEDICAID_BILLING_EVIDENCE_UNRESOLVED",
               `source-backed locality, quality, charge, and local coding evidence is ${evidenceResult.reasonCode.toLowerCase().replaceAll("_", " ")}`,
@@ -3171,12 +3246,15 @@ export function buildDrizzleM24WriteService(
             serviceTo: priceScope.serviceTo,
             assessedAt,
           });
+          const facilityKinds = await facilityKindsInTransaction(tx, residenceSpans);
           const pricingPlan = resolveRhcDailyPricingPlan({
             scope: priceScope,
-            evidence: evidenceResult.row,
+            evidence:
+              evidenceResult.status === "verified" ? evidenceResult.row : evidenceResult.rows,
             locPeriods: rawPeriods,
             rates: rateRows.map(rateRowAsFact),
             residenceSpans,
+            facilityKinds,
           });
           if (pricingPlan.status !== "resolved") {
             throw new DegradedError(
@@ -3225,10 +3303,13 @@ export function buildDrizzleM24WriteService(
               medicaidClaimLineId: insertedLine[0]!.id,
               payerRatePolicyId: planLine.rate.id,
               billingEvidenceId: planLine.evidence.id,
-              snapshotSchemaVersion: 1,
+              snapshotSchemaVersion: planLine.snapshotSchemaVersion,
               assessedAt: new Date(assessedAt),
               fingerprint: await databasePricingSnapshotFingerprint(tx, snapshotFacts),
-              snapshot: snapshotFacts,
+              snapshot: assertSupportedRhcPricingSnapshotPayload(
+                snapshotFacts,
+                planLine.snapshotSchemaVersion,
+              ),
               createdByMembershipId: actor.userId,
             });
             for (const encounter of encounters.filter(
@@ -3542,6 +3623,7 @@ export function buildDrizzleM24WriteService(
                     canonicalPayerReader.medicaidProgramClassifications,
                 },
                 residenceReader,
+                facilityKindReader,
                 assessedAt,
               });
               hospicePricingSnapshotVerified = pricingVerification.pricingSnapshotVerified;

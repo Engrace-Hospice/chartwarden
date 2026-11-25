@@ -117,7 +117,8 @@ export const medicaidHospiceBillingEvidence = pgTable(
       sql`locality_code <> '' AND billed_charge_cents_per_unit > 0 AND
           quantity_policy = 'active_rhc_loc_calendar_day' AND
           quantity_evidence_owner = 'm6_level_of_care_period' AND billing_unit = 'daily' AND
-          revenue_code = '0651' AND hcpcs_code = 'Q5001' AND coding_profile = 'local_draft_only'`,
+          revenue_code = '0651' AND hcpcs_code IN ('Q5001', 'Q5002') AND
+          coding_profile = 'local_draft_only'`,
     ),
     qualityFactsValid: check(
       "medicaid_hospice_billing_evidence_quality_valid",
@@ -146,6 +147,89 @@ export const medicaidHospiceBillingEvidence = pgTable(
 );
 
 /** Immutable point-in-time calculation and evidence identity for a payer-rate-priced claim line. */
+type MedicaidRhcPricingSnapshotCommon = Record<string, unknown> & {
+  readonly postingAuthorized: false;
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  readonly patientId: string;
+  readonly admissionId: string;
+  readonly admissionVersion: number;
+  readonly canonicalPayerId: string;
+  readonly programKind: "managed_care";
+  readonly serviceState: string;
+  readonly serviceFrom: string;
+  readonly serviceTo: string;
+  readonly levelOfCare: "RHC";
+  readonly locPeriodId: string;
+  readonly locPeriodVersion: number;
+  readonly quantity: {
+    readonly basis: "per_day";
+    readonly units: number;
+    readonly source: "M6_active_RHC_calendar_days";
+  };
+  readonly locality: {
+    readonly code: string;
+    readonly evidenceReference: string;
+    readonly evidenceVersion: number;
+  };
+  readonly qualityReporting: {
+    readonly applicability: string;
+    readonly status: string;
+    readonly evidenceReference: string;
+    readonly evidenceVersion: number;
+  };
+  readonly billingEvidenceId: string;
+  readonly billingEvidenceVersion: number;
+  readonly rateCents: number;
+  readonly rateVersion: number;
+  readonly payerRatePolicyId: string;
+  readonly rateSourceKind: string;
+  readonly methodologyVersion: number;
+  readonly reimbursementEstimateCents: number;
+  readonly baseReimbursementCents: number;
+  readonly billedChargeCentsPerUnit: number;
+  readonly billedChargeCents: number;
+  readonly revenueCode: "0651";
+  readonly codingProfile: "local_draft_only";
+  readonly codingEvidenceReference: string;
+  readonly codingEvidenceVersion: number;
+  readonly medicaidClaimId: string;
+  readonly claimLineId: string;
+  readonly assessmentTimestamp: string;
+};
+
+type MedicaidRhcHomeLocationSnapshot = {
+  readonly patientAddressId: string;
+  readonly kind: "home";
+  readonly facilityId: null;
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+};
+
+type MedicaidRhcAssistedLivingLocationSnapshot = {
+  readonly patientAddressId: string;
+  readonly kind: "facility";
+  readonly facilityId: string;
+  readonly facilityKind: "alf";
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+};
+
+/** Explicit persisted local-draft profiles; new clinical or billing profiles require a reviewed version. */
+export type MedicaidClaimLinePricingSnapshotPayload =
+  | (MedicaidRhcPricingSnapshotCommon & {
+      readonly schemaVersion: 1;
+      readonly hcpcsCode: "Q5001";
+      readonly serviceLocation: MedicaidRhcHomeLocationSnapshot;
+      readonly localBillingProfile?: never;
+    })
+  | (MedicaidRhcPricingSnapshotCommon & {
+      readonly schemaVersion: 2;
+      readonly hcpcsCode: "Q5002";
+      readonly serviceLocation: MedicaidRhcAssistedLivingLocationSnapshot;
+      readonly localBillingProfile: "rhc_assisted_living_q5002_daily_v1";
+    });
+
 export const medicaidClaimLinePricingSnapshot = pgTable(
   "medicaid_claim_line_pricing_snapshot",
   {
@@ -163,7 +247,7 @@ export const medicaidClaimLinePricingSnapshot = pgTable(
     snapshotSchemaVersion: integer("snapshot_schema_version").notNull().default(1),
     assessedAt: timestamp("assessed_at", { withTimezone: true }).notNull(),
     fingerprint: text("fingerprint").notNull(),
-    snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+    snapshot: jsonb("snapshot").$type<MedicaidClaimLinePricingSnapshotPayload>().notNull(),
     createdByMembershipId: uuid("created_by_membership_id").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -179,12 +263,22 @@ export const medicaidClaimLinePricingSnapshot = pgTable(
     ),
     fingerprintValid: check(
       "medicaid_claim_line_pricing_snapshot_fingerprint_valid",
-      sql`fingerprint ~ '^[0-9a-f]{64}$' AND snapshot_schema_version = 1`,
+      sql`fingerprint ~ '^[0-9a-f]{64}$' AND snapshot_schema_version IN (1, 2)`,
     ),
     snapshotShape: check(
       "medicaid_claim_line_pricing_snapshot_shape_valid",
-      sql`jsonb_typeof(snapshot) = 'object' AND snapshot ->> 'schemaVersion' = '1' AND
-          snapshot ->> 'postingAuthorized' = 'false'`,
+      sql`jsonb_typeof(snapshot) = 'object' AND
+          snapshot ->> 'schemaVersion' = snapshot_schema_version::text AND
+          snapshot ->> 'postingAuthorized' = 'false' AND snapshot ? 'assessmentTimestamp' AND
+          ((snapshot_schema_version = 1 AND snapshot ->> 'hcpcsCode' = 'Q5001' AND
+            snapshot #>> '{serviceLocation,kind}' = 'home' AND
+            snapshot #>> '{serviceLocation,facilityId}' IS NULL AND
+            NOT (snapshot ? 'localBillingProfile')) OR
+           (snapshot_schema_version = 2 AND snapshot ->> 'hcpcsCode' = 'Q5002' AND
+            snapshot ->> 'localBillingProfile' = 'rhc_assisted_living_q5002_daily_v1' AND
+            snapshot #>> '{serviceLocation,kind}' = 'facility' AND
+            snapshot #>> '{serviceLocation,facilityKind}' = 'alf' AND
+            snapshot #>> '{serviceLocation,facilityId}' IS NOT NULL))`,
     ),
   }),
 );

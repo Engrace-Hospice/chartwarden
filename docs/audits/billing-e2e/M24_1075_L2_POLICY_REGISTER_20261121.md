@@ -94,10 +94,13 @@ payer companion guide, provider enrollment, claim acceptance or production route
   prerequisites in the [L8A.2C qualification report](./M24_1075_L8A2C_ADVANCED_CLINICAL_PRICING_QUALIFICATION_20261125.md).
   It preserves the already-qualified synthetic RHC daily persistence path but does not deliver the requested
   generalized category snapshot architecture or positive persisted CHC/IRC/GIP pricing paths.
-- L8A.2C remains blocked. Facility RHC/Q5002, election-day buckets, qualified CHC billing, IRC continuity,
-  GIP inpatient pricing, in-home respite, production locality/quality evidence, and generalized snapshot
-  versioning remain unsupported. F04/F06/F07/F11/F14 remain open or partial. Migration 1552 is `contract`
-  and remains subject to the deployment hold; no production catalog or migration was changed.
+- L8A.2C was blocked at its implementation cutoff; L8A.2C1 subsequently adds one explicit assisted-living
+  RHC/Q5002 local-draft profile and generalized daily snapshot version 2, while preserving version 1 home
+  RHC/Q5001. Adjacent verified billing-evidence spans are now segmented into separately sourced lines.
+  Election-day buckets, qualified CHC billing, IRC continuity, GIP inpatient pricing, in-home respite,
+  production locality/quality evidence and payer-certified formats remain unsupported. F04/F06/F07/F11/F14
+  remain open or partial. Migrations 1553–1554 are `contract` and remain subject to the deployment hold;
+  no production catalog or migration was changed. See the [L8A.2C1 qualification report](./M24_1075_L8A2C1_GENERALIZED_DAILY_PRICING_QUALIFICATION_20261125.md).
 
 ### L8A.1 implementation and source recheck (2026-11-25)
 

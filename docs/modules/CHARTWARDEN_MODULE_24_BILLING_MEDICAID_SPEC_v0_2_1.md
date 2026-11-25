@@ -128,6 +128,28 @@ but M24 does not yet qualify CHC eligibility, pricing, institutional units or pe
 RHC daily local-draft path remains the only supported priced assembly. See the
 [L8A.2C qualification report](../audits/billing-e2e/M24_1075_L8A2C_ADVANCED_CLINICAL_PRICING_QUALIFICATION_20261125.md).
 
+### As-built L8A.2C1 — generalized daily RHC snapshots and facility residence (2026-11-25)
+
+Migrations 1553–1554 add an M40-owned locked facility-kind reader and extend the existing M24 pricing
+snapshot table. Snapshot schema v1 retains its original home-RHC/Q5001 shape and verification behavior;
+schema v2 is restricted to the explicit assisted-living RHC/Q5002 `local_draft_only` profile. The shared
+daily planner now consumes an exact contiguous `segmentation_required` billing-evidence lineage and
+creates separate line plans and immutable snapshots with each evidence identity/version. Its ceiling
+allocation preserves one applicable segment ceiling across evidence-created line boundaries.
+The Drizzle payload is a discriminated TypeScript union and the write boundary checks its profile before
+persisting; SQL repeats the supported-profile check.
+
+Preview, transactional assembly, manual validation and background validation use the same RHC pricing
+resolver and source-grounded snapshot verifier. Q5002 requires an effective M5 facility residence and an
+active, non-merged M40 `alf` facility identity; the local billing evidence independently establishes the
+Q5002 coding profile. A private PostgreSQL fixture persisted a synthetic facility-based draft across
+adjacent evidence spans. The reimbursement estimate and separately evidenced billed charges remain
+distinct. This does not qualify an EOCCO rate, a payer-certified Q5002 code, or institutional transmission.
+CHC, IRC, GIP, election-history pricing and in-home respite remain blocked. The non-overridable
+`medicaid_hospice_institutional_format_qualified` rule continues to fail for local-draft coding, so the
+draft is not READY or sendable. See the
+[L8A.2C1 qualification report](../audits/billing-e2e/M24_1075_L8A2C1_GENERALIZED_DAILY_PRICING_QUALIFICATION_20261125.md).
+
 ## 1. Purpose & Scope
 
 ### 1.1 What This Module Does
@@ -518,7 +540,7 @@ voided → terminal (set when the underlying patient day is voided in M5 decease
 (Per-row, beyond the registry-driven §11.A rules in §4.5; these are the structural rules at row-write time.)
 
 - **`medicaid_claim`** — `service_from <= service_to`; `tob ∈ adapter.supportedTobs()`; `patient_payer_id` resolves to a Medicaid payer-kind at service-date (per M5 `PatientPayerReader.coverageKindOn()`); `state` matches `patient.state_at(service_date)` from M5; `medicare_claim_id` set requires `patient_payer.medicare_primary=true` on the period; `rb_arrangement_id` set requires `rb_arrangement.effective_from <= service_from AND (rb_arrangement.effective_to IS NULL OR rb_arrangement.effective_to >= service_to)`; `replaces_claim_id` set requires `tob ∈ {817, 818}` and the referenced row is ACK_ACCEPTED or PAID.
-- **`medicaid_claim_line`** — inclusive service span is bounded by the parent claim; `revenue_code` and `q_code` use the applicable M38 value sets; `level_of_care ∈ {RHC, CHC, IRC, GIP, NF_RB}`; `units > 0`; non-R&B lines carry exactly one pricing identity (legacy schedule or payer-rate policy). Migration 1551 requires a payer-rate line to have an immutable, source-evidence pricing snapshot and protects its line/snapshot amounts from mutation.
+- **`medicaid_claim_line`** — inclusive service span is bounded by the parent claim; `revenue_code` and `q_code` use the applicable M38 value sets; `level_of_care ∈ {RHC, CHC, IRC, GIP, NF_RB}`; `units > 0`; non-R&B lines carry exactly one pricing identity (legacy schedule or payer-rate policy). Migration 1551 requires a payer-rate line to have an immutable, source-evidence pricing snapshot and protects its line/snapshot amounts from mutation. Migration 1554 preserves the v1 home-RHC/Q5001 snapshot and permits only the explicit v2 assisted-living RHC/Q5002 local-draft profile.
 - **`medicaid_submission`** — `medicaid_claim_control_number` matches the deterministic format per §4.X; `attempt_index >= 0`; `state` matches `claim.state`; `channel ∈ {direct_mmis, cco_clearinghouse, sftp, portal}` and matches the routing decision (M40 `state_medicaid_mco.routing_channel` for the patient's MCO).
 - **`medicaid_acknowledgment`** — bound to a `medicaid_submission_id`; `kind ∈ {sync_999, sync_277ca, async_state_specific}`; `outcome ∈ {accepted, rejected, partial}`; `error_codes` (jsonb array) populated when rejected/partial.
 - **`medicaid_validation_run`** — `rule_registry_version` snapshot pinned at run-time; `triggered_by ∈ {user, assembly, upstream_change, scheduled}`; `claim_state_at_trigger` snapshot of the claim state.

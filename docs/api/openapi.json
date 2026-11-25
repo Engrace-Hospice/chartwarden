@@ -210735,6 +210735,7 @@
                               "serviceFrom",
                               "serviceTo",
                               "serviceCategory",
+                              "serviceLocationKind",
                               "status",
                               "rateStatus",
                               "unitBasis",
@@ -210789,6 +210790,25 @@
                                       },
                                       {
                                         "const": "IN_HOME_RESPITE",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "serviceLocationKind": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "home",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "facility",
                                         "type": "string"
                                       }
                                     ]
@@ -211146,7 +211166,15 @@
                                 ]
                               },
                               "actualBilledChargeCents": {
-                                "type": "null"
+                                "anyOf": [
+                                  {
+                                    "description": "Integer cents (D8)",
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
                               },
                               "reasonCodes": {
                                 "type": "array",
@@ -211169,7 +211197,15 @@
                           ]
                         },
                         "actualBilledChargeTotalCents": {
-                          "type": "null"
+                          "anyOf": [
+                            {
+                              "description": "Integer cents (D8)",
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         },
                         "submissionAvailable": {
                           "const": false,
