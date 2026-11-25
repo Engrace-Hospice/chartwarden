@@ -295,6 +295,7 @@ BEGIN
    WHERE organization_id = NEW.organization_id AND id = NEW.billing_evidence_id;
   IF NOT FOUND OR v_evidence.provider_entity_id IS DISTINCT FROM NEW.provider_entity_id OR
      v_evidence.verification_status IS DISTINCT FROM 'verified' OR
+     v_evidence.service_category IS DISTINCT FROM 'RHC' OR
      EXISTS (SELECT 1 FROM medicaid_hospice_billing_evidence successor
               WHERE successor.organization_id = v_evidence.organization_id
                 AND successor.supersedes_id = v_evidence.id) OR

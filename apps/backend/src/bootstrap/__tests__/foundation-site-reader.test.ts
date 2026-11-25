@@ -1,6 +1,12 @@
 import type { DbClient } from "@chartwarden/db";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
-import { buildFoundationSiteReader, soleDefaultLocation } from "../foundation-site-reader";
+import {
+  type FoundationSiteReader,
+  buildFoundationSiteReader,
+  soleDefaultLocation,
+} from "../foundation-site-reader";
 
 describe("soleDefaultLocation", () => {
   it("defaults to the only active location", () => {
@@ -119,5 +125,115 @@ describe("Claim.MD internal site ownership reads", () => {
     expect(await reader.providerEntityOwners(tx, [])).toEqual([]);
     expect(await reader.locationOwners(tx, [])).toEqual([]);
     expect(selected).toHaveLength(2);
+  });
+});
+
+describe("organization-scoped provider-entity reads bind the organization in their predicate", () => {
+  const ORG_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const PROVIDER_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const LOCATION_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const ORGANIZATION_COLUMN = /"provider_entity"\."organization_id" = \$(\d+)/;
+
+  interface Terminal extends Promise<unknown[]> {
+    limit(count: number): Promise<unknown[]>;
+    for(): Terminal;
+  }
+  interface Chain {
+    from(): Chain;
+    innerJoin(): Chain;
+    where(predicate: unknown): Terminal;
+  }
+
+  /** A transaction double that records every `where()` argument and returns no rows. */
+  function recordingTx() {
+    const predicates: unknown[] = [];
+    const terminal = (): Terminal =>
+      Object.assign(Promise.resolve<unknown[]>([]), {
+        limit: async () => [],
+        for: terminal,
+      });
+    const chain: Chain = {
+      from: () => chain,
+      innerJoin: () => chain,
+      where(predicate) {
+        predicates.push(predicate);
+        return terminal();
+      },
+    };
+    const tx = { select: () => chain, selectDistinct: () => chain } as unknown as DbClient;
+    return { tx, predicates };
+  }
+
+  /** The value bound to `provider_entity.organization_id` in a rendered predicate, or undefined. */
+  function boundOrganizationId(predicate: unknown): { sql: string; value: unknown } {
+    const query = new PgDialect().sqlToQuery(predicate as SQL);
+    const placeholder = ORGANIZATION_COLUMN.exec(query.sql)?.[1];
+    return {
+      sql: query.sql,
+      value: placeholder === undefined ? undefined : query.params[Number(placeholder) - 1],
+    };
+  }
+
+  const reads: readonly (readonly [
+    string,
+    (reader: FoundationSiteReader, tx: DbClient) => Promise<unknown>,
+  ])[] = [
+    ["locationSiteFacts", (reader, tx) => reader.locationSiteFacts(tx, ORG_ID, LOCATION_ID)],
+    [
+      "allLocationsOpenInOrg",
+      (reader, tx) => reader.allLocationsOpenInOrg(tx, ORG_ID, [LOCATION_ID]),
+    ],
+    [
+      "providerEntityIdentifiers",
+      (reader, tx) => reader.providerEntityIdentifiers(tx, ORG_ID, PROVIDER_ID),
+    ],
+    [
+      "providerEntitySubmissionProfile",
+      (reader, tx) => reader.providerEntitySubmissionProfile(tx, ORG_ID, PROVIDER_ID),
+    ],
+    [
+      "providerEntityLegalName",
+      (reader, tx) => reader.providerEntityLegalName(tx, ORG_ID, PROVIDER_ID),
+    ],
+    [
+      "providerEntityBillingFacts",
+      (reader, tx) => reader.providerEntityBillingFacts(tx, ORG_ID, PROVIDER_ID),
+    ],
+  ];
+
+  it.each(reads)("%s filters on the caller's organization id", async (_name, read) => {
+    const { tx, predicates } = recordingTx();
+
+    await read(buildFoundationSiteReader(), tx);
+
+    expect(predicates).toHaveLength(1);
+    const { sql, value } = boundOrganizationId(predicates[0]);
+    expect(sql).toMatch(ORGANIZATION_COLUMN);
+    expect(value).toBe(ORG_ID);
+  });
+
+  it("binds a different organization id when the caller passes one, never a fixed or missing value", async () => {
+    const otherOrg = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    const { tx, predicates } = recordingTx();
+
+    await buildFoundationSiteReader().providerEntityLegalName(tx, otherOrg, PROVIDER_ID);
+
+    expect(boundOrganizationId(predicates[0]).value).toBe(otherOrg);
+  });
+
+  it("keeps the entity and location scoping beside the organization predicate", async () => {
+    const { tx, predicates } = recordingTx();
+    const reader = buildFoundationSiteReader();
+
+    await reader.providerEntityIdentifiers(tx, ORG_ID, PROVIDER_ID);
+    await reader.locationSiteFacts(tx, ORG_ID, LOCATION_ID);
+    await reader.allLocationsOpenInOrg(tx, ORG_ID, [LOCATION_ID]);
+
+    const params = predicates.map(
+      (predicate) => new PgDialect().sqlToQuery(predicate as SQL).params,
+    );
+    expect(params[0]).toEqual(expect.arrayContaining([PROVIDER_ID, ORG_ID]));
+    expect(params[1]).toEqual(expect.arrayContaining([LOCATION_ID, ORG_ID]));
+    expect(params[2]).toEqual(expect.arrayContaining([LOCATION_ID, ORG_ID, "closed"]));
   });
 });

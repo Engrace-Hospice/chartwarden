@@ -9,10 +9,15 @@ import {
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
+  DegradedError,
   type PatientAddressReader,
   type SignedEncountersReader,
 } from "@chartwarden/types";
-import { and, desc, eq, lte, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lte, sql } from "drizzle-orm";
+import {
+  admissionServiceRangeIssue,
+  patientLifecycleServiceRangeIssue,
+} from "../claim-range-guards";
 import { qualifyMedicaidProgramClassification } from "../medicaid-payer-classification";
 import type { M24Actor } from "../routes/actor";
 import {
@@ -33,6 +38,9 @@ import {
 } from "./chc-clinical-quantity";
 import {
   canonicalPricingSnapshotJson,
+  isTransactionFatalError,
+  lockHospiceBillingEvidenceScope,
+  logPricingRefusal,
   pricingSnapshotFingerprint,
   rateRowAsFact,
   readMedicaidChcBillingEvidence,
@@ -107,6 +115,26 @@ export interface ChcPricingPreparationDeps {
   readonly now?: () => Date;
 }
 
+/**
+ * One background pass verifies at most this many service days (the newest), so it stays bounded. Each
+ * verification runs in a savepoint that locks the admission row, so the count also stays well under the
+ * 64 subtransactions a transaction can hold before other sessions' snapshots slow down.
+ */
+const MAX_PREPARATIONS_PER_REVALIDATION = 50;
+
+/** What a revalidation of one patient will lock: its admission, and its payer's rate-policy scope. */
+export interface ChcRevalidationScope {
+  /** The preparation row this scope was read from; the verification covers exactly these rows. */
+  readonly preparationRecordId: string;
+  readonly admissionId: string;
+  readonly rateScope: {
+    readonly organizationId: string;
+    readonly providerEntityId: string;
+    readonly canonicalPayerId: string;
+    readonly serviceState: string;
+  };
+}
+
 function fail(
   code: string,
   message = `Current authoritative facts do not qualify this local CHC preparation (${code}).`,
@@ -115,7 +143,8 @@ function fail(
 }
 
 function isDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  // Year 0000 round-trips through JS but is not a PostgreSQL date, so it would fail as a database error.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value < "0001-01-01") return false;
   const parsed = Date.parse(`${value}T00:00:00.000Z`);
   return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === value;
 }
@@ -183,9 +212,9 @@ export function createChcPricingPreparationService(deps: ChcPricingPreparationDe
     tx: Tx,
     actor: M24Actor,
     input: ChcPricingPreparationInput,
-    assessedAt: string,
     preparationId: string,
     preparationVersion: number,
+    expectedCanonicalPayerId?: string,
   ): Promise<Snapshot> {
     if (!isDate(input.serviceDate)) fail("CHC_SERVICE_DATE_INVALID");
     if (!actor.providerEntityIds?.includes(input.providerEntityId))
@@ -202,7 +231,13 @@ export function createChcPricingPreparationService(deps: ChcPricingPreparationDe
     ) {
       fail("CHC_ADMISSION_IDENTITY_MISMATCH");
     }
-    if (admission.status !== "active") fail("CHC_ADMISSION_NOT_ACTIVE");
+    // The same stay-end rules claim assembly applies: a discharge, revocation, transfer or death on or before
+    // the service day, or a pending discharge, means the day is not priced. A discharged or closed admission is
+    // judged by its stay-end facts (its days before the end stay billable), not refused for its status.
+    const admissionIssue = admissionServiceRangeIssue(admission, input.serviceDate);
+    if (admissionIssue) fail(admissionIssue.code);
+    if (!["active", "discharged", "bereavement", "closed"].includes(admission.status))
+      fail("CHC_ADMISSION_NOT_ACTIVE");
 
     const coverage = await deps.coverage.claimCoverageSnapshotInTransaction(tx, {
       organizationId: actor.organizationId,
@@ -210,6 +245,11 @@ export function createChcPricingPreparationService(deps: ChcPricingPreparationDe
       from: input.serviceDate,
       to: input.serviceDate,
     });
+    const lifecycleIssue = patientLifecycleServiceRangeIssue(
+      coverage.patientLifecycle,
+      input.serviceDate,
+    );
+    if (lifecycleIssue) fail(lifecycleIssue.code);
     if (coverage.medicaid.status !== "uniform" || coverage.primary.status !== "uniform") {
       fail("MEDICAID_COVERAGE_NOT_UNIFORM");
     }
@@ -272,12 +312,16 @@ export function createChcPricingPreparationService(deps: ChcPricingPreparationDe
       !programAssignment.sourceKind ||
       !programAssignment.verificationSource ||
       !programAssignment.evidenceReference ||
-      !programAssignment.verifiedAt ||
-      programAssignment.verifiedAt.getTime() > Date.parse(assessedAt)
+      !programAssignment.verifiedAt
     ) {
       fail("MEDICAID_PROGRAM_ASSIGNMENT_PROVENANCE_UNRESOLVED");
     }
     if (medicaid.payerId !== program.canonicalPayerId) fail("MEDICAID_COVERAGE_PAYER_MISMATCH");
+    // A stored preparation was priced for one payer: if the program now names another, it is stale, and this says
+    // so BEFORE the rate-policy lock of a payer the caller never locked (the revalidation job locks the stored
+    // payer's scope, in its sorted pass).
+    if (expectedCanonicalPayerId && program.canonicalPayerId !== expectedCanonicalPayerId)
+      fail("CHC_PAYER_CHANGED");
     const canonical = await deps.canonicalPayer.resolvePayer(
       actor.organizationId,
       program.canonicalPayerId,
@@ -310,11 +354,34 @@ export function createChcPricingPreparationService(deps: ChcPricingPreparationDe
     if (!payerClassification.qualified) fail(payerClassification.reasonCode);
     if (
       !payerClassification.classification.sourceReference ||
-      !payerClassification.classification.verifiedAt ||
-      Date.parse(payerClassification.classification.verifiedAt) > Date.parse(assessedAt)
+      !payerClassification.classification.verifiedAt
     ) {
       fail("MEDICAID_PROGRAM_CLASSIFICATION_PROVENANCE_UNRESOLVED");
     }
+
+    // Lock order: the admission row (above), then the rate-policy and billing-evidence advisory locks, and only
+    // then the clock: a rate, evidence or encounter correction that commits while this waits is part of the
+    // instant assessed, never hidden by a stamp taken before the wait. (The M5 coverage, program and payer
+    // facts above are read before the payer is known, so they are not covered by this lock; they are the
+    // inputs to it.)
+    await lockHospiceBillingEvidenceScope(
+      tx,
+      {
+        organizationId: actor.organizationId,
+        providerEntityId: input.providerEntityId,
+        patientId: input.patientId,
+        admissionId: input.admissionId,
+        canonicalPayerId: program.canonicalPayerId,
+        programKind: "managed_care",
+        serviceState: "OR",
+      },
+      "CHC",
+    );
+    const assessedAt = now().toISOString();
+    if (programAssignment.verifiedAt.getTime() > Date.parse(assessedAt))
+      fail("MEDICAID_PROGRAM_ASSIGNMENT_PROVENANCE_UNRESOLVED");
+    if (Date.parse(payerClassification.classification.verifiedAt) > Date.parse(assessedAt))
+      fail("MEDICAID_PROGRAM_CLASSIFICATION_PROVENANCE_UNRESOLVED");
 
     const locRows = await deps.admissions.periodsForAdmissionInTransaction(
       tx,
@@ -322,7 +389,8 @@ export function createChcPricingPreparationService(deps: ChcPricingPreparationDe
       input.admissionId,
     );
 
-    if (!deps.residences.residencesBetweenInTransaction) fail("CHC_RESIDENCE_READER_UNAVAILABLE");
+    if (!deps.residences.residencesBetweenInTransaction)
+      throw new DegradedError("m24-chc-preparation", "the M5 residence reader is not bound");
     const residenceSpans = await deps.residences.residencesBetweenInTransaction(
       tx,
       actor.organizationId,
@@ -344,7 +412,8 @@ export function createChcPricingPreparationService(deps: ChcPricingPreparationDe
       fail("CHC_HOME_RESIDENCE_REQUIRED");
 
     const intervalReader = deps.encounters.chcClinicalIntervalsInTransaction;
-    if (!intervalReader) fail("CHC_M8_INTERVAL_READER_UNAVAILABLE");
+    if (!intervalReader)
+      throw new DegradedError("m24-chc-preparation", "the M8 interval reader is not bound");
     const sourceIntervals = await intervalReader(tx, {
       organizationId: actor.organizationId,
       providerEntityId: input.providerEntityId,
@@ -482,7 +551,7 @@ export function createChcPricingPreparationService(deps: ChcPricingPreparationDe
       verifiedAt: evidence.verifiedAt?.toISOString() ?? "",
       verificationStatus: evidence.verificationStatus,
       minimumClinicalMinutes: 1,
-      maximumClinicalMinutes: 1500,
+      maximumClinicalMinutes: 1440,
     };
     const rateRows = await readMedicaidRatePolicyLineage(tx, {
       organizationId: actor.organizationId,
@@ -500,12 +569,21 @@ export function createChcPricingPreparationService(deps: ChcPricingPreparationDe
         rate.unitBasis === "per_hour" &&
         rate.maximumClinicalMinutes != null,
     );
+    // The lineage keeps superseded predecessors; only a head (a row no later row names) can be selected.
+    const supersededRateIds = new Set(
+      rateFacts.flatMap((rate) =>
+        rate.verificationStatus !== "rejected" && rate.supersedesId ? [rate.supersedesId] : [],
+      ),
+    );
     const activeCandidate = ratesWithChcMax.find(
       (rate) =>
+        !supersededRateIds.has(rate.id) &&
         rate.verificationStatus === "verified" &&
         rate.effectiveFrom <= input.serviceDate &&
         (rate.effectiveTo === null || rate.effectiveTo >= input.serviceDate) &&
         rate.localityCode === evidence.localityCode &&
+        rate.qualityReportingApplicability === evidence.qualityReportingApplicability &&
+        rate.qualityReportingStatus === evidence.qualityReportingStatus &&
         rate.canonicalPayerId === program.canonicalPayerId,
     );
     if (!activeCandidate) fail("MEDICAID_RATE_POLICY_UNRESOLVED");
@@ -609,6 +687,8 @@ export function createChcPricingPreparationService(deps: ChcPricingPreparationDe
     ) {
       fail(pricing.segments[0]?.reasonCodes[0] ?? "MEDICAID_RATE_POLICY_UNRESOLVED");
     }
+    if (pricing.reimbursementEstimateTotalCents > 2_147_483_647)
+      fail("CHC_REIMBURSEMENT_OUT_OF_RANGE");
     const priceSegment = pricing.segments[0]!;
     const selectedRate = priceSegment.rateEvidence;
     if (!selectedRate || selectedRate.id !== activeCandidate.id || !selectedRate.verifiedAt)
@@ -735,53 +815,80 @@ export function createChcPricingPreparationService(deps: ChcPricingPreparationDe
     tx: Tx,
     actor: M24Actor,
     row: typeof schema.medicaidChcPricingPreparation.$inferSelect,
-    assessedAt: string,
   ): Promise<ChcPreparationVerification> {
+    let current: Snapshot;
     try {
-      const current = await resolveCurrent(
-        tx,
-        actor,
-        {
-          patientId: row.patientId,
-          admissionId: row.admissionId,
-          providerEntityId: row.providerEntityId,
-          serviceDate: row.serviceDate,
-        },
-        assessedAt,
-        row.preparationId,
-        row.version,
+      // One savepoint per verification: a database error rolls back only this read, never the caller's
+      // transaction (the revalidation job verifies many preparations in one).
+      current = await tx.transaction((savepoint) =>
+        resolveCurrent(
+          savepoint,
+          actor,
+          {
+            patientId: row.patientId,
+            admissionId: row.admissionId,
+            providerEntityId: row.providerEntityId,
+            serviceDate: row.serviceDate,
+          },
+          row.preparationId,
+          row.version,
+          row.snapshot.canonicalPayerId,
+        ),
       );
-      if (
-        canonicalMaterial(current as unknown as Record<string, unknown>) !==
-        canonicalMaterial(row.snapshot as unknown as Record<string, unknown>)
-      ) {
-        return { status: "stale", reasonCode: "CHC_PRICING_SNAPSHOT_STALE" };
-      }
-      const fingerprint = fingerprintFor(row.snapshot as unknown as Record<string, unknown>);
-      if (
-        fingerprint !== row.fingerprint ||
-        row.snapshot.integrityFingerprint !== row.fingerprint
-      ) {
-        return { status: "stale", reasonCode: "CHC_PRICING_SNAPSHOT_INTEGRITY_MISMATCH" };
-      }
-      return {
-        status: "current",
-        preparationId: row.preparationId,
-        version: row.version,
-        fingerprint,
-      };
     } catch (error) {
-      const reasonCode =
-        error instanceof ChartWardenError ? error.code : "CHC_CURRENT_EVIDENCE_UNAVAILABLE";
-      return { status: "stale", reasonCode };
+      logPricingRefusal("m24.chc_preparation.current_evidence_unavailable", error);
+      // A connection, deadlock or serialization failure is retried by the caller; a typed 5xx is a defect.
+      if (isTransactionFatalError(error)) throw error;
+      if (error instanceof ChartWardenError) {
+        if (error.statusCode >= 500 && error.statusCode !== 503) throw error;
+        return {
+          status: "stale",
+          reasonCode: error.statusCode === 503 ? "CHC_CURRENT_EVIDENCE_UNAVAILABLE" : error.code,
+        };
+      }
+      return { status: "stale", reasonCode: "CHC_CURRENT_EVIDENCE_UNAVAILABLE" };
     }
+    if (
+      canonicalMaterial(current as unknown as Record<string, unknown>) !==
+      canonicalMaterial(row.snapshot as unknown as Record<string, unknown>)
+    ) {
+      return { status: "stale", reasonCode: "CHC_PRICING_SNAPSHOT_STALE" };
+    }
+    const fingerprint = fingerprintFor(row.snapshot as unknown as Record<string, unknown>);
+    if (fingerprint !== row.fingerprint || row.snapshot.integrityFingerprint !== row.fingerprint) {
+      return { status: "stale", reasonCode: "CHC_PRICING_SNAPSHOT_INTEGRITY_MISMATCH" };
+    }
+    return {
+      status: "current",
+      preparationId: row.preparationId,
+      version: row.version,
+      fingerprint,
+    };
   }
 
   async function prepare(
     actor: M24Actor,
-    input: ChcPricingPreparationInput,
+    requested: ChcPricingPreparationInput,
   ): Promise<ChcPreparationView> {
-    const assessedAt = now().toISOString();
+    // The stored snapshot, the lock key and the database identity checks all compare ids as lowercase text, and a
+    // uuid is valid in either case: normalize here so an uppercase id is the same preparation, not a refusal.
+    const input: ChcPricingPreparationInput = {
+      ...requested,
+      patientId: requested.patientId.toLowerCase(),
+      admissionId: requested.admissionId.toLowerCase(),
+      providerEntityId: requested.providerEntityId.toLowerCase(),
+    };
+    // Refuse a malformed or impossible date before any query casts it (a database cast error is a 500).
+    if (!isDate(input.serviceDate)) fail("CHC_SERVICE_DATE_INVALID");
+    // created_by_membership_id is a membership; a user id is never written in its place.
+    if (!actor.membershipId) {
+      throw new ChartWardenError(
+        "CHC_ACTOR_MEMBERSHIP_REQUIRED",
+        "A preparation is recorded against the membership that requested it.",
+        403,
+      );
+    }
+    const membershipId = actor.membershipId;
     return withOrgContext(deps.db, actor, async (tx) => {
       const key = `m24-chc-preparation:${actor.organizationId}:${input.providerEntityId}:${input.patientId}:${input.admissionId}:${input.serviceDate}`;
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
@@ -802,14 +909,7 @@ export function createChcPricingPreparationService(deps: ChcPricingPreparationDe
       const existing = existingRows[0];
       const preparationId = existing?.preparationId ?? randomUUID();
       const version = existing?.version ?? 0;
-      const computed = await resolveCurrent(
-        tx,
-        actor,
-        input,
-        assessedAt,
-        preparationId,
-        version || 1,
-      );
+      const computed = await resolveCurrent(tx, actor, input, preparationId, version || 1);
       const fingerprint = computed.integrityFingerprint;
       if (
         existing &&
@@ -848,10 +948,10 @@ export function createChcPricingPreparationService(deps: ChcPricingPreparationDe
           version: nextVersion,
           ratePolicyId: finalSnapshot.ratePolicyId,
           billingEvidenceId: finalSnapshot.billingEvidenceId,
-          assessedAt: new Date(assessedAt),
+          assessedAt: new Date(computed.assessedAt),
           fingerprint: nextFingerprint,
           snapshot: finalSnapshot,
-          createdByMembershipId: actor.membershipId ?? actor.userId,
+          createdByMembershipId: membershipId,
         })
         .returning();
       const row = inserted[0];
@@ -869,7 +969,6 @@ export function createChcPricingPreparationService(deps: ChcPricingPreparationDe
     actor: M24Actor,
     preparationRecordId: string,
   ): Promise<ChcPreparationVerification> {
-    const assessedAt = now().toISOString();
     return withOrgContext(deps.db, actor, async (tx) => {
       const rows = await tx
         .select()
@@ -885,7 +984,7 @@ export function createChcPricingPreparationService(deps: ChcPricingPreparationDe
       if (!row) return { status: "unresolved", reasonCode: "CHC_PREPARATION_NOT_FOUND" };
       if (!actor.providerEntityIds?.includes(row.providerEntityId))
         return { status: "unresolved", reasonCode: "CHC_PROVIDER_SCOPE_DENIED" };
-      return verifyInTransaction(tx as Tx, actor, row, assessedAt);
+      return verifyInTransaction(tx as Tx, actor, row);
     });
   }
 
@@ -893,7 +992,6 @@ export function createChcPricingPreparationService(deps: ChcPricingPreparationDe
     actor: M24Actor,
     preparationRecordId: string,
   ): Promise<ChcPreparationView | null> {
-    const assessedAt = now().toISOString();
     return withOrgContext(deps.db, actor, async (tx) => {
       const rows = await tx
         .select()
@@ -907,63 +1005,101 @@ export function createChcPricingPreparationService(deps: ChcPricingPreparationDe
         .limit(1);
       const row = rows[0];
       if (!row || !actor.providerEntityIds?.includes(row.providerEntityId)) return null;
-      const verification = await verifyInTransaction(tx as Tx, actor, row, assessedAt);
+      const verification = await verifyInTransaction(tx as Tx, actor, row);
       return previewFrom(row, verification);
     });
   }
 
+  /** The newest preparation of each service day, newest day first, capped for one background pass. */
+  async function latestPreparationsForPatient(
+    tx: Tx,
+    organizationId: string,
+    patientId: string,
+  ): Promise<(typeof schema.medicaidChcPricingPreparation.$inferSelect)[]> {
+    const table = schema.medicaidChcPricingPreparation;
+    const latest = await tx
+      .selectDistinctOn([table.providerEntityId, table.admissionId, table.serviceDate])
+      .from(table)
+      .where(and(eq(table.organizationId, organizationId), eq(table.patientId, patientId)))
+      .orderBy(table.providerEntityId, table.admissionId, table.serviceDate, desc(table.version));
+    return latest
+      .sort((a, b) => b.serviceDate.localeCompare(a.serviceDate))
+      .slice(0, MAX_PREPARATIONS_PER_REVALIDATION);
+  }
+
   /**
-   * Background revalidation uses the same source-grounded verifier as the API read path. The worker
-   * runs inside an organization-scoped transaction; it receives only organization and patient from
-   * the server-owned queue payload, then derives provider/admission scope from persisted rows.
+   * The admissions and rate-policy scopes a background revalidation of this patient will lock. The caller
+   * locks them, in its own fixed order and together with its other locks, BEFORE calling
+   * `revalidatePatientInTransaction` with the same record ids; this reads only.
+   */
+  async function revalidationScopesInTransaction(
+    transaction: unknown,
+    organizationId: string,
+    patientId: string,
+  ): Promise<readonly ChcRevalidationScope[]> {
+    const rows = await latestPreparationsForPatient(transaction as Tx, organizationId, patientId);
+    return rows.map((row) => ({
+      preparationRecordId: row.id,
+      admissionId: row.admissionId,
+      rateScope: {
+        organizationId,
+        providerEntityId: row.providerEntityId,
+        canonicalPayerId: row.snapshot.canonicalPayerId,
+        serviceState: row.snapshot.serviceState,
+      },
+    }));
+  }
+
+  /**
+   * Background revalidation uses the same source-grounded verifier as the API read path, over exactly the
+   * preparation rows whose scopes the caller locked (`recordIds`, from `revalidationScopesInTransaction`): a
+   * row written since is not verified here, so nothing is verified outside the locked set. The worker runs
+   * inside an organization-scoped transaction; provider/admission scope comes from the persisted rows.
    * This is observation-only: local preparations are not claim states and this method writes nothing.
+   * The clock is read inside each verification, after its locks.
    */
   async function revalidatePatientInTransaction(
     transaction: unknown,
     organizationId: string,
     patientId: string,
-    assessedAt = now().toISOString(),
+    recordIds: readonly string[],
   ): Promise<
     readonly { readonly id: string; readonly verification: ChcPreparationVerification }[]
   > {
+    if (recordIds.length === 0) return [];
     const tx = transaction as Tx;
+    const table = schema.medicaidChcPricingPreparation;
     const rows = await tx
       .select()
-      .from(schema.medicaidChcPricingPreparation)
+      .from(table)
       .where(
         and(
-          eq(schema.medicaidChcPricingPreparation.organizationId, organizationId),
-          eq(schema.medicaidChcPricingPreparation.patientId, patientId),
+          eq(table.organizationId, organizationId),
+          eq(table.patientId, patientId),
+          inArray(table.id, [...recordIds]),
         ),
       )
-      .orderBy(
-        schema.medicaidChcPricingPreparation.providerEntityId,
-        schema.medicaidChcPricingPreparation.admissionId,
-        schema.medicaidChcPricingPreparation.serviceDate,
-        desc(schema.medicaidChcPricingPreparation.version),
-      );
-    const latest = new Map<string, (typeof rows)[number]>();
-    for (const row of rows) {
-      const key = `${row.providerEntityId}:${row.admissionId}:${row.serviceDate}`;
-      if (!latest.has(key)) latest.set(key, row);
-    }
+      .orderBy(desc(table.serviceDate), table.providerEntityId, table.admissionId);
     const results: { id: string; verification: ChcPreparationVerification }[] = [];
-    for (const row of latest.values()) {
+    for (const row of rows) {
       const workerActor: M24Actor = {
         organizationId,
         userId: "",
         roles: ["system"],
         providerEntityIds: [row.providerEntityId],
       };
-      results.push({
-        id: row.id,
-        verification: await verifyInTransaction(tx, workerActor, row, assessedAt),
-      });
+      results.push({ id: row.id, verification: await verifyInTransaction(tx, workerActor, row) });
     }
     return results;
   }
 
-  return { prepare, verify, read, revalidatePatientInTransaction };
+  return {
+    prepare,
+    verify,
+    read,
+    revalidationScopesInTransaction,
+    revalidatePatientInTransaction,
+  };
 }
 
 export type ChcPricingPreparationService = ReturnType<typeof createChcPricingPreparationService>;

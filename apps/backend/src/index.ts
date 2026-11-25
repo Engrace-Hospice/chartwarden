@@ -2923,7 +2923,8 @@ export function wireModuleSeams(
   // M24 — the §4.8 ABAC resolvers (provider_entity_medicaid_billing_scope /
   // medicaid_claim_in_billing_manager_caseload / medicaid_override_role_eligible /
   // regulatory_required_rule_protected_medicaid / rb_arrangement_visible_in_scope /
-  // state_trading_partner_credential_admin). Pass the DB handle so the Drizzle fact resolver binds under RLS;
+  // state_trading_partner_credential_admin / medicaid_chc_pricing_preparation_in_scope). Pass the DB handle so
+  // the Drizzle fact resolver binds under RLS;
   // with no db it defaults to the deny-stub (default-deny).
   registerM24AbacPredicates({
     db: deps.db,
@@ -5772,7 +5773,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         >;
       };
       if (!reader.chcClinicalIntervalsInTransaction) {
-        throw new Error("SignedEncountersReader.chcClinicalIntervalsInTransaction is unavailable");
+        throw new DegradedError(
+          "m8-encounters",
+          "SignedEncountersReader.chcClinicalIntervalsInTransaction is unavailable",
+        );
       }
       return reader.chcClinicalIntervalsInTransaction(transaction, input);
     },

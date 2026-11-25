@@ -18,12 +18,13 @@
 // adapters have no ambient request context to read.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
-import type {
-  EncounterBillability,
-  EncounterTimeSource,
-  EncounterVisitModality,
-  SignedChcClinicalInterval,
-  SignedEncounterDigest,
+import {
+  DegradedError,
+  type EncounterBillability,
+  type EncounterTimeSource,
+  type EncounterVisitModality,
+  type SignedChcClinicalInterval,
+  type SignedEncounterDigest,
 } from "@chartwarden/types";
 import { and, asc, between, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-port";
@@ -347,7 +348,7 @@ export function createDrizzleEncounterReaderStore(
         .orderBy(asc(E.startedAt), asc(E.id))
         .for("share", { of: E });
       const siteReader = deps.foundationSites;
-      if (!siteReader) throw new Error("M8 CHC service-site reader is not bound");
+      if (!siteReader) throw new DegradedError("m8-encounters", "the CHC service-site reader is not bound");
       const siteFacts = new Map<string, Awaited<ReturnType<typeof siteReader.locationSiteFacts>>>();
       for (const locationId of new Set(
         rows.flatMap((row) => (row.locationId ? [row.locationId] : [])),

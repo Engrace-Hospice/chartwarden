@@ -61,9 +61,15 @@ conversion and rounding, ceilings, estimate, independently sourced charge and fi
 no raw note text or demographics. Reimbursement is not substituted for the billed charge.
 
 Migration `1555_m24_chc_local_pricing_preparations.sql` is forward-only and `contract`. It adds an
-explicit CHC maximum-minute bound, expands only the bounded CHC local evidence profile, and creates the
-append-only preparation table with organization/provider scope, RLS and FORCE RLS, source-identity and
-profile guards, audit insertion, and application SELECT/INSERT grants only. UPDATE and DELETE are not
+explicit CHC maximum-minute bound (a per-hour rate only, at most the pricing engine's 1,440-minute day, never
+below its minimum), expands only the bounded CHC local evidence profile, and creates the append-only
+preparation table with organization/provider scope, RLS and FORCE RLS, audit insertion, and application
+SELECT/INSERT grants only. Its insert guard refuses a snapshot that omits a fact or carries a malformed
+number (a 23514 refusal, never a cast error), a rate or evidence row that has a successor, a rate without a
+cap, a rate and evidence that disagree on locality or quality variant, an assessment time in the future or
+before the sources were recorded, and a version that is not the next one of its service day. Every CHECK that
+could evaluate to NULL is wrapped in `IS TRUE`. The fingerprint is bound to the snapshot's own copy and is not
+recomputed in SQL, and row triggers do not fire on TRUNCATE (the same limits as migration 1551). UPDATE and DELETE are not
 granted and are rejected by the database. No historical RHC snapshot or financial row is rewritten.
 The migration remains subject to the repository's contract hold; it was applied only in the private
 disposable qualification database. Preparation rows add patient-linked financial evidence. CW-DS-01
@@ -72,7 +78,11 @@ remains open; this lot sets no retention duration and adds no destruction capabi
 ## Revalidation and refusal behavior
 
 The same source-grounded verifier is used for immediate/manual reads and the background M24 revalidation
-job. It re-reads M5/M6/M8/M1/M40/M24 evidence and recomputes the clinical quantity, hourly estimate,
+job. The job takes the admission and the rate-policy scopes of a patient's preparations together with the
+claims' own, in the one fixed order the claim paths use (admission row, then rate-policy and evidence
+locks), before it verifies anything; each verification runs in its own savepoint and reads the clock after
+its locks. The job only logs a preparation that is no longer current (ids and a reason code) and writes
+nothing: no verdict is stored, so a read always recomputes it. It re-reads M5/M6/M8/M1/M40/M24 evidence and recomputes the clinical quantity, hourly estimate,
 independent charge and canonical fingerprint. It does not trust a stored hash alone or rewrite an old
 snapshot. A changed billing-evidence version produces a stale result; a correctly fingerprinted but
 arithmetically altered snapshot is not returned as a trusted financial observation. Evidence or
@@ -83,17 +93,17 @@ in force; a local CHC preparation cannot satisfy institutional format.
 
 | Check | Result |
 | --- | --- |
-| Private PostgreSQL `test:m24:claim-line-assembly:live` | Passed: 28; skipped: 4; failed: 0. Fresh schema applied the full migration chain through 1555. The positive path used the actual M5/M6/M8/M1/M40/M24 readers, existing pricing engine and preparation service. |
+| Private PostgreSQL `test:m24:claim-line-assembly:live` | Passed on the final tree (see the PR for the counts; 4 tests are skipped, as before). Fresh schema applied the full migration chain through 1555. The positive path used the actual M5/M6/M8/M1/M40/M24 readers, existing pricing engine and preparation service. |
 | CHC live positive | Passed: persisted version 1; 540 observed/qualified minutes; 45,000-cent estimate; 63,000-cent independent billed charge; current manual and background revalidation; institutional qualification false. Concurrent identical preparation deduplicated to one record. |
-| CHC live negative/integrity | Passed: scope and stale-evidence refusals, changed M8 encounter source version, changed billing source, RLS/provider ABAC denial, SQL update refusal, a privileged stale-hash tamper followed by a new immutable version (without rewriting the prior row), and a correctly re-fingerprinted incorrect amount withheld by source-grounded verification. No claim, submission, READY event or financial outbox was created. |
-| Focused Vitest (M1 site reader, quantity, qualification, M24 ABAC, shared pricing and changed assembly UI) | Passed: 51 tests across 6 files. |
+| CHC live negative/integrity | Passed: scope, date, admission and membership refusals with their stable codes; an uppercase id resolved to the same preparation; a changed M8 encounter source version; a corrected billing-evidence row that makes the current version stale (it verified as current immediately before); a corrected rate whose superseded predecessor sorts first (the head is selected); RLS/provider ABAC denial; SQL update refusal; a privileged stale-hash tamper followed by a new immutable version (without rewriting the prior row); and a correctly re-fingerprinted version whose only change from the current one is its amounts, withheld by source-grounded verification. The job waits at the claim rows, holding neither the admission row nor an advisory lock, while another transaction holds a claim. No claim, submission, READY event or financial outbox was created. The guard's own refusals are pinned in the `m24-rls-isolation` live suite. |
+| Focused Vitest (M1 site reader, quantity, qualification, M24 ABAC, the preparation route, shared pricing) and the web DOM tests for the preparation panel | Passed on the final tree (see the PR for the counts). The panel's tests pin the amounts-only-when-current rule, the refusal wording, a response that arrives after the preview changed, and the add-on gate. |
 | Hourly exact-arithmetic coverage | Passed in the shared pricing suite, including a one-minute fractional hourly quantity and explicit rounding behavior. Fractional local persistence remains disabled. |
 | `bunx tsc -b packages/types packages/db packages/medicaid-adapters --pretty false` | Passed. |
 | Bounded backend source TypeScript | Passed with `NODE_OPTIONS=--max-old-space-size=2048` against a temporary project containing 12 directly changed M24/M6/M8/M1 files. The earlier 1 GiB attempt ran out of memory and is not counted as a pass. Full backend typecheck was not run. |
 | Migration numbering, migration compatibility, DDL legality, tenancy, manifest mirror, ABAC predicates/composition, route reachability, table ownership | Passed for the relevant scoped gates. The first ownership run identified a direct M8→M1 location-table join; it was replaced with M1's locked `FoundationSiteReader` contract and the table-ownership gate then passed. |
 | OpenAPI/client | `openapi:emit`, `client:gen`, and `client:check` passed; generated schema reflects the two preparation endpoints. |
 | Changed-file Biome | Passed: all 40 changed TypeScript, TSX and JSON files. |
-| Module docs, compliance register | Passed: M6/M8/M24 module documentation validation and `arch:compliance`. The CW-PI-01 evidence links were updated with user approval; status is unchanged. |
+| Module docs, compliance register | Passed: M6/M8/M24 module documentation validation and `arch:compliance`. The M24 pricing control row (CW-PI-06) evidence links and gap text were updated; its status is unchanged and the register change needs the owner's approval. |
 | Scoped PHI scan | Passed: 50 changed paths clean. |
 | Secret scan | Gitleaks is not installed locally; no secret-scan pass is claimed. |
 | `git diff --check` | Passed. |

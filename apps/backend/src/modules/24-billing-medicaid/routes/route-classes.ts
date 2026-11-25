@@ -14,7 +14,8 @@ export function m24RouteClasses(isVoidClaim?: IsVoidClaim): readonly RouteClassR
   return [
     { cls: "new_work", method: "POST", path: "/api/v1/medicaid-claims" },
     { cls: "open", method: "POST", path: "/api/v1/medicaid-claims/assembly-preview" },
-    { cls: "open", method: "POST", path: "/api/v1/medicaid-chc-pricing-preparations" },
+    // A preparation is stored billing work for a patient (never a claim), so it needs the add-on like a new claim.
+    { cls: "new_work", method: "POST", path: "/api/v1/medicaid-chc-pricing-preparations" },
     { cls: "open", method: "GET", path: "/api/v1/medicaid-chc-pricing-preparations/*" },
     {
       cls: "new_work",

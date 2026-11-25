@@ -224,3 +224,200 @@ describe("M8-backed CHC actual clinical interval normalization", () => {
     });
   });
 });
+
+describe("CHC actual interval refusals and local-day clipping", () => {
+  it("refuses a voided encounter and accepts the same encounter with no void marker", () => {
+    const voided = resolveSignedChcClinicalQuantity({
+      ...scope,
+      encounters: [encounter({ voidedAt: "2026-11-02T02:00:00.000Z" })],
+    });
+    const notVoided = resolveSignedChcClinicalQuantity({
+      ...scope,
+      encounters: [encounter({ voidedAt: null })],
+    });
+
+    expect(voided).toEqual({
+      status: "unresolved",
+      reasonCode: "CHC_ACTUAL_INTERVAL_EVIDENCE_INCOMPLETE",
+    });
+    expect(notVoided.status).toBe("observed");
+  });
+
+  it("refuses an encounter signed before its care interval ended, but accepts a signature at the end", () => {
+    // The interval ends at 21:00Z; a signature at 20:00Z attests to care that had not finished.
+    const signedEarly = resolveSignedChcClinicalQuantity({
+      ...scope,
+      encounters: [encounter({ signedAt: "2026-11-01T20:00:00.000Z" })],
+    });
+    const signedAtEnd = resolveSignedChcClinicalQuantity({
+      ...scope,
+      encounters: [encounter({ signedAt: "2026-11-01T21:00:00.000Z" })],
+    });
+
+    expect(signedEarly).toEqual({
+      status: "unresolved",
+      reasonCode: "CHC_SOURCE_SERVICE_DATE_MISMATCH",
+    });
+    expect(signedAtEnd).toMatchObject({
+      status: "observed",
+      days: [{ actualClinicalMinutes: 240 }],
+    });
+  });
+
+  it("refuses a cosigned encounter whose final attestation precedes the interval end", () => {
+    const result = resolveSignedChcClinicalQuantity({
+      ...scope,
+      encounters: [
+        encounter({
+          status: "cosigned",
+          signedAt: "2026-11-02T01:00:00.000Z",
+          cosignedAt: "2026-11-01T20:00:00.000Z",
+        }),
+      ],
+    });
+
+    expect(result).toEqual({
+      status: "unresolved",
+      reasonCode: "CHC_SOURCE_SERVICE_DATE_MISMATCH",
+    });
+  });
+});
+
+describe("CHC overnight intervals are split by the local service day, not by UTC", () => {
+  // 2026-06-10 is PDT (UTC-7): 22:00 local on the 10th to 02:00 local on the 11th.
+  const overnight = encounter({
+    serviceDate: "2026-06-10",
+    startedAt: "2026-06-11T05:00:00.000Z",
+    endedAt: "2026-06-11T09:00:00.000Z",
+    signedAt: "2026-06-11T10:00:00.000Z",
+  });
+  const juneWindow = {
+    ...scope,
+    serviceFrom: "2026-06-10",
+    serviceTo: "2026-06-10",
+    chcServiceDates: ["2026-06-10"],
+    assessedAt: "2026-06-12T00:00:00.000Z",
+  };
+
+  it("clips an overnight interval to the single requested local day", () => {
+    const result = resolveSignedChcClinicalQuantity({ ...juneWindow, encounters: [overnight] });
+
+    expect(result).toMatchObject({
+      status: "observed",
+      days: [
+        {
+          serviceDate: "2026-06-10",
+          serviceDayStart: "2026-06-10T07:00:00.000Z",
+          serviceDayEnd: "2026-06-11T07:00:00.000Z",
+          actualClinicalMinutes: 120,
+        },
+      ],
+    });
+  });
+
+  it("splits an overnight interval across both local days when both are in the window", () => {
+    const result = resolveSignedChcClinicalQuantity({
+      ...juneWindow,
+      serviceTo: "2026-06-11",
+      chcServiceDates: ["2026-06-10", "2026-06-11"],
+      encounters: [overnight],
+    });
+
+    expect(result).toMatchObject({
+      status: "observed",
+      days: [
+        { serviceDate: "2026-06-10", actualClinicalMinutes: 120 },
+        { serviceDate: "2026-06-11", actualClinicalMinutes: 120 },
+      ],
+    });
+  });
+
+  it("refuses an overnight interval that continues into a local day with no CHC level of care", () => {
+    const result = resolveSignedChcClinicalQuantity({
+      ...juneWindow,
+      serviceTo: "2026-06-11",
+      chcServiceDates: ["2026-06-10"],
+      encounters: [overnight],
+    });
+
+    expect(result).toEqual({ status: "unresolved", reasonCode: "CHC_LOC_PERIOD_MISMATCH" });
+  });
+});
+
+describe("CHC daily minutes never exceed the length of the local day", () => {
+  const juneWindow = {
+    ...scope,
+    serviceFrom: "2026-06-10",
+    serviceTo: "2026-06-10",
+    chcServiceDates: ["2026-06-10"],
+    assessedAt: "2026-06-13T00:00:00.000Z",
+  };
+
+  it("accepts a single interval that fills the whole 1440-minute local day", () => {
+    const fullDay = encounter({
+      serviceDate: "2026-06-10",
+      startedAt: "2026-06-10T07:00:00.000Z",
+      endedAt: "2026-06-11T07:00:00.000Z",
+      signedAt: "2026-06-11T08:00:00.000Z",
+    });
+
+    const result = resolveSignedChcClinicalQuantity({ ...juneWindow, encounters: [fullDay] });
+
+    expect(result).toMatchObject({ status: "observed", days: [{ actualClinicalMinutes: 1440 }] });
+  });
+
+  it("sums back-to-back encounters to 1440 minutes without calling them overlapping", () => {
+    const morning = encounter({
+      serviceDate: "2026-06-10",
+      startedAt: "2026-06-10T07:00:00.000Z",
+      endedAt: "2026-06-10T19:00:00.000Z",
+      signedAt: "2026-06-10T20:00:00.000Z",
+    });
+    const evening = encounter({
+      encounterId: "66666666-6666-4666-8666-666666666666",
+      serviceDate: "2026-06-10",
+      startedAt: "2026-06-10T19:00:00.000Z",
+      endedAt: "2026-06-11T07:00:00.000Z",
+      signedAt: "2026-06-11T08:00:00.000Z",
+    });
+
+    const result = resolveSignedChcClinicalQuantity({
+      ...juneWindow,
+      encounters: [evening, morning],
+    });
+
+    expect(result).toMatchObject({ status: "observed", days: [{ actualClinicalMinutes: 1440 }] });
+    if (result.status === "observed") {
+      expect(result.days[0]?.sourceEncounters.map((source) => source.encounterId)).toEqual([
+        morning.encounterId,
+        evening.encounterId,
+      ]);
+    }
+  });
+
+  it("caps each local day of a multi-day encounter at its own length", () => {
+    // 12:00 local on the 10th to 12:00 local on the 12th: a half day, a full day, a half day.
+    const threeDays = encounter({
+      serviceDate: "2026-06-10",
+      startedAt: "2026-06-10T19:00:00.000Z",
+      endedAt: "2026-06-12T19:00:00.000Z",
+      signedAt: "2026-06-12T20:00:00.000Z",
+    });
+
+    const result = resolveSignedChcClinicalQuantity({
+      ...juneWindow,
+      serviceTo: "2026-06-12",
+      chcServiceDates: ["2026-06-10", "2026-06-11", "2026-06-12"],
+      encounters: [threeDays],
+    });
+
+    expect(result).toMatchObject({
+      status: "observed",
+      days: [
+        { serviceDate: "2026-06-10", actualClinicalMinutes: 720 },
+        { serviceDate: "2026-06-11", actualClinicalMinutes: 1440 },
+        { serviceDate: "2026-06-12", actualClinicalMinutes: 720 },
+      ],
+    });
+  });
+});

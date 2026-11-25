@@ -60,6 +60,10 @@ import {
   inclusiveLocEndDateForAdmission,
   patientLifecycleServiceRangeIssue,
 } from "../claim-range-guards";
+import type {
+  ChcPreparationVerification,
+  ChcRevalidationScope,
+} from "../pricing/chc-pricing-preparation";
 import {
   lockHospiceBillingEvidenceScope,
   lockMedicaidRatePolicyScopes,
@@ -157,12 +161,20 @@ export interface RevalidateWorkerDeps {
   readonly canonicalPayerReader?: CanonicalPayerIdentityReader;
   /** M24's local CHC preparation verifier. Read-only and separate from claim state validation. */
   readonly chcPricingPreparations?: {
+    /** What a verification of this patient's preparations will lock; reads only. */
+    revalidationScopesInTransaction(
+      transaction: unknown,
+      organizationId: string,
+      patientId: string,
+    ): Promise<readonly ChcRevalidationScope[]>;
     revalidatePatientInTransaction(
       transaction: unknown,
       organizationId: string,
       patientId: string,
-      assessedAt?: string,
-    ): Promise<readonly unknown[]>;
+      recordIds: readonly string[],
+    ): Promise<
+      readonly { readonly id: string; readonly verification: ChcPreparationVerification }[]
+    >;
   };
   /** M5 PHI-minimal, transaction-bound residence history for local RHC snapshot revalidation. */
   readonly patientAddresses?: Pick<PatientAddressReader, "residencesBetweenInTransaction">;
@@ -367,15 +379,15 @@ export async function runMedicaidRevalidate(
   const clock = deps.now ?? (() => new Date());
   const RULES_BY_KEY = new Map(DEFAULT_MEDICAID_RULES.map((r) => [r.key, r]));
 
-  // Local CHC preparations are not institutional claims and have no READY/financial state. Re-read
-  // them through the same verifier used by the operator API; never translate this result into a
-  // claim transition or financial outbox event.
-  await deps.chcPricingPreparations?.revalidatePatientInTransaction(
-    tx,
-    job.organizationId,
-    job.patientId,
-    now.toISOString(),
-  );
+  // Local CHC preparations are not institutional claims and have no READY/financial state, so a verdict is
+  // only logged, never turned into a claim transition or a financial outbox event. Verifying one takes the
+  // same locks a claim does (its admission row, then the rate-policy and evidence advisory locks), so what it
+  // will lock joins the claims' sets below and everything is taken once, in one fixed order, before any of it
+  // is verified. Reading the scopes takes no lock.
+  const chcPreparations = deps.chcPricingPreparations;
+  const chcScopes = chcPreparations
+    ? await chcPreparations.revalidationScopesInTransaction(tx, job.organizationId, job.patientId)
+    : [];
 
   const claims = await tx
     .select()
@@ -401,43 +413,69 @@ export async function runMedicaidRevalidate(
   // taking a rate lock first and then waiting for an admission row an assembly holds would be a lock cycle.
   // That includes the admission of every OTHER claim (rb_only, open-card, no payer): `resolvePayerContext` locks
   // each claim's admission row, so all of them are locked here, sorted, before the first rate lock.
-  if (deps.canonicalPayerReader?.medicaidProgramClassifications) {
-    const admissions = deps.admissions;
-    if (admissions) {
-      const admissionIds = new Set(claims.map((claim) => claim.admissionId));
-      for (const admissionId of [...admissionIds].sort()) {
-        // Only the row lock is wanted (the per-claim read below reports a refusal for the admission). But a
-        // lock that could not be taken must not be skipped: taking the rate locks without it is the inversion
-        // this pass prevents, so the job fails and retries.
-        const locked = await readInSavepoint(
-          tx,
-          "m24.claim_revalidate.admission_lock_unavailable",
-          (savepoint) =>
-            admissions.cadenceSnapshotInTransaction(savepoint, job.organizationId, admissionId),
+  const lockClaimPricing = Boolean(deps.canonicalPayerReader?.medicaidProgramClassifications);
+  const admissions = deps.admissions;
+  if (admissions && (lockClaimPricing || chcScopes.length > 0)) {
+    const admissionIds = new Set([
+      ...(lockClaimPricing ? claims.map((claim) => claim.admissionId) : []),
+      ...chcScopes.map((scope) => scope.admissionId),
+    ]);
+    for (const admissionId of [...admissionIds].sort()) {
+      // Only the row lock is wanted (the per-claim read below reports a refusal for the admission). But a
+      // lock that could not be taken must not be skipped: taking the rate locks without it is the inversion
+      // this pass prevents, so the job fails and retries.
+      const locked = await readInSavepoint(
+        tx,
+        "m24.claim_revalidate.admission_lock_unavailable",
+        (savepoint) =>
+          admissions.cadenceSnapshotInTransaction(savepoint, job.organizationId, admissionId),
+      );
+      if (!locked.ok) {
+        throw new DegradedError(
+          "m24-claim-revalidate",
+          "the admission row lock for revalidation could not be taken",
         );
-        if (!locked.ok) {
-          throw new DegradedError(
-            "m24-claim-revalidate",
-            "the admission row lock for revalidation could not be taken",
-          );
-        }
       }
     }
-    await lockMedicaidRatePolicyScopes(
+  }
+  await lockMedicaidRatePolicyScopes(tx, [
+    ...(lockClaimPricing
+      ? claims.flatMap((claim) =>
+          isManagedCareHospiceClaim(claim)
+            ? [
+                {
+                  organizationId: claim.organizationId,
+                  providerEntityId: claim.providerEntityId,
+                  canonicalPayerId: claim.canonicalPayerId,
+                  serviceState: claim.serviceState,
+                },
+              ]
+            : [],
+        )
+      : []),
+    ...chcScopes.map((scope) => scope.rateScope),
+  ]);
+
+  if (chcPreparations && chcScopes.length > 0) {
+    // Exactly the preparations whose scopes were locked above: a row written since is not verified here.
+    const verdicts = await chcPreparations.revalidatePatientInTransaction(
       tx,
-      claims.flatMap((claim) =>
-        isManagedCareHospiceClaim(claim)
-          ? [
-              {
-                organizationId: claim.organizationId,
-                providerEntityId: claim.providerEntityId,
-                canonicalPayerId: claim.canonicalPayerId,
-                serviceState: claim.serviceState,
-              },
-            ]
-          : [],
-      ),
+      job.organizationId,
+      job.patientId,
+      chcScopes.map((scope) => scope.preparationRecordId),
     );
+    for (const verdict of verdicts) {
+      if (verdict.verification.status === "current") continue;
+      // Ids and the reason code only; a preparation carries patient and admission facts.
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          event: "m24.chc_preparation_not_current",
+          preparationRecordId: verdict.id,
+          reasonCode: verdict.verification.reasonCode,
+        }),
+      );
+    }
   }
 
   for (const claim of claims) {

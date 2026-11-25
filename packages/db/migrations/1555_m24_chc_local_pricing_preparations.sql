@@ -2,12 +2,21 @@
 -- L8A.2C2: persist a narrowly supported home-CHC hourly local preparation separately from institutional
 -- claim lines. It is append-only, never READY/submittable, and contains no clinical narrative or demographics.
 -- CW-DS-01 remains open; this migration assigns no retention or erasure period.
+-- Not database-enforced end to end: the guards are triggers, so a superuser or the table owner can disable them,
+-- and row triggers do not fire on TRUNCATE (the same limit as migrations 1138, 1144 and 1551). The fingerprint is
+-- bound to the snapshot's own copy and is not recomputed in SQL. Every table here is created by this batch or by
+-- 1551, so a constraint added below scans no production row.
 
 ALTER TABLE medicaid_payer_rate_policy
   ADD COLUMN maximum_clinical_minutes integer;--> statement-breakpoint
+-- The pricing engine refuses more than 1440 clinical minutes in a service day, so no rate may promise more; a
+-- maximum belongs only to a per-hour rate and never lies below its own minimum.
 ALTER TABLE medicaid_payer_rate_policy
   ADD CONSTRAINT medicaid_payer_rate_policy_maximum_clinical_minutes_valid
-  CHECK (maximum_clinical_minutes IS NULL OR maximum_clinical_minutes BETWEEN 1 AND 1500);--> statement-breakpoint
+  CHECK (maximum_clinical_minutes IS NULL OR (
+    unit_basis = 'per_hour' AND maximum_clinical_minutes BETWEEN 1 AND 1440 AND
+    (minimum_clinical_minutes IS NULL OR minimum_clinical_minutes <= maximum_clinical_minutes)
+  ));--> statement-breakpoint
 ALTER TABLE medicaid_hospice_billing_evidence
   DROP CONSTRAINT medicaid_hospice_billing_evidence_state;--> statement-breakpoint
 ALTER TABLE medicaid_hospice_billing_evidence
@@ -15,14 +24,16 @@ ALTER TABLE medicaid_hospice_billing_evidence
     program_kind = 'managed_care' AND service_state = 'OR' AND service_category IN ('RHC', 'CHC')
   );--> statement-breakpoint
 -- CHC local pricing has no qualified institutional revenue/HCPCS codes yet; keep both code facts absent.
--- The existing RHC evidence contract continues to require its code pair through the CHECK below.
+-- The existing RHC evidence contract continues to require its code pair through the CHECK below. IS TRUE: an RHC
+-- row whose code is NULL makes its branch NULL, and a CHECK accepts NULL, so without it the pair would not be
+-- required at all.
 ALTER TABLE medicaid_hospice_billing_evidence
   ALTER COLUMN revenue_code DROP NOT NULL,
   ALTER COLUMN hcpcs_code DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE medicaid_hospice_billing_evidence
   DROP CONSTRAINT medicaid_hospice_billing_evidence_pricing_facts;--> statement-breakpoint
 ALTER TABLE medicaid_hospice_billing_evidence
-  ADD CONSTRAINT medicaid_hospice_billing_evidence_pricing_facts CHECK (
+  ADD CONSTRAINT medicaid_hospice_billing_evidence_pricing_facts CHECK ((
     locality_code <> '' AND billed_charge_cents_per_unit > 0 AND coding_profile = 'local_draft_only' AND
     ((service_category = 'RHC' AND quantity_policy = 'active_rhc_loc_calendar_day' AND
       quantity_evidence_owner = 'm6_level_of_care_period' AND billing_unit = 'daily' AND
@@ -30,7 +41,7 @@ ALTER TABLE medicaid_hospice_billing_evidence
      (service_category = 'CHC' AND quantity_policy = 'm6_symptom_crisis_plus_signed_m8_rn_intervals_v1' AND
       quantity_evidence_owner = 'm6_loc_m8_encounter' AND billing_unit = 'hourly' AND
       revenue_code IS NULL AND hcpcs_code IS NULL))
-  );--> statement-breakpoint
+  ) IS TRUE);--> statement-breakpoint
 
 CREATE TABLE medicaid_chc_pricing_preparation (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -60,13 +71,15 @@ CREATE TABLE medicaid_chc_pricing_preparation (
     REFERENCES medicaid_hospice_billing_evidence (organization_id, id) ON DELETE RESTRICT,
   CONSTRAINT medicaid_chc_pricing_preparation_version_valid CHECK (version > 0),
   CONSTRAINT medicaid_chc_pricing_preparation_fingerprint_valid CHECK (fingerprint ~ '^[0-9a-f]{64}$'),
-  CONSTRAINT medicaid_chc_pricing_preparation_snapshot_shape CHECK (
+  -- IS TRUE: a snapshot missing a key makes an operand NULL, and a CHECK accepts NULL, so without it a
+  -- document lacking postingAuthorized, the amounts or the identity would pass.
+  CONSTRAINT medicaid_chc_pricing_preparation_snapshot_shape CHECK ((
     jsonb_typeof(snapshot) = 'object' AND snapshot ->> 'schemaVersion' = '1' AND
     snapshot ->> 'profile' = 'home_chc_hourly_local_v1' AND
     snapshot ->> 'postingAuthorized' = 'false' AND
     snapshot ->> 'institutionalFormatQualified' = 'false' AND
     snapshot ->> 'institutionalUnits' = 'unqualified' AND
-    snapshot ->> 'serviceDate' = service_date::text AND
+    snapshot ->> 'serviceDate' = to_char(service_date, 'YYYY-MM-DD') AND
     snapshot ->> 'preparationId' = preparation_id::text AND
     (snapshot ->> 'preparationVersion')::integer = version AND
     snapshot ->> 'organizationId' = organization_id::text AND
@@ -94,10 +107,12 @@ CREATE TABLE medicaid_chc_pricing_preparation (
     jsonb_typeof(snapshot -> 'payerProgramClassification') = 'object' AND
     jsonb_typeof(snapshot -> 'encounterSources') = 'array' AND
     jsonb_array_length(snapshot -> 'encounterSources') > 0
-  )
+  ) IS TRUE)
 );--> statement-breakpoint
 CREATE INDEX medicaid_chc_pricing_preparation_scope_ix ON medicaid_chc_pricing_preparation
   (organization_id, provider_entity_id, patient_id, admission_id, service_date, version DESC);--> statement-breakpoint
+CREATE INDEX medicaid_chc_pricing_preparation_patient_ix ON medicaid_chc_pricing_preparation
+  (organization_id, patient_id, service_date DESC);--> statement-breakpoint
 CREATE INDEX medicaid_chc_pricing_preparation_rate_fk_ix ON medicaid_chc_pricing_preparation
   (organization_id, rate_policy_id);--> statement-breakpoint
 CREATE INDEX medicaid_chc_pricing_preparation_evidence_fk_ix ON medicaid_chc_pricing_preparation
@@ -116,36 +131,91 @@ DECLARE
   v_org uuid;
   v_rate medicaid_payer_rate_policy%ROWTYPE;
   v_evidence medicaid_hospice_billing_evidence%ROWTYPE;
+  v_prior_version integer;
+  v_prior_preparation uuid;
 BEGIN
+  -- Well-formedness first: a malformed number or timestamp is a 23514 refusal here, not a 22xxx cast error from
+  -- the CHECK or from a comparison below.
+  BEGIN
+    PERFORM (NEW.snapshot ->> 'assessedAt')::timestamptz,
+            (NEW.snapshot ->> 'preparationVersion')::integer,
+            (NEW.snapshot ->> 'observedMinutes')::integer,
+            (NEW.snapshot ->> 'qualifiedMinutes')::integer,
+            (NEW.snapshot ->> 'maximumClinicalMinutes')::integer,
+            (NEW.snapshot ->> 'minimumClinicalMinutes')::integer,
+            (NEW.snapshot ->> 'rateCentsPerHour')::integer,
+            (NEW.snapshot ->> 'billedChargeCentsPerHour')::integer,
+            (NEW.snapshot ->> 'estimatedReimbursementCents')::integer,
+            (NEW.snapshot ->> 'billedChargeCents')::integer,
+            (NEW.snapshot ->> 'ratePolicyVersion')::integer,
+            (NEW.snapshot ->> 'billingEvidenceVersion')::integer,
+            (NEW.snapshot ->> 'localityEvidenceVersion')::integer,
+            (NEW.snapshot ->> 'qualityEvidenceVersion')::integer,
+            (NEW.snapshot ->> 'billedChargeEvidenceVersion')::integer,
+            (NEW.snapshot ->> 'codingEvidenceVersion')::integer;
+  EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range OR
+                 invalid_datetime_format OR datetime_field_overflow THEN
+    RAISE EXCEPTION 'CHC preparation snapshot has a malformed number or timestamp' USING ERRCODE='23514';
+  END;
   SELECT organization_id INTO v_org FROM provider_entity WHERE id = NEW.provider_entity_id;
   IF v_org IS DISTINCT FROM NEW.organization_id THEN
     RAISE EXCEPTION 'CHC preparation provider entity must belong to its organization' USING ERRCODE='23514';
   END IF;
-  IF (NEW.snapshot ->> 'assessedAt')::timestamptz IS DISTINCT FROM NEW.assessed_at THEN
+  -- assessed_at is the instant the temporal checks below use, so it is the one the snapshot records, and it
+  -- cannot lie in the future (five minutes of application clock skew are tolerated; clock_timestamp(), not now()).
+  IF (NEW.snapshot ->> 'assessedAt')::timestamptz IS DISTINCT FROM NEW.assessed_at OR
+     NEW.assessed_at > clock_timestamp() + interval '5 minutes' THEN
     RAISE EXCEPTION 'CHC preparation assessment timestamp mismatch' USING ERRCODE='23514';
   END IF;
   IF NEW.snapshot ->> 'serviceTimeZone' IS NULL OR NEW.snapshot ->> 'serviceTimeZone' = '' OR
-     NEW.snapshot ->> 'clinicalMethod' <> 'm6_symptom_crisis_plus_signed_m8_rn_intervals_v1' OR
-     NEW.snapshot ->> 'locReason' <> 'symptom_crisis' OR
-     NEW.snapshot ->> 'quantityConversionMethod' NOT IN ('hourly_prorated_minutes','hourly_each_hour_or_part') THEN
+     NEW.snapshot ->> 'clinicalMethod' IS DISTINCT FROM 'm6_symptom_crisis_plus_signed_m8_rn_intervals_v1' OR
+     NEW.snapshot ->> 'locReason' IS DISTINCT FROM 'symptom_crisis' OR
+     COALESCE(NEW.snapshot ->> 'quantityConversionMethod' NOT IN ('hourly_prorated_minutes','hourly_each_hour_or_part'), true) THEN
     RAISE EXCEPTION 'CHC preparation does not match the supported local profile' USING ERRCODE='23514';
+  END IF;
+  -- Versions of one service day are consecutive and share one preparation identity, and an identity belongs to
+  -- one service day.
+  SELECT COALESCE(max(p.version), 0) INTO v_prior_version FROM medicaid_chc_pricing_preparation p
+   WHERE p.organization_id = NEW.organization_id AND p.provider_entity_id = NEW.provider_entity_id
+     AND p.patient_id = NEW.patient_id AND p.admission_id = NEW.admission_id AND p.service_date = NEW.service_date;
+  SELECT p.preparation_id INTO v_prior_preparation FROM medicaid_chc_pricing_preparation p
+   WHERE p.organization_id = NEW.organization_id AND p.provider_entity_id = NEW.provider_entity_id
+     AND p.patient_id = NEW.patient_id AND p.admission_id = NEW.admission_id AND p.service_date = NEW.service_date
+   ORDER BY p.version DESC LIMIT 1;
+  IF NEW.version IS DISTINCT FROM v_prior_version + 1 OR
+     (v_prior_preparation IS NOT NULL AND v_prior_preparation IS DISTINCT FROM NEW.preparation_id) OR
+     EXISTS (SELECT 1 FROM medicaid_chc_pricing_preparation p
+              WHERE p.preparation_id = NEW.preparation_id
+                AND (p.organization_id, p.provider_entity_id, p.patient_id, p.admission_id, p.service_date)
+                    IS DISTINCT FROM
+                    (NEW.organization_id, NEW.provider_entity_id, NEW.patient_id, NEW.admission_id, NEW.service_date)) THEN
+    RAISE EXCEPTION 'CHC preparation versions must be consecutive within one service day and one identity' USING ERRCODE='23514';
   END IF;
   SELECT * INTO v_rate FROM medicaid_payer_rate_policy
    WHERE organization_id = NEW.organization_id AND id = NEW.rate_policy_id;
   IF NOT FOUND OR v_rate.provider_entity_id IS DISTINCT FROM NEW.provider_entity_id OR
      v_rate.canonical_payer_id::text IS DISTINCT FROM NEW.snapshot ->> 'canonicalPayerId' OR
-     v_rate.program_kind <> 'managed_care' OR v_rate.service_state <> 'OR' OR
-     v_rate.service_category <> 'CHC' OR v_rate.unit_basis <> 'per_hour' OR
-     v_rate.verification_status <> 'verified' OR v_rate.effective_from > NEW.service_date OR
+     v_rate.program_kind IS DISTINCT FROM 'managed_care' OR v_rate.service_state IS DISTINCT FROM 'OR' OR
+     v_rate.service_category IS DISTINCT FROM 'CHC' OR v_rate.unit_basis IS DISTINCT FROM 'per_hour' OR
+     v_rate.verification_status IS DISTINCT FROM 'verified' OR v_rate.effective_from > NEW.service_date OR
      v_rate.verified_at IS NULL OR v_rate.verified_at > NEW.assessed_at OR
+     v_rate.created_at > NEW.assessed_at OR
      (v_rate.effective_to IS NOT NULL AND v_rate.effective_to < NEW.service_date) OR
-     v_rate.version <> (NEW.snapshot ->> 'ratePolicyVersion')::integer OR
-     v_rate.rate_cents <> (NEW.snapshot ->> 'rateCentsPerHour')::integer OR
-     v_rate.quantity_conversion_method <> NEW.snapshot ->> 'quantityConversionMethod' OR
+     v_rate.version IS DISTINCT FROM (NEW.snapshot ->> 'ratePolicyVersion')::integer OR
+     v_rate.rate_cents IS DISTINCT FROM (NEW.snapshot ->> 'rateCentsPerHour')::integer OR
+     v_rate.quantity_conversion_method IS DISTINCT FROM NEW.snapshot ->> 'quantityConversionMethod' OR
+     -- the cap is mandatory for a CHC preparation, and the snapshot records the rate's own minimum and maximum
+     v_rate.maximum_clinical_minutes IS NULL OR
      v_rate.maximum_clinical_minutes IS DISTINCT FROM (NEW.snapshot ->> 'maximumClinicalMinutes')::integer OR
+     v_rate.minimum_clinical_minutes IS DISTINCT FROM (NEW.snapshot ->> 'minimumClinicalMinutes')::integer OR
      v_rate.source_document_ref IS DISTINCT FROM NEW.snapshot ->> 'rateSourceReference' OR
      v_rate.quality_reporting_applicability IS DISTINCT FROM NEW.snapshot ->> 'qualityApplicability' OR
-     v_rate.quality_reporting_status IS DISTINCT FROM NEW.snapshot ->> 'qualityStatus' THEN
+     v_rate.quality_reporting_status IS DISTINCT FROM NEW.snapshot ->> 'qualityStatus' OR
+     -- a rate with a successor is no longer the head; only a rejected draft never supersedes the active head
+     EXISTS (SELECT 1 FROM medicaid_payer_rate_policy successor
+              WHERE successor.organization_id = v_rate.organization_id
+                AND successor.supersedes_id = v_rate.id
+                AND successor.verification_status <> 'rejected') THEN
     RAISE EXCEPTION 'CHC preparation rate evidence identity mismatch' USING ERRCODE='23514';
   END IF;
   SELECT * INTO v_evidence FROM medicaid_hospice_billing_evidence
@@ -154,24 +224,33 @@ BEGIN
      v_evidence.patient_id IS DISTINCT FROM NEW.patient_id OR
      v_evidence.admission_id IS DISTINCT FROM NEW.admission_id OR
      v_evidence.canonical_payer_id::text IS DISTINCT FROM NEW.snapshot ->> 'canonicalPayerId' OR
-     v_evidence.program_kind <> 'managed_care' OR v_evidence.service_state <> 'OR' OR
-     v_evidence.service_category <> 'CHC' OR v_evidence.billing_unit <> 'hourly' OR
+     v_evidence.program_kind IS DISTINCT FROM 'managed_care' OR v_evidence.service_state IS DISTINCT FROM 'OR' OR
+     v_evidence.service_category IS DISTINCT FROM 'CHC' OR v_evidence.billing_unit IS DISTINCT FROM 'hourly' OR
      v_evidence.quantity_policy IS DISTINCT FROM NEW.snapshot ->> 'clinicalMethod' OR
-     v_evidence.verification_status <> 'verified' OR v_evidence.effective_from > NEW.service_date OR
+     v_evidence.verification_status IS DISTINCT FROM 'verified' OR v_evidence.effective_from > NEW.service_date OR
      v_evidence.verified_at IS NULL OR v_evidence.verified_at > NEW.assessed_at OR
+     v_evidence.created_at > NEW.assessed_at OR
      (v_evidence.effective_to IS NOT NULL AND v_evidence.effective_to < NEW.service_date) OR
-     v_evidence.version <> (NEW.snapshot ->> 'billingEvidenceVersion')::integer OR
+     EXISTS (SELECT 1 FROM medicaid_hospice_billing_evidence successor
+              WHERE successor.organization_id = v_evidence.organization_id
+                AND successor.supersedes_id = v_evidence.id) OR
+     v_evidence.version IS DISTINCT FROM (NEW.snapshot ->> 'billingEvidenceVersion')::integer OR
      v_evidence.locality_code IS DISTINCT FROM NEW.snapshot ->> 'localityCode' OR
      v_evidence.locality_evidence_reference IS DISTINCT FROM NEW.snapshot ->> 'localityEvidenceReference' OR
-     v_evidence.locality_evidence_version <> (NEW.snapshot ->> 'localityEvidenceVersion')::integer OR
+     v_evidence.locality_evidence_version IS DISTINCT FROM (NEW.snapshot ->> 'localityEvidenceVersion')::integer OR
      v_evidence.quality_evidence_reference IS DISTINCT FROM NEW.snapshot ->> 'qualityEvidenceReference' OR
-     v_evidence.quality_evidence_version <> (NEW.snapshot ->> 'qualityEvidenceVersion')::integer OR
-     v_evidence.billed_charge_cents_per_unit <> (NEW.snapshot ->> 'billedChargeCentsPerHour')::integer OR
+     v_evidence.quality_evidence_version IS DISTINCT FROM (NEW.snapshot ->> 'qualityEvidenceVersion')::integer OR
+     v_evidence.billed_charge_cents_per_unit IS DISTINCT FROM (NEW.snapshot ->> 'billedChargeCentsPerHour')::integer OR
      v_evidence.charge_evidence_reference IS DISTINCT FROM NEW.snapshot ->> 'billedChargeEvidenceReference' OR
-     v_evidence.charge_evidence_version <> (NEW.snapshot ->> 'billedChargeEvidenceVersion')::integer OR
+     v_evidence.charge_evidence_version IS DISTINCT FROM (NEW.snapshot ->> 'billedChargeEvidenceVersion')::integer OR
      v_evidence.coding_profile IS DISTINCT FROM NEW.snapshot ->> 'codingProfile' OR
      v_evidence.coding_evidence_reference IS DISTINCT FROM NEW.snapshot ->> 'codingEvidenceReference' OR
-     v_evidence.coding_evidence_version <> (NEW.snapshot ->> 'codingEvidenceVersion')::integer THEN
+     v_evidence.coding_evidence_version IS DISTINCT FROM (NEW.snapshot ->> 'codingEvidenceVersion')::integer OR
+     -- the rate and the evidence describe the same locality and quality-reporting variant
+     v_rate.locality_code IS DISTINCT FROM v_evidence.locality_code OR
+     v_rate.quality_reporting_applicability IS DISTINCT FROM v_evidence.quality_reporting_applicability OR
+     v_rate.quality_reporting_status IS DISTINCT FROM v_evidence.quality_reporting_status OR
+     v_rate.canonical_payer_id IS DISTINCT FROM v_evidence.canonical_payer_id THEN
     RAISE EXCEPTION 'CHC preparation billing evidence identity mismatch' USING ERRCODE='23514';
   END IF;
   RETURN NEW;
@@ -199,7 +278,7 @@ BEGIN
     COALESCE(NULLIF(current_setting('app.correlation_id', true), ''), 'system'),
     'success', 'info', NULL,
     jsonb_build_object('preparation_id', NEW.preparation_id, 'version', NEW.version,
-      'service_date', NEW.service_date, 'rate_policy_id', NEW.rate_policy_id,
+      'rate_policy_id', NEW.rate_policy_id,
       'billing_evidence_id', NEW.billing_evidence_id, 'fingerprint', NEW.fingerprint,
       'institutional_format_qualified', false, 'posting_authorized', false),
     '{}'::jsonb, 'compliance'

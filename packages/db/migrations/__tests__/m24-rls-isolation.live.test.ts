@@ -54,6 +54,7 @@ type SeedIds = {
   pricedClaim: string;
   pricedLine: string;
   pricingSnapshot: string;
+  chcPreparation: string;
 };
 
 const COVERED: { table: string; key: keyof SeedIds; idCol?: string }[] = [
@@ -77,6 +78,7 @@ const COVERED: { table: string; key: keyof SeedIds; idCol?: string }[] = [
   { table: "medicaid_payer_rate_policy", key: "payerRatePolicy" },
   { table: "medicaid_hospice_billing_evidence", key: "hospiceBillingEvidence" },
   { table: "medicaid_claim_line_pricing_snapshot", key: "pricingSnapshot" },
+  { table: "medicaid_chc_pricing_preparation", key: "chcPreparation" },
 ];
 
 /**
@@ -519,6 +521,161 @@ describe.skipIf(!DB_URL)(
     }
 
     /** Seed one full M24 chain for `org` as superuser (RLS + grants bypassed). `n` distinguishes the rows. */
+    // ── 1555 — the local home-CHC hourly preparation: one hourly evidence row, one per-hour rate that agree on payer
+    // and locality, and the snapshot the application would write for one 540-minute service day.
+    const CHC_DAY = "2026-01-05";
+    type ChcChain = {
+      org: string;
+      pe: string;
+      payer: string;
+      admission: string;
+      evidence: string;
+      rate: string;
+    };
+
+    async function seedChcChain(
+      org: string,
+      pe: string,
+      over: { rate?: Record<string, unknown>; evidence?: Record<string, unknown> } = {},
+    ): Promise<ChcChain> {
+      const payer = randomUUID();
+      const admission = randomUUID();
+      const evidence = await insertRow(
+        "medicaid_hospice_billing_evidence",
+        hospiceEvidenceRow(org, pe, {
+          canonical_payer_id: payer,
+          admission_id: admission,
+          service_category: "CHC",
+          quantity_policy: "m6_symptom_crisis_plus_signed_m8_rn_intervals_v1",
+          quantity_evidence_owner: "m6_loc_m8_encounter",
+          billing_unit: "hourly",
+          revenue_code: null,
+          hcpcs_code: null,
+          billed_charge_cents_per_unit: 7000,
+          ...over.evidence,
+        }),
+      );
+      const rate = await insertRow(
+        "medicaid_payer_rate_policy",
+        verifiedRateRow(org, pe, {
+          canonical_payer_id: payer,
+          service_category: "CHC",
+          unit_basis: "per_hour",
+          rate_cents: 5000,
+          pricing_method: "per_hour",
+          quantity_conversion_method: "hourly_prorated_minutes",
+          minimum_duration_method: "minimum_minutes",
+          minimum_clinical_minutes: 480,
+          maximum_clinical_minutes: 600,
+          ...over.rate,
+        }),
+      );
+      return { org, pe, payer, admission, evidence, rate };
+    }
+
+    const chcSnapshot = (
+      chain: ChcChain,
+      preparationId: string,
+      version: number,
+      assessedAt: string,
+      over: Record<string, unknown>,
+    ) => ({
+      schemaVersion: 1,
+      profile: "home_chc_hourly_local_v1",
+      preparationId,
+      preparationVersion: version,
+      organizationId: chain.org,
+      providerEntityId: chain.pe,
+      patientId: PATIENT,
+      admissionId: chain.admission,
+      serviceDate: CHC_DAY,
+      serviceTimeZone: "America/Los_Angeles",
+      canonicalPayerId: chain.payer,
+      programKind: "managed_care",
+      serviceState: "OR",
+      programAssignment: { id: randomUUID() },
+      payerProgramClassification: { id: randomUUID() },
+      locReason: "symptom_crisis",
+      clinicalMethod: "m6_symptom_crisis_plus_signed_m8_rn_intervals_v1",
+      encounterSources: [{ encounterId: randomUUID() }],
+      observedMinutes: 540,
+      qualifiedMinutes: 540,
+      quantityConversionMethod: "hourly_prorated_minutes",
+      minimumClinicalMinutes: 480,
+      maximumClinicalMinutes: 600,
+      ratePolicyId: chain.rate,
+      ratePolicyVersion: 1,
+      rateSourceReference: "doc:synthetic-test/rate",
+      rateCentsPerHour: 5000,
+      billingEvidenceId: chain.evidence,
+      billingEvidenceVersion: 1,
+      codingProfile: "local_draft_only",
+      codingEvidenceReference: "evidence:synthetic-test/coding",
+      codingEvidenceVersion: 1,
+      localityCode: "CBSA-FIX",
+      localityEvidenceReference: "evidence:synthetic-test/locality",
+      localityEvidenceVersion: 1,
+      qualityApplicability: "not_required",
+      qualityStatus: "not_applicable",
+      qualityEvidenceReference: "evidence:synthetic-test/quality",
+      qualityEvidenceVersion: 1,
+      billedChargeEvidenceReference: "evidence:synthetic-test/charge",
+      billedChargeEvidenceVersion: 1,
+      billedChargeCentsPerHour: 7000,
+      estimatedReimbursementCents: 45000,
+      billedChargeCents: 63000,
+      institutionalUnits: "unqualified",
+      institutionalFormatQualified: false,
+      postingAuthorized: false,
+      assessedAt,
+      integrityFingerprint: "a".repeat(64),
+      ...over,
+    });
+
+    /** One preparation row; `drop` removes snapshot keys, `snapshot` overrides them, `column` overrides a column. */
+    async function insertChcPreparation(
+      chain: ChcChain,
+      options: {
+        preparationId?: string;
+        version?: number;
+        assessedAt?: string;
+        snapshot?: Record<string, unknown>;
+        drop?: string[];
+        column?: Record<string, unknown>;
+      } = {},
+    ): Promise<string> {
+      const preparationId = options.preparationId ?? randomUUID();
+      const version = options.version ?? 1;
+      // One second ahead of the database clock: the rate and the evidence were recorded a moment ago.
+      const assessedAt = options.assessedAt ?? (await dbInstant("2 seconds"));
+      const snapshot: Record<string, unknown> = chcSnapshot(
+        chain,
+        preparationId,
+        version,
+        assessedAt,
+        {
+          ...options.snapshot,
+        },
+      );
+      for (const key of options.drop ?? []) delete snapshot[key];
+      return insertRow("medicaid_chc_pricing_preparation", {
+        preparation_id: preparationId,
+        organization_id: chain.org,
+        provider_entity_id: chain.pe,
+        patient_id: PATIENT,
+        admission_id: chain.admission,
+        service_date: CHC_DAY,
+        version,
+        rate_policy_id: chain.rate,
+        billing_evidence_id: chain.evidence,
+        assessed_at: assessedAt,
+        fingerprint: "a".repeat(64),
+        snapshot,
+        created_by_membership_id: RECORDER,
+        ...options.column,
+      });
+    }
+
     async function seedOrg(org: string, n: number): Promise<SeedIds> {
       const st = "OR";
       const from = "2026-01-01";
@@ -711,6 +868,7 @@ describe.skipIf(!DB_URL)(
       ).rows[0].id as string;
       const pricedChain = await seedPricedChain(org, pe);
       const priced = await insertPricedLine(pricedChain);
+      const chcPreparation = await insertChcPreparation(await seedChcChain(org, pe));
       return {
         pe,
         claim,
@@ -735,6 +893,7 @@ describe.skipIf(!DB_URL)(
         pricedClaim: pricedChain.claim,
         pricedLine: priced.line,
         pricingSnapshot: priced.snapshot,
+        chcPreparation,
       };
     }
 
@@ -777,12 +936,13 @@ describe.skipIf(!DB_URL)(
         expect(block).not.toMatch(/pg_has_role/i);
         expect(block).not.toMatch(/IS NULL/i);
       }
-      // The later migrations that add tenant tables: 1535 and 1551 (two each), 1538 and 1539 (one each).
+      // The later migrations that add tenant tables: 1535 and 1551 (two each), 1538, 1539 and 1555 (one each).
       const laterMigrations = [
         ["1535_m24_payer_program_readiness.sql", 2],
         ["1538_m24_payer_authorization_evidence.sql", 1],
         ["1539_m24_payer_rate_policy_evidence.sql", 1],
         ["1551_m24_immutable_hospice_pricing_snapshots.sql", 2],
+        ["1555_m24_chc_local_pricing_preparations.sql", 1],
       ] as const;
       for (const [file, expected] of laterMigrations) {
         const sql = readFileSync(join(MIGRATIONS_DIR, file), "utf8");
@@ -899,6 +1059,7 @@ describe.skipIf(!DB_URL)(
       { table: "medicaid_payer_rate_policy", key: "payerRatePolicy" },
       { table: "medicaid_hospice_billing_evidence", key: "hospiceBillingEvidence" },
       { table: "medicaid_claim_line_pricing_snapshot", key: "pricingSnapshot" },
+      { table: "medicaid_chc_pricing_preparation", key: "chcPreparation" },
     ] as const;
 
     it.each(APPEND_ONLY)(
@@ -2145,6 +2306,249 @@ describe.skipIf(!DB_URL)(
          VALUES ('OR','NF_RB',1,now(),'test')`,
         ),
       ).rejects.toThrow(/medicaid_state_rate_schedule_no_rb/);
+    });
+
+    // ── 1555 — the CHC preparation rests on the same append-only lineage as the RHC snapshot, and its own guard is the
+    // backstop for a writer that holds INSERT. Each refusal changes ONE fact of a chain that is otherwise valid
+    // (the seeded preparations are the control), and a refusal is a 23514, never a cast error or a silent pass.
+    describe("CHC preparation guard (1555)", () => {
+      const refusedBy = (message: RegExp) => ({
+        code: "23514",
+        message: expect.stringMatching(message),
+      });
+      const RATE_IDENTITY = /rate evidence identity mismatch/;
+      const EVIDENCE_IDENTITY = /billing evidence identity mismatch/;
+      const SHAPE = {
+        code: "23514",
+        constraint: "medicaid_chc_pricing_preparation_snapshot_shape",
+      };
+
+      it("an RHC evidence row without its code pair is refused: the CHECK must not accept NULL", async () => {
+        const rhc = (over: Record<string, unknown>) =>
+          insertRow("medicaid_hospice_billing_evidence", hospiceEvidenceRow(ORG_A, a.pe, over));
+        // Control: the full pair is valid.
+        expect(await rhc({})).toBeTruthy();
+        for (const over of [
+          { revenue_code: null, hcpcs_code: null },
+          { revenue_code: "0651", hcpcs_code: null },
+          { revenue_code: null, hcpcs_code: "Q5001" },
+        ]) {
+          await expect(rhc(over)).rejects.toMatchObject({
+            code: "23514",
+            constraint: "medicaid_hospice_billing_evidence_pricing_facts",
+          });
+        }
+      });
+
+      it("a consecutive version of the same identity is accepted; a gap, a fork across days or a reused identity is not", async () => {
+        const chain = await seedChcChain(ORG_A, a.pe);
+        const preparationId = randomUUID();
+        expect(await insertChcPreparation(chain, { preparationId, version: 1 })).toBeTruthy();
+        expect(await insertChcPreparation(chain, { preparationId, version: 2 })).toBeTruthy();
+        await expect(
+          insertChcPreparation(chain, { preparationId, version: 4 }),
+        ).rejects.toMatchObject(refusedBy(/consecutive/));
+        // A different identity cannot continue the same service day.
+        await expect(insertChcPreparation(chain, { version: 3 })).rejects.toMatchObject(
+          refusedBy(/consecutive/),
+        );
+        // An identity belongs to one service day: another chain cannot reuse it.
+        const other = await seedChcChain(ORG_A, a.pe);
+        await expect(insertChcPreparation(other, { preparationId })).rejects.toMatchObject(
+          refusedBy(/consecutive/),
+        );
+        // A first row of a new scope starts at version 1.
+        await expect(insertChcPreparation(other, { version: 7 })).rejects.toMatchObject(
+          refusedBy(/consecutive/),
+        );
+      });
+
+      it("a snapshot that omits a fact is refused: the shape CHECK and the guard are not NULL-hollow", async () => {
+        const chain = await seedChcChain(ORG_A, a.pe);
+        // Absent postingAuthorized alone used to pass; only an explicit `true` was refused.
+        await expect(
+          insertChcPreparation(chain, { drop: ["postingAuthorized"] }),
+        ).rejects.toMatchObject(SHAPE);
+        await expect(
+          insertChcPreparation(chain, { snapshot: { postingAuthorized: true } }),
+        ).rejects.toMatchObject(SHAPE);
+        for (const key of [
+          "schemaVersion",
+          "profile",
+          "institutionalFormatQualified",
+          "institutionalUnits",
+          "observedMinutes",
+          "qualifiedMinutes",
+          "estimatedReimbursementCents",
+          "billedChargeCents",
+          "programAssignment",
+          "encounterSources",
+          "integrityFingerprint",
+        ]) {
+          await expect(insertChcPreparation(chain, { drop: [key] }), key).rejects.toMatchObject({
+            code: "23514",
+          });
+        }
+        // Facts only the guard compares: an absent one is a mismatch, not an unknown.
+        for (const key of [
+          "ratePolicyVersion",
+          "rateCentsPerHour",
+          "quantityConversionMethod",
+          "billingEvidenceVersion",
+          "localityEvidenceVersion",
+          "qualityEvidenceVersion",
+          "billedChargeEvidenceVersion",
+          "codingEvidenceVersion",
+          "billedChargeCentsPerHour",
+          "maximumClinicalMinutes",
+        ]) {
+          await expect(insertChcPreparation(chain, { drop: [key] }), key).rejects.toMatchObject({
+            code: "23514",
+          });
+        }
+      });
+
+      it("a malformed number or timestamp is a 23514 refusal, not a cast error", async () => {
+        const chain = await seedChcChain(ORG_A, a.pe);
+        for (const snapshot of [
+          { observedMinutes: "abc" },
+          { ratePolicyVersion: 1.5 },
+          { qualifiedMinutes: 99_999_999_999 },
+          { assessedAt: "zzz" },
+        ]) {
+          await expect(
+            insertChcPreparation(chain, { snapshot }),
+            JSON.stringify(snapshot),
+          ).rejects.toMatchObject({
+            code: "23514",
+          });
+        }
+      });
+
+      it("a rate or evidence row that has a successor, or an unbound cap, cannot back a preparation", async () => {
+        const supersede = (table: string, id: string) =>
+          db.query(
+            table === "medicaid_payer_rate_policy"
+              ? `INSERT INTO medicaid_payer_rate_policy
+                   (organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
+                    locality_code, service_category, unit_basis, bucket_from, bucket_to, rate_cents,
+                    quality_reporting_applicability, quality_reporting_status,
+                    source_kind, effective_from, recorded_by_membership_id, supersedes_id)
+                 SELECT organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
+                    locality_code, service_category, unit_basis, bucket_from, bucket_to, 9000,
+                    quality_reporting_applicability, quality_reporting_status,
+                    source_kind, effective_from, recorded_by_membership_id, id
+                   FROM medicaid_payer_rate_policy WHERE id = $1`
+              : `INSERT INTO medicaid_hospice_billing_evidence
+                   (organization_id,provider_entity_id,patient_id,admission_id,admission_version,
+                    canonical_payer_id,program_kind,service_state,locality_code,locality_evidence_reference,
+                    locality_evidence_version,quality_reporting_applicability,quality_reporting_status,
+                    quality_evidence_reference,quality_evidence_version,service_category,quantity_policy,
+                    quantity_evidence_owner,billing_unit,revenue_code,hcpcs_code,coding_profile,
+                    coding_evidence_reference,coding_evidence_version,billed_charge_cents_per_unit,
+                    charge_evidence_reference,charge_evidence_version,verification_status,effective_from,
+                    effective_to,source_document_reference,verified_at,verified_by_membership_id,
+                    recorded_by_membership_id,supersedes_id,version)
+                 SELECT organization_id,provider_entity_id,patient_id,admission_id,admission_version,
+                    canonical_payer_id,program_kind,service_state,locality_code,locality_evidence_reference,
+                    locality_evidence_version,quality_reporting_applicability,quality_reporting_status,
+                    quality_evidence_reference,quality_evidence_version,service_category,quantity_policy,
+                    quantity_evidence_owner,billing_unit,revenue_code,hcpcs_code,coding_profile,
+                    coding_evidence_reference,coding_evidence_version,billed_charge_cents_per_unit,
+                    charge_evidence_reference,charge_evidence_version,verification_status,effective_from,
+                    effective_to,source_document_reference,verified_at,verified_by_membership_id,
+                    recorded_by_membership_id,id,version+1
+                   FROM medicaid_hospice_billing_evidence WHERE id = $1`,
+            [id],
+          );
+        const supersededRate = await seedChcChain(ORG_A, a.pe);
+        const preparationId = randomUUID();
+        // control: while it was current it backed version 1; once it has a successor version 2 cannot rest on it
+        expect(await insertChcPreparation(supersededRate, { preparationId })).toBeTruthy();
+        await supersede("medicaid_payer_rate_policy", supersededRate.rate);
+        await expect(
+          insertChcPreparation(supersededRate, { preparationId, version: 2 }),
+        ).rejects.toMatchObject(refusedBy(RATE_IDENTITY));
+        const supersededEvidence = await seedChcChain(ORG_A, a.pe);
+        await supersede("medicaid_hospice_billing_evidence", supersededEvidence.evidence);
+        await expect(insertChcPreparation(supersededEvidence)).rejects.toMatchObject(
+          refusedBy(EVIDENCE_IDENTITY),
+        );
+        // The cap is mandatory: a rate with no maximum cannot back a preparation, whatever the snapshot says.
+        const uncapped = await seedChcChain(ORG_A, a.pe, {
+          rate: { maximum_clinical_minutes: null },
+        });
+        await expect(insertChcPreparation(uncapped)).rejects.toMatchObject(
+          refusedBy(RATE_IDENTITY),
+        );
+        // The snapshot records the rate's own minimum.
+        const minimum = await seedChcChain(ORG_A, a.pe);
+        await expect(
+          insertChcPreparation(minimum, { snapshot: { minimumClinicalMinutes: null } }),
+        ).rejects.toMatchObject(refusedBy(RATE_IDENTITY));
+      });
+
+      it("the rate and the evidence must describe the same locality and quality-reporting variant", async () => {
+        const locality = await seedChcChain(ORG_A, a.pe, {
+          evidence: { locality_code: "CBSA-OTHER" },
+        });
+        await expect(
+          insertChcPreparation(locality, { snapshot: { localityCode: "CBSA-OTHER" } }),
+        ).rejects.toMatchObject(refusedBy(EVIDENCE_IDENTITY));
+        const quality = await seedChcChain(ORG_A, a.pe, {
+          rate: { quality_reporting_applicability: "required", quality_reporting_status: "meets" },
+        });
+        await expect(
+          insertChcPreparation(quality, {
+            snapshot: { qualityApplicability: "required", qualityStatus: "meets" },
+          }),
+        ).rejects.toMatchObject(refusedBy(EVIDENCE_IDENTITY));
+      });
+
+      it("a preparation cannot be assessed in the future or before its sources were recorded", async () => {
+        const chain = await seedChcChain(ORG_A, a.pe);
+        await expect(
+          insertChcPreparation(chain, { assessedAt: await dbInstant("10 minutes") }),
+        ).rejects.toMatchObject(refusedBy(/assessment timestamp mismatch/));
+        await expect(
+          insertChcPreparation(chain, { assessedAt: await dbInstant("-1 hour") }),
+        ).rejects.toMatchObject(refusedBy(RATE_IDENTITY));
+        // Control: a few minutes of application clock skew are tolerated.
+        expect(
+          await insertChcPreparation(chain, { assessedAt: await dbInstant("4 minutes") }),
+        ).toBeTruthy();
+      });
+
+      it("a rate's clinical-minute maximum belongs to a per-hour rate, within the engine's day, above its minimum", async () => {
+        const capped = (over: Record<string, unknown>) =>
+          insertRow(
+            "medicaid_payer_rate_policy",
+            verifiedRateRow(ORG_A, a.pe, {
+              service_category: "CHC",
+              unit_basis: "per_hour",
+              pricing_method: "per_hour",
+              quantity_conversion_method: "hourly_prorated_minutes",
+              minimum_duration_method: "minimum_minutes",
+              minimum_clinical_minutes: 480,
+              maximum_clinical_minutes: 600,
+              ...over,
+            }),
+          );
+        expect(await capped({})).toBeTruthy(); // control
+        const refused = {
+          code: "23514",
+          constraint: "medicaid_payer_rate_policy_maximum_clinical_minutes_valid",
+        };
+        await expect(capped({ maximum_clinical_minutes: 1441 })).rejects.toMatchObject(refused);
+        await expect(capped({ maximum_clinical_minutes: 0 })).rejects.toMatchObject(refused);
+        await expect(capped({ maximum_clinical_minutes: 300 })).rejects.toMatchObject(refused);
+        await expect(
+          insertRow(
+            "medicaid_payer_rate_policy",
+            verifiedRateRow(ORG_A, a.pe, { maximum_clinical_minutes: 600 }),
+          ),
+        ).rejects.toMatchObject(refused);
+      });
     });
   },
 );

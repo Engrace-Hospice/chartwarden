@@ -252,7 +252,7 @@ function isExpectedRefusal(error: unknown): boolean {
   return error instanceof ChartWardenError && (error.statusCode < 500 || error.statusCode === 503);
 }
 
-function logPricingRefusal(event: string, error: unknown): void {
+export function logPricingRefusal(event: string, error: unknown): void {
   console.warn(
     JSON.stringify({
       level: "warn",

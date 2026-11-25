@@ -32,6 +32,10 @@ payer companion guide, provider enrollment, claim acceptance or production route
   care (RHC) line when the stored billing evidence and the verified rate resolve, and stores the price in an
   append-only pricing snapshot; every other service category, and any RHC line whose evidence does not
   resolve, is still refused. See the L8A.2R and L8A.2C qualification records.
+  Update (2026-11-25, L8A.2C2, migration 1555): continuous home care (CHC) is still never a priced claim line.
+  One narrow home CHC service day (the M6 symptom-crisis level of care and signed RN intervals from M8, an
+  explicit verified hourly method, whole hours only) can be stored as a local, append-only
+  `medicaid_chc_pricing_preparation` that is never ready or submittable; see the L8A.2C2 qualification record.
 - The engine supports exact payer/provider/locality selection, inclusive effective-date segmentation,
   quality-reporting variants, open-ended final RHC buckets, evidence-bound daily/hourly arithmetic,
   policy rounding and explicit charge-ceiling methods. Unsupported in-home respite remains unpriceable;

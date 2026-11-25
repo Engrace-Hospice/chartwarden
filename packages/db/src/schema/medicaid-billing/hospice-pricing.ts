@@ -116,13 +116,13 @@ export const medicaidHospiceBillingEvidence = pgTable(
     ),
     pricingFactsValid: check(
       "medicaid_hospice_billing_evidence_pricing_facts",
-      sql`locality_code <> '' AND billed_charge_cents_per_unit > 0 AND coding_profile = 'local_draft_only' AND
+      sql`(locality_code <> '' AND billed_charge_cents_per_unit > 0 AND coding_profile = 'local_draft_only' AND
           ((service_category = 'RHC' AND quantity_policy = 'active_rhc_loc_calendar_day' AND
             quantity_evidence_owner = 'm6_level_of_care_period' AND billing_unit = 'daily' AND
             revenue_code = '0651' AND hcpcs_code IN ('Q5001', 'Q5002')) OR
            (service_category = 'CHC' AND quantity_policy = 'm6_symptom_crisis_plus_signed_m8_rn_intervals_v1' AND
             quantity_evidence_owner = 'm6_loc_m8_encounter' AND billing_unit = 'hourly' AND
-            revenue_code IS NULL AND hcpcs_code IS NULL))`,
+            revenue_code IS NULL AND hcpcs_code IS NULL))) IS TRUE`,
     ),
     qualityFactsValid: check(
       "medicaid_hospice_billing_evidence_quality",
@@ -472,12 +472,18 @@ export const medicaidChcPricingPreparation = pgTable(
       t.patientId,
       t.admissionId,
       t.serviceDate,
+      t.version.desc(),
     ),
-    rateLookup: index("medicaid_chc_pricing_preparation_rate_ix").on(
+    patientLookup: index("medicaid_chc_pricing_preparation_patient_ix").on(
+      t.organizationId,
+      t.patientId,
+      t.serviceDate.desc(),
+    ),
+    rateLookup: index("medicaid_chc_pricing_preparation_rate_fk_ix").on(
       t.organizationId,
       t.ratePolicyId,
     ),
-    evidenceLookup: index("medicaid_chc_pricing_preparation_evidence_ix").on(
+    evidenceLookup: index("medicaid_chc_pricing_preparation_evidence_fk_ix").on(
       t.organizationId,
       t.billingEvidenceId,
     ),
@@ -488,13 +494,13 @@ export const medicaidChcPricingPreparation = pgTable(
     ),
     snapshotShape: check(
       "medicaid_chc_pricing_preparation_snapshot_shape",
-      sql`
+      sql`(
       jsonb_typeof(snapshot) = 'object' AND snapshot ->> 'schemaVersion' = '1' AND
       snapshot ->> 'profile' = 'home_chc_hourly_local_v1' AND
       snapshot ->> 'postingAuthorized' = 'false' AND
       snapshot ->> 'institutionalFormatQualified' = 'false' AND
       snapshot ->> 'institutionalUnits' = 'unqualified' AND
-      snapshot ->> 'serviceDate' = service_date::text AND
+      snapshot ->> 'serviceDate' = to_char(service_date, 'YYYY-MM-DD') AND
       snapshot ->> 'preparationId' = preparation_id::text AND
       (snapshot ->> 'preparationVersion')::integer = version AND
       snapshot ->> 'organizationId' = organization_id::text AND
@@ -520,7 +526,7 @@ export const medicaidChcPricingPreparation = pgTable(
       jsonb_typeof(snapshot -> 'programAssignment') = 'object' AND
       jsonb_typeof(snapshot -> 'payerProgramClassification') = 'object' AND
       jsonb_typeof(snapshot -> 'encounterSources') = 'array' AND jsonb_array_length(snapshot -> 'encounterSources') > 0
-    `,
+    ) IS TRUE`,
     ),
   }),
 );

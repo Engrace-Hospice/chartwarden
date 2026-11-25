@@ -148,6 +148,12 @@ export const medicaidPayerRatePolicy = pgTable(
       sql`(minimum_duration_method IN ('unqualified', 'not_applicable', 'not_required') AND minimum_clinical_minutes IS NULL) OR
         (minimum_duration_method = 'minimum_minutes' AND minimum_clinical_minutes IS NOT NULL AND minimum_clinical_minutes > 0)`,
     ),
+    maximumClinicalMinutesValid: check(
+      "medicaid_payer_rate_policy_maximum_clinical_minutes_valid",
+      sql`maximum_clinical_minutes IS NULL OR (
+        unit_basis = 'per_hour' AND maximum_clinical_minutes BETWEEN 1 AND 1440 AND
+        (minimum_clinical_minutes IS NULL OR minimum_clinical_minutes <= maximum_clinical_minutes))`,
+    ),
     methodologyVersionValid: check(
       "medicaid_payer_rate_policy_methodology_version_valid",
       sql`methodology_version > 0`,

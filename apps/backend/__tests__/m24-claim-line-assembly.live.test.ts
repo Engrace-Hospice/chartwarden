@@ -111,6 +111,8 @@ const CHC_PREP_ASSIGNMENT = "abababab-abab-abab-abab-abababababd6";
 const CHC_PREP_EVIDENCE = "abababab-abab-abab-abab-abababababd7";
 const CHC_PREP_RATE = "abababab-abab-abab-abab-abababababd8";
 const CHC_PREP_CARRY_IN_ENCOUNTER = "abababab-abab-abab-abab-abababababd9";
+// Sorts after CHC_PREP_RATE, so the rate correction's predecessor is first in the lineage order.
+const CHC_PREP_RATE_V2 = "abababab-abab-abab-abab-abababababdf";
 const LOC_1 = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
 const LOC_2 = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 let TEST_PE_ID = "";
@@ -1303,6 +1305,32 @@ describe.skipIf(!DB_URL)(
         serviceDate: "2026-11-05",
       });
       expect(repeatedChcPreparation).toMatchObject({ id: chcPreparation.id, version: 1 });
+      // A uuid is valid in either case: an uppercase id is the same preparation, not a refusal.
+      expect(
+        await chcPreparationService.prepare(chcActor, {
+          patientId: RHC_PATIENT.toUpperCase(),
+          admissionId: RHC_ADMISSION.toUpperCase(),
+          providerEntityId: peId.toUpperCase(),
+          serviceDate: "2026-11-05",
+        }),
+      ).toMatchObject({ id: chcPreparation.id, version: 1 });
+      // Refusals carry a stable code and write nothing.
+      const refusedPreparation = (
+        actor: Omit<typeof chcActor, "membershipId"> & { membershipId?: string | null },
+        input: typeof chcInput,
+      ) => chcPreparationService.prepare(actor, input);
+      await expect(
+        refusedPreparation({ ...chcActor, providerEntityIds: [] }, chcInput),
+      ).rejects.toMatchObject({ code: "CHC_PROVIDER_SCOPE_DENIED", statusCode: 409 });
+      await expect(
+        refusedPreparation(chcActor, { ...chcInput, serviceDate: "2026-02-30" }),
+      ).rejects.toMatchObject({ code: "CHC_SERVICE_DATE_INVALID", statusCode: 409 });
+      await expect(
+        refusedPreparation(chcActor, { ...chcInput, admissionId: randomUUID() }),
+      ).rejects.toMatchObject({ code: "CHC_ADMISSION_IDENTITY_MISMATCH", statusCode: 409 });
+      await expect(
+        refusedPreparation({ ...chcActor, membershipId: null }, chcInput),
+      ).rejects.toMatchObject({ code: "CHC_ACTOR_MEMBERSHIP_REQUIRED", statusCode: 403 });
       const unchangedChcRowCount = await admin.query(
         "SELECT count(*)::int AS count FROM medicaid_chc_pricing_preparation WHERE preparation_id=$1",
         [chcPreparation.preparationId],
@@ -1313,19 +1341,21 @@ describe.skipIf(!DB_URL)(
       const workerWithChcPreparation = {
         ...workerDeps,
         chcPricingPreparations: {
+          revalidationScopesInTransaction: chcPreparationService.revalidationScopesInTransaction,
           async revalidatePatientInTransaction(
             transaction: unknown,
             organizationId: string,
             patientId: string,
-            assessedAt?: string,
+            recordIds: readonly string[],
           ) {
-            backgroundChcResults = await chcPreparationService.revalidatePatientInTransaction(
+            const results = await chcPreparationService.revalidatePatientInTransaction(
               transaction,
               organizationId,
               patientId,
-              assessedAt,
+              recordIds,
             );
-            return backgroundChcResults;
+            backgroundChcResults = results;
+            return results;
           },
         },
       };
@@ -1343,6 +1373,54 @@ describe.skipIf(!DB_URL)(
         verification: expect.objectContaining({ status: "current", version: 1 }),
       });
       expect(backgroundEvents).not.toContain("m24.medicaid_claim.ready_for_submission");
+
+      // Lock order with the CHC pass bound: validateClaim takes the claim row, then the admission row. The job must
+      // wait at the claim rows holding neither the admission row nor any advisory lock; if its CHC pass ran first it
+      // would hold the admission and the rate and evidence scopes while a validation waits for them (a 40P01 cycle).
+      const claimHolder = new Client({ connectionString: DB_URL });
+      await claimHolder.connect();
+      try {
+        await claimHolder.query("BEGIN");
+        await claimHolder.query("SELECT id FROM medicaid_claim WHERE id=$1 FOR UPDATE", [claim.id]);
+        const blockedChcJob = withOrgContext(
+          handle.db,
+          { organizationId: ORG, userId: USER },
+          (tx) =>
+            runMedicaidRevalidate(tx, workerWithChcPreparation, {
+              organizationId: ORG,
+              patientId: RHC_PATIENT,
+              eventId: randomUUID(),
+              eventName: "m24.medicaid_claim.revalidate_requested",
+            }),
+        );
+        let claimLockWaiting = false;
+        for (let attempt = 0; attempt < 100 && !claimLockWaiting; attempt += 1) {
+          const probe = await admin.query(
+            "SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted AND pid <> pg_backend_pid()",
+          );
+          claimLockWaiting = probe.rows[0].n > 0;
+          if (!claimLockWaiting) await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        expect(claimLockWaiting).toBe(true);
+        const advisoryWhileWaiting = await admin.query(
+          "SELECT count(*)::int AS n FROM pg_locks WHERE locktype='advisory' AND granted",
+        );
+        expect(advisoryWhileWaiting.rows[0].n).toBe(0);
+        // NOWAIT: it refuses (55P03) if the job already holds the admission row.
+        await admin.query("BEGIN");
+        try {
+          await admin.query("SELECT id FROM admission WHERE id=$1 FOR UPDATE NOWAIT", [
+            RHC_ADMISSION,
+          ]);
+        } finally {
+          await admin.query("ROLLBACK");
+        }
+        await claimHolder.query("COMMIT");
+        await blockedChcJob;
+      } finally {
+        await claimHolder.query("ROLLBACK").catch(() => undefined);
+        await claimHolder.end();
+      }
 
       await expect(
         admin.query("UPDATE medicaid_chc_pricing_preparation SET version=2 WHERE id=$1", [
@@ -1422,9 +1500,19 @@ describe.skipIf(!DB_URL)(
 
       // A privileged fixture writes a structurally valid, correctly fingerprinted but financially
       // false version. Source-grounded verification—not hash validity—must hold it and redact money.
+      // The forgery is the CURRENT version's snapshot with only the amounts changed: the encounter, evidence and
+      // rate facts are all still current, and the current version verifies as current first, so the amounts are
+      // what it is held for.
+      expect(
+        await chcPreparationService.verify(chcActor, refreshedChcPreparation.id),
+      ).toMatchObject({ status: "current", version: 3 });
+      const currentChcRow = await admin.query(
+        "SELECT snapshot FROM medicaid_chc_pricing_preparation WHERE id=$1",
+        [refreshedChcPreparation.id],
+      );
       const forgedPreparationId = randomUUID();
       const forgedChcSnapshot = {
-        ...storedChc.rows[0].snapshot,
+        ...currentChcRow.rows[0].snapshot,
         preparationId: chcPreparation.preparationId,
         preparationVersion: 4,
         estimatedReimbursementCents: 45001,
@@ -1455,7 +1543,7 @@ describe.skipIf(!DB_URL)(
           forgedPreparationId,
           forgedFingerprint,
           JSON.stringify(finalForgedSnapshot),
-          chcPreparation.id,
+          refreshedChcPreparation.id,
         ],
       );
       const forgedCheck = await chcPreparationService.verify(chcActor, forgedPreparationId);
@@ -1472,6 +1560,11 @@ describe.skipIf(!DB_URL)(
         billedChargeCents: null,
       });
 
+      expect(
+        await chcPreparationService.verify(chcActor, refreshedChcPreparation.id),
+      ).toMatchObject({
+        status: "current",
+      });
       const correctedBillingEvidenceId = randomUUID();
       await admin.query(
         `INSERT INTO medicaid_hospice_billing_evidence
@@ -1496,15 +1589,53 @@ describe.skipIf(!DB_URL)(
            FROM medicaid_hospice_billing_evidence WHERE id=$1`,
         [CHC_PREP_EVIDENCE, correctedBillingEvidenceId, verifierId],
       );
-      expect(await chcPreparationService.verify(chcActor, chcPreparation.id)).toMatchObject({
+      expect(
+        await chcPreparationService.verify(chcActor, refreshedChcPreparation.id),
+      ).toMatchObject({
         status: "stale",
         reasonCode: "CHC_PRICING_SNAPSHOT_STALE",
       });
-      expect(await chcPreparationService.read(chcActor, chcPreparation.id)).toMatchObject({
+      expect(await chcPreparationService.read(chcActor, refreshedChcPreparation.id)).toMatchObject({
         verification: { status: "stale" },
         estimatedReimbursementCents: null,
         billedChargeCents: null,
       });
+
+      // A rate correction: the lineage keeps the superseded predecessor, and (equal effective date, lower id) it
+      // sorts first. Only the head may be selected, so the next preparation prices at the corrected rate instead of
+      // failing on the predecessor's identity.
+      await admin.query(
+        `INSERT INTO medicaid_payer_rate_policy
+           (id,organization_id,provider_entity_id,canonical_payer_id,program_kind,service_state,
+            locality_code,service_category,unit_basis,rate_cents,pricing_method,
+            quantity_conversion_method,minimum_duration_method,minimum_clinical_minutes,
+            maximum_clinical_minutes,methodology_version,rounding_mode,rounding_boundary,
+            charge_ceiling_method,charge_ceiling_boundary,quality_reporting_applicability,
+            quality_reporting_status,source_kind,verification_status,effective_from,effective_to,
+            source_document_ref,verified_at,verified_by_membership_id,recorded_by_membership_id,
+            version,supersedes_id)
+         SELECT $2,organization_id,provider_entity_id,canonical_payer_id,program_kind,service_state,
+                locality_code,service_category,unit_basis,5500,pricing_method,
+                quantity_conversion_method,minimum_duration_method,minimum_clinical_minutes,
+                maximum_clinical_minutes,methodology_version,rounding_mode,rounding_boundary,
+                charge_ceiling_method,charge_ceiling_boundary,quality_reporting_applicability,
+                quality_reporting_status,source_kind,verification_status,effective_from,effective_to,
+                'doc:synthetic-chc/hourly-rate-v2',now(),$3,recorded_by_membership_id,version+1,id
+           FROM medicaid_payer_rate_policy WHERE id=$1`,
+        [CHC_PREP_RATE, CHC_PREP_RATE_V2, verifierId],
+      );
+      const correctedRatePreparation = await chcPreparationService.prepare(chcActor, chcInput);
+      expect(correctedRatePreparation).toMatchObject({
+        rateCentsPerHour: 5500,
+        estimatedReimbursementCents: 49500,
+        billedChargeCents: 63009,
+        verification: { status: "current" },
+      });
+      const correctedRateRow = await admin.query(
+        "SELECT snapshot->>'ratePolicyId' AS rate, snapshot->>'ratePolicyVersion' AS version FROM medicaid_chc_pricing_preparation WHERE id=$1",
+        [correctedRatePreparation.id],
+      );
+      expect(correctedRateRow.rows[0]).toEqual({ rate: CHC_PREP_RATE_V2, version: "2" });
 
       // A separate, synthetic admission proves the facility profile through the same M5/M40 owner
       // readers, rate engine, transaction-bound assembly service, line writer, and snapshot guard.
