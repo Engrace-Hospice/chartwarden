@@ -16,7 +16,11 @@ import { generateAuditTrigger } from "../src/index";
 const MIGRATIONS_DIR = join(__dirname, "../../db/migrations");
 const read = (file: string): string => readFileSync(join(MIGRATIONS_DIR, file), "utf8");
 // 0163/0164 were applied before the role rename (1139), so they say `wardenx_audit_writer`; the generator now emits `chartwarden_`.
-const asApplied = (sql: string): string => sql.replaceAll("chartwarden_", "wardenx_");
+const asApplied = (sql: string): string =>
+  sql
+    .replaceAll("chartwarden_", "wardenx_")
+    // 0163/0164 carry the search_path the generator emitted then; 1556 appends pg_temp to every deployed function.
+    .replaceAll("SET search_path = pg_catalog, public, pg_temp", "SET search_path = pg_catalog, public");
 
 describe("0163_care_plan_version_state_snapshot_redaction.sql — matches the generator verbatim", () => {
   it("contains generateAuditTrigger's function+owner DDL for care_plan_version's corrected denylist", () => {
