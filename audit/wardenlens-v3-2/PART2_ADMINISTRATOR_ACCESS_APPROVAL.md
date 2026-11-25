@@ -73,3 +73,25 @@ Revision 2: corrected the tenant-administrator audit statement, added the condit
 - Signature or approval-system reference: Fabrice Adjam, Privacy Officer (interim), 2026-11-24
 
 Designated authority: Privacy Officer (interim), `docs/architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md`.
+
+## Addendum 1 — no production `superadmin` exists (drafted by engineering 2026-11-25; not in force until the reviewer signs)
+
+Finding: an operator ran the platform-staff query of OPS_RUNBOOK §16.5 on the production database on 2026-11-25 and
+supplied the result. The only platform-role holder is `orgadmin@chartwarden.local` (`platform_ops`, `platform_admin`).
+No `superadmin` exists, so the WardenLens superadmin route reaches no tenant evidence in production until one is granted.
+
+Effect on the conditions above:
+
+- The merge and production-enablement condition is met when `PRIVILEGED_FACTOR_DEPLOYMENT.md` records the
+  `CHARTWARDEN_MFA_ENFORCEMENT=true` verification and a refused password-only sign-in for the platform account. The
+  `superadmin`-specific items (a passkey for every `superadmin`; a passkey-protected support-session start) are recorded
+  N/A at that time, because no holder exists.
+- New condition: no `superadmin` is granted (OPS_RUNBOOK §16.5, under a change ticket) until the deployment record shows
+  the variable verified. That holder's passkey enrolment and a passkey-authenticated support-session start are recorded in
+  the deployment record before the holder reads any WardenLens evidence.
+
+I approve Addendum 1.
+
+- Reviewer name: Fabrice Adjam
+- Approval date:
+- Signature or approval-system reference:
