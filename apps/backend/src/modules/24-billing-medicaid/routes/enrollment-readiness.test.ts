@@ -344,3 +344,50 @@ describe("enrollmentRequirementStatus counts only verified rows toward ambiguity
     ).toMatchObject({ status: "ambiguous" });
   });
 });
+
+describe("enrollmentRequirementStatus 835 ERA evidence", () => {
+  const TODAY = "2026-03-01";
+  const era = (extra: Partial<EnrollmentEvidenceFacts> = {}) =>
+    evidence({
+      evidenceKind: "835_era_enrollment",
+      transactionType: "835",
+      sourceEnvironment: "production",
+      evidenceFreshUntil: "2026-12-31",
+      ...extra,
+    });
+  const eraStatus = (rows: readonly EnrollmentEvidenceFacts[]) =>
+    enrollmentRequirementStatus(
+      rows,
+      "835_era_enrollment",
+      FROM,
+      TO,
+      PAYER,
+      "managed_care",
+      null,
+      "835",
+      TODAY,
+    );
+
+  it("reports verified for fresh production evidence", () => {
+    expect(eraStatus([era()])).toMatchObject({ status: "verified" });
+  });
+
+  it("does not call a test-account row verified", () => {
+    expect(eraStatus([era({ sourceEnvironment: "test" })])).toMatchObject({
+      status: "missing",
+      reasonCode: "ENROLLMENT_EVIDENCE_NOT_PRODUCTION",
+    });
+  });
+
+  it("reports stale evidence as expired, and evidence with no freshness date the same way", () => {
+    expect(eraStatus([era({ evidenceFreshUntil: "2026-02-28" })])).toMatchObject({
+      status: "expired",
+      reasonCode: "ENROLLMENT_EVIDENCE_STALE",
+    });
+    expect(eraStatus([era({ evidenceFreshUntil: null })])).toMatchObject({
+      status: "expired",
+      reasonCode: "ENROLLMENT_EVIDENCE_STALE",
+    });
+    expect(eraStatus([era({ evidenceFreshUntil: TODAY })])).toMatchObject({ status: "verified" });
+  });
+});

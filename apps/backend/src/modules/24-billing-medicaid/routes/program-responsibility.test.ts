@@ -1,10 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  type PayerRouteEvidenceRow,
   type ProgramAssignmentCandidate,
   enrollmentTransactionMatches,
   previewProgramResponsibility,
+  readTenantClearinghouseAccount,
   resolveProgramResponsibility,
   resolveProviderPayerRoute,
+  routeRowsForPayer,
+  routeVendorPayerId,
   verificationSourceAllowed,
 } from "./program-responsibility";
 
@@ -128,6 +132,33 @@ describe("resolveProviderPayerRoute", () => {
       status: "unavailable",
       configurationStatus: "PROVIDER_PAYER_ROUTE_AMBIGUOUS",
     });
+  });
+
+  it("lets a verified route speak over a mistaken pending one that nothing can withdraw", () => {
+    const window = { effectiveFrom: "2026-01-01", effectiveTo: null };
+    expect(
+      resolveProviderPayerRoute(
+        [
+          { ...window, clearinghouse: "stedi", status: "verified" },
+          { ...window, clearinghouse: "claimmd", status: "pending" },
+        ],
+        "2026-01-01",
+        "2026-01-31",
+        null,
+      ),
+    ).toMatchObject({ status: "selected", vendor: "stedi" });
+    // Two verified routes for one window are still a conflict.
+    expect(
+      resolveProviderPayerRoute(
+        [
+          { ...window, clearinghouse: "stedi", status: "verified" },
+          { ...window, clearinghouse: "claimmd", status: "verified" },
+        ],
+        "2026-01-01",
+        "2026-01-31",
+        null,
+      ),
+    ).toMatchObject({ configurationStatus: "PROVIDER_PAYER_ROUTE_AMBIGUOUS" });
   });
 });
 
@@ -269,5 +300,110 @@ describe("previewProgramResponsibility", () => {
       canonicalPayerName: null,
       reasonCode: "PROGRAM_RESPONSIBILITY_VERIFIED",
     });
+  });
+});
+
+describe("payer route evidence in the claim assembly preview", () => {
+  const PAYER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const route = (extra: Partial<PayerRouteEvidenceRow> = {}): PayerRouteEvidenceRow => ({
+    evidenceKind: "clearinghouse_payer_route",
+    canonicalPayerId: PAYER,
+    clearinghouse: "stedi",
+    transactionType: "837I",
+    vendorPayerId: "SYNTH-STEDI",
+    status: "verified",
+    effectiveFrom: "2026-01-01",
+    effectiveTo: null,
+    ...extra,
+  });
+
+  it("matches no row for an unresolved program, even a payer-less one", () => {
+    const payerless = route({ canonicalPayerId: null });
+    expect(routeRowsForPayer([payerless], null)).toEqual([]);
+    expect(routeRowsForPayer([payerless, route()], PAYER)).toEqual([route()]);
+  });
+
+  it("keeps only 837I payer-route evidence of the program's payer", () => {
+    const rows = [
+      route(),
+      route({ transactionType: "835" }),
+      route({ evidenceKind: "837i_enrollment" }),
+      route({ canonicalPayerId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }),
+    ];
+    expect(routeRowsForPayer(rows, PAYER)).toEqual([route()]);
+  });
+
+  it("maps the vendor payer id from the verified row, not a pending twin of the same vendor", () => {
+    const rows = [route(), route({ status: "pending", vendorPayerId: "SYNTH-WRONG" })];
+    expect(routeVendorPayerId(rows, "stedi", "2026-02-01", "2026-02-28")).toBe("SYNTH-STEDI");
+    // Two verified rows for one vendor and window are not one mapping.
+    expect(
+      routeVendorPayerId(
+        [route(), route({ vendorPayerId: "SYNTH-OTHER" })],
+        "stedi",
+        "2026-02-01",
+        "2026-02-28",
+      ),
+    ).toBeNull();
+  });
+
+  it("maps nothing without a selected vendor, outside the window, or from another vendor's row", () => {
+    expect(
+      routeVendorPayerId([route({ clearinghouse: null })], null, "2026-02-01", "2026-02-28"),
+    ).toBeNull();
+    expect(
+      routeVendorPayerId(
+        [route({ effectiveTo: "2026-01-31" })],
+        "stedi",
+        "2026-02-01",
+        "2026-02-28",
+      ),
+    ).toBeNull();
+    expect(routeVendorPayerId([route()], "claimmd", "2026-02-01", "2026-02-28")).toBeNull();
+  });
+});
+
+describe("the tenant clearinghouse account read", () => {
+  it("reads the tenant's selected route", async () => {
+    const reader = {
+      selectedTenantRoute: async () => ({ source: "tenant", vendor: "stedi", status: "active" }),
+    };
+    await expect(readTenantClearinghouseAccount(reader, "org-1")).resolves.toEqual({
+      source: "tenant",
+      vendor: "stedi",
+      status: "active",
+    });
+  });
+
+  it("reads as unavailable, without a log line, when no reader is bound", async () => {
+    const warn = vi.fn();
+    await expect(readTenantClearinghouseAccount(undefined, "org-1", warn)).resolves.toEqual({
+      source: "unavailable",
+      vendor: null,
+      status: null,
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("logs a reader outage with the organization and the error class only", async () => {
+    const warn = vi.fn();
+    const reader = {
+      selectedTenantRoute: async () => {
+        throw new TypeError("connection to synthetic-host refused");
+      },
+    };
+    await expect(readTenantClearinghouseAccount(reader, "org-1", warn)).resolves.toEqual({
+      source: "unavailable",
+      vendor: null,
+      status: null,
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    const line = String(warn.mock.calls[0]?.[0]);
+    expect(JSON.parse(line)).toEqual({
+      event: "m24.preview.tenant_clearinghouse_reader_failed",
+      organizationId: "org-1",
+      errorName: "TypeError",
+    });
+    expect(line).not.toContain("synthetic-host");
   });
 });

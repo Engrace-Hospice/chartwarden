@@ -27,6 +27,9 @@ export interface EnrollmentEvidenceFacts {
   readonly status: string;
   readonly effectiveFrom: Date | string;
   readonly effectiveTo: Date | string | null;
+  /** 835 ERA enrollment only: the account's environment and the date its evidence stops being fresh. */
+  readonly sourceEnvironment?: string | null;
+  readonly evidenceFreshUntil?: Date | string | null;
 }
 
 /** Values the claim's program kind carries while no concrete program is established (see ProgramResolution). */
@@ -48,6 +51,7 @@ export function enrollmentRequirementStatus(
   programKind: string | null,
   selectedClearinghouse: string | null,
   requiredTransactionType: "837I" | "835" | null,
+  today: string = new Date().toISOString().slice(0, 10),
 ): AssemblyPreviewView["enrollmentReadiness"][number] {
   if (kind === "mco_participation" && programKind === "ffs_open_card") {
     return {
@@ -112,6 +116,13 @@ export function enrollmentRequirementStatus(
     return { kind, status: "missing", reasonCode: "ENROLLMENT_EVIDENCE_NOT_CURRENT" };
   if (row.effectiveTo && day(row.effectiveTo) < to)
     return { kind, status: "expired", reasonCode: "ENROLLMENT_EVIDENCE_EXPIRED_OR_PARTIAL" };
+  // M25 refuses ERA enrollment from a test account or past its freshness date; say so here rather than "verified".
+  if (kind === "835_era_enrollment") {
+    if (row.sourceEnvironment !== "production")
+      return { kind, status: "missing", reasonCode: "ENROLLMENT_EVIDENCE_NOT_PRODUCTION" };
+    if (!row.evidenceFreshUntil || day(row.evidenceFreshUntil) < today)
+      return { kind, status: "expired", reasonCode: "ENROLLMENT_EVIDENCE_STALE" };
+  }
   return { kind, status: "verified", reasonCode: "ENROLLMENT_EVIDENCE_VERIFIED" };
 }
 

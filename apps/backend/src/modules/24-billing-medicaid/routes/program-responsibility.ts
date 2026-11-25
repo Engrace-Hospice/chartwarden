@@ -85,6 +85,102 @@ export interface ProviderPayerRouteCandidate {
   effectiveTo: string | null;
 }
 
+/**
+ * A pending row speaks only when no verified row does (as in resolveProgramResponsibility). Nothing can reject or
+ * withdraw a pending row, so a mistaken one must not make a verified route ambiguous for good.
+ */
+export function preferVerified<T extends { readonly status: string }>(rows: readonly T[]): T[] {
+  const verified = rows.filter((row) => row.status === "verified");
+  return verified.length > 0 ? verified : [...rows];
+}
+
+/** The fields of an enrollment-evidence row that choose and map a payer route. */
+export interface PayerRouteEvidenceRow {
+  readonly evidenceKind: string;
+  readonly canonicalPayerId: string | null;
+  readonly clearinghouse: string | null;
+  readonly transactionType: string | null;
+  readonly vendorPayerId: string | null;
+  readonly status: string;
+  readonly effectiveFrom: Date | string;
+  readonly effectiveTo: Date | string | null;
+}
+
+const routeDay = (value: Date | string): string =>
+  (typeof value === "string" ? value : value.toISOString()).slice(0, 10);
+
+/**
+ * The 837I payer-route rows recorded for the program's payer. No payer matches nothing: the record route allows a
+ * payer-less row (only verification refuses it), and it must not match an unresolved program whose payer is also null.
+ */
+export function routeRowsForPayer<T extends PayerRouteEvidenceRow>(
+  rows: readonly T[],
+  canonicalPayerId: string | null,
+): T[] {
+  if (canonicalPayerId === null) return [];
+  return rows.filter(
+    (row) =>
+      row.evidenceKind === "clearinghouse_payer_route" &&
+      row.canonicalPayerId === canonicalPayerId &&
+      row.transactionType === "837I",
+  );
+}
+
+/**
+ * The vendor payer id the selected route maps for the window, or null when no single row speaks for it. Same
+ * precedence as {@link resolveProviderPayerRoute}: verified rows over pending ones. No selected vendor maps nothing.
+ */
+export function routeVendorPayerId(
+  routeRows: readonly PayerRouteEvidenceRow[],
+  vendor: string | null,
+  from: string,
+  to: string,
+): string | null {
+  if (vendor === null) return null;
+  const speaking = preferVerified(
+    routeRows.filter(
+      (row) =>
+        row.clearinghouse === vendor &&
+        (row.status === "pending" || row.status === "verified") &&
+        routeDay(row.effectiveFrom) <= to &&
+        (!row.effectiveTo || routeDay(row.effectiveTo) >= from),
+    ),
+  );
+  return speaking.length === 1 ? speaking[0]!.vendorPayerId : null;
+}
+
+/** The tenant's selected clearinghouse account for the preview; a reader outage reads as unavailable and is logged. */
+export async function readTenantClearinghouseAccount(
+  reader:
+    | {
+        selectedTenantRoute(organizationId: string): Promise<{
+          source: string;
+          vendor: string | null;
+          status: string | null;
+        }>;
+      }
+    | undefined,
+  organizationId: string,
+  warn: (line: string) => void = (line) => console.warn(line),
+): Promise<{ source: string; vendor: string | null; status: string | null }> {
+  const unavailable = { source: "unavailable", vendor: null, status: null };
+  if (!reader) return unavailable;
+  try {
+    const route = await reader.selectedTenantRoute(organizationId);
+    return { source: route.source, vendor: route.vendor, status: route.status };
+  } catch (error) {
+    // Ids and the error class only: the preview reports an unconfigured account, so the outage must be visible here.
+    warn(
+      JSON.stringify({
+        event: "m24.preview.tenant_clearinghouse_reader_failed",
+        organizationId,
+        errorName: error instanceof Error ? error.name : typeof error,
+      }),
+    );
+    return unavailable;
+  }
+}
+
 export function resolveProviderPayerRoute(
   rows: readonly ProviderPayerRouteCandidate[],
   from: string,
@@ -95,12 +191,13 @@ export function resolveProviderPayerRoute(
   vendor: string | null;
   configurationStatus: string | null;
 } {
-  const relevant = rows.filter(
+  const open = rows.filter(
     (row) =>
       (row.status === "pending" || row.status === "verified") &&
       day(row.effectiveFrom) <= day(to) &&
       (!row.effectiveTo || day(row.effectiveTo) >= day(from)),
   );
+  const relevant = preferVerified(open);
   const fullWindow = relevant.filter(
     (row) =>
       day(row.effectiveFrom) <= day(from) && (!row.effectiveTo || day(row.effectiveTo) >= day(to)),

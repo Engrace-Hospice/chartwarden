@@ -22,6 +22,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getMdmEntityProvider } from "../40-mdm/seams";
+import { qualifyMedicaidProgramClassification } from "./medicaid-payer-classification";
 import type { M24Actor } from "./routes/actor";
 import type { M24ReadService } from "./routes/read-service";
 
@@ -548,23 +549,18 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
             row.effectiveFrom,
             row.effectiveTo,
           );
-          const compatible = classifications.filter(
-            (classification) =>
-              classification.verificationStatus === "verified" &&
-              classification.canonicalPayerId === row.canonicalPayerId &&
-              classification.stateCode === row.serviceState &&
-              classification.effectiveFrom <= row.effectiveFrom &&
-              (classification.effectiveTo === null ||
-                classification.effectiveTo >= row.effectiveTo!) &&
-              ((row.programKind === "ffs_open_card" &&
-                classification.classification === "oregon_ffs") ||
-                (row.programKind === "managed_care" &&
-                  classification.classification === "medicaid_cco") ||
-                (row.programKind === "other_managed_care" &&
-                  classification.classification === "other_managed_care")),
+          // The verify path's qualifier, not a local filter: it retires superseded rows and refuses a window that
+          // a second verified classification contradicts, so evidence verification would now refuse is not offered.
+          const decision = qualifyMedicaidProgramClassification(
+            classifications,
+            row.programKind,
+            row.canonicalPayerId,
+            row.serviceState,
+            row.effectiveFrom,
+            row.effectiveTo,
           );
-          if (compatible.length !== 1) continue;
-          const classification = compatible[0]!;
+          if (!decision.qualified) continue;
+          const classification = decision.classification;
           const providerIdentityFingerprint = evidenceFingerprint({
             organizationId: orgId,
             providerEntityId,

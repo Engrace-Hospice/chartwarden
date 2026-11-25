@@ -237,6 +237,34 @@ describe("verifyEnrollmentEvidence", () => {
       ),
     ).resolves.toEqual({ status: "verified", version: 2 });
   });
+
+  // Readiness counts these kinds only as 837I evidence; a verified row of another transaction type would read
+  // "missing" with no hint why, so verification refuses it.
+  it.each([
+    ["clearinghouse_payer_route", "835", "payer_written_confirmation"],
+    ["payer_transport_certification", "835", "payer_written_confirmation"],
+    ["production_activation_approval", null, "internal_approval"],
+  ] as const)("refuses to verify %s evidence that is not 837I", async (kind, tx, source) => {
+    const fake = createFakeDb({
+      select: [
+        [
+          evidenceRow({
+            evidenceKind: kind,
+            transactionType: tx,
+            clearinghouse: "claimmd",
+            vendorPayerId: "SYNTH01",
+          }),
+        ],
+      ],
+    });
+    await expect(
+      serviceOver(fake).verifyEnrollmentEvidence(actor, ROW_ID, verifyEvidenceInput(source)),
+    ).rejects.toMatchObject({
+      code: "MEDICAID_837I_EVIDENCE_TRANSACTION_MISMATCH",
+      statusCode: 409,
+    });
+    expect(fake.of("update", EE)).toEqual([]);
+  });
 });
 
 describe("revocation", () => {

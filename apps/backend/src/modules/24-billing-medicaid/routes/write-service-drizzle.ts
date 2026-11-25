@@ -65,8 +65,11 @@ import {
 } from "./enrollment-readiness";
 import {
   previewProgramResponsibility,
+  readTenantClearinghouseAccount,
   resolveProgramResponsibility,
   resolveProviderPayerRoute,
+  routeRowsForPayer,
+  routeVendorPayerId,
   verificationSourceAllowed,
 } from "./program-responsibility";
 import type { ClaimView, RbArrangementView } from "./read-service";
@@ -1527,20 +1530,10 @@ export function buildDrizzleM24WriteService(
         status: "unavailable",
         reasonCode: "SERVICE_JURISDICTION_UNAVAILABLE",
       };
-      if (tenantClearinghouseReader) {
-        try {
-          const route = await tenantClearinghouseReader.selectedTenantRoute(actor.organizationId);
-          tenantClearinghouseAccount = {
-            source: route.source,
-            vendor: route.vendor,
-            status: route.status,
-          };
-        } catch {
-          tenantClearinghouseAccount = { source: "unavailable", vendor: null, status: null };
-        }
-      } else {
-        tenantClearinghouseAccount = { source: "unavailable", vendor: null, status: null };
-      }
+      tenantClearinghouseAccount = await readTenantClearinghouseAccount(
+        tenantClearinghouseReader,
+        actor.organizationId,
+      );
 
       if (admissionCadenceReader) {
         const previewReads = await withOrgContext(db, actor, async (tx) => {
@@ -1860,11 +1853,9 @@ export function buildDrizzleM24WriteService(
                 "PAYER_AUTHORIZATION_POLICY_UNQUALIFIED",
               ],
             };
-          const routeRowsForProvider = enrollmentRows.filter(
-            (row) =>
-              row.evidenceKind === "clearinghouse_payer_route" &&
-              row.canonicalPayerId === projectedProgramResponsibility.canonicalPayerId &&
-              row.transactionType === "837I",
+          const routeRowsForProvider = routeRowsForPayer(
+            enrollmentRows,
+            projectedProgramResponsibility.canonicalPayerId,
           );
           selectedClearinghouse = resolveProviderPayerRoute(
             routeRowsForProvider.map((row) => ({
@@ -1877,18 +1868,12 @@ export function buildDrizzleM24WriteService(
             input.serviceTo,
             tenantClearinghouseAccount,
           );
-          const routeMappingRows = enrollmentRows.filter(
-            (row) =>
-              row.evidenceKind === "clearinghouse_payer_route" &&
-              row.canonicalPayerId === projectedProgramResponsibility.canonicalPayerId &&
-              row.clearinghouse === selectedClearinghouse.vendor &&
-              row.transactionType === "837I" &&
-              (row.status === "pending" || row.status === "verified") &&
-              day(row.effectiveFrom) <= input.serviceTo &&
-              (!row.effectiveTo || day(row.effectiveTo) >= input.serviceFrom),
+          const vendorPayerId = routeVendorPayerId(
+            routeRowsForProvider,
+            selectedClearinghouse.vendor,
+            input.serviceFrom,
+            input.serviceTo,
           );
-          const vendorPayerId =
-            routeMappingRows.length === 1 ? routeMappingRows[0]!.vendorPayerId : null;
           const projectedEnrollmentReadiness: AssemblyPreviewView["enrollmentReadiness"] =
             ENROLLMENT_REQUIREMENTS.map((kind) => ({
               ...enrollmentRequirementStatus(
@@ -4079,14 +4064,19 @@ export function buildDrizzleM24WriteService(
             "production approval must name the clearinghouse and canonical payer",
           );
         }
+        // Readiness counts these five kinds only as 837I evidence (ENROLLMENT_REQUIREMENTS in the preview), so a verified
+        // row of another transaction type would read "missing" with no hint why; refuse it here instead.
         if (
           (row.evidenceKind === "837i_enrollment" ||
-            row.evidenceKind === "institutional_format_qualification") &&
+            row.evidenceKind === "institutional_format_qualification" ||
+            row.evidenceKind === "clearinghouse_payer_route" ||
+            row.evidenceKind === "payer_transport_certification" ||
+            row.evidenceKind === "production_activation_approval") &&
           row.transactionType !== "837I"
         ) {
           throw new ConflictError(
             "MEDICAID_837I_EVIDENCE_TRANSACTION_MISMATCH",
-            "institutional enrollment and format qualification must name transaction 837I",
+            "institutional enrollment, format qualification, payer route, transport certification and production approval must name transaction 837I",
           );
         }
         if (row.evidenceKind === "835_era_enrollment" && row.transactionType !== "835") {
