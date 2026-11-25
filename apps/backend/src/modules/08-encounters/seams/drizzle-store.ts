@@ -254,6 +254,7 @@ export function createDrizzleEncounterReaderStore(
           const rows = await tx
             .select({
               encounterId: E.id,
+              providerEntityId: E.providerEntityId,
               patientId: E.patientId,
               admissionId: E.admissionId,
               encounterType: E.encounterType,
@@ -266,6 +267,8 @@ export function createDrizzleEncounterReaderStore(
               evvBracketState: E.evvBracketState,
               startedAt: E.startedAt,
               endedAt: E.endedAt,
+              timeSource: E.timeSource,
+              sourceVersion: E.version,
             })
             .from(E)
             .where(
@@ -280,6 +283,7 @@ export function createDrizzleEncounterReaderStore(
           return rows.map(
             (r): SignedEncounterDigest => ({
               encounterId: r.encounterId,
+              providerEntityId: r.providerEntityId,
               patientId: r.patientId,
               admissionId: r.admissionId,
               encounterType: r.encounterType,
@@ -291,6 +295,10 @@ export function createDrizzleEncounterReaderStore(
               status: r.status,
               evvBracketState: evvStateOrMissing(r.evvBracketState),
               durationMinutes: bracketMinutes(r.startedAt, r.endedAt),
+              startedAt: r.startedAt?.toISOString() ?? null,
+              endedAt: r.endedAt?.toISOString() ?? null,
+              timeSource: r.timeSource as SignedEncounterDigest["timeSource"],
+              sourceVersion: r.sourceVersion,
             }),
           );
         },

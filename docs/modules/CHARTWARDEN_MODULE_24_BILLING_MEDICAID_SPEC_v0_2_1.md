@@ -116,6 +116,18 @@ the remaining owner-data contract needed before a priced M24 draft can be assemb
   inclusive coverage, quantities and arithmetic without rewriting the stored snapshot. See the
   [L8A.2R qualification report](../audits/billing-e2e/M24_1075_L8A2R_PRICING_SNAPSHOT_PERSISTENCE_QUALIFICATION_20261125.md).
 
+### As-built L8A.2C note — evidence lineage and M8 interval facts (2026-11-25)
+
+Migration 1552 makes billing-evidence correction identity include patient and program scope, requires
+version progression and rejects correction branches. Evidence is resolved at the stated assessment time;
+overlapping heads hold, and adjacent evidence rows require segmentation that the current RHC snapshot
+format does not represent. A synthetic signed encounter now flows through M8's database reader into M24
+line linkage only when organization, provider, patient, admission, signature state and service segment
+match. M8 interval facts can also be normalized into observed CHC clinical minutes by local service day,
+but M24 does not yet qualify CHC eligibility, pricing, institutional units or persisted CHC drafts. The
+RHC daily local-draft path remains the only supported priced assembly. See the
+[L8A.2C qualification report](../audits/billing-e2e/M24_1075_L8A2C_ADVANCED_CLINICAL_PRICING_QUALIFICATION_20261125.md).
+
 ## 1. Purpose & Scope
 
 ### 1.1 What This Module Does

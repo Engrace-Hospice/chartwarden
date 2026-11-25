@@ -68,6 +68,20 @@ export const medicaidHospiceBillingEvidence = pgTable(
   },
   (t) => ({
     orgIdUnique: unique("medicaid_hospice_billing_evidence_org_id_uq").on(t.organizationId, t.id),
+    identityUnique: unique("medicaid_hospice_billing_evidence_identity_uq")
+      .on(
+        t.organizationId,
+        t.providerEntityId,
+        t.patientId,
+        t.admissionId,
+        t.canonicalPayerId,
+        t.programKind,
+        t.serviceState,
+        t.serviceCategory,
+        t.effectiveFrom,
+        t.supersedesId,
+      )
+      .nullsNotDistinct(),
     supersedesSameOrg: foreignKey({
       name: "medicaid_hospice_billing_evidence_supersedes_org_fk",
       columns: [t.organizationId, t.supersedesId],

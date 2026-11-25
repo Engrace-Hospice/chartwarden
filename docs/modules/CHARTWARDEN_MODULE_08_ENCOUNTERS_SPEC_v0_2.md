@@ -1409,6 +1409,14 @@ export interface EncounterEventPublisher {
 }
 ```
 
+**As-built M24 projection boundary (L8A.2C, 2026-11-25):** the M8 signed-encounter reader may return
+the persisted provider entity, patient/admission identity, signed state and timestamp, actual
+`started_at`/`ended_at` interval, `time_source`, and source version. M24 uses these only through its
+reader seam and must recheck organization, provider, patient, admission, signing and service-date scope
+before linking an encounter to a local claim line. A signed interval is evidence of recorded encounter
+time; it does not by itself establish payer-specific continuous-home-care eligibility, billable minutes,
+reimbursement quantity, or institutional 837I units.
+
 **Seams M8 consumes from upstream modules (registered in M8's init, validated at boot):**
 
 ```ts

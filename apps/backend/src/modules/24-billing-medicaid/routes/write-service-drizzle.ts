@@ -1335,7 +1335,24 @@ export interface SignedEncounterWindowReaderPort {
     patientId: string,
     from: string,
     to: string,
-  ): Promise<ReadonlyArray<{ encounterId: string; serviceDate: string }>>;
+  ): Promise<
+    ReadonlyArray<{
+      encounterId: string;
+      serviceDate: string;
+      organizationId?: string;
+      providerEntityId?: string | null;
+      patientId?: string;
+      admissionId?: string;
+      status?: string;
+      discipline?: string;
+      signedAt?: string;
+      startedAt?: string | null;
+      endedAt?: string | null;
+      timeSource?: "evv" | "clinician" | null;
+      sourceVersion?: number;
+      evvBracketState?: string;
+    }>
+  >;
 }
 
 const LOC_BY_M6_ENUM: Record<
@@ -3217,7 +3234,12 @@ export function buildDrizzleM24WriteService(
             for (const encounter of encounters.filter(
               (candidate) =>
                 candidate.serviceDate >= planLine.serviceFrom &&
-                candidate.serviceDate <= planLine.serviceTo,
+                candidate.serviceDate <= planLine.serviceTo &&
+                candidate.organizationId === actor.organizationId &&
+                candidate.providerEntityId === input.providerEntityId &&
+                candidate.patientId === input.patientId &&
+                candidate.admissionId === input.admissionId &&
+                (candidate.status === "signed" || candidate.status === "cosigned"),
             )) {
               await tx.insert(LE).values({
                 medicaidClaimLineId: insertedLine[0]!.id,

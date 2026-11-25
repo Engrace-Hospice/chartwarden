@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import { createMdmEntityProvider } from "@chartwarden/mdm";
 import type { PlaceOfServiceFacilityKind } from "@chartwarden/medicaid-adapters";
+import { NARRATIVE_VOCAB_RELEASES } from "@chartwarden/narrative-vocab";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
@@ -27,7 +28,10 @@ import { buildProviderEntityCcnResolver } from "../src/bootstrap/provider-entity
 import { buildPatientAddressReader } from "../src/modules/05-patient/address-reader";
 import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-reader";
 import { createAdmissionLocPeriodsReader } from "../src/modules/06-admission";
+import { createDrizzleEncounterReaderStore } from "../src/modules/08-encounters/seams/drizzle-store";
+import { m6LocClaimEndDate } from "../src/modules/24-billing-medicaid/claim-hospice-line-snapshot";
 import { runMedicaidRevalidate } from "../src/modules/24-billing-medicaid/jobs/revalidate-jobs";
+import { resolveSignedChcClinicalQuantity } from "../src/modules/24-billing-medicaid/pricing/chc-clinical-quantity";
 import { readMedicaidHospiceBillingEvidence } from "../src/modules/24-billing-medicaid/pricing/rhc-pricing-snapshot";
 import type { WriteOutboxPort } from "../src/modules/24-billing-medicaid/routes/write-service";
 import {
@@ -65,6 +69,11 @@ const RHC_RATE_EARLY = "abababab-abab-abab-abab-abababababa8";
 const RHC_RATE_LATE = "abababab-abab-abab-abab-abababababa9";
 const RHC_ASSIGNMENT = "abababab-abab-abab-abab-abababababaa";
 const RHC_ADDRESS = "abababab-abab-abab-abab-abababababac";
+const RHC_ENCOUNTER = "abababab-abab-abab-abab-abababababcc";
+const RHC_UNRELATED_ENCOUNTER = "abababab-abab-abab-abab-abababababce";
+const RHC_SIGNER_MEMBERSHIP = "abababab-abab-abab-abab-abababababcd";
+const CHC_LOC = "abababab-abab-abab-abab-abababababd3";
+const CHC_ENCOUNTER = "abababab-abab-abab-abab-abababababd4";
 const LOC_1 = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
 const LOC_2 = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 let TEST_PE_ID = "";
@@ -202,6 +211,23 @@ describe.skipIf(!DB_URL)(
     }
     function noEncounters(): SignedEncounterWindowReaderPort {
       return { encountersInWindow: async () => [] };
+    }
+    function m8SignedEncounterReader(
+      db: ReturnType<typeof createDbClient>["db"],
+    ): SignedEncounterWindowReaderPort {
+      const reader = createDrizzleEncounterReaderStore(db);
+      return {
+        async encountersInWindow(organizationId, patientId, from, to) {
+          const rows = await reader.signedEncountersForPatientSince(
+            organizationId,
+            patientId,
+            new Date(from).toISOString(),
+          );
+          return rows
+            .filter((row) => row.serviceDate >= from && row.serviceDate <= to)
+            .map((row) => ({ ...row, organizationId }));
+        },
+      };
     }
     const NOOP_OUTBOX = { async publish() {} };
     const OPEN_CIPHER = { seal: (_o: string, p: string) => p, open: (_o: string, c: string) => c };
@@ -394,6 +420,75 @@ describe.skipIf(!DB_URL)(
         [RHC_LOC, ORG, RHC_ADMISSION, USER],
       );
       await admin.query(
+        `INSERT INTO level_of_care_period
+           (id,organization_id,admission_id,level_of_care,status,effective_at,ended_at,
+            assigned_by,reason,q_code,version)
+         VALUES ($1,$2,$3,'continuous_home_care','ended','2026-11-05T00:00:00Z',
+                 '2026-11-06T00:00:00Z',$4,'Synthetic CHC quantity qualification','Q5001',0)`,
+        [CHC_LOC, ORG, RHC_ADMISSION, USER],
+      );
+      const signerMembership = await admin.query(
+        `INSERT INTO membership (id,user_id,organization_id,status,default_provider_entity_id)
+         VALUES ($1,$2,$3,'active',$4) RETURNING id`,
+        [RHC_SIGNER_MEMBERSHIP, USER, ORG, peId],
+      );
+      await admin.query(
+        `INSERT INTO encounter
+           (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,
+            encounter_type,discipline,authored_by_membership_id,service_date,started_at,ended_at,
+            time_source,status,signed_at,vocab_version_id)
+         VALUES ($1,$2,$3,$4,$5,$6,'routine_visit','rn',$7,'2026-11-02',
+                 '2026-11-02T18:00:00Z','2026-11-02T19:30:00Z','clinician','signed',
+                 '2026-11-03T01:00:00Z',$8)`,
+        [
+          RHC_ENCOUNTER,
+          ORG,
+          peId,
+          locationId,
+          RHC_PATIENT,
+          RHC_ADMISSION,
+          signerMembership.rows[0]!.id,
+          NARRATIVE_VOCAB_RELEASES[0]!.id,
+        ],
+      );
+      await admin.query(
+        `INSERT INTO encounter
+           (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,
+            encounter_type,discipline,authored_by_membership_id,service_date,started_at,ended_at,
+            time_source,status,signed_at,vocab_version_id)
+         VALUES ($1,$2,$3,$4,$5,$6,'routine_visit','rn',$7,'2026-11-05',
+                 '2026-11-05T18:00:00Z','2026-11-05T19:30:00Z','clinician','signed',
+                 '2026-11-06T01:00:00Z',$8)`,
+        [
+          CHC_ENCOUNTER,
+          ORG,
+          peId,
+          locationId,
+          RHC_PATIENT,
+          RHC_ADMISSION,
+          signerMembership.rows[0]!.id,
+          NARRATIVE_VOCAB_RELEASES[0]!.id,
+        ],
+      );
+      await admin.query(
+        `INSERT INTO encounter
+           (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,
+            encounter_type,discipline,authored_by_membership_id,service_date,started_at,ended_at,
+            time_source,status,signed_at,vocab_version_id)
+         VALUES ($1,$2,$3,$4,$5,'abababab-abab-abab-abab-abababababcf',
+                 'routine_visit','rn',$6,'2026-11-02','2026-11-02T20:00:00Z',
+                 '2026-11-02T21:00:00Z','clinician','signed','2026-11-03T01:00:00Z',$7)`,
+        [
+          RHC_UNRELATED_ENCOUNTER,
+          ORG,
+          peId,
+          locationId,
+          RHC_PATIENT,
+          signerMembership.rows[0]!.id,
+          NARRATIVE_VOCAB_RELEASES[0]!.id,
+        ],
+      );
+      await admin.query(
         `INSERT INTO medicaid_program_assignment
            (id,organization_id,patient_id,patient_payer_id,admission_id,provider_entity_id,location_id,
             service_state,program_kind,canonical_payer_id,canonical_payer_classification_id,
@@ -518,6 +613,61 @@ describe.skipIf(!DB_URL)(
       await rateInsert(RHC_RATE_LATE, "2026-11-03", "2026-11-04", 13000);
 
       const ccn = buildProviderEntityCcnResolver(handle.db);
+      const m8Encounters = m8SignedEncounterReader(handle.db);
+      const currentLoc = await m6Reader.periodsForAdmission(ORG, RHC_ADMISSION);
+      const chcPeriods = currentLoc.filter(
+        (period) => period.levelOfCare === "continuous_home_care",
+      );
+      const chcServiceDates = chcPeriods.flatMap((period) => {
+        const from = period.effectiveAt.toISOString().slice(0, 10);
+        const to = m6LocClaimEndDate(period.endedAt);
+        if (!to) return [];
+        const dates: string[] = [];
+        for (
+          let time = Date.parse(`${from}T00:00:00.000Z`);
+          time <= Date.parse(`${to}T00:00:00.000Z`);
+          time += 86_400_000
+        ) {
+          dates.push(new Date(time).toISOString().slice(0, 10));
+        }
+        return dates;
+      });
+      const chcSourceRows = await m8Encounters.encountersInWindow(
+        ORG,
+        RHC_PATIENT,
+        "2026-11-05",
+        "2026-11-05",
+      );
+      const chcObservation = resolveSignedChcClinicalQuantity({
+        organizationId: ORG,
+        providerEntityId: peId,
+        patientId: RHC_PATIENT,
+        admissionId: RHC_ADMISSION,
+        serviceFrom: "2026-11-05",
+        serviceTo: "2026-11-05",
+        serviceTimeZone: "America/Los_Angeles",
+        chcServiceDates,
+        encounters: chcSourceRows.map((row) => ({
+          organizationId: row.organizationId ?? "",
+          providerEntityId: row.providerEntityId ?? null,
+          patientId: row.patientId ?? "",
+          admissionId: row.admissionId ?? "",
+          encounterId: row.encounterId,
+          serviceDate: row.serviceDate,
+          status: row.status ?? "",
+          signedAt: row.signedAt ?? "",
+          startedAt: row.startedAt ?? null,
+          endedAt: row.endedAt ?? null,
+          timeSource: row.timeSource ?? null,
+          sourceVersion: row.sourceVersion,
+        })),
+      });
+      expect(chcObservation).toMatchObject({
+        status: "observed",
+        payerEligibility: "unresolved",
+        institutionalUnits: "unqualified",
+        days: [{ serviceDate: "2026-11-05", actualClinicalMinutes: 90 }],
+      });
       const events: string[] = [];
       const outbox: WriteOutboxPort = {
         async publish(_tx, event) {
@@ -531,7 +681,7 @@ describe.skipIf(!DB_URL)(
         coverageResolver,
         { ccnForProviderEntity: ccn.ccnFor },
         m6Reader,
-        noEncounters(),
+        m8Encounters,
         undefined,
         {
           async residenceAt(organizationId, patientId, asOfDate) {
@@ -689,6 +839,20 @@ describe.skipIf(!DB_URL)(
         RHC_RATE_LATE,
       ]);
       expect(snapshots.rows.every((row) => row.billing_evidence_id === RHC_EVIDENCE)).toBe(true);
+      const encounterLinks = await admin.query(
+        `SELECT le.medicaid_claim_line_id,le.encounter_id,l.line_number
+           FROM medicaid_claim_line_encounter le
+           JOIN medicaid_claim_line l ON l.id=le.medicaid_claim_line_id
+          WHERE l.medicaid_claim_id=$1 ORDER BY l.line_number`,
+        [claim.id],
+      );
+      expect(encounterLinks.rows).toEqual([
+        {
+          medicaid_claim_line_id: lines.rows[0]!.id,
+          encounter_id: RHC_ENCOUNTER,
+          line_number: 1,
+        },
+      ]);
       const ownSnapshotRead = await withOrgContext(
         handle.db,
         { organizationId: ORG, userId: USER },
@@ -830,6 +994,56 @@ describe.skipIf(!DB_URL)(
            FROM medicaid_hospice_billing_evidence WHERE id=$2`,
         [randomUUID(), RHC_EVIDENCE, verifierId, USER],
       );
+      const wrongPatientCorrectionId = randomUUID();
+      await expect(
+        admin.query(
+          `INSERT INTO medicaid_hospice_billing_evidence
+             (id,organization_id,provider_entity_id,patient_id,admission_id,admission_version,
+              canonical_payer_id,program_kind,service_state,locality_code,locality_evidence_reference,
+              locality_evidence_version,quality_reporting_applicability,quality_reporting_status,
+              quality_evidence_reference,quality_evidence_version,service_category,quantity_policy,
+              quantity_evidence_owner,billing_unit,revenue_code,hcpcs_code,coding_profile,
+              coding_evidence_reference,coding_evidence_version,billed_charge_cents_per_unit,
+              charge_evidence_reference,charge_evidence_version,verification_status,effective_from,
+              effective_to,source_document_reference,verified_at,verified_by_membership_id,
+              recorded_by_membership_id,supersedes_id,version)
+           SELECT $1,organization_id,provider_entity_id,$3,admission_id,admission_version,
+                  canonical_payer_id,program_kind,service_state,locality_code,locality_evidence_reference,
+                  locality_evidence_version,quality_reporting_applicability,quality_reporting_status,
+                  quality_evidence_reference,quality_evidence_version,service_category,quantity_policy,
+                  quantity_evidence_owner,billing_unit,revenue_code,hcpcs_code,coding_profile,
+                  coding_evidence_reference,coding_evidence_version,billed_charge_cents_per_unit,
+                  charge_evidence_reference,charge_evidence_version,'verified',effective_from,effective_to,
+                  source_document_reference,now(),$4,$5,id,version+1
+             FROM medicaid_hospice_billing_evidence WHERE id=$2`,
+          [wrongPatientCorrectionId, RHC_EVIDENCE, randomUUID(), verifierId, USER],
+        ),
+      ).rejects.toThrow(/must preserve the complete source identity/);
+      const branchCorrectionId = randomUUID();
+      await expect(
+        admin.query(
+          `INSERT INTO medicaid_hospice_billing_evidence
+             (id,organization_id,provider_entity_id,patient_id,admission_id,admission_version,
+              canonical_payer_id,program_kind,service_state,locality_code,locality_evidence_reference,
+              locality_evidence_version,quality_reporting_applicability,quality_reporting_status,
+              quality_evidence_reference,quality_evidence_version,service_category,quantity_policy,
+              quantity_evidence_owner,billing_unit,revenue_code,hcpcs_code,coding_profile,
+              coding_evidence_reference,coding_evidence_version,billed_charge_cents_per_unit,
+              charge_evidence_reference,charge_evidence_version,verification_status,effective_from,
+              effective_to,source_document_reference,verified_at,verified_by_membership_id,
+              recorded_by_membership_id,supersedes_id,version)
+           SELECT $1,organization_id,provider_entity_id,patient_id,admission_id,admission_version,
+                  canonical_payer_id,program_kind,service_state,locality_code,locality_evidence_reference,
+                  locality_evidence_version,quality_reporting_applicability,quality_reporting_status,
+                  quality_evidence_reference,quality_evidence_version,service_category,quantity_policy,
+                  quantity_evidence_owner,billing_unit,revenue_code,hcpcs_code,coding_profile,
+                  coding_evidence_reference,coding_evidence_version,billed_charge_cents_per_unit,
+                  charge_evidence_reference,charge_evidence_version,'verified',effective_from,effective_to,
+                  source_document_reference,now(),$3,$4,id,version+1
+             FROM medicaid_hospice_billing_evidence WHERE id=$2`,
+          [branchCorrectionId, RHC_EVIDENCE, verifierId, USER],
+        ),
+      ).rejects.toThrow(/history cannot branch/);
       const { validationRunId: staleRunId } = await service.validateClaim(serviceActor, claim.id);
       const staleRule = await admin.query(
         `SELECT outcome FROM medicaid_validation_result
@@ -840,8 +1054,9 @@ describe.skipIf(!DB_URL)(
       expect(staleRule.rows).toEqual([{ outcome: "fail" }]);
       const unchangedSnapshots = await admin.query(
         `SELECT count(*)::int AS n FROM medicaid_claim_line_pricing_snapshot
-          WHERE medicaid_claim_id=$1 AND billing_evidence_id=$2`,
-        [claim.id, RHC_EVIDENCE],
+          WHERE medicaid_claim_id=$1 AND billing_evidence_id=$2
+            AND medicaid_claim_line_id = ANY($3::uuid[])`,
+        [claim.id, RHC_EVIDENCE, currentLines.rows.map((row) => row.id)],
       );
       expect(unchangedSnapshots.rows[0].n).toBe(2);
 
@@ -866,6 +1081,54 @@ describe.skipIf(!DB_URL)(
       );
       expect(staleWorkerResult.rows).toEqual([{ outcome: "fail", state: "FAILED_VALIDATION" }]);
 
+      // A full-window evidence row must not conceal a separately verified, independently effective
+      // partial-overlap row. The reader is exercised against rows persisted in this isolated database.
+      const partialOverlapEvidenceId = randomUUID();
+      await admin.query(
+        `INSERT INTO medicaid_hospice_billing_evidence
+           (id,organization_id,provider_entity_id,patient_id,admission_id,admission_version,
+            canonical_payer_id,program_kind,service_state,locality_code,locality_evidence_reference,
+            locality_evidence_version,quality_reporting_applicability,quality_reporting_status,
+            quality_evidence_reference,quality_evidence_version,service_category,quantity_policy,
+            quantity_evidence_owner,billing_unit,revenue_code,hcpcs_code,coding_profile,
+            coding_evidence_reference,coding_evidence_version,billed_charge_cents_per_unit,
+            charge_evidence_reference,charge_evidence_version,verification_status,effective_from,
+            effective_to,source_document_reference,verified_at,verified_by_membership_id,
+            recorded_by_membership_id,version)
+         SELECT $1,organization_id,provider_entity_id,patient_id,admission_id,admission_version,
+                canonical_payer_id,program_kind,service_state,'synthetic-locality-overlap',
+                'evidence:synthetic-rhc/overlap-locality',locality_evidence_version+1,
+                quality_reporting_applicability,quality_reporting_status,
+                'evidence:synthetic-rhc/overlap-quality',quality_evidence_version+1,
+                service_category,quantity_policy,quantity_evidence_owner,billing_unit,revenue_code,
+                hcpcs_code,coding_profile,'evidence:synthetic-rhc/overlap-coding',
+                coding_evidence_version+1,14000,'evidence:synthetic-rhc/overlap-charge',
+                charge_evidence_version+1,'verified','2026-11-02','2026-11-03',
+                'doc:synthetic-rhc/partial-overlap',now(),$3,$4,1
+           FROM medicaid_hospice_billing_evidence WHERE id=$2`,
+        [partialOverlapEvidenceId, RHC_EVIDENCE, verifierId, USER],
+      );
+      await expect(
+        withOrgContext(handle.db, { organizationId: ORG, userId: USER }, (tx) =>
+          readMedicaidHospiceBillingEvidence(tx, {
+            organizationId: ORG,
+            providerEntityId: peId,
+            patientId: RHC_PATIENT,
+            admissionId: RHC_ADMISSION,
+            admissionVersion: 0,
+            canonicalPayerId: RHC_PAYER,
+            programKind: "managed_care",
+            serviceState: "OR",
+            serviceFrom: "2026-11-01",
+            serviceTo: "2026-11-04",
+            assessedAt: new Date().toISOString(),
+          }),
+        ),
+      ).resolves.toMatchObject({
+        status: "ambiguous",
+        reasonCode: "BILLING_EVIDENCE_OVERLAPPING_HEADS",
+      });
+
       // chartwarden_app may edit legacy lines, so the deferred integrity check also covers a pricing
       // source transition from a legacy schedule to a payer-rate policy.
       const legacyLineId = randomUUID();
@@ -875,7 +1138,7 @@ describe.skipIf(!DB_URL)(
            (id,organization_id,provider_entity_id,medicaid_claim_id,line_number,service_date,
             service_date_to,revenue_code,q_code,level_of_care,loc_period_id,units,
             rate_at_assembly_cents,state_rate_schedule_id_snapshot,charges_cents,is_rb)
-         VALUES ($1,$2,$3,$4,99,'2026-11-01','2026-11-01','0651','Q5001','RHC',$5,1,
+         VALUES ($1,$2,$3,$4,98,'2026-11-01','2026-11-01','0651','Q5001','RHC',$5,1,
                  12000,$6,15000,false)`,
         [legacyLineId, ORG, peId, claim.id, RHC_LOC, legacyScheduleId],
       );
@@ -919,6 +1182,97 @@ describe.skipIf(!DB_URL)(
       expect(legacyAfterRejectedUpdate.rows).toEqual([
         { payer_rate_policy_id_snapshot: null, state_rate_schedule_id_snapshot: legacyScheduleId },
       ]);
+
+      // A hash proves only that JSON was hashed. The app role can persist a syntactically coherent
+      // snapshot with an incorrect estimate, but authoritative revalidation must refuse to trust it.
+      const forgedLineId = randomUUID();
+      const forgedSql = new Client({ connectionString: appRoleUrl(DB_URL as string) });
+      await forgedSql.connect();
+      try {
+        await forgedSql.query("BEGIN");
+        await forgedSql.query("SELECT set_config($1,$2,true),set_config($3,$4,true)", [
+          "app.org_id",
+          ORG,
+          "app.user_id",
+          USER,
+        ]);
+        await forgedSql.query(
+          `INSERT INTO medicaid_claim_line
+             (id,organization_id,provider_entity_id,medicaid_claim_id,line_number,service_date,
+              service_date_to,revenue_code,q_code,level_of_care,loc_period_id,units,
+              rate_at_assembly_cents,state_rate_schedule_id_snapshot,payer_rate_policy_id_snapshot,
+              charges_cents,is_rb)
+           VALUES ($1,$2,$3,$4,99,'2026-11-01','2026-11-01','0651','Q5001','RHC',$5,1,
+                   12000,NULL,$6,15000,false)`,
+          [forgedLineId, ORG, peId, claim.id, RHC_LOC, RHC_RATE_EARLY],
+        );
+        await forgedSql.query(
+          `WITH source AS (
+             SELECT snapshot FROM medicaid_claim_line_pricing_snapshot
+              WHERE medicaid_claim_line_id=$1
+           ), line_identity AS (
+             SELECT jsonb_set(snapshot,'{claimLineId}',to_jsonb($2::text),true) AS value FROM source
+           ), service_span AS (
+             SELECT jsonb_set(value,'{serviceTo}',to_jsonb('2026-11-01'::text),true) AS value
+               FROM line_identity
+           ), quantity AS (
+             SELECT jsonb_set(value,'{quantity,units}','1'::jsonb,true) AS value FROM service_span
+           ), rate AS (
+             SELECT jsonb_set(value,'{rateCents}','12000'::jsonb,true) AS value FROM quantity
+           ), reimbursement AS (
+             SELECT jsonb_set(value,'{baseReimbursementCents}','12000'::jsonb,true) AS value FROM rate
+           ), charge AS (
+             SELECT jsonb_set(value,'{billedChargeCents}','15000'::jsonb,true) AS value
+               FROM reimbursement
+           ), forged AS (
+             SELECT jsonb_set(value,'{reimbursementEstimateCents}','999999'::jsonb,true) AS material
+               FROM charge
+           )
+           INSERT INTO medicaid_claim_line_pricing_snapshot
+             (organization_id,provider_entity_id,medicaid_claim_id,medicaid_claim_line_id,
+              payer_rate_policy_id,billing_evidence_id,snapshot_schema_version,assessed_at,
+              fingerprint,snapshot,created_by_membership_id)
+           SELECT $3,$4,$5,$2::uuid,$6,$7,1,(material ->> 'assessmentTimestamp')::timestamptz,
+                  encode(digest((material - 'assessmentTimestamp')::text,'sha256'),'hex'),
+                  material,$8 FROM forged`,
+          [
+            snapshots.rows[0]!.line_id,
+            forgedLineId,
+            ORG,
+            peId,
+            claim.id,
+            RHC_RATE_EARLY,
+            RHC_EVIDENCE,
+            USER,
+          ],
+        );
+        await forgedSql.query("COMMIT");
+      } catch (error) {
+        await forgedSql.query("ROLLBACK");
+        throw error;
+      } finally {
+        await forgedSql.end();
+      }
+      const forgedSnapshot = await admin.query(
+        `SELECT fingerprint,snapshot->>'reimbursementEstimateCents' AS estimate
+           FROM medicaid_claim_line_pricing_snapshot WHERE medicaid_claim_line_id=$1`,
+        [forgedLineId],
+      );
+      expect(forgedSnapshot.rows).toEqual([
+        { fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/), estimate: "999999" },
+      ]);
+      const forgedValidationResult = await service.validateClaim(serviceActor, claim.id).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      expect(forgedValidationResult).toMatchObject({
+        code: "MEDICAID_CLAIM_LINE_LOC_SNAPSHOT_STALE",
+      });
+      const afterForgedValidation = await admin.query(
+        "SELECT state FROM medicaid_claim WHERE id=$1",
+        [claim.id],
+      );
+      expect(afterForgedValidation.rows).toEqual([{ state: "FAILED_VALIDATION" }]);
     });
 
     it("migration 1537 treats nullable payer/locality keys as one rate identity", async () => {
@@ -1454,10 +1808,10 @@ describe.skipIf(!DB_URL)(
       expect(after.rows[0]).toEqual(before.rows[0]);
     });
 
-    // The persisted synthetic RHC path above proves daily pricing and duplicate-window refusal. These older
-    // fixtures remain skipped individually: September/October cadence lacks its own scoped verified evidence;
-    // 817/818 paths require replacement/void pricing lineage; Q5002 and Q5006 require qualified ALF/IPU coding;
-    // signed encounter linkage requires the owner-backed M8 evidence reader. R&B-only assembly remains separate.
+    // The persisted synthetic RHC path above also exercises the owner-backed M8 signed-encounter reader.
+    // These older fixtures remain skipped individually: September/October cadence lacks scoped verified
+    // evidence; 817/818 paths require replacement/void pricing lineage; Q5002/Q5006 require qualified ALF/IPU
+    // coding. R&B-only assembly remains separate.
     it.skip("serializes concurrent original-claim cadence on the M6 admission row (requires qualified pricing)", async () => {
       const admissionId = "40404040-4040-4040-4040-404040404040";
       const locId = "41414141-4141-4141-4141-414141414141";
@@ -1803,47 +2157,6 @@ describe.skipIf(!DB_URL)(
         [claim.id],
       );
       expect(lines.rows).toEqual([{ q_code: "Q5006" }]);
-    });
-
-    it.skip("links a signed encounter within the segment window via medicaid_claim_line_encounter (pricing required)", async () => {
-      const admissionId = "99999999-9999-9999-9999-999999999999";
-      const encounterId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
-      const svc = buildDrizzleM24WriteService(
-        handle.db,
-        NOOP_OUTBOX,
-        OPEN_CIPHER,
-        coverage,
-        ccnReader,
-        locPeriodReader([
-          {
-            id: LOC_1,
-            levelOfCare: "routine_home_care",
-            effectiveAt: new Date("2026-03-01"),
-            endedAt: new Date("2026-03-06"),
-          },
-        ]),
-        { encountersInWindow: async () => [{ encounterId, serviceDate: "2026-03-03" }] },
-      );
-      const claim = await svc.assembleClaim(
-        { organizationId: ORG, userId: USER, roles: [] },
-        {
-          patientId: PATIENT,
-          admissionId,
-          providerEntityId: peId,
-          serviceFrom: "2026-03-01",
-          serviceTo: "2026-03-05",
-          kind: "hospice_only",
-        },
-      );
-      const line = await admin.query(
-        "SELECT id FROM medicaid_claim_line WHERE medicaid_claim_id=$1 LIMIT 1",
-        [claim.id],
-      );
-      const joins = await admin.query(
-        "SELECT encounter_id FROM medicaid_claim_line_encounter WHERE medicaid_claim_line_id=$1",
-        [line.rows[0].id],
-      );
-      expect(joins.rows).toEqual([{ encounter_id: encounterId }]);
     });
 
     it("no LOC period overlapping the window → MEDICAID_NO_BILLABLE_LOC_DAYS", async () => {

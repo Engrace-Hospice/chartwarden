@@ -80,6 +80,25 @@ payer companion guide, provider enrollment, claim acceptance or production route
 - No OHA or EOCCO rate, clinical quantity, locality, quality status, authorization or claim charge was
   invented. F04 and F06 remain open; F07 is only partially addressed. Medicaid submission remains disabled.
 
+### L8A.2C advanced clinical quantity and evidence-lineage qualification — 2026-11-25
+
+- Migration 1552 extends the append-only M24 billing-evidence correction identity through patient and
+  program scope, requires version progression, and disallows correction branches. The RHC evidence reader
+  uses assessment-time lineage and refuses partial-overlap heads that the current snapshot cannot segment.
+- M8's existing signed encounter reader now projects its persisted provider, signed state, interval,
+  time-source and source version. M24 only links a record matching organization/provider/patient/admission
+  and its service window. A focused CHC quantity observer can split actual signed minutes across local
+  service days; this does not establish payer eligibility, an hourly reimbursement policy or institutional
+  units, and no CHC-priced claim line is persisted.
+- The private live M24 assembly/RLS suite passed 28 cases with 6 explicit skips; the 6 are listed with
+  prerequisites in the [L8A.2C qualification report](./M24_1075_L8A2C_ADVANCED_CLINICAL_PRICING_QUALIFICATION_20261125.md).
+  It preserves the already-qualified synthetic RHC daily persistence path but does not deliver the requested
+  generalized category snapshot architecture or positive persisted CHC/IRC/GIP pricing paths.
+- L8A.2C remains blocked. Facility RHC/Q5002, election-day buckets, qualified CHC billing, IRC continuity,
+  GIP inpatient pricing, in-home respite, production locality/quality evidence, and generalized snapshot
+  versioning remain unsupported. F04/F06/F07/F11/F14 remain open or partial. Migration 1552 is `contract`
+  and remains subject to the deployment hold; no production catalog or migration was changed.
+
 ### L8A.1 implementation and source recheck (2026-11-25)
 
 - The official [OHA FY2027 hospice rate memo](https://www.oregon.gov/oha/HSD/OHP/Announcements/Hospice-Rates1026.pdf)

@@ -5710,7 +5710,24 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           organizationId: string,
           patientId: string,
           since: string,
-        ): Promise<ReadonlyArray<{ encounterId: string; serviceDate: string }>>;
+        ): Promise<
+          ReadonlyArray<{
+            encounterId: string;
+            providerEntityId?: string | null;
+            patientId: string;
+            admissionId: string;
+            encounterType: string;
+            discipline: string;
+            serviceDate: string;
+            signedAt: string;
+            status: string;
+            evvBracketState: string;
+            startedAt?: string | null;
+            endedAt?: string | null;
+            timeSource?: "evv" | "clinician" | null;
+            sourceVersion?: number;
+          }>
+        >;
       };
       const digests = await reader.signedEncountersForPatientSince(
         organizationId,
@@ -5722,6 +5739,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         .map((d) => ({
           encounterId: d.encounterId,
           serviceDate: d.serviceDate,
+          organizationId,
+          providerEntityId: d.providerEntityId ?? null,
+          patientId: d.patientId,
+          admissionId: d.admissionId,
+          encounterType: d.encounterType,
+          discipline: d.discipline,
+          signedAt: d.signedAt,
+          status: d.status,
+          evvBracketState: d.evvBracketState,
+          startedAt: d.startedAt ?? null,
+          endedAt: d.endedAt ?? null,
+          timeSource: d.timeSource ?? null,
+          sourceVersion: d.sourceVersion,
         }));
     },
   };

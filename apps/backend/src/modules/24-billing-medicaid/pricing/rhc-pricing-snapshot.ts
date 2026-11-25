@@ -7,6 +7,7 @@ import { and, eq, lte, sql } from "drizzle-orm";
 import { m6LocClaimEndDate } from "../claim-hospice-line-snapshot";
 import { qualifyMedicaidProgramClassification } from "../medicaid-payer-classification";
 import { resolveProgramResponsibility } from "../routes/program-responsibility";
+import { resolveBillingEvidenceLineage } from "./billing-evidence-lineage";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 type BillingEvidence = typeof schema.medicaidHospiceBillingEvidence.$inferSelect;
@@ -123,7 +124,7 @@ export async function lockMedicaidRatePolicyScope(
 }
 
 async function lockHospiceBillingEvidenceScope(tx: Tx, scope: RHCPriceScope): Promise<void> {
-  const key = `m24-hospice-evidence:${scope.organizationId}:${scope.providerEntityId}:${scope.patientId}:${scope.admissionId}:${scope.canonicalPayerId}:${scope.serviceState}:RHC`;
+  const key = `m24-hospice-evidence:${scope.organizationId}:${scope.providerEntityId}:${scope.patientId}:${scope.admissionId}:${scope.canonicalPayerId}:${scope.programKind}:${scope.serviceState}:RHC`;
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
 }
 
@@ -415,8 +416,9 @@ function isoValue(value: Date | string): string {
 }
 
 /**
- * Read the effective evidence heads for exactly this patient/admission/payer. An append-only correction
- * retires its predecessor by identity; overlapping heads are an ambiguity, never a first-row choice.
+ * Read the assessment-time evidence lineage for exactly this patient/admission/payer. Corrections are
+ * applied only after verification, and the resolver refuses partial overlaps rather than allowing a
+ * full-window row to conceal a conflicting narrower row.
  */
 export async function readMedicaidHospiceBillingEvidence(
   tx: Tx,
@@ -450,20 +452,19 @@ export async function readMedicaidHospiceBillingEvidence(
   if (rows.length > 1000)
     return { status: "ambiguous", reasonCode: "BILLING_EVIDENCE_HISTORY_LIMIT_EXCEEDED" };
   if (rows.length === 0) return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_MISSING" };
-  const superseded = new Set(rows.flatMap((row) => (row.supersedesId ? [row.supersedesId] : [])));
-  const heads = rows.filter((row) => !superseded.has(row.id));
-  const covering = heads.filter(
-    (row) =>
-      row.effectiveFrom <= scope.serviceFrom &&
-      (row.effectiveTo === null || row.effectiveTo >= scope.serviceTo),
-  );
-  if (covering.length > 1) return { status: "ambiguous", reasonCode: "BILLING_EVIDENCE_AMBIGUOUS" };
-  if (covering.length !== 1)
-    return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_PERIOD_INCOMPLETE" };
-  const row = covering[0]!;
-  if (row.verificationStatus !== "verified") {
-    return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_UNVERIFIED" };
+  const lineage = resolveBillingEvidenceLineage({
+    rows,
+    serviceFrom: scope.serviceFrom,
+    serviceTo: scope.serviceTo,
+    assessedAt: scope.assessedAt,
+  });
+  if (lineage.status === "segmentation_required") {
+    // The current RHC snapshot contract has one evidence identity per assessment. The shared
+    // segmented plan is a separate implementation step; never price by selecting one segment.
+    return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_SEGMENTATION_REQUIRED" };
   }
+  if (lineage.status !== "verified") return lineage;
+  const row = lineage.row;
   if (scope.admissionVersion === undefined || row.admissionVersion !== scope.admissionVersion) {
     return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_ADMISSION_VERSION_STALE" };
   }
