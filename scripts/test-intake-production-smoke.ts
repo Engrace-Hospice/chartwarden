@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyLocalDockerDaemon } from "./intake-docker-safety";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const BASE_COMPOSE = "docker-compose.yml";
@@ -52,34 +53,20 @@ export function isolatedComposeEnvironment(host: NodeJS.ProcessEnv): NodeJS.Proc
   return env;
 }
 
-export function assertLocalDockerEndpoint(endpoint: string): void {
-  let local = endpoint.startsWith("unix://") || endpoint.startsWith("npipe://");
-  if (endpoint.startsWith("tcp://")) {
-    try {
-      const url = new URL(endpoint.replace(/^tcp:/, "http:"));
-      local = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
-    } catch {
-      local = false;
-    }
-  }
-  if (!local)
-    throw new Error("refusing to run the destructive smoke cleanup on a non-local Docker daemon");
-}
-
-function verifyLocalDockerDaemon(env: NodeJS.ProcessEnv): void {
-  if (env.DOCKER_HOST) assertLocalDockerEndpoint(env.DOCKER_HOST);
-  const raw = run("docker", ["context", "inspect"], env, { quiet: true }).stdout;
-  const contexts = JSON.parse(raw) as { Endpoints?: { docker?: { Host?: unknown } } }[];
-  const endpoint = contexts[0]?.Endpoints?.docker?.Host;
-  if (typeof endpoint !== "string")
-    throw new Error("Docker context did not expose its daemon endpoint");
-  assertLocalDockerEndpoint(endpoint);
-}
-
 export function assertSafeIntakeSmokeProject(project: string): void {
   if (!new RegExp(`^${INTAKE_SMOKE_PROJECT_PREFIX}[a-z0-9]{12}$`).test(project)) {
     throw new Error("refusing non-isolated compose project name");
   }
+}
+
+export function addCleanupFailure(primary: unknown): Error {
+  const cleanup = new Error("isolated smoke cleanup failed");
+  if (!primary) return cleanup;
+  const cause = primary instanceof Error ? primary : new Error(String(primary));
+  return new AggregateError(
+    [cause, cleanup],
+    `${cause.message}; isolated smoke cleanup also failed`,
+  );
 }
 
 function run(
@@ -186,6 +173,7 @@ export async function main(): Promise<void> {
   ] as const;
   let failure: unknown;
   let localDaemonVerified = false;
+  let passEvidence: Record<string, string> | undefined;
   try {
     verifyLocalDockerDaemon(env);
     localDaemonVerified = true;
@@ -245,16 +233,13 @@ export async function main(): Promise<void> {
       console.log(JSON.stringify({ m35PseudonymKek: 'configured' }));
     `;
     run("docker", [...compose, "exec", "-T", "worker", "bun", "-e", keyProbe], env);
-    console.log(
-      JSON.stringify({
-        result: "PASS",
-        stackId,
-        workerMetrics: "m22-doclens-intake bounded states present",
-        clamav: "clean accepted; EICAR rejected",
-        m35PseudonymKek: "configured",
-        completedAt: new Date().toISOString(),
-      }),
-    );
+    passEvidence = {
+      result: "PASS",
+      stackId,
+      workerMetrics: "m22-doclens-intake bounded states present",
+      clamav: "clean accepted; EICAR rejected",
+      m35PseudonymKek: "configured",
+    };
   } catch (error) {
     failure = error;
   } finally {
@@ -263,10 +248,12 @@ export async function main(): Promise<void> {
         quiet: true,
         allowFailure: true,
       });
-      if (cleanup.status !== 0 && !failure) failure = new Error("isolated smoke cleanup failed");
+      if (cleanup.status !== 0) failure = addCleanupFailure(failure);
     }
   }
   if (failure) throw failure;
+  if (!passEvidence) throw new Error("smoke completed without acceptance evidence");
+  console.log(JSON.stringify({ ...passEvidence, completedAt: new Date().toISOString() }));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
