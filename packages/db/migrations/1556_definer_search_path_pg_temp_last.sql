@@ -7,7 +7,8 @@
 -- generated with `SET search_path = pg_catalog, public`) the audit row would land in a temp table named audit_event, or the
 -- write would fail, instead of the append-only log. About eighty other definers share the form (the membership picker, the
 -- invitation lookup, the mdm / nppes / terminology / report writers, the partition and archive maintenance functions).
--- Migrations 1486 and 1555 already use the hardened form for the support-session functions.
+-- 1486's m34_record_support_session_close already ends in pg_temp; 1487 re-created the two support-session audit triggers
+-- without it, and this migration covers them with the rest.
 --
 -- Appending pg_temp keeps every name resolving to the same real object it resolves to today (the order of the other elements is
 -- unchanged); it only stops a temp object shadowing any of them. The set is read from the catalog, not listed: every SECURITY

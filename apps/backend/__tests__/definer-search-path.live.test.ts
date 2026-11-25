@@ -6,8 +6,8 @@
  * lookup, mdm / nppes / terminology / report writers, partition maintenance) carried the same or a similar form. That leaves
  * `pg_temp` out of the path, and Postgres then searches the session's temp schema FIRST for relations and types. A role that
  * may create temporary tables could make one named `audit_event`, so the definer function wrote its audit row into that temp
- * table (or failed on it) instead of the append-only log. 1486 and 1555 already use the hardened form for the support-session
- * functions; this suite is what keeps the rest from drifting back.
+ * table (or failed on it) instead of the append-only log. 1486's support-session close function already ended in pg_temp
+ * (1487 re-created the two support-session audit triggers without it); this suite is what keeps every definer from drifting back.
  *
  * THE RULE. Every SECURITY DEFINER function outside the system schemas (extension members excepted) has `pg_temp` as the LAST
  * element of its `search_path`. A trigger the generator emits works under a temp `audit_event` shadow and still writes the
