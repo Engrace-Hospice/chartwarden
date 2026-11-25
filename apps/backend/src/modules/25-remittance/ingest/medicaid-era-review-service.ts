@@ -84,8 +84,8 @@ export function storedAdjustments(item: AssessedAdjustments) {
     claimAdjustments: item.claimAdjustments
       .slice(0, MAX_STORED_ADJUSTMENTS)
       .map(({ groupCode, reasonCode, amountCents, quantity }) => ({
-        groupCode,
-        reasonCode,
+        groupCode: storedCode(groupCode),
+        reasonCode: storedCode(reasonCode),
         amountCents,
         quantity,
       })),
@@ -93,15 +93,28 @@ export function storedAdjustments(item: AssessedAdjustments) {
       .slice(0, MAX_STORED_ADJUSTMENTS)
       .map(({ lineIndex, groupCode, reasonCode, amountCents, quantity }) => ({
         lineIndex,
-        groupCode,
-        reasonCode,
+        groupCode: storedCode(groupCode),
+        reasonCode: storedCode(reasonCode),
         amountCents,
         quantity,
       })),
     providerAdjustments: item.providerAdjustments
       .slice(0, MAX_STORED_ADJUSTMENTS)
-      .map(({ reason, amountCents }) => ({ reason, amountCents })),
+      .map(({ reason, amountCents }) => ({ reason: storedCode(reason), amountCents })),
+    // The full counts, so the screen can say when a list was cut at MAX_STORED_ADJUSTMENTS (the amounts and the decision
+    // reflect every adjustment, not only the stored ones).
+    adjustmentCounts: {
+      claim: item.claimAdjustments.length,
+      serviceLine: item.serviceLineAdjustments.length,
+      provider: item.providerAdjustments.length,
+    },
   };
+}
+
+/** A CARC, group or PLB reason code is a short upper-case alphanumeric string; anything else is not stored verbatim. */
+const STORED_CODE = /^[A-Z0-9]{1,6}$/;
+function storedCode(value: string): string {
+  return STORED_CODE.test(value) ? value : "INVALID_CODE";
 }
 
 /**

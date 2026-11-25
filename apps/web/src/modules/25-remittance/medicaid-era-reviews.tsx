@@ -1210,6 +1210,15 @@ function ClaimObservation({
               />
             ))}
           </ul>
+          {claim.adjustmentTotals ? (
+            <p className="mer-muted">
+              Showing the first {claim.claimAdjustments.length} claim and{" "}
+              {claim.serviceLineAdjustments.length} service-line adjustments of{" "}
+              {claim.adjustmentTotals.claim} and {claim.adjustmentTotals.serviceLine} reported. The
+              decision and amounts above account for all of them; the full list is in the source
+              file.
+            </p>
+          ) : null}
         </details>
       ) : null}
       {claim.unresolvedRequirements.length ? (

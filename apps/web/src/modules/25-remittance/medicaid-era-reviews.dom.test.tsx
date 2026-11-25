@@ -594,6 +594,31 @@ describe("Medicaid ERA operator worklist and investigation", () => {
     expect(JSON.stringify(call)).not.toContain("synthetic-account-reference");
   });
 
+  it("says when the stored adjustment lists were cut short of what the source reported", async () => {
+    detailResponse = detail({
+      safeSummary: {
+        transactionSetCount: 1,
+        claims: [observation({ adjustmentCounts: { claim: 120, serviceLine: 0, provider: 0 } })],
+      },
+    });
+    mount(`/remittance/medicaid-era-reviews/${REVIEW}`);
+    expect(
+      await screen.findByText(/Showing the first 1 claim and 0 service-line adjustments of 120/),
+    ).toBeTruthy();
+  });
+
+  it("does not claim a cut when the stored adjustment lists are complete", async () => {
+    detailResponse = detail({
+      safeSummary: {
+        transactionSetCount: 1,
+        claims: [observation({ adjustmentCounts: { claim: 1, serviceLine: 0, provider: 0 } })],
+      },
+    });
+    mount(`/remittance/medicaid-era-reviews/${REVIEW}`);
+    await screen.findByText(/Adjustment observations/);
+    expect(screen.queryByText(/Showing the first/)).toBeNull();
+  });
+
   it("does not repeat transaction-level provider adjustments per claim in multi-claim evidence", async () => {
     detailResponse = detail({
       safeSummary: {

@@ -314,6 +314,7 @@ describe("the stored adjustment observations", () => {
         { lineIndex: 1, groupCode: "PR", reasonCode: "2", amountCents: 500, quantity: 2 },
       ],
       providerAdjustments: [{ reason: "WO", amountCents: -250 }],
+      adjustmentCounts: { claim: 1, serviceLine: 1, provider: 1 },
     });
     const json = JSON.stringify(stored);
     expect(json).not.toContain("SYNTHETIC-LINE-REF");
@@ -328,9 +329,30 @@ describe("the stored adjustment observations", () => {
       amountCents: index,
       quantity: null,
     }));
-    expect(
-      storedAdjustments({ ...assessed, claimAdjustments: many }).claimAdjustments,
-    ).toHaveLength(MAX_STORED_ADJUSTMENTS);
+    const stored = storedAdjustments({ ...assessed, claimAdjustments: many });
+    expect(stored.claimAdjustments).toHaveLength(MAX_STORED_ADJUSTMENTS);
+    // The full count is kept, so the screen can say the list was cut.
+    expect(stored.adjustmentCounts.claim).toBe(MAX_STORED_ADJUSTMENTS + 25);
+  });
+
+  it("does not store a code that is not a short alphanumeric string, but keeps the observation", () => {
+    const stored = storedAdjustments({
+      ...assessed,
+      claimAdjustments: [
+        {
+          groupCode: "CO",
+          reasonCode: "SYNTHETIC REASON WITH SPACES",
+          amountCents: 100,
+          quantity: null,
+        },
+      ],
+      providerAdjustments: [{ reason: "lower-case-source-text", amountCents: 5 }],
+    });
+    expect(stored.claimAdjustments).toEqual([
+      { groupCode: "CO", reasonCode: "INVALID_CODE", amountCents: 100, quantity: null },
+    ]);
+    expect(stored.providerAdjustments).toEqual([{ reason: "INVALID_CODE", amountCents: 5 }]);
+    expect(JSON.stringify(stored)).not.toContain("SPACES");
   });
 });
 

@@ -18,6 +18,12 @@ export interface PresentedClaimObservation {
   readonly providerAdjustments: readonly PresentedAdjustment[];
   readonly claimAdjustments: readonly PresentedAdjustment[];
   readonly serviceLineAdjustments: readonly PresentedAdjustment[];
+  /** How many adjustments the source reported, when any stored list was cut short of it; otherwise null. */
+  readonly adjustmentTotals: {
+    readonly claim: number;
+    readonly serviceLine: number;
+    readonly provider: number;
+  } | null;
   readonly unresolvedRequirements: readonly string[];
   readonly evidenceReferenceCount: number;
 }
@@ -99,6 +105,29 @@ function adjustments(
   return result;
 }
 
+/** The reported totals, only when they exceed what was stored (so the screen can say a list was cut); else null. */
+function cutAdjustmentTotals(
+  value: unknown,
+  stored: { claim: number; serviceLine: number; provider: number },
+): PresentedClaimObservation["adjustmentTotals"] {
+  const counts = record(value);
+  if (!counts) return null;
+  const read = (key: string, fallback: number): number => {
+    const raw = counts[key];
+    return typeof raw === "number" && Number.isSafeInteger(raw) && raw >= fallback ? raw : fallback;
+  };
+  const totals = {
+    claim: read("claim", stored.claim),
+    serviceLine: read("serviceLine", stored.serviceLine),
+    provider: read("provider", stored.provider),
+  };
+  return totals.claim > stored.claim ||
+    totals.serviceLine > stored.serviceLine ||
+    totals.provider > stored.provider
+    ? totals
+    : null;
+}
+
 /**
  * Parse only the known nonposting evaluator shape. Unknown versions, non-finite money, or an
  * altered posting flag return null so the UI never treats arbitrary JSON as trusted observations.
@@ -175,6 +204,11 @@ export function parseMedicaidEraSummary(value: unknown): PresentedSummary | null
       providerAdjustments,
       claimAdjustments,
       serviceLineAdjustments,
+      adjustmentTotals: cutAdjustmentTotals(item.adjustmentCounts, {
+        claim: claimAdjustments.length,
+        serviceLine: serviceLineAdjustments.length,
+        provider: providerAdjustments.length,
+      }),
       unresolvedRequirements: unresolved.slice(0, 50),
       evidenceReferenceCount: evidence.length,
     });
