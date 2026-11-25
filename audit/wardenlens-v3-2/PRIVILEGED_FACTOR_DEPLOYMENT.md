@@ -11,8 +11,10 @@ before merging.
    Every `docker compose` command below needs `--env-file .env.production -f compose.yml` (the image reference is
    required from that file), exactly as `deploy.sh` runs them.
 1. **Enrol second factors first.** Every staff member registers a second factor, and every `superadmin` holder registers a
-   passkey, on the Passkeys page of the web app: sign in, then Settings (bottom of the left sidebar) and Passkeys, route
-   `/security/passkeys` in the source (the only enrolment path today; the admin console has no registration screen). Confirm
+   passkey, on the Passkeys page of the web app, today `https://wardenx.chartwarden.cloud` (`app.chartwarden.cloud` is only the planned
+   rename target, `deploy/production/INFRA_RENAME_RUNBOOK.md`): sign in, then Settings (bottom of the left sidebar) and
+   Passkeys, route `/security/passkeys` (the only enrolment path today; the admin console has no registration screen). A
+   passkey is bound to the RP id (`PASSKEY_RP_ID`), so register on that host. Confirm
    first that a `superadmin` can sign in there and reach it. If nobody can enrol a passkey, do not enable enforcement: it
    locks everyone out (`packages/auth/src/identity/mfa-policy.ts`).
 2. **Turn it on.** In `/opt/chartwarden/.env.production`, add this line exactly. Only lowercase `true` enables it; `True`
