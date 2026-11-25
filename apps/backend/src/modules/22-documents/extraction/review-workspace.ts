@@ -48,7 +48,7 @@ import {
 } from "./batch-identity";
 import type { CandidateValueCipher } from "./candidate-value-cipher";
 import type { DoclingClient } from "./docling-client";
-import { VISION_VERIFIED_RISK_LEVELS } from "./intake-job";
+import { requiresVisionCheck } from "./intake-job";
 import {
   type SudContentAccess,
   type SudStatus,
@@ -331,12 +331,16 @@ const DONE_STATUSES = ["writeback_complete", "discarded"] as const;
 
 export function visionStatusOf(row: {
   riskLevel: string;
+  /** Absent ⇒ the risk tier alone decides (a diagnosis role is never re-read, whatever its tier). */
+  fieldPath?: string;
   visionVerified: boolean;
   visionDisagreement: string | null;
 }): VisionStatus {
-  if (!VISION_VERIFIED_RISK_LEVELS.has(row.riskLevel)) return "not_required";
+  // A stored disagreement always keeps the reason box: batches extracted before a field stopped being
+  // re-read still hold one, and the server refuses to accept it without a reason.
+  if (row.visionDisagreement !== null && !row.visionVerified) return "disagreed";
+  if (!requiresVisionCheck(row.riskLevel, row.fieldPath ?? "")) return "not_required";
   if (row.visionVerified) return "verified";
-  if (row.visionDisagreement !== null) return "disagreed";
   return "unverified";
 }
 
