@@ -12,7 +12,7 @@ import type { MenuEntry } from "./encounters-api";
 export type SlotSpecView = MenuEntry["slotSpecs"][string];
 
 /** Mirrors `MAX_TEXT_SLOT_LENGTH` in `@chartwarden/narrative-vocab` (the web app does not import the corpus). */
-const MAX_TEXT_LENGTH = 200;
+export const MAX_TEXT_LENGTH = 200;
 
 const humanize = (slot: string): string =>
   slot.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -26,6 +26,8 @@ interface SlotInputProps {
   readonly disabled: boolean;
   /** Overrides the spec's label (the addendum panel prefixes the statement it belongs to). */
   readonly label?: string;
+  /** The id of text beside the control that describes it (a hint the caller renders); the control's `aria-describedby` points at it. */
+  readonly describedBy?: string;
 }
 
 export function SlotInput({
@@ -35,6 +37,7 @@ export function SlotInput({
   onChange,
   disabled,
   label,
+  describedBy,
 }: SlotInputProps): JSX.Element {
   const text = label ?? spec?.label ?? humanize(slot);
 
@@ -43,6 +46,7 @@ export function SlotInput({
       <SelectField
         label={text}
         value={value}
+        aria-describedby={describedBy}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         options={[
@@ -64,6 +68,7 @@ export function SlotInput({
         max={spec.max}
         step={whole ? 1 : "any"}
         hint={`${spec.min}–${spec.max}${spec.unit ? ` ${spec.unit}` : ""}`}
+        aria-describedby={describedBy}
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
@@ -75,6 +80,7 @@ export function SlotInput({
     <TextField
       label={text}
       maxLength={MAX_TEXT_LENGTH}
+      aria-describedby={describedBy}
       value={value}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}

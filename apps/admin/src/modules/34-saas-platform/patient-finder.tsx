@@ -3,6 +3,7 @@
 // they hold an org-wide scope role, and projected to the minimum needed to tell two patients apart. Seeing a
 // patient here grants nothing; the DSAR routes still authorize the job. An actor without `patient.read` gets
 // "Lookup unavailable." from the field and falls back to typing the id.
+import { formatMrn } from "@chartwarden/types";
 import { EntityLookupField, useApiClient } from "@chartwarden/ui";
 import type { EntityLookupLoadInput, EntityLookupLoadResult } from "@chartwarden/ui";
 import { useCallback, useState } from "react";
@@ -31,7 +32,7 @@ export function PatientFinder({
           id: p.patientId,
           label: p.displayName,
           searchLabel: p.displayName,
-          description: p.medicalRecordNumber ? `MRN ${p.medicalRecordNumber}` : undefined,
+          description: p.medicalRecordNumber ? formatMrn(p.medicalRecordNumber) : undefined,
         })),
         nextCursor: null,
       };

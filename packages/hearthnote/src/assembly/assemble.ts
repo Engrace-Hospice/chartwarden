@@ -78,7 +78,9 @@ export function renderSection(
   if (tmplSection?.vitalsSummary === true) {
     sentences.push(describeRecordedVitals(context.recordedVitals));
   }
-  if (tmplSection?.adlSummary === true) sentences.push(describeRecordedAdl(context.recordedAdl));
+  if (tmplSection?.adlSummary === true) {
+    sentences.push(describeRecordedAdl(context.recordedAdl, context.priorAdl));
+  }
   if (tmplSection?.nutritionSummary === true) {
     sentences.push(describeRecordedNutrition(context.recordedNutrition));
   }

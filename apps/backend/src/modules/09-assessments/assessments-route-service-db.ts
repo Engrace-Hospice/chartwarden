@@ -57,7 +57,7 @@ import type {
   ScaleSeriesPoint,
   ScaleType,
 } from "@chartwarden/types";
-import { NotFoundError } from "@chartwarden/types";
+import { NotFoundError, esasrItemScoresFrom } from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import {
   type AssessmentSitingResolver,
@@ -67,6 +67,7 @@ import {
   dpoaConsentActiveViaSeam,
   sudRedactionRequiredViaSeam,
 } from "./capture-siting";
+import { seriesItemScores } from "./routes/series-item-scores";
 import type {
   AssessmentAbacResolver,
   AssessmentRouteService,
@@ -556,9 +557,16 @@ export function createDbAssessmentRouteService(
       .where(and(eq(POL.organizationId, org), eq(POL.scaleType, args.scaleType)))
       .limit(1);
 
+    // `esas_symptom_ge_7` keys on the single worst of the nine item scores, not the total (the detector's
+    // `maxSymptomScore`). It was never passed, so the rule could not fire. Only an ESAS-r capture with all
+    // nine items has one; the optional "other" symptom stays out, as it does for the total.
+    const esasrItems = args.scaleType === "esas_r" ? esasrItemScoresFrom(args.data) : undefined;
+    const maxSymptomScore = esasrItems ? Math.max(...Object.values(esasrItems)) : null;
+
     const findings = detectSignificantChanges({
       scaleType: args.scaleType,
       score: scored.score,
+      maxSymptomScore,
       capturedAt,
       priorSeries: priors.map((r) => ({ score: toNum(r.score), capturedAt: toIso(r.capturedAt) })),
       ...(policy?.overrides
@@ -755,6 +763,7 @@ export function createDbAssessmentRouteService(
               score: redacted ? null : toNum(r.score),
               scoreInterpretation: redacted ? null : r.scoreInterpretation,
               significantChange: false,
+              ...seriesItemScores(r.scaleType, r.data, redacted),
             };
           });
           return { scaleType, patientId, from: fromI, to: toI, points };

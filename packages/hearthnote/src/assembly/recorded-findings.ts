@@ -5,7 +5,9 @@
 // into a conclusion, and a finding that was not recorded adds nothing. Each value set has a label table typed
 // `Record<Value, string>`, so a value added to the contract does not compile until it has wording (and the
 // package tests assert every value reads distinctly). A value outside its set (stale data) is dropped, never
-// printed as a raw token.
+// printed as a raw token. The one derived statement is the ADL dependence count (and its change since the previous signed visit):
+// a count and the ADLs it names, computed by the same `scoreAdlDependence` the Functional Status panel shows, never a conclusion.
+import { scoreAdlDependence } from "@chartwarden/types";
 import { finishSentence, joinSentences } from "./grammar";
 import type {
   AdlDevice,
@@ -19,6 +21,7 @@ import type {
   NutritionSupport,
   PeriwoundCondition,
   PressureStage,
+  PriorRecordedAdl,
   RecordedAdl,
   RecordedNutrition,
   RecordedWound,
@@ -231,14 +234,73 @@ function adlItemClauses(items: RecordedAdl["items"]): string[] {
   );
 }
 
-/** `"Functional status: …"` for what was recorded, or `""` when nothing was (the caller then adds no sentence). */
-export function describeRecordedAdl(recorded: RecordedAdl | undefined): string {
+const adlNoun = (count: number): string => (count === 1 ? "ADL" : "ADLs");
+
+/** How many ADLs were assessed at a visit and how many of them the patient was dependent in. */
+interface AdlShare {
+  readonly dependent: number;
+  readonly assessed: number;
+}
+
+/**
+ * How the SHARE of assessed ADLs the patient was dependent in moved since the earlier visit: stated as a movement, never judged. A share,
+ * not a count: "1 of 1" after "2 of 2" is everything assessed both times, not a decrease. Compared by cross-multiplication
+ * (`now.dependent / now.assessed` against `before.dependent / before.assessed`), so no float rounding decides it. `undefined` when either
+ * visit assessed nothing (no share to compare).
+ */
+const adlChangeWord = (now: AdlShare, before: AdlShare): string | undefined => {
+  if (now.assessed <= 0 || before.assessed <= 0) return undefined;
+  const nowScaled = now.dependent * before.assessed;
+  const beforeScaled = before.dependent * now.assessed;
+  return nowScaled > beforeScaled
+    ? "up from"
+    : nowScaled < beforeScaled
+      ? "down from"
+      : "unchanged from";
+};
+
+/**
+ * The dependence score: "dependent in 2 of 3 assessed ADLs (bathing and dressing)", and, when an earlier visit assessed any ADL,
+ * "up from 1 of 3 assessed at the visit on 2026-11-10" (up, down or unchanged is the movement of the share dependent, not of the count).
+ * The same count the Functional Status panel shows (`scoreAdlDependence`).
+ * A count and its names only: whether the patient remains appropriate for hospice is the clinician's and the IDG's call, so the note
+ * never words a band or a determination. `undefined` when no ADL was assessed this visit (there is nothing to count).
+ */
+function adlDependenceClause(
+  items: RecordedAdl["items"],
+  prior: PriorRecordedAdl | null | undefined,
+): string | undefined {
+  const now = scoreAdlDependence(items, ADL_ITEMS);
+  if (now.assessed === 0) return undefined;
+  const names = now.dependent.map((item) => ADL_ITEM_LABEL[item]);
+  const named = names.length === 0 ? "" : ` (${listOf(names)})`;
+  const head = `dependent in ${now.dependent.length} of ${now.assessed} assessed ${adlNoun(now.assessed)}${named}`;
+  const before = scoreAdlDependence(prior?.items, ADL_ITEMS);
+  const change = adlChangeWord(
+    { dependent: now.dependent.length, assessed: now.assessed },
+    { dependent: before.dependent.length, assessed: before.assessed },
+  );
+  if (prior == null || change === undefined) return head;
+  const on = typeof prior.on === "string" ? prior.on.trim() : "";
+  const visit = on === "" ? "the previous visit" : `the visit on ${on}`;
+  return `${head}, ${change} ${before.dependent.length} of ${before.assessed} assessed at ${visit}`;
+}
+
+/**
+ * `"Functional status: …"` for what was recorded, or `""` when nothing was (the caller then adds no sentence). `prior` is the ADL
+ * levels of the patient's previous signed visit: given, and when it assessed any ADL, the dependence score states the change since then.
+ */
+export function describeRecordedAdl(
+  recorded: RecordedAdl | undefined,
+  prior?: PriorRecordedAdl | null,
+): string {
   if (recorded === undefined) return "";
   const bladder = labelOf(CONTINENCE_LABEL, recorded.bladder);
   const bowel = labelOf(CONTINENCE_LABEL, recorded.bowel);
   const devices = labelsOf(ADL_DEVICE_LABEL, recorded.devices);
   const segments = present([
     adlItemClauses(recorded.items).join(", ") || undefined,
+    adlDependenceClause(recorded.items, prior),
     bladder === undefined ? undefined : `bladder ${bladder}`,
     bowel === undefined ? undefined : `bowel ${bowel}`,
     devices.length === 0 ? undefined : `uses ${listOf(devices)}`,

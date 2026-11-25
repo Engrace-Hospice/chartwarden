@@ -1,3 +1,4 @@
+import { mrnValue } from "@chartwarden/types";
 import {
   Button,
   ConsentBadge,
@@ -473,7 +474,7 @@ function PatientQuickSummary({
           </span>
         </Field>
         <Field label="MRN">
-          <span className="wx-data-md">{patient.mrn}</span>
+          <span className="wx-data-md">{mrnValue(patient.mrn)}</span>
         </Field>
         <Field label="MBI">
           {loading ? (

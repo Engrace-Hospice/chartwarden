@@ -102,9 +102,9 @@ const EXPECTED = {
   lpnInterventions:
     "Care-plan intervention performed: Repositioning schedule review. Morphine sulfate was started on 2026-01-12.",
   plan: "Care-plan goal: Pain controlled at an acceptable level.",
-  adl: "Functional status: needed limited assistance with bathing and dressing.",
+  adl: "Functional status: needed limited assistance with bathing and dressing; dependent in 2 of 2 assessed ADLs (bathing and dressing).",
   adlChanged:
-    "Functional status: needed limited assistance with dressing, extensive assistance with bathing.",
+    "Functional status: needed limited assistance with dressing, extensive assistance with bathing; dependent in 2 of 2 assessed ADLs (bathing and dressing).",
   bathing: "Care-plan intervention performed: Assist with bathing and grooming.",
   reposition: "Care-plan intervention performed: Reposition every two hours.",
   mouthCare: "Care-plan intervention performed: Provide mouth care.",
@@ -218,6 +218,8 @@ interface VisitOptions {
   readonly type?: string;
   readonly discipline: Kind | "rn";
   readonly author?: Member;
+  /** The visit's service date (default `SERVICE_DATE`, one day before the documentation day: not late). */
+  readonly serviceDate?: string;
   /** A previous signed visit of the same discipline (the window the medication changes are read over). */
   readonly previous?: boolean;
   readonly scenario?: Partial<Pick<Scenario, "goals" | "interventions" | "changes" | "failing">>;
@@ -400,7 +402,7 @@ describe.skipIf(!DB_URL)(
       }
       const encounterId = await insertEncounter(
         "draft",
-        SERVICE_DATE,
+        over.serviceDate ?? SERVICE_DATE,
         over.type ?? (kind === "chha" ? "chha_visit" : "routine_visit"),
       );
       if (kind !== "chha") {
@@ -1647,6 +1649,71 @@ describe.skipIf(!DB_URL)(
           expect((await putSection(v, sectionId, "confirmed", seen)).statusCode).toBe(200);
         },
       );
+    });
+
+    // ===============================================================================================================
+    // 12. a late note's reason, through the real finalize route
+    // ===============================================================================================================
+    describe("12. POST /encounters/:encounterId/finalize of a late note carries the author's own reason", () => {
+      /** Three days before the 2026-01-16 documentation day: past the 24h `normal` ceiling, inside `late_entry`. */
+      const LATE_SERVICE_DATE = "2026-01-13";
+      const LATE_ENTRY_REASON_MIN_CHARS = 40;
+      /** A reason of exactly `length` characters that neither starts nor ends in whitespace. */
+      const reasonOf = (length: number): string => "late-".repeat(20).slice(0, length);
+      const lateStateOf = async (v: Visit) =>
+        one(
+          await rows<{
+            status: string;
+            late_entry_tier: string;
+            late_entry_reason: string | null;
+          }>("SELECT status, late_entry_tier, late_entry_reason FROM encounter WHERE id = $1", [
+            v.encounterId,
+          ]),
+        );
+
+      it("no reason is 422 LATE_ENTRY_REASON_REQUIRED, one character short of the minimum is refused, the minimum finalizes and is stored", async () => {
+        const v = await seedVisit({ discipline: "chha", serviceDate: LATE_SERVICE_DATE });
+        expect((await putAdl(v, AIDE_ADL_BODY)).statusCode).toBe(200);
+        await ownWords(v, "chha");
+        await confirmDrafted(v);
+
+        const missing = await finalize(v);
+        expect(missing.statusCode, missing.body).toBe(422);
+        expect(missing.json().error.code).toBe("LATE_ENTRY_REASON_REQUIRED");
+
+        const short = await post(encounterUrl(v, "/finalize"), v.headers, {
+          lateEntryReason: reasonOf(LATE_ENTRY_REASON_MIN_CHARS - 1),
+        });
+        expect(short.statusCode, short.body).toBe(422);
+        expect(short.json().error.code).toBe("VALIDATION_FAILED");
+        expect(short.json().error.details).toMatchObject([{ field: "lateEntryReason" }]);
+        expect(await lateStateOf(v)).toEqual({
+          status: "draft",
+          late_entry_tier: "normal",
+          late_entry_reason: null,
+        });
+
+        const accepted = await post(encounterUrl(v, "/finalize"), v.headers, {
+          lateEntryReason: reasonOf(LATE_ENTRY_REASON_MIN_CHARS),
+        });
+        expect(accepted.statusCode, accepted.body).toBe(200);
+        expect(await lateStateOf(v)).toEqual({
+          status: "finalized",
+          late_entry_tier: "late_entry",
+          late_entry_reason: reasonOf(LATE_ENTRY_REASON_MIN_CHARS),
+        });
+      });
+
+      it("a note documented the day after the visit needs no reason", async () => {
+        const v = await seedVisit({ discipline: "chha" });
+        expect((await putAdl(v, AIDE_ADL_BODY)).statusCode).toBe(200);
+        await finalized(v, "chha");
+        expect(await lateStateOf(v)).toEqual({
+          status: "finalized",
+          late_entry_tier: "normal",
+          late_entry_reason: null,
+        });
+      });
     });
   },
 );

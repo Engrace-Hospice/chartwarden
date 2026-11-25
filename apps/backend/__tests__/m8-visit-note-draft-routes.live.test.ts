@@ -6405,6 +6405,51 @@ describe.skipIf(!DB_URL)(
           });
         });
       });
+
+      it("the dyspnea assessment statements (nv.sym.dyspnea_*) save through the real service, are stored and state exactly what was chosen; a score of 11 and an unknown choice are refused with nothing stored", async () => {
+        const f = await seedEncounter(orgs.A);
+        const save = (
+          entries: readonly { code: string; params?: Record<string, string | number> }[],
+        ) =>
+          svc.updateSelections(
+            ORG_A,
+            f.encounterId,
+            0,
+            { sections: [{ sectionId: "symptom_management", entries: [...entries] }] },
+            orgs.A.author.membershipId,
+          );
+        const storedSelections = () =>
+          rows<{ selections: { sections: { entries: { code: string; params?: unknown }[] }[] } }>(
+            "SELECT selections FROM hearthnote_selection WHERE encounter_id = $1",
+            [f.encounterId],
+          );
+
+        // Refused the way an out-of-range `nv.resp.dyspnea` slot is on the encounter write path: 422 INVALID_SELECTION, nothing stored.
+        await expect(
+          save([{ code: "nv.sym.dyspnea_score", params: { dyspnea_score: 11 } }]),
+        ).rejects.toMatchObject({ statusCode: 422, code: "INVALID_SELECTION" });
+        await expect(
+          save([{ code: "nv.sym.dyspnea_setting", params: { dyspnea_setting: "sometimes" } }]),
+        ).rejects.toMatchObject({ statusCode: 422, code: "INVALID_SELECTION" });
+        expect(await storedSelections()).toEqual([]);
+
+        const entries: { code: string; params: Record<string, string | number> }[] = [
+          { code: "nv.sym.dyspnea_impact", params: { ambulation_distance: "25 feet" } },
+          { code: "nv.sym.dyspnea_score", params: { dyspnea_score: 7 } },
+          { code: "nv.sym.dyspnea_setting", params: { dyspnea_setting: "on exertion" } },
+          { code: "nv.sym.dyspnea_response", params: { dyspnea_response: "no relief" } },
+        ];
+        const saved = await save(entries);
+
+        const stored = await storedSelections();
+        expect(stored).toHaveLength(1);
+        expect(stored[0]?.selections.sections.flatMap((section) => section.entries)).toEqual(
+          entries,
+        );
+        expect(saved.layer1Preview).toContain("Dyspnea intensity: 7 of 10");
+        expect(saved.layer1Preview).toContain("Dyspnea occurs on exertion");
+        expect(saved.layer1Preview).toContain("Dyspnea response to measures: no relief");
+      });
     });
   },
 );
