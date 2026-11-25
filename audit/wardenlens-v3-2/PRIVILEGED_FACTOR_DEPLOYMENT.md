@@ -29,11 +29,13 @@ before merging.
    docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate api
    ```
 
-4. **Verify the variable.** It must print `MFA enforcement enabled`:
+4. **Verify the variable.** The api image is distroless (no `sh`, no `printenv`), so `exec` cannot run; read the container's
+   configured environment instead. It must print `MFA enforcement enabled`, and it prints no other variable:
 
    ```sh
-   docker compose --env-file .env.production -f compose.yml exec -T api sh -lc \
-     'test "$CHARTWARDEN_MFA_ENFORCEMENT" = "true" && echo "MFA enforcement enabled"'
+   docker inspect "$(docker compose --env-file .env.production -f compose.yml ps -q api)" \
+     --format '{{range .Config.Env}}{{println .}}{{end}}' \
+     | grep -qx 'CHARTWARDEN_MFA_ENFORCEMENT=true' && echo "MFA enforcement enabled"
    ```
 
 5. **Check by hand, as a `superadmin`.** A password-only sign-in must be refused. A passkey sign-in must then start a
