@@ -58,7 +58,7 @@ describe("deploy/production SPA security headers (SECURITY_HARDENING §9.6)", ()
     );
   });
 
-  it("the real-environment build can pin img-src/frame-src to the storage origin, and the demo default is unchanged", () => {
+  it("the real-environment build can pin img-src/frame-src/connect-src to the storage origin, and the demo default is unchanged", () => {
     const dockerfile = read("Dockerfile.web");
     expect(dockerfile).toContain('ARG CSP_STORAGE_ORIGIN=""');
     // The sed target must exist in the snippet: both directives end in ` https:;`.

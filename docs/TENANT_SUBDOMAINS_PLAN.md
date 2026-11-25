@@ -239,7 +239,7 @@ answers 401 `SESSION_CLASS_MISMATCH` for a portal-class session outside `/api/v1
 asset 404, `/portal` 308). `nginx/chartwarden-tenant.conf` is the apex + wildcard vhost (overwrites `X-Forwarded-Host`).
 `.env.tenant.example` + an optional `TENANT_BASE_DOMAIN` mode in `bootstrap-vps.sh`, `smoke.sh` tenant probes, and
 `deploy/production/TENANT_EDGE.md` (runbook). Open: the real-environment release workflow (the build arg is baked, so it
-needs its own image build), and the CSP tightening, both now done: the `CSP_STORAGE_ORIGIN` build arg in `Dockerfile.web` narrows `img-src`/`frame-src`
+needs its own image build), and the CSP tightening, both now done: the `CSP_STORAGE_ORIGIN` build arg in `Dockerfile.web` narrows `img-src`/`frame-src`/`connect-src`
 to the `storage.` host in the tenant image; the demo image keeps the shared snippet.
 
 ### Phase 6 — provisioning (PR B)
