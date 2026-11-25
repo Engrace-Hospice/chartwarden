@@ -60,7 +60,7 @@ evidence versions, locality/quality and local coding evidence, observed and qual
 conversion and rounding, ceilings, estimate, independently sourced charge and fingerprint. It contains
 no raw note text or demographics. Reimbursement is not substituted for the billed charge.
 
-Migration `1555_m24_chc_local_pricing_preparations.sql` is forward-only and `contract`. It adds an
+Migration `1557_m24_chc_local_pricing_preparations.sql` is forward-only and `contract`. It adds an
 explicit CHC maximum-minute bound (a per-hour rate only, at most the pricing engine's 1,440-minute day, never
 below its minimum), expands only the bounded CHC local evidence profile, and creates the append-only
 preparation table with organization/provider scope, RLS and FORCE RLS, audit insertion, and application
@@ -93,7 +93,7 @@ in force; a local CHC preparation cannot satisfy institutional format.
 
 | Check | Result |
 | --- | --- |
-| Private PostgreSQL `test:m24:claim-line-assembly:live` | Passed on the final tree (see the PR for the counts; 4 tests are skipped, as before). Fresh schema applied the full migration chain through 1555. The positive path used the actual M5/M6/M8/M1/M40/M24 readers, existing pricing engine and preparation service. |
+| Private PostgreSQL `test:m24:claim-line-assembly:live` | Passed on the final tree (see the PR for the counts; 4 tests are skipped, as before). Fresh schema applied the full migration chain through 1557. The positive path used the actual M5/M6/M8/M1/M40/M24 readers, existing pricing engine and preparation service. |
 | CHC live positive | Passed: persisted version 1; 540 observed/qualified minutes; 45,000-cent estimate; 63,000-cent independent billed charge; current manual and background revalidation; institutional qualification false. Concurrent identical preparation deduplicated to one record. |
 | CHC live negative/integrity | Passed: scope, date, admission and membership refusals with their stable codes; an uppercase id resolved to the same preparation; a changed M8 encounter source version; a corrected billing-evidence row that makes the current version stale (it verified as current immediately before); a corrected rate whose superseded predecessor sorts first (the head is selected); RLS/provider ABAC denial; SQL update refusal; a privileged stale-hash tamper followed by a new immutable version (without rewriting the prior row); and a correctly re-fingerprinted version whose only change from the current one is its amounts, withheld by source-grounded verification. The job waits at the claim rows, holding neither the admission row nor an advisory lock, while another transaction holds a claim. No claim, submission, READY event or financial outbox was created. The guard's own refusals are pinned in the `m24-rls-isolation` live suite. |
 | Focused Vitest (M1 site reader, quantity, qualification, M24 ABAC, the preparation route, shared pricing) and the web DOM tests for the preparation panel | Passed on the final tree (see the PR for the counts). The panel's tests pin the amounts-only-when-current rule, the refusal wording, a response that arrives after the preview changed, and the add-on gate. |

@@ -521,7 +521,7 @@ describe.skipIf(!DB_URL)(
     }
 
     /** Seed one full M24 chain for `org` as superuser (RLS + grants bypassed). `n` distinguishes the rows. */
-    // ── 1555 — the local home-CHC hourly preparation: one hourly evidence row, one per-hour rate that agree on payer
+    // ── 1557 — the local home-CHC hourly preparation: one hourly evidence row, one per-hour rate that agree on payer
     // and locality, and the snapshot the application would write for one 540-minute service day.
     const CHC_DAY = "2026-01-05";
     type ChcChain = {
@@ -936,13 +936,13 @@ describe.skipIf(!DB_URL)(
         expect(block).not.toMatch(/pg_has_role/i);
         expect(block).not.toMatch(/IS NULL/i);
       }
-      // The later migrations that add tenant tables: 1535 and 1551 (two each), 1538, 1539 and 1555 (one each).
+      // The later migrations that add tenant tables: 1535 and 1551 (two each), 1538, 1539 and 1557 (one each).
       const laterMigrations = [
         ["1535_m24_payer_program_readiness.sql", 2],
         ["1538_m24_payer_authorization_evidence.sql", 1],
         ["1539_m24_payer_rate_policy_evidence.sql", 1],
         ["1551_m24_immutable_hospice_pricing_snapshots.sql", 2],
-        ["1555_m24_chc_local_pricing_preparations.sql", 1],
+        ["1557_m24_chc_local_pricing_preparations.sql", 1],
       ] as const;
       for (const [file, expected] of laterMigrations) {
         const sql = readFileSync(join(MIGRATIONS_DIR, file), "utf8");
@@ -2308,10 +2308,10 @@ describe.skipIf(!DB_URL)(
       ).rejects.toThrow(/medicaid_state_rate_schedule_no_rb/);
     });
 
-    // ── 1555 — the CHC preparation rests on the same append-only lineage as the RHC snapshot, and its own guard is the
+    // ── 1557 — the CHC preparation rests on the same append-only lineage as the RHC snapshot, and its own guard is the
     // backstop for a writer that holds INSERT. Each refusal changes ONE fact of a chain that is otherwise valid
     // (the seeded preparations are the control), and a refusal is a 23514, never a cast error or a silent pass.
-    describe("CHC preparation guard (1555)", () => {
+    describe("CHC preparation guard (1557)", () => {
       const refusedBy = (message: RegExp) => ({
         code: "23514",
         message: expect.stringMatching(message),
