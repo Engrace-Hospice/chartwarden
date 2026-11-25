@@ -1,8 +1,12 @@
 -- compat: contract
 -- L8A.1: represent rate methodology explicitly, support the open-ended final election-day bucket,
 -- and permit distinct quality-reporting variants without weakening exact identity uniqueness.
--- Existing rows receive unqualified defaults and remain ineligible for pricing until a source-backed
--- correction/replacement is recorded. No historic rate or claim amount is promoted or rewritten.
+-- Existing rows receive unqualified defaults and remain ineligible for pricing. They are never
+-- promoted: quality_reporting_applicability and quality_reporting_status are part of a correction's
+-- identity (the supersession guard below), and a verified row may carry neither 'unqualified' nor
+-- 'unknown' for them, so a legacy row cannot be corrected into a verified one. A source-backed rate is
+-- recorded as a NEW identity; the legacy row stays as an unpriceable historic record. No historic rate
+-- or claim amount is promoted or rewritten.
 ALTER TABLE medicaid_payer_rate_policy
   ADD COLUMN pricing_method text NOT NULL DEFAULT 'unqualified',
   ADD COLUMN quantity_conversion_method text NOT NULL DEFAULT 'unqualified',
@@ -50,7 +54,9 @@ ALTER TABLE medicaid_payer_rate_policy
      quality_reporting_applicability, quality_reporting_status, effective_from, supersedes_id);--> statement-breakpoint
 
 -- NOT VALID preserves historical source records with the new unqualified defaults while enforcing the
--- complete methodology contract for every newly inserted or changed-to-verified row.
+-- complete methodology contract for every newly inserted or changed-to-verified row. Shape:
+-- verified => (not respite AND qualified enums AND (ceiling) AND (pricing method) AND (OHA FFS rules)).
+-- Every group is closed before the next AND, so the OHA rules bind per_day and per_hour rows too.
 ALTER TABLE medicaid_payer_rate_policy
   ADD CONSTRAINT medicaid_payer_rate_policy_verified_methodology CHECK (
     verification_status <> 'verified' OR
@@ -73,7 +79,7 @@ ALTER TABLE medicaid_payer_rate_policy
           ((unit_basis = 'per_day' AND quantity_conversion_method = 'daily_units' AND minimum_duration_method = 'not_applicable') OR
            (unit_basis = 'per_hour' AND quantity_conversion_method IN ('hourly_prorated_minutes', 'hourly_each_hour_or_part')
             AND minimum_duration_method IN ('not_required', 'minimum_minutes')))
-      ) AND (
+      )) AND (
         source_kind <> 'oha_ffs_schedule' OR
         (program_kind = 'oregon_ffs' AND charge_ceiling_method = 'lower_of_rate_and_usual_charge'
           AND charge_ceiling_boundary = 'service_day' AND quality_reporting_applicability = 'required' AND
@@ -81,7 +87,7 @@ ALTER TABLE medicaid_payer_rate_policy
             (pricing_method = 'per_hour' AND unit_basis = 'per_hour'
               AND quantity_conversion_method = 'hourly_each_hour_or_part'
               AND minimum_duration_method = 'minimum_minutes' AND minimum_clinical_minutes = 480)))
-      )))
+      ))
   ) NOT VALID;--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION guard_medicaid_payer_rate_policy_supersession() RETURNS trigger

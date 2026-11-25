@@ -592,6 +592,7 @@ describe.skipIf(!DB_URL)(
         effectiveFrom: string,
         effectiveTo: string,
         cents: number,
+        locality = "synthetic-locality-lineage",
       ) => {
         await admin.query(
           `INSERT INTO medicaid_payer_rate_policy
@@ -602,11 +603,11 @@ describe.skipIf(!DB_URL)(
               quality_reporting_applicability,quality_reporting_status,source_kind,verification_status,
               effective_from,effective_to,source_document_ref,verified_at,verified_by_membership_id,
               recorded_by_membership_id,version)
-           VALUES ($1,$2,$3,$4,'managed_care','OR','synthetic-locality-lineage','RHC','per_day',$5,
+           VALUES ($1,$2,$3,$4,'managed_care','OR',$10,'RHC','per_day',$5,
                    'per_day','daily_units','not_applicable',1,'exact_only','service_day','none',
                    'not_applicable','not_required','not_applicable','cco_contract','verified',$6,$7,
                    'doc:synthetic-rhc/rate','2026-01-01T00:00:00Z',$8,$9,1)`,
-          [id, ORG, peId, RHC_PAYER, cents, effectiveFrom, effectiveTo, verifierId, USER],
+          [id, ORG, peId, RHC_PAYER, cents, effectiveFrom, effectiveTo, verifierId, USER, locality],
         );
       };
       await rateInsert(RHC_RATE_EARLY, "2026-11-01", "2026-11-02", 12000);
@@ -913,7 +914,21 @@ describe.skipIf(!DB_URL)(
           tx.execute(sql`UPDATE medicaid_claim_line_pricing_snapshot
             SET fingerprint=${"0".repeat(64)} WHERE medicaid_claim_id=${claim.id}`),
       );
-      await expect(appSnapshotUpdate).rejects.toBeDefined();
+      // chartwarden_app holds SELECT and INSERT only on the snapshot table: the refusal is the missing UPDATE
+      // privilege (42501), not an RLS or trigger error. drizzle wraps the driver error, so unwrap `cause`.
+      const appSnapshotUpdateError = await appSnapshotUpdate.then(
+        () => null,
+        (error: unknown) => error,
+      );
+      expect(appSnapshotUpdateError).not.toBeNull();
+      expect(
+        (appSnapshotUpdateError as { cause?: unknown }).cause ?? appSnapshotUpdateError,
+      ).toMatchObject({
+        code: "42501",
+        message: expect.stringContaining(
+          "permission denied for table medicaid_claim_line_pricing_snapshot",
+        ),
+      });
       await expect(
         admin.query(
           `UPDATE medicaid_claim_line_pricing_snapshot SET fingerprint=$2 WHERE medicaid_claim_line_id=$1`,
@@ -971,6 +986,7 @@ describe.skipIf(!DB_URL)(
       expect(backgroundFormatRule.rows).toEqual([{ outcome: "fail" }]);
       expect(backgroundEvents).not.toContain("m24.medicaid_claim.ready_for_submission");
 
+      const correctedEvidenceId = randomUUID();
       await admin.query(
         `INSERT INTO medicaid_hospice_billing_evidence
            (id,organization_id,provider_entity_id,patient_id,admission_id,admission_version,
@@ -992,7 +1008,7 @@ describe.skipIf(!DB_URL)(
                 charge_evidence_version,'verified',effective_from,effective_to,
                 'doc:synthetic-rhc/billing-profile-correction',now(),$3,$4,id,version+1
            FROM medicaid_hospice_billing_evidence WHERE id=$2`,
-        [randomUUID(), RHC_EVIDENCE, verifierId, USER],
+        [correctedEvidenceId, RHC_EVIDENCE, verifierId, USER],
       );
       const wrongPatientCorrectionId = randomUUID();
       await expect(
@@ -1184,7 +1200,18 @@ describe.skipIf(!DB_URL)(
       ]);
 
       // A hash proves only that JSON was hashed. The app role can persist a syntactically coherent
-      // snapshot with an incorrect estimate, but authoritative revalidation must refuse to trust it.
+      // snapshot with an incorrect estimate, but authoritative revalidation must refuse to trust it. The insert
+      // guard refuses a snapshot of a superseded evidence row, so the forgery names the corrected head (its
+      // locality, version and verification instant) and is assessed after that correction was verified. A rate
+      // must share the evidence locality, so the corrected locality gets its own verified rate.
+      const correctedRateId = randomUUID();
+      await rateInsert(
+        correctedRateId,
+        "2026-11-01",
+        "2026-11-04",
+        12000,
+        "synthetic-locality-corrected",
+      );
       const forgedLineId = randomUUID();
       const forgedSql = new Client({ connectionString: appRoleUrl(DB_URL as string) });
       await forgedSql.connect();
@@ -1204,7 +1231,7 @@ describe.skipIf(!DB_URL)(
               charges_cents,is_rb)
            VALUES ($1,$2,$3,$4,99,'2026-11-01','2026-11-01','0651','Q5001','RHC',$5,1,
                    12000,NULL,$6,15000,false)`,
-          [forgedLineId, ORG, peId, claim.id, RHC_LOC, RHC_RATE_EARLY],
+          [forgedLineId, ORG, peId, claim.id, RHC_LOC, correctedRateId],
         );
         await forgedSql.query(
           `WITH source AS (
@@ -1224,15 +1251,28 @@ describe.skipIf(!DB_URL)(
            ), charge AS (
              SELECT jsonb_set(value,'{billedChargeCents}','15000'::jsonb,true) AS value
                FROM reimbursement
+           ), current_evidence AS (
+             SELECT jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(value,
+                      '{payerRatePolicyId}',to_jsonb($6::text),true),
+                      '{billingEvidenceId}',to_jsonb($7::text),true),
+                      '{billingEvidenceVersion}','2'::jsonb,true),
+                      '{locality,code}',to_jsonb('synthetic-locality-corrected'::text),true),
+                      '{locality,evidenceReference}',
+                      to_jsonb('evidence:synthetic-rhc/locality-correction'::text),true),
+                      '{locality,evidenceVersion}','2'::jsonb,true),
+                      '{assessmentTimestamp}',
+                      to_jsonb(to_char(clock_timestamp() AT TIME ZONE 'UTC',
+                                       'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),true) AS value
+               FROM charge
            ), forged AS (
              SELECT jsonb_set(value,'{reimbursementEstimateCents}','999999'::jsonb,true) AS material
-               FROM charge
+               FROM current_evidence
            )
            INSERT INTO medicaid_claim_line_pricing_snapshot
              (organization_id,provider_entity_id,medicaid_claim_id,medicaid_claim_line_id,
               payer_rate_policy_id,billing_evidence_id,snapshot_schema_version,assessed_at,
               fingerprint,snapshot,created_by_membership_id)
-           SELECT $3,$4,$5,$2::uuid,$6,$7,1,(material ->> 'assessmentTimestamp')::timestamptz,
+           SELECT $3,$4,$5,$2::uuid,$6::uuid,$7::uuid,1,(material ->> 'assessmentTimestamp')::timestamptz,
                   encode(digest((material - 'assessmentTimestamp')::text,'sha256'),'hex'),
                   material,$8 FROM forged`,
           [
@@ -1241,8 +1281,8 @@ describe.skipIf(!DB_URL)(
             ORG,
             peId,
             claim.id,
-            RHC_RATE_EARLY,
-            RHC_EVIDENCE,
+            correctedRateId,
+            correctedEvidenceId,
             USER,
           ],
         );
@@ -2071,6 +2111,9 @@ describe.skipIf(!DB_URL)(
       const residenceReader = {
         async residenceAt() {
           return { kind: "facility" as const, facilityId };
+        },
+        async residencesBetweenInTransaction() {
+          return [];
         },
       };
       const svc = buildDrizzleM24WriteService(

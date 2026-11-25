@@ -205955,10 +205955,12 @@
                       },
                       "serviceFrom": {
                         "format": "date",
+                        "description": "The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).",
                         "type": "string"
                       },
                       "serviceTo": {
                         "format": "date",
+                        "description": "The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).",
                         "type": "string"
                       },
                       "kind": {
@@ -205994,10 +205996,12 @@
                       },
                       "serviceFrom": {
                         "format": "date",
+                        "description": "The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).",
                         "type": "string"
                       },
                       "serviceTo": {
                         "format": "date",
+                        "description": "The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).",
                         "type": "string"
                       },
                       "kind": {
@@ -206037,10 +206041,12 @@
                       },
                       "serviceFrom": {
                         "format": "date",
+                        "description": "The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).",
                         "type": "string"
                       },
                       "serviceTo": {
                         "format": "date",
+                        "description": "The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).",
                         "type": "string"
                       },
                       "kind": {
@@ -211146,7 +211152,15 @@
                                 ]
                               },
                               "actualBilledChargeCents": {
-                                "type": "null"
+                                "anyOf": [
+                                  {
+                                    "description": "Integer cents (D8)",
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
                               },
                               "reasonCodes": {
                                 "type": "array",
@@ -211169,7 +211183,15 @@
                           ]
                         },
                         "actualBilledChargeTotalCents": {
-                          "type": "null"
+                          "anyOf": [
+                            {
+                              "description": "Integer cents (D8)",
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         },
                         "submissionAvailable": {
                           "const": false,
@@ -211226,10 +211248,12 @@
                   },
                   "serviceFrom": {
                     "format": "date",
+                    "description": "The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).",
                     "type": "string"
                   },
                   "serviceTo": {
                     "format": "date",
+                    "description": "The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).",
                     "type": "string"
                   }
                 }

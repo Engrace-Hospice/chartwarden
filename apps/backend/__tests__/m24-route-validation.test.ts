@@ -1,3 +1,4 @@
+import type { DbClient } from "@chartwarden/db";
 import { ValidationError } from "@chartwarden/types";
 import Fastify from "fastify";
 // apps/backend/__tests__/m24-route-validation.test.ts — M24 (§4.2) request-validation conformance.
@@ -34,6 +35,7 @@ import {
   parse,
   parseQuery,
 } from "../src/modules/24-billing-medicaid/routes/m24-typebox";
+import { buildDrizzleM24WriteService } from "../src/modules/24-billing-medicaid/routes/write-service-drizzle";
 
 const UUID_A = "a0000000-0000-4000-8000-000000000001";
 const UUID_B = "b0000000-0000-4000-8000-000000000002";
@@ -248,6 +250,42 @@ describe("M24 assembly preview read audit", () => {
     expect(auditConfig).not.toHaveProperty("none");
     expect(previewPreHandlerCount).toBe(3); // permission + provider scope + M5 patient scope
     await app.close();
+  });
+});
+
+describe("M24 assembly service-window cap at the service boundary", () => {
+  // The cap is checked before any reader or database access, so no collaborator is bound: reaching
+  // one would throw a different error and fail these assertions.
+  const service = buildDrizzleM24WriteService({} as DbClient);
+  const actor = { organizationId: UUID_A, userId: UUID_B, roles: ["billing_manager"] };
+  const openEnded = {
+    patientId: UUID_A,
+    admissionId: UUID_B,
+    providerEntityId: UUID_C,
+    serviceFrom: "2026-07-01",
+    serviceTo: "9999-12-31",
+  };
+
+  it("refuses an open-ended preview window with a stable validation code", async () => {
+    const preview = service.previewClaimAssembly;
+    expect(preview).toBeDefined();
+    const failure = await preview!.call(service, actor, openEnded).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ValidationError);
+    expect(failure).toMatchObject({ details: [{ code: "MEDICAID_SERVICE_SPAN_TOO_LONG" }] });
+  });
+
+  it("refuses an open-ended assembly window before touching coverage", async () => {
+    const failure = await service
+      .assembleClaim(actor, { ...openEnded, kind: "hospice_only" })
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ValidationError);
+    expect(failure).toMatchObject({ details: [{ code: "MEDICAID_SERVICE_SPAN_TOO_LONG" }] });
+  });
+
+  it("documents the cap on both request schemas", () => {
+    const description = (schema: { properties: { serviceTo: { description?: string } } }) =>
+      schema.properties.serviceTo.description;
+    expect(description(AssemblyPreviewBody)).toContain("366 days");
   });
 });
 

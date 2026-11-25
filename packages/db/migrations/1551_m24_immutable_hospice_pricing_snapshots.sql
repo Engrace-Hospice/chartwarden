@@ -3,6 +3,22 @@
 -- payer-rate line snapshots. Historical claim lines keep their legacy schedule identity and are never
 -- backfilled. The snapshot is a local-draft pricing record, not payer-format or submission qualification.
 -- CW-DS-01 remains open: these rows are patient-linked and no retention period or erasure policy is inferred.
+--
+-- What the database guards do and do not stop (the application stays the authority for pricing):
+--   * The snapshot insert guard binds the claim line, the verified rate row, the verified evidence row, the
+--     snapshot's identities and versions, its service dates (compared as UTC calendar days), units and the
+--     stored rate/charge amounts, and ties the fingerprint to the JSON. It does NOT recompute reimbursement
+--     (reimbursementEstimateCents, baseReimbursementCents, applied ceilings): that would duplicate the pricing
+--     engine in SQL. A coherent snapshot with a wrong estimate is bound only by the fingerprint and by the
+--     application's re-derivation at validation time.
+--   * The temporal, successor and rate/evidence agreement checks are insert-time backstops. The application
+--     serializes pricing against rate and evidence writes with the advisory locks taken below. assessed_at must
+--     equal the snapshot's assessmentTimestamp and may not be more than five minutes ahead of the database clock
+--     (clock_timestamp(), not now(): the application clock may run slightly ahead).
+--   * Row triggers do not fire on TRUNCATE. Not covered, stated plainly: TRUNCATE (like DROP or
+--     session_replication_role = replica) by the table owner or chartwarden_admin, which holds GRANT ALL, is
+--     outside what the append-only and immutability guards stop (procedural control, as in 1138 and 1144).
+--     chartwarden_app holds no TRUNCATE privilege.
 
 ALTER TABLE medicaid_claim_line
   ADD COLUMN payer_rate_policy_id_snapshot uuid;--> statement-breakpoint
@@ -103,6 +119,9 @@ CREATE TABLE medicaid_hospice_billing_evidence (
     (verification_status <> 'verified' OR
      (verified_at IS NOT NULL AND verified_by_membership_id IS NOT NULL AND
       verified_by_membership_id <> recorded_by_membership_id)),
+  -- A revoked or superseded row closes its predecessor, so it must carry the instant it was decided.
+  CONSTRAINT medicaid_hospice_billing_evidence_closed_provenance CHECK
+    (verification_status NOT IN ('revoked', 'superseded') OR verified_at IS NOT NULL),
   CONSTRAINT medicaid_hospice_billing_evidence_references CHECK
     (locality_evidence_reference ~ '^(doc|evidence):[A-Za-z0-9._/-]{1,190}$' AND
      quality_evidence_reference ~ '^(doc|evidence):[A-Za-z0-9._/-]{1,190}$' AND
@@ -212,6 +231,12 @@ DECLARE
   v_evidence medicaid_hospice_billing_evidence%ROWTYPE;
   v_claim medicaid_claim%ROWTYPE;
 BEGIN
+  -- assessed_at is the column the temporal checks below use, so it must be the instant the JSON records, and it
+  -- cannot lie in the future (five minutes of application clock skew are tolerated; clock_timestamp(), not now()).
+  IF NEW.assessed_at IS DISTINCT FROM (NEW.snapshot ->> 'assessmentTimestamp')::timestamptz OR
+     NEW.assessed_at > clock_timestamp() + interval '5 minutes' THEN
+    RAISE EXCEPTION 'pricing snapshot assessed_at must equal its assessmentTimestamp and cannot be in the future' USING ERRCODE='23514';
+  END IF;
   SELECT * INTO v_line FROM medicaid_claim_line
    WHERE id = NEW.medicaid_claim_line_id AND provider_entity_id = NEW.provider_entity_id;
   IF NOT FOUND OR v_line.organization_id IS DISTINCT FROM NEW.organization_id OR
@@ -227,8 +252,8 @@ BEGIN
      v_line.revenue_code IS DISTINCT FROM NEW.snapshot ->> 'revenueCode' OR
      v_line.q_code IS DISTINCT FROM NEW.snapshot ->> 'hcpcsCode' OR
      v_line.level_of_care::text IS DISTINCT FROM 'RHC' OR
-     v_line.service_date::date IS DISTINCT FROM (NEW.snapshot ->> 'serviceFrom')::date OR
-     v_line.service_date_to::date IS DISTINCT FROM (NEW.snapshot ->> 'serviceTo')::date OR
+     (v_line.service_date AT TIME ZONE 'UTC')::date IS DISTINCT FROM (NEW.snapshot ->> 'serviceFrom')::date OR
+     (v_line.service_date_to AT TIME ZONE 'UTC')::date IS DISTINCT FROM (NEW.snapshot ->> 'serviceTo')::date OR
      NEW.snapshot ->> 'claimLineId' IS DISTINCT FROM NEW.medicaid_claim_line_id::text OR
      NEW.snapshot ->> 'medicaidClaimId' IS DISTINCT FROM NEW.medicaid_claim_id::text OR
      NEW.snapshot ->> 'payerRatePolicyId' IS DISTINCT FROM NEW.payer_rate_policy_id::text OR
@@ -242,14 +267,27 @@ BEGIN
      v_rate.id IS DISTINCT FROM NEW.payer_rate_policy_id OR
      NEW.snapshot ->> 'rateVersion' IS DISTINCT FROM v_rate.version::text OR
      v_rate.rate_cents IS DISTINCT FROM (NEW.snapshot ->> 'rateCents')::integer OR
-     v_rate.created_at > (NEW.snapshot ->> 'assessmentTimestamp')::timestamptz OR
-     v_rate.verified_at IS NULL OR v_rate.verified_at > (NEW.snapshot ->> 'assessmentTimestamp')::timestamptz THEN
+     v_rate.created_at > NEW.assessed_at OR
+     v_rate.verified_at IS NULL OR v_rate.verified_at > NEW.assessed_at OR
+     -- the per-day methodology the RHC snapshot supports (the application prices per_day and per_day
+     -- fixed_contract_unit rates alike; the unit basis is compared with the other rate facts below)
+     v_rate.pricing_method NOT IN ('per_day', 'fixed_contract_unit') OR
+     v_rate.quantity_conversion_method IS DISTINCT FROM 'daily_units' OR
+     -- a rate with a successor is no longer the head, as the pricing engine reads the chain; only a rejected
+     -- draft never supersedes the active head (the engine skips rejected rows too)
+     EXISTS (SELECT 1 FROM medicaid_payer_rate_policy successor
+              WHERE successor.organization_id = v_rate.organization_id
+                AND successor.supersedes_id = v_rate.id
+                AND successor.verification_status <> 'rejected') THEN
     RAISE EXCEPTION 'pricing snapshot rate evidence is not current verified evidence' USING ERRCODE='23514';
   END IF;
   SELECT * INTO v_evidence FROM medicaid_hospice_billing_evidence
    WHERE organization_id = NEW.organization_id AND id = NEW.billing_evidence_id;
   IF NOT FOUND OR v_evidence.provider_entity_id IS DISTINCT FROM NEW.provider_entity_id OR
      v_evidence.verification_status IS DISTINCT FROM 'verified' OR
+     EXISTS (SELECT 1 FROM medicaid_hospice_billing_evidence successor
+              WHERE successor.organization_id = v_evidence.organization_id
+                AND successor.supersedes_id = v_evidence.id) OR
      NEW.snapshot ->> 'billingEvidenceVersion' IS DISTINCT FROM v_evidence.version::text OR
      NEW.snapshot -> 'locality' ->> 'code' IS DISTINCT FROM v_evidence.locality_code OR
      NEW.snapshot -> 'locality' ->> 'evidenceReference' IS DISTINCT FROM v_evidence.locality_evidence_reference OR
@@ -264,7 +302,7 @@ BEGIN
      NEW.snapshot ->> 'chargeEvidenceVersion' IS DISTINCT FROM v_evidence.charge_evidence_version::text THEN
     RAISE EXCEPTION 'pricing snapshot billing evidence is not current verified evidence' USING ERRCODE='23514';
   END IF;
-  IF v_evidence.verified_at > (NEW.snapshot ->> 'assessmentTimestamp')::timestamptz THEN
+  IF v_evidence.verified_at IS NULL OR v_evidence.verified_at > NEW.assessed_at THEN
     RAISE EXCEPTION 'pricing snapshot cannot predate its billing evidence verification' USING ERRCODE='23514';
   END IF;
   SELECT * INTO v_claim FROM medicaid_claim
@@ -276,15 +314,17 @@ BEGIN
      v_claim.canonical_payer_id IS DISTINCT FROM v_evidence.canonical_payer_id OR
      v_claim.medicaid_program_kind::text IS DISTINCT FROM v_evidence.program_kind OR
      v_claim.service_state IS DISTINCT FROM v_evidence.service_state OR
-     v_evidence.effective_from > v_line.service_date::date OR
-     (v_evidence.effective_to IS NOT NULL AND v_evidence.effective_to < v_line.service_date_to::date) OR
+     v_evidence.effective_from > (v_line.service_date AT TIME ZONE 'UTC')::date OR
+     (v_evidence.effective_to IS NOT NULL AND v_evidence.effective_to < (v_line.service_date_to AT TIME ZONE 'UTC')::date) OR
      v_rate.canonical_payer_id IS DISTINCT FROM v_evidence.canonical_payer_id OR
      v_rate.program_kind IS DISTINCT FROM v_evidence.program_kind OR
      v_rate.service_state IS DISTINCT FROM v_evidence.service_state OR
      v_rate.locality_code IS DISTINCT FROM v_evidence.locality_code OR
+     v_rate.quality_reporting_applicability IS DISTINCT FROM v_evidence.quality_reporting_applicability OR
+     v_rate.quality_reporting_status IS DISTINCT FROM v_evidence.quality_reporting_status OR
      v_rate.service_category IS DISTINCT FROM 'RHC' OR v_rate.unit_basis IS DISTINCT FROM 'per_day' OR
-     v_rate.effective_from > v_line.service_date::date OR
-     (v_rate.effective_to IS NOT NULL AND v_rate.effective_to < v_line.service_date_to::date) OR
+     v_rate.effective_from > (v_line.service_date AT TIME ZONE 'UTC')::date OR
+     (v_rate.effective_to IS NOT NULL AND v_rate.effective_to < (v_line.service_date_to AT TIME ZONE 'UTC')::date) OR
      NEW.fingerprint IS DISTINCT FROM encode(digest((NEW.snapshot - 'assessmentTimestamp')::text, 'sha256'), 'hex') THEN
     RAISE EXCEPTION 'pricing snapshot payer, service, range or integrity evidence does not match' USING ERRCODE='23514';
   END IF;

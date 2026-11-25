@@ -14,6 +14,8 @@ import {
 } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
+import { medicaidClaimLine } from "./claim";
+import { medicaidPayerRatePolicy } from "./payer-rate-policy";
 
 /**
  * Verified, effective-dated nonclinical billing evidence for an admission. Clinical service-day
@@ -99,33 +101,33 @@ export const medicaidHospiceBillingEvidence = pgTable(
       t.organizationId,
       t.supersedesId,
     ),
-    identityValid: check(
-      "medicaid_hospice_billing_evidence_identity_valid",
-      sql`program_kind IN ('managed_care') AND service_state = 'OR' AND service_category = 'RHC'`,
+    stateValid: check(
+      "medicaid_hospice_billing_evidence_state",
+      sql`program_kind = 'managed_care' AND service_state = 'OR' AND service_category = 'RHC'`,
     ),
-    rangeValid: check(
-      "medicaid_hospice_billing_evidence_range_valid",
+    periodValid: check(
+      "medicaid_hospice_billing_evidence_period",
       sql`effective_to IS NULL OR effective_from <= effective_to`,
     ),
     versionValid: check(
-      "medicaid_hospice_billing_evidence_version_valid",
+      "medicaid_hospice_billing_evidence_version",
       sql`version > 0 AND admission_version >= 0 AND locality_evidence_version > 0 AND
           quality_evidence_version > 0 AND coding_evidence_version > 0 AND charge_evidence_version > 0`,
     ),
     pricingFactsValid: check(
-      "medicaid_hospice_billing_evidence_pricing_facts_valid",
+      "medicaid_hospice_billing_evidence_pricing_facts",
       sql`locality_code <> '' AND billed_charge_cents_per_unit > 0 AND
           quantity_policy = 'active_rhc_loc_calendar_day' AND
           quantity_evidence_owner = 'm6_level_of_care_period' AND billing_unit = 'daily' AND
           revenue_code = '0651' AND hcpcs_code = 'Q5001' AND coding_profile = 'local_draft_only'`,
     ),
     qualityFactsValid: check(
-      "medicaid_hospice_billing_evidence_quality_valid",
+      "medicaid_hospice_billing_evidence_quality",
       sql`(quality_reporting_applicability = 'not_required' AND quality_reporting_status = 'not_applicable') OR
           (quality_reporting_applicability = 'required' AND quality_reporting_status IN ('meets', 'does_not_meet'))`,
     ),
     statusValid: check(
-      "medicaid_hospice_billing_evidence_status_valid",
+      "medicaid_hospice_billing_evidence_status",
       sql`verification_status IN ('unverified', 'pending', 'verified', 'revoked', 'superseded')`,
     ),
     verifiedProvenance: check(
@@ -134,8 +136,12 @@ export const medicaidHospiceBillingEvidence = pgTable(
           (verified_at IS NOT NULL AND verified_by_membership_id IS NOT NULL AND
            verified_by_membership_id <> recorded_by_membership_id)`,
     ),
+    closedProvenance: check(
+      "medicaid_hospice_billing_evidence_closed_provenance",
+      sql`verification_status NOT IN ('revoked', 'superseded') OR verified_at IS NOT NULL`,
+    ),
     referencesValid: check(
-      "medicaid_hospice_billing_evidence_references_valid",
+      "medicaid_hospice_billing_evidence_references",
       sql`locality_evidence_reference ~ '^(doc|evidence):[A-Za-z0-9._/-]{1,190}$' AND
           quality_evidence_reference ~ '^(doc|evidence):[A-Za-z0-9._/-]{1,190}$' AND
           coding_evidence_reference ~ '^(doc|evidence):[A-Za-z0-9._/-]{1,190}$' AND
@@ -157,8 +163,8 @@ export const medicaidClaimLinePricingSnapshot = pgTable(
       .notNull()
       .references(() => providerEntities.id, { onDelete: "restrict" }),
     medicaidClaimId: uuid("medicaid_claim_id").notNull(), // logical M24 claim identity
-    medicaidClaimLineId: uuid("medicaid_claim_line_id").notNull(), // logical composite parent FK installed in SQL
-    payerRatePolicyId: uuid("payer_rate_policy_id").notNull(), // M24-owned reference, composite FK installed in SQL
+    medicaidClaimLineId: uuid("medicaid_claim_line_id").notNull(), // composite FK to the partitioned line, see lineFk
+    payerRatePolicyId: uuid("payer_rate_policy_id").notNull(), // M24-owned reference, composite FK, see rateFk
     billingEvidenceId: uuid("billing_evidence_id").notNull(),
     snapshotSchemaVersion: integer("snapshot_schema_version").notNull().default(1),
     assessedAt: timestamp("assessed_at", { withTimezone: true }).notNull(),
@@ -172,19 +178,49 @@ export const medicaidClaimLinePricingSnapshot = pgTable(
       t.providerEntityId,
       t.medicaidClaimLineId,
     ),
+    lineFk: foreignKey({
+      name: "medicaid_claim_line_pricing_snapshot_line_fk",
+      columns: [t.medicaidClaimLineId, t.providerEntityId],
+      foreignColumns: [medicaidClaimLine.id, medicaidClaimLine.providerEntityId],
+    }).onDelete("restrict"),
+    rateFk: foreignKey({
+      name: "medicaid_claim_line_pricing_snapshot_rate_fk",
+      columns: [t.organizationId, t.payerRatePolicyId],
+      foreignColumns: [medicaidPayerRatePolicy.organizationId, medicaidPayerRatePolicy.id],
+    }).onDelete("restrict"),
+    evidenceFk: foreignKey({
+      name: "medicaid_claim_line_pricing_snapshot_evidence_fk",
+      columns: [t.organizationId, t.billingEvidenceId],
+      foreignColumns: [
+        medicaidHospiceBillingEvidence.organizationId,
+        medicaidHospiceBillingEvidence.id,
+      ],
+    }).onDelete("restrict"),
     claimLookup: index("medicaid_claim_line_pricing_snapshot_claim_ix").on(
       t.organizationId,
       t.providerEntityId,
       t.medicaidClaimId,
     ),
+    lineFkIx: index("medicaid_claim_line_pricing_snapshot_line_fk_ix").on(
+      t.medicaidClaimLineId,
+      t.providerEntityId,
+    ),
+    rateFkIx: index("medicaid_claim_line_pricing_snapshot_rate_fk_ix").on(
+      t.organizationId,
+      t.payerRatePolicyId,
+    ),
+    evidenceFkIx: index("medicaid_claim_line_pricing_snapshot_evidence_fk_ix").on(
+      t.organizationId,
+      t.billingEvidenceId,
+    ),
     fingerprintValid: check(
-      "medicaid_claim_line_pricing_snapshot_fingerprint_valid",
+      "medicaid_claim_line_pricing_snapshot_fingerprint",
       sql`fingerprint ~ '^[0-9a-f]{64}$' AND snapshot_schema_version = 1`,
     ),
     snapshotShape: check(
-      "medicaid_claim_line_pricing_snapshot_shape_valid",
+      "medicaid_claim_line_pricing_snapshot_shape",
       sql`jsonb_typeof(snapshot) = 'object' AND snapshot ->> 'schemaVersion' = '1' AND
-          snapshot ->> 'postingAuthorized' = 'false'`,
+          snapshot ->> 'postingAuthorized' = 'false' AND snapshot ? 'assessmentTimestamp'`,
     ),
   }),
 );

@@ -5689,7 +5689,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     ) {
       const reader = getSeam("PatientAddressReader") as PatientAddressReader;
       if (!reader.residencesBetweenInTransaction) {
-        throw new Error("PatientAddressReader.residencesBetweenInTransaction is unavailable");
+        throw new DegradedError(
+          "m24-residence-reader",
+          "PatientAddressReader.residencesBetweenInTransaction is unavailable",
+        );
       }
       return reader.residencesBetweenInTransaction(
         transaction,

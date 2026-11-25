@@ -233,7 +233,7 @@ function amountFor(
   if (!Number.isSafeInteger(quantity.clinicalMinutes) || quantity.clinicalMinutes <= 0) {
     return { amount: null, reasonCode: "MEDICAID_RATE_POLICY_INPUTS_UNRESOLVED" };
   }
-  if (quantity.clinicalMinutes > 1440) {
+  if (quantity.clinicalMinutes > MAX_CLINICAL_MINUTES_PER_SERVICE_DAY) {
     return { amount: null, reasonCode: "MEDICAID_RATE_POLICY_INPUTS_UNRESOLVED" };
   }
   if (rate.quantityConversionMethod === "hourly_each_hour_or_part") {
@@ -257,10 +257,27 @@ function amountFor(
     : { amount: cents, reasonCode: null };
 }
 
+/** A service day cannot carry more than 24 hours of clinical care. */
+const MAX_CLINICAL_MINUTES_PER_SERVICE_DAY = 1440;
+
+/**
+ * The amount must be a number the pricing arithmetic and the service-window segmenter both accept. Without
+ * this the segmenter throws a RangeError (units 0, -1, NaN; minutes above a day or fractional) before the
+ * fail-closed branches in `amountFor` can run.
+ */
+function quantityAmountValid(quantity: HospicePricingQuantity): boolean {
+  return quantity.unitBasis === "per_day"
+    ? Number.isSafeInteger(quantity.units) && quantity.units > 0
+    : Number.isSafeInteger(quantity.clinicalMinutes) &&
+        quantity.clinicalMinutes > 0 &&
+        quantity.clinicalMinutes <= MAX_CLINICAL_MINUTES_PER_SERVICE_DAY;
+}
+
 function quantityValid(day: HospicePricingDayInput): boolean {
   if (!day.quantity || !day.quantityEvidence) return false;
   const verified = Date.parse(day.quantityEvidence.verifiedAt);
   return (
+    quantityAmountValid(day.quantity) &&
     !!day.quantityEvidence.sourceReference &&
     day.quantityEvidence.serviceDate === day.serviceDate &&
     day.quantityEvidence.providerEntityId === day.payerContext.providerEntityId &&

@@ -217,7 +217,7 @@ export const medicaidPayerRatePolicy = pgTable(
             ((unit_basis = 'per_day' AND quantity_conversion_method = 'daily_units' AND minimum_duration_method = 'not_applicable') OR
              (unit_basis = 'per_hour' AND quantity_conversion_method IN ('hourly_prorated_minutes', 'hourly_each_hour_or_part')
               AND minimum_duration_method IN ('not_required', 'minimum_minutes')))
-        ) AND (
+        )) AND (
           source_kind <> 'oha_ffs_schedule' OR
           (program_kind = 'oregon_ffs' AND charge_ceiling_method = 'lower_of_rate_and_usual_charge'
             AND charge_ceiling_boundary = 'service_day' AND quality_reporting_applicability = 'required' AND
@@ -225,8 +225,7 @@ export const medicaidPayerRatePolicy = pgTable(
               (pricing_method = 'per_hour' AND unit_basis = 'per_hour'
                 AND quantity_conversion_method = 'hourly_each_hour_or_part'
                 AND minimum_duration_method = 'minimum_minutes' AND minimum_clinical_minutes = 480)))
-        )
-      )`,
+        ))`,
     ),
   }),
 );

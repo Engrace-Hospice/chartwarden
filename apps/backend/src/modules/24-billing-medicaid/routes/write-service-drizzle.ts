@@ -53,6 +53,7 @@ import {
 import {
   type PatientLifecycleForClaim,
   admissionServiceRangeIssue,
+  assertAssemblyServiceSpan,
   inclusiveLocEndDateForAdmission,
   patientLifecycleServiceRangeIssue,
 } from "../claim-range-guards";
@@ -64,6 +65,7 @@ import {
   rateRowAsFact,
   readMedicaidHospiceBillingEvidence,
   resolveRhcDailyPricingPlan,
+  rethrowUnlessDomainError,
   verifyStoredRhcPricingSnapshots,
 } from "../pricing/rhc-pricing-snapshot";
 import type { M24Actor } from "./actor";
@@ -217,6 +219,7 @@ const ASSEMBLY_INPUT_ERRORS = {
 } as const;
 
 function assertAssemblyRequestShape(input: AssembleClaimInput): void {
+  assertAssemblyServiceSpan(input.serviceFrom, input.serviceTo);
   if (input.medicareClaimId !== undefined) {
     throw new ConflictError(...ASSEMBLY_INPUT_ERRORS.medicareLinkUnsupported);
   }
@@ -936,6 +939,24 @@ function ratePolicyFactFromRow(
   };
 }
 
+const nextIsoDay = (value: string): string =>
+  new Date(Date.parse(`${value}T00:00:00.000Z`) + 86_400_000).toISOString().slice(0, 10);
+
+/** True when the segments, in date order, tile [from, to] with no gap and no overlap. */
+function segmentsTilePeriod(
+  segments: readonly { readonly serviceFrom: string; readonly serviceTo: string }[],
+  from: string,
+  to: string,
+): boolean {
+  if (segments.length === 0) return false;
+  let expected = from;
+  for (const segment of [...segments].sort((a, b) => a.serviceFrom.localeCompare(b.serviceFrom))) {
+    if (segment.serviceFrom !== expected || segment.serviceTo < segment.serviceFrom) return false;
+    expected = nextIsoDay(segment.serviceTo);
+  }
+  return expected === nextIsoDay(to);
+}
+
 function pricingPreviewFromAssessment(
   assessment: ReturnType<typeof assessHospicePricing>,
   requiredInputs: readonly string[],
@@ -999,7 +1020,14 @@ function pricingPreviewFromAssessment(
           ? segment.rateEvidence.chargeCeilingMethod
           : null,
       chargeCeilings: segment.appliedCeilings,
-      quantityStatus: segment.quantityEvidence.length > 0 ? "verified" : "missing",
+      // "verified" is claimed only for a resolved segment that produced an estimate from that evidence; an
+      // unsupported/partial segment with evidence present but no estimate is not a verified quantity.
+      quantityStatus:
+        segment.quantityEvidence.length === 0
+          ? "missing"
+          : segment.status === "resolved"
+            ? "verified"
+            : "unverified",
       baseReimbursementCents: segment.baseReimbursementCents,
       reimbursementEstimateCents: segment.reimbursementEstimateCents,
       actualBilledChargeCents: null,
@@ -1019,18 +1047,22 @@ function unresolvedPricingPreview(input: {
   readonly serviceCategory?: AssemblyPreviewPricing["segments"][number]["serviceCategory"];
   readonly status?: AssemblyPreviewPricing["status"];
 }): AssemblyPreviewPricing {
+  // The single segment is a placeholder spanning the request, not an assessment: no day was priced, so it
+  // does not "cover" the period. An ambiguous or unsupported outcome keeps its own segment/rate status.
+  const outcome =
+    input.status === "ambiguous" || input.status === "unsupported" ? input.status : null;
   return {
     status: input.status ?? "unresolved",
     assessedAt: new Date().toISOString(),
-    coversRequestedPeriod: true,
+    coversRequestedPeriod: false,
     requiredInputs: input.requiredInputs,
     segments: [
       {
         serviceFrom: input.from,
         serviceTo: input.to,
         serviceCategory: input.serviceCategory ?? null,
-        status: input.status === "unsupported" ? "unsupported" : "unresolved",
-        rateStatus: input.status === "unsupported" ? "unsupported" : "missing",
+        status: outcome ?? "unresolved",
+        rateStatus: outcome ?? "missing",
         unitBasis: null,
         rateCents: null,
         rateLocalityCode: null,
@@ -1706,6 +1738,7 @@ export function buildDrizzleM24WriteService(
           "service start must not follow service end",
         );
       }
+      assertAssemblyServiceSpan(input.serviceFrom, input.serviceTo);
       const previewAdmissionSnapshot = admissionCadenceReader?.previewSnapshotInTransaction;
       if (!admissionCadenceReader || !previewAdmissionSnapshot) {
         throw new DegradedError(
@@ -2253,11 +2286,24 @@ export function buildDrizzleM24WriteService(
           });
         } else {
           try {
+            // M6 LOC windows are half-open; only a matching death discharge extends the terminal period
+            // through the inclusive date of death.
+            const inclusiveEndDate = inclusiveLocEndDateForAdmission(
+              previewReads.admissionSnapshot,
+            );
+            const deathPeriodId = rawPeriods
+              ? inclusiveDeathLocPeriodId(rawPeriods, inclusiveEndDate)
+              : null;
+            const locClaimEnd = (period: { id: string; endedAt: Date | null }) =>
+              m6LocClaimEndDate(
+                period.endedAt,
+                period.id === deathPeriodId ? inclusiveEndDate : null,
+              );
             const rhcOnly =
               Boolean(rawPeriods?.length) &&
               rawPeriods!.every((period) => {
                 const from = day(period.effectiveAt);
-                const to = m6LocClaimEndDate(period.endedAt) ?? input.serviceTo;
+                const to = locClaimEnd(period) ?? input.serviceTo;
                 return (
                   from > input.serviceTo ||
                   to < input.serviceFrom ||
@@ -2285,6 +2331,7 @@ export function buildDrizzleM24WriteService(
                   serviceFrom: input.serviceFrom,
                   serviceTo: input.serviceTo,
                   assessedAt,
+                  inclusiveEndDate,
                 };
                 const evidence = await readMedicaidHospiceBillingEvidence(tx, scope);
                 if (evidence.status !== "verified") {
@@ -2363,7 +2410,11 @@ export function buildDrizzleM24WriteService(
                 pricing = {
                   status: "fully_resolved",
                   assessedAt,
-                  coversRequestedPeriod: true,
+                  coversRequestedPeriod: segmentsTilePeriod(
+                    segments,
+                    input.serviceFrom,
+                    input.serviceTo,
+                  ),
                   requiredInputs: [],
                   segments,
                   reimbursementEstimateTotalCents: result.lines.reduce(
@@ -2405,7 +2456,7 @@ export function buildDrizzleM24WriteService(
               for (const period of rawPeriods ?? []) {
                 const serviceCategory = PRICING_LOC_BY_M6[period.levelOfCare];
                 const periodFrom = period.effectiveAt.toISOString().slice(0, 10);
-                const periodTo = m6LocClaimEndDate(period.endedAt) ?? input.serviceTo;
+                const periodTo = locClaimEnd(period) ?? input.serviceTo;
                 const from = periodFrom < input.serviceFrom ? input.serviceFrom : periodFrom;
                 const to = periodTo > input.serviceTo ? input.serviceTo : periodTo;
                 if (from > to) continue;
@@ -2484,7 +2535,10 @@ export function buildDrizzleM24WriteService(
               }
               pricing = pricingPreviewFromAssessment(assessment, [...requiredInputs]);
             }
-          } catch {
+          } catch (error) {
+            // A typed refusal (history cap, unbound reader, ...) degrades the preview; anything else is a
+            // defect or a lost connection and must not be shown as "evidence unavailable".
+            rethrowUnlessDomainError("m24.assembly_preview.pricing_unavailable", error);
             pricing = unresolvedPricingPreview({
               from: input.serviceFrom,
               to: input.serviceTo,
@@ -3103,9 +3157,14 @@ export function buildDrizzleM24WriteService(
         // R&B remains on its existing path; CHC/IRC/GIP/FFS without their own qualified evidence fail closed.
         let nextLineNumber = 1;
         if (input.kind !== "rb_only") {
+          const deathPeriodId = inclusiveDeathLocPeriodId(rawPeriods, inclusiveLocEndDate);
           const hasOverlappingLocDays = rawPeriods.some((period) => {
             const periodFrom = day(period.effectiveAt);
-            const periodTo = m6LocClaimEndDate(period.endedAt) ?? day(input.serviceTo);
+            const periodTo =
+              m6LocClaimEndDate(
+                period.endedAt,
+                period.id === deathPeriodId ? inclusiveLocEndDate : null,
+              ) ?? day(input.serviceTo);
             return periodFrom <= day(input.serviceTo) && periodTo >= day(input.serviceFrom);
           });
           if (!hasOverlappingLocDays) {
@@ -3145,6 +3204,7 @@ export function buildDrizzleM24WriteService(
             serviceFrom: day(input.serviceFrom),
             serviceTo: day(input.serviceTo),
             assessedAt,
+            inclusiveEndDate: inclusiveLocEndDate,
           };
           const evidenceResult = await readMedicaidHospiceBillingEvidence(tx, priceScope);
           if (evidenceResult.status !== "verified") {
@@ -3535,6 +3595,7 @@ export function buildDrizzleM24WriteService(
                 lines: lineRows,
                 locPeriods: currentLocPeriods,
                 admissionVersion: admission.version,
+                inclusiveEndDate: inclusiveLocEndDateForAdmission(admission),
                 rateRows,
                 payerReader: {
                   resolvePayer: canonicalPayerReader.resolvePayer,
@@ -3548,7 +3609,10 @@ export function buildDrizzleM24WriteService(
               hospiceInstitutionalFormatQualified =
                 pricingVerification.institutionalFormatQualified;
             }
-          } catch {
+          } catch (error) {
+            // Fail closed on a typed refusal. Anything else may have aborted this transaction, so it is
+            // rethrown rather than letting a later statement fail with "transaction is aborted".
+            rethrowUnlessDomainError("m24.claim_validation.pricing_snapshot_unverified", error);
             hospicePricingSnapshotVerified = false;
             hospiceInstitutionalFormatQualified = false;
           }

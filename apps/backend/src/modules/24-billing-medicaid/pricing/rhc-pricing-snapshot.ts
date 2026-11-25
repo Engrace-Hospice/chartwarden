@@ -3,8 +3,9 @@ import { type DbClient, schema } from "@chartwarden/db";
 import type { MedicaidPayerProgramClassification } from "@chartwarden/mdm";
 import type { PayerRatePolicyFact } from "@chartwarden/medicaid-adapters";
 import { assessHospicePricing } from "@chartwarden/medicaid-adapters";
+import { ChartWardenError, DegradedError } from "@chartwarden/types";
 import { and, eq, lte, sql } from "drizzle-orm";
-import { m6LocClaimEndDate } from "../claim-hospice-line-snapshot";
+import { inclusiveDeathLocPeriodId, m6LocClaimEndDate } from "../claim-hospice-line-snapshot";
 import { qualifyMedicaidProgramClassification } from "../medicaid-payer-classification";
 import { resolveProgramResponsibility } from "../routes/program-responsibility";
 import { resolveBillingEvidenceLineage } from "./billing-evidence-lineage";
@@ -57,13 +58,18 @@ export interface RHCPriceScope {
   readonly serviceFrom: string;
   readonly serviceTo: string;
   readonly assessedAt: string;
+  /**
+   * The M6 stay's inclusive date of death (only for a matching death discharge). M6 LOC windows are
+   * half-open, so without it the terminal RHC period ends the day before and a claim through the death
+   * date can never be priced. Set from `inclusiveLocEndDateForAdmission`; omitted/null otherwise.
+   */
+  readonly inclusiveEndDate?: string | null;
 }
 
 export interface RHCPriceLinePlan {
   readonly serviceFrom: string;
   readonly serviceTo: string;
   readonly locPeriodId: string;
-  readonly locPeriodVersion: number;
   readonly units: number;
   readonly rateCents: number;
   readonly baseReimbursementCents: number;
@@ -76,7 +82,7 @@ export interface RHCPriceLinePlan {
   }[];
   readonly revenueCode: string;
   readonly hcpcsCode: string;
-  readonly rate: RateRow;
+  readonly rate: PayerRatePolicyFact;
   readonly evidence: BillingEvidence;
   readonly integrityFacts: Record<string, unknown>;
 }
@@ -123,9 +129,35 @@ export async function lockMedicaidRatePolicyScope(
   );
 }
 
+/**
+ * Advisory-lock order is FIXED everywhere (preview, assembly, validation, revalidation): the rate-policy
+ * scope lock first, then the billing-evidence scope lock. Two paths taking them in opposite orders can
+ * deadlock (40P01). Every path reads evidence through this function and rate lineage through
+ * `readMedicaidRatePolicyLineage`, so taking the rate lock here before the evidence lock makes the order
+ * rate -> evidence regardless of which read a caller issues first (advisory xact locks are re-entrant).
+ */
 async function lockHospiceBillingEvidenceScope(tx: Tx, scope: RHCPriceScope): Promise<void> {
+  await lockMedicaidRatePolicyScope(tx, scope);
   const key = `m24-hospice-evidence:${scope.organizationId}:${scope.providerEntityId}:${scope.patientId}:${scope.admissionId}:${scope.canonicalPayerId}:${scope.programKind}:${scope.serviceState}:RHC`;
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
+}
+
+/**
+ * Handler for a `catch` around pricing reads/verification. A ChartWardenError is a typed, expected refusal
+ * (a history cap, an unbound reader): it is logged by class and code only and the caller degrades. Anything
+ * else is unexpected and may have aborted the surrounding transaction, so it is logged and rethrown.
+ * Never log the message: it can carry record content.
+ */
+export function rethrowUnlessDomainError(event: string, error: unknown): void {
+  console.warn(
+    JSON.stringify({
+      level: "warn",
+      event,
+      errorClass: error instanceof Error ? error.name : typeof error,
+      errorCode: error instanceof ChartWardenError ? error.code : null,
+    }),
+  );
+  if (!(error instanceof ChartWardenError)) throw error;
 }
 
 export async function databasePricingSnapshotFingerprint(
@@ -137,7 +169,12 @@ export async function databasePricingSnapshotFingerprint(
     SELECT encode(digest((${serialized}::jsonb - 'assessmentTimestamp')::text, 'sha256'), 'hex') AS fingerprint
   `);
   const fingerprint = result.rows[0]?.fingerprint;
-  if (!fingerprint) throw new Error("database did not return a pricing snapshot fingerprint");
+  if (!fingerprint) {
+    throw new DegradedError(
+      "m24-pricing-snapshot",
+      "the database did not return a pricing snapshot fingerprint",
+    );
+  }
   return fingerprint;
 }
 
@@ -272,6 +309,8 @@ export async function verifyStoredRhcPricingSnapshots(input: {
   readonly lines: readonly StoredRhcClaimLine[];
   readonly locPeriods: readonly RHCServiceLocPeriod[];
   readonly admissionVersion: number | undefined;
+  /** The M6 stay's inclusive date of death for a matching death discharge, else null/omitted. */
+  readonly inclusiveEndDate?: string | null;
   readonly rateRows: readonly RateRow[];
   readonly payerReader: CurrentPayerIdentityReader | undefined;
   readonly residenceReader: RHCServiceResidenceReader | undefined;
@@ -308,6 +347,7 @@ export async function verifyStoredRhcPricingSnapshots(input: {
     serviceFrom: isoValue(input.claim.serviceFrom),
     serviceTo: isoValue(input.claim.serviceTo),
     assessedAt: input.assessedAt,
+    inclusiveEndDate: input.inclusiveEndDate ?? null,
   };
   const evidence = await readMedicaidHospiceBillingEvidence(input.tx, scope);
   if (evidence.status !== "verified") {
@@ -610,11 +650,15 @@ export function resolveRhcDailyPricingPlan(input: {
     return { status: residence.status, reasonCode: residence.reasonCode };
   }
 
+  const inclusiveEndDate = scope.inclusiveEndDate ?? null;
+  const deathPeriodId = inclusiveDeathLocPeriodId(input.locPeriods, inclusiveEndDate);
   const periods = input.locPeriods
     .map((period) => ({
       period,
       from: isoDate(period.effectiveAt),
-      to: m6LocClaimEndDate(period.endedAt) ?? scope.serviceTo,
+      to:
+        m6LocClaimEndDate(period.endedAt, period.id === deathPeriodId ? inclusiveEndDate : null) ??
+        scope.serviceTo,
     }))
     .filter(({ from, to }) => from <= scope.serviceTo && to >= scope.serviceFrom)
     .map(({ period, from, to }) => ({
@@ -742,16 +786,19 @@ export function resolveRhcDailyPricingPlan(input: {
         providerEntityId: scope.providerEntityId,
         patientId: scope.patientId,
         admissionId: scope.admissionId,
-        admissionVersion: scope.admissionVersion,
         canonicalPayerId: scope.canonicalPayerId,
         programKind: scope.programKind,
         serviceState: scope.serviceState,
         serviceFrom: segment.serviceFrom,
         serviceTo: segment.serviceTo,
         levelOfCare: "RHC",
+        // Bound to the facts that govern the CLAIMED days (period identity and its extent clipped to the
+        // claimed range), not to the M6 row's version/updated_at: closing the open period after the
+        // claimed range bumps both without touching any claimed day. Any real change to a claimed day
+        // (its period, bounds within the range, or level of care) still fails verification.
         locPeriodId: period.period.id,
-        locPeriodVersion: period.period.version,
-        locSourceUpdatedAt: period.period.updatedAt.toISOString(),
+        locEffectiveFrom: period.from,
+        locEffectiveTo: period.to,
         quantity: {
           basis: "per_day",
           units: segment.quantity.units,
@@ -806,7 +853,6 @@ export function resolveRhcDailyPricingPlan(input: {
         serviceFrom: segment.serviceFrom,
         serviceTo: segment.serviceTo,
         locPeriodId: period.period.id,
-        locPeriodVersion: period.period.version!,
         units: segment.quantity.units,
         rateCents: rate.rateCents,
         baseReimbursementCents: segment.baseReimbursementCents,

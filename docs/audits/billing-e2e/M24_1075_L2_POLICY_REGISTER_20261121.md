@@ -27,6 +27,11 @@ payer companion guide, provider enrollment, claim acceptance or production route
   authoritative CBSA/locality, election-day, quality-reporting, actual clinical quantity and provider
   usual-charge evidence readers are not bound; these missing facts remain explicit unresolved/partial
   preview segments and cannot create a persisted claim amount.
+  Update (2026-11-25, L8A.2R, migration 1551): this paragraph and the "priced claim assembly remains
+  refused" sentence below describe the L8A.1 state. Persisted assembly now prices a hospice routine home
+  care (RHC) line when the stored billing evidence and the verified rate resolve, and stores the price in an
+  append-only pricing snapshot; every other service category, and any RHC line whose evidence does not
+  resolve, is still refused. See the L8A.2R and L8A.2C qualification records.
 - The engine supports exact payer/provider/locality selection, inclusive effective-date segmentation,
   quality-reporting variants, open-ended final RHC buckets, evidence-bound daily/hourly arithmetic,
   policy rounding and explicit charge-ceiling methods. Unsupported in-home respite remains unpriceable;

@@ -15,6 +15,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -27,6 +28,7 @@ import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
 import { m24ClaimKind, m24ClaimLineLoc, m24ClaimState, m24MedicaidProgramKind } from "./enums";
+import { medicaidPayerRatePolicy } from "./payer-rate-policy";
 
 // ---- medicaid_claim — claim root; PARTITION BY LIST(provider_entity_id) ----
 export const medicaidClaim = pgTable(
@@ -151,7 +153,7 @@ export const medicaidClaimLine = pgTable(
 
     rateAtAssemblyCents: integer("rate_at_assembly_cents").notNull(),
     // logical FK → medicaid_state_rate_schedule; NULL for an R&B line (rb_day.per_diem_cents_snapshot is
-    // the rate source there, not a per-county schedule — see 0178 / the rateScheduleRequiresNonRb CHECK).
+    // the rate source there, not a per-county schedule — see 0178 / the rateSourceExactlyOne CHECK).
     stateRateScheduleIdSnapshot: uuid("state_rate_schedule_id_snapshot"),
     // M24 payer-rate evidence has a distinct identity; it must never be stored in the legacy M40 schedule field.
     payerRatePolicyIdSnapshot: uuid("payer_rate_policy_id_snapshot"),
@@ -179,8 +181,16 @@ export const medicaidClaimLine = pgTable(
       "medicaid_claim_line_rb_requires_rb_day",
       sql`(is_rb = false) OR (is_rb = true AND rb_day_id IS NOT NULL)`,
     ),
-    rateScheduleRequiresNonRb: check(
-      "medicaid_claim_line_rate_schedule_requires_non_rb",
+    payerRateSnapshotFk: foreignKey({
+      name: "medicaid_claim_line_payer_rate_snapshot_fk",
+      columns: [t.organizationId, t.payerRatePolicyIdSnapshot],
+      foreignColumns: [medicaidPayerRatePolicy.organizationId, medicaidPayerRatePolicy.id],
+    }).onDelete("restrict"),
+    payerRateSnapshotFkIx: index("medicaid_claim_line_payer_rate_snapshot_fk_ix")
+      .on(t.organizationId, t.payerRatePolicyIdSnapshot)
+      .where(sql`payer_rate_policy_id_snapshot IS NOT NULL`),
+    rateSourceExactlyOne: check(
+      "medicaid_claim_line_rate_source_exactly_one",
       sql`(is_rb = true AND state_rate_schedule_id_snapshot IS NULL AND payer_rate_policy_id_snapshot IS NULL) OR
           (is_rb = false AND ((state_rate_schedule_id_snapshot IS NOT NULL AND payer_rate_policy_id_snapshot IS NULL) OR
                               (state_rate_schedule_id_snapshot IS NULL AND payer_rate_policy_id_snapshot IS NOT NULL)))`,

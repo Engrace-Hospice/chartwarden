@@ -106,7 +106,7 @@ describe("assessHospicePricing", () => {
       serviceFrom: "2026-03-01",
       serviceTo: "2026-03-04",
       assessedAt,
-      days: ["2026-03-01", "2026-03-02", "2026-03-03", "2026-03-04"].map(day),
+      days: ["2026-03-01", "2026-03-02", "2026-03-03", "2026-03-04"].map((date) => day(date)),
       rates: [
         rate("synthetic-a", 101, "2026-03-01", "2026-03-02"),
         rate("synthetic-b", 203, "2026-03-03", "2026-03-31"),
@@ -153,7 +153,7 @@ describe("assessHospicePricing", () => {
         amountCents: 10_000,
         serviceDate,
         providerEntityId: "synthetic-provider",
-        serviceCategory: "RHC",
+        serviceCategory: "RHC" as const,
         sourceReference: `evidence:synthetic-usual-charge-${serviceDate}`,
         version: 1,
         verifiedAt: "2026-02-20T00:00:00.000Z",
@@ -320,8 +320,8 @@ describe("assessHospicePricing", () => {
       quantityEvidence: {
         serviceDate: date,
         providerEntityId: "synthetic-provider",
-        serviceCategory: "CHC",
-        unitBasis: "per_hour",
+        serviceCategory: "CHC" as const,
+        unitBasis: "per_hour" as const,
         sourceReference: ref,
         version: 1,
         verifiedAt: "2026-02-20T00:00:00.000Z",
@@ -486,6 +486,53 @@ describe("assessHospicePricing", () => {
     });
     expect(overflow.status).toBe("unsupported");
     expect(overflow.reimbursementEstimateTotalCents).toBeNull();
+  });
+
+  it("returns an unresolved result for a malformed quantity instead of throwing", () => {
+    const dailyRate = rate("synthetic-malformed-daily", 100, "2026-03-01", null);
+    for (const units of [0, -1, Number.NaN, 1.5, Number.POSITIVE_INFINITY]) {
+      const result = assessHospicePricing({
+        serviceFrom: "2026-03-01",
+        serviceTo: "2026-03-01",
+        assessedAt,
+        days: [day("2026-03-01", { quantity: { unitBasis: "per_day", units } })],
+        rates: [dailyRate],
+      });
+      expect(result.status).not.toBe("fully_resolved");
+      expect(result.reimbursementEstimateTotalCents).toBeNull();
+      expect(result.segments[0]?.reasonCodes).toContain("CLINICAL_QUANTITY_UNRESOLVED");
+    }
+
+    const hourlyRate = rate("synthetic-malformed-hourly", 100, "2026-03-01", null, {
+      serviceCategory: "CHC",
+      unitBasis: "per_hour",
+      pricingMethod: "per_hour",
+      quantityConversionMethod: "hourly_each_hour_or_part",
+      minimumDurationMethod: "minimum_minutes",
+      minimumClinicalMinutes: 120,
+      roundingMode: "not_applicable",
+      roundingBoundary: "not_applicable",
+    });
+    for (const clinicalMinutes of [0, -5, Number.NaN, 90.5, 1441]) {
+      const result = assessHospicePricing({
+        serviceFrom: "2026-03-01",
+        serviceTo: "2026-03-01",
+        assessedAt,
+        days: [
+          {
+            ...day("2026-03-01"),
+            serviceCategory: "CHC" as const,
+            unitBasis: "per_hour" as const,
+            quantity: { unitBasis: "per_hour" as const, clinicalMinutes },
+            quantityEvidence: quantityEvidence("2026-03-01", "CHC", "per_hour"),
+          },
+        ],
+        rates: [hourlyRate],
+      });
+      expect(result.status).not.toBe("fully_resolved");
+      expect(result.reimbursementEstimateTotalCents).toBeNull();
+      expect(result.segments[0]?.reasonCodes).toContain("CLINICAL_QUANTITY_UNRESOLVED");
+    }
   });
 
   it("requires date-bound locality evidence rather than accepting a locality string", () => {

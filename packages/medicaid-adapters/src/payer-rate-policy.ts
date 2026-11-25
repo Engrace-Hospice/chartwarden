@@ -196,9 +196,12 @@ function bucketMatches(lookup: PayerRatePolicyLookup, rate: PayerRatePolicyFact)
       (rate.bucketTo === null || lookup.electionDayNumber <= rate.bucketTo)
     );
   }
+  // An unknown election day must not hide bucketed rows: filtering them out here would let a flat row
+  // resolve next to a verified 1-60 bucket for the same identity. They stay candidates, and the segment
+  // resolver refuses with RATE_ELECTION_DAY_UNRESOLVED when a verified bucketed head covers the interval.
+  if (lookup.electionDayNumber === null) return true;
   if (rate.bucketFrom === null) return rate.bucketTo === null;
   return (
-    lookup.electionDayNumber !== null &&
     lookup.electionDayNumber >= rate.bucketFrom &&
     (rate.bucketTo === null || lookup.electionDayNumber <= rate.bucketTo)
   );
@@ -533,6 +536,15 @@ export function resolvePayerRatePolicySegments(
     const matchingHeads = heads.filter(
       (rate) => rate.effectiveFrom <= from && (rate.effectiveTo === null || rate.effectiveTo >= to),
     );
+    if (
+      lookup.electionDayNumber === null &&
+      matchingHeads.some(
+        (rate) => rate.bucketFrom !== null && rate.verificationStatus === "verified",
+      )
+    ) {
+      segments.push(failedSegment(from, to, "missing", "RATE_ELECTION_DAY_UNRESOLVED"));
+      continue;
+    }
     if (matchingHeads.length > 1) {
       segments.push(failedSegment(from, to, "ambiguous", "MEDICAID_RATE_POLICY_AMBIGUOUS"));
       continue;

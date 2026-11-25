@@ -269,6 +269,30 @@ describe("resolvePayerRatePolicy", () => {
     ).toBe("RATE_ELECTION_DAY_UNRESOLVED");
   });
 
+  it("refuses a flat rate beside a verified bucketed row while the election day is unknown", () => {
+    const bucketed = { ...rate, id: "rate-bucketed", bucketFrom: 1, bucketTo: 60 };
+    // Managed care carries no election-day evidence (lookup.electionDayNumber is null).
+    expect(resolvePayerRatePolicy(lookup, [rate, bucketed])).toMatchObject({
+      status: "missing",
+      reasonCode: "RATE_ELECTION_DAY_UNRESOLVED",
+      rate: null,
+    });
+    // A lone bucketed row cannot be priced without the election day either.
+    expect(resolvePayerRatePolicy(lookup, [bucketed])).toMatchObject({
+      status: "missing",
+      reasonCode: "RATE_ELECTION_DAY_UNRESOLVED",
+    });
+    expect(resolvePayerRatePolicySegments(lookup, [rate, bucketed])).toEqual([
+      expect.objectContaining({ status: "missing", reasonCode: "RATE_ELECTION_DAY_UNRESOLVED" }),
+    ]);
+    // With the election day known, the flat row still qualifies where the bucket does not apply.
+    expect(
+      resolvePayerRatePolicy({ ...lookup, electionDayNumber: 100 }, [rate, bucketed]),
+    ).toMatchObject({ status: "qualified", rate });
+    // A flat row on its own is unaffected.
+    expect(resolvePayerRatePolicy(lookup, [rate])).toMatchObject({ status: "qualified", rate });
+  });
+
   it("requires explicit OHA CHC hour-or-part and minimum-duration methodology", () => {
     const ohaChc: PayerRatePolicyFact = {
       ...rate,

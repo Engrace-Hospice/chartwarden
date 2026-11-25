@@ -1,4 +1,32 @@
-import type { PatientLifecycleStatus } from "@chartwarden/types";
+import { type PatientLifecycleStatus, ValidationError } from "@chartwarden/types";
+
+/**
+ * Longest service window the assembly preview and claim assembly accept. Pricing builds one object per
+ * calendar day on the shared event loop, so an open-ended window (serviceTo=9999-12-31) must be refused
+ * before any day expansion. A hospice claim covers at most a billing period; a year is generous.
+ */
+export const MAX_ASSEMBLY_SERVICE_SPAN_DAYS = 366;
+export const MEDICAID_SERVICE_SPAN_TOO_LONG = "MEDICAID_SERVICE_SPAN_TOO_LONG";
+
+const DAY_MS = 86_400_000;
+
+/** Reject a service window longer than the cap with a typed VALIDATION_FAILED detail (422). */
+export function assertAssemblyServiceSpan(serviceFrom: string, serviceTo: string): void {
+  const spanDays =
+    (Date.parse(`${serviceTo.slice(0, 10)}T00:00:00.000Z`) -
+      Date.parse(`${serviceFrom.slice(0, 10)}T00:00:00.000Z`)) /
+      DAY_MS +
+    1;
+  if (!Number.isFinite(spanDays) || spanDays > MAX_ASSEMBLY_SERVICE_SPAN_DAYS) {
+    throw new ValidationError("request validation failed", [
+      {
+        field: "serviceTo",
+        code: MEDICAID_SERVICE_SPAN_TOO_LONG,
+        message: `the service period must not exceed ${MAX_ASSEMBLY_SERVICE_SPAN_DAYS} days`,
+      },
+    ]);
+  }
+}
 
 export interface PatientLifecycleForClaim {
   readonly status: PatientLifecycleStatus;

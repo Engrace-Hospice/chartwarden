@@ -18,6 +18,10 @@ import { pageLimit, pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import {
+  MAX_ASSEMBLY_SERVICE_SPAN_DAYS,
+  MEDICAID_SERVICE_SPAN_TOO_LONG,
+} from "../claim-range-guards";
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
@@ -167,13 +171,20 @@ const RouteReadinessDto = Type.Object({
 
 // ── request bodies (§4.2) ───────────────────────────────────────────────────────────────────────────────
 
+/**
+ * The preview and assembly price one object per calendar day, so the service window is capped at
+ * MAX_ASSEMBLY_SERVICE_SPAN_DAYS days (inclusive); the service refuses a longer window with
+ * VALIDATION_FAILED / MEDICAID_SERVICE_SPAN_TOO_LONG before any day expansion.
+ */
+const SERVICE_SPAN_NOTE = `The service window (serviceFrom through serviceTo, inclusive) must not exceed ${MAX_ASSEMBLY_SERVICE_SPAN_DAYS} days; a longer window is refused with VALIDATION_FAILED (detail code ${MEDICAID_SERVICE_SPAN_TOO_LONG}).`;
+
 /** POST /api/v1/medicaid-claims — assemble a draft over a patient + service range (§2.1). */
 const AssembleClaimFields = {
   patientId: uuid(),
   admissionId: uuid(),
   providerEntityId: uuid(),
-  serviceFrom: isoDate(),
-  serviceTo: isoDate(),
+  serviceFrom: Type.String({ format: "date", description: SERVICE_SPAN_NOTE }),
+  serviceTo: Type.String({ format: "date", description: SERVICE_SPAN_NOTE }),
 };
 
 export const AssembleClaimBody = Type.Union([
@@ -201,8 +212,8 @@ export const AssemblyPreviewBody = Type.Object(
     patientId: uuid(),
     admissionId: uuid(),
     providerEntityId: uuid(),
-    serviceFrom: isoDate(),
-    serviceTo: isoDate(),
+    serviceFrom: Type.String({ format: "date", description: SERVICE_SPAN_NOTE }),
+    serviceTo: Type.String({ format: "date", description: SERVICE_SPAN_NOTE }),
   },
   { additionalProperties: false },
 );

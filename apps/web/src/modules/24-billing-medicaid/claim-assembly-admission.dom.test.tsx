@@ -446,6 +446,11 @@ describe("the billing context step shows what the server resolved", () => {
     const pricing = screen.getByRole("region", { name: "Pricing assessment" });
     expect(pricing).toHaveTextContent("Estimated reimbursement: $12.00");
     expect(pricing).toHaveTextContent("locality SYNTHETIC-LOCALITY");
+    // Acronyms render as written, not as humanized wire enums ("Rhc", "Cco contract").
+    expect(pricing).toHaveTextContent("RHC · 2026-01-01");
+    expect(pricing).toHaveTextContent("CCO contract");
+    expect(pricing).not.toHaveTextContent("Rhc");
+    expect(pricing).not.toHaveTextContent("Cco contract");
     expect(fieldValue("Clinical quantity")).toContain(
       "Verified quantity evidence is present for the reimbursement estimate",
     );
@@ -454,6 +459,33 @@ describe("the billing context step shows what the server resolved", () => {
     );
     expect(pricing).toHaveTextContent("actual billed amount remains unavailable");
     expect(fieldValue("Electronic submission")).toContain("Unavailable");
+  });
+});
+
+describe("an ambiguous or unsupported pricing outcome is shown as such", () => {
+  it("shows conflicting rate evidence for an ambiguous segment and no verified quantity", async () => {
+    previewBody = {
+      ...BLOCKED_ARRANGEMENT_PREVIEW,
+      pricing: {
+        ...BLOCKED_ARRANGEMENT_PREVIEW.pricing,
+        status: "ambiguous",
+        coversRequestedPeriod: false,
+        segments: [
+          {
+            ...BLOCKED_ARRANGEMENT_PREVIEW.pricing.segments[0],
+            status: "ambiguous",
+            rateStatus: "ambiguous",
+            quantityStatus: "unverified",
+          },
+        ],
+      },
+    };
+    await reachBillingContext();
+    const pricing = screen.getByRole("region", { name: "Pricing assessment" });
+    expect(pricing).toHaveTextContent("Pricing assessment · Ambiguous");
+    expect(pricing).toHaveTextContent("Conflicting rate evidence requires resolution.");
+    expect(fieldValue("Clinical quantity")).toContain("Clinical quantity evidence is unverified");
+    expect(fieldValue("Clinical quantity")).not.toContain("Verified quantity evidence is present");
   });
 });
 

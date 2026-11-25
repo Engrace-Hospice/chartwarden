@@ -1,6 +1,6 @@
 # M24 payer-readiness migration deployment
 
-The original M24 payer-readiness and M25 ERA-review batch adds nine migrations: `1535`, `1538` and `1539` are `-- compat: expand`; `1536`, `1537`, `1541`, `1542`, `1543` and `1544` are `-- compat: contract`. L6C2 later adds migrations `1547` and `1548`, L6D adds `1549`, L8A.2R adds `1551`, and L8A.2C adds `1552`; all are contract. Unrelated migrations `1540`, `1545`, `1546` and `1550` retain their own module ownership. A merge to `main` therefore stops `deploy.sh` at exit 75 before any DDL, and the whole pending batch waits for an operator. This runbook is that operator procedure. Every statement below is read off the migration SQL or the deploy scripts; where a fact depends on production state it says so and tells you how to read it.
+The original M24 payer-readiness and M25 ERA-review batch adds nine migrations: `1535`, `1538` and `1539` are `-- compat: expand`; `1536`, `1537`, `1541`, `1542`, `1543` and `1544` are `-- compat: contract`. L6C2 later adds migrations `1547` and `1548`, L6D adds `1549`, L8A.1 adds `1550`, L8A.2R adds `1551`, and L8A.2C adds `1552`; all six are contract, so twelve contract migrations of this work are held in total (fifteen migrations with the three expand ones). Migrations `1540` and `1545` (M8) and `1546` (the object-key column rename) belong to other work and are not part of this batch. A merge to `main` therefore stops `deploy.sh` at exit 75 before any DDL, and the whole pending batch waits for an operator. This runbook is that operator procedure. Every statement below is read off the migration SQL or the deploy scripts; where a fact depends on production state it says so and tells you how to read it.
 
 No deployment is authorized by this document.
 
@@ -20,6 +20,7 @@ No deployment is authorized by this document.
 | `1547_m25_isolated_medicaid_era_evaluator` | contract | Creates the NOLOGIN, NOBYPASSRLS evaluator carrier; allows `isolated_evaluator` assessment provenance and grants review/history writes only to that carrier under tenant RLS. | Changes trust checks and restores writes only to an isolated evaluator identity. |
 | `1548_m25_medicaid_era_integrity_and_source_reader` | contract | Creates restricted source-reader roles, removes all held and reverse role memberships and broad privileges, installs the audited one-shot Claim.MD staged-artifact projection, and adds duplicate-safe nonposting evaluation idempotency storage. | Revokes broad/default privileges and grants source access only through the narrow reader function. |
 | `1549_m25_medicaid_era_point_in_time_assessments` | contract | Adds nullable evidence-snapshot fingerprint and observed-at columns, validates their paired format, requires snapshots on trusted evaluator inserts/promotions, prevents snapshot deletion, and requires a version increment when snapshot or trust status changes. Historical rows are not backfilled. | Adds database constraints and a trigger to make point-in-time assessment provenance explicit; no row is upgraded or treated as current authorization. |
+| `1550_m24_rate_policy_methodology_and_variants` | contract | On `medicaid_payer_rate_policy`: ten new methodology columns (pricing method, quantity conversion, minimum duration and minutes, methodology version, rounding mode and boundary, charge-ceiling method and boundary, quality-reporting applicability), all defaulting to `unqualified` so an existing row cannot price a claim; ten validated CHECKs; the bucket CHECK and the identity unique constraint dropped and re-added (the identity key now includes the quality-reporting variant); a `NOT VALID` CHECK that a `verified` row carries a complete methodology; the supersession guard function replaced (a correction must keep the same identity, quality variant and effective date). | `DROP`/`ADD` of a CHECK and of a unique constraint on an existing table, and new CHECKs. The table is created by 1539 in this batch, so it is empty and each validated CHECK scans nothing; applied alone after an earlier 1539 they would scan the table under an ACCESS EXCLUSIVE lock. No row is rewritten or promoted. |
 | `1551_m24_immutable_hospice_pricing_snapshots` | contract | Adds the M24-owned append-only, provider/patient/admission/payer-scoped billing-evidence profile and immutable payer-rate pricing snapshot tables; adds the payer-rate identity to claim lines, exact-one rate-source constraints, RLS/FORCE RLS, audit triggers, source-integrity checks and snapshot/line immutability. Historical claims are not backfilled. | Alters an existing partitioned claim-line table and adds guards, constraints and grants; applying it requires the same operator hold as the other contract migrations. |
 | `1552_m24_billing_evidence_lineage_integrity` | contract | Replaces the billing-evidence identity key to include patient and payer-program identity; strengthens the insert guard so corrections preserve complete identity, increment the evidence version and cannot branch. No historical evidence is rewritten or promoted. | Replaces a uniqueness constraint and tightens append-only correction semantics; it requires the operator hold and a reviewed application-writer plan. |
 
@@ -31,9 +32,9 @@ PostgreSQL 15 or later is required by `NULLS NOT DISTINCT` (1537, and the identi
 
 ## What a merge to `main` does
 
-`deploy.yml` deploys every push to `main`, and `deploy.sh` runs its migrate step with `--hold-contract`. With any of 1536, 1537, 1541, 1542, 1543, 1544 or 1551 pending, that step refuses the whole pending batch and exits 75 **before any DDL**: the job fails with `DEPLOY HELD BEFORE ANY SCHEMA CHANGE`, the previous release keeps running and the database is unchanged. Every later deploy, a security fix included, stays held until an operator applies the batch by hand with the sections below. An empty ledger (a first deploy) is exempt.
+`deploy.yml` deploys every push to `main`, and `deploy.sh` runs its migrate step with `--hold-contract`. With any of 1536, 1537, 1541, 1542, 1543, 1544, 1547, 1548, 1549, 1550, 1551 or 1552 pending, that step refuses the whole pending batch and exits 75 **before any DDL**: the job fails with `DEPLOY HELD BEFORE ANY SCHEMA CHANGE`, the previous release keeps running and the database is unchanged. Every later deploy, a security fix included, stays held until an operator applies the batch by hand with the sections below. An empty ledger (a first deploy) is exempt.
 
-The by-hand run applies **every** pending migration, not only these nine. If another held migration is still pending in the production ledger (1508 for M25, 1512 and 1513 for M23, 1546 for the object-key column rename, or anything newer), its runbook applies too: `docs/runbooks/m25-835-deployment.md`, `docs/runbooks/m23-sia-revisions-deployment.md`, `docs/runbooks/object-key-column-rename-deployment.md`. Files apply in name order, so this batch's 1535 to 1544 run first, then 1546, 1547 to 1549, then 1550 to 1552. Read `_chartwarden_migration` first (below); do not infer production history from a branch.
+The by-hand run applies **every** pending migration, not only these twelve. If another held migration is still pending in the production ledger (1508 for M25, 1512 and 1513 for M23, 1546 for the object-key column rename, or anything newer), its runbook applies too: `docs/runbooks/m25-835-deployment.md`, `docs/runbooks/m23-sia-revisions-deployment.md`, `docs/runbooks/object-key-column-rename-deployment.md`. Files apply in name order, so this batch's 1535 to 1544 run first, then 1546, 1547 to 1549, then 1550 to 1552. Read `_chartwarden_migration` first (below); do not infer production history from a branch.
 
 ## Why the previous release must be drained
 
@@ -93,21 +94,22 @@ Do not restart an old application image against the migrated schema.
    `--hold-contract` is left off on purpose. Each file is applied in ordinal order in its own transaction together with its ledger row. If a file fails, that file rolls back and the run stops: files before it stay committed, files after it are not applied. A 1537 refusal (`1537 found duplicate nullable medicaid_state_rate_schedule identities`) therefore leaves 1535 and 1536 committed and 1537, 1538, 1539 and 1541 to 1544 pending; fix the rows, then run the same command again. Do not restart the previous image meanwhile.
 2. Turn the maintenance page OFF and confirm it (`sh /opt/chartwarden/maintenance.sh off`, then `sh /opt/chartwarden/maintenance.sh status` must report it off). The deploy's smoke tier 3 fetches the public SPA; with maintenance still on it sees the 503 page and fails `tier3/web`, and the failed smoke makes `restore_previous_release` recreate the OLD `api` and `worker` on the migrated schema, which is the state this runbook exists to avoid (`deploy/production/README.md`: "Turn maintenance off before re-running `deploy.sh`"). The previous writers are still stopped, so nothing writes while the page is off.
 3. Re-run the held deploy: its migrate step has nothing left to apply and its `up -d --force-recreate api worker web docling-worker` starts the new release. **A failed re-run can restart the OLD writers on the migrated schema** (it believes the schema is unchanged, so `restore_previous_release` recreates the previous image). If the re-run fails after its migrate step, stop them at once with `docker compose --env-file .env.production -f compose.yml stop api worker`, turn maintenance back on (`sh /opt/chartwarden/maintenance.sh on`), fix the cause, turn it off and re-run; do not recreate from `.env.production` as it stands.
-4. Confirm the ledger holds all nine rows with checksums, and that every replica runs the release digest:
+4. Confirm the ledger holds all fifteen rows with checksums, and that every replica runs the release digest:
 
    ```sql
    SELECT filename, checksum FROM _chartwarden_migration
-    WHERE filename ~ '^(1535|1536|1537|1538|1539|1541|1542|1543|1544)_' ORDER BY filename;  -- 9 rows
+    WHERE filename ~ '^(1535|1536|1537|1538|1539|1541|1542|1543|1544|1547|1548|1549|1550|1551|1552)_' ORDER BY filename;  -- 15 rows
    ```
 
 5. Read-only structure checks (run as the owner or a `BYPASSRLS` role; under any other role FORCEd RLS hides every row and a count prints a false zero):
 
    ```sql
-   -- RLS enabled and FORCEd on all seven new tables: 7 rows, both flags true.
+   -- RLS enabled and FORCEd on all nine new tables (the last two are created by 1551): 9 rows, both flags true.
    SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class
     WHERE relname IN ('medicaid_program_assignment', 'medicaid_enrollment_evidence', 'medicaid_payer_authorization_event',
                       'medicaid_payer_rate_policy', 'mdm_medicaid_payer_program_classification',
-                      'medicaid_era_review', 'medicaid_era_review_history') ORDER BY relname;
+                      'medicaid_era_review', 'medicaid_era_review_history',
+                      'medicaid_hospice_billing_evidence', 'medicaid_claim_line_pricing_snapshot') ORDER BY relname;
 
    -- 1544 write lockdown: the application role reads the ERA review tables and cannot write them (true, false, false, false).
    SELECT has_table_privilege('chartwarden_app', 'medicaid_era_review', 'SELECT') AS review_select,
@@ -115,7 +117,7 @@ Do not restart an old application image against the migrated schema.
           has_table_privilege('chartwarden_app', 'medicaid_era_review', 'UPDATE') AS review_update,
           has_table_privilege('chartwarden_app', 'medicaid_era_review_history', 'INSERT') AS history_insert;
 
-   -- Guards installed and enabled (tgenabled = 'O'): 16 rows.
+   -- Guards installed and enabled (tgenabled = 'O'): 22 rows (the last six are installed by 1551).
    SELECT tgrelid::regclass AS tbl, tgname, tgenabled FROM pg_trigger
     WHERE tgname IN ('trg_medicaid_program_assignment_provider_entity', 'trg_medicaid_program_assignment_insert_status',
                      'trg_medicaid_program_assignment_location', 'trg_medicaid_program_assignment_update_guard',
@@ -126,14 +128,19 @@ Do not restart an old application image against the migrated schema.
                      'trg_medicaid_payer_rate_policy_status', 'trg_medicaid_payer_rate_policy_supersession',
                      'trg_medicaid_payer_rate_policy_append_only',
                      'trg_medicaid_submission_provenance',
-                     'medicaid_era_review_identity_immutable', 'medicaid_era_review_history_immutable') ORDER BY tgname;
+                     'medicaid_era_review_identity_immutable', 'medicaid_era_review_history_immutable',
+                     'trg_lock_medicaid_rate_policy_pricing_identity',
+                     'trg_medicaid_hospice_billing_evidence_insert', 'trg_medicaid_hospice_billing_evidence_append_only',
+                     'trg_medicaid_claim_line_pricing_snapshot_insert', 'trg_medicaid_claim_line_pricing_snapshot_append_only',
+                     'trg_medicaid_priced_claim_line_immutable') ORDER BY tgname;
 
-   -- Audit triggers installed and enabled (tgenabled = 'O'): 7 rows. Without them the new tables change unrecorded.
+   -- Audit triggers installed and enabled (tgenabled = 'O'): 9 rows. Without them the new tables change unrecorded.
    SELECT tgrelid::regclass AS tbl, tgname, tgenabled FROM pg_trigger
     WHERE tgname IN ('trg_audit_medicaid_program_assignment', 'trg_audit_medicaid_enrollment_evidence',
                      'trg_audit_medicaid_payer_authorization_event', 'trg_audit_medicaid_payer_rate_policy',
                      'trg_audit_mdm_medicaid_payer_program_classification',
-                     'trg_audit_medicaid_era_review', 'trg_audit_medicaid_era_review_history') ORDER BY tgname;
+                     'trg_audit_medicaid_era_review', 'trg_audit_medicaid_era_review_history',
+                     'trg_audit_medicaid_hospice_billing_evidence', 'trg_audit_medicaid_claim_line_pricing_snapshot') ORDER BY tgname;
 
    -- 1544: the platform roles hold nothing on the two ERA review tables. 0 rows (a host without provisioned platform
    -- roles prints none either).

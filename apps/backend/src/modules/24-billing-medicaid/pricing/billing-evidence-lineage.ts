@@ -35,6 +35,10 @@ function nextDay(day: string): string | null {
   return Number.isFinite(time) ? new Date(time + 86_400_000).toISOString().slice(0, 10) : null;
 }
 
+function isPendingRow(row: BillingEvidenceLineageFact): boolean {
+  return row.verificationStatus === "pending" || row.verificationStatus === "unverified";
+}
+
 function isCalendarDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = Date.parse(`${value}T00:00:00.000Z`);
@@ -59,15 +63,23 @@ export function resolveBillingEvidenceLineage<T extends BillingEvidenceLineageFa
 
   const knownAtAssessment = input.rows.filter((row) => {
     const createdAt = instant(row.createdAt);
-    const verifiedAt = instant(row.verifiedAt);
     if (createdAt === null || createdAt > assessedAt || row.effectiveFrom > input.serviceTo) {
       return false;
     }
-    // A future verification is not part of the evidence known at this assessment time. A pending
-    // row is retained only as a current conflict signal; it cannot supersede an earlier verified row.
-    return row.verificationStatus === "pending" || row.verificationStatus === "unverified"
-      ? true
-      : verifiedAt !== null && verifiedAt <= assessedAt;
+    // A pending row is retained only as a current conflict signal; it cannot supersede an earlier
+    // verified row. A revoked or superseded row closes its predecessor from the moment it was
+    // recorded, whether or not verified_at is set: dropping it would leave the predecessor as the
+    // verified head and let pricing proceed on revoked evidence.
+    if (
+      isPendingRow(row) ||
+      row.verificationStatus === "revoked" ||
+      row.verificationStatus === "superseded"
+    ) {
+      return true;
+    }
+    // A future verification is not part of the evidence known at this assessment time.
+    const verifiedAt = instant(row.verifiedAt);
+    return verifiedAt !== null && verifiedAt <= assessedAt;
   });
   const observed = knownAtAssessment.filter((row) =>
     overlaps(row, input.serviceFrom, input.serviceTo),
@@ -76,22 +88,12 @@ export function resolveBillingEvidenceLineage<T extends BillingEvidenceLineageFa
     return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_MISSING" };
   }
 
-  const pending = observed.filter(
-    (row) => row.verificationStatus === "pending" || row.verificationStatus === "unverified",
-  );
-  if (pending.length > 0) {
-    return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_CORRECTION_PENDING" };
-  }
-
   const supersessionCounts = new Map<string, number>();
   // A verified correction can narrow its predecessor out of the requested service range. Resolve
   // that identity transition before effective-date selection; filtering successors by service overlap
   // first would resurrect an obsolete predecessor for dates after its corrected end.
   for (const row of knownAtAssessment) {
-    if (
-      row.supersedesId !== null &&
-      (row.verificationStatus === "verified" || row.verificationStatus === "revoked")
-    ) {
+    if (row.supersedesId !== null && !isPendingRow(row)) {
       supersessionCounts.set(row.supersedesId, (supersessionCounts.get(row.supersedesId) ?? 0) + 1);
     }
   }
@@ -99,15 +101,26 @@ export function resolveBillingEvidenceLineage<T extends BillingEvidenceLineageFa
     return { status: "ambiguous", reasonCode: "BILLING_EVIDENCE_SUPERSESSION_BRANCH" };
   }
 
-  const superseded = new Set(
-    knownAtAssessment
-      .filter(
-        (row) =>
-          row.supersedesId !== null &&
-          (row.verificationStatus === "verified" || row.verificationStatus === "revoked"),
-      )
-      .map((row) => row.supersedesId as string),
-  );
+  // Pending rows are append-only, so the only way a pending correction is ever verified is a later
+  // verified row that supersedes it. The whole chain below that row is then closed: the pending
+  // row, and its own predecessor (the earlier verified head the pending row was correcting).
+  const knownById = new Map(knownAtAssessment.map((row) => [row.id, row]));
+  const superseded = new Set<string>();
+  for (const id of supersessionCounts.keys()) {
+    for (
+      let current: string | null | undefined = id;
+      current != null && !superseded.has(current);
+      current = knownById.get(current)?.supersedesId
+    ) {
+      superseded.add(current);
+    }
+  }
+
+  const pending = observed.filter((row) => isPendingRow(row) && !superseded.has(row.id));
+  if (pending.length > 0) {
+    return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_CORRECTION_PENDING" };
+  }
+
   const heads = knownAtAssessment.filter((row) => !superseded.has(row.id));
   const relevantHeads = heads.filter((row) => overlaps(row, input.serviceFrom, input.serviceTo));
   if (relevantHeads.length === 0) {

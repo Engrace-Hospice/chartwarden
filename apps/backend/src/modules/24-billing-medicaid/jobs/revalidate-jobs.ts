@@ -56,7 +56,10 @@ import {
   inclusiveLocEndDateForAdmission,
   patientLifecycleServiceRangeIssue,
 } from "../claim-range-guards";
-import { verifyStoredRhcPricingSnapshots } from "../pricing/rhc-pricing-snapshot";
+import {
+  rethrowUnlessDomainError,
+  verifyStoredRhcPricingSnapshots,
+} from "../pricing/rhc-pricing-snapshot";
 import type { CanonicalPayerIdentityReader } from "../routes/write-service-drizzle";
 import { readMedicaidRatePolicyLineage } from "../routes/write-service-drizzle";
 import { M24_QUEUES, M24_QUEUE_PARAMS } from "./queues";
@@ -380,6 +383,7 @@ export async function runMedicaidRevalidate(
           lines: lineRows,
           locPeriods: hospiceSnapshot.periods,
           admissionVersion: resolvedPayer.admissionVersion,
+          inclusiveEndDate: resolvedPayer.inclusiveEndDate ?? null,
           rateRows,
           payerReader: {
             resolvePayer: deps.canonicalPayerReader.resolvePayer,
@@ -397,7 +401,9 @@ export async function runMedicaidRevalidate(
         });
         hospicePricingSnapshotVerified = pricingVerification.pricingSnapshotVerified;
         hospiceInstitutionalFormatQualified = pricingVerification.institutionalFormatQualified;
-      } catch {
+      } catch (error) {
+        // Fail closed on a typed refusal; rethrow anything else (it may have aborted this transaction).
+        rethrowUnlessDomainError("m24.claim_revalidate.pricing_snapshot_unverified", error);
         hospicePricingSnapshotVerified = false;
         hospiceInstitutionalFormatQualified = false;
       }

@@ -178,4 +178,78 @@ describe("assessment-time hospice billing evidence lineage", () => {
       reasonCode: "BILLING_EVIDENCE_SUPERSESSION_BRANCH",
     });
   });
+
+  it("resolves a pending correction once a later verified row supersedes it", () => {
+    const v1 = base({ id: "evidence-v1" });
+    const pending = base({
+      id: "evidence-pending",
+      supersedesId: v1.id,
+      verificationStatus: "pending",
+      createdAt: "2026-11-05T00:00:00.000Z",
+      verifiedAt: null,
+    });
+    const v2 = base({
+      id: "evidence-v2",
+      supersedesId: pending.id,
+      createdAt: "2026-11-08T00:00:00.000Z",
+      verifiedAt: "2026-11-09T00:00:00.000Z",
+    });
+    expect(resolve([v1, pending, v2])).toMatchObject({
+      status: "verified",
+      row: { id: "evidence-v2" },
+    });
+    // Before v2 was verified the pending correction still holds the assessment.
+    expect(
+      resolveBillingEvidenceLineage({
+        rows: [v1, pending, v2],
+        serviceFrom: "2026-11-01",
+        serviceTo: "2026-11-10",
+        assessedAt: "2026-11-07T00:00:00.000Z",
+      }),
+    ).toEqual({ status: "unresolved", reasonCode: "BILLING_EVIDENCE_CORRECTION_PENDING" });
+  });
+
+  it("resolves an unverified row once its verified successor exists", () => {
+    const unverified = base({
+      id: "evidence-unverified",
+      verificationStatus: "unverified",
+      createdAt: "2026-11-01T00:00:00.000Z",
+      verifiedAt: null,
+    });
+    const verified = base({
+      id: "evidence-verified",
+      supersedesId: unverified.id,
+      createdAt: "2026-11-05T00:00:00.000Z",
+      verifiedAt: "2026-11-06T00:00:00.000Z",
+    });
+    expect(resolve([unverified, verified])).toMatchObject({
+      status: "verified",
+      row: { id: "evidence-verified" },
+    });
+  });
+
+  it("holds on a revoked or superseded row that has no verified_at instead of reviving its predecessor", () => {
+    const predecessor = base({ id: "evidence-a" });
+    const revoked = base({
+      id: "evidence-revoked",
+      supersedesId: predecessor.id,
+      verificationStatus: "revoked",
+      createdAt: "2026-11-08T00:00:00.000Z",
+      verifiedAt: null,
+    });
+    expect(resolve([predecessor, revoked])).toEqual({
+      status: "unresolved",
+      reasonCode: "BILLING_EVIDENCE_REVOKED",
+    });
+
+    const supersededStatus = {
+      ...revoked,
+      id: "evidence-superseded",
+      verificationStatus: "superseded",
+    };
+    expect(resolve([predecessor, supersededStatus])).toEqual({
+      status: "unresolved",
+      reasonCode: "BILLING_EVIDENCE_UNVERIFIED",
+    });
+  });
 });

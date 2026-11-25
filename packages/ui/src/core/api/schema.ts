@@ -81894,9 +81894,15 @@ export interface operations {
                     admissionId: string;
                     /** Format: uuid */
                     providerEntityId: string;
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).
+                     */
                     serviceFrom: string;
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).
+                     */
                     serviceTo: string;
                     /** @constant */
                     kind: "hospice_only";
@@ -81907,9 +81913,15 @@ export interface operations {
                     admissionId: string;
                     /** Format: uuid */
                     providerEntityId: string;
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).
+                     */
                     serviceFrom: string;
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).
+                     */
                     serviceTo: string;
                     /** @constant */
                     kind: "rb_only";
@@ -81922,9 +81934,15 @@ export interface operations {
                     admissionId: string;
                     /** Format: uuid */
                     providerEntityId: string;
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).
+                     */
                     serviceFrom: string;
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).
+                     */
                     serviceTo: string;
                     /** @constant */
                     kind: "combined_hospice_rb";
@@ -82717,9 +82735,15 @@ export interface operations {
                     admissionId: string;
                     /** Format: uuid */
                     providerEntityId: string;
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).
+                     */
                     serviceFrom: string;
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).
+                     */
                     serviceTo: string;
                 };
             };
@@ -82842,11 +82866,11 @@ export interface operations {
                                 quantityStatus: "verified" | "missing" | "unverified";
                                 baseReimbursementCents: number | null;
                                 reimbursementEstimateCents: number | null;
-                                actualBilledChargeCents: null;
+                                actualBilledChargeCents: number | null;
                                 reasonCodes: string[];
                             }[];
                             reimbursementEstimateTotalCents: number | null;
-                            actualBilledChargeTotalCents: null;
+                            actualBilledChargeTotalCents: number | null;
                             /** @constant */
                             submissionAvailable: false;
                         };

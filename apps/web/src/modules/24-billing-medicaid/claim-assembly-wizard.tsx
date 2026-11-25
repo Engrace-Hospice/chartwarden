@@ -29,6 +29,23 @@ import { Card, Field, alertStyle, inputStyle, mutedStyle, selectStyle } from "./
 
 type ClaimKind = "combined_hospice_rb" | "hospice_only" | "rb_only";
 
+/** Level-of-care codes are acronyms and render as written; `humanize` would turn "RHC" into "Rhc". */
+const SERVICE_CATEGORY_LABEL: Readonly<Record<string, string>> = {
+  RHC: "RHC",
+  CHC: "CHC",
+  IRC: "IRC",
+  GIP: "GIP",
+  IN_HOME_RESPITE: "In-home respite",
+};
+/** Rate source kinds carry acronyms (OHA, CCO) that `humanize` would flatten ("Cco contract"). */
+const RATE_SOURCE_KIND_LABEL: Readonly<Record<string, string>> = {
+  oha_ffs_schedule: "OHA fee-for-service schedule",
+  cco_contract: "CCO contract",
+  other_payer_contract: "Other payer contract",
+};
+const labelFor = (labels: Readonly<Record<string, string>>, value: string): string =>
+  labels[value] ?? humanize(value);
+
 interface AssemblyPreview {
   primaryCoverage: { status: string; coverageKind: string | null; rank: number | null };
   medicaidCoverage: { status: string; coverageKind: string | null; rank: number | null };
@@ -823,13 +840,13 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                     >
                       <strong>
                         {segment.serviceCategory
-                          ? humanize(segment.serviceCategory)
+                          ? labelFor(SERVICE_CATEGORY_LABEL, segment.serviceCategory)
                           : "Service category unresolved"}
                         {` · ${segment.serviceFrom}${segment.serviceTo === segment.serviceFrom ? "" : ` to ${segment.serviceTo}`}`}
                       </strong>
                       {segment.rateCents !== null ? (
                         <p style={mutedStyle}>
-                          {`Rate $${(segment.rateCents / 100).toFixed(2)} ${segment.unitBasis === "per_hour" ? "per hour" : "per day"}${segment.pricingMethod === "fixed_contract_unit" ? " · contract-defined unit" : ""} · ${humanize(segment.rateSourceKind ?? "source unavailable")}${segment.rateLocalityCode ? ` · locality ${segment.rateLocalityCode}` : ""} · effective ${segment.rateEffectiveFrom ?? "unknown"}${segment.rateEffectiveTo ? ` through ${segment.rateEffectiveTo}` : " onward"}${segment.methodologyVersion === null ? "" : ` · method v${segment.methodologyVersion}`}`}
+                          {`Rate $${(segment.rateCents / 100).toFixed(2)} ${segment.unitBasis === "per_hour" ? "per hour" : "per day"}${segment.pricingMethod === "fixed_contract_unit" ? " · contract-defined unit" : ""} · ${segment.rateSourceKind ? labelFor(RATE_SOURCE_KIND_LABEL, segment.rateSourceKind) : "Source unavailable"}${segment.rateLocalityCode ? ` · locality ${segment.rateLocalityCode}` : ""} · effective ${segment.rateEffectiveFrom ?? "unknown"}${segment.rateEffectiveTo ? ` through ${segment.rateEffectiveTo}` : " onward"}${segment.methodologyVersion === null ? "" : ` · method v${segment.methodologyVersion}`}`}
                         </p>
                       ) : (
                         <p style={mutedStyle}>

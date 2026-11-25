@@ -51,6 +51,9 @@ type SeedIds = {
   payerAuthorizationEvent: string;
   payerRatePolicy: string;
   hospiceBillingEvidence: string;
+  pricedClaim: string;
+  pricedLine: string;
+  pricingSnapshot: string;
 };
 
 const COVERED: { table: string; key: keyof SeedIds; idCol?: string }[] = [
@@ -73,6 +76,7 @@ const COVERED: { table: string; key: keyof SeedIds; idCol?: string }[] = [
   { table: "medicaid_payer_authorization_event", key: "payerAuthorizationEvent" },
   { table: "medicaid_payer_rate_policy", key: "payerRatePolicy" },
   { table: "medicaid_hospice_billing_evidence", key: "hospiceBillingEvidence" },
+  { table: "medicaid_claim_line_pricing_snapshot", key: "pricingSnapshot" },
 ];
 
 /**
@@ -227,6 +231,262 @@ describe.skipIf(!DB_URL)(
             `migration ${f} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
           );
         }
+      }
+    }
+
+    /** A source-verified RHC billing-evidence row (verified at the fixed past instant below). */
+    const hospiceEvidenceRow = (org: string, pe: string, over: Record<string, unknown> = {}) => ({
+      organization_id: org,
+      provider_entity_id: pe,
+      patient_id: PATIENT,
+      admission_id: randomUUID(),
+      admission_version: 0,
+      canonical_payer_id: randomUUID(),
+      program_kind: "managed_care",
+      service_state: "OR",
+      locality_code: "CBSA-FIX",
+      locality_evidence_reference: "evidence:synthetic-test/locality",
+      locality_evidence_version: 1,
+      quality_reporting_applicability: "not_required",
+      quality_reporting_status: "not_applicable",
+      quality_evidence_reference: "evidence:synthetic-test/quality",
+      quality_evidence_version: 1,
+      service_category: "RHC",
+      quantity_policy: "active_rhc_loc_calendar_day",
+      quantity_evidence_owner: "m6_level_of_care_period",
+      billing_unit: "daily",
+      revenue_code: "0651",
+      hcpcs_code: "Q5001",
+      coding_profile: "local_draft_only",
+      coding_evidence_reference: "evidence:synthetic-test/coding",
+      coding_evidence_version: 1,
+      billed_charge_cents_per_unit: 10000,
+      charge_evidence_reference: "evidence:synthetic-test/charge",
+      charge_evidence_version: 1,
+      verification_status: "verified",
+      effective_from: "2026-01-01",
+      effective_to: "2026-01-31",
+      source_document_reference: "doc:synthetic-test/billing-profile",
+      verified_at: "2026-01-15T00:00:00Z",
+      verified_by_membership_id: REVIEWER,
+      recorded_by_membership_id: RECORDER,
+      ...over,
+    });
+    /** A verified per-day managed-care RHC rate that agrees with `hospiceEvidenceRow` on payer and locality. */
+    const verifiedRateRow = (org: string, pe: string, over: Record<string, unknown> = {}) => ({
+      organization_id: org,
+      provider_entity_id: pe,
+      canonical_payer_id: randomUUID(),
+      program_kind: "managed_care",
+      service_state: "OR",
+      locality_code: "CBSA-FIX",
+      service_category: "RHC",
+      unit_basis: "per_day",
+      rate_cents: 12000,
+      pricing_method: "per_day",
+      quantity_conversion_method: "daily_units",
+      minimum_duration_method: "not_applicable",
+      methodology_version: 1,
+      rounding_mode: "exact_only",
+      rounding_boundary: "service_day",
+      charge_ceiling_method: "none",
+      charge_ceiling_boundary: "not_applicable",
+      quality_reporting_applicability: "not_required",
+      quality_reporting_status: "not_applicable",
+      source_kind: "cco_contract",
+      verification_status: "verified",
+      effective_from: "2026-01-01",
+      source_document_ref: "doc:synthetic-test/rate",
+      verified_at: "2026-01-15T00:00:00Z",
+      verified_by_membership_id: REVIEWER,
+      recorded_by_membership_id: RECORDER,
+      ...over,
+    });
+
+    type PricedChain = {
+      org: string;
+      pe: string;
+      payer: string;
+      admission: string;
+      claim: string;
+      rate: string;
+      rateVersion: number;
+      evidence: string;
+      evidenceVersion: number;
+    };
+
+    /** One claim, one verified evidence row and one verified rate that all name the same payer and admission. */
+    async function seedPricedChain(
+      org: string,
+      pe: string,
+      over: { rate?: Record<string, unknown>; evidence?: Record<string, unknown> } = {},
+    ): Promise<PricedChain> {
+      const payer = randomUUID();
+      const admission = randomUUID();
+      const evidence = await insertRow(
+        "medicaid_hospice_billing_evidence",
+        hospiceEvidenceRow(org, pe, {
+          canonical_payer_id: payer,
+          admission_id: admission,
+          ...over.evidence,
+        }),
+      );
+      const rate = await insertRow(
+        "medicaid_payer_rate_policy",
+        verifiedRateRow(org, pe, { canonical_payer_id: payer, ...over.rate }),
+      );
+      const claim = await insertRow("medicaid_claim", {
+        organization_id: org,
+        provider_entity_id: pe,
+        patient_id: PATIENT,
+        patient_payer_id: randomUUID(),
+        admission_id: admission,
+        service_state: "OR",
+        kind: "hospice_only",
+        tob: "0813",
+        service_from: "2026-01-01T00:00:00Z",
+        service_to: "2026-01-31T00:00:00Z",
+        state_plan_code_id: randomUUID(),
+        state_plan_code_snapshot: "OHP",
+        medicaid_claim_control_number: `T-${randomUUID().slice(0, 24)}`,
+        created_by_membership_id: RECORDER,
+        updated_by_membership_id: RECORDER,
+        medicaid_program_kind: "managed_care",
+        canonical_payer_id: payer,
+      });
+      return {
+        org,
+        pe,
+        payer,
+        admission,
+        claim,
+        rate,
+        rateVersion: 1,
+        evidence,
+        evidenceVersion: 1,
+      };
+    }
+
+    /** A database-clock instant `offset` from now, as the millisecond ISO string the application writes. */
+    async function dbInstant(offset: string): Promise<string> {
+      const { rows } = await db.query<{ t: string }>(
+        `SELECT to_char((clock_timestamp() + $1::interval) AT TIME ZONE 'UTC',
+                        'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS t`,
+        [offset],
+      );
+      return rows[0].t;
+    }
+
+    /** The snapshot JSON the application would write for the two-day line `insertPricedLineStatements` inserts. */
+    const snapshotFor = (
+      chain: PricedChain,
+      lineId: string,
+      assessedAt: string,
+      over: Record<string, unknown>,
+    ) => ({
+      schemaVersion: 1,
+      postingAuthorized: false,
+      medicaidClaimId: chain.claim,
+      claimLineId: lineId,
+      payerRatePolicyId: chain.rate,
+      billingEvidenceId: chain.evidence,
+      billingEvidenceVersion: chain.evidenceVersion,
+      rateVersion: chain.rateVersion,
+      rateCents: 12000,
+      billedChargeCentsPerUnit: 10000,
+      billedChargeCents: 20000,
+      quantity: { basis: "per_day", units: 2 },
+      levelOfCare: "RHC",
+      revenueCode: "0651",
+      hcpcsCode: "Q5001",
+      codingProfile: "local_draft_only",
+      codingEvidenceVersion: 1,
+      chargeEvidenceVersion: 1,
+      serviceFrom: "2026-01-01",
+      serviceTo: "2026-01-02",
+      locality: {
+        code: "CBSA-FIX",
+        evidenceReference: "evidence:synthetic-test/locality",
+        evidenceVersion: 1,
+      },
+      qualityReporting: {
+        applicability: "not_required",
+        status: "not_applicable",
+        evidenceReference: "evidence:synthetic-test/quality",
+        evidenceVersion: 1,
+      },
+      assessmentTimestamp: assessedAt,
+      ...over,
+    });
+
+    type PricedLineOptions = {
+      /** The instant written to BOTH assessed_at and the JSON (default: one second ahead of the database clock). */
+      assessedAt?: string;
+      /** Written to assessed_at instead of `assessedAt`, to prove the two must agree. */
+      assessedAtColumn?: string;
+      snapshot?: Record<string, unknown>;
+    };
+
+    /** Line numbers are unique per claim, and one chain's claim takes several lines. */
+    let pricedLineNumber = 0;
+
+    /** Insert a payer-priced line and its snapshot (the deferred trigger needs both in one transaction). */
+    async function insertPricedLineStatements(
+      chain: PricedChain,
+      options: PricedLineOptions = {},
+    ): Promise<{ line: string; snapshot: string }> {
+      const assessedAt = options.assessedAt ?? (await dbInstant("1 second"));
+      const line = randomUUID();
+      pricedLineNumber += 1;
+      const lineNumber = pricedLineNumber;
+      await db.query(
+        `INSERT INTO medicaid_claim_line
+           (id, organization_id, provider_entity_id, medicaid_claim_id, line_number, service_date,
+            service_date_to, revenue_code, q_code, level_of_care, loc_period_id, units,
+            rate_at_assembly_cents, state_rate_schedule_id_snapshot, payer_rate_policy_id_snapshot,
+            charges_cents, is_rb)
+         VALUES ($1,$2,$3,$4,$6,'2026-01-01T00:00:00Z','2026-01-02T00:00:00Z','0651','Q5001','RHC',
+                 gen_random_uuid(),2,12000,NULL,$5,20000,false)`,
+        [line, chain.org, chain.pe, chain.claim, chain.rate, lineNumber],
+      );
+      const { rows } = await db.query<{ id: string }>(
+        `INSERT INTO medicaid_claim_line_pricing_snapshot
+           (organization_id, provider_entity_id, medicaid_claim_id, medicaid_claim_line_id,
+            payer_rate_policy_id, billing_evidence_id, snapshot_schema_version, assessed_at,
+            fingerprint, snapshot, created_by_membership_id)
+         VALUES ($1,$2,$3,$4,$5,$6,1,$7::timestamptz,
+                 encode(digest(($8::jsonb - 'assessmentTimestamp')::text, 'sha256'), 'hex'),
+                 $8::jsonb,$9)
+         RETURNING id`,
+        [
+          chain.org,
+          chain.pe,
+          chain.claim,
+          line,
+          chain.rate,
+          chain.evidence,
+          options.assessedAtColumn ?? assessedAt,
+          JSON.stringify(snapshotFor(chain, line, assessedAt, options.snapshot ?? {})),
+          RECORDER,
+        ],
+      );
+      return { line, snapshot: rows[0].id };
+    }
+
+    /** `insertPricedLineStatements` in its own transaction, optionally under another session TimeZone. */
+    async function insertPricedLine(
+      chain: PricedChain,
+      options: PricedLineOptions & { timeZone?: string } = {},
+    ): Promise<{ line: string; snapshot: string }> {
+      await db.query("BEGIN");
+      try {
+        if (options.timeZone) await db.query(`SET LOCAL TIME ZONE '${options.timeZone}'`);
+        const inserted = await insertPricedLineStatements(chain, options);
+        await db.query("COMMIT");
+        return inserted;
+      } catch (cause) {
+        await db.query("ROLLBACK");
+        throw cause;
       }
     }
 
@@ -421,6 +681,8 @@ describe.skipIf(!DB_URL)(
           [org, pe, st, from, m],
         )
       ).rows[0].id as string;
+      const pricedChain = await seedPricedChain(org, pe);
+      const priced = await insertPricedLine(pricedChain);
       return {
         pe,
         claim,
@@ -442,6 +704,9 @@ describe.skipIf(!DB_URL)(
         payerAuthorizationEvent,
         payerRatePolicy,
         hospiceBillingEvidence,
+        pricedClaim: pricedChain.claim,
+        pricedLine: priced.line,
+        pricingSnapshot: priced.snapshot,
       };
     }
 
@@ -484,11 +749,12 @@ describe.skipIf(!DB_URL)(
         expect(block).not.toMatch(/pg_has_role/i);
         expect(block).not.toMatch(/IS NULL/i);
       }
-      // The later migrations that add tenant tables: 1535 (two), 1538 and 1539 (one each).
+      // The later migrations that add tenant tables: 1535 and 1551 (two each), 1538 and 1539 (one each).
       const laterMigrations = [
         ["1535_m24_payer_program_readiness.sql", 2],
         ["1538_m24_payer_authorization_evidence.sql", 1],
         ["1539_m24_payer_rate_policy_evidence.sql", 1],
+        ["1551_m24_immutable_hospice_pricing_snapshots.sql", 2],
       ] as const;
       for (const [file, expected] of laterMigrations) {
         const sql = readFileSync(join(MIGRATIONS_DIR, file), "utf8");
@@ -604,6 +870,7 @@ describe.skipIf(!DB_URL)(
       { table: "medicaid_payer_authorization_event", key: "payerAuthorizationEvent" },
       { table: "medicaid_payer_rate_policy", key: "payerRatePolicy" },
       { table: "medicaid_hospice_billing_evidence", key: "hospiceBillingEvidence" },
+      { table: "medicaid_claim_line_pricing_snapshot", key: "pricingSnapshot" },
     ] as const;
 
     it.each(APPEND_ONLY)(
@@ -740,6 +1007,72 @@ describe.skipIf(!DB_URL)(
       expect(JSON.stringify(after)).not.toContain("doc:synthetic");
       // The seed sets source_document_ref, so a missing scrub would leave the value here.
       expect(after.source_document_ref).toBe("<changed>");
+    });
+
+    it("hospice billing evidence audit records land with the patient, admission and every reference scrubbed", async () => {
+      const audit = await db.query<{
+        event_type: string;
+        resource_kind: string;
+        after: Record<string, unknown>;
+      }>(
+        `SELECT event_type, resource_kind, after FROM audit_event
+         WHERE resource_kind='medicaid_hospice_billing_evidence' AND resource_id=$1
+         ORDER BY created_at DESC LIMIT 1`,
+        [a.hospiceBillingEvidence],
+      );
+      expect(audit.rows).toHaveLength(1);
+      expect(audit.rows[0]).toMatchObject({
+        event_type: "medicaid_hospice_billing_evidence.insert",
+        resource_kind: "medicaid_hospice_billing_evidence",
+      });
+      const { after } = audit.rows[0];
+      const payload = JSON.stringify(after);
+      expect(payload).not.toContain(PATIENT);
+      expect(payload).not.toContain("synthetic-test/");
+      // The seed sets every scrubbed column, so each reads "<changed>" (not an absent or NULL field), while an
+      // unscrubbed column stays readable: the payload is a real row, not an empty object.
+      for (const column of [
+        "patient_id",
+        "admission_id",
+        "locality_evidence_reference",
+        "quality_evidence_reference",
+        "coding_evidence_reference",
+        "charge_evidence_reference",
+        "source_document_reference",
+      ])
+        expect(after[column], column).toBe("<changed>");
+      expect(after.locality_code).toBe("CBSA-TEST");
+    });
+
+    it("pricing snapshot audit records carry identities and the fingerprint, never the snapshot JSON", async () => {
+      const audit = await db.query<{
+        event_type: string;
+        resource_kind: string;
+        organization_id: string;
+        after: Record<string, unknown>;
+      }>(
+        `SELECT event_type, resource_kind, organization_id, after FROM audit_event
+         WHERE resource_kind='medicaid_claim_line_pricing_snapshot' AND resource_id=$1`,
+        [a.pricingSnapshot],
+      );
+      expect(audit.rows).toHaveLength(1);
+      expect(audit.rows[0]).toMatchObject({
+        event_type: "medicaid_claim_line_pricing_snapshot.insert",
+        resource_kind: "medicaid_claim_line_pricing_snapshot",
+        organization_id: ORG_A,
+      });
+      const stored = await db.query<{ fingerprint: string }>(
+        "SELECT fingerprint FROM medicaid_claim_line_pricing_snapshot WHERE id=$1",
+        [a.pricingSnapshot],
+      );
+      expect(audit.rows[0].after).toEqual({
+        medicaid_claim_id: a.pricedClaim,
+        medicaid_claim_line_id: a.pricedLine,
+        fingerprint: stored.rows[0].fingerprint,
+        snapshot_schema_version: 1,
+        posting_authorized: false,
+      });
+      expect(JSON.stringify(audit.rows[0].after)).not.toContain(PATIENT);
     });
 
     it("program assignment and enrollment evidence audit records land, attributed and scrubbed", async () => {
@@ -1336,6 +1669,302 @@ describe.skipIf(!DB_URL)(
       await expect(correction(a.payerRatePolicy)).rejects.toThrow(
         /medicaid_payer_rate_policy_identity_uq/,
       );
+    });
+
+    // ── 1550 — the verified-methodology CHECK closes every group before the next AND, so the OHA FFS rules bind
+    // per_day and per_hour rows too (a mis-closed parenthesis once made them an OR branch of the pricing group).
+    const ohaRateRow = (over: Record<string, unknown> = {}) =>
+      verifiedRateRow(ORG_A, a.pe, {
+        program_kind: "oregon_ffs",
+        source_kind: "oha_ffs_schedule",
+        locality_code: "OHA-STATEWIDE",
+        charge_ceiling_method: "lower_of_rate_and_usual_charge",
+        charge_ceiling_boundary: "service_day",
+        quality_reporting_applicability: "required",
+        quality_reporting_status: "meets",
+        ...over,
+      });
+    const ohaChcRow = (over: Record<string, unknown> = {}) =>
+      ohaRateRow({
+        service_category: "CHC",
+        unit_basis: "per_hour",
+        pricing_method: "per_hour",
+        quantity_conversion_method: "hourly_each_hour_or_part",
+        minimum_duration_method: "minimum_minutes",
+        minimum_clinical_minutes: 480,
+        rounding_mode: "not_applicable",
+        rounding_boundary: "not_applicable",
+        ...over,
+      });
+
+    it("verified methodology: an OHA FFS row must carry the OHA ceiling, quality and CHC rules, whatever its pricing method", async () => {
+      const refused = (row: Record<string, unknown>) =>
+        expect(insertRow("medicaid_payer_rate_policy", row)).rejects.toMatchObject({
+          code: "23514",
+          constraint: "medicaid_payer_rate_policy_verified_methodology",
+        });
+      // Control: a valid OHA per-day row and a valid OHA CHC row are accepted, so each refusal below is one rule.
+      expect(await insertRow("medicaid_payer_rate_policy", ohaRateRow())).toBeTruthy();
+      expect(await insertRow("medicaid_payer_rate_policy", ohaChcRow())).toBeTruthy();
+      // The per_day branch: it satisfies the pricing group, so only the OHA rules can refuse these.
+      await refused(
+        ohaRateRow({ charge_ceiling_method: "none", charge_ceiling_boundary: "not_applicable" }),
+      );
+      await refused(
+        ohaRateRow({
+          quality_reporting_applicability: "not_required",
+          quality_reporting_status: "not_applicable",
+        }),
+      );
+      // The per_hour branch.
+      await refused(
+        ohaRateRow({
+          unit_basis: "per_hour",
+          pricing_method: "per_hour",
+          quantity_conversion_method: "hourly_prorated_minutes",
+          minimum_duration_method: "not_required",
+          rounding_mode: "half_up",
+          charge_ceiling_method: "none",
+          charge_ceiling_boundary: "not_applicable",
+        }),
+      );
+      // CHC: the eight-hour minimum is part of the OHA rule.
+      await refused(ohaChcRow({ minimum_clinical_minutes: 240 }));
+      await refused(
+        ohaChcRow({ minimum_duration_method: "not_required", minimum_clinical_minutes: null }),
+      );
+    });
+
+    // ── 1551 — billing evidence: a revoked or superseded row closes its predecessor, so it carries its instant.
+    it("billing evidence: a revoked or superseded row must carry the instant it was decided", async () => {
+      const closed = (status: string, verifiedAt: string | null) =>
+        insertRow(
+          "medicaid_hospice_billing_evidence",
+          hospiceEvidenceRow(ORG_A, a.pe, {
+            verification_status: status,
+            verified_at: verifiedAt,
+            verified_by_membership_id: null,
+          }),
+        );
+      for (const status of ["revoked", "superseded"]) {
+        // Control: the same row with its instant is valid.
+        expect(await closed(status, "2026-02-01T00:00:00Z"), status).toBeTruthy();
+        await expect(closed(status, null), status).rejects.toMatchObject({
+          code: "23514",
+          constraint: "medicaid_hospice_billing_evidence_closed_provenance",
+        });
+      }
+      // An open row still has no verification instant.
+      expect(await closed("pending", null)).toBeTruthy();
+    });
+
+    // ── 1551 — the pricing-snapshot insert guard. Each refusal changes ONE fact of a snapshot that is otherwise valid,
+    // and the same chain accepts the unchanged snapshot, so only the check under test can have refused it.
+    describe("pricing snapshot insert guard (1551)", () => {
+      const refusal = (message: RegExp) => ({
+        code: "23514",
+        message: expect.stringMatching(message),
+      });
+      const NOT_CURRENT_RATE = /rate evidence is not current verified evidence/;
+      const NOT_CURRENT_EVIDENCE = /billing evidence is not current verified evidence/;
+      const NOT_MATCHING = /payer, service, range or integrity evidence does not match/;
+
+      it("assessed_at must equal the instant the snapshot records and cannot lie in the future", async () => {
+        const chain = await seedPricedChain(ORG_A, a.pe);
+        // Control: the application clock may run a few minutes ahead of the database clock.
+        expect(
+          (await insertPricedLine(chain, { assessedAt: await dbInstant("4 minutes") })).line,
+        ).toBeTruthy();
+        await expect(
+          insertPricedLine(chain, { assessedAtColumn: await dbInstant("2 seconds") }),
+        ).rejects.toMatchObject(refusal(/assessed_at must equal its assessmentTimestamp/));
+        await expect(
+          insertPricedLine(chain, { assessedAt: await dbInstant("10 minutes") }),
+        ).rejects.toMatchObject(refusal(/cannot be in the future/));
+        // The temporal comparisons read assessed_at: a snapshot assessed before the rate was recorded is refused.
+        await expect(
+          insertPricedLine(chain, { assessedAt: await dbInstant("-1 hour") }),
+        ).rejects.toMatchObject(refusal(NOT_CURRENT_RATE));
+      });
+
+      it("a snapshot cannot be assessed before the rate or the evidence was verified", async () => {
+        const verifiedLater = await dbInstant("2 minutes");
+        const lateRate = await seedPricedChain(ORG_A, a.pe, {
+          rate: { verified_at: verifiedLater },
+        });
+        const lateEvidence = await seedPricedChain(ORG_A, a.pe, {
+          evidence: { verified_at: verifiedLater },
+        });
+        // Control: assessed after both verifications, the same chains price.
+        const later = await dbInstant("4 minutes");
+        expect((await insertPricedLine(lateRate, { assessedAt: later })).line).toBeTruthy();
+        expect((await insertPricedLine(lateEvidence, { assessedAt: later })).line).toBeTruthy();
+        await expect(insertPricedLine(lateRate)).rejects.toMatchObject(refusal(NOT_CURRENT_RATE));
+        await expect(insertPricedLine(lateEvidence)).rejects.toMatchObject(
+          refusal(/cannot predate its billing evidence verification/),
+        );
+      });
+
+      it("the rate and the evidence must agree on quality reporting, and the rate must be a per-day method", async () => {
+        const required = {
+          quality_reporting_applicability: "required",
+          quality_reporting_status: "meets",
+        };
+        // Control: the two agree (both required and meeting), and both agree that it is not required.
+        const agreeing = await seedPricedChain(ORG_A, a.pe, { rate: required, evidence: required });
+        expect((await insertPricedLine(agreeing)).line).toBeTruthy();
+        // Applicability differs.
+        const applicability = await seedPricedChain(ORG_A, a.pe, { rate: required });
+        await expect(insertPricedLine(applicability)).rejects.toMatchObject(refusal(NOT_MATCHING));
+        // Only the provider status differs.
+        const status = await seedPricedChain(ORG_A, a.pe, {
+          rate: { ...required, quality_reporting_status: "does_not_meet" },
+          evidence: required,
+        });
+        await expect(insertPricedLine(status)).rejects.toMatchObject(refusal(NOT_MATCHING));
+        // A fixed per-day contract unit is a per-day method the daily snapshot supports.
+        const fixed = await seedPricedChain(ORG_A, a.pe, {
+          rate: { pricing_method: "fixed_contract_unit" },
+        });
+        expect((await insertPricedLine(fixed)).line).toBeTruthy();
+      });
+
+      it("a legacy verified rate that never qualified its methodology cannot be snapshotted", async () => {
+        // Pre-1550 verified rows carry the 'unqualified' defaults: the verified-methodology CHECK is NOT VALID, so
+        // it guards new rows only. Rebuild such a row inside a transaction that is rolled back with its DDL.
+        const withLegacyShapeAllowed = async (fn: () => Promise<void>) => {
+          await db.query("BEGIN");
+          try {
+            await db.query(
+              "ALTER TABLE medicaid_payer_rate_policy DROP CONSTRAINT medicaid_payer_rate_policy_verified_methodology",
+            );
+            await fn();
+          } finally {
+            await db.query("ROLLBACK");
+          }
+        };
+        await withLegacyShapeAllowed(async () => {
+          const qualified = await seedPricedChain(ORG_A, a.pe);
+          expect((await insertPricedLineStatements(qualified)).line).toBeTruthy();
+        });
+        for (const rate of [
+          { pricing_method: "unqualified" },
+          { quantity_conversion_method: "unqualified" },
+        ])
+          await withLegacyShapeAllowed(async () => {
+            const legacy = await seedPricedChain(ORG_A, a.pe, { rate });
+            await expect(insertPricedLineStatements(legacy)).rejects.toMatchObject(
+              refusal(NOT_CURRENT_RATE),
+            );
+          });
+      });
+
+      it("a rate or an evidence row that has a successor is no longer current", async () => {
+        // A rejected draft correction never supersedes the active head (the pricing engine skips it too).
+        const withRejectedDraft = await seedPricedChain(ORG_A, a.pe);
+        await insertRow(
+          "medicaid_payer_rate_policy",
+          verifiedRateRow(ORG_A, a.pe, {
+            canonical_payer_id: withRejectedDraft.payer,
+            supersedes_id: withRejectedDraft.rate,
+            version: 2,
+            verification_status: "rejected",
+            verified_at: null,
+            verified_by_membership_id: null,
+          }),
+        );
+        expect((await insertPricedLine(withRejectedDraft)).line).toBeTruthy();
+        const chain = await seedPricedChain(ORG_A, a.pe);
+        expect((await insertPricedLine(chain)).line).toBeTruthy(); // control: both rows are heads
+        const rateHead = await insertRow(
+          "medicaid_payer_rate_policy",
+          verifiedRateRow(ORG_A, a.pe, {
+            canonical_payer_id: chain.payer,
+            supersedes_id: chain.rate,
+            version: 2,
+          }),
+        );
+        const withRateHead = { ...chain, rate: rateHead, rateVersion: 2 };
+        await expect(insertPricedLine(chain)).rejects.toMatchObject(refusal(NOT_CURRENT_RATE));
+        expect((await insertPricedLine(withRateHead)).line).toBeTruthy();
+        const evidenceHead = await insertRow(
+          "medicaid_hospice_billing_evidence",
+          hospiceEvidenceRow(ORG_A, a.pe, {
+            canonical_payer_id: chain.payer,
+            admission_id: chain.admission,
+            supersedes_id: chain.evidence,
+            version: 2,
+          }),
+        );
+        await expect(insertPricedLine(withRateHead)).rejects.toMatchObject(
+          refusal(NOT_CURRENT_EVIDENCE),
+        );
+        expect(
+          (await insertPricedLine({ ...withRateHead, evidence: evidenceHead, evidenceVersion: 2 }))
+            .line,
+        ).toBeTruthy();
+      });
+
+      it("service dates are compared as UTC calendar days whatever the session TimeZone", async () => {
+        const chain = await seedPricedChain(ORG_A, a.pe);
+        // The line is stored at 00:00 UTC, which is the previous evening in Los Angeles.
+        for (const timeZone of ["UTC", "America/Los_Angeles", "Pacific/Kiritimati"])
+          expect((await insertPricedLine(chain, { timeZone })).line, timeZone).toBeTruthy();
+        // The comparison is unchanged: a JSON date that is one day off is refused under UTC, and under the zone
+        // whose local date for the stored instant is exactly that wrong day.
+        for (const timeZone of ["UTC", "America/Los_Angeles"]) {
+          await expect(
+            insertPricedLine(chain, { timeZone, snapshot: { serviceFrom: "2025-12-31" } }),
+            timeZone,
+          ).rejects.toMatchObject(refusal(/identity or amounts do not match its claim line/));
+          await expect(
+            insertPricedLine(chain, { timeZone, snapshot: { serviceTo: "2026-01-01" } }),
+            timeZone,
+          ).rejects.toMatchObject(refusal(/identity or amounts do not match its claim line/));
+        }
+      });
+    });
+
+    it("a payer-rate-priced claim line cannot be deleted or edited, by the application role or the owner", async () => {
+      const unpriced = await insertRow("medicaid_claim_line", {
+        organization_id: ORG_A,
+        provider_entity_id: a.pe,
+        medicaid_claim_id: a.claim,
+        line_number: 7,
+        service_date: "2026-01-05T00:00:00Z",
+        revenue_code: "0651",
+        q_code: "Q5001",
+        level_of_care: "RHC",
+        loc_period_id: randomUUID(),
+        units: 1,
+        rate_at_assembly_cents: 10000,
+        state_rate_schedule_id_snapshot: randomUUID(),
+        charges_cents: 10000,
+      });
+      // Control: the application role holds DELETE and may remove a line no payer rate priced.
+      const removed = await withOrg(ORG_A, () =>
+        db.query("DELETE FROM medicaid_claim_line WHERE id=$1", [unpriced]),
+      );
+      expect(removed.rowCount).toBe(1);
+      const remove = "DELETE FROM medicaid_claim_line WHERE id=$1";
+      await expect(db.query(remove, [a.pricedLine])).rejects.toThrow(
+        /priced claim lines are immutable/,
+      );
+      await expect(withOrg(ORG_A, () => db.query(remove, [a.pricedLine]))).rejects.toThrow(
+        /priced claim lines are immutable/,
+      );
+      await expect(
+        db.query("UPDATE medicaid_claim_line SET charges_cents = charges_cents + 1 WHERE id=$1", [
+          a.pricedLine,
+        ]),
+      ).rejects.toThrow(/priced claim lines are immutable/);
+      const survivors = await db.query<{ lines: number; snapshots: number }>(
+        `SELECT (SELECT count(*)::int FROM medicaid_claim_line WHERE id=$1) AS lines,
+                (SELECT count(*)::int FROM medicaid_claim_line_pricing_snapshot
+                  WHERE medicaid_claim_line_id=$1) AS snapshots`,
+        [a.pricedLine],
+      );
+      expect(survivors.rows[0]).toEqual({ lines: 1, snapshots: 1 });
     });
 
     // ── WX-PR-011 — `medicaid_state_plan_code` is PLATFORM-SHARED (no organization_id), unlike the
