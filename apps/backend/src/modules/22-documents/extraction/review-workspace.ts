@@ -291,8 +291,13 @@ export interface PageIdentityEvidence {
  * Fail-closed proof for a patient-scoped grant, which covers one patient. A batch is readable only when its
  * identity check has run and is positive: the batch status is `match` (so it is neither null, `no_target` nor
  * `unverified`), no records-request code names another patient, there is at least one classified document, every
- * document is `match` or was confirmed by a reviewer as the filed patient's (a re-sent copy is judged through its
- * original), and a requested page lies inside a classified document. Missing or unverified evidence is a refusal.
+ * document is `match` or was confirmed by a reviewer as the filed patient's, and a requested page lies inside a
+ * classified document. Missing or unverified evidence is a refusal.
+ *
+ * A page the splitter marked a re-sent copy is NOT proven by that mark: the mark is a fuzzy text match (word-set and
+ * number-set Jaccard >= 0.85), so another patient's page on the same form template can carry it, and batch identity
+ * skips such pages, so they have no verdict of their own. Such a page is readable under a patient-scoped grant only
+ * once a reviewer has confirmed it as the filed patient's (`same_patient`).
  */
 export function batchProvenFiledPatientOnly(
   batch: {
@@ -313,7 +318,6 @@ export function batchProvenFiledPatientOnly(
   }
   return pages.every(
     (p) =>
-      p.duplicateOfPage !== null ||
       p.identityResolution === "same_patient" ||
       (p.identityResolution === null && p.identityStatus === "match"),
   );

@@ -52,6 +52,7 @@ import {
   withOrgContext,
   withPlatformContext,
 } from "@chartwarden/tenancy";
+import { ConflictError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -1188,6 +1189,185 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
           async () => undefined,
         ),
       ).rejects.toThrow(/active tenant-consented support session/);
+    });
+
+    it("audits each kind of refusal, never records a server error as one, and leaves no row behind a failed read", async () => {
+      const access = createWardenLensSupportAccess({
+        platformDb: platform.db,
+        auditBypass,
+        platformJobId: JOB_ID,
+        now: () => clock,
+      });
+      const route = "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace";
+      const read = <T>(
+        supportSessionId: string,
+        correlationId: string,
+        resolvePatient: (organizationId: string) => Promise<string | null>,
+        doRead: () => Promise<T>,
+        port = access,
+      ) =>
+        port.runAuthorizedRead(
+          {
+            actorMembershipId: OPERATOR.membership,
+            organizationId: TENANT_ORG,
+            supportSessionId,
+            resourceKind: "intake_review_workspace",
+            resourceId: "66666666-6666-4666-8666-666666666666",
+            correlationId,
+            actorIp: null,
+            route,
+          },
+          resolvePatient,
+          doRead,
+        );
+      const wardenlensAudits = (correlationId: string) =>
+        q<{ event_type: string; context: Record<string, unknown> }>(
+          `SELECT event_type, context FROM audit_event
+            WHERE correlation_id = $1 AND event_type LIKE 'support_session.wardenlens_read%'
+            ORDER BY event_type`,
+          [correlationId],
+        );
+      const opsReads = async (supportSessionId: string): Promise<number> =>
+        Number(
+          (
+            await q<{ count: string }>(
+              `SELECT count(*)::text AS count FROM support_session_event
+                WHERE support_session_id = $1 AND event_kind = 'ops.read'`,
+              [supportSessionId],
+            )
+          )[0]?.count,
+        );
+      const denied = (reason: string) => [
+        { event_type: "support_session.wardenlens_read_denied", context: { reason } },
+      ];
+      const mustNotRun = async (): Promise<string> => "must-not-run";
+
+      // An assist grant is non-PHI: a WardenLens read on it is refused and recorded.
+      const assistGrant = await issue(ADMIN, "assist");
+      const assistSession = (await start(assistGrant.body.id)).body.sessionId as string;
+      await expect(
+        read(assistSession, "wardenlens-live-assist", async () => TENANT_PATIENT, mustNotRun),
+      ).rejects.toThrow(/active tenant-consented support session/);
+      expect(await wardenlensAudits("wardenlens-live-assist")).toMatchObject(
+        denied("authorization_denied"),
+      );
+      expect(await opsReads(assistSession)).toBe(0);
+
+      // A patient-scoped session must not learn that a batch does not exist: the not-found case reads as a refusal.
+      const patientGrant = await issue(ADMIN, "patient_scoped", {
+        patientIdsInScope: [TENANT_PATIENT],
+      });
+      const patientSession = (await start(patientGrant.body.id)).body.sessionId as string;
+      await expect(
+        read(
+          patientSession,
+          "wardenlens-live-unknown-batch-patient",
+          async () => {
+            throw new NotFoundError("intake upload");
+          },
+          mustNotRun,
+        ),
+      ).rejects.toThrow(/active tenant-consented support session/);
+      expect(await wardenlensAudits("wardenlens-live-unknown-batch-patient")).toMatchObject(
+        denied("authorization_denied"),
+      );
+
+      const orgGrant = await issue(ADMIN, "organization_scoped");
+      const orgSession = (await start(orgGrant.body.id)).body.sessionId as string;
+      // An organization-scoped session sees the real answer, and each refusal leaves a trace and no success row.
+      await expect(
+        read(
+          orgSession,
+          "wardenlens-live-unknown-batch-org",
+          async () => {
+            throw new NotFoundError("intake upload");
+          },
+          mustNotRun,
+        ),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      expect(await wardenlensAudits("wardenlens-live-unknown-batch-org")).toMatchObject(
+        denied("target_not_found"),
+      );
+      await expect(
+        read(
+          orgSession,
+          "wardenlens-live-refiled",
+          async () => TENANT_PATIENT,
+          async () => {
+            throw new ConflictError("the batch was re-filed");
+          },
+        ),
+      ).rejects.toBeInstanceOf(ConflictError);
+      expect(await wardenlensAudits("wardenlens-live-refiled")).toMatchObject(
+        denied("target_conflict"),
+      );
+      await expect(
+        read(
+          orgSession,
+          "wardenlens-live-content-refused",
+          async () => TENANT_PATIENT,
+          async () => {
+            throw new ForbiddenError("the filed patient is not proven");
+          },
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenError);
+      expect(await wardenlensAudits("wardenlens-live-content-refused")).toMatchObject(
+        denied("content_scope_refused"),
+      );
+
+      // A server error is not a refusal: it surfaces as itself and is not recorded as a denial.
+      await expect(
+        read(
+          orgSession,
+          "wardenlens-live-server-error",
+          async () => TENANT_PATIENT,
+          async () => {
+            throw new Error("connection pool exhausted");
+          },
+        ),
+      ).rejects.toThrow("connection pool exhausted");
+      expect(await wardenlensAudits("wardenlens-live-server-error")).toEqual([]);
+
+      // Authority that expires while the ledger and audit rows are written rolls both rows back.
+      let clockCalls = 0;
+      const expiresAfterWrites = createWardenLensSupportAccess({
+        platformDb: platform.db,
+        auditBypass,
+        platformJobId: JOB_ID,
+        now: () => (++clockCalls >= 3 ? new Date(clock.getTime() + 9 * HOUR) : clock),
+      });
+      await expect(
+        read(
+          orgSession,
+          "wardenlens-live-expiry-after-writes",
+          async () => TENANT_PATIENT,
+          async () => "must-be-discarded",
+          expiresAfterWrites,
+        ),
+      ).rejects.toThrow(/active tenant-consented support session/);
+      expect(await wardenlensAudits("wardenlens-live-expiry-after-writes")).toMatchObject(
+        denied("authorization_denied"),
+      );
+
+      // None of those left a ledger row, and one successful read does.
+      expect(await opsReads(orgSession)).toBe(0);
+      await expect(
+        read(
+          orgSession,
+          "wardenlens-live-after-refusals",
+          async () => TENANT_PATIENT,
+          async () => "ok",
+        ),
+      ).resolves.toBe("ok");
+      expect(await opsReads(orgSession)).toBe(1);
+      expect(
+        (await wardenlensAudits("wardenlens-live-after-refusals")).map((a) => a.event_type),
+      ).toEqual(["support_session.wardenlens_read"]);
+
+      // Revoking closes the three sessions this test opened, so the expiry sweep below starts from a clean slate.
+      for (const grant of [assistGrant, patientGrant, orgGrant]) {
+        expect((await revoke(ADMIN, grant.body.id)).statusCode).toBe(200);
+      }
     });
 
     it("holds consent stable while a WardenLens disclosure is prepared, then lets revocation close it", async () => {

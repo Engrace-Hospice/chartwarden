@@ -656,6 +656,14 @@ describe("GAP-067 — DocLens review routes compose the Part 2 need-to-know chec
       ["an unverified page", batch, [page("unverified")]],
       ["a page with no identity check", batch, [page(null)]],
       [
+        "a re-sent copy no reviewer has confirmed (the duplicate mark is a fuzzy text match, not identity)",
+        batch,
+        [
+          page("match"),
+          page(null, null, { duplicateOfPage: 1, pageRangeStart: 3, pageRangeEnd: 3 }),
+        ],
+      ],
+      [
         "a records-request code naming another patient",
         { ...batch, recordsRequestConflictKind: "code_names_another_patient" },
         [page("match")],
@@ -682,11 +690,11 @@ describe("GAP-067 — DocLens review routes compose the Part 2 need-to-know chec
         [page("match"), page("mismatch", "same_patient", { pageRangeStart: 3, pageRangeEnd: 3 })],
       ],
       [
-        "a re-sent copy judged through its original",
+        "a re-sent copy a reviewer confirmed as the filed patient's",
         batch,
         [
           page("match"),
-          page(null, null, { duplicateOfPage: 1, pageRangeStart: 3, pageRangeEnd: 3 }),
+          page(null, "same_patient", { duplicateOfPage: 1, pageRangeStart: 3, pageRangeEnd: 3 }),
         ],
       ],
     ] as const)("allows %s", (_name, b, pages) => {

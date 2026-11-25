@@ -1013,7 +1013,7 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
       }
     }
 
-    it("refuses a patient-scoped read until the filed patient's identity is proven, before any decryption", async () => {
+    it("refuses a patient-scoped read until the filed patient's identity is proven", async () => {
       const unproven: Array<[string | null, string | null, string | null]> = [
         [null, null, null],
         ["no_target", null, null],
@@ -1066,15 +1066,63 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
       });
     });
 
-    it("fails as a retryable conflict when the batch is no longer filed under the authorized patient", async () => {
+    it("does not treat a re-sent copy as proven by the duplicate mark alone, only once a reviewer confirms it", async () => {
+      // The splitter's duplicate mark is a fuzzy text match and batch identity skips such pages, so another patient's
+      // page on the same form template can carry it. A page with a mark and no verdict of its own must be refused.
+      const original = (
+        await admin.query(
+          "SELECT id, duplicate_of_page FROM classified_page WHERE intake_upload_batch_id=$1",
+          [batchId],
+        )
+      ).rows;
+      await withIdentity("match", { status: null, resolution: null }, async () => {
+        try {
+          await admin.query(
+            "UPDATE classified_page SET duplicate_of_page=1 WHERE intake_upload_batch_id=$1",
+            [batchId],
+          );
+          await expect(
+            workspace.getWorkspace(ORG, batchId, membership, supportAccess, patientScope()),
+          ).rejects.toMatchObject({ code: "FORBIDDEN" });
+          await expect(
+            workspace.renderPage(ORG, batchId, 1, "corr-support", supportAccess, patientScope()),
+          ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+          await admin.query(
+            `UPDATE classified_page SET identity_resolution='same_patient',
+               identity_resolved_by_membership_id=$2, identity_resolved_at=now(),
+               identity_resolution_reason='live test'
+             WHERE intake_upload_batch_id=$1`,
+            [batchId, membership],
+          );
+          const ws = await workspace.getWorkspace(
+            ORG,
+            batchId,
+            membership,
+            supportAccess,
+            patientScope(),
+          );
+          expect(ws.sud.contentRedacted).toBe(false);
+        } finally {
+          for (const p of original) {
+            await admin.query("UPDATE classified_page SET duplicate_of_page=$1 WHERE id=$2", [
+              p.duplicate_of_page,
+              p.id,
+            ]);
+          }
+        }
+      });
+    });
+
+    it("fails as a retryable conflict (409) when the batch is no longer filed under the authorized patient", async () => {
       await withIdentity("match", { status: "match", resolution: null }, async () => {
         const stale = { patientContentOnly: false, expectedPatientId: randomUUID() };
         await expect(
           workspace.getWorkspace(ORG, batchId, membership, supportAccess, stale),
-        ).rejects.toThrow(/re-filed/);
+        ).rejects.toMatchObject({ code: "CONFLICT", message: expect.stringMatching(/re-filed/) });
         await expect(
           workspace.renderPage(ORG, batchId, 1, "corr-support", supportAccess, stale),
-        ).rejects.toThrow(/re-filed/);
+        ).rejects.toMatchObject({ code: "CONFLICT", message: expect.stringMatching(/re-filed/) });
       });
     });
   });

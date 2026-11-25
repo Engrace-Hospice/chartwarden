@@ -169,6 +169,47 @@ describe("read-audit emission (preSerialization)", () => {
     expect(res.body).not.toContain("protected-binary-page");
   });
 
+  it("withholds a fail-closed response whose read cannot be accounted against an organization or a resource", async () => {
+    const app = makeApp();
+    app.get(
+      "/api/v1/patients/no-organization/:id",
+      {
+        config: {
+          auditRead: {
+            resourceKind: "intake_review_workspace",
+            resourceIdParam: "id",
+            organizationIdParam: "absent",
+            failClosed: true,
+          },
+        },
+      },
+      async () => ({ protectedValue: "no organization to audit against" }),
+    );
+    app.get(
+      "/api/v1/patients/no-resource/:organizationId",
+      {
+        config: {
+          auditRead: {
+            resourceKind: "intake_review_workspace",
+            organizationIdParam: "organizationId",
+            failClosed: true,
+          },
+        },
+      },
+      async () => ({ protectedValue: "no resource to audit" }),
+    );
+
+    for (const [url, secret] of [
+      ["/api/v1/patients/no-organization/batch-1", "no organization to audit against"],
+      ["/api/v1/patients/no-resource/tenant-target", "no resource to audit"],
+    ] as const) {
+      const res = await app.inject({ method: "GET", url });
+      expect(res.statusCode).toBe(500);
+      expect(res.body).not.toContain(secret);
+    }
+    expect(captured).toEqual([]);
+  });
+
   describe("list events and resourceIdParam (fix round 4)", () => {
     const CHANNEL = "11111111-1111-4111-8111-111111111111";
     const listApp = (flags: Record<string, unknown>) => {

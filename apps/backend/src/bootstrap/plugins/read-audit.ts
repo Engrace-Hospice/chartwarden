@@ -209,13 +209,20 @@ export function applyReadAuditCoverage(
     try {
       const cfg = emissionConfig(request.routeOptions?.config?.auditRead);
       if (!cfg) return; // non-PHI route, or a justified waiver → nothing to emit
+      // A failClosed route withholds its payload when the read cannot be audited, so a skipped emit is an error there.
+      const cannotEmit = (why: string): void => {
+        if (cfg.failClosed) throw new Error(`failClosed read audit could not be emitted: ${why}`);
+      };
       if (reply.statusCode < 200 || reply.statusCode >= 300) return; // only successful reads
       const ctx = request.context;
       const params = (request.params ?? {}) as Record<string, string>;
       const auditOrganizationId = cfg.organizationIdParam
         ? params[cfg.organizationIdParam]
         : ctx?.organizationId;
-      if (!ctx || !auditOrganizationId) return; // unauthenticated/no-org — the route denied anyway
+      if (!ctx || !auditOrganizationId) {
+        cannotEmit("no organization to account the read against");
+        return; // unauthenticated/no-org — the route denied anyway
+      }
       if (binary && (cfg.list || cfg.patientIdPayloadPath || cfg.patientIdsPayload)) {
         // A non-JSON body has no rows/fields to read: such a config on this route is a coding error.
         request.log.error(
@@ -281,9 +288,15 @@ export function applyReadAuditCoverage(
             // A read that disclosed several patients is accounted against EACH of them (one event per patient).
             // Nothing to account against (an empty result that names no resource and no patient): an insert with an empty
             // resource id fails on the uuid cast and was only logged. There is no disclosure, so emit nothing.
-            if (!resourceId && !patientId && !cfg.patientIdsPayload) return;
+            if (!resourceId && !patientId && !cfg.patientIdsPayload) {
+              cannotEmit("the read names no resource and no patient");
+              return;
+            }
             const disclosed = binary ? [] : disclosedPatientIds(cfg, payload);
-            if (!resourceId && disclosed.length === 0) return;
+            if (!resourceId && disclosed.length === 0) {
+              cannotEmit("the read disclosed no resource and no patient");
+              return;
+            }
             const attributed = disclosed.length > 0 ? disclosed : [patientId];
             for (const attributedPatientId of attributed) {
               await auditPhiRead(tx, auditCtx, {

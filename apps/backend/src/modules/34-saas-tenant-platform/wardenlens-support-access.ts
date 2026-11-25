@@ -6,7 +6,7 @@ import { auditPlatformEvent } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 import { SupportRepository } from "@chartwarden/saas-tenant-platform";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
-import { ForbiddenError } from "@chartwarden/types";
+import { ConflictError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import { and, eq, gt, isNull } from "drizzle-orm";
 
 const ACCESS_DENIED = "an active tenant-consented support session is required";
@@ -72,7 +72,6 @@ async function accessFacts(
     .select({
       organizationId: schema.organizations.id,
       tenantAccountId: schema.tenantAccount.id,
-      sessionGrantId: schema.supportSession.supportConsentGrantId,
       grantId: schema.supportConsentGrant.id,
       scope: schema.supportConsentGrant.scope,
       patientIdsInScope: schema.supportConsentGrant.patientIdsInScope,
@@ -110,7 +109,8 @@ async function accessFacts(
     // (column-level) on these two tables but not on organization or tenant_account.
     .for("share", { of: [schema.supportSession, schema.supportConsentGrant] });
 
-  if (!row || row.scope === "assist" || row.sessionGrantId !== row.grantId) {
+  // The join above already ties the grant to the session's own grant id.
+  if (!row || row.scope === "assist") {
     throw new ForbiddenError(ACCESS_DENIED);
   }
   return {
@@ -122,6 +122,24 @@ async function accessFacts(
     sessionExpiresAt: row.sessionExpiresAt,
     grantExpiresAt: row.grantExpiresAt,
   };
+}
+
+/** Why a read was refused, as recorded on the denial audit. */
+type DenialReason =
+  | "authorization_denied"
+  | "content_scope_refused"
+  | "target_not_found"
+  | "target_conflict";
+
+/** The denial reason for a refusal, or null for an error that is not a refusal. */
+function denialReasonOf(error: unknown): DenialReason | null {
+  if (error instanceof ForbiddenError) {
+    // The session or grant does not authorize the read, or M22 refused the batch's content for the scope.
+    return error.message === ACCESS_DENIED ? "authorization_denied" : "content_scope_refused";
+  }
+  if (error instanceof NotFoundError) return "target_not_found";
+  if (error instanceof ConflictError) return "target_conflict";
+  return null;
 }
 
 function assertPatientScope(facts: AccessFacts, patientId: string | null): void {
@@ -146,7 +164,7 @@ export function createWardenLensSupportAccess(
 
   // The authorization transaction rolls back on a refusal, taking its own audit rows with it, so a denied read
   // is recorded in a transaction of its own. Identifiers only; the requested organization is a client value.
-  const recordDenial = (input: WardenLensSupportReadInput, error: ForbiddenError): Promise<void> =>
+  const recordDenial = (input: WardenLensSupportReadInput, reason: DenialReason): Promise<void> =>
     run("m34 WardenLens support read: record denial", (tx) =>
       auditPlatformEvent(tx, {
         eventType: "support_session.wardenlens_read_denied",
@@ -160,9 +178,7 @@ export function createWardenLensSupportAccess(
           actorMembershipId: input.actorMembershipId,
           supportSessionId: input.supportSessionId,
           authorizationBasis: "superadmin_support_session",
-          // The session or grant does not authorize the read, or M22 refused the batch's content for the scope.
-          reason:
-            error.message === ACCESS_DENIED ? "authorization_denied" : "content_scope_refused",
+          reason,
           ...(input.pageNumber === undefined ? {} : { pageNumber: input.pageNumber }),
         },
       }),
@@ -174,7 +190,9 @@ export function createWardenLensSupportAccess(
         return await authorizeAndRead(input, resolvePatient, read);
       } catch (error) {
         // If the denial record cannot be written the read is still refused; that failure surfaces as a 500.
-        if (error instanceof ForbiddenError) await recordDenial(input, error);
+        // An infrastructure error (a timeout, a pool failure) is not a refusal and is never recorded as one.
+        const reason = denialReasonOf(error);
+        if (reason) await recordDenial(input, reason);
         throw error;
       }
     },
@@ -200,8 +218,11 @@ export function createWardenLensSupportAccess(
         patientId = await resolvePatient(facts.organizationId);
       } catch (error) {
         // A patient-scoped session must not become a batch-existence oracle: an unknown batch and
-        // an existing out-of-scope batch both fail with the same authorization response.
-        if (facts.scope === "patient_scoped") throw new ForbiddenError(ACCESS_DENIED);
+        // an existing out-of-scope batch both fail with the same authorization response. Only the
+        // not-found case is masked: any other failure (a timeout, a pool error) stays a server error.
+        if (facts.scope === "patient_scoped" && error instanceof NotFoundError) {
+          throw new ForbiddenError(ACCESS_DENIED);
+        }
         throw error;
       }
       assertPatientScope(facts, patientId);

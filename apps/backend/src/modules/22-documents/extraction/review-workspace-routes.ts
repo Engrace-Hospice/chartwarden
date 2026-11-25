@@ -437,7 +437,7 @@ export function registerDocLensReviewWorkspaceRoutes(
     app.get(
       "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace",
       {
-        preHandler: [REQUIRE_HUMAN_SUPPORT_ACTOR, SUPERADMIN, INTAKE_REVIEW],
+        preHandler: [SUPERADMIN, REQUIRE_HUMAN_SUPPORT_ACTOR, INTAKE_REVIEW],
         config: {
           auditRead: {
             resourceKind: "intake_review_workspace",
@@ -489,7 +489,7 @@ export function registerDocLensReviewWorkspaceRoutes(
     app.get(
       "/api/v1/platform/organizations/:organizationId/intake/uploads/:id/pages/:page/image",
       {
-        preHandler: [REQUIRE_HUMAN_SUPPORT_ACTOR, SUPERADMIN, INTAKE_REVIEW],
+        preHandler: [SUPERADMIN, REQUIRE_HUMAN_SUPPORT_ACTOR, INTAKE_REVIEW],
         config: {
           auditRead: {
             resourceKind: "intake_page_image",
@@ -559,7 +559,14 @@ export function registerDocLensReviewWorkspaceRoutes(
     "/api/v1/intake/uploads/:id/workspace",
     {
       preHandler: [INTAKE_REVIEW],
-      config: { auditRead: { resourceKind: "intake_review_workspace", resourceIdParam: "id" } },
+      // The patient the packet is filed under joins the read to a patient, for the accounting of disclosures.
+      config: {
+        auditRead: {
+          resourceKind: "intake_review_workspace",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "batch.patientId",
+        },
+      },
     },
     async (request) => {
       const { organizationId, membershipId } = writeActorOf(request);
