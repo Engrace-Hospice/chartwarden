@@ -87,7 +87,7 @@ passkey material or PHI in this file.
 - Release/commit verified: `3efb7fbba` (main, merge of #1114; both images carry the tag `sha-3efb7fbba28f3cdf7555d0ab4de7e1f6b54fda03`). PR #1112 is not in this release.
 - Environment: production, host `wardenx` (`/opt/chartwarden`)
 - Verified at: RP id 2026-11-25T10:06Z; enforcement variable 2026-11-25T10:17Z (container recreated 10:17:42Z); browser checks below not yet reported
-- Verified by:
+- Verified by: Fabrice Adjam (ran the production commands and supplied their output; the browser checks below are not yet reported)
 - `PASSKEY_RP_ID` and `WEBAUTHN_RP_ID` read `chartwarden.cloud` in the running api: PASS (operator output, `docker inspect` on the recreated container, 2026-11-25T10:06Z)
 - Passkey sign-in on the web app succeeded for the platform account: PASS | FAIL
 - Passkey step-up on the console succeeded (enforcement off): PASS | FAIL
