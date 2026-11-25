@@ -12,7 +12,12 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import { OBJECT_STORE_ENV_PAIRS, envEntry, syntheticValue } from "./object-store-env-pairs";
+import {
+  LEFTOVER_MINIO_ENV_NAMES,
+  OBJECT_STORE_ENV_NAMES,
+  envEntry,
+  syntheticValue,
+} from "./deploy-env-helpers";
 
 // CW-RUST-M02 P2 prerequisite 1 — deploy.sh verifies the Rust image (an optional 4th argument) with cosign against
 // the chartwarden-rust workflow identity, and trusts that identity for THAT IMAGE ONLY. The real script runs against
@@ -44,6 +49,8 @@ printf 'docker %s\\n' "$*" >> "$STUB_LOG"
 case "$*" in
   *"exec -T postgres psql"*to_regclass*) echo t ;;
   *"exec -T postgres psql"*_chartwarden_migration*) printf '0001_init.sql\\n' ;;
+  *"ps -q fluent-bit"*) echo cid-fluent ;;
+  *"inspect"*) printf 'AUDIT_SINK_PATH=/api/v1/webhooks/object-store/access-log\\n' ;;
 esac
 exit 0
 `;
@@ -105,9 +112,9 @@ const OLD_ENV = [
   `CHARTWARDEN_IMAGE=${OLD_BACKEND}`,
   "CHARTWARDEN_WEB_IMAGE=ghcr.io/engrace-hospice/chartwarden-web:sha-old",
   "DOCLING_WORKER_TOKEN=x",
-  // A host that predates the object-store rename: the credentials exist under the legacy MINIO_* names only, so every
-  // deploy below also exercises deploy.sh's reconciliation of the canonical names.
-  ...OBJECT_STORE_ENV_PAIRS.map((p) => `${p.legacy}=${syntheticValue(p.legacy, "old")}`),
+  // A live host: the canonical object-store names, plus the retired MINIO_* aliases the compatibility release left behind.
+  ...OBJECT_STORE_ENV_NAMES.map((n) => `${n}=${syntheticValue(n, "new")}`),
+  ...LEFTOVER_MINIO_ENV_NAMES.map((n) => `${n}=${syntheticValue(n, "old")}`),
   "CHARTWARDEN_DESTRUCTION_PASSWORD=x",
 ];
 
@@ -273,61 +280,41 @@ describe("deploy.sh: Rust image verification (P2 prerequisite 1)", () => {
   });
 });
 
-// The object-store credential-name reconciliation runs on every deploy (before signature verification and before the
-// rollback backup), so it composes with the Rust roll: same env file, same ordering guarantees.
-describe("deploy.sh: object-store credential names alongside the Rust roll", () => {
-  const oldValue = (legacy: string): string => syntheticValue(legacy, "old");
+// The object-store credential handling runs on every deploy (before signature verification and before the rollback
+// backup), so it composes with the Rust roll: same env file, same ordering guarantees.
+describe("deploy.sh: object-store credentials alongside the Rust roll", () => {
   const leaked = (o: Outcome): string[] =>
-    OBJECT_STORE_ENV_PAIRS.map((p) => oldValue(p.legacy)).filter((v) => o.out.includes(v));
+    [
+      ...OBJECT_STORE_ENV_NAMES.map((n) => syntheticValue(n, "new")),
+      ...LEFTOVER_MINIO_ENV_NAMES.map((n) => syntheticValue(n, "old")),
+    ].filter((v) => o.out.includes(v));
 
-  it("a legacy-only host deploys: each canonical name is created with the exact old value, the Rust digest still rolls once", () => {
+  it("a live host deploys: its canonical names and leftover MINIO_* lines are untouched, the Rust digest still rolls once", () => {
     const o = run({ args: [BACKEND, WEB, "", RUST], trust: ALL_SIGNED });
     expect(o.code, o.out).toBe(0);
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      expect(envEntry(o.envFile, p.canonical), p.canonical).toEqual({
-        value: oldValue(p.legacy),
-        count: 1,
-      });
-      expect(envEntry(o.envFile, p.legacy), p.legacy).toEqual({
-        value: oldValue(p.legacy),
-        count: 1,
-      });
+    for (const n of OBJECT_STORE_ENV_NAMES) {
+      expect(envEntry(o.envFile, n), n).toEqual({ value: syntheticValue(n, "new"), count: 1 });
+    }
+    for (const n of LEFTOVER_MINIO_ENV_NAMES) {
+      expect(envEntry(o.envFile, n), n).toEqual({ value: syntheticValue(n, "old"), count: 1 });
     }
     expect(o.envFile.match(/^CHARTWARDEN_RUST_IMAGE=/gm)).toHaveLength(1);
     expect(leaked(o)).toEqual([]);
   });
 
-  it("a refused Rust image restores an env that still carries both names, identical", () => {
+  it("a refused Rust image restores an env that still carries every name, identical", () => {
     const o = run({
       args: [BACKEND, WEB, "", RUST],
       trust: { backend: UPSTREAM_ID, web: UPSTREAM_ID },
     });
     expect(o.code, o.out).toBe(1);
     expect(o.envFile).toContain(`CHARTWARDEN_IMAGE=${OLD_BACKEND}`);
-    for (const p of OBJECT_STORE_ENV_PAIRS) {
-      expect(envEntry(o.envFile, p.canonical).value, p.canonical).toBe(oldValue(p.legacy));
-      expect(envEntry(o.envFile, p.legacy).value, p.legacy).toBe(oldValue(p.legacy));
+    for (const n of OBJECT_STORE_ENV_NAMES) {
+      expect(envEntry(o.envFile, n).value, n).toBe(syntheticValue(n, "new"));
     }
-    expect(leaked(o)).toEqual([]);
-  });
-
-  it("a pair set to two different values stops the deploy (exit 78) before any signature check or docker call", () => {
-    const first = OBJECT_STORE_ENV_PAIRS[0];
-    expect(first).toBeDefined();
-    const canonical = first?.canonical ?? "";
-    const different = syntheticValue(canonical, "new");
-    const o = run({
-      args: [BACKEND, WEB, "", RUST],
-      trust: ALL_SIGNED,
-      envFile: [`${canonical}=${different}`],
-    });
-    expect(o.code, o.out).toBe(78);
-    expect(o.calls, "neither cosign nor docker may run").toEqual([]);
-    // Nothing was staged or rolled: the host's env is exactly what it was.
-    expect(o.envFile).toContain(`CHARTWARDEN_IMAGE=${OLD_BACKEND}`);
-    expect(envEntry(o.envFile, "CHARTWARDEN_RUST_IMAGE").count).toBe(0);
-    expect(o.out).toContain(`${canonical} and ${first?.legacy}`);
-    expect(o.out).not.toContain(different);
+    for (const n of LEFTOVER_MINIO_ENV_NAMES) {
+      expect(envEntry(o.envFile, n).value, n).toBe(syntheticValue(n, "old"));
+    }
     expect(leaked(o)).toEqual([]);
   });
 });

@@ -7,7 +7,7 @@
 // DocLens pipeline then classifies. M31 injects the result as a locally-declared PORT at the composition root (M31's
 // manifest `dependsOn` excludes 22), so M31 imports nothing from here.
 //
-// FAIL CLOSED: with no object store configured (`MINIO_*` unset) the upload service answers a typed 503 and nothing
+// FAIL CLOSED: with no object store configured (`OBJECT_STORE_*` unset) the upload service answers a typed 503 and nothing
 // is stored — the portal then keeps the caregiver's staged bytes for a retry.
 import type { DbClient } from "@chartwarden/db";
 import { getSeam } from "../../bootstrap/index";

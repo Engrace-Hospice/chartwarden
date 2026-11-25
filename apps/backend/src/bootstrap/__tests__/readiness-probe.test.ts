@@ -9,7 +9,12 @@ import { registerHealthRoutes } from "../routes/health";
 describe("buildReadinessProbe", () => {
   it("reports ok on every check when no dependency is configured (slice/test boot)", async () => {
     const probe = buildReadinessProbe({});
-    await expect(probe()).resolves.toEqual({ db: "ok", valkey: "ok", minio: "ok", outbox: "ok" });
+    await expect(probe()).resolves.toEqual({
+      db: "ok",
+      valkey: "ok",
+      objectStore: "ok",
+      outbox: "ok",
+    });
   });
 
   it("reports fail for a rejecting dependency ping without affecting the others", async () => {
@@ -17,7 +22,12 @@ describe("buildReadinessProbe", () => {
       pingDb: () => Promise.reject(new Error("connection refused")),
       pingRedis: () => Promise.resolve(),
     });
-    await expect(probe()).resolves.toEqual({ db: "fail", valkey: "ok", minio: "ok", outbox: "ok" });
+    await expect(probe()).resolves.toEqual({
+      db: "fail",
+      valkey: "ok",
+      objectStore: "ok",
+      outbox: "ok",
+    });
   });
 
   it("reports fail for a ping that hangs past the timeout", async () => {
@@ -25,7 +35,12 @@ describe("buildReadinessProbe", () => {
       pingDb: () => new Promise(() => {}), // never resolves — a wedged pool
       timeoutMs: 20,
     });
-    await expect(probe()).resolves.toEqual({ db: "fail", valkey: "ok", minio: "ok", outbox: "ok" });
+    await expect(probe()).resolves.toEqual({
+      db: "fail",
+      valkey: "ok",
+      objectStore: "ok",
+      outbox: "ok",
+    });
   });
 
   it("reports outbox ok below the depth threshold and fail at/above it", async () => {
@@ -89,8 +104,29 @@ describe("/ready route with the real probe wired in", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       status: "ready",
-      checks: { db: "ok", valkey: "ok", minio: "ok", outbox: "ok" },
+      checks: { db: "ok", valkey: "ok", objectStore: "ok", outbox: "ok" },
     });
+  });
+
+  it("names the object-store check `objectStore` and no longer carries a `minio` key", async () => {
+    const app = Fastify();
+    registerHealthRoutes(app, buildReadinessProbe({ pingObjectStore: () => Promise.resolve() }));
+    const checks = (await app.inject({ method: "GET", url: "/ready" })).json().checks;
+    expect(Object.keys(checks)).toContain("objectStore");
+    expect(Object.keys(checks)).not.toContain("minio");
+
+    const down = Fastify();
+    registerHealthRoutes(
+      down,
+      buildReadinessProbe({
+        pingObjectStore: () => Promise.reject(new Error("refused")),
+        log: () => {},
+      }),
+    );
+    const res = await down.inject({ method: "GET", url: "/ready" });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().checks.objectStore).toBe("fail");
+    expect(res.json().checks.minio).toBeUndefined();
   });
 
   it("flips to 503 on a dead DB — the task's own acceptance criterion", async () => {

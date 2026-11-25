@@ -76,8 +76,9 @@ wardenx-compose-clamav` for the orphaned old volumes, re-copy `.env.example` to 
 **Local object store: RustFS (was MinIO), and the `chartwarden` Compose project.** The dev stack and CI run
 RustFS (`rustfs/rustfs`, S3 on `:9000`, console on `:9001`, root key `chartwarden` /
 `chartwarden-object-store-dev-secret`). Production runs SeaweedFS (ADR-0050 D6). The backend uses the
-vendor-neutral `OBJECT_STORE_*` contract; `MINIO_*` remains a temporary rollback alias only. If your `.env` still
-sets `MINIO_SECRET_KEY=chartwarden-minio-secret`, replace the old names with `OBJECT_STORE_*` and use
+vendor-neutral `OBJECT_STORE_*` contract; the old `MINIO_*` names are no longer read, so a stale `.env` that still
+sets them leaves object storage unconfigured (uploads answer 503). If yours still sets
+`MINIO_SECRET_KEY=chartwarden-minio-secret`, replace the old names with `OBJECT_STORE_*` and use
 `OBJECT_STORE_SECRET_KEY=chartwarden-object-store-dev-secret`.
 `docker-compose.yml` also sets `name: chartwarden`, so containers, images and volumes are `chartwarden-*` /
 `chartwarden_*` whatever the checkout directory is called. To move an existing stack (previously the

@@ -2798,13 +2798,13 @@ export function wireModuleSeams(
   // MinIO adapters land with M22's routes/worker (a later M22 task).
   // TASK-002 — the five §4.3 reader seams bind the Drizzle reader store on a db boot, and the object
   // store binds the REFUSING port (DegradedError naming the missing MinIO adapter — the audit's
-  // TASK-002 risk note: never a Map wearing durable storage) when the MINIO_* env contract is absent.
-  // task-15 — the zero-dep SigV4 S3/MinIO adapter binds when the MINIO_* env contract IS present
+  // TASK-002 risk note: never a Map wearing durable storage) when the OBJECT_STORE_* env contract is absent.
+  // task-15 — the zero-dep SigV4 S3/MinIO adapter binds when the OBJECT_STORE_* env contract IS present
   // (official-vector-tested).
   // GAP-095 — `store:` (the renderer's document-ROW write port, distinct from `objects` above) now binds
   // the real Drizzle store over `document`/`document_version` — the SAME tables `readers` queries. Before
   // this, `store:` was never passed here, so `registerDocumentSeams` fell back to its in-memory default:
-  // even when the S3 object write succeeded for real (MINIO_* present), the catalog row landed in a
+  // even when the S3 object write succeeded for real (OBJECT_STORE_* present), the catalog row landed in a
   // private per-process Map no reader seam could ever see — not a restart-loses-data bug, a permanently
   // disconnected write path.
   // F-197 (#248) — `portalConsent:` was NEVER passed here, even when `deps.db` is present, so it silently
@@ -3210,7 +3210,7 @@ export function wireModuleSeams(
     // document-row write store — twenty lines above, at the registerDocumentSeams call — but left this
     // note behind, so a stale line kept claiming a Map stood behind the renderer and, since this ledger
     // REFUSES a production boot, kept refusing one. The remaining M22 gap is the object store, and that
-    // one binds `createRefusingObjectStore()` (a loud DegradedError naming the missing MINIO_* contract)
+    // one binds `createRefusingObjectStore()` (a loud DegradedError naming the missing OBJECT_STORE_* contract)
     // rather than a Map: refusing is the correct posture, not a fake-success this ledger exists to catch.
     if (!deps.outboxPublisher) {
       // Slice boots that pass a db but no catalog publisher keep the in-memory PatientMutator.
@@ -3418,7 +3418,7 @@ export function wireModuleErasers(
       ? {
           store: createDrizzleMessagingEraseStore(eraseDb ?? db, {
             // WP 1.5: the attachment bytes live in the tenant's MinIO bucket; the structural erase destroys them
-            // BEFORE it deletes the rows that point at them (the refusing port, when MINIO_* is unset, throws).
+            // BEFORE it deletes the rows that point at them (the refusing port, when OBJECT_STORE_* is unset, throws).
             attachmentStorage: buildM36AttachmentStorage(process.env),
             ...(deps.platformDb
               ? {
@@ -3470,7 +3470,7 @@ export function wireModuleErasers(
   // role what the shred and delete passes run; the app role has no DELETE and may not touch the immutable score ledger).
   registerBereavementErasers(eraseDb ? { store: createDrizzleBereavementEraseStore(eraseDb) } : {});
   registerIdgErasers(eraseDb ? { store: createDrizzleIdgEraseStore(eraseDb) } : {}); // M14 — `idg_record` (patient-scoped rows; meetings/minutes survive, minutes hash-redacted)
-  // M22 — `documents`. With the MINIO_* env contract the erase destroys real object versions via
+  // M22 — `documents`. With the OBJECT_STORE_* env contract the erase destroys real object versions via
   // the SigV4 adapter (task-15); without it, object destruction refuses via DegradedError BEFORE
   // any row delete (retryable, never orphaned keys).
   {
@@ -5421,7 +5421,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const m27Recompute = buildM27RecomputeEnqueue(queueConnection);
   // GAP-078 — M26 PS&R import. The raw CSV goes to the tenant bucket as a DEK-encrypted envelope (the M34
   // `TenantKeyProvider`, resolved lazily — it registers during boot) and the `cap:psr-reconcile` job is
-  // produced on the platform Valkey. Either missing (no MINIO_* / no Valkey) leaves the port unbound, so
+  // produced on the platform Valkey. Either missing (no OBJECT_STORE_* / no Valkey) leaves the port unbound, so
   // `importPsr` fails closed with a typed 503 rather than queueing an import that can never reconcile.
   const m26PsrS3Config = s3ObjectStoreConfigFromEnv(process.env);
   const m26PsrObjects = m26PsrS3Config
@@ -5505,7 +5505,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // `m36.notification.delivery_failed` in the same tx that settles the delivery `failed`.
   const m36OutboxPublisher = bindCallerModule(txOutboxPublisher, "m36");
   // WP 1.5 — M36 attachment storage (over M22's per-tenant MinIO store) + malware scanner, shared by the routes and the
-  // scan sweep. No MINIO_* => uploads answer 503; no scanner (MESSAGING_ATTACHMENT_SCANNER) => nothing leaves `pending`.
+  // scan sweep. No OBJECT_STORE_* => uploads answer 503; no scanner (MESSAGING_ATTACHMENT_SCANNER) => nothing leaves `pending`.
   const m36AttachmentBinding = buildM36AttachmentBinding(process.env, (message) =>
     console.warn(`⚠️  ${message}`),
   );
@@ -5521,7 +5521,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const m40OutboxPublisher = bindCallerModule(txOutboxPublisher, "m40");
   const m28OutboxPublisher = bindCallerModule(txOutboxPublisher, "m28");
   // GAP-084 — the M28 bulk-export machinery. Output objects live in the tenant's own MinIO bucket via the SAME
-  // SigV4 adapter M22 uses (a stateless signer — nothing to share). Without the MINIO_* contract OR a queue
+  // SigV4 adapter M22 uses (a stateless signer — nothing to share). Without the OBJECT_STORE_* contract OR a queue
   // connection, `$export` answers 501 instead of accepting a job nothing can run (the refusing store stands in
   // for the worker/sweeper deps below so the inbound + session crons still run).
   const m28ExportS3Config = s3ObjectStoreConfigFromEnv(process.env);
@@ -5881,7 +5881,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           : DEFAULT_RATE_LIMIT_TIERS.authenticatedPerMinute,
       }
     : undefined;
-  // AC-04 — the object-store client the `/ready` probe reaches through. Built off the SAME MINIO_*
+  // AC-04 — the object-store client the `/ready` probe reaches through. Built off the SAME OBJECT_STORE_*
   // env contract M22 uses; absent when object storage is not configured, in which case the probe
   // omits the check entirely (reporting "ok") rather than failing a deployment that has no MinIO.
   const readinessS3Config = s3ObjectStoreConfigFromEnv(process.env);
@@ -10382,7 +10382,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     };
     const m34Workers: Worker[] = [];
     // GAP-048 — the DSAR-export worker's object-store PUT + M22 DocumentRenderer capability. A fresh
-    // SigV4 client off the SAME MINIO_* env contract M22 uses (not M22's own instance — createS3ObjectStore
+    // SigV4 client off the SAME OBJECT_STORE_* env contract M22 uses (not M22's own instance — createS3ObjectStore
     // is a pure stateless signer, nothing to share); `deriveTenantBucket`/`getDocumentRenderer` are M22's
     // real implementations, reachable here (the composition root) but not from M34's own module folder
     // (module-boundary discipline, ADR-0005 D1).
@@ -10411,7 +10411,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       : undefined;
     // GAP-094 — the tenant-export worker's object-store PUT + M22 DocumentRenderer capability, the
     // `tenant.export` sibling of the DSAR dep bag above. Reuses the SAME `m34DsarObjectStore` client (one
-    // stateless SigV4 signer off the one MINIO_* env contract — no reason to construct a second instance)
+    // stateless SigV4 signer off the one OBJECT_STORE_* env contract — no reason to construct a second instance)
     // and a new `tenant_export_cover_letter` render template (renderer.ts).
     const m34TenantExportDeps = m34DsarObjectStore
       ? {
@@ -10529,7 +10529,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       }
       // GAP-048 — the DSAR-export worker is org-scoped (F09), so it doesn't strictly need platformDb/the
       // provision gateway; it's constructed alongside them here purely because `workerDeps` is already
-      // built in this block. Only registered when the MINIO_* env contract is present (m34DsarExportDeps),
+      // built in this block. Only registered when the OBJECT_STORE_* env contract is present (m34DsarExportDeps),
       // matching the shred worker's "constructed only when its capability is present" posture.
       if (m34DsarExportDeps) {
         const dsarExportWorker = registerM34DsarExportWorker(workerDeps);
@@ -10844,7 +10844,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
 
     // ── GAP-014 — M4 §4.4 audit jobs (build_export sweep, daily retention_scan, execute_destruction sweep) ──
     // Same worker-runner shape as the M34 block above. Needs the platform pool for the active-org fan-out;
-    // exports additionally need the MINIO_* object store, destruction the DATABASE_DESTRUCTION_URL credential.
+    // exports additionally need the OBJECT_STORE_* object store, destruction the DATABASE_DESTRUCTION_URL credential.
     // seal_partition + integrity_sample (the sealed hash chain and its sampled verification) are built in
     // 04-audit/jobs/audit-integrity-job.ts; only the spec's pgBackRest backup comparison is not (no reader).
     if (platformDbHandle) {
@@ -11075,7 +11075,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     // Monthly: copy each CLOSED audit_event partition older than the hot window to object storage as
     // checksummed gzip parts + a manifest, VERIFY them back from the store, and (only if AUDIT_ARCHIVE_DETACH=true)
     // detach the partition. It never drops anything — destruction is M4's certificate-driven act. Unconfigured
-    // (no AUDIT_ARCHIVE_BUCKET, or no MINIO_* credentials) it is a logged skip: the hot tier keeps everything.
+    // (no AUDIT_ARCHIVE_BUCKET, or no OBJECT_STORE_* credentials) it is a logged skip: the hot tier keeps everything.
     // Platform credential, like partition rotation: reading every tenant's audit rows and detaching a partition
     // are definer-rights functions (migration 0432) that `chartwarden_platform` is granted EXECUTE on.
     const auditArchiveSetup = auditArchiveConfigFromEnv(process.env);

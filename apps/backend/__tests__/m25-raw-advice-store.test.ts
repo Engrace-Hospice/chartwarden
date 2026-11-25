@@ -4,9 +4,9 @@ import { describe, expect, it } from "vitest";
 import { buildM25RawAdviceStore } from "../src/m25-raw-advice-store";
 
 const ENV = {
-  MINIO_ENDPOINT: "http://minio.local:9000",
-  MINIO_ACCESS_KEY: "k",
-  MINIO_SECRET_KEY: "s",
+  OBJECT_STORE_ENDPOINT: "http://objects.local:9000",
+  OBJECT_STORE_ACCESS_KEY: "k",
+  OBJECT_STORE_SECRET_KEY: "s",
 };
 const ORG = "11111111-1111-4111-8111-111111111111";
 const BUCKET = `tenant-${ORG}`;
@@ -74,8 +74,18 @@ function fakeS3() {
 }
 
 describe("M25 raw advice store", () => {
-  it("is absent without MINIO_* so postAdvice stays fail-closed", () => {
+  it("is absent without OBJECT_STORE_* so postAdvice stays fail-closed", () => {
     expect(buildM25RawAdviceStore({})).toBeUndefined();
+  });
+
+  it("is not bound by the retired MINIO_* names", () => {
+    expect(
+      buildM25RawAdviceStore({
+        MINIO_ENDPOINT: "http://minio.local:9000",
+        MINIO_ACCESS_KEY: "k",
+        MINIO_SECRET_KEY: "s",
+      }),
+    ).toBeUndefined();
   });
 
   it("creates the tenant bucket on first stage, keys by advice id, round-trips and deletes", async () => {

@@ -28,7 +28,9 @@ docker info >/dev/null 2>&1 </dev/null || fail "docker is not reachable (docker 
 
 # The backup overlay is enabled by its scoped SeaweedFS reader key. Once enabled, it must consume the
 # repository-owned published image by an immutable tag@digest, never a local build or mutable tag (#993).
-if has_key BACKUP_SOURCE_MINIO_ACCESS_KEY; then
+# The key was renamed from BACKUP_SOURCE_MINIO_ACCESS_KEY: this runs BEFORE deploy.sh copies the old name to the new one
+# on a host's first deploy of this release, so either name enables the check (never fail open on the old spelling).
+if has_key BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY || has_key BACKUP_SOURCE_MINIO_ACCESS_KEY; then
   backup_image=$(resolve CHARTWARDEN_BACKUP_IMAGE)
   case "$backup_image" in
     ghcr.io/engrace-hospice/chartwarden-backup:18-tools-sha-*@sha256:*) ;;
@@ -69,15 +71,24 @@ if [ -n "$existing_pg_volumes" ] && ! printf '%s\n' "$existing_pg_volumes" | gre
   fail "configured postgres volume '$pg_volume' does not exist but these do: $(echo $existing_pg_volumes). Set CHARTWARDEN_VOLUME_PREFIX in .env.production to the existing prefix, or finish the volume copy (Runbook, Window 2)"
 fi
 # A half-finished volume copy: postgres moved but the object store did not, so 'up' would create an EMPTY object-store
-# volume and every uploaded document would look lost. Same rule as above for each object-store volume (the one volume
-# whose loss is invisible to the database): SeaweedFS's, and the legacy MinIO one while it is kept.
-for object_store_volume in seaweedfs-data minio-data; do
-  configured="${volume_prefix}_${object_store_volume}"
-  existing=$(docker volume ls -q --filter "name=_${object_store_volume}\$" </dev/null 2>/dev/null) || fail "docker volume ls failed"
-  if [ -n "$existing" ] && ! printf '%s\n' "$existing" | grep -qx "$configured"; then
-    fail "configured object-store volume '$configured' does not exist but these do: $(echo $existing). The volume copy is incomplete (Runbook, Window 2); do not deploy"
-  fi
-done
+# volume and every uploaded document would look lost. Same rule as above for the object-store volume (the one volume
+# whose loss is invisible to the database): SeaweedFS's.
+object_store_volume="${volume_prefix}_seaweedfs-data"
+existing=$(docker volume ls -q --filter 'name=_seaweedfs-data$' </dev/null 2>/dev/null) || fail "docker volume ls failed"
+if [ -n "$existing" ] && ! printf '%s\n' "$existing" | grep -qx "$object_store_volume"; then
+  fail "configured object-store volume '$object_store_volume' does not exist but these do: $(echo $existing). The volume copy is incomplete (Runbook, Window 2); do not deploy"
+fi
+# The retired MinIO volume. deploy.sh no longer runs the one-time MinIO -> SeaweedFS copy, so a host that has a *_minio-data
+# volume and NO *_seaweedfs-data volume never completed that cutover: 'up' would start an EMPTY SeaweedFS and every uploaded
+# document would look lost. Refuse. A migrated host that still holds the old volume is only warned: it is a plaintext copy of
+# every document that sits outside the backups and is no longer visible to the stack.
+minio_volumes=$(docker volume ls -q --filter 'name=_minio-data$' </dev/null 2>/dev/null) || fail "docker volume ls failed"
+if [ -n "$minio_volumes" ] && [ -z "$existing" ]; then
+  fail "the retired MinIO volume exists ($(echo $minio_volumes)) but no *_seaweedfs-data volume does: this host never completed the SeaweedFS cutover, and 'up' would start an EMPTY object store, so every uploaded document would look lost. Do not deploy: the cutover is no longer automated (deploy/production/README.md, 'Object store: removing the retired MinIO data')"
+fi
+if [ -n "$minio_volumes" ]; then
+  echo "preflight WARNING: the retired MinIO volume still exists ($(echo $minio_volumes)) next to the SeaweedFS one: it is a plaintext copy of every document, outside the backups and no longer visible to the stack. Remove it after a successful SeaweedFS backup snapshot (README, 'Object store: removing the retired MinIO data')" >&2
+fi
 
 # 3. Compose project: a differently named project already holds postgres, so 'up' would start a second stack.
 if [ -n "$pg_projects" ] && ! printf '%s\n' "$pg_projects" | grep -qx "$project"; then

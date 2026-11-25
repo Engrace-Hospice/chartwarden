@@ -1,7 +1,7 @@
 // apps/backend/src/m36-export-binding.ts - the composition-root binding for M36 WP 5.7 (ADR-0089, PROPOSED): the export artefact builder, the
 // artefact reader the download route uses, and the expiry sweep, over the real object store, the tenant KEK and the message body cipher.
 // Lives at the app root like m36-attachment-storage.ts because it reaches M22's object store (M36 does not depend on M22).
-//   · object store: the per-tenant `tenant-<orgId>` bucket through the SAME MinIO/S3 config as attachments; without MINIO_* every call is a typed 503.
+//   · object store: the per-tenant `tenant-<orgId>` bucket through the SAME MinIO/S3 config as attachments; without OBJECT_STORE_* every call is a typed 503.
 //   · keys: the platform KEK adapter M34 uses (`M34_TENANT_KEK`); without it the build fails closed (EXPORT_BUILD_FAILED) and a download is refused.
 //   · Part 2: M5's privacy flags through the `PatientPrivacyFlagReader` seam; an unreadable or invalidated (stale) flag fails the build (never "not SUD").
 import type { DbClient } from "@chartwarden/db";

@@ -439,7 +439,7 @@ key ids and settings are environment variables. (`<NAME>` env values still work,
 | `BACKUP_OFFSITE_S3_URI_STYLE` | env | `path` (default) or `host` |
 | `secrets/backup_pg_local_cipher_pass`, `secrets/backup_pg_offsite_cipher_pass` | file | pgBackRest repo1 / repo2 AES-256 passphrases, >= 32 chars, different |
 | `secrets/backup_object_sse_c_key` | file | base64 of 32 random bytes: the SSE-C key for every off-site object, manifest and marker (sidecar only) |
-| `BACKUP_SOURCE_MINIO_ACCESS_KEY` + `secrets/backup_source_minio_secret_key` | env + file | the read-only object-store reader `object-store-provision` renders into SeaweedFS's s3.json (with the overlay) |
+| `BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY` + `secrets/backup_source_object_store_secret_key` | env + file | the read-only object-store reader `object-store-provision` renders into SeaweedFS's s3.json (with the overlay); formerly `BACKUP_SOURCE_MINIO_ACCESS_KEY` + `secrets/backup_source_minio_secret_key`, which `deploy.sh` copies once |
 | `OPS_ALERT_WEBHOOK_URL` | env | **mandatory, https only** (the sidecar refuses to start without it; curl `--proto =https`): POSTs `backup.snapshot_failed` / `backup.snapshot_timeout` / `backup.stale` / `backup.wal_archive_failing` / `backup.pg_wal_large` |
 | `BACKUP_OFFSITE_MIN_LOCK_DAYS`, `BACKUP_PG_WAL_ALERT_BYTES` | env | 100 days / 8 GiB defaults (above) |
 | `BACKUP_HEARTBEAT_URL` | env | optional dead-man's switch pinged after each successful snapshot (alerts when the host itself is gone) |

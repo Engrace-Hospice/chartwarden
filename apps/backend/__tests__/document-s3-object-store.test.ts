@@ -355,7 +355,7 @@ describe("s3ObjectStoreConfigFromEnv", () => {
     ).toBeNull();
   });
 
-  it("prefers the vendor-neutral contract and returns a path-style config", () => {
+  it("reads the vendor-neutral contract and returns a path-style config", () => {
     expect(
       s3ObjectStoreConfigFromEnv({
         OBJECT_STORE_ENDPOINT: "http://seaweedfs:8333",
@@ -363,9 +363,6 @@ describe("s3ObjectStoreConfigFromEnv", () => {
         OBJECT_STORE_ACCESS_KEY: "object-ak",
         OBJECT_STORE_SECRET_KEY: "object-sk",
         OBJECT_STORE_REGION: "us-west-2",
-        MINIO_ENDPOINT: "http://legacy-minio:9000",
-        MINIO_ACCESS_KEY: "legacy-ak",
-        MINIO_SECRET_KEY: "legacy-sk",
       }),
     ).toEqual({
       endpoint: "http://seaweedfs:8333",
@@ -377,7 +374,7 @@ describe("s3ObjectStoreConfigFromEnv", () => {
     });
   });
 
-  it("accepts the legacy MinIO names for one rollback compatibility window", () => {
+  it("ignores the retired MINIO_* names entirely: alone they configure nothing, mixed in they fill no gap", () => {
     expect(
       s3ObjectStoreConfigFromEnv({
         MINIO_ENDPOINT: "http://minio:9000",
@@ -385,11 +382,28 @@ describe("s3ObjectStoreConfigFromEnv", () => {
         MINIO_SECRET_KEY: "sk",
         MINIO_REGION: "eu-west-1",
       }),
+    ).toBeNull();
+    // A partial OBJECT_STORE_* contract is not completed from MINIO_*.
+    expect(
+      s3ObjectStoreConfigFromEnv({
+        OBJECT_STORE_ENDPOINT: "http://seaweedfs:8333",
+        MINIO_ACCESS_KEY: "legacy-ak",
+        MINIO_SECRET_KEY: "legacy-sk",
+      }),
+    ).toBeNull();
+    // MINIO_PUBLIC_ENDPOINT / MINIO_REGION do not leak into a complete OBJECT_STORE_* config.
+    expect(
+      s3ObjectStoreConfigFromEnv({
+        OBJECT_STORE_ENDPOINT: "http://seaweedfs:8333",
+        OBJECT_STORE_ACCESS_KEY: "object-ak",
+        OBJECT_STORE_SECRET_KEY: "object-sk",
+        MINIO_PUBLIC_ENDPOINT: "https://legacy.example.com",
+        MINIO_REGION: "eu-west-1",
+      }),
     ).toEqual({
-      endpoint: "http://minio:9000",
-      accessKeyId: "ak",
-      secretAccessKey: "sk",
-      region: "eu-west-1",
+      endpoint: "http://seaweedfs:8333",
+      accessKeyId: "object-ak",
+      secretAccessKey: "object-sk",
       forcePathStyle: true,
     });
   });
