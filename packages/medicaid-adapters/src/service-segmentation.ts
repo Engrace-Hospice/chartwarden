@@ -71,6 +71,8 @@ export function segmentHospiceServiceWindow(input: {
   readonly facts: readonly EffectiveHospiceFact[];
   readonly quantityByDate: ReadonlyMap<IsoDate, HospiceQuantityEvidence>;
   readonly unknownPolicyBoundaries?: boolean;
+  /** Narrow adapter callers may qualify only the fact dimensions they have actually resolved. */
+  readonly requiredDimensions?: readonly HospiceFactDimension[];
 }): readonly HospiceServiceSegment[] {
   const start = utc(input.from);
   const end = utc(input.to);
@@ -81,6 +83,15 @@ export function segmentHospiceServiceWindow(input: {
     if (!Number.isFinite(utc(fact.from)) || !Number.isFinite(utc(fact.to)) || fact.from > fact.to) {
       throw new RangeError(`invalid effective range for ${fact.dimension} fact`);
     }
+  }
+
+  const dimensions = input.requiredDimensions ?? DIMENSIONS;
+  if (
+    dimensions.length === 0 ||
+    new Set(dimensions).size !== dimensions.length ||
+    dimensions.some((dimension) => !DIMENSIONS.includes(dimension))
+  ) {
+    throw new RangeError("invalid required hospice fact dimensions");
   }
 
   const boundaries = new Set<number>([start, end + DAY_MS]);
@@ -114,7 +125,7 @@ export function segmentHospiceServiceWindow(input: {
     const selected: Partial<Record<HospiceFactDimension, EffectiveHospiceFact>> = {};
     const reasons: string[] = [];
 
-    for (const dimension of DIMENSIONS) {
+    for (const dimension of dimensions) {
       const matching = input.facts.filter(
         (fact) => fact.dimension === dimension && fact.from <= from && fact.to >= to,
       );

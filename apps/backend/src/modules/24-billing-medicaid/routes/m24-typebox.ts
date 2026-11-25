@@ -211,6 +211,65 @@ const AssemblyPreviewCoverage = Type.Object({
   coverageKind: nullableStr(),
   rank: Type.Union([Type.Integer(), Type.Null()]),
 });
+const AssemblyPreviewPricingStatus = lit([
+  "fully_resolved",
+  "partially_resolved",
+  "unresolved",
+  "ambiguous",
+  "unsupported",
+  "unavailable",
+] as const);
+const AssemblyPreviewPricingSegment = Type.Object({
+  serviceFrom: isoDate(),
+  serviceTo: isoDate(),
+  serviceCategory: Type.Union([
+    lit(["RHC", "CHC", "IRC", "GIP", "IN_HOME_RESPITE"] as const),
+    Type.Null(),
+  ]),
+  status: lit(["resolved", "partial", "unresolved", "ambiguous", "unsupported"] as const),
+  rateStatus: lit(["qualified", "missing", "ambiguous", "unverified", "unsupported"] as const),
+  unitBasis: Type.Union([lit(["per_day", "per_hour"] as const), Type.Null()]),
+  rateCents: Type.Union([cents(), Type.Null()]),
+  rateLocalityCode: nullableStr(),
+  rateEffectiveFrom: Type.Union([isoDate(), Type.Null()]),
+  rateEffectiveTo: Type.Union([isoDate(), Type.Null()]),
+  rateSourceKind: nullableStr(),
+  rateEvidenceVersion: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+  methodologyVersion: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+  pricingMethod: Type.Union([
+    lit(["per_day", "per_hour", "fixed_contract_unit"] as const),
+    Type.Null(),
+  ]),
+  quantityConversionMethod: Type.Union([
+    lit(["daily_units", "hourly_prorated_minutes", "hourly_each_hour_or_part"] as const),
+    Type.Null(),
+  ]),
+  minimumDurationMethod: Type.Union([
+    lit(["not_applicable", "not_required", "minimum_minutes"] as const),
+    Type.Null(),
+  ]),
+  minimumClinicalMinutes: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+  roundingBoundary: Type.Union([
+    lit(["not_applicable", "service_day", "segment"] as const),
+    Type.Null(),
+  ]),
+  chargeCeilingMethod: Type.Union([
+    lit(["none", "lower_of_rate_and_usual_charge", "contract_maximum"] as const),
+    Type.Null(),
+  ]),
+  chargeCeilings: Type.Array(
+    Type.Object({
+      method: lit(["lower_of_rate_and_usual_charge", "contract_maximum"] as const),
+      amountCents: cents(),
+      boundary: lit(["service_day", "segment"] as const),
+    }),
+  ),
+  quantityStatus: lit(["verified", "missing", "unverified"] as const),
+  baseReimbursementCents: Type.Union([cents(), Type.Null()]),
+  reimbursementEstimateCents: Type.Union([cents(), Type.Null()]),
+  actualBilledChargeCents: Type.Null(),
+  reasonCodes: Type.Array(Type.String()),
+});
 export const AssemblyPreviewResponse = Type.Object({
   primaryCoverage: AssemblyPreviewCoverage,
   medicaidCoverage: AssemblyPreviewCoverage,
@@ -342,6 +401,16 @@ export const AssemblyPreviewResponse = Type.Object({
       "unavailable",
     ] as const),
     reasonCode: Type.String(),
+  }),
+  pricing: Type.Object({
+    status: AssemblyPreviewPricingStatus,
+    assessedAt: isoInstant(),
+    coversRequestedPeriod: Type.Boolean(),
+    requiredInputs: Type.Array(Type.String()),
+    segments: Type.Array(AssemblyPreviewPricingSegment),
+    reimbursementEstimateTotalCents: Type.Union([cents(), Type.Null()]),
+    actualBilledChargeTotalCents: Type.Null(),
+    submissionAvailable: Type.Literal(false),
   }),
   electronicSubmissionAvailable: Type.Literal(false),
   isAdvisorySnapshot: Type.Literal(true),

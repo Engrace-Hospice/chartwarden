@@ -2472,6 +2472,13 @@
       "when": 1795530000003,
       "tag": "1549_m25_medicaid_era_point_in_time_assessments",
       "breakpoints": true
+    },
+    {
+      "idx": 353,
+      "version": "7",
+      "when": 1795592916381,
+      "tag": "1550_m24_rate_policy_methodology_and_variants",
+      "breakpoints": true
     }
   ]
 }

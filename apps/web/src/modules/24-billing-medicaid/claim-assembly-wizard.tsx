@@ -99,6 +99,56 @@ interface AssemblyPreview {
     configurationStatus: string | null;
   };
   tradingPartnerCredential: { status: string; reasonCode: string };
+  pricing: {
+    status:
+      | "fully_resolved"
+      | "partially_resolved"
+      | "unresolved"
+      | "ambiguous"
+      | "unsupported"
+      | "unavailable";
+    assessedAt: string;
+    coversRequestedPeriod: boolean;
+    requiredInputs: string[];
+    segments: {
+      serviceFrom: string;
+      serviceTo: string;
+      serviceCategory: "RHC" | "CHC" | "IRC" | "GIP" | "IN_HOME_RESPITE" | null;
+      status: "resolved" | "partial" | "unresolved" | "ambiguous" | "unsupported";
+      rateStatus: "qualified" | "missing" | "ambiguous" | "unverified" | "unsupported";
+      unitBasis: "per_day" | "per_hour" | null;
+      rateCents: number | null;
+      rateLocalityCode: string | null;
+      rateEffectiveFrom: string | null;
+      rateEffectiveTo: string | null;
+      rateSourceKind: string | null;
+      rateEvidenceVersion: number | null;
+      methodologyVersion: number | null;
+      pricingMethod: "per_day" | "per_hour" | "fixed_contract_unit" | null;
+      quantityConversionMethod:
+        | "daily_units"
+        | "hourly_prorated_minutes"
+        | "hourly_each_hour_or_part"
+        | null;
+      minimumDurationMethod: "not_applicable" | "not_required" | "minimum_minutes" | null;
+      minimumClinicalMinutes: number | null;
+      roundingBoundary: "not_applicable" | "service_day" | "segment" | null;
+      chargeCeilingMethod: "none" | "lower_of_rate_and_usual_charge" | "contract_maximum" | null;
+      chargeCeilings: {
+        method: "lower_of_rate_and_usual_charge" | "contract_maximum";
+        amountCents: number;
+        boundary: "service_day" | "segment";
+      }[];
+      quantityStatus: "verified" | "missing" | "unverified";
+      baseReimbursementCents: number | null;
+      reimbursementEstimateCents: number | null;
+      actualBilledChargeCents: null;
+      reasonCodes: string[];
+    }[];
+    reimbursementEstimateTotalCents: number | null;
+    actualBilledChargeTotalCents: null;
+    submissionAvailable: false;
+  };
   electronicSubmissionAvailable: false;
   isAdvisorySnapshot: true;
 }
@@ -138,6 +188,11 @@ function isAssemblyPreview(value: unknown): value is AssemblyPreview {
     Array.isArray(value.enrollmentReadiness) &&
     hasStrings(value.selectedClearinghouse, ["status"]) &&
     hasStrings(value.tradingPartnerCredential, ["status", "reasonCode"]) &&
+    isRecord(value.pricing) &&
+    typeof value.pricing.status === "string" &&
+    Array.isArray(value.pricing.requiredInputs) &&
+    Array.isArray(value.pricing.segments) &&
+    value.pricing.submissionAvailable === false &&
     value.electronicSubmissionAvailable === false
   );
 }
@@ -216,6 +271,12 @@ export function MedicaidAssemblyWizard(): JSX.Element {
     serviceFrom <= serviceTo;
   const needsRb = kind !== "hospice_only";
   const kindPreview = preview?.claimKinds.find((candidate) => candidate.kind === kind);
+  const hasVerifiedPricingQuantity =
+    preview !== null &&
+    preview.pricing.segments.length > 0 &&
+    preview.pricing.segments.every((segment) => segment.quantityStatus === "verified");
+  const hasUnverifiedPricingQuantity =
+    preview?.pricing.segments.some((segment) => segment.quantityStatus === "unverified") ?? false;
   const arrangementPreview = preview?.rbArrangements.find(
     (candidate) => candidate.id === rbArrangementId,
   );
@@ -733,17 +794,88 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                         : "Unconfirmed; secondary Medicaid claim formats remain unavailable"
                   }
                 />
-                {/* The three statements below are static copy. They are true only while the server reports an
-                    unqualified payer policy and unavailable electronic submission; isAssemblyPreview refuses any
-                    preview that says otherwise, so they can never be shown beside a contradicting payload. */}
                 <Field
                   label="Clinical quantity"
-                  value="Clinical quantity missing or unqualified · no hours are inferred from date-only LOC records"
+                  value={
+                    hasVerifiedPricingQuantity
+                      ? "Verified quantity evidence is present for the reimbursement estimate · 837I billing units remain separately unqualified"
+                      : hasUnverifiedPricingQuantity
+                        ? "Clinical quantity evidence is unverified · no hours are inferred from date-only LOC records"
+                        : "Clinical quantity missing or unqualified · no hours are inferred from date-only LOC records"
+                  }
                 />
-                <Field
-                  label="Pricing information"
-                  value="Pricing information required · no qualified payer-specific rate is currently available"
-                />
+                <section aria-label="Pricing assessment" style={pricingPanelStyle}>
+                  <strong>Pricing assessment · {humanize(preview.pricing.status)}</strong>
+                  <p style={mutedStyle}>
+                    {preview.pricing.reimbursementEstimateTotalCents !== null
+                      ? `Estimated reimbursement: $${(preview.pricing.reimbursementEstimateTotalCents / 100).toFixed(2)}. This is not the provider's billed charge, payer-allowed amount, or payment.`
+                      : "No complete reimbursement estimate is available. Missing facts are not shown as a zero amount."}
+                  </p>
+                  {preview.pricing.segments.map((segment, index) => (
+                    <div
+                      key={`${segment.serviceFrom}-${segment.serviceTo}-${segment.serviceCategory ?? "unknown"}-${index}`}
+                      style={pricingSegmentStyle}
+                    >
+                      <strong>
+                        {segment.serviceCategory
+                          ? humanize(segment.serviceCategory)
+                          : "Service category unresolved"}
+                        {` · ${segment.serviceFrom}${segment.serviceTo === segment.serviceFrom ? "" : ` to ${segment.serviceTo}`}`}
+                      </strong>
+                      {segment.rateCents !== null ? (
+                        <p style={mutedStyle}>
+                          {`Rate $${(segment.rateCents / 100).toFixed(2)} ${segment.unitBasis === "per_hour" ? "per hour" : "per day"}${segment.pricingMethod === "fixed_contract_unit" ? " · contract-defined unit" : ""} · ${humanize(segment.rateSourceKind ?? "source unavailable")}${segment.rateLocalityCode ? ` · locality ${segment.rateLocalityCode}` : ""} · effective ${segment.rateEffectiveFrom ?? "unknown"}${segment.rateEffectiveTo ? ` through ${segment.rateEffectiveTo}` : " onward"}${segment.methodologyVersion === null ? "" : ` · method v${segment.methodologyVersion}`}`}
+                        </p>
+                      ) : (
+                        <p style={mutedStyle}>
+                          {segment.rateStatus === "ambiguous"
+                            ? "Conflicting rate evidence requires resolution."
+                            : segment.rateStatus === "unverified"
+                              ? "Rate source evidence is not verified."
+                              : "No exact qualified rate can be selected for this service span."}
+                        </p>
+                      )}
+                      {segment.quantityConversionMethod ? (
+                        <p style={mutedStyle}>
+                          {`Quantity conversion: ${humanize(segment.quantityConversionMethod)}${segment.minimumDurationMethod === "minimum_minutes" && segment.minimumClinicalMinutes !== null ? ` · minimum ${segment.minimumClinicalMinutes} clinical minutes per service day` : ""}. This does not establish the claim's 837I units.`}
+                        </p>
+                      ) : null}
+                      {segment.reimbursementEstimateCents !== null ? (
+                        <p style={mutedStyle}>
+                          {`Reimbursement estimate: $${(segment.reimbursementEstimateCents / 100).toFixed(2)}`}
+                        </p>
+                      ) : null}
+                      {segment.chargeCeilings.map((ceiling, ceilingIndex) => (
+                        <p
+                          key={`${ceiling.method}-${ceiling.boundary}-${ceilingIndex}`}
+                          style={mutedStyle}
+                        >
+                          {`Applied ${humanize(ceiling.method)} ceiling: $${(ceiling.amountCents / 100).toFixed(2)} at ${humanize(ceiling.boundary)} scope`}
+                        </p>
+                      ))}
+                      {segment.reasonCodes.map((reason) => (
+                        <p key={reason} style={mutedStyle}>
+                          {humanize(reason)}
+                        </p>
+                      ))}
+                    </div>
+                  ))}
+                  {preview.pricing.requiredInputs.length > 0 ? (
+                    <div>
+                      <span style={mutedStyle}>Required to complete pricing</span>
+                      <ul style={pricingListStyle}>
+                        {preview.pricing.requiredInputs.map((required) => (
+                          <li key={required}>{required}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  <p style={mutedStyle}>
+                    The provider's actual billed amount remains unavailable. Pricing does not
+                    establish payer enrollment, authorization, route qualification, or submission
+                    readiness.
+                  </p>
+                </section>
                 <Field
                   label="Electronic submission"
                   value="Unavailable · this workflow is for local draft preparation only"
@@ -873,6 +1005,25 @@ const workspaceStyle = {
   display: "flex",
   flexDirection: "column" as const,
   gap: "1rem",
+};
+const pricingPanelStyle = {
+  display: "grid",
+  gap: "0.5rem",
+  padding: "0.75rem",
+  border: "1px solid var(--color-outline-variant)",
+  borderRadius: "var(--radius-md, 0.5rem)",
+  background: "var(--color-surface-container-low, var(--color-surface))",
+};
+const pricingSegmentStyle = {
+  display: "grid",
+  gap: "0.2rem",
+  paddingBlock: "0.5rem",
+  borderTop: "1px solid var(--color-outline-variant)",
+};
+const pricingListStyle = {
+  margin: 0,
+  paddingInlineStart: "1.25rem",
+  color: "var(--color-on-surface-variant)",
 };
 const fieldGridStyle = {
   display: "grid",

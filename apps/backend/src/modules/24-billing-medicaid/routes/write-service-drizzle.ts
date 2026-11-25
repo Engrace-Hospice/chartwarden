@@ -16,8 +16,10 @@ import {
   DEFAULT_MEDICAID_RULES,
   DEFAULT_MEDICAID_RULE_SET_VERSION,
   type MedicaidValidationContext,
+  type PayerRatePolicyFact,
   type PlaceOfServiceFacilityKind,
   type PlaceOfServiceResidenceKind,
+  assessHospicePricing,
   buildHospiceLines,
   claimStructureFailure,
   deriveMedicaidControlNumber,
@@ -80,6 +82,7 @@ import type {
   AssemblyPreviewArrangement,
   AssemblyPreviewClaimKind,
   AssemblyPreviewCoverage,
+  AssemblyPreviewPricing,
   AssemblyPreviewView,
   CreateCustomRuleInput,
   CreateRbArrangementInput,
@@ -819,6 +822,172 @@ function coveragePreview(resolution: CoverageForRange): AssemblyPreviewCoverage 
     : { status: resolution.status, coverageKind: null, rank: null };
 }
 
+const PRICING_LOC_BY_M6: Record<
+  | "routine_home_care"
+  | "continuous_home_care"
+  | "inpatient_respite_care"
+  | "general_inpatient_care",
+  "RHC" | "CHC" | "IRC" | "GIP"
+> = {
+  routine_home_care: "RHC",
+  continuous_home_care: "CHC",
+  inpatient_respite_care: "IRC",
+  general_inpatient_care: "GIP",
+};
+
+function ratePolicyFactFromRow(
+  row: typeof schema.medicaidPayerRatePolicy.$inferSelect,
+): PayerRatePolicyFact {
+  return {
+    ...row,
+    programKind: row.programKind as PayerRatePolicyFact["programKind"],
+    serviceCategory: row.serviceCategory as PayerRatePolicyFact["serviceCategory"],
+    unitBasis: row.unitBasis as PayerRatePolicyFact["unitBasis"],
+    pricingMethod: row.pricingMethod as PayerRatePolicyFact["pricingMethod"],
+    quantityConversionMethod:
+      row.quantityConversionMethod as PayerRatePolicyFact["quantityConversionMethod"],
+    minimumDurationMethod:
+      row.minimumDurationMethod as PayerRatePolicyFact["minimumDurationMethod"],
+    minimumClinicalMinutes: row.minimumClinicalMinutes,
+    roundingMode: row.roundingMode as PayerRatePolicyFact["roundingMode"],
+    roundingBoundary: row.roundingBoundary as PayerRatePolicyFact["roundingBoundary"],
+    chargeCeilingMethod: row.chargeCeilingMethod as PayerRatePolicyFact["chargeCeilingMethod"],
+    chargeCeilingBoundary:
+      row.chargeCeilingBoundary as PayerRatePolicyFact["chargeCeilingBoundary"],
+    qualityReportingApplicability:
+      row.qualityReportingApplicability as PayerRatePolicyFact["qualityReportingApplicability"],
+    qualityReportingStatus:
+      row.qualityReportingStatus as PayerRatePolicyFact["qualityReportingStatus"],
+    sourceKind: row.sourceKind as PayerRatePolicyFact["sourceKind"],
+    verificationStatus: row.verificationStatus as PayerRatePolicyFact["verificationStatus"],
+    verifiedAt: row.verifiedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function pricingPreviewFromAssessment(
+  assessment: ReturnType<typeof assessHospicePricing>,
+  requiredInputs: readonly string[],
+): AssemblyPreviewPricing {
+  return {
+    status: assessment.status,
+    assessedAt: assessment.assessedAt,
+    coversRequestedPeriod: assessment.coversRequestedPeriod,
+    requiredInputs,
+    segments: assessment.segments.map((segment) => ({
+      serviceFrom: segment.serviceFrom,
+      serviceTo: segment.serviceTo,
+      serviceCategory: segment.serviceCategory,
+      status: segment.status,
+      rateStatus: segment.rateEvidence
+        ? "qualified"
+        : segment.status === "ambiguous"
+          ? "ambiguous"
+          : segment.reasonCodes.includes("RATE_SOURCE_UNVERIFIED")
+            ? "unverified"
+            : segment.status === "unsupported"
+              ? "unsupported"
+              : "missing",
+      unitBasis: segment.rateEvidence?.unitBasis ?? segment.quantity?.unitBasis ?? null,
+      rateCents: segment.rateEvidence?.rateCents ?? null,
+      rateLocalityCode: segment.rateEvidence?.localityCode ?? null,
+      rateEffectiveFrom: segment.rateEvidence?.effectiveFrom ?? null,
+      rateEffectiveTo: segment.rateEvidence?.effectiveTo ?? null,
+      rateSourceKind: segment.rateEvidence?.sourceKind ?? null,
+      rateEvidenceVersion: segment.rateEvidence?.version ?? null,
+      methodologyVersion: segment.rateEvidence?.methodologyVersion ?? null,
+      pricingMethod:
+        segment.rateEvidence?.pricingMethod === "per_day" ||
+        segment.rateEvidence?.pricingMethod === "per_hour" ||
+        segment.rateEvidence?.pricingMethod === "fixed_contract_unit"
+          ? segment.rateEvidence.pricingMethod
+          : null,
+      quantityConversionMethod:
+        segment.rateEvidence?.quantityConversionMethod === "daily_units" ||
+        segment.rateEvidence?.quantityConversionMethod === "hourly_prorated_minutes" ||
+        segment.rateEvidence?.quantityConversionMethod === "hourly_each_hour_or_part"
+          ? segment.rateEvidence.quantityConversionMethod
+          : null,
+      minimumDurationMethod:
+        segment.rateEvidence?.minimumDurationMethod === "not_applicable" ||
+        segment.rateEvidence?.minimumDurationMethod === "not_required" ||
+        segment.rateEvidence?.minimumDurationMethod === "minimum_minutes"
+          ? segment.rateEvidence.minimumDurationMethod
+          : null,
+      minimumClinicalMinutes: segment.rateEvidence?.minimumClinicalMinutes ?? null,
+      roundingBoundary:
+        segment.rateEvidence?.roundingBoundary === "not_applicable" ||
+        segment.rateEvidence?.roundingBoundary === "service_day" ||
+        segment.rateEvidence?.roundingBoundary === "segment"
+          ? segment.rateEvidence.roundingBoundary
+          : null,
+      chargeCeilingMethod:
+        segment.rateEvidence?.chargeCeilingMethod === "none" ||
+        segment.rateEvidence?.chargeCeilingMethod === "lower_of_rate_and_usual_charge" ||
+        segment.rateEvidence?.chargeCeilingMethod === "contract_maximum"
+          ? segment.rateEvidence.chargeCeilingMethod
+          : null,
+      chargeCeilings: segment.appliedCeilings,
+      quantityStatus: segment.quantityEvidence.length > 0 ? "verified" : "missing",
+      baseReimbursementCents: segment.baseReimbursementCents,
+      reimbursementEstimateCents: segment.reimbursementEstimateCents,
+      actualBilledChargeCents: null,
+      reasonCodes: segment.reasonCodes,
+    })),
+    reimbursementEstimateTotalCents: assessment.reimbursementEstimateTotalCents,
+    actualBilledChargeTotalCents: null,
+    submissionAvailable: false,
+  };
+}
+
+function unresolvedPricingPreview(input: {
+  readonly from: string;
+  readonly to: string;
+  readonly reasonCode: string;
+  readonly requiredInputs: readonly string[];
+  readonly serviceCategory?: AssemblyPreviewPricing["segments"][number]["serviceCategory"];
+  readonly status?: AssemblyPreviewPricing["status"];
+}): AssemblyPreviewPricing {
+  return {
+    status: input.status ?? "unresolved",
+    assessedAt: new Date().toISOString(),
+    coversRequestedPeriod: true,
+    requiredInputs: input.requiredInputs,
+    segments: [
+      {
+        serviceFrom: input.from,
+        serviceTo: input.to,
+        serviceCategory: input.serviceCategory ?? null,
+        status: input.status === "unsupported" ? "unsupported" : "unresolved",
+        rateStatus: input.status === "unsupported" ? "unsupported" : "missing",
+        unitBasis: null,
+        rateCents: null,
+        rateLocalityCode: null,
+        rateEffectiveFrom: null,
+        rateEffectiveTo: null,
+        rateSourceKind: null,
+        rateEvidenceVersion: null,
+        methodologyVersion: null,
+        pricingMethod: null,
+        quantityConversionMethod: null,
+        minimumDurationMethod: null,
+        minimumClinicalMinutes: null,
+        roundingBoundary: null,
+        chargeCeilingMethod: null,
+        chargeCeilings: [],
+        quantityStatus: "missing",
+        baseReimbursementCents: null,
+        reimbursementEstimateCents: null,
+        actualBilledChargeCents: null,
+        reasonCodes: [input.reasonCode],
+      },
+    ],
+    reimbursementEstimateTotalCents: null,
+    actualBilledChargeTotalCents: null,
+    submissionAvailable: false,
+  };
+}
+
 function coverageRefusalCode(
   role: "medicaid" | "primary",
   resolution: CoverageForRange,
@@ -1503,6 +1672,17 @@ export function buildDrizzleM24WriteService(
         canonicalPayerName: null,
         reasonCode: "PROGRAM_RESPONSIBILITY_UNAVAILABLE",
       };
+      let pricing: AssemblyPreviewPricing = unresolvedPricingPreview({
+        from: input.serviceFrom,
+        to: input.serviceTo,
+        reasonCode: "MEDICAID_PRICING_EVIDENCE_UNAVAILABLE",
+        requiredInputs: [
+          "Verified payer/program responsibility",
+          "Service locality",
+          "Clinical quantity evidence",
+        ],
+        status: "unavailable",
+      });
       let payerAuthorizationEvidence: AssemblyPreviewView["payerAuthorizationEvidence"] = {
         clinicalDocuments: "missing",
         notification: "missing",
@@ -1925,6 +2105,164 @@ export function buildDrizzleM24WriteService(
           }
         }
 
+        const assessedAt = new Date().toISOString();
+        const rateProgramKind =
+          programResponsibility.status === "verified" &&
+          programResponsibility.programKind === "ffs_open_card"
+            ? "oregon_ffs"
+            : programResponsibility.status === "verified" &&
+                programResponsibility.programKind === "managed_care"
+              ? "managed_care"
+              : null;
+        if (
+          payerResponsibility !== "medicaid_primary" ||
+          programResponsibility.status !== "verified" ||
+          !programResponsibility.canonicalPayerId ||
+          !recordedEligibility.serviceState
+        ) {
+          pricing = unresolvedPricingPreview({
+            from: input.serviceFrom,
+            to: input.serviceTo,
+            reasonCode:
+              payerResponsibility !== "medicaid_primary"
+                ? "MEDICAID_PRIMARY_PAYER_REQUIRED"
+                : "MEDICAID_PROGRAM_RESPONSIBILITY_UNRESOLVED",
+            requiredInputs: [
+              "Verified primary Medicaid payer responsibility for the complete service period",
+              "Verified canonical Medicaid program and payer identity",
+            ],
+            status: "unresolved",
+          });
+        } else if (recordedEligibility.serviceState !== "OR" || !rateProgramKind) {
+          pricing = unresolvedPricingPreview({
+            from: input.serviceFrom,
+            to: input.serviceTo,
+            reasonCode: "PRICING_METHOD_UNSUPPORTED",
+            requiredInputs: [
+              "An implemented, source-qualified rate policy for this state and program",
+            ],
+            status: "unsupported",
+          });
+        } else {
+          try {
+            const policyRows = await withOrgContext(db, actor, async (tx) =>
+              tx
+                .select()
+                .from(schema.medicaidPayerRatePolicy)
+                .where(
+                  and(
+                    eq(schema.medicaidPayerRatePolicy.organizationId, actor.organizationId),
+                    eq(schema.medicaidPayerRatePolicy.providerEntityId, input.providerEntityId),
+                    eq(
+                      schema.medicaidPayerRatePolicy.canonicalPayerId,
+                      programResponsibility.canonicalPayerId!,
+                    ),
+                    eq(schema.medicaidPayerRatePolicy.programKind, rateProgramKind),
+                    eq(
+                      schema.medicaidPayerRatePolicy.serviceState,
+                      recordedEligibility.serviceState!,
+                    ),
+                    lte(schema.medicaidPayerRatePolicy.effectiveFrom, input.serviceTo),
+                    or(
+                      isNull(schema.medicaidPayerRatePolicy.effectiveTo),
+                      gte(schema.medicaidPayerRatePolicy.effectiveTo, input.serviceFrom),
+                    ),
+                  ),
+                ),
+            );
+            const days: Parameters<typeof assessHospicePricing>[0]["days"][number][] = [];
+            for (const period of rawPeriods ?? []) {
+              const serviceCategory = PRICING_LOC_BY_M6[period.levelOfCare];
+              const periodFrom = period.effectiveAt.toISOString().slice(0, 10);
+              const periodTo = m6LocClaimEndDate(period.endedAt) ?? input.serviceTo;
+              const from = periodFrom < input.serviceFrom ? input.serviceFrom : periodFrom;
+              const to = periodTo > input.serviceTo ? input.serviceTo : periodTo;
+              if (from > to) continue;
+              const startMs = Date.parse(`${from}T00:00:00.000Z`);
+              const endMs = Date.parse(`${to}T00:00:00.000Z`);
+              for (let time = startMs; time <= endMs; time += 86_400_000) {
+                days.push({
+                  serviceDate: new Date(time).toISOString().slice(0, 10),
+                  serviceCategory,
+                  unitBasis: serviceCategory === "CHC" ? "per_hour" : "per_day",
+                  localityCode: null,
+                  localityEvidence: null,
+                  electionDayEvidence: null,
+                  inpatientRespiteDayEvidence: null,
+                  quantity: null,
+                  quantityEvidence: null,
+                  providerUsualCharge: null,
+                  payerContext: {
+                    organizationId: actor.organizationId,
+                    providerEntityId: input.providerEntityId,
+                    canonicalPayerId: programResponsibility.canonicalPayerId!,
+                    programKind: rateProgramKind,
+                    serviceState: recordedEligibility.serviceState!,
+                    assessedAt,
+                    qualityReporting: {
+                      applicability: "unknown",
+                      providerStatus: "unknown",
+                      evidenceReference: null,
+                      evidenceVersion: null,
+                      verifiedAt: null,
+                      effectiveFrom: null,
+                      effectiveTo: null,
+                    },
+                  },
+                });
+              }
+            }
+            const assessment = assessHospicePricing({
+              serviceFrom: input.serviceFrom,
+              serviceTo: input.serviceTo,
+              assessedAt,
+              days,
+              rates: policyRows.map(ratePolicyFactFromRow),
+            });
+            const requiredInputs = new Set<string>([
+              rateProgramKind === "oregon_ffs"
+                ? "Service-location CBSA or other authoritative OHA rate locality"
+                : "Authoritative service-location locality required by the provider-specific contract",
+              "Verified quality-reporting applicability and provider status required by the selected rate evidence",
+              "Authoritative clinical quantity for each service date",
+              ...(days.some((entry) => entry.serviceCategory === "RHC") &&
+              rateProgramKind === "oregon_ffs"
+                ? ["Authoritative hospice election day number for RHC bucket selection"]
+                : []),
+              ...(days.some((entry) => entry.serviceCategory === "IRC")
+                ? ["Authoritative consecutive inpatient-respite day and episode evidence"]
+                : []),
+            ]);
+            if (
+              policyRows.some(
+                (row) =>
+                  row.verificationStatus === "verified" &&
+                  row.chargeCeilingMethod === "lower_of_rate_and_usual_charge",
+              )
+            ) {
+              requiredInputs.add(
+                "Provider usual-charge evidence required by the selected rate policy",
+              );
+            }
+            if (!policyRows.some((row) => row.verificationStatus === "verified")) {
+              requiredInputs.add(
+                rateProgramKind === "oregon_ffs"
+                  ? "Verified, source-backed OHA fee-for-service rate evidence"
+                  : "Verified provider-specific contractual rate evidence for this payer and service",
+              );
+            }
+            pricing = pricingPreviewFromAssessment(assessment, [...requiredInputs]);
+          } catch {
+            pricing = unresolvedPricingPreview({
+              from: input.serviceFrom,
+              to: input.serviceTo,
+              reasonCode: "MEDICAID_RATE_EVIDENCE_UNAVAILABLE",
+              requiredInputs: ["M24 payer-rate evidence reader is unavailable"],
+              status: "unavailable",
+            });
+          }
+        }
+
         arrangements = previewReads.arrangementRows.map((arrangement) => {
           const arrangementError = arrangementIssue(
             arrangement,
@@ -2065,6 +2403,7 @@ export function buildDrizzleM24WriteService(
         enrollmentReadiness,
         selectedClearinghouse,
         tradingPartnerCredential,
+        pricing,
         electronicSubmissionAvailable: false,
         isAdvisorySnapshot: true,
       };

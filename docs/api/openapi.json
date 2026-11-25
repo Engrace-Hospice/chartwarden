@@ -209864,6 +209864,7 @@
                     "enrollmentReadiness",
                     "selectedClearinghouse",
                     "tradingPartnerCredential",
+                    "pricing",
                     "electronicSubmissionAvailable",
                     "isAdvisorySnapshot"
                   ],
@@ -210669,6 +210670,510 @@
                         },
                         "reasonCode": {
                           "type": "string"
+                        }
+                      }
+                    },
+                    "pricing": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "assessedAt",
+                        "coversRequestedPeriod",
+                        "requiredInputs",
+                        "segments",
+                        "reimbursementEstimateTotalCents",
+                        "actualBilledChargeTotalCents",
+                        "submissionAvailable"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "fully_resolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "partially_resolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "assessedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "coversRequestedPeriod": {
+                          "type": "boolean"
+                        },
+                        "requiredInputs": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "segments": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "serviceFrom",
+                              "serviceTo",
+                              "serviceCategory",
+                              "status",
+                              "rateStatus",
+                              "unitBasis",
+                              "rateCents",
+                              "rateLocalityCode",
+                              "rateEffectiveFrom",
+                              "rateEffectiveTo",
+                              "rateSourceKind",
+                              "rateEvidenceVersion",
+                              "methodologyVersion",
+                              "pricingMethod",
+                              "quantityConversionMethod",
+                              "minimumDurationMethod",
+                              "minimumClinicalMinutes",
+                              "roundingBoundary",
+                              "chargeCeilingMethod",
+                              "chargeCeilings",
+                              "quantityStatus",
+                              "baseReimbursementCents",
+                              "reimbursementEstimateCents",
+                              "actualBilledChargeCents",
+                              "reasonCodes"
+                            ],
+                            "properties": {
+                              "serviceFrom": {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              "serviceTo": {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              "serviceCategory": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "RHC",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "CHC",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "IRC",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "GIP",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "IN_HOME_RESPITE",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "status": {
+                                "anyOf": [
+                                  {
+                                    "const": "resolved",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "partial",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unresolved",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "ambiguous",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unsupported",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "rateStatus": {
+                                "anyOf": [
+                                  {
+                                    "const": "qualified",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "missing",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "ambiguous",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unverified",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unsupported",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "unitBasis": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "per_day",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "per_hour",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "rateCents": {
+                                "anyOf": [
+                                  {
+                                    "description": "Integer cents (D8)",
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "rateLocalityCode": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "rateEffectiveFrom": {
+                                "anyOf": [
+                                  {
+                                    "format": "date",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "rateEffectiveTo": {
+                                "anyOf": [
+                                  {
+                                    "format": "date",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "rateSourceKind": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "rateEvidenceVersion": {
+                                "anyOf": [
+                                  {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "methodologyVersion": {
+                                "anyOf": [
+                                  {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "pricingMethod": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "per_day",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "per_hour",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "fixed_contract_unit",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "quantityConversionMethod": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "daily_units",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "hourly_prorated_minutes",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "hourly_each_hour_or_part",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "minimumDurationMethod": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "not_applicable",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "not_required",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "minimum_minutes",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "minimumClinicalMinutes": {
+                                "anyOf": [
+                                  {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "roundingBoundary": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "not_applicable",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "service_day",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "segment",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "chargeCeilingMethod": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "none",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "lower_of_rate_and_usual_charge",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "contract_maximum",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "chargeCeilings": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "method",
+                                    "amountCents",
+                                    "boundary"
+                                  ],
+                                  "properties": {
+                                    "method": {
+                                      "anyOf": [
+                                        {
+                                          "const": "lower_of_rate_and_usual_charge",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "contract_maximum",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "amountCents": {
+                                      "description": "Integer cents (D8)",
+                                      "type": "integer"
+                                    },
+                                    "boundary": {
+                                      "anyOf": [
+                                        {
+                                          "const": "service_day",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "segment",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              "quantityStatus": {
+                                "anyOf": [
+                                  {
+                                    "const": "verified",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "missing",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unverified",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "baseReimbursementCents": {
+                                "anyOf": [
+                                  {
+                                    "description": "Integer cents (D8)",
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "reimbursementEstimateCents": {
+                                "anyOf": [
+                                  {
+                                    "description": "Integer cents (D8)",
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "actualBilledChargeCents": {
+                                "type": "null"
+                              },
+                              "reasonCodes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "reimbursementEstimateTotalCents": {
+                          "anyOf": [
+                            {
+                              "description": "Integer cents (D8)",
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "actualBilledChargeTotalCents": {
+                          "type": "null"
+                        },
+                        "submissionAvailable": {
+                          "const": false,
+                          "type": "boolean"
                         }
                       }
                     },

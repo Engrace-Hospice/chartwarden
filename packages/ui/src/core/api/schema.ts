@@ -82805,6 +82805,51 @@ export interface operations {
                             status: "configured" | "missing" | "expired" | "future" | "partial" | "ambiguous" | "unavailable";
                             reasonCode: string;
                         };
+                        pricing: {
+                            status: "fully_resolved" | "partially_resolved" | "unresolved" | "ambiguous" | "unsupported" | "unavailable";
+                            /** Format: date-time */
+                            assessedAt: string;
+                            coversRequestedPeriod: boolean;
+                            requiredInputs: string[];
+                            segments: {
+                                /** Format: date */
+                                serviceFrom: string;
+                                /** Format: date */
+                                serviceTo: string;
+                                serviceCategory: ("RHC" | "CHC" | "IRC" | "GIP" | "IN_HOME_RESPITE") | null;
+                                status: "resolved" | "partial" | "unresolved" | "ambiguous" | "unsupported";
+                                rateStatus: "qualified" | "missing" | "ambiguous" | "unverified" | "unsupported";
+                                unitBasis: ("per_day" | "per_hour") | null;
+                                rateCents: number | null;
+                                rateLocalityCode: string | null;
+                                rateEffectiveFrom: string | null;
+                                rateEffectiveTo: string | null;
+                                rateSourceKind: string | null;
+                                rateEvidenceVersion: number | null;
+                                methodologyVersion: number | null;
+                                pricingMethod: ("per_day" | "per_hour" | "fixed_contract_unit") | null;
+                                quantityConversionMethod: ("daily_units" | "hourly_prorated_minutes" | "hourly_each_hour_or_part") | null;
+                                minimumDurationMethod: ("not_applicable" | "not_required" | "minimum_minutes") | null;
+                                minimumClinicalMinutes: number | null;
+                                roundingBoundary: ("not_applicable" | "service_day" | "segment") | null;
+                                chargeCeilingMethod: ("none" | "lower_of_rate_and_usual_charge" | "contract_maximum") | null;
+                                chargeCeilings: {
+                                    method: "lower_of_rate_and_usual_charge" | "contract_maximum";
+                                    /** @description Integer cents (D8) */
+                                    amountCents: number;
+                                    boundary: "service_day" | "segment";
+                                }[];
+                                quantityStatus: "verified" | "missing" | "unverified";
+                                baseReimbursementCents: number | null;
+                                reimbursementEstimateCents: number | null;
+                                actualBilledChargeCents: null;
+                                reasonCodes: string[];
+                            }[];
+                            reimbursementEstimateTotalCents: number | null;
+                            actualBilledChargeTotalCents: null;
+                            /** @constant */
+                            submissionAvailable: false;
+                        };
                         /** @constant */
                         electronicSubmissionAvailable: false;
                         /** @constant */

@@ -682,12 +682,21 @@ describe.skipIf(!DB_URL)(
                (organization_id, provider_entity_id, canonical_payer_id, program_kind, service_state,
                 locality_code, service_category, unit_basis, bucket_from, bucket_to, rate_cents,
                 source_kind, verification_status, effective_from, source_document_ref, verified_at,
+                pricing_method, quantity_conversion_method, minimum_duration_method, minimum_clinical_minutes,
+                methodology_version, rounding_mode, rounding_boundary,
+                charge_ceiling_method, charge_ceiling_boundary, quality_reporting_applicability,
+                quality_reporting_status,
                 verified_by_membership_id, recorded_by_membership_id)
              VALUES ($1,$2,gen_random_uuid(),'managed_care','OR','CBSA-TEST','RHC','per_day',1,60,
                      10000,'cco_contract','verified','2026-01-01','doc:synthetic',now(),
+                     'per_day','daily_units','not_applicable',NULL,1,'not_applicable','not_applicable',
+                     'none','not_applicable','required','meets',
                      gen_random_uuid(),gen_random_uuid())`;
       // Control: the same row satisfies every CHECK, so the refusal is the verification guard.
       expect((await db.query(verified, [ORG_A, a.pe])).rowCount).toBe(1);
+      await expect(
+        db.query(verified.replace("'RHC'", "'IN_HOME_RESPITE'"), [ORG_A, a.pe]),
+      ).rejects.toThrow(/medicaid_payer_rate_policy_verified_methodology/);
       await expect(withOrg(ORG_A, () => db.query(verified, [ORG_A, a.pe]))).rejects.toThrow(
         /separate reviewer path/,
       );

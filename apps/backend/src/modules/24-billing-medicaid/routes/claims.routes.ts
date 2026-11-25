@@ -68,6 +68,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
             "room_and_board",
             "medicare_coordination",
             "payer_authorization_evidence",
+            "pricing",
           ],
         },
       },

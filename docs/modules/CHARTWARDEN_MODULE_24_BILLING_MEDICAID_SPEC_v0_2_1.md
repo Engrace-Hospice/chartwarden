@@ -54,6 +54,38 @@
 
 -----
 
+### As-built L8A.1 note — effective-dated rate policy and preview (2026-11-25)
+
+This note records implementation status and does not qualify a payer contract, tariff, clinical billing
+quantity or production claim format. See the [L8A.1 qualification report](../audits/billing-e2e/M24_1075_L8A1_RATE_POLICY_PRICING_QUALIFICATION_20261125.md).
+
+- M24's append-only `medicaid_payer_rate_policy` evidence is selected by exact organization, provider,
+  canonical payer/program, service state, locality, service category, unit basis, election-day bucket,
+  quality-reporting variant and effective service date. Evidence recorded or verified after the explicit
+  assessment time is excluded. Supersession/revocation lineage is preserved; terminal replacement heads
+  do not revive their predecessors.
+- Oregon FFS rows require the OHA source class and the source-backed methodology represented in the
+  policy row. Managed-care rows require payer/provider-specific contract evidence. No shared legacy state
+  schedule, Medicare rate, unrelated CCO rate or geographic fallback can price an Oregon CCO service.
+- A pure pricing engine calculates daily or explicit-minute hourly reimbursement estimates with integer
+  cents and the selected policy's rounding and ceiling semantics. The result keeps reimbursement estimate,
+  provider billed charge, payer-allowed amount and payment distinct; only the estimate may be present.
+  Quality, locality, election-day, clinical quantity, usual-charge and inpatient-respite sequence facts
+  require source-bound evidence. Missing evidence remains missing. In-home respite remains unsupported
+  because M6 does not yet publish the required service/quantity contract.
+- The existing claim-assembly preview reads payer-rate rows under organization context and returns
+  effective-dated pricing segments, evidence references, stable unresolved reasons and required inputs.
+  M5/M6/M40 owner readers for all policy and clinical evidence are not yet available to this preview, so
+  real current assessments remain partial or unresolved. No client-supplied facts qualify the result.
+- L8A.1 does not write priced claim lines. The current line snapshot points to the shared legacy
+  `state_rate_schedule`, so it cannot hold a `medicaid_payer_rate_policy` identity. L8A.2 must introduce
+  a source discriminator plus immutable rate-evidence ID/version, methodology version, effective span,
+  quantity/unit, calculation and ceiling/rounding snapshots, preserving reproducibility and allowing
+  multiple lines within one LOC period. Revalidation is required before any future READY transition.
+- Migration 1550 is `contract` because it replaces rate constraints; deployment remains held for the
+  normal operator process. Its defaults preserve historical rows as unqualified. Submission, financial
+  posting and priced assembly remain disabled.
+
 ## 1. Purpose & Scope
 
 ### 1.1 What This Module Does
