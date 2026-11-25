@@ -96,6 +96,7 @@ exercises that profile. The remaining skips do not weaken the facility-RHC resul
 | Changed-file Biome | Passed; no remaining formatting/lint diagnostics. |
 | Migration numbering and compatibility | Passed for migrations 1553–1554; both are `contract`. |
 | DDL legality and tenancy | Passed. |
+| Table ownership and manifest mirror | Passed; no cross-module table ownership or manifest drift was reported. |
 | Module-docs and compliance-register validation | Passed. No control status or evidence register was changed. |
 | OpenAPI generation/check, `client:check`, provenance and coverage | Passed. The generated client schema was updated for the typed service-location field and is current. |
 | Scoped `harness:phi-scan` | Passed: all 23 changed source, test, migration and documentation files clean. |
