@@ -1,5 +1,5 @@
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
@@ -89,12 +89,23 @@ let releaseRejects = false;
 let completionRejects = false;
 let failWorkspaceRefresh = false;
 let workspaceReadCount = 0;
+let deferNextWorkspaceRead = false;
+let resolveDeferredWorkspaceRead: ((response: Response) => void) | null = null;
 const decisionRequests: unknown[] = [];
 const fetchStub = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
-  const request = input instanceof Request ? input : new Request(String(input));
+  const request =
+    input instanceof Request
+      ? input
+      : new Request(new URL(String(input), "http://localhost").toString());
   const path = new URL(request.url, "http://localhost").pathname;
   if (path.endsWith("/workspace")) {
     workspaceReadCount += 1;
+    if (deferNextWorkspaceRead) {
+      deferNextWorkspaceRead = false;
+      return await new Promise<Response>((resolve) => {
+        resolveDeferredWorkspaceRead = resolve;
+      });
+    }
     const status = failWorkspaceRefresh && workspaceReadCount > 1 ? 503 : workspaceStatus;
     return new Response(status === 200 ? JSON.stringify(workspace) : "unavailable", {
       status,
@@ -178,10 +189,16 @@ beforeEach(() => {
   completionRejects = false;
   failWorkspaceRefresh = false;
   workspaceReadCount = 0;
+  deferNextWorkspaceRead = false;
+  resolveDeferredWorkspaceRead = null;
   decisionRequests.length = 0;
   fetchStub.mockClear();
+  vi.stubGlobal("fetch", fetchStub);
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("UnifiedReviewWorkspace", () => {
   it("renders six accessible sections and opens candidate review inline", async () => {
@@ -201,6 +218,97 @@ describe("UnifiedReviewWorkspace", () => {
     expect(task.scrollTop).toBe(0);
     expect(screen.getByRole("heading", { name: "Mobile phone", level: 2 })).toBeTruthy();
     expect(document.querySelector(".wx-unified-layout")).toBeTruthy();
+  });
+
+  it("uses the tenant-consented platform read path without exposing tenant review actions", async () => {
+    const supportSessionId = "dddddddd-4444-4444-8444-dddddddddddd";
+    const supportOrganizationId = "eeeeeeee-5555-4555-8555-eeeeeeeeeeee";
+    mount(
+      `/intake/${BATCH}/review?supportOrganizationId=${supportOrganizationId}&supportSessionId=${supportSessionId}`,
+    );
+
+    expect(await screen.findByText("Tenant-consented platform support access")).toBeTruthy();
+    expect(screen.getAllByText("Read-only support session").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Release review" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Complete review" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Start review" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Legacy detailed reviewer/ })).toBeNull();
+
+    const workspaceRequest = fetchStub.mock.calls.find(([input]) =>
+      String(input instanceof Request ? input.url : input).includes(
+        "/api/v1/platform/organizations/",
+      ),
+    );
+    expect(workspaceRequest).toBeTruthy();
+    const workspaceUrl = new URL(
+      String(
+        workspaceRequest?.[0] instanceof Request ? workspaceRequest[0].url : workspaceRequest?.[0],
+      ),
+      "http://localhost",
+    );
+    expect(workspaceUrl.pathname).toBe(
+      `/api/v1/platform/organizations/${supportOrganizationId}/intake/uploads/${BATCH}/workspace`,
+    );
+    expect(workspaceUrl.searchParams.get("supportSessionId")).toBe(supportSessionId);
+
+    const image = screen.getByRole("img", { name: /Page 1 of the source document/ });
+    const imageUrl = new URL(image.getAttribute("src") ?? "", "http://localhost");
+    expect(imageUrl.pathname).toBe(
+      `/api/v1/platform/organizations/${supportOrganizationId}/intake/uploads/${BATCH}/pages/1/image`,
+    );
+    expect(imageUrl.searchParams.get("supportSessionId")).toBe(supportSessionId);
+    expect(screen.getByText(/Support-session access is read-only/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Accept extracted value" })).toBeNull();
+  });
+
+  it("removes previously loaded PHI when a support-session revalidation is refused", async () => {
+    const supportSessionId = "dddddddd-4444-4444-8444-dddddddddddd";
+    const supportOrganizationId = "eeeeeeee-5555-4555-8555-eeeeeeeeeeee";
+    mount(
+      `/intake/${BATCH}/review?supportOrganizationId=${supportOrganizationId}&supportSessionId=${supportSessionId}`,
+    );
+
+    await waitFor(() => expect(document.body.textContent).toContain("Synthetic Patient"));
+    workspaceStatus = 403;
+    fireEvent.focus(window);
+
+    expect(await screen.findByText("Review unavailable")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("Synthetic Patient");
+    expect(
+      screen.getByText(
+        "This support session does not authorize access to the requested intake batch.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("does not restore PHI from an older support revalidation after a newer denial", async () => {
+    const supportSessionId = "dddddddd-4444-4444-8444-dddddddddddd";
+    const supportOrganizationId = "eeeeeeee-5555-4555-8555-eeeeeeeeeeee";
+    mount(
+      `/intake/${BATCH}/review?supportOrganizationId=${supportOrganizationId}&supportSessionId=${supportSessionId}`,
+    );
+    await waitFor(() => expect(document.body.textContent).toContain("Synthetic Patient"));
+
+    deferNextWorkspaceRead = true;
+    fireEvent.focus(window);
+    await waitFor(() => expect(workspaceReadCount).toBe(2));
+    workspaceStatus = 403;
+    fireEvent.focus(window);
+    expect(await screen.findByText("Review unavailable")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("Synthetic Patient");
+
+    const resolveOlderRead = resolveDeferredWorkspaceRead;
+    if (!resolveOlderRead) throw new Error("Expected a deferred support workspace read");
+    await act(async () => {
+      resolveOlderRead(
+        new Response(JSON.stringify(workspace), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    });
+    await waitFor(() => expect(document.body.textContent).not.toContain("Synthetic Patient"));
+    expect(screen.getByText("Review unavailable")).toBeTruthy();
   });
 
   it("offers server-backed release and completion from the unified workspace", async () => {

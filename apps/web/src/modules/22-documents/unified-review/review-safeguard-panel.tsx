@@ -1,7 +1,7 @@
 import { Glyph, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
-import type { Workspace } from "../doclens-api";
+import type { PlatformSupportAccess, Workspace } from "../doclens-api";
 import { pageImageUrl, resolveIdentity, resolveSud } from "../doclens-api";
 import {
   MIN_REASON,
@@ -15,10 +15,12 @@ export function ReviewSafeguardPanel({
   workspace,
   selectedPage,
   refresh,
+  supportAccess,
 }: {
   workspace: Workspace;
   selectedPage: number | null;
   refresh: () => Promise<Workspace | null>;
+  supportAccess?: PlatformSupportAccess | null;
 }): JSX.Element {
   const client = useApiClient();
   const [busy, setBusy] = useState(false);
@@ -54,7 +56,7 @@ export function ReviewSafeguardPanel({
   const onSourceError = (): void => {
     if (activePage === null) return;
     const generation = sourceGeneration.current;
-    fetch(pageImageUrl(workspace.batch.id, activePage))
+    fetch(pageImageUrl(workspace.batch.id, activePage, supportAccess))
       .then((response) => {
         if (sourceGeneration.current !== generation) return;
         setReadyPage(null);
@@ -69,7 +71,7 @@ export function ReviewSafeguardPanel({
   const complete =
     workspace.review?.status === "complete" || workspace.batch.status === "writeback_complete";
   const locked = workspace.review?.status === "in_progress" && !workspace.review.isMine;
-  const disabled = busy || refreshPending || complete || locked;
+  const disabled = Boolean(supportAccess) || busy || refreshPending || complete || locked;
   const sudPage = workspace.sud.indicators[0]?.page ?? null;
   const sudDisabled = disabled || !evidenceReadyFor(sudPage);
 
@@ -113,6 +115,15 @@ export function ReviewSafeguardPanel({
         <p role="alert" className="wx-doclens-error">
           {error}
         </p>
+      ) : null}
+      {supportAccess ? (
+        <output className="wx-unified-banner">
+          <Glyph name="lock" size={18} />
+          <div>
+            <strong>Read-only support session</strong>
+            <span>Safeguard resolutions remain with an authorized tenant reviewer.</span>
+          </div>
+        </output>
       ) : null}
       {refreshPending ? (
         <button
@@ -165,7 +176,7 @@ export function ReviewSafeguardPanel({
             <div className="wx-unified-source-page">
               <img
                 key={`${activePage}:${sourceAttempt}`}
-                src={pageImageUrl(workspace.batch.id, activePage)}
+                src={pageImageUrl(workspace.batch.id, activePage, supportAccess)}
                 alt={`Page ${activePage} of the safeguard source document`}
                 onLoad={() => {
                   setReadyPage(activePage);

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { safeIntakeReturnTo } from "../../../shell/intake-return";
-import type { Workspace } from "../doclens-api";
+import type { PlatformSupportAccess, Workspace } from "../doclens-api";
 import { completeReview, releaseReview, startReview } from "../doclens-api";
 import { batchStatusLabel, identityNeedsAnswer, sourceLabel } from "../doclens-model";
 import { CompleteDialog, DocLensReviewWorkspace } from "../doclens-review-workspace";
@@ -24,8 +24,15 @@ import "./unified-review.css";
 
 export function UnifiedReviewWorkspace(): JSX.Element {
   const [searchParams] = useSearchParams();
-  if (searchParams.get("mode") === "detailed") return <DocLensReviewWorkspace />;
-  return <UnifiedReviewSummary />;
+  const supportSessionId = searchParams.get("supportSessionId");
+  const supportOrganizationId = searchParams.get("supportOrganizationId");
+  if (searchParams.get("mode") === "detailed" && !supportSessionId && !supportOrganizationId)
+    return <DocLensReviewWorkspace />;
+  return (
+    <UnifiedReviewSummary
+      key={`${supportOrganizationId ?? "tenant"}:${supportSessionId ?? "tenant"}`}
+    />
+  );
 }
 
 function UnifiedReviewSummary(): JSX.Element {
@@ -34,6 +41,16 @@ function UnifiedReviewSummary(): JSX.Element {
   const { batchId = "" } = useParams<{ batchId: string }>();
   const [searchParams] = useSearchParams();
   const returnTo = safeIntakeReturnTo(searchParams.get("returnTo"));
+  const supportSessionId = searchParams.get("supportSessionId");
+  const supportOrganizationId = searchParams.get("supportOrganizationId");
+  const supportAccess = useMemo<PlatformSupportAccess | null>(() => {
+    if (!supportSessionId || !supportOrganizationId) return null;
+    return {
+      organizationId: supportOrganizationId,
+      supportSessionId,
+    };
+  }, [supportOrganizationId, supportSessionId]);
+  const incompleteSupportContext = Boolean(supportSessionId) !== Boolean(supportOrganizationId);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -50,6 +67,7 @@ function UnifiedReviewSummary(): JSX.Element {
     new Set(),
   );
   const taskFocusRef = useRef<HTMLElement | null>(null);
+  const refreshGenerationRef = useRef(0);
   const focusTask = useCallback((): void => {
     const task = taskFocusRef.current;
     if (!task) return;
@@ -68,11 +86,73 @@ function UnifiedReviewSummary(): JSX.Element {
     task.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
   }, []);
 
+  const clearSupportWorkspace = useCallback((): void => {
+    setWorkspace(null);
+    setCompleteOpen(false);
+    setSelectedSafeguardPage(null);
+    setNextCandidateId(null);
+    setSourceUnavailablePages(new Set());
+  }, []);
+
   const refresh = useCallback(async (): Promise<Workspace | null> => {
     if (!batchId) return null;
+    const generation = ++refreshGenerationRef.current;
+    if (incompleteSupportContext) {
+      clearSupportWorkspace();
+      setLoadError("This support-session link is incomplete. Return to platform administration.");
+      return null;
+    }
+    if (supportAccess) {
+      // Support authorization is evaluated on every read. Remove previously disclosed PHI before
+      // revalidation so an expired or revoked session fails closed instead of leaving stale data.
+      clearSupportWorkspace();
+      const response = await client
+        .GET("/api/v1/platform/organizations/{organizationId}/intake/uploads/{id}/workspace", {
+          params: {
+            path: { organizationId: supportAccess.organizationId, id: batchId },
+            query: { supportSessionId: supportAccess.supportSessionId },
+          },
+        })
+        .catch(() => null);
+      if (generation !== refreshGenerationRef.current) return null;
+      if (!response || response.error || !response.data) {
+        clearSupportWorkspace();
+        setLoadError(
+          response?.response?.status === 403
+            ? "This support session does not authorize access to the requested intake batch."
+            : response?.response?.status === 404
+              ? "This intake batch is not available in the support-session tenant."
+              : "The support-session review workspace could not be loaded.",
+        );
+        return null;
+      }
+      const data = response.data;
+      setWorkspace(data);
+      setLoadError(null);
+      setRefreshRequired(false);
+      setSelectedCandidateId((current) => {
+        if (
+          current &&
+          data.candidates.some(
+            (candidate) =>
+              candidate.id === current &&
+              !candidate.redacted &&
+              !candidateIsOtherPatient(data, candidate),
+          )
+        )
+          return current;
+        return (
+          data.candidates.find(
+            (candidate) => !candidate.redacted && !candidateIsOtherPatient(data, candidate),
+          )?.id ?? null
+        );
+      });
+      return data;
+    }
     const response = await client
       .GET("/api/v1/intake/uploads/{id}/workspace", { params: { path: { id: batchId } } })
       .catch(() => null);
+    if (generation !== refreshGenerationRef.current) return null;
     if (!response || response.error || !response.data) {
       setLoadError(
         response?.response?.status === 404
@@ -110,11 +190,24 @@ function UnifiedReviewSummary(): JSX.Element {
       );
     });
     return data;
-  }, [batchId, client]);
+  }, [batchId, clearSupportWorkspace, client, incompleteSupportContext, supportAccess]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!supportAccess) return;
+    const revalidate = (): void => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    window.addEventListener("focus", revalidate);
+    document.addEventListener("visibilitychange", revalidate);
+    return () => {
+      window.removeEventListener("focus", revalidate);
+      document.removeEventListener("visibilitychange", revalidate);
+    };
+  }, [refresh, supportAccess]);
 
   useEffect(() => {
     const candidate = workspace?.candidates.find((item) => item.id === selectedCandidateId);
@@ -270,7 +363,11 @@ function UnifiedReviewSummary(): JSX.Element {
             label={complete ? "Review complete" : batchStatusLabel(workspace.batch.status)}
             tone={reviewTone}
           />
-          {!refreshRequired && workspace.review?.status !== "in_progress" && !complete ? (
+          {supportAccess ? <StatusPill label="Read-only support session" tone="warning" /> : null}
+          {!supportAccess &&
+          !refreshRequired &&
+          workspace.review?.status !== "in_progress" &&
+          !complete ? (
             <button
               type="button"
               className="wx-btn-primary"
@@ -288,7 +385,7 @@ function UnifiedReviewSummary(): JSX.Element {
               {starting ? "Starting…" : "Start review"}
             </button>
           ) : null}
-          {reviewMine ? (
+          {!supportAccess && reviewMine ? (
             <>
               <button
                 type="button"
@@ -342,12 +439,14 @@ function UnifiedReviewSummary(): JSX.Element {
               Back to referral intake
             </Link>
           ) : null}
-          <Link
-            className="wx-btn-secondary"
-            to={`/intake/${encodeURIComponent(batchId)}/review?${detailQuery.toString()}`}
-          >
-            <Glyph name="eye" size={16} /> Legacy detailed reviewer
-          </Link>
+          {!supportAccess ? (
+            <Link
+              className="wx-btn-secondary"
+              to={`/intake/${encodeURIComponent(batchId)}/review?${detailQuery.toString()}`}
+            >
+              <Glyph name="eye" size={16} /> Legacy detailed reviewer
+            </Link>
+          ) : null}
         </div>
       </header>
 
@@ -386,6 +485,18 @@ function UnifiedReviewSummary(): JSX.Element {
           <div>
             <strong>Read-only while another reviewer owns this review</strong>
             <span>Source evidence remains visible when authorized; decisions stay locked.</span>
+          </div>
+        </output>
+      ) : null}
+      {supportAccess ? (
+        <output className="wx-unified-banner">
+          <Glyph name="shield" size={18} />
+          <div>
+            <strong>Tenant-consented platform support access</strong>
+            <span>
+              Source evidence is available for this active support session. Review ownership,
+              decisions, safeguard resolution, completion, and release remain tenant-controlled.
+            </span>
           </div>
         </output>
       ) : null}
@@ -464,12 +575,14 @@ function UnifiedReviewSummary(): JSX.Element {
               onDecisionSaved={onDecisionSaved}
               nextCandidate={nextCandidate}
               onNext={() => nextCandidate && selectCandidate(nextCandidate.id)}
+              supportAccess={supportAccess}
             />
           ) : selectedSectionId === "documents-safeguards" || selectedSafeguardPage !== null ? (
             <ReviewSafeguardPanel
               workspace={workspace}
               selectedPage={selectedSafeguardPage}
               refresh={refresh}
+              supportAccess={supportAccess}
             />
           ) : (
             <section className="wx-unified-task-empty" aria-label="Review task">
@@ -483,7 +596,7 @@ function UnifiedReviewSummary(): JSX.Element {
         <ReviewExceptionPanel summary={exceptionSummary} onSelect={selectException} />
       </div>
 
-      {completeOpen && workspace.review ? (
+      {!supportAccess && completeOpen && workspace.review ? (
         <CompleteDialog
           ws={completionWorkspace}
           onClose={() => setCompleteOpen(false)}

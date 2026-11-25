@@ -119,6 +119,9 @@ export { parseTrustedProxies };
  * "/api/v1/claims/:id/validation-runs".
  */
 export const DEFAULT_READ_AUDIT_PREFIXES: readonly string[] = [
+  // M22 tenant-consented platform support reads. This deliberately governs only the WardenLens
+  // sub-tree; other platform organization routes remain outside the PHI read surface.
+  "/api/v1/platform/organizations/:organizationId/intake",
   // M5 patient chart (the original covered surface) + the patient-scoped reads M6/M7/M9/M10/M12/M39
   // hang off it.
   "/api/v1/patients",

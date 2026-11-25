@@ -77,8 +77,20 @@ function failure<T>(status: number | undefined, body: unknown, forbidden: string
 }
 
 /** Same-origin URL of one rendered source page (cookie session, like every API call — vite proxies `/api`). */
-export const pageImageUrl = (batchId: string, page: number): string =>
-  `/api/v1/intake/uploads/${encodeURIComponent(batchId)}/pages/${page}/image`;
+export interface PlatformSupportAccess {
+  readonly organizationId: string;
+  readonly supportSessionId: string;
+}
+
+export const pageImageUrl = (
+  batchId: string,
+  page: number,
+  access?: PlatformSupportAccess | null,
+): string => {
+  if (!access) return `/api/v1/intake/uploads/${encodeURIComponent(batchId)}/pages/${page}/image`;
+  const query = new URLSearchParams({ supportSessionId: access.supportSessionId });
+  return `/api/v1/platform/organizations/${encodeURIComponent(access.organizationId)}/intake/uploads/${encodeURIComponent(batchId)}/pages/${page}/image?${query.toString()}`;
+};
 
 export async function startReview(client: ApiClient, batchId: string): Promise<ReviewResult<null>> {
   const { error, response } = await client.POST("/api/v1/intake/uploads/{id}/review", {

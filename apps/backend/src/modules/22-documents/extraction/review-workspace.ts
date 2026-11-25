@@ -22,6 +22,7 @@ import {
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
+  ConflictError,
   DOCLENS_M5_WRITEBACK_FIELDS,
   DegradedError,
   ForbiddenError,
@@ -253,6 +254,75 @@ export interface ReviewWorkspaceDeps {
 
 export type IdentityResolution = "same_patient" | "other_patient";
 
+/**
+ * Passing a scope marks a read as a support-session read. Such a read never writes (no identity refresh), and
+ * the batch must still be filed under `expectedPatientId`, the patient the grant was authorized against: a
+ * re-link between the authorization and the read is a retryable conflict, not a disclosure under the wrong
+ * patient. `patientContentOnly` is set for a patient-scoped consent grant: the grant names the batch's filed
+ * patient, so a batch that also carries another patient's pages is refused.
+ */
+export interface SupportReadScope {
+  readonly patientContentOnly: boolean;
+  readonly expectedPatientId: string | null;
+}
+
+export function assertBatchStillFiledUnder(
+  scope: SupportReadScope | undefined,
+  batchPatientId: string | null,
+): void {
+  if (scope && scope.expectedPatientId !== batchPatientId) {
+    throw new ConflictError("the intake batch was re-filed while it was being read; retry");
+  }
+}
+
+const FILED_PATIENT_NOT_PROVEN_DENIED =
+  "this intake batch is not proven to hold only the filed patient's documents; a patient-scoped support session cannot read it";
+
+/** The identity evidence of one classified page (document segment) of a batch. */
+export interface PageIdentityEvidence {
+  readonly identityStatus: string | null;
+  readonly identityResolution: string | null;
+  readonly duplicateOfPage: number | null;
+  readonly pageRangeStart: number;
+  readonly pageRangeEnd: number;
+}
+
+/**
+ * Fail-closed proof for a patient-scoped grant, which covers one patient. A batch is readable only when its
+ * identity check has run and is positive: the batch status is `match` (so it is neither null, `no_target` nor
+ * `unverified`), no records-request code names another patient, there is at least one classified document, every
+ * document is `match` or was confirmed by a reviewer as the filed patient's, and a requested page lies inside a
+ * classified document. Missing or unverified evidence is a refusal.
+ *
+ * A page the splitter marked a re-sent copy is NOT proven by that mark: the mark is a fuzzy text match (word-set and
+ * number-set Jaccard >= 0.85), so another patient's page on the same form template can carry it, and batch identity
+ * skips such pages, so they have no verdict of their own. Such a page is readable under a patient-scoped grant only
+ * once a reviewer has confirmed it as the filed patient's (`same_patient`).
+ */
+export function batchProvenFiledPatientOnly(
+  batch: {
+    readonly identityStatus: string | null;
+    readonly recordsRequestConflictKind: string | null;
+  },
+  pages: readonly PageIdentityEvidence[],
+  page?: number,
+): boolean {
+  if (batch.identityStatus !== "match") return false;
+  if (batch.recordsRequestConflictKind === "code_names_another_patient") return false;
+  if (pages.length === 0) return false;
+  if (
+    page !== undefined &&
+    !pages.some((p) => p.pageRangeStart <= page && page <= p.pageRangeEnd)
+  ) {
+    return false;
+  }
+  return pages.every(
+    (p) =>
+      p.identityResolution === "same_patient" ||
+      (p.identityResolution === null && p.identityStatus === "match"),
+  );
+}
+
 export interface ReviewWorkspaceService {
   listQueue(
     organizationId: string,
@@ -266,6 +336,11 @@ export interface ReviewWorkspaceService {
     },
   ): Promise<CursorPage<ReviewQueueItem>>;
   /**
+   * Internal authorization fact for the support-session platform read. It runs under the target tenant's
+   * RLS context and is never returned directly to the caller. A missing/cross-tenant batch is a 404.
+   */
+  getBatchPatientId(organizationId: string, batchId: string): Promise<string | null>;
+  /**
    * `sudAccess` is the caller's Part 2 need-to-know decision (GAP-067). OMITTED MEANS DENIED: SUD-detected
    * values and the SUD evidence come back redacted.
    */
@@ -274,6 +349,7 @@ export interface ReviewWorkspaceService {
     batchId: string,
     viewerMembershipId: string,
     sudAccess?: SudContentAccess,
+    scope?: SupportReadScope,
   ): Promise<ReviewWorkspace>;
   /** A page of a Part 2 batch is a 403 unless `sudAccess` allows it (omitted ⇒ denied). */
   renderPage(
@@ -282,7 +358,14 @@ export interface ReviewWorkspaceService {
     page: number,
     correlationId: string,
     sudAccess?: SudContentAccess,
-  ): Promise<{ png: Uint8Array; pageWidth: number; pageHeight: number }>;
+    scope?: SupportReadScope,
+  ): Promise<{
+    png: Uint8Array;
+    pageWidth: number;
+    pageHeight: number;
+    /** The patient the packet is filed under; the read audit names it. */
+    readonly patientId?: string | null;
+  }>;
   resolveSud(
     organizationId: string,
     actor: { userId: string; membershipId: string },
@@ -357,6 +440,18 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
   };
 
   return {
+    async getBatchPatientId(organizationId, batchId) {
+      return read(organizationId, async (tx) => {
+        const [batch] = await tx
+          .select({ patientId: BATCH.patientId })
+          .from(BATCH)
+          .where(eq(BATCH.id, batchId))
+          .limit(1);
+        if (!batch) throw new NotFoundError("intake upload batch");
+        return batch.patientId;
+      });
+    },
+
     async listQueue(organizationId, q) {
       const rows = await read(organizationId, async (tx) => {
         const batches = await tx
@@ -470,10 +565,11 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
       return paginate(organizationId, items, q.cursor, q.limit);
     },
 
-    async getWorkspace(organizationId, batchId, viewerMembershipId, sudAccess) {
+    async getWorkspace(organizationId, batchId, viewerMembershipId, sudAccess, scope) {
       // F-238 — records filed against a referral adopt its patient once M6 has resolved one, and are
       // re-checked against that patient (M22 writes only its own rows here).
-      if (deps.identity && deps.cipher) {
+      // A support-session read (a scope is passed) is read-only: it never refreshes or relinks the batch.
+      if (deps.identity && deps.cipher && !scope) {
         const identity = deps.identity;
         const cipher = deps.cipher;
         await withOrgContext(deps.db, { organizationId, userId: "" }, async (scoped) => {
@@ -534,6 +630,13 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
         return { b, pages, jobs, cands, review, decisions, conflict };
       });
       const { b, pages, jobs, cands, review, decisions, conflict } = loaded;
+      // A support read is authorized against one patient: that must still be the filed patient, and a
+      // patient-scoped grant covers the filed patient only, which must be proven. Both are refused before any
+      // decryption.
+      assertBatchStillFiledUnder(scope, b.patientId);
+      if (scope?.patientContentOnly && !batchProvenFiledPatientOnly(b, pages)) {
+        throw new ForbiddenError(FILED_PATIENT_NOT_PROVEN_DENIED);
+      }
       // GAP-067 — decided BEFORE any decryption, so a denied viewer's request never holds Part 2 plaintext.
       const sudAllowed = await resolveSudContentAccess(sudAccess, {
         sudStatus: b.sudStatus,
@@ -695,7 +798,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
       return sudAllowed ? workspace : redactSudWorkspace(workspace);
     },
 
-    async renderPage(organizationId, batchId, page, correlationId, sudAccess) {
+    async renderPage(organizationId, batchId, page, correlationId, sudAccess, scope) {
       const source = await read(organizationId, async (tx) => {
         const [row] = await tx
           .select({
@@ -703,15 +806,40 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
             geometry: BATCH.pageGeometry,
             sudStatus: BATCH.sudStatus,
             patientId: BATCH.patientId,
+            identityStatus: BATCH.identityStatus,
+            recordsRequestConflictKind: BATCH.recordsRequestConflictKind,
           })
           .from(BATCH)
           .innerJoin(DOC, eq(DOC.id, BATCH.initialDocumentId))
           .innerJoin(DV, eq(DV.id, DOC.activeVersionId))
           .where(eq(BATCH.id, batchId))
           .limit(1);
-        return row ?? null;
+        if (!row) return null;
+        // The image is the whole source page, so a patient-scoped grant needs the same proof, and the page
+        // must lie inside a classified document whose identity was judged.
+        const evidence = scope?.patientContentOnly
+          ? await tx
+              .select({
+                identityStatus: CP.identityStatus,
+                identityResolution: CP.identityResolution,
+                duplicateOfPage: CP.duplicateOfPage,
+                pageRangeStart: CP.pageRangeStart,
+                pageRangeEnd: CP.pageRangeEnd,
+              })
+              .from(CP)
+              .where(eq(CP.intakeUploadBatchId, batchId))
+          : [];
+        return {
+          ...row,
+          filedPatientProven:
+            !scope?.patientContentOnly || batchProvenFiledPatientOnly(row, evidence, page),
+        };
       });
       if (!source) throw new NotFoundError("intake batch");
+      assertBatchStillFiledUnder(scope, source.patientId);
+      if (!source.filedPatientProven) {
+        throw new ForbiddenError(FILED_PATIENT_NOT_PROVEN_DENIED);
+      }
       const geometry = (Array.isArray(source.geometry) ? source.geometry : []) as {
         page: number;
       }[];
@@ -733,7 +861,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
         bucket: deriveTenantBucket(organizationId),
         objectKey: source.objectKey,
       });
-      return deps.docling.render({
+      const rendered = await deps.docling.render({
         organizationId,
         jobId: batchId,
         sourceUrl: url,
@@ -741,6 +869,8 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
         page,
         scale: 2,
       });
+      // The patient the packet is filed under, so the read audit can name it (the accounting of disclosures).
+      return { ...rendered, patientId: source.patientId };
     },
 
     async resolveSud(organizationId, actor, batchId, outcome, reason) {

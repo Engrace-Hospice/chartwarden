@@ -22950,6 +22950,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/organizations/{organizationId}/intake/uploads/{id}/pages/{page}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** WardenLens platform support: read one tenant source page through an active tenant-consented support session */
+        get: operations["getApiV1PlatformOrganizationsByOrganizationIdIntakeUploadsByIdPagesByPageImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/organizations/{organizationId}/intake/uploads/{id}/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** WardenLens platform support: read one tenant batch through an active tenant-consented support session */
+        get: operations["getApiV1PlatformOrganizationsByOrganizationIdIntakeUploadsByIdWorkspace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/organizations/{organizationId}/status": {
         parameters: {
             query?: never;
@@ -102603,6 +102637,169 @@ export interface operations {
                         /** Format: date-time */
                         createdAt: string;
                         id: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformOrganizationsByOrganizationIdIntakeUploadsByIdPagesByPageImage: {
+        parameters: {
+            query: {
+                supportSessionId: string;
+            };
+            header?: never;
+            path: {
+                organizationId: string;
+                id: string;
+                page: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformOrganizationsByOrganizationIdIntakeUploadsByIdWorkspace: {
+        parameters: {
+            query: {
+                supportSessionId: string;
+            };
+            header?: never;
+            path: {
+                organizationId: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        batch: {
+                            id: string;
+                            status: string;
+                            sourceChannel: string;
+                            /** Format: date-time */
+                            uploadedAt: string;
+                            documentId: string;
+                            patientId: string | null;
+                            patientName: string | null;
+                            referralId: string | null;
+                            identityStatus: ("match" | "possible" | "mismatch" | "unverified" | "no_target") | null;
+                            recordsRequestConflict: {
+                                code: string;
+                                kind: "code_names_another_referral" | "code_names_another_patient";
+                            } | null;
+                        };
+                        sud: {
+                            status: "not_detected" | "detected" | "confirmed" | "rejected";
+                            detectorRef: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                            contentRedacted: boolean;
+                            indicators: {
+                                page: number;
+                                category: string;
+                                ruleId: string;
+                                term: string;
+                                bbox: [
+                                    number,
+                                    number,
+                                    number,
+                                    number
+                                ];
+                            }[];
+                        };
+                        pages: {
+                            page: number;
+                            width: number;
+                            height: number;
+                            documentType: string | null;
+                            confidence: number | null;
+                            needsHumanClassification: boolean;
+                        }[];
+                        documents: {
+                            pageFrom: number;
+                            pageTo: number;
+                            documentType: string;
+                            title: string | null;
+                            date: string | null;
+                            duplicateOfPage: number | null;
+                            boundary: string | null;
+                            identity: {
+                                status: ("match" | "possible" | "mismatch" | "unverified") | null;
+                                disagreeing: string[];
+                                resolution: "same_patient" | "other_patient" | null;
+                            };
+                        }[];
+                        jobs: {
+                            id: string;
+                            documentType: string;
+                            status: string;
+                            pageFrom: number;
+                            pageTo: number;
+                            failureReason: string | null;
+                        }[];
+                        review: {
+                            id: string;
+                            status: string;
+                            reviewerMembershipId: string;
+                            isMine: boolean;
+                        } | null;
+                        candidates: {
+                            id: string;
+                            jobId: string;
+                            documentType: string;
+                            fieldPath: string;
+                            description: string | null;
+                            riskLevel: "low" | "medium" | "high";
+                            confidence: number;
+                            value: string | null;
+                            page: number;
+                            bbox: [
+                                number,
+                                number,
+                                number,
+                                number
+                            ];
+                            vision: {
+                                status: "not_required" | "verified" | "disagreed" | "unverified";
+                                observedValue: string | null;
+                            };
+                            sudDetected: boolean;
+                            codingFlags: {
+                                kind: string;
+                                code: string;
+                                suggest: string[];
+                                detail: string;
+                            }[];
+                            writebackTarget: boolean;
+                            redacted: boolean;
+                            decision: {
+                                id: string;
+                                decision: string;
+                                editedValue: string | null;
+                                reason: string | null;
+                                partOfBulkApprove: boolean;
+                                decidedAt: string;
+                            } | null;
+                        }[];
                     };
                 };
             };
