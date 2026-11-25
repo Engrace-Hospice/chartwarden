@@ -15,6 +15,9 @@ Findings, 2026-11-25 (an operator ran the read-only checks below on the producti
   not tested; it follows from the WebAuthn rule and `deploy/production/INFRA_RENAME_RUNBOOK.md`.
 - Two passkeys existed, `admin@chartwarden.local` (2026-11-10) and `orgadmin@chartwarden.local` (2026-11-11), neither ever used
   (no `last_used_at`).
+- `CHARTWARDEN_MFA_ENFORCEMENT` was already `true` in `.env.production` and in the running api container when checked on
+  2026-11-25 (after the `PASSKEY_RP_ID` change), so the first sign-in afterwards was held with "sign in again with your passkey
+  before continuing" and the old passkeys, bound to the old RP id, could not satisfy it. Steps 1 to 3 therefore need it OFF.
 - With enforcement on, a staff session must have PROVEN its factor at sign-in, not merely have one enrolled
   (`apps/backend/src/modules/02-identity/mfa-enrolment-gate.ts`). The console signs in by password and proves a passkey on its
   `/step-up` page, which needs the RP id to cover the console host. Hence steps 1 to 3 come before enforcement.
@@ -25,6 +28,9 @@ Findings, 2026-11-25 (an operator ran the read-only checks below on the producti
    `compose.yml`, `deploy.sh` and `.env.production`. `docker compose ls` shows the real path of the running project.
    Every `docker compose` command below needs `--env-file .env.production -f compose.yml` (the image reference is
    required from that file), exactly as `deploy.sh` runs them. Do not print or paste `.env.production`; it holds secrets.
+   Before step 1, read the current state: `grep -E '^CHARTWARDEN_MFA_ENFORCEMENT=' .env.production` and the `docker inspect`
+   check of step 6. If it is already `true`, set the line to `false` and recreate `api` (the command of step 5), because a
+   held session cannot enrol a passkey.
 1. **Make one passkey valid on the web app and the console.** Edit the two existing lines in place (do not append), then
    recreate only the API:
 
@@ -46,7 +52,8 @@ Findings, 2026-11-25 (an operator ran the read-only checks below on the producti
    it locks everyone out (`packages/auth/src/identity/mfa-policy.ts`).
 3. **Prove it on the console, `https://platform112026.chartwarden.cloud`,** with enforcement still off: sign in with the
    password, open `/step-up` and complete the passkey. It must succeed. If it fails, stop; do not go on to step 4.
-4. **Turn enforcement on.** Add this line exactly. Only lowercase `true` enables it; `True` or `1` silently does nothing:
+4. **Turn enforcement on.** Set the line to exactly this (change an existing `false`, do not add a second line). Only
+   lowercase `true` enables it; `True` or `1` silently does nothing:
 
    ```
    CHARTWARDEN_MFA_ENFORCEMENT=true
