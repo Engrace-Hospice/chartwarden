@@ -2,8 +2,8 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 2139,
-    "coveredRoutes": 2139,
+    "routes": 2141,
+    "coveredRoutes": 2141,
     "directRoutesReferenced": 1936
   },
   "modules": [
@@ -501,7 +501,7 @@
     },
     {
       "module": "24-billing-medicaid",
-      "routes": 46,
+      "routes": 48,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/billing-medicaid-inject.test.ts",

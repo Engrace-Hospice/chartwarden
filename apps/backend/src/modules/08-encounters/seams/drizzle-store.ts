@@ -348,7 +348,8 @@ export function createDrizzleEncounterReaderStore(
         .orderBy(asc(E.startedAt), asc(E.id))
         .for("share", { of: E });
       const siteReader = deps.foundationSites;
-      if (!siteReader) throw new DegradedError("m8-encounters", "the CHC service-site reader is not bound");
+      if (!siteReader)
+        throw new DegradedError("m8-encounters", "the CHC service-site reader is not bound");
       const siteFacts = new Map<string, Awaited<ReturnType<typeof siteReader.locationSiteFacts>>>();
       for (const locationId of new Set(
         rows.flatMap((row) => (row.locationId ? [row.locationId] : [])),
