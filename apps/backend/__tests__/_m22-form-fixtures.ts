@@ -323,7 +323,7 @@ export const DSAR_BUNDLE = {
   aggregateId: "55555555-0000-4000-8000-0000000000e5",
   aggregateType: "other",
   retentionClass: "compliance",
-  bundleMinioObjectKey: "exports/dsar/55555555.ndjson.gz",
+  bundleObjectKey: "exports/dsar/55555555.ndjson.gz",
   bundleSha256: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
   partTwoRedactionApplied: true,
   title: "DSAR export for Pat Sentinel",

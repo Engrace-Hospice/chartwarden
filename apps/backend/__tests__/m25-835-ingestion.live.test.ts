@@ -109,8 +109,8 @@ const PATIENT_1 = "00000000-0000-0000-0000-0000000e0001";
 // ── controllable fakes ────────────────────────────────────────────────────────────────────────────────
 function fakeClient(byKey: Map<string, ParsedRemittanceAdvice | "degraded">): X12835WorkerClient {
   return {
-    async parse835({ minioObjectKey }): Promise<X12WorkerResult<ParsedRemittanceAdvice>> {
-      const v = byKey.get(minioObjectKey);
+    async parse835({ objectKey }): Promise<X12WorkerResult<ParsedRemittanceAdvice>> {
+      const v = byKey.get(objectKey);
       if (!v || v === "degraded") {
         return degraded835("X12_835_TEST_DEGRADED", "test-forced degraded", "parse835", false);
       }
@@ -292,7 +292,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: key,
+      objectKey: key,
       fileSha256: sha256Hex(raw),
       rawEdi: raw,
     });
@@ -375,7 +375,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         providerEntityId: PE_A,
         payerId: PAYER,
         payerKind: "medicare",
-        minioObjectKey: key,
+        objectKey: key,
         fileSha256: sha256Hex(raw),
         rawEdi: raw,
       });
@@ -1526,7 +1526,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           providerEntityId: PE_A,
           payerId,
           payerKind: "commercial",
-          minioObjectKey: legacyKey,
+          objectKey: legacyKey,
           fileSha256: sha256Hex(legacyRaw),
           rawEdi: legacyRaw,
         },
@@ -1608,7 +1608,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         `INSERT INTO remittance_advice
           (organization_id, provider_entity_id, payer_id, payer_kind, interchange_control_number,
            transaction_set_control_number, check_or_eft_trace_number, payment_method,
-           total_payment_amount, minio_object_key, file_sha256, parse_status)
+           total_payment_amount, object_key, file_sha256, parse_status)
          VALUES ($1,$2,$3,'commercial',$4,$5,$6,'eft',42.00,$7,$8,'posted')`,
         [
           ORG_A,
@@ -1981,7 +1981,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           providerEntityId: PE_A,
           payerId,
           payerKind: "commercial",
-          minioObjectKey: rawKey,
+          objectKey: rawKey,
           fileSha256: sha256Hex(raw),
           rawEdi: raw,
         },
@@ -2169,7 +2169,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: key,
+      objectKey: key,
       fileSha256: sha256Hex(raw),
       rawEdi: raw,
     });
@@ -2230,7 +2230,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: keyA,
+      objectKey: keyA,
       fileSha256: sha256Hex(rawA),
       rawEdi: rawA,
     });
@@ -2241,7 +2241,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     await admin.query(
       `INSERT INTO remittance_advice (id,organization_id,provider_entity_id,payer_id,payer_kind,
       interchange_control_number,transaction_set_control_number,check_or_eft_trace_number,payment_method,total_payment_amount,
-      content_digest,production_date,minio_object_key,file_sha256,parse_status)
+      content_digest,production_date,object_key,file_sha256,parse_status)
       SELECT $1,organization_id,provider_entity_id,payer_id,payer_kind,'000000994','0994',check_or_eft_trace_number,
       payment_method,total_payment_amount,content_digest,production_date,$2,$3,'queued'
       FROM remittance_advice WHERE id=$4`,
@@ -2412,7 +2412,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: objectKey,
+      objectKey,
       fileSha256: sha256Hex(buildRawEdi(isa, st)),
       rawEdi: buildRawEdi(isa, st),
     });
@@ -2550,7 +2550,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: objectKey,
+      objectKey,
       fileSha256: sha256Hex(buildRawEdi(isa, st)),
       rawEdi: buildRawEdi(isa, st),
     });
@@ -2587,7 +2587,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: objectKey,
+      objectKey,
       fileSha256: sha256Hex(buildRawEdi(isa, st)),
       rawEdi: buildRawEdi(isa, st),
     };
@@ -2619,7 +2619,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: "minio/garbage.835",
+      objectKey: "minio/garbage.835",
       fileSha256: sha256Hex("this is not an X12 document at all, no ISA segment here"),
       rawEdi: "this is not an X12 document at all, no ISA segment here",
     });
@@ -2674,7 +2674,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: objectKey,
+      objectKey,
       fileSha256: sha256Hex(buildRawEdi(isa, st)),
       rawEdi: buildRawEdi(isa, st),
     });
@@ -2717,7 +2717,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: objectKey,
+      objectKey,
       fileSha256: sha256Hex(buildRawEdi(isa, st)),
       rawEdi: buildRawEdi(isa, st),
     });
@@ -2764,7 +2764,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: objectKey,
+      objectKey,
       fileSha256: sha256Hex(raw),
       rawEdi: raw,
     });
@@ -2786,7 +2786,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: "minio/unbalanced.835",
+      objectKey: "minio/unbalanced.835",
       fileSha256: sha256Hex(bad),
       rawEdi: bad,
     });
@@ -2827,13 +2827,13 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: objectKey,
+      objectKey,
       fileSha256: sha256Hex(raw),
       rawEdi: raw,
     });
     if (received.outcome !== "queued") throw new Error("unreachable");
     // Keyed by the server-generated advice id, not the caller's key: a second advice naming the same
-    // minioObjectKey cannot overwrite this one's staged text.
+    // objectKey cannot overwrite this one's staged text.
     expect(objects.get(`${ORG_A}/${received.adviceId}`)).toBe(raw);
     expect(objects.has(`${ORG_A}/${objectKey}`)).toBe(false);
     expect((await service.postAdvice(actor, received.adviceId)).outcome).toBe("posted");
@@ -2863,7 +2863,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: "minio/wrong-hash.835",
+      objectKey: "minio/wrong-hash.835",
       fileSha256: "0".repeat(64),
       rawEdi: raw,
     });
@@ -2878,7 +2878,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: "minio/right-hash.835",
+      objectKey: "minio/right-hash.835",
       fileSha256: sha256Hex(raw).toUpperCase(),
       rawEdi: raw,
     });
@@ -2922,7 +2922,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: "minio/delete-fails.835",
+      objectKey: "minio/delete-fails.835",
       fileSha256: sha256Hex(raw),
       rawEdi: raw,
     });
@@ -2950,7 +2950,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: key,
+      objectKey: key,
       fileSha256: sha256Hex(raw),
       rawEdi: raw,
     });
@@ -3023,7 +3023,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: key,
+      objectKey: key,
       fileSha256: sha256Hex(raw),
       rawEdi: raw,
     });
@@ -3094,7 +3094,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         `INSERT INTO remittance_advice
           (organization_id, provider_entity_id, payer_id, payer_kind, interchange_control_number,
            transaction_set_control_number, check_or_eft_trace_number, payment_method,
-           total_payment_amount, minio_object_key, file_sha256, parse_status)
+           total_payment_amount, object_key, file_sha256, parse_status)
          VALUES ($1,$2,$3,'medicare','000000760','0706','SYNTHETIC-TRACE-000000760','eft',12.00,
                  'manual/legacy-000000760.835',$4,'posted')`,
         [ORG_A, PE_A, PAYER, "e".repeat(64)],
@@ -3194,7 +3194,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           `INSERT INTO remittance_advice
             (organization_id, provider_entity_id, payer_id, payer_kind, interchange_control_number,
              transaction_set_control_number, check_or_eft_trace_number, payment_method,
-             total_payment_amount, minio_object_key, file_sha256, parse_status)
+             total_payment_amount, object_key, file_sha256, parse_status)
            VALUES ($1,$2,$3,'medicare',$4,$5,$6,'eft',12.00,$7,$8,'posted') RETURNING id`,
           [
             ORG_A,
@@ -3424,7 +3424,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           providerEntityId: pe,
           payerId: PAYER,
           payerKind,
-          minioObjectKey: `minio/${raw.length}.835`,
+          objectKey: `minio/${raw.length}.835`,
           fileSha256: sha256Hex(raw),
           rawEdi: raw,
         },
@@ -3516,7 +3516,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       providerEntityId: PE_A,
       payerId: PAYER,
       payerKind: "medicare",
-      minioObjectKey: objectKey,
+      objectKey,
       fileSha256: sha256Hex(raw),
       rawEdi: raw,
     });
@@ -3672,7 +3672,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           providerEntityId: PE_A,
           payerId: PAYER,
           payerKind: "medicare",
-          minioObjectKey: objectKey,
+          objectKey,
           fileSha256: sha256Hex(buildRawEdi(isa, st)),
           rawEdi: buildRawEdi(isa, st),
         },
@@ -3748,7 +3748,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           providerEntityId: PE_A,
           payerId: PAYER,
           payerKind: "medicare",
-          minioObjectKey: objectKey,
+          objectKey,
           fileSha256: sha256Hex(buildRawEdi(isa, st)),
           rawEdi: buildRawEdi(isa, st),
         },
@@ -3805,7 +3805,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           providerEntityId: PE_A,
           payerId: PAYER,
           payerKind: "commercial",
-          minioObjectKey: "minio/commercial.835",
+          objectKey: "minio/commercial.835",
           fileSha256: sha256Hex(raw),
           rawEdi: raw,
         },
@@ -3887,7 +3887,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         providerEntityId: PE_A,
         payerId: PAYER,
         payerKind: "medicare",
-        minioObjectKey: "minio/org-a.835",
+        objectKey: "minio/org-a.835",
         fileSha256: sha256Hex(rawEdi),
         rawEdi,
       },
@@ -3898,7 +3898,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         providerEntityId: PE_B,
         payerId: PAYER,
         payerKind: "medicare",
-        minioObjectKey: "minio/org-b.835",
+        objectKey: "minio/org-b.835",
         fileSha256: sha256Hex(rawEdi),
         rawEdi,
       },
@@ -4070,9 +4070,9 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         ingest: {
           receiveAdvice: async (
             _actor: { organizationId: string },
-            input: { minioObjectKey: string },
+            input: { objectKey: string },
           ): Promise<ReceiveAdviceResult> =>
-            input.minioObjectKey.endsWith("ERA-Q-3")
+            input.objectKey.endsWith("ERA-Q-3")
               ? {
                   outcome: "malformed",
                   reason: "synthetic",
@@ -4154,9 +4154,9 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         ingest: {
           receiveAdvice: async (
             _actor: { organizationId: string },
-            input: { minioObjectKey: string },
+            input: { objectKey: string },
           ): Promise<ReceiveAdviceResult> =>
-            input.minioObjectKey.endsWith("ERA-U-2")
+            input.objectKey.endsWith("ERA-U-2")
               ? {
                   outcome: "unsupported",
                   code: "X12_835_UNSUPPORTED_ROUTING",

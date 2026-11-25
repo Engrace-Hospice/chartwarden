@@ -195,11 +195,11 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
   /** The text drawn on the stored PDF of a source row's LATEST version, read back from the object store. */
   async function renderedText(aggregateType: string, aggregateId: string): Promise<string> {
     const { rows } = await admin.query(
-      `SELECT v.minio_object_key FROM document d JOIN document_version v ON v.document_id = d.id
+      `SELECT v.object_key FROM document d JOIN document_version v ON v.document_id = d.id
         WHERE d.aggregate_type=$1 AND d.aggregate_id=$2 ORDER BY v.version_number DESC LIMIT 1`,
       [aggregateType, aggregateId],
     );
-    const bytes = objects.objects.get(`${deriveTenantBucket(ORG_A)}/${rows[0]?.minio_object_key}`);
+    const bytes = objects.objects.get(`${deriveTenantBucket(ORG_A)}/${rows[0]?.object_key}`);
     expect(bytes, `${aggregateType} bytes not stored`).toBeDefined();
     const raw = Buffer.from(bytes as Uint8Array).toString("latin1");
     return [...raw.matchAll(/\(((?:\\.|[^\\)])*)\) Tj/g)]

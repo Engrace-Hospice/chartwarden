@@ -243,7 +243,7 @@ export function createDrizzleDocumentReaderStore(db: DbClient): DocumentReaderSt
             activeVersionId: DOC.activeVersionId,
             status: DOC.status,
             // F-225 (#248) — the version's REAL stored object key (the portal URL presigns it).
-            objectKey: DV.minioObjectKey,
+            objectKey: DV.objectKey,
             // F-197 (#248) — §7.16 portal mint-time SUD-consent re-check.
             metadata: DOC.metadata,
           })
@@ -427,7 +427,7 @@ export function createDrizzleOrgDocumentAccessPort(db: DbClient): OrgDocumentAcc
             patientId: DOC.patientId,
             status: DOC.status,
             activeVersionId: DOC.activeVersionId,
-            objectKey: DV.minioObjectKey,
+            objectKey: DV.objectKey,
             mimeType: DV.mimeType,
             byteSize: DV.byteSize,
           })

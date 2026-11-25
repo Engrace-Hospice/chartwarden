@@ -482,7 +482,7 @@ async function main(): Promise<void> {
         "SELECT 1 FROM pg_roles WHERE rolname = 'chartwarden_m25_evaluator'",
       );
       if (carrier.rowCount === 0)
-        throw new Error("chartwarden_m25_evaluator is missing — apply migration 1546 first");
+        throw new Error("chartwarden_m25_evaluator is missing — apply migration 1547 first");
       await provisionIsolatedLogin(
         "chartwarden_m25_evaluator_login",
         "chartwarden_m25_evaluator",

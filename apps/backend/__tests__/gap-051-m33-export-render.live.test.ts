@@ -110,7 +110,7 @@ describe.skipIf(!DB_URL)("GAP-051 — M33 export render, LIVE Postgres", () => {
   async function documentsFor(aggregateId: string) {
     const { rows } = await admin.query(
       `SELECT d.id, d.organization_id, d.aggregate_type, d.patient_id, d.retention_class, d.title,
-              v.version_number, v.minio_object_key AS object_key
+              v.version_number, v.object_key AS object_key
          FROM document d JOIN document_version v ON v.document_id = d.id
         WHERE d.aggregate_id=$1 ORDER BY v.version_number`,
       [aggregateId],

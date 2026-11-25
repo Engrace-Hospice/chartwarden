@@ -1248,13 +1248,11 @@ describe.skipIf(!DB_URL)(
             async parse835(input) {
               const parsed: ParsedRemittanceAdvice = {
                 payerProgram: input.payerProgram,
-                interchangeControlNumber: input.minioObjectKey.endsWith("medicare")
+                interchangeControlNumber: input.objectKey.endsWith("medicare")
                   ? "900000001"
                   : "900000002",
-                transactionSetControlNumber: input.minioObjectKey.endsWith("medicare")
-                  ? "0001"
-                  : "0002",
-                checkOrEftTraceNumber: input.minioObjectKey.endsWith("medicare")
+                transactionSetControlNumber: input.objectKey.endsWith("medicare") ? "0001" : "0002",
+                checkOrEftTraceNumber: input.objectKey.endsWith("medicare")
                   ? "SYNTHETIC-F171-MEDICARE-TRACE"
                   : "SYNTHETIC-F171-MEDICAID-TRACE",
                 paymentMethod: "eft",
@@ -1306,7 +1304,7 @@ describe.skipIf(!DB_URL)(
             providerEntityId: peA,
             payerId: "00000000-0000-0000-0000-0000000fee01",
             payerKind: "medicare",
-            minioObjectKey: "minio/f171-medicare",
+            objectKey: "minio/f171-medicare",
             fileSha256: sha256Hex(buildRawEdi(isa, st)),
             rawEdi: buildRawEdi(isa, st),
           },
@@ -1343,7 +1341,7 @@ describe.skipIf(!DB_URL)(
             providerEntityId: peA,
             payerId: "00000000-0000-0000-0000-0000000fee02",
             payerKind: "medicaid",
-            minioObjectKey: "minio/f171-medicaid",
+            objectKey: "minio/f171-medicaid",
             fileSha256: sha256Hex(buildRawEdi(isa, st)),
             rawEdi: buildRawEdi(isa, st),
           },

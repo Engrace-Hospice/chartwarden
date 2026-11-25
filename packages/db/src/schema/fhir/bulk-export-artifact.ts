@@ -3,7 +3,7 @@
 //
 // TENANT-SCOPED: `organization_id` NOT NULL on canonical app.org_id RLS (§3.5). Checksums and counts only
 // (the empty §3.6 denylist) so it audits through M1's baseline `chartwarden_audit_trigger()`. `job_id` carries
-// a REAL FK to `fhir_bulk_export_job` (ON DELETE cascade). The eraser (§3.7) purges `minio_object_key`
+// a REAL FK to `fhir_bulk_export_job` (ON DELETE cascade). The eraser (§3.7) purges `object_key`
 // from MinIO while the row metadata persists for audit reconstruction.
 import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { fhirBulkExportJob } from "./bulk-export-job";
@@ -18,7 +18,7 @@ export const fhirBulkExportArtifact = pgTable(
       .references(() => fhirBulkExportJob.id, { onDelete: "cascade" }),
     resourceType: text("resource_type").notNull(),
     /** 'tenants/<org>/fhir-exports/<job>/{type}.ndjson'. */
-    minioObjectKey: text("minio_object_key").notNull(),
+    objectKey: text("object_key").notNull(),
     byteSize: integer("byte_size").notNull(),
     rowCount: integer("row_count").notNull(),
     checksumSha256: text("checksum_sha256").notNull(),

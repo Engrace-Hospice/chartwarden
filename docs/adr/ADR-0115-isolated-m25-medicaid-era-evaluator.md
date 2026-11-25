@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (2026-11-24)
 - **Date:** 2026-11-24
-- **Related:** issue #1075, ADR-0033, ADR-0110, migrations 1543–1548
+- **Related:** issue #1075, ADR-0033, ADR-0110, migrations 1543–1544 and 1547–1549
 
 ## Context
 
@@ -14,7 +14,7 @@ Medicaid ERA evaluation runs in a separate Bun process. The public API keeps aut
 
 Only the evaluator receives `chartwarden_m25_evaluator_login`. That login is NOBYPASSRLS, inherits only the `chartwarden_m25_evaluator` carrier, and has narrowly scoped review/history DML plus source-row SELECT. The shared app and platform roles cannot assume it. Provisioning clears both roles held by the isolated logins and roles that might inherit from those logins. The writer credential is a mounted secret file and never enters the shared production environment file. The evaluator exposes evaluate, note and nonposting disposition commands only. It is not a database proxy and cannot represent payment posting.
 
-Migration 1547 adds a separate source-reader login whose only stage access is through `m25_read_staged_claimmd_era(stage, organization, provider)`. The SQL function is tuple-scoped, not actor-bound: a holder of that credential could request ciphertext for a known valid tuple. It cannot read the staging tables directly or decrypt the result. Only the isolated evaluator receives this credential and the separate Claim.MD artifact keyring; API, generic platform workers and ordinary tenant SQL do not. The evaluator and its infrastructure remain trusted for this narrow source-read boundary.
+Migration 1548 adds a separate source-reader login whose only stage access is through `m25_read_staged_claimmd_era(stage, organization, provider)`. The SQL function is tuple-scoped, not actor-bound: a holder of that credential could request ciphertext for a known valid tuple. It cannot read the staging tables directly or decrypt the result. Only the isolated evaluator receives this credential and the separate Claim.MD artifact keyring; API, generic platform workers and ordinary tenant SQL do not. The evaluator and its infrastructure remain trusted for this narrow source-read boundary.
 
 `isolated_evaluator` means the assessment was derived and persisted through this process and database identity. It is not a cryptographic signature over the stored row and does not claim protection from the database owner, superuser, evaluator host administrator or compromise of the evaluator itself. Historical rows and history events remain `legacy_unverified`.
 
@@ -24,5 +24,5 @@ Migration 1547 adds a separate source-reader login whose only stage access is th
 - API and generic worker compromise does not disclose the writer credential. A compromised command signing key still cannot supply evaluator-owned facts, and current database authority is checked again at execution.
 - Database owner and infrastructure administrators remain trusted. Claim.MD source capture, M24 submission evidence and M40 classification remain independent authoritative inputs; unresolved evidence produces a nonposting hold.
 - The assessment records evidence observed during evaluation. A final reinspection under the review lock prevents a waiting stale evaluation from replacing a newer review, but upstream source, enrollment, payer or claim evidence is not locked through the restricted writer commit. A narrow change-after-reinspection window can leave a stale nonposting snapshot; re-evaluate before any future downstream use.
-- Migration 1548 stores a deterministic fingerprint of the complete evaluator snapshot and its observation timestamp. API projections call this `point_in_time_nonposting`; it records what the evaluator observed and is not proof of current enrollment, active authorization, payer acceptance, or posting authority. Any future financial use still requires a fresh assessment and its own transaction-time authorization. The general platform SQL credential remains unable to write the review rows; a database owner or superuser can still change schema, disable triggers, or rewrite data and remains trusted.
+- Migration 1549 stores a deterministic fingerprint of the complete evaluator snapshot and its observation timestamp. API projections call this `point_in_time_nonposting`; it records what the evaluator observed and is not proof of current enrollment, active authorization, payer acceptance, or posting authority. Any future financial use still requires a fresh assessment and its own transaction-time authorization. The general platform SQL credential remains unable to write the review rows; a database owner or superuser can still change schema, disable triggers, or rewrite data and remains trusted.
 - Stedi JSON is still unsupported by the raw X12 path. Medicaid submission, ERA retrieval, payment posting and claim-state transitions remain disabled.

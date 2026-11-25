@@ -23,7 +23,7 @@ const REAP_EVENT_KIND = "bundle_expired_reaped";
 
 interface ExpiringRow {
   readonly id: string;
-  readonly bundleMinioObjectKey: string | null;
+  readonly bundleObjectKey: string | null;
   readonly bundlePresignedUrlExpiresAt: Date | null;
 }
 
@@ -33,7 +33,7 @@ export interface BundleExpiryRepos {
     listByPresignedExpiry(): Promise<readonly ExpiringRow[]>;
     update(
       id: string,
-      patch: { bundleMinioObjectKey: null; bundlePresignedUrlExpiresAt: null },
+      patch: { bundleObjectKey: null; bundlePresignedUrlExpiresAt: null },
     ): Promise<unknown>;
     appendEvent(values: {
       organizationId: string;
@@ -45,7 +45,7 @@ export interface BundleExpiryRepos {
     listByPresignedExpiry(): Promise<readonly ExpiringRow[]>;
     update(
       id: string,
-      patch: { bundleMinioObjectKey: null; bundlePresignedUrlExpiresAt: null },
+      patch: { bundleObjectKey: null; bundlePresignedUrlExpiresAt: null },
     ): Promise<unknown>;
     appendEvent(values: {
       organizationId: string;
@@ -65,7 +65,7 @@ export interface BundleExpiryPortsArgs {
   readonly now: () => Date;
 }
 
-const CLEARED = { bundleMinioObjectKey: null, bundlePresignedUrlExpiresAt: null } as const;
+const CLEARED = { bundleObjectKey: null, bundlePresignedUrlExpiresAt: null } as const;
 
 /** Build the package sweep's ports for ONE org over its (already org-scoped) repositories. */
 export function buildBundleExpiryPorts(args: BundleExpiryPortsArgs): BundleExpirySweepPorts {
@@ -75,7 +75,7 @@ export function buildBundleExpiryPorts(args: BundleExpiryPortsArgs): BundleExpir
       jobId: row.id,
       kind,
       presignedUrlExpiresAt: row.bundlePresignedUrlExpiresAt,
-      minioObjectKey: row.bundleMinioObjectKey,
+      objectKey: row.bundleObjectKey,
     }));
   return {
     now: args.now,

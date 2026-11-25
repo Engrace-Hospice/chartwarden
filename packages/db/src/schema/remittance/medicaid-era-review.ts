@@ -232,7 +232,7 @@ export const medicaidEraReviewIdempotency = pgTable(
       t.providerEntityId,
       t.reviewId,
     ),
-    // The review FK is RESTRICT: its delete scan needs an index that leads with review_id (1547).
+    // The review FK is RESTRICT: its delete scan needs an index that leads with review_id (1548).
     reviewFk: index("medicaid_era_review_idempotency_review_fk_ix").on(t.reviewId),
   }),
 );

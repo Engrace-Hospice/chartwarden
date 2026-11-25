@@ -27,8 +27,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Docling (and torch) only in the image; the unit tests never import it.
-docling = ["docling>=2.133,<3", "easyocr", "torch", "torchvision"]
+# Docling (and torch) only in the image; the unit tests never import it. onnxruntime is RapidOCR's inference
+# backend (rapidocr itself arrives with docling); the range is the one docling-slim's rapidocr-onnx extra names.
+docling = ["docling>=2.133,<3", "easyocr", "torch", "torchvision", "onnxruntime>=1.7,<2"]
 test = ["pytest>=8", "httpx>=0.28"]
 
 [tool.pytest.ini_options]

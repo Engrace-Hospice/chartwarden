@@ -566,7 +566,7 @@ describe.skipIf(!DB_URL)(
         versionIds.push(
           (
             await admin.query(
-              `INSERT INTO document_version (organization_id, document_id, version_number, minio_object_key,
+              `INSERT INTO document_version (organization_id, document_id, version_number, object_key,
                  mime_type, byte_size, sha256_hex, uploaded_by_kind)
                VALUES ($1,$2,$3,$4,'application/pdf','2048','abc123','system') RETURNING id`,
               [a.org, documentId, String(n), `uploads/ea-${documentId}-v${n}.pdf`],

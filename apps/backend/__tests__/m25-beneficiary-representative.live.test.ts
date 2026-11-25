@@ -118,7 +118,7 @@ describe.skipIf(!DB_URL)(
     async function addVersion(documentId: string, n: string): Promise<string> {
       const versionId = (
         await fx.admin.query(
-          `INSERT INTO document_version (organization_id, document_id, version_number, minio_object_key, mime_type, byte_size,
+          `INSERT INTO document_version (organization_id, document_id, version_number, object_key, mime_type, byte_size,
              sha256_hex, uploaded_by_membership_id, uploaded_by_kind)
            VALUES ($1,$2,$3,$4,'application/pdf','10',$5,$6,'user') RETURNING id`,
           [ORG, documentId, n, `k-${randomUUID()}`, "a".repeat(64), fx.memberA],

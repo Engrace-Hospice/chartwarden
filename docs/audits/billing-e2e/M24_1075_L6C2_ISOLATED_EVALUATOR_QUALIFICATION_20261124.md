@@ -61,3 +61,5 @@ Medicaid submission remains disabled. No Stedi, Claim.MD, OHA, or EOCCO request 
 ## L6D follow-up
 
 The earlier residual observation window is now represented as an explicit point-in-time, nonposting snapshot: migration 1548 stores a deterministic evaluator-evidence fingerprint and observation timestamp, while API projections do not expose the internal fingerprint or describe the snapshot as current readiness. The API-to-evaluator route path, provider scoping, and same-artifact concurrency are separately exercised by the L6D qualification report. These changes do not make a snapshot usable for financial authorization and do not alter the L6C2 results above. See [L6D final technical qualification](./M24_1075_L6D_FINAL_TECHNICAL_QUALIFICATION_20261124.md).
+
+Renumbering note (2026-11-25): main merged `1546_object_key_column_rename` (#1110) after this record, so this branch's migrations 1546 to 1548 named above are now `1547_m25_isolated_medicaid_era_evaluator`, `1548_m25_medicaid_era_integrity_and_source_reader` and `1549_m25_medicaid_era_point_in_time_assessments`. Contents are unchanged; the live runs recorded here predate the rename.

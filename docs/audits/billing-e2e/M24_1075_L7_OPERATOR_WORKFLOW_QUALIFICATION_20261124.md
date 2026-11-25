@@ -106,3 +106,5 @@ No vendor or payer request, live ERA retrieval, payment posting, financial ledge
 claim-state transition, financial outbox event, production migration, deployment, or merge occurred.
 No synthetic record was promoted to production evidence; Medicaid electronic submission remains
 disabled.
+
+Renumbering note (2026-11-25): main merged `1546_object_key_column_rename` (#1110) after this record, so this branch's migrations 1546 to 1548 named above are now `1547_m25_isolated_medicaid_era_evaluator`, `1548_m25_medicaid_era_integrity_and_source_reader` and `1549_m25_medicaid_era_point_in_time_assessments`. Contents are unchanged; the live runs recorded here predate the rename.

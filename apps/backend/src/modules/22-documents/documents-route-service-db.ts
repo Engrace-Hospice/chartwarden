@@ -1636,7 +1636,7 @@ export function createDbSignedUrlObjectResolver(db: DbClient): SignedUrlObjectRe
       return withOrg(db, organizationId, async (tx) => {
         const [v] = await tx
           .select({
-            objectKey: DV.minioObjectKey,
+            objectKey: DV.objectKey,
             // F-197 (#248) — §7.16 mint-time SUD-consent re-check facts, joined off `document`: the
             // version row itself carries neither the patient nor the render-time SUD flag.
             patientId: DOC.patientId,
