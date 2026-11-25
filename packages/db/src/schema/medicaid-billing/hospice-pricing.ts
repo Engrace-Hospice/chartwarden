@@ -47,8 +47,8 @@ export const medicaidHospiceBillingEvidence = pgTable(
     quantityPolicy: text("quantity_policy").notNull(),
     quantityEvidenceOwner: text("quantity_evidence_owner").notNull(),
     billingUnit: text("billing_unit").notNull(),
-    revenueCode: text("revenue_code").notNull(),
-    hcpcsCode: text("hcpcs_code").notNull(),
+    revenueCode: text("revenue_code"),
+    hcpcsCode: text("hcpcs_code"),
     codingProfile: text("coding_profile").notNull(),
     codingEvidenceReference: text("coding_evidence_reference").notNull(),
     codingEvidenceVersion: integer("coding_evidence_version").notNull(),
@@ -101,7 +101,7 @@ export const medicaidHospiceBillingEvidence = pgTable(
     ),
     identityValid: check(
       "medicaid_hospice_billing_evidence_identity_valid",
-      sql`program_kind IN ('managed_care') AND service_state = 'OR' AND service_category = 'RHC'`,
+      sql`program_kind = 'managed_care' AND service_state = 'OR' AND service_category IN ('RHC', 'CHC')`,
     ),
     rangeValid: check(
       "medicaid_hospice_billing_evidence_range_valid",
@@ -114,11 +114,13 @@ export const medicaidHospiceBillingEvidence = pgTable(
     ),
     pricingFactsValid: check(
       "medicaid_hospice_billing_evidence_pricing_facts_valid",
-      sql`locality_code <> '' AND billed_charge_cents_per_unit > 0 AND
-          quantity_policy = 'active_rhc_loc_calendar_day' AND
-          quantity_evidence_owner = 'm6_level_of_care_period' AND billing_unit = 'daily' AND
-          revenue_code = '0651' AND hcpcs_code IN ('Q5001', 'Q5002') AND
-          coding_profile = 'local_draft_only'`,
+      sql`locality_code <> '' AND billed_charge_cents_per_unit > 0 AND coding_profile = 'local_draft_only' AND
+          ((service_category = 'RHC' AND quantity_policy = 'active_rhc_loc_calendar_day' AND
+            quantity_evidence_owner = 'm6_level_of_care_period' AND billing_unit = 'daily' AND
+            revenue_code = '0651' AND hcpcs_code IN ('Q5001', 'Q5002')) OR
+           (service_category = 'CHC' AND quantity_policy = 'm6_symptom_crisis_plus_signed_m8_rn_intervals_v1' AND
+            quantity_evidence_owner = 'm6_loc_m8_encounter' AND billing_unit = 'hourly' AND
+            revenue_code IS NULL AND hcpcs_code IS NULL))`,
     ),
     qualityFactsValid: check(
       "medicaid_hospice_billing_evidence_quality_valid",
@@ -286,3 +288,198 @@ export const medicaidClaimLinePricingSnapshot = pgTable(
 export type MedicaidHospiceBillingEvidence = typeof medicaidHospiceBillingEvidence.$inferSelect;
 export type NewMedicaidHospiceBillingEvidence = typeof medicaidHospiceBillingEvidence.$inferInsert;
 export type MedicaidClaimLinePricingSnapshot = typeof medicaidClaimLinePricingSnapshot.$inferSelect;
+
+/** A durable, non-claim local CHC pricing preparation. It is never an institutional claim line. */
+export type MedicaidChcPricingPreparationSnapshot = {
+  readonly schemaVersion: 1;
+  readonly profile: "home_chc_hourly_local_v1";
+  readonly preparationId: string;
+  readonly preparationVersion: number;
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  readonly patientId: string;
+  readonly admissionId: string;
+  readonly admissionVersion: number;
+  readonly serviceDate: string;
+  readonly serviceTimeZone: string;
+  readonly canonicalPayerId: string;
+  readonly programKind: "managed_care";
+  readonly serviceState: "OR";
+  readonly programAssignment: {
+    readonly id: string;
+    readonly version: number;
+    readonly sourceKind: string;
+    readonly verificationSource: string;
+    readonly evidenceReference: string;
+    readonly verifiedAt: string;
+    readonly effectiveFrom: string;
+    readonly effectiveTo: string | null;
+  };
+  readonly payerProgramClassification: {
+    readonly id: string;
+    readonly classification: "medicaid_cco";
+    readonly sourceKind: string;
+    readonly sourceReference: string;
+    readonly verifiedAt: string;
+    readonly effectiveFrom: string;
+    readonly effectiveTo: string | null;
+  };
+  readonly residenceAddressId: string;
+  readonly residenceKind: "home";
+  readonly residenceEffectiveFrom: string;
+  readonly residenceEffectiveTo: string | null;
+  readonly locPeriodId: string;
+  readonly locPeriodVersion: number;
+  readonly locReason: "symptom_crisis";
+  readonly clinicalMethod: string;
+  readonly clinicalMethodReference: string;
+  readonly clinicalMethodVersion: number;
+  readonly encounterSources: readonly {
+    readonly encounterId: string;
+    readonly version: number;
+    readonly startedAt: string;
+    readonly endedAt: string;
+    readonly signedAt: string;
+    readonly cosignedAt: string | null;
+    readonly timeSource: "evv" | "clinician";
+    readonly discipline: "rn";
+    readonly locationId: string;
+  }[];
+  readonly observedMinutes: number;
+  readonly qualifiedMinutes: number;
+  readonly quantityConversionMethod: "hourly_prorated_minutes" | "hourly_each_hour_or_part";
+  readonly minimumClinicalMinutes: number | null;
+  readonly maximumClinicalMinutes: number;
+  readonly ratePolicyId: string;
+  readonly ratePolicyVersion: number;
+  readonly rateSourceReference: string;
+  readonly rateCentsPerHour: number;
+  readonly billingEvidenceId: string;
+  readonly billingEvidenceVersion: number;
+  readonly codingProfile: "local_draft_only";
+  readonly codingEvidenceReference: string;
+  readonly codingEvidenceVersion: number;
+  readonly localityCode: string;
+  readonly localityEvidenceReference: string;
+  readonly localityEvidenceVersion: number;
+  readonly qualityApplicability: string;
+  readonly qualityStatus: string;
+  readonly qualityEvidenceReference: string;
+  readonly qualityEvidenceVersion: number;
+  readonly billedChargeEvidenceReference: string;
+  readonly billedChargeEvidenceVersion: number;
+  readonly billedChargeCentsPerHour: number;
+  readonly estimatedReimbursementCents: number;
+  readonly baseReimbursementCents: number;
+  readonly billedChargeCents: number;
+  readonly reimbursementRoundingMode: string;
+  readonly reimbursementRoundingBoundary: string;
+  readonly appliedCeilings: readonly {
+    readonly method: string;
+    readonly amountCents: number;
+    readonly boundary: string;
+  }[];
+  readonly institutionalUnits: "unqualified";
+  readonly institutionalFormatQualified: false;
+  readonly postingAuthorized: false;
+  readonly assessedAt: string;
+  readonly integrityFingerprint: string;
+};
+
+export const medicaidChcPricingPreparation = pgTable(
+  "medicaid_chc_pricing_preparation",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    preparationId: uuid("preparation_id").notNull(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    providerEntityId: uuid("provider_entity_id")
+      .notNull()
+      .references(() => providerEntities.id, { onDelete: "restrict" }),
+    patientId: uuid("patient_id").notNull(),
+    admissionId: uuid("admission_id").notNull(),
+    serviceDate: date("service_date", { mode: "string" }).notNull(),
+    version: integer("version").notNull(),
+    ratePolicyId: uuid("rate_policy_id").notNull(),
+    billingEvidenceId: uuid("billing_evidence_id").notNull(),
+    assessedAt: timestamp("assessed_at", { withTimezone: true }).notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    snapshot: jsonb("snapshot").$type<MedicaidChcPricingPreparationSnapshot>().notNull(),
+    createdByMembershipId: uuid("created_by_membership_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    scopedVersion: unique("medicaid_chc_pricing_preparation_scope_version_uq").on(
+      t.organizationId,
+      t.providerEntityId,
+      t.patientId,
+      t.admissionId,
+      t.serviceDate,
+      t.version,
+    ),
+    preparationVersion: unique("medicaid_chc_pricing_preparation_id_version_uq").on(
+      t.preparationId,
+      t.version,
+    ),
+    idOrg: unique("medicaid_chc_pricing_preparation_org_id_uq").on(t.organizationId, t.id),
+    scopeLookup: index("medicaid_chc_pricing_preparation_scope_ix").on(
+      t.organizationId,
+      t.providerEntityId,
+      t.patientId,
+      t.admissionId,
+      t.serviceDate,
+    ),
+    rateLookup: index("medicaid_chc_pricing_preparation_rate_ix").on(
+      t.organizationId,
+      t.ratePolicyId,
+    ),
+    evidenceLookup: index("medicaid_chc_pricing_preparation_evidence_ix").on(
+      t.organizationId,
+      t.billingEvidenceId,
+    ),
+    versionValid: check("medicaid_chc_pricing_preparation_version_valid", sql`version > 0`),
+    fingerprintValid: check(
+      "medicaid_chc_pricing_preparation_fingerprint_valid",
+      sql`fingerprint ~ '^[0-9a-f]{64}$'`,
+    ),
+    snapshotShape: check(
+      "medicaid_chc_pricing_preparation_snapshot_shape",
+      sql`
+      jsonb_typeof(snapshot) = 'object' AND snapshot ->> 'schemaVersion' = '1' AND
+      snapshot ->> 'profile' = 'home_chc_hourly_local_v1' AND
+      snapshot ->> 'postingAuthorized' = 'false' AND
+      snapshot ->> 'institutionalFormatQualified' = 'false' AND
+      snapshot ->> 'institutionalUnits' = 'unqualified' AND
+      snapshot ->> 'serviceDate' = service_date::text AND
+      snapshot ->> 'preparationId' = preparation_id::text AND
+      (snapshot ->> 'preparationVersion')::integer = version AND
+      snapshot ->> 'organizationId' = organization_id::text AND
+      snapshot ->> 'providerEntityId' = provider_entity_id::text AND
+      snapshot ->> 'patientId' = patient_id::text AND snapshot ->> 'admissionId' = admission_id::text AND
+      snapshot ->> 'ratePolicyId' = rate_policy_id::text AND snapshot ->> 'billingEvidenceId' = billing_evidence_id::text AND
+      snapshot ->> 'integrityFingerprint' = fingerprint AND
+      (snapshot ->> 'observedMinutes')::integer > 0 AND
+      (snapshot ->> 'qualifiedMinutes')::integer = (snapshot ->> 'observedMinutes')::integer AND
+      (snapshot ->> 'qualifiedMinutes')::integer % 60 = 0 AND
+      (snapshot ->> 'qualifiedMinutes')::integer <= (snapshot ->> 'maximumClinicalMinutes')::integer AND
+      ((snapshot ->> 'minimumClinicalMinutes') IS NULL OR
+        (snapshot ->> 'qualifiedMinutes')::integer >= (snapshot ->> 'minimumClinicalMinutes')::integer) AND
+      (snapshot ->> 'rateCentsPerHour')::integer > 0 AND
+      (snapshot ->> 'billedChargeCentsPerHour')::integer > 0 AND
+      (snapshot ->> 'estimatedReimbursementCents')::integer >= 0 AND
+      (snapshot ->> 'billedChargeCents')::integer > 0 AND
+      (snapshot ->> 'billedChargeCents')::bigint =
+        (snapshot ->> 'billedChargeCentsPerHour')::bigint *
+        ((snapshot ->> 'qualifiedMinutes')::bigint / 60) AND
+      snapshot ->> 'codingProfile' = 'local_draft_only' AND
+      snapshot ->> 'programKind' = 'managed_care' AND snapshot ->> 'serviceState' = 'OR' AND
+      jsonb_typeof(snapshot -> 'programAssignment') = 'object' AND
+      jsonb_typeof(snapshot -> 'payerProgramClassification') = 'object' AND
+      jsonb_typeof(snapshot -> 'encounterSources') = 'array' AND jsonb_array_length(snapshot -> 'encounterSources') > 0
+    `,
+    ),
+  }),
+);
+
+export type MedicaidChcPricingPreparation = typeof medicaidChcPricingPreparation.$inferSelect;

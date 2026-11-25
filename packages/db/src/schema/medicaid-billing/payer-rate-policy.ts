@@ -39,6 +39,8 @@ export const medicaidPayerRatePolicy = pgTable(
     quantityConversionMethod: text("quantity_conversion_method").notNull().default("unqualified"),
     minimumDurationMethod: text("minimum_duration_method").notNull().default("unqualified"),
     minimumClinicalMinutes: integer("minimum_clinical_minutes"),
+    /** Payer-qualified daily maximum for an hourly clinical quantity; null when the policy does not define one. */
+    maximumClinicalMinutes: integer("maximum_clinical_minutes"),
     methodologyVersion: integer("methodology_version").notNull().default(1),
     roundingMode: text("rounding_mode").notNull().default("unqualified"),
     roundingBoundary: text("rounding_boundary").notNull().default("unqualified"),

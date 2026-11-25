@@ -1390,6 +1390,7 @@ import {
   buildM24SubmissionWorkerDeps,
   buildMedicaidOnboardingCredentialPort,
   buildStateChannelHealthProbe,
+  createChcPricingPreparationService,
   createDrizzleMedicaidRedactStore,
   mountM24Routes,
   registerM24AbacPredicates,
@@ -2379,6 +2380,7 @@ export function wireModuleSeams(
     deps.db
       ? {
           store: createDrizzleEncounterReaderStore(deps.db, {
+            foundationSites: buildFoundationSiteReader(),
             ...(deps.outboxPublisher
               ? { outbox: bindCallerModule(deps.outboxPublisher, "m8") }
               : {}),
@@ -2918,12 +2920,15 @@ export function wireModuleSeams(
   // _methodology_unlocked / cap_platform_admin). Pass the DB handle so the Drizzle period/settlement fact
   // resolver binds under RLS; with no db it defaults to the deny-stub (default-deny).
   registerM26AbacPredicates({ db: deps.db });
-  // M24 — the six §4.8 ABAC resolvers (provider_entity_medicaid_billing_scope /
+  // M24 — the §4.8 ABAC resolvers (provider_entity_medicaid_billing_scope /
   // medicaid_claim_in_billing_manager_caseload / medicaid_override_role_eligible /
   // regulatory_required_rule_protected_medicaid / rb_arrangement_visible_in_scope /
   // state_trading_partner_credential_admin). Pass the DB handle so the Drizzle fact resolver binds under RLS;
   // with no db it defaults to the deny-stub (default-deny).
-  registerM24AbacPredicates({ db: deps.db });
+  registerM24AbacPredicates({
+    db: deps.db,
+    isInCaseload: (input) => getSeam("CaseloadProvider").isInCaseload(input),
+  });
   // M38 — the one §4.4 ABAC resolver (`terminology_admin_platform_ops`), the platform-only conjunct on
   // the `/api/v1/admin/terminology/*` surface. Role-only (the `platform_ops` M3 RBAC role on a staff
   // session), so no DB handle: there is no owner row to load — a canonical terminology load has no
@@ -5747,6 +5752,26 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           timeSource: d.timeSource ?? null,
           sourceVersion: d.sourceVersion,
         }));
+    },
+    async chcClinicalIntervalsInTransaction(
+      transaction: unknown,
+      input: {
+        organizationId: string;
+        providerEntityId: string;
+        patientId: string;
+        admissionId: string;
+        serviceDate: string;
+      },
+    ) {
+      const reader = getSeam("SignedEncountersReader") as {
+        chcClinicalIntervalsInTransaction?: NonNullable<
+          import("@chartwarden/types").SignedEncountersReader["chcClinicalIntervalsInTransaction"]
+        >;
+      };
+      if (!reader.chcClinicalIntervalsInTransaction) {
+        throw new Error("SignedEncountersReader.chcClinicalIntervalsInTransaction is unavailable");
+      }
+      return reader.chcClinicalIntervalsInTransaction(transaction, input);
     },
   };
   const m30OutboxPublisher = bindCallerModule(txOutboxPublisher, "m30");
@@ -8903,6 +8928,17 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             service: tenantClearinghouseService,
             audit: buildClearinghouseAuditPort(),
           });
+          const m24ChcPricingPreparationService =
+            m24LocPeriodReader && m24CoverageResolver
+              ? createChcPricingPreparationService({
+                  db: dbHandle.db,
+                  coverage: m24CoverageResolver,
+                  admissions: m24LocPeriodReader,
+                  encounters: m24SignedEncounters,
+                  residences: m24ResidenceReader,
+                  canonicalPayer: m24CanonicalPayerReader,
+                })
+              : undefined;
           withClaimsBillingGate(
             app,
             m24RouteClasses((org, id) => isVoidM24Claim(dbHandle.db, org, id)),
@@ -8943,6 +8979,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                     },
                   },
                 ),
+                chcPricingPreparationService: m24ChcPricingPreparationService,
               }),
           );
           // M3's location-scoped staff read as M15's locally-declared roster port (M15 imports no authorization code).
@@ -12092,6 +12129,17 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       canonicalPayerReader: m24CanonicalPayerReader,
       patientAddresses: getSeam("PatientAddressReader") as PatientAddressReader,
       facilityKindReader: m24FacilityKindReader,
+      chcPricingPreparations:
+        m24LocPeriodReader && m24CoverageResolver
+          ? createChcPricingPreparationService({
+              db: dbHandle.db,
+              coverage: m24CoverageResolver,
+              admissions: m24LocPeriodReader,
+              encounters: m24SignedEncounters,
+              residences: m24ResidenceReader,
+              canonicalPayer: m24CanonicalPayerReader,
+            })
+          : undefined,
       outbox: m24OutboxPublisher,
     });
     app.addHook("onClose", async () => {

@@ -1,6 +1,6 @@
 // apps/backend/src/modules/24-billing-medicaid/abac-predicates.ts — M24 (§4.8).
 //
-// The six named ABAC predicate resolvers M24 OWNS and registers into M3's named-predicate registry. Each is
+// The named ABAC predicate resolvers M24 OWNS and registers into M3's named-predicate registry. Each is
 // a typed `(context, target) => Promise<boolean>` evaluated server-side AFTER RBAC passes; M24 never
 // authorizes by reading the request body — a claim's provider-entity / patient, a validation result's
 // rule-key, and an R&B arrangement's provider-entity are loaded through the injected resolver (org-scoped,
@@ -17,13 +17,19 @@
 // DEFERRAL: existing claim-object ABAC `medicaid_claim_in_billing_manager_caseload` remains provider-entity
 // scoped (GAP-145). The assembly-preview read additionally composes M5 `caseload_or_scope` over its patient
 // body target because it reads patient-level Medicare evidence before a claim object exists.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  hasOrgWideScope,
+  registerPredicateIdempotent,
+} from "@chartwarden/auth";
 import { type DbClient, schema } from "@chartwarden/db";
 import { DEFAULT_MEDICAID_RULES } from "@chartwarden/medicaid-adapters";
 import { withOrgContext } from "@chartwarden/tenancy";
+import type { CaseloadProvider } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 
-/** The §4.8 predicate names M24 OWNS and registers into M3 (six). Single-owner registry. */
+/** The §4.8 predicate names M24 OWNS and registers into M3. Single-owner registry. */
 export const M24_REGISTERED_ABAC_PREDICATES = [
   "provider_entity_medicaid_billing_scope",
   "medicaid_claim_in_billing_manager_caseload",
@@ -31,6 +37,7 @@ export const M24_REGISTERED_ABAC_PREDICATES = [
   "regulatory_required_rule_protected_medicaid",
   "rb_arrangement_visible_in_scope",
   "state_trading_partner_credential_admin",
+  "medicaid_chc_pricing_preparation_in_scope",
 ] as const;
 
 export type M24RegisteredAbacPredicate = (typeof M24_REGISTERED_ABAC_PREDICATES)[number];
@@ -56,6 +63,10 @@ export interface ReadingM24AbacResolver {
   /** GAP-145 — the provider entity an R&B day belongs to (null when absent / cross-tenant). */
   loadRbDayPe(ctx: M24AbacReadContext, rbDayId: string): Promise<string | null>;
   loadResultRuleKey(ctx: M24AbacReadContext, resultId: string): Promise<string | null>;
+  loadChcPreparationScope(
+    ctx: M24AbacReadContext,
+    preparationId: string,
+  ): Promise<{ providerEntityId: string; patientId: string } | null>;
 }
 
 /** Deny-stub resolver — every lookup fails closed (boot registers the predicates before a db binds). */
@@ -72,6 +83,9 @@ export const denyStubM24AbacResolver: ReadingM24AbacResolver = {
   async loadResultRuleKey() {
     return null;
   },
+  async loadChcPreparationScope() {
+    return null;
+  },
 };
 
 /** The real Drizzle fact-loader (each read under withOrgContext → RLS-scoped to the acting org). */
@@ -79,6 +93,7 @@ export function buildDrizzleM24AbacResolver(db: DbClient): ReadingM24AbacResolve
   const C = schema.medicaidClaim;
   const A = schema.rbArrangement;
   const R = schema.medicaidValidationResult;
+  const CHC = schema.medicaidChcPricingPreparation;
   return {
     async loadClaim(ctx, claimId) {
       return withOrgContext(db, ctx, async (tx) => {
@@ -120,12 +135,24 @@ export function buildDrizzleM24AbacResolver(db: DbClient): ReadingM24AbacResolve
         return rows[0]?.ruleKey ?? null;
       });
     },
+    async loadChcPreparationScope(ctx, preparationId) {
+      return withOrgContext(db, ctx, async (tx) => {
+        const rows = await tx
+          .select({ providerEntityId: CHC.providerEntityId, patientId: CHC.patientId })
+          .from(CHC)
+          .where(eq(CHC.id, preparationId))
+          .limit(1);
+        return rows[0] ?? null;
+      });
+    },
   };
 }
 
 export interface ReadingM24AbacDeps {
   readonly db?: DbClient;
   readonly resolver?: ReadingM24AbacResolver;
+  /** M5's server-owned patient caseload check; an absent binding denies scoped CHC reads. */
+  readonly isInCaseload?: CaseloadProvider["isInCaseload"];
 }
 
 function resolverFor(deps: ReadingM24AbacDeps): ReadingM24AbacResolver {
@@ -147,11 +174,12 @@ const readContextOf = (context: AbacContext): M24AbacReadContext => ({
 const peInScope = (context: AbacContext, pe: string | null): boolean =>
   pe !== null && context.providerEntityIds.includes(pe);
 
-/** Build M24's six §4.8 predicate resolvers over a Drizzle `db` (or an injected resolver for tests). */
+/** Build M24's §4.8 predicate resolvers over a Drizzle `db` (or an injected resolver for tests). */
 export function buildM24AbacPredicates(
   deps: ReadingM24AbacDeps,
 ): Record<string, (context: AbacContext, target: AbacTarget) => Promise<boolean>> {
   const resolver = resolverFor(deps);
+  const isInCaseload = deps.isInCaseload ?? (async () => false);
   const peForTarget = async (context: AbacContext, target: AbacTarget): Promise<string | null> => {
     const direct = targetStr(target, "providerEntityId");
     if (direct) return direct;
@@ -212,11 +240,31 @@ export function buildM24AbacPredicates(
       if (!peInScope(context, pe)) return false;
       return TP_ADMIN_ROLES.some((r) => context.roles.includes(r));
     },
+
+    medicaid_chc_pricing_preparation_in_scope: async (context, target) => {
+      const preparationId = targetStr(target, "medicaidChcPricingPreparationId");
+      if (!preparationId) return false;
+      const facts = await resolver.loadChcPreparationScope(readContextOf(context), preparationId);
+      if (!facts || !peInScope(context, facts.providerEntityId)) return false;
+      if (hasOrgWideScope(context.roles)) return true;
+      const sessionPatientId = context.attributes.sessionPatientId;
+      if (typeof sessionPatientId === "string" && sessionPatientId === facts.patientId) return true;
+      if (!context.userId) return false;
+      try {
+        return await isInCaseload({
+          organizationId: context.organizationId,
+          userId: context.userId,
+          patientId: facts.patientId,
+        });
+      } catch {
+        return false;
+      }
+    },
   };
 }
 
 /**
- * Register M24's six §4.8 ABAC predicate resolvers into M3's shared registry (idempotent). Call at boot; the
+ * Register M24's §4.8 ABAC predicate resolvers into M3's shared registry (idempotent). Call at boot; the
  * composition root passes `{ db }` so the predicates resolve facts under RLS. With NO db handle it defaults
  * to the deny-stub so the predicates still EXIST (fail-closed) at boot.
  */

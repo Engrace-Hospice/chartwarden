@@ -33,6 +33,61 @@ describe("soleDefaultLocation", () => {
 });
 
 describe("Claim.MD internal site ownership reads", () => {
+  it("resolves locked location state and timezone only through the organization-owned provider", async () => {
+    const calls: string[] = [];
+    const tx = {
+      select(fields: Record<string, unknown>) {
+        expect(Object.keys(fields)).toEqual(["providerEntityId", "state", "timeZone"]);
+        return {
+          from() {
+            calls.push("from-location");
+            return this;
+          },
+          innerJoin() {
+            calls.push("join-provider");
+            return this;
+          },
+          where() {
+            calls.push("org-and-location-scope");
+            return this;
+          },
+          for(mode: string, options: { readonly of: readonly unknown[] }) {
+            expect(mode).toBe("share");
+            expect(options.of).toHaveLength(2);
+            calls.push("lock-location-and-provider");
+            return this;
+          },
+          async limit(count: number) {
+            expect(count).toBe(1);
+            return [
+              {
+                providerEntityId: "synthetic-provider",
+                state: "OR",
+                timeZone: "America/Los_Angeles",
+              },
+            ];
+          },
+        };
+      },
+    } as unknown as DbClient;
+    const facts = await buildFoundationSiteReader().locationSiteFacts(
+      tx,
+      "synthetic-org",
+      "synthetic-location",
+    );
+    expect(facts).toEqual({
+      providerEntityId: "synthetic-provider",
+      state: "OR",
+      timeZone: "America/Los_Angeles",
+    });
+    expect(calls).toEqual([
+      "from-location",
+      "join-provider",
+      "org-and-location-scope",
+      "lock-location-and-provider",
+    ]);
+  });
+
   it("returns only provider and location ownership facts from the caller's transaction", async () => {
     const selected: string[][] = [];
     const tx = {

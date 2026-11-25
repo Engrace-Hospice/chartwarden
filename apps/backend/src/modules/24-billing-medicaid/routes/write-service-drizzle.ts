@@ -921,6 +921,7 @@ function ratePolicyFactFromRow(
     minimumDurationMethod:
       row.minimumDurationMethod as PayerRatePolicyFact["minimumDurationMethod"],
     minimumClinicalMinutes: row.minimumClinicalMinutes,
+    maximumClinicalMinutes: row.maximumClinicalMinutes,
     roundingMode: row.roundingMode as PayerRatePolicyFact["roundingMode"],
     roundingBoundary: row.roundingBoundary as PayerRatePolicyFact["roundingBoundary"],
     chargeCeilingMethod: row.chargeCeilingMethod as PayerRatePolicyFact["chargeCeilingMethod"],

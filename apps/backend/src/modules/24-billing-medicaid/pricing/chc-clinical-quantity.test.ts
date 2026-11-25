@@ -12,6 +12,7 @@ const scope = {
   serviceFrom: "2026-11-01",
   serviceTo: "2026-11-01",
   serviceTimeZone: "America/Los_Angeles",
+  assessedAt: "2026-11-04T00:00:00.000Z",
   chcServiceDates: ["2026-11-01"],
 } as const;
 
@@ -25,6 +26,8 @@ const encounter = (overrides: Partial<SignedChcEncounterFact> = {}): SignedChcEn
   endedAt: "2026-11-01T21:00:00.000Z",
   timeSource: "clinician",
   sourceVersion: 3,
+  discipline: "rn",
+  locationId: "77777777-7777-4777-8777-777777777777",
   ...overrides,
 });
 
@@ -128,5 +131,96 @@ describe("M8-backed CHC actual clinical interval normalization", () => {
       expect(result.days[0]?.actualClinicalMinutes).toBe(240);
       expect(result.days[0]).not.toHaveProperty("units");
     }
+  });
+
+  it("requires the final co-sign attestation for a cosigned encounter", () => {
+    const cosigned = encounter({
+      status: "cosigned",
+      signedAt: "2026-11-02T01:00:00.000Z",
+      cosignedAt: "2026-11-02T02:00:00.000Z",
+    });
+    expect(resolveSignedChcClinicalQuantity({ ...scope, encounters: [cosigned] })).toMatchObject({
+      status: "observed",
+      days: [{ actualClinicalMinutes: 240 }],
+    });
+    expect(
+      resolveSignedChcClinicalQuantity({
+        ...scope,
+        encounters: [encounter({ status: "cosigned", cosignedAt: null })],
+      }),
+    ).toMatchObject({
+      status: "unresolved",
+      reasonCode: "CHC_ACTUAL_INTERVAL_EVIDENCE_INCOMPLETE",
+    });
+    expect(
+      resolveSignedChcClinicalQuantity({
+        ...scope,
+        assessedAt: "2026-11-02T01:30:00.000Z",
+        encounters: [cosigned],
+      }),
+    ).toMatchObject({
+      status: "unresolved",
+      reasonCode: "CHC_ACTUAL_INTERVAL_EVIDENCE_INCOMPLETE",
+    });
+  });
+
+  it("clips a carry-in encounter to the requested local day and accepts the actual 25-hour day bound", () => {
+    const carryIn = encounter({
+      serviceDate: "2026-10-31",
+      startedAt: "2026-11-01T06:30:00.000Z",
+      endedAt: "2026-11-01T08:30:00.000Z",
+      signedAt: "2026-11-02T01:00:00.000Z",
+    });
+    expect(resolveSignedChcClinicalQuantity({ ...scope, encounters: [carryIn] })).toMatchObject({
+      status: "observed",
+      days: [{ actualClinicalMinutes: 90 }],
+    });
+
+    const fallBackDay = {
+      ...scope,
+      serviceFrom: "2026-11-01",
+      serviceTo: "2026-11-01",
+      serviceTimeZone: "America/Los_Angeles",
+      chcServiceDates: ["2026-11-01"],
+      assessedAt: "2026-11-03T00:00:00.000Z",
+    };
+    const fullPhysicalDay = encounter({
+      startedAt: "2026-11-01T07:00:00.000Z",
+      endedAt: "2026-11-02T08:00:00.000Z",
+      signedAt: "2026-11-02T08:01:00.000Z",
+    });
+    expect(
+      resolveSignedChcClinicalQuantity({ ...fallBackDay, encounters: [fullPhysicalDay] }),
+    ).toMatchObject({ status: "observed", days: [{ actualClinicalMinutes: 1500 }] });
+
+    const springForwardDay = {
+      ...fallBackDay,
+      serviceFrom: "2026-03-08",
+      serviceTo: "2026-03-08",
+      chcServiceDates: ["2026-03-08"],
+      assessedAt: "2026-03-10T00:00:00.000Z",
+    };
+    const fullShortDay = encounter({
+      serviceDate: "2026-03-08",
+      startedAt: "2026-03-08T08:00:00.000Z",
+      endedAt: "2026-03-09T07:00:00.000Z",
+      signedAt: "2026-03-09T08:00:00.000Z",
+    });
+    expect(
+      resolveSignedChcClinicalQuantity({ ...springForwardDay, encounters: [fullShortDay] }),
+    ).toMatchObject({ status: "observed", days: [{ actualClinicalMinutes: 1380 }] });
+  });
+
+  it("rejects signatures made after the fixed assessment instant", () => {
+    expect(
+      resolveSignedChcClinicalQuantity({
+        ...scope,
+        assessedAt: "2026-11-01T22:00:00.000Z",
+        encounters: [encounter({ signedAt: "2026-11-02T01:00:00.000Z" })],
+      }),
+    ).toMatchObject({
+      status: "unresolved",
+      reasonCode: "CHC_ACTUAL_INTERVAL_EVIDENCE_INCOMPLETE",
+    });
   });
 });

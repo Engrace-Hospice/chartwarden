@@ -23,6 +23,9 @@ export interface AdmissionLocPeriod {
   readonly version: number;
   readonly updatedAt: Date;
   readonly levelOfCare: (typeof LOC.$inferSelect)["levelOfCare"];
+  readonly status: (typeof LOC.$inferSelect)["status"];
+  readonly reason: string | null;
+  readonly assignedBy: string | null;
   readonly effectiveAt: Date;
   readonly endedAt: Date | null;
   readonly facilityId: string | null;
@@ -179,6 +182,9 @@ export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPerio
           version: LOC.version,
           updatedAt: LOC.updatedAt,
           levelOfCare: LOC.levelOfCare,
+          status: LOC.status,
+          reason: LOC.reason,
+          assignedBy: LOC.assignedBy,
           effectiveAt: LOC.effectiveAt,
           endedAt: LOC.endedAt,
           facilityId: LOC.facilityId,
@@ -202,6 +208,9 @@ export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPerio
             version: LOC.version,
             updatedAt: LOC.updatedAt,
             levelOfCare: LOC.levelOfCare,
+            status: LOC.status,
+            reason: LOC.reason,
+            assignedBy: LOC.assignedBy,
             effectiveAt: LOC.effectiveAt,
             endedAt: LOC.endedAt,
             facilityId: LOC.facilityId,

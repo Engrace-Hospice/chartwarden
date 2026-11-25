@@ -10,6 +10,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { getRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import type { EncounterRenderPayload, MileagePayrollRow } from "@chartwarden/types";
 import { and, asc, between, eq, inArray } from "drizzle-orm";
+import type { FoundationSiteReader } from "../../../bootstrap/foundation-site-reader";
 import { getSeam } from "../../../bootstrap/index";
 import { seedModalityFor } from "../consumers/seed-modality";
 import {
@@ -47,6 +48,8 @@ export interface EncounterCreatedOutboxPort {
 }
 
 export interface EncounterStoreOpsDeps {
+  /** M1-owned service-site facts read in the consumer's transaction for CHC local-day normalization. */
+  readonly foundationSites?: Pick<FoundationSiteReader, "locationSiteFacts">;
   /** Emits `m8.encounter.created` on the insert's tx; absent on slice/test boots. */
   readonly outbox?: EncounterCreatedOutboxPort;
   /** Opens the pinned (finalize-time) narrative; absent ⇒ a pinned render is refused, never emptied. */

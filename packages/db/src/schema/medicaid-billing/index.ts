@@ -36,4 +36,4 @@ export * from "./state-rate-schedule"; // medicaid_state_rate_schedule (platform
 export * from "./payer-readiness"; // medicaid_program_assignment + medicaid_enrollment_evidence
 export * from "./authorization-evidence"; // append-only payer notification / authorization evidence
 export * from "./payer-rate-policy"; // tenant/provider-scoped payer rate source evidence
-export * from "./hospice-pricing"; // verified RHC billing evidence and immutable per-line payer-rate snapshots
+export * from "./hospice-pricing"; // verified hospice evidence, immutable claim-line pricing snapshots and local CHC preparations

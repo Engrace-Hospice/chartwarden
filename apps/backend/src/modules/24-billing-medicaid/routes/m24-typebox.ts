@@ -206,6 +206,44 @@ export const AssemblyPreviewBody = Type.Object(
   },
   { additionalProperties: false },
 );
+
+/** POST /api/v1/medicaid-chc-pricing-preparations — server-resolved local CHC pricing only. */
+export const ChcPricingPreparationBody = Type.Object(
+  {
+    patientId: uuid(),
+    admissionId: uuid(),
+    providerEntityId: uuid(),
+    serviceDate: isoDate(),
+  },
+  { additionalProperties: false },
+);
+const ChcPricingVerification = Type.Union([
+  Type.Object({
+    status: Type.Literal("current"),
+    preparationId: uuid(),
+    version: Type.Integer({ minimum: 1 }),
+    fingerprint: Type.String({ pattern: "^[0-9a-f]{64}$" }),
+  }),
+  Type.Object({
+    status: lit(["stale", "unresolved", "ambiguous", "unsupported"] as const),
+    reasonCode: Type.String({ minLength: 1 }),
+  }),
+]);
+export const ChcPricingPreparationResponse = Type.Object({
+  id: uuid(),
+  preparationId: uuid(),
+  version: Type.Integer({ minimum: 1 }),
+  serviceDate: isoDate(),
+  observedMinutes: nullableInt(),
+  qualifiedMinutes: nullableInt(),
+  reimbursementHours: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+  rateCentsPerHour: Type.Union([cents(), Type.Null()]),
+  estimatedReimbursementCents: Type.Union([cents(), Type.Null()]),
+  billedChargeCents: Type.Union([cents(), Type.Null()]),
+  institutionalUnits: Type.Literal("unqualified"),
+  institutionalFormatQualified: Type.Literal(false),
+  verification: ChcPricingVerification,
+});
 const AssemblyPreviewCoverage = Type.Object({
   status: lit(["uniform", "none", "changes", "ambiguous", "unavailable"] as const),
   coverageKind: nullableStr(),

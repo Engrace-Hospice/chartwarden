@@ -22,9 +22,11 @@ import type {
   EncounterBillability,
   EncounterTimeSource,
   EncounterVisitModality,
+  SignedChcClinicalInterval,
   SignedEncounterDigest,
 } from "@chartwarden/types";
-import { and, asc, between, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, between, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
+import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-port";
 import { evvStateOrMissing } from "../evv-at-sign";
 import { COSIGN_REQUIRED_DISCIPLINES } from "../lifecycle/index";
 import { deliveryViewFields } from "../visit-delivery";
@@ -303,6 +305,74 @@ export function createDrizzleEncounterReaderStore(
           );
         },
       );
+    },
+    async chcClinicalIntervalsInTransaction(transaction, input) {
+      const tx = transaction as DbClient;
+      await assertTxScopedToOrg(tx, input.organizationId);
+      const center = Date.parse(`${input.serviceDate}T00:00:00.000Z`);
+      if (!Number.isFinite(center)) return [];
+      const from = new Date(center - 2 * 86_400_000).toISOString().slice(0, 10);
+      const to = new Date(center + 2 * 86_400_000).toISOString().slice(0, 10);
+      const rows = await tx
+        .select({
+          organizationId: E.organizationId,
+          providerEntityId: E.providerEntityId,
+          patientId: E.patientId,
+          admissionId: E.admissionId,
+          encounterId: E.id,
+          encounterType: E.encounterType,
+          discipline: E.discipline,
+          serviceDate: E.serviceDate,
+          status: E.status,
+          signedAt: E.signedAt,
+          cosignedAt: E.cosignedAt,
+          startedAt: E.startedAt,
+          endedAt: E.endedAt,
+          timeSource: E.timeSource,
+          sourceVersion: E.version,
+          voidedAt: E.voidedAt,
+          locationId: E.locationId,
+        })
+        .from(E)
+        .where(
+          and(
+            eq(E.organizationId, input.organizationId),
+            eq(E.patientId, input.patientId),
+            eq(E.admissionId, input.admissionId),
+            gte(E.serviceDate, from),
+            lte(E.serviceDate, to),
+            inArray(E.status, ["signed", "cosign_pending", "cosigned", "voided"]),
+          ),
+        )
+        .orderBy(asc(E.startedAt), asc(E.id))
+        .for("share", { of: E });
+      const siteReader = deps.foundationSites;
+      if (!siteReader) throw new Error("M8 CHC service-site reader is not bound");
+      const siteFacts = new Map<string, Awaited<ReturnType<typeof siteReader.locationSiteFacts>>>();
+      for (const locationId of new Set(
+        rows.flatMap((row) => (row.locationId ? [row.locationId] : [])),
+      )) {
+        siteFacts.set(
+          locationId,
+          await siteReader.locationSiteFacts(tx, input.organizationId, locationId),
+        );
+      }
+      return rows.map((row): SignedChcClinicalInterval => {
+        const site = row.locationId ? siteFacts.get(row.locationId) : null;
+        return {
+          ...row,
+          locationProviderEntityId: site?.providerEntityId ?? null,
+          locationState: site?.state ?? null,
+          serviceTimeZone: site?.timeZone ?? null,
+          signedAt: row.signedAt?.toISOString() ?? null,
+          cosignedAt: row.cosignedAt?.toISOString() ?? null,
+          startedAt: row.startedAt?.toISOString() ?? null,
+          endedAt: row.endedAt?.toISOString() ?? null,
+          timeSource: row.timeSource as SignedChcClinicalInterval["timeSource"],
+          sourceVersion: Number(row.sourceVersion),
+          voidedAt: row.voidedAt?.toISOString() ?? null,
+        };
+      });
     },
   };
 }

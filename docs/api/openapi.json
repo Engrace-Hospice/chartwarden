@@ -204793,6 +204793,444 @@
         }
       }
     },
+    "/api/v1/medicaid-chc-pricing-preparations": {
+      "post": {
+        "operationId": "postApiV1Medicaidchcpricingpreparations",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Prepare and persist source-verified local CHC hourly pricing; institutional units remain unqualified",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "preparationId",
+                    "version",
+                    "serviceDate",
+                    "observedMinutes",
+                    "qualifiedMinutes",
+                    "reimbursementHours",
+                    "rateCentsPerHour",
+                    "estimatedReimbursementCents",
+                    "billedChargeCents",
+                    "institutionalUnits",
+                    "institutionalFormatQualified",
+                    "verification"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "preparationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "version": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "serviceDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "observedMinutes": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "qualifiedMinutes": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reimbursementHours": {
+                      "anyOf": [
+                        {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rateCentsPerHour": {
+                      "anyOf": [
+                        {
+                          "description": "Integer cents (D8)",
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "estimatedReimbursementCents": {
+                      "anyOf": [
+                        {
+                          "description": "Integer cents (D8)",
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "billedChargeCents": {
+                      "anyOf": [
+                        {
+                          "description": "Integer cents (D8)",
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "institutionalUnits": {
+                      "const": "unqualified",
+                      "type": "string"
+                    },
+                    "institutionalFormatQualified": {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    "verification": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "status",
+                            "preparationId",
+                            "version",
+                            "fingerprint"
+                          ],
+                          "properties": {
+                            "status": {
+                              "const": "current",
+                              "type": "string"
+                            },
+                            "preparationId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "version": {
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "fingerprint": {
+                              "pattern": "^[0-9a-f]{64}$",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "status",
+                            "reasonCode"
+                          ],
+                          "properties": {
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "stale",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unresolved",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ambiguous",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unsupported",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "reasonCode": {
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "patientId",
+                  "admissionId",
+                  "providerEntityId",
+                  "serviceDate"
+                ],
+                "properties": {
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "admissionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "serviceDate": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-chc-pricing-preparations/{id}": {
+      "get": {
+        "operationId": "getApiV1MedicaidchcpricingpreparationsById",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Read and source-revalidate a local CHC pricing preparation; this does not create an institutional claim",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "preparationId",
+                    "version",
+                    "serviceDate",
+                    "observedMinutes",
+                    "qualifiedMinutes",
+                    "reimbursementHours",
+                    "rateCentsPerHour",
+                    "estimatedReimbursementCents",
+                    "billedChargeCents",
+                    "institutionalUnits",
+                    "institutionalFormatQualified",
+                    "verification"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "preparationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "version": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "serviceDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "observedMinutes": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "qualifiedMinutes": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reimbursementHours": {
+                      "anyOf": [
+                        {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rateCentsPerHour": {
+                      "anyOf": [
+                        {
+                          "description": "Integer cents (D8)",
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "estimatedReimbursementCents": {
+                      "anyOf": [
+                        {
+                          "description": "Integer cents (D8)",
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "billedChargeCents": {
+                      "anyOf": [
+                        {
+                          "description": "Integer cents (D8)",
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "institutionalUnits": {
+                      "const": "unqualified",
+                      "type": "string"
+                    },
+                    "institutionalFormatQualified": {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    "verification": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "status",
+                            "preparationId",
+                            "version",
+                            "fingerprint"
+                          ],
+                          "properties": {
+                            "status": {
+                              "const": "current",
+                              "type": "string"
+                            },
+                            "preparationId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "version": {
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "fingerprint": {
+                              "pattern": "^[0-9a-f]{64}$",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "status",
+                            "reasonCode"
+                          ],
+                          "properties": {
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "stale",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unresolved",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ambiguous",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unsupported",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "reasonCode": {
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/medicaid-claims": {
       "get": {
         "operationId": "getApiV1Medicaidclaims",

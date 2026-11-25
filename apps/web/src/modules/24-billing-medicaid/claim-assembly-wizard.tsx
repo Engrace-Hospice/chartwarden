@@ -154,6 +154,24 @@ interface AssemblyPreview {
   isAdvisorySnapshot: true;
 }
 
+interface ChcPricingPreparation {
+  id: string;
+  preparationId: string;
+  version: number;
+  serviceDate: string;
+  observedMinutes: number | null;
+  qualifiedMinutes: number | null;
+  reimbursementHours: number | null;
+  rateCentsPerHour: number | null;
+  estimatedReimbursementCents: number | null;
+  billedChargeCents: number | null;
+  institutionalUnits: "unqualified";
+  institutionalFormatQualified: false;
+  verification:
+    | { status: "current"; preparationId: string; version: number; fingerprint: string }
+    | { status: "stale" | "unresolved" | "ambiguous" | "unsupported"; reasonCode: string };
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const hasStrings = (value: unknown, keys: readonly string[]): boolean =>
@@ -262,6 +280,9 @@ export function MedicaidAssemblyWizard(): JSX.Element {
   const claimsBilling = useClaimsBilling();
   const [error, setError] = useState<string | null>(null);
   const [assembledId, setAssembledId] = useState<string | null>(null);
+  const [chcPreparation, setChcPreparation] = useState<ChcPricingPreparation | null>(null);
+  const [chcPreparationBusy, setChcPreparationBusy] = useState(false);
+  const [chcPreparationError, setChcPreparationError] = useState<string | null>(null);
 
   const step1Valid =
     UUID_RE.test(patientId) &&
@@ -281,6 +302,15 @@ export function MedicaidAssemblyWizard(): JSX.Element {
   const arrangementPreview = preview?.rbArrangements.find(
     (candidate) => candidate.id === rbArrangementId,
   );
+  const singleDayHomeChc =
+    serviceFrom === serviceTo &&
+    preview?.pricing.segments.some(
+      (segment) =>
+        segment.serviceCategory === "CHC" &&
+        segment.serviceLocationKind === "home" &&
+        segment.serviceFrom === serviceFrom &&
+        segment.serviceTo === serviceTo,
+    ) === true;
   const step2Valid =
     previewLoadState === "loaded" &&
     kindPreview?.payerPolicy === "permitted" &&
@@ -331,8 +361,47 @@ export function MedicaidAssemblyWizard(): JSX.Element {
     setPreviewLoadState("idle");
     setRbArrangementId("");
     setError(null);
+    setChcPreparation(null);
+    setChcPreparationError(null);
     setStep(0);
   }, []);
+
+  const prepareLocalChcPricing = useCallback(async () => {
+    if (chcPreparationBusy || !singleDayHomeChc || !step1Valid) return;
+    setChcPreparationBusy(true);
+    setChcPreparationError(null);
+    setChcPreparation(null);
+    try {
+      const { data, error: requestError } = (await client.POST(
+        "/api/v1/medicaid-chc-pricing-preparations",
+        {
+          body: { patientId, admissionId, providerEntityId, serviceDate: serviceFrom },
+        } as never,
+      )) as { data?: unknown; error?: unknown };
+      if (requestError || !isRecord(data) || !isRecord(data.verification)) {
+        setChcPreparationError(
+          "Local CHC pricing could not be prepared. No claim or financial record was created.",
+        );
+        return;
+      }
+      setChcPreparation(data as unknown as ChcPricingPreparation);
+    } catch {
+      setChcPreparationError(
+        "Local CHC pricing could not be prepared. No claim or financial record was created.",
+      );
+    } finally {
+      setChcPreparationBusy(false);
+    }
+  }, [
+    admissionId,
+    chcPreparationBusy,
+    client,
+    patientId,
+    providerEntityId,
+    serviceFrom,
+    singleDayHomeChc,
+    step1Valid,
+  ]);
 
   const goNext = useCallback(async () => {
     if (step === 0) {
@@ -893,6 +962,89 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                     readiness.
                   </p>
                 </section>
+                {singleDayHomeChc ? (
+                  <section aria-label="Local CHC pricing preparation" style={pricingPanelStyle}>
+                    <strong>Continuous Home Care · local pricing preparation</strong>
+                    <p style={mutedStyle}>
+                      Prepare one service day from signed clinical intervals and current verified
+                      pricing evidence. This creates a local preparation, not a claim; institutional
+                      units and electronic submission remain unqualified.
+                    </p>
+                    <Button
+                      tone="secondary"
+                      onClick={() => void prepareLocalChcPricing()}
+                      disabled={chcPreparationBusy || !step1Valid}
+                      loading={chcPreparationBusy}
+                    >
+                      {chcPreparationBusy ? "Checking evidence…" : "Prepare local CHC pricing"}
+                    </Button>
+                    {chcPreparationError ? (
+                      <p role="alert" aria-live="assertive" style={alertStyle}>
+                        {chcPreparationError}
+                      </p>
+                    ) : null}
+                    {chcPreparation ? (
+                      chcPreparation.verification.status === "current" ? (
+                        <div aria-live="polite" style={pricingSegmentStyle}>
+                          <Field
+                            label="Local preparation"
+                            value={`Current · version ${chcPreparation.version} · ${chcPreparation.serviceDate}`}
+                          />
+                          <Field
+                            label="Observed clinical minutes"
+                            value={chcPreparation.observedMinutes ?? "Unavailable"}
+                          />
+                          <Field
+                            label="Qualified clinical minutes"
+                            value={chcPreparation.qualifiedMinutes ?? "Unavailable"}
+                          />
+                          <Field
+                            label="Reimbursement quantity"
+                            value={
+                              chcPreparation.reimbursementHours === null
+                                ? "Unavailable"
+                                : `${chcPreparation.reimbursementHours} local hourly units; not institutional units`
+                            }
+                          />
+                          <Field
+                            label="Hourly reimbursement rate"
+                            value={
+                              chcPreparation.rateCentsPerHour === null
+                                ? "Unavailable"
+                                : `$${(chcPreparation.rateCentsPerHour / 100).toFixed(2)} per hour`
+                            }
+                          />
+                          <Field
+                            label="Estimated reimbursement"
+                            value={
+                              chcPreparation.estimatedReimbursementCents === null
+                                ? "Unavailable"
+                                : `$${(chcPreparation.estimatedReimbursementCents / 100).toFixed(2)} · estimate only`
+                            }
+                          />
+                          <Field
+                            label="Independently sourced billed charges"
+                            value={
+                              chcPreparation.billedChargeCents === null
+                                ? "Unavailable"
+                                : `$${(chcPreparation.billedChargeCents / 100).toFixed(2)} · separate from reimbursement`
+                            }
+                          />
+                          <Field
+                            label="Institutional qualification"
+                            value="Unqualified · this local preparation cannot enter READY or submission"
+                          />
+                        </div>
+                      ) : (
+                        <output aria-live="polite" style={{ ...mutedStyle, display: "block" }}>
+                          Pricing evidence requires review (
+                          {humanize(chcPreparation.verification.reasonCode)}). Stored amounts are
+                          withheld until current evidence is verified.
+                        </output>
+                      )
+                    ) : null}
+                  </section>
+                ) : null}
                 <Field
                   label="Electronic submission"
                   value="Unavailable · this workflow is for local draft preparation only"

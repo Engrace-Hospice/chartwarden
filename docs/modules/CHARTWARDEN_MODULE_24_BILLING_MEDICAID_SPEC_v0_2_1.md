@@ -123,9 +123,9 @@ version progression and rejects correction branches. Evidence is resolved at the
 overlapping heads hold, and adjacent evidence rows require segmentation that the current RHC snapshot
 format does not represent. A synthetic signed encounter now flows through M8's database reader into M24
 line linkage only when organization, provider, patient, admission, signature state and service segment
-match. M8 interval facts can also be normalized into observed CHC clinical minutes by local service day,
-but M24 does not yet qualify CHC eligibility, pricing, institutional units or persisted CHC drafts. The
-RHC daily local-draft path remains the only supported priced assembly. See the
+match. M8 interval facts can also be normalized into observed CHC clinical minutes by local service day;
+this observation alone does not qualify CHC eligibility, pricing, institutional units or persisted CHC
+drafts. At that point, the RHC daily local-draft path remained the only supported priced assembly. See the
 [L8A.2C qualification report](../audits/billing-e2e/M24_1075_L8A2C_ADVANCED_CLINICAL_PRICING_QUALIFICATION_20261125.md).
 
 ### As-built L8A.2C1 — generalized daily RHC snapshots and facility residence (2026-11-25)
@@ -149,6 +149,31 @@ CHC, IRC, GIP, election-history pricing and in-home respite remain blocked. The 
 `medicaid_hospice_institutional_format_qualified` rule continues to fail for local-draft coding, so the
 draft is not READY or sendable. See the
 [L8A.2C1 qualification report](../audits/billing-e2e/M24_1075_L8A2C1_GENERALIZED_DAILY_PRICING_QUALIFICATION_20261125.md).
+
+### As-built L8A.2C2 — local home-CHC hourly pricing preparation (2026-11-25)
+
+M24 now has a narrowly supported, append-only home-CHC pricing preparation, separate from `medicaid_claim`
+and `medicaid_claim_line`. `POST /api/v1/medicaid-chc-pricing-preparations` resolves current M5/M6/M8/M40
+and M24 evidence on the server, uses the shared CHC observation and qualification functions plus the
+existing `assessHospicePricing()` engine, and persists a versioned local-only snapshot in
+`medicaid_chc_pricing_preparation`. `GET /api/v1/medicaid-chc-pricing-preparations/:id` returns a scoped,
+source-grounded projection and withholds financial details when current evidence is stale or unresolved.
+The snapshot records observed and qualified minutes, signed encounter source identities/versions, CHC LOC
+and eligibility-method evidence, payer/rate and billing-evidence lineage, locality/quality facts, exact
+hourly calculation, independently sourced billed charges and a fingerprint. The record is append-only,
+explicitly nonposting, and has `institutionalUnits: unqualified` and
+`institutionalFormatQualified: false`. It is not a claim line, cannot become READY, and is not an 837I
+coding qualification.
+
+The supported synthetic fixture is one home CHC service day with verified M6 symptom-crisis LOC, signed
+RN actual-time M8 intervals, an explicit synthetic managed-care hourly method, qualified rate and charge
+evidence, and an authoritative service-location time zone. Observed intervals are clipped to the real
+local-day boundaries (including 23/25-hour DST days); overlapping intervals and missing/invalid source
+facts hold. The hourly reimbursement estimate remains separate from provider billed charges. No Oregon
+FFS or EOCCO methodology, tariff, clinical threshold or institutional unit is inferred from this local
+fixture. Unsupported fractional local persistence and all other advanced hospice categories remain held.
+Manual and background paths call the same current-source verifier and do not rewrite a stale snapshot.
+See the [L8A.2C2 qualification report](../audits/billing-e2e/M24_1075_L8A2C2_CHC_HOURLY_PRICING_QUALIFICATION_20261125.md).
 
 ## 1. Purpose & Scope
 
