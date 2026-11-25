@@ -38,6 +38,11 @@
   background: color-mix(in srgb, var(--color-error) 8%, var(--color-surface-lowest));
 }
 
+/* The status region stays mounted so its text is announced when it is added; empty, it must not take a grid row. */
+.mer-live:empty {
+  position: absolute;
+}
+
 .mer-loading {
   display: grid;
   min-height: 12rem;
@@ -105,9 +110,8 @@
 .mer-eyebrow {
   margin: 0;
   color: var(--color-muted);
-  font-size: 0.73rem;
+  font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0.055em;
 }
 .mer-row-meta,
 .mer-row-secondary,

@@ -233,6 +233,20 @@ const REASON_LABELS: Readonly<Record<string, string>> = {
   SOURCE_ACCOUNT_UNVERIFIED: "The source account could not be verified.",
   REASSESSMENT_SOURCE_UNAVAILABLE:
     "The verified source artifact is no longer available for reassessment.",
+  SOURCE_ARTIFACT_UNAVAILABLE:
+    "The staged source could not be read for evaluation. It may be outside your authorized scope, or the evaluation service may be unavailable.",
+  ERA_PARSE_INVALID: "The staged file could not be read as a valid 835 remittance.",
+  ERA_NO_CLAIMS: "The remittance contains no claim-level observations to assess.",
+  MULTI_CLAIM_ATTRIBUTION_CONFLICT:
+    "The claims in this remittance resolve to different source identities, so one review cannot cover them.",
+  ENROLLMENT_NOT_ACTIVE:
+    "The source account does not have verified, active enrollment on the date the remittance was received.",
+  PAYEE_IDENTITY_CONFLICT:
+    "The payee named in the remittance does not match the provider entity's billing identity.",
+  PAYEE_TIN_EVIDENCE_UNAVAILABLE:
+    "The remittance names a payee tax identifier, but no verified evidence holds one to compare it with.",
+  CLAIM_PROVIDER_MISMATCH:
+    "A claim with this control number exists, but it belongs to a different provider entity than the source account.",
 };
 
 export function reasonExplanation(code: string): string {

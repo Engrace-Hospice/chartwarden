@@ -119,23 +119,50 @@ function resultMessage(result: EvaluateResult): {
         ? "The existing nonposting assessment is current."
         : "A nonposting assessment was saved for investigation.",
     };
-  return {
-    kind: result.status,
-    text:
-      result.status === "held"
-        ? reasonExplanation(result.reasonCode)
-        : `The evaluator is unavailable: ${reasonExplanation(result.reasonCode)}`,
-  };
+  // `unavailable` is the evaluator's answer for an artifact it cannot read or that is outside the caller's scope.
+  return { kind: result.status, text: reasonExplanation(result.reasonCode) };
 }
 
-function displayError(status: number | undefined, fallback: string): string {
+type ConflictKind = "stale" | "state-rule" | "other";
+
+// Every ConflictError carries the code CONFLICT, so the server's sentence is the only way to tell a stale version
+// (`transition`/`addNote`: "reload the review…", "the review changed during…") from the state rule ("reopen the
+// investigation before changing its disposition"). The text is matched, never shown.
+function conflictKind(error: unknown): ConflictKind {
+  const message = (error as { error?: { message?: unknown } } | null | undefined)?.error?.message;
+  if (typeof message !== "string") return "other";
+  if (/reopen the investigation/i.test(message)) return "state-rule";
+  if (/reload the review|review changed during/i.test(message)) return "stale";
+  return "other";
+}
+
+const CONFLICT_COPY: Readonly<Record<ConflictKind, string>> = {
+  stale:
+    "This review changed while you were working. The current state is shown; check it and try again.",
+  "state-rule": "A completed review must be reopened before its status can change.",
+  other:
+    "This action could not be applied to the review's current state. Check the review and try again.",
+};
+
+function displayError(status: number | undefined, fallback: string, error?: unknown): string {
   if (status === 401) return "Your session expired. Sign in again to continue.";
   if (status === 403) return "You do not have permission to view or change this review.";
   if (status === 404) return "This review is no longer available in your authorized scope.";
-  if (status === 409)
-    return "This review changed while you were working. Reload it and review the current state.";
+  if (status === 409) return CONFLICT_COPY[conflictKind(error)];
   if (status === 503) return "The review service is temporarily unavailable. Try again shortly.";
   return fallback;
+}
+
+/**
+ * The transitions `transition` accepts from a state. The server refuses every change but a reopen on a completed
+ * review (409) and a reopen only means something on one, so a completed review offers only that.
+ */
+function availableDispositions(workflowState: string): typeof DISPOSITION_ACTIONS {
+  return DISPOSITION_ACTIONS.filter((action) =>
+    workflowState === "reviewed_not_posted"
+      ? action.state === "reopened"
+      : action.state !== "reopened" && action.state !== workflowState,
+  );
 }
 
 function Header({
@@ -313,7 +340,7 @@ function ReviewListScreen({ scopeKey }: { scopeKey: string }): JSX.Element {
                 className="mer-review-row"
                 to={`/remittance/medicaid-era-reviews/${item.id}`}
                 state={{ from: `${location.pathname}${location.search}` }}
-                aria-label={`Open ${decisionLabel(item.decisionStatus)} review, ${workflowLabel(item.workflowState)}`}
+                aria-label={`Open ${decisionLabel(item.decisionStatus)} review, ${workflowLabel(item.workflowState)}, created ${formatObservedAt(item.createdAt)}`}
               >
                 <span className="mer-row-main">
                   <span className="mer-row-kicker">
@@ -366,19 +393,13 @@ function ReviewListScreen({ scopeKey }: { scopeKey: string }): JSX.Element {
                     <b>Claim match</b>
                     {item.assessmentTrustStatus === "legacy_unverified"
                       ? "Not verified"
-                      : item.claimMatchStatus}
+                      : humanizeStatus(item.claimMatchStatus)}
                   </span>
                   <span>
                     <b>Duplicate</b>
                     {item.assessmentTrustStatus === "legacy_unverified"
                       ? "Not verified"
-                      : item.duplicateStatus === "none"
-                        ? "None identified"
-                        : item.duplicateStatus === "possible"
-                          ? "Possible duplicate"
-                          : item.duplicateStatus === "exact"
-                            ? "Exact duplicate"
-                            : "Unverified"}
+                      : duplicateLabel(item.duplicateStatus)}
                   </span>
                 </span>
                 <span className="mer-row-arrow" aria-hidden="true">
@@ -419,7 +440,10 @@ function ReviewDetailScreen({ reviewId }: { reviewId: string }): JSX.Element {
   const canReadClaim = session?.permissions?.includes("medicaid.claim.read") ?? false;
   const [detail, setDetail] = useState<ReviewDetail | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  // `loading` is the first read only. Later reads set `refreshing` and keep the workspace mounted, so the focused
+  // control is not destroyed and the status region below exists before its text changes.
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -429,6 +453,10 @@ function ReviewDetailScreen({ reviewId }: { reviewId: string }): JSX.Element {
   } | null>(null);
   const [reason, setReason] = useState("");
   const sequence = useRef(0);
+  const hasContent = useRef(false);
+  const focusActionsAfterRefresh = useRef(false);
+  const actionsHeading = useRef<HTMLHeadingElement>(null);
+  const actionsLocked = busy !== null || refreshing;
   const from = (location.state as { from?: unknown } | null)?.from;
   const returnTo =
     typeof from === "string" && from.startsWith("/remittance/medicaid-era-reviews")
@@ -437,14 +465,17 @@ function ReviewDetailScreen({ reviewId }: { reviewId: string }): JSX.Element {
 
   const reload = useCallback(async () => {
     const request = ++sequence.current;
-    setLoading(true);
+    if (hasContent.current) setRefreshing(true);
+    else setLoading(true);
     setDetailError(null);
     setHistoryError(null);
     if (!canRead) {
+      hasContent.current = false;
       setDetail(null);
       setHistory([]);
       setDetailError("Remittance read permission is required to view this investigation.");
       setLoading(false);
+      setRefreshing(false);
       return;
     }
     try {
@@ -463,12 +494,18 @@ function ReviewDetailScreen({ reviewId }: { reviewId: string }): JSX.Element {
           setDetailError(
             displayError(detailResponse.response?.status, "Review detail is unavailable."),
           );
-        else setDetail(detailResponse.data);
+        else {
+          hasContent.current = true;
+          setDetail(detailResponse.data);
+        }
         if (historyResponse.error || !historyResponse.data)
           setHistoryError(
             displayError(historyResponse.response?.status, "Investigation history is unavailable."),
           );
-        else setHistory(historyResponse.data.items);
+        else {
+          hasContent.current = true;
+          setHistory(historyResponse.data.items);
+        }
       } else {
         setDetail(null);
         const historyResponse = await historyRequest;
@@ -477,7 +514,10 @@ function ReviewDetailScreen({ reviewId }: { reviewId: string }): JSX.Element {
           setHistoryError(
             displayError(historyResponse.response?.status, "Investigation history is unavailable."),
           );
-        else setHistory(historyResponse.data.items);
+        else {
+          hasContent.current = true;
+          setHistory(historyResponse.data.items);
+        }
         setDetailError(
           "Financial review permission is required to view assessment details. Authorized investigation history is shown below.",
         );
@@ -488,11 +528,15 @@ function ReviewDetailScreen({ reviewId }: { reviewId: string }): JSX.Element {
           "Review details could not reach the service. Check your connection and retry.",
         );
     } finally {
-      if (request === sequence.current) setLoading(false);
+      if (request === sequence.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [canFinancialReview, canRead, client, reviewId]);
 
   useEffect(() => {
+    hasContent.current = false;
     setDetail(null);
     setHistory([]);
     setMessage(null);
@@ -502,9 +546,24 @@ function ReviewDetailScreen({ reviewId }: { reviewId: string }): JSX.Element {
     };
   }, [reload]);
 
+  // A status change removes the very button that was pressed (its own state is no longer offered); once the refresh has
+  // rendered, keep keyboard focus in the section instead of dropping it to the page.
+  useEffect(() => {
+    if (refreshing || !focusActionsAfterRefresh.current) return;
+    focusActionsAfterRefresh.current = false;
+    const active = document.activeElement;
+    if (!active || active === document.body) actionsHeading.current?.focus();
+  }, [refreshing]);
+
   const refreshAfterMutation = async (successText: string) => {
     await reload();
     setMessage({ kind: "success", text: successText });
+  };
+
+  // A stale version means the screen is behind the server, so read it again. The state rule is not stale: the
+  // screen is current and the next read would say the same.
+  const refreshAfterRefusal = async (status: number | undefined, error: unknown) => {
+    if (status === 409 && conflictKind(error) !== "state-rule") await reload();
   };
 
   const saveNote = async () => {
@@ -523,9 +582,13 @@ function ReviewDetailScreen({ reviewId }: { reviewId: string }): JSX.Element {
       if (response.error || !response.data) {
         setMessage({
           kind: "error",
-          text: displayError(response.response?.status, "The investigation reason was not saved."),
+          text: displayError(
+            response.response?.status,
+            "The investigation reason was not saved.",
+            response.error,
+          ),
         });
-        if (response.response?.status === 409) await reload();
+        await refreshAfterRefusal(response.response?.status, response.error);
         return;
       }
       await refreshAfterMutation(
@@ -572,11 +635,13 @@ function ReviewDetailScreen({ reviewId }: { reviewId: string }): JSX.Element {
           text: displayError(
             response.response?.status,
             "The investigation status was not changed.",
+            response.error,
           ),
         });
-        if (response.response?.status === 409) await reload();
+        await refreshAfterRefusal(response.response?.status, response.error);
         return;
       }
+      focusActionsAfterRefresh.current = true;
       await refreshAfterMutation(
         `${action.label} recorded. This does not post financial activity.`,
       );
@@ -605,9 +670,13 @@ function ReviewDetailScreen({ reviewId }: { reviewId: string }): JSX.Element {
       if (response.error || !response.data) {
         setMessage({
           kind: "error",
-          text: displayError(response.response?.status, "Reassessment could not be completed."),
+          text: displayError(
+            response.response?.status,
+            "Reassessment could not be completed.",
+            response.error,
+          ),
         });
-        if (response.response?.status === 409) await reload();
+        await refreshAfterRefusal(response.response?.status, response.error);
         return;
       }
       const outcome = resultMessage(response.data);
@@ -676,15 +745,19 @@ function ReviewDetailScreen({ reviewId }: { reviewId: string }): JSX.Element {
     );
   } else {
     content = (
-      <div className="mer-detail-layout">
+      <div className="mer-detail-layout" aria-busy={refreshing}>
         {detailError ? <output className="mer-banner mer-banner-info">{detailError}</output> : null}
         {message?.kind === "error" ? (
           <div className={`mer-banner mer-banner-${message.kind}`} role="alert">
             {message.text}
           </div>
-        ) : message ? (
-          <output className={`mer-banner mer-banner-${message.kind}`}>{message.text}</output>
         ) : null}
+        {/* Always rendered: a live region announces text added to it, not one that mounts already filled. */}
+        <output className="mer-live">
+          {message && message.kind !== "error" ? (
+            <span className={`mer-banner mer-banner-${message.kind}`}>{message.text}</span>
+          ) : null}
+        </output>
         {detail ? (
           <>
             <section className="mer-detail-heading" aria-labelledby="mer-detail-title">
@@ -806,7 +879,7 @@ function ReviewDetailScreen({ reviewId }: { reviewId: string }): JSX.Element {
                     size="sm"
                     tone="secondary"
                     onClick={() => void reassess()}
-                    disabled={busy !== null}
+                    disabled={actionsLocked}
                   >
                     <Glyph name="rotate-ccw" size={14} />
                     {busy === "reassess" ? "Re-evaluating…" : "Re-evaluate evidence"}
@@ -946,59 +1019,78 @@ function ReviewDetailScreen({ reviewId }: { reviewId: string }): JSX.Element {
                 <div className="mer-section-heading">
                   <div>
                     <p className="mer-eyebrow">Investigation</p>
-                    <h3 id="mer-actions-title">Record a nonposting action</h3>
+                    <h3 id="mer-actions-title" ref={actionsHeading} tabIndex={-1}>
+                      Record a nonposting action
+                    </h3>
                   </div>
                 </div>
-                <div className="mer-action-form">
-                  <label htmlFor="mer-reason">
-                    Investigation reason <span className="mer-required">(required)</span>
-                  </label>
-                  <select
-                    id="mer-reason"
-                    aria-required="true"
-                    value={reason}
-                    onChange={(event) => setReason(event.target.value)}
-                    disabled={busy !== null}
-                  >
-                    <option value="">Select a reason</option>
-                    {NOTE_REASONS.map(([code, label]) => (
-                      <option key={code} value={code}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                  <Button
-                    size="sm"
-                    tone="secondary"
-                    disabled={!reason || busy !== null}
-                    onClick={() => void saveNote()}
-                  >
-                    {busy === "note" ? "Saving reason…" : "Record investigation reason"}
-                  </Button>
-                  <p className="mer-muted">
-                    This records a controlled reason in the audit history. It does not support
-                    free-text clinical or financial notes.
-                  </p>
-                </div>
-                <div className="mer-disposition-actions" aria-label="Investigation status actions">
-                  {DISPOSITION_ACTIONS.filter(
-                    (action) => action.state !== detail.workflowState,
-                  ).map((action) => (
-                    <Button
-                      key={action.state}
-                      size="sm"
-                      tone={action.state === "reviewed_not_posted" ? "primary" : "secondary"}
-                      disabled={busy !== null}
-                      onClick={() => void changeDisposition(action)}
+                {detail.assessmentTrustStatus === "legacy_unverified" ? (
+                  <>
+                    <p className="mer-muted">
+                      This review predates evaluator attestation, so reasons and status changes are
+                      not available for it. Evaluate its staged source again first.
+                    </p>
+                    {canReassess ? (
+                      <Link className="mer-button-link" to="/remittance/claimmd-era-review">
+                        Open Claim.MD ERA review
+                      </Link>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <div className="mer-action-form">
+                      <label htmlFor="mer-reason">
+                        Investigation reason <span className="mer-required">(required)</span>
+                      </label>
+                      <select
+                        id="mer-reason"
+                        aria-required="true"
+                        value={reason}
+                        onChange={(event) => setReason(event.target.value)}
+                        disabled={actionsLocked}
+                      >
+                        <option value="">Select a reason</option>
+                        {NOTE_REASONS.map(([code, label]) => (
+                          <option key={code} value={code}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        size="sm"
+                        tone="secondary"
+                        disabled={!reason || actionsLocked}
+                        onClick={() => void saveNote()}
+                      >
+                        {busy === "note" ? "Saving reason…" : "Record investigation reason"}
+                      </Button>
+                      <p className="mer-muted">
+                        This records a controlled reason in the audit history. It does not support
+                        free-text clinical or financial notes.
+                      </p>
+                    </div>
+                    <div
+                      className="mer-disposition-actions"
+                      aria-label="Investigation status actions"
                     >
-                      {busy === action.state ? "Saving…" : action.label}
-                    </Button>
-                  ))}
-                </div>
-                <p className="mer-muted">
-                  Status changes are version-checked. “Reviewed — not posted” closes only this
-                  investigation record; it never posts payment or changes claim status.
-                </p>
+                      {availableDispositions(detail.workflowState).map((action) => (
+                        <Button
+                          key={action.state}
+                          size="sm"
+                          tone={action.state === "reviewed_not_posted" ? "primary" : "secondary"}
+                          disabled={actionsLocked}
+                          onClick={() => void changeDisposition(action)}
+                        >
+                          {busy === action.state ? "Saving…" : action.label}
+                        </Button>
+                      ))}
+                    </div>
+                    <p className="mer-muted">
+                      Status changes are version-checked. “Reviewed — not posted” closes only this
+                      investigation record; it never posts payment or changes claim status.
+                    </p>
+                  </>
+                )}
               </section>
             ) : null}
           </>
@@ -1014,7 +1106,12 @@ function ReviewDetailScreen({ reviewId }: { reviewId: string }): JSX.Element {
           {historyError ? (
             <div className="mer-inline-error" role="alert">
               {historyError}
-              <Button size="sm" tone="secondary" onClick={() => void reload()}>
+              <Button
+                size="sm"
+                tone="secondary"
+                disabled={actionsLocked}
+                onClick={() => void reload()}
+              >
                 Retry history
               </Button>
             </div>
@@ -1196,20 +1293,27 @@ function HistoryEvent({ event }: { event: HistoryItem }): JSX.Element {
 }
 
 function humanizeStatus(value: string): string {
-  return value
-    .replace(/_/g, " ")
-    .toLowerCase()
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  const words = value.replace(/_/g, " ").toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 function duplicateLabel(value: string): string {
   if (value === "none") return "None identified";
   if (value === "possible") return "Possible duplicate";
   if (value === "exact") return "Exact duplicate";
+  if (value === "conflict") return "Source identity conflict hold";
   return "Unverified";
 }
 
+// Reasons the evaluator itself records on a history event; they are not note or disposition reasons.
+const EVALUATOR_REASON_LABELS: Readonly<Record<string, string>> = {
+  NONPOSTING_ASSESSMENT: "Assessed",
+  CURRENT_SOURCE_FACTS_REASSESSED: "Reassessed against current source facts",
+};
+
 function reasonCodeLabel(code: string): string {
+  const evaluator = EVALUATOR_REASON_LABELS[code];
+  if (evaluator) return evaluator;
   const note = NOTE_REASONS.find(([known]) => known === code)?.[1];
   if (note) return note;
   const disposition = DISPOSITION_ACTIONS.find((action) => action.reasonCode === code);

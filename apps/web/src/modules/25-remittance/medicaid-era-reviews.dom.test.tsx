@@ -1,9 +1,9 @@
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
-import { parseMedicaidEraSummary } from "./medicaid-era-presentation";
+import { parseMedicaidEraSummary, reasonExplanation } from "./medicaid-era-presentation";
 import { MedicaidEraReviews } from "./medicaid-era-reviews";
 
 const REVIEW = "30000000-0000-4000-8000-000000000003";
@@ -101,6 +101,12 @@ let detailResponse: ReturnType<typeof detail> | Record<string, unknown> = detail
 let historyResponse: { items: ReturnType<typeof historyItem>[] } = { items: [historyItem()] };
 let noteStatus = 200;
 let dispositionStatus = 200;
+// The server's ConflictError sentences: a stale version versus the completed-review state rule.
+const STALE_CONFLICT = "reload the review before updating it";
+const STATE_RULE_CONFLICT = "reopen the investigation before changing its disposition";
+let conflictMessage = STALE_CONFLICT;
+let onDispositionSaved: (() => void) | null = null;
+let detailGate: Promise<void> | null = null;
 let reassessResponse: unknown = {
   status: "review_saved",
   reviewId: REVIEW,
@@ -131,22 +137,33 @@ async function fetchStub(input: RequestInfo | URL, init?: RequestInit): Promise<
     return json(200, { items: worklistRows, nextCursor: null });
   if (url.pathname === `/api/v1/remittance/medicaid-era-reviews/${REVIEW}/history`)
     return json(200, historyResponse);
-  if (url.pathname === `/api/v1/remittance/medicaid-era-reviews/${REVIEW}`)
+  if (url.pathname === `/api/v1/remittance/medicaid-era-reviews/${REVIEW}`) {
+    if (detailGate) await detailGate;
     return json(200, detailResponse);
+  }
   if (
     url.pathname === `/api/v1/remittance/medicaid-era-reviews/${REVIEW}/notes` &&
     request.method === "POST"
   )
     return noteStatus === 409
-      ? json(409, { error: { code: "CONFLICT", message: "reload" } })
+      ? json(409, {
+          error: { code: "CONFLICT", message: "reload the review before adding a note" },
+        })
       : json(200, { id: REVIEW, version: 5, workflowState: "investigating", replay: false });
   if (
     url.pathname === `/api/v1/remittance/medicaid-era-reviews/${REVIEW}/disposition` &&
     request.method === "POST"
-  )
-    return dispositionStatus === 409
-      ? json(409, { error: { code: "CONFLICT", message: "reload" } })
-      : json(200, { id: REVIEW, version: 5, workflowState: "reviewed_not_posted", replay: false });
+  ) {
+    if (dispositionStatus === 409)
+      return json(409, { error: { code: "CONFLICT", message: conflictMessage } });
+    onDispositionSaved?.();
+    return json(200, {
+      id: REVIEW,
+      version: 5,
+      workflowState: "reviewed_not_posted",
+      replay: false,
+    });
+  }
   if (
     url.pathname === `/api/v1/remittance/medicaid-era-reviews/${REVIEW}/reassess` &&
     request.method === "POST"
@@ -196,6 +213,9 @@ afterEach(() => {
   historyResponse = { items: [historyItem()] };
   noteStatus = 200;
   dispositionStatus = 200;
+  conflictMessage = STALE_CONFLICT;
+  onDispositionSaved = null;
+  detailGate = null;
   reassessResponse = { status: "review_saved", reviewId: REVIEW, version: 5, replay: true };
   vi.restoreAllMocks();
 });
@@ -304,6 +324,24 @@ describe("Medicaid ERA operator worklist and investigation", () => {
     expect(screen.getByText(/original details have not been independently verified/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Re-evaluate evidence" })).toBeNull();
     expect(screen.queryByText("$500.00")).toBeNull();
+    // The evaluator's idempotency insert is refused for a legacy row, so no write action may be offered.
+    expect(screen.getByText(/predates evaluator attestation/)).toBeTruthy();
+    expect(screen.queryByLabelText(/Investigation reason/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Record investigation reason" })).toBeNull();
+    for (const name of [
+      "Start investigation",
+      "Request follow-up",
+      "Complete review — no posting",
+      "Reopen investigation",
+    ])
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    expect(screen.getByRole("link", { name: "Open Claim.MD ERA review" })).toBeTruthy();
+  });
+
+  it("offers the investigation actions for a trusted review", async () => {
+    mount(`/remittance/medicaid-era-reviews/${REVIEW}`);
+    expect(await screen.findByLabelText(/Investigation reason/)).toBeTruthy();
+    expect(screen.queryByText(/predates evaluator attestation/)).toBeNull();
   });
 
   it("allows read-only staff to see history without requesting restricted assessment detail", async () => {
@@ -357,6 +395,174 @@ describe("Medicaid ERA operator worklist and investigation", () => {
     expect(calls.filter((call) => call.path.endsWith(`/${REVIEW}`))).toHaveLength(2);
   });
 
+  it("offers only the transitions the server accepts from each state", async () => {
+    const offered = async (workflowState: string) => {
+      detailResponse = detail({ workflowState });
+      mount(`/remittance/medicaid-era-reviews/${REVIEW}`);
+      await screen.findByRole("heading", { name: "What needs attention" });
+      const group = screen.getByLabelText("Investigation status actions");
+      const names = within(group)
+        .getAllByRole("button")
+        .map((button) => button.textContent);
+      cleanup();
+      return names;
+    };
+    expect(await offered("needs_review")).toEqual([
+      "Start investigation",
+      "Request follow-up",
+      "Complete review — no posting",
+    ]);
+    expect(await offered("investigating")).toEqual([
+      "Request follow-up",
+      "Complete review — no posting",
+    ]);
+    expect(await offered("reopened")).toEqual([
+      "Start investigation",
+      "Request follow-up",
+      "Complete review — no posting",
+    ]);
+    // A completed review is refused every change but a reopen (409 "reopen the investigation first").
+    expect(await offered("reviewed_not_posted")).toEqual(["Reopen investigation"]);
+  });
+
+  it("states the state rule, and does not read the review again, when the server refuses a transition", async () => {
+    dispositionStatus = 409;
+    conflictMessage = STATE_RULE_CONFLICT;
+    mount(`/remittance/medicaid-era-reviews/${REVIEW}`);
+    await screen.findByRole("heading", { name: "What needs attention" });
+    fireEvent.click(screen.getByRole("button", { name: "Request follow-up" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("must be reopened");
+    expect(alert.textContent).not.toContain("changed while you were working");
+    expect(calls.filter((call) => call.path.endsWith(`/${REVIEW}`))).toHaveLength(1);
+  });
+
+  it("keeps the stale-version wording for a stale version and a neutral one for any other conflict", async () => {
+    dispositionStatus = 409;
+    mount(`/remittance/medicaid-era-reviews/${REVIEW}`);
+    await screen.findByRole("heading", { name: "What needs attention" });
+    fireEvent.click(screen.getByRole("button", { name: "Request follow-up" }));
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "changed while you were working",
+    );
+
+    conflictMessage = "this idempotency key was used for another review action";
+    fireEvent.click(screen.getByRole("button", { name: "Request follow-up" }));
+    await waitFor(() => {
+      const text = screen.getByRole("alert").textContent ?? "";
+      expect(text).toContain("could not be applied to the review's current state");
+      expect(text).not.toContain("changed while you were working");
+    });
+  });
+
+  it("keeps the workspace mounted and announces success through a region that already exists", async () => {
+    mount(`/remittance/medicaid-era-reviews/${REVIEW}`);
+    await screen.findByRole("heading", { name: "What needs attention" });
+    const select = screen.getByLabelText(/Investigation reason/);
+    const region = document.querySelector(".mer-live");
+    expect(region).toBeTruthy();
+    expect(region?.textContent).toBe("");
+    fireEvent.change(select, { target: { value: "MATCH_EVIDENCE_REVIEWED" } });
+    const record = screen.getByRole("button", { name: "Record investigation reason" });
+    record.focus();
+
+    let release: () => void = () => undefined;
+    detailGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fireEvent.click(record);
+    await waitFor(() =>
+      expect(calls.filter((call) => call.path.endsWith(`/${REVIEW}`)).length).toBeGreaterThan(1),
+    );
+    // Mid-refresh: no spinner replaced the workspace, the same controls are mounted, and they are disabled.
+    expect(screen.queryByLabelText("Loading review and investigation history…")).toBeNull();
+    expect(screen.getByLabelText(/Investigation reason/)).toBe(select);
+    expect((select as HTMLSelectElement).disabled).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "Request follow-up" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(region?.textContent).toBe("");
+
+    release();
+    await screen.findByText(/Investigation reason recorded/);
+    expect(document.querySelector(".mer-live")).toBe(region);
+    expect(region?.textContent).toContain("Investigation reason recorded");
+    expect((select as HTMLSelectElement).disabled).toBe(false);
+  });
+
+  it("keeps keyboard focus in the actions section when a status change removes the pressed button", async () => {
+    mount(`/remittance/medicaid-era-reviews/${REVIEW}`);
+    await screen.findByRole("heading", { name: "What needs attention" });
+    onDispositionSaved = () => {
+      detailResponse = detail({ workflowState: "follow_up_required", version: 5 });
+    };
+    const pressed = screen.getByRole("button", { name: "Request follow-up" });
+    pressed.focus();
+    fireEvent.click(pressed);
+    await screen.findByText(/Request follow-up recorded/);
+    expect(screen.queryByRole("button", { name: "Request follow-up" })).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole("heading", { name: "Record a nonposting action" }),
+    );
+  });
+
+  it("gives worklist rows with the same decision and state distinct link names", async () => {
+    worklistRows = [
+      { ...row, id: "30000000-0000-4000-8000-000000000031", createdAt: "2026-11-20T09:00:00.000Z" },
+      { ...row, id: "30000000-0000-4000-8000-000000000032", createdAt: "2026-11-22T15:45:00.000Z" },
+    ];
+    mount();
+    const links = await screen.findAllByRole("link", { name: /Open Review required review/ });
+    const names = links.map((link) => link.getAttribute("aria-label"));
+    expect(names).toHaveLength(2);
+    expect(new Set(names).size).toBe(2);
+    expect(JSON.stringify(names)).not.toContain("30000000-0000-4000-8000-000000000031");
+  });
+
+  it("labels a source identity conflict hold and humanizes the claim match in the worklist", async () => {
+    worklistRows = [
+      { ...row, duplicateStatus: "conflict", claimMatchStatus: "SOURCE_ACCOUNT_MISMATCH" },
+    ];
+    mount();
+    const link = await screen.findByRole("link", { name: /Open Review required review/ });
+    expect(link.textContent).toContain("Source identity conflict hold");
+    expect(link.textContent).toContain("Source account mismatch");
+    expect(link.textContent).not.toContain("SOURCE_ACCOUNT_MISMATCH");
+    expect(link.textContent).not.toMatch(/Duplicate\s*Unverified/);
+  });
+
+  it("labels a source identity conflict hold in the detail view", async () => {
+    detailResponse = detail({ duplicateStatus: "conflict" });
+    mount(`/remittance/medicaid-era-reviews/${REVIEW}`);
+    expect(await screen.findByText("Source identity conflict hold")).toBeTruthy();
+  });
+
+  it("labels the evaluator's own history reasons", async () => {
+    historyResponse = {
+      items: [
+        historyItem({ version: 1, action: "assessed", reasonCode: "NONPOSTING_ASSESSMENT" }),
+        historyItem({
+          version: 2,
+          action: "reassessed",
+          reasonCode: "CURRENT_SOURCE_FACTS_REASSESSED",
+        }),
+      ],
+    };
+    mount(`/remittance/medicaid-era-reviews/${REVIEW}`);
+    expect(await screen.findByText(/· Reassessed against current source facts\./)).toBeTruthy();
+    expect(screen.getByText(/· Assessed\./)).toBeTruthy();
+    expect(screen.queryByText(/Reason details unavailable/)).toBeNull();
+  });
+
+  it("words an unavailable evaluation as an unreadable or out-of-scope source", async () => {
+    reassessResponse = { status: "unavailable", reasonCode: "SOURCE_ARTIFACT_UNAVAILABLE" };
+    mount(`/remittance/medicaid-era-reviews/${REVIEW}`);
+    fireEvent.click(await screen.findByRole("button", { name: "Re-evaluate evidence" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("could not be read for evaluation");
+    expect(alert.textContent).not.toContain("The evaluator is unavailable");
+  });
+
   it("reassesses through the review id without exposing a staged artifact reference", async () => {
     mount(`/remittance/medicaid-era-reviews/${REVIEW}`);
     fireEvent.click(await screen.findByRole("button", { name: "Re-evaluate evidence" }));
@@ -401,6 +607,23 @@ describe("Medicaid ERA operator worklist and investigation", () => {
     ).toBeGreaterThan(0);
     expect(screen.queryByText("Reported provider-level adjustment")).toBeNull();
     expect(screen.queryByText("Reported 835 payment")).toBeNull();
+  });
+});
+
+describe("operator wording for evaluator reason codes", () => {
+  it.each([
+    "SOURCE_ARTIFACT_UNAVAILABLE",
+    "ERA_PARSE_INVALID",
+    "ERA_NO_CLAIMS",
+    "MULTI_CLAIM_ATTRIBUTION_CONFLICT",
+    "ENROLLMENT_NOT_ACTIVE",
+    "PAYEE_IDENTITY_CONFLICT",
+    "PAYEE_TIN_EVIDENCE_UNAVAILABLE",
+    "CLAIM_PROVIDER_MISMATCH",
+  ])("explains %s instead of the generic fallback", (code) => {
+    const text = reasonExplanation(code);
+    expect(text).not.toBe(reasonExplanation("NOT_A_REAL_REASON"));
+    expect(text).not.toContain(code);
   });
 });
 

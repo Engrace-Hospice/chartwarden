@@ -566,7 +566,7 @@ describe("Claim.MD source entry to nonposting Medicaid review", () => {
     [{ status: "held", reasonCode: "SUBMISSION_UNVERIFIED" }, "Submission evidence is incomplete."],
     [
       { status: "unavailable", reasonCode: "SOURCE_ARTIFACT_UNAVAILABLE" },
-      "Additional reason details are unavailable for this assessment.",
+      "The staged source could not be read for evaluation.",
     ],
   ])(
     "shows the evaluator's held or unavailable result without claiming a saved assessment",

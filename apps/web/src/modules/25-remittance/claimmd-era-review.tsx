@@ -16,6 +16,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from "react-router-do
 import { BillingTabs } from "../../shell/billing-tabs";
 import { useSession } from "../../shell/session";
 import { reasonExplanation } from "./medicaid-era-presentation";
+import "./medicaid-era-reviews.css";
 import { formatDay, humanize, money, toneOf } from "./remittance-status";
 
 type ReviewPage =
@@ -241,7 +242,7 @@ export function ClaimMdEraReview(): JSX.Element {
           text:
             result.status === "held"
               ? `The source was held for review: ${reasonExplanation(result.reasonCode)}`
-              : `The evaluator is unavailable: ${reasonExplanation(result.reasonCode)}`,
+              : reasonExplanation(result.reasonCode),
         });
       }
     } catch {
