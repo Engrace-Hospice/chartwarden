@@ -119,8 +119,8 @@ rather than appends.
 single-host and per-tenant installs need separate builds:
 
 - `VITE_TENANT_BASE_DOMAIN=<base>` shows the "find my organization" landing at `app.<base>`.
-- `CSP_STORAGE_ORIGIN=https://storage.<base>` pins the CSP's `img-src` and `frame-src` to that origin in place of any `https:`
-  (presigned previews load from there; `connect-src` stays `'self' wss:`, as nothing fetches storage directly).
+- `CSP_STORAGE_ORIGIN=https://storage.<base>` pins the CSP's `img-src`, `frame-src` and `connect-src` to that origin in place of any `https:`
+  (presigned previews load from there, and the verified upload PUTs the file there straight from the browser).
 
 **Real environment:** run the manual workflow **Release tenant web image** (`.github/workflows/release-tenant-web.yml`, input
 `base_domain`). It builds `chartwarden-web-tenant:sha-<sha>` with both args, scans it (HIGH/CRITICAL fail) and signs it with

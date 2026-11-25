@@ -1567,7 +1567,10 @@ controls:
     soc2: ["CC6.7"]
     status: partial
     evidence:
+      # the SPA CSP's connect-src carries the pinnable ` https:` default (the verified upload PUTs to the
+      # presigned storage URL from the browser); a build with CSP_STORAGE_ORIGIN narrows it to that origin
       - file: deploy/production/web-security-headers.conf
+      - file: scripts/__tests__/web-nginx-headers.test.ts
       - file: apps/backend/src/modules/29-external-interfaces/__tests__/m29-cert-pin-and-destination-policy.test.ts
       # the object-store second copy refuses a plain http:// target
       - file: scripts/__tests__/object-store-copy.test.ts

@@ -652,8 +652,8 @@ Targets: `app.chartwarden.cloud` (web), `api.chartwarden.cloud` (api), `storage.
 Verified by grep: no application code hardcodes these hosts (`apps/` and `packages/` carry them only as test fixtures). Runtime hosts come from
 `BETTER_AUTH_URL`, `TRUSTED_ORIGINS` (also the CORS allow-list, `resolveWebTrustedOrigins`), `STORAGE_PUBLIC_ORIGIN` (also `MINIO_PUBLIC_ENDPOINT`,
 derived in compose), `M34_INVITATION_ACCEPT_URL`, `FHIR_TOKEN_ENDPOINT_URL`, `PASSKEY_RP_ID` / `WEBAUTHN_RP_ID`, and optionally `WEB_APP_URL` (falls back
-to `BETTER_AUTH_URL` when unset: check `grep WEB_APP_URL .env.production`). Session cookies are host-only (no cross-subdomain cookies), the SPA CSP is
-`connect-src 'self'`, and the demo has `TENANT_BASE_DOMAIN` unset (ADR-0088), so ADR-0049 tenant-subdomain parsing is inactive and `app.`/`api.`/`storage.`
+to `BETTER_AUTH_URL` when unset: check `grep WEB_APP_URL .env.production`). Session cookies are host-only (no cross-subdomain cookies), the SPA CSP's
+`connect-src` is `'self' wss: https:` (the storage origin is reached directly by the verified upload), and the demo has `TENANT_BASE_DOMAIN` unset (ADR-0088), so ADR-0049 tenant-subdomain parsing is inactive and `app.`/`api.`/`storage.`
 are not read as tenant slugs. If `TENANT_BASE_DOMAIN` is ever set to `chartwarden.cloud`, those three labels would first have to be reserved.
 
 Only the operator can do:
