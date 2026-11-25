@@ -191510,6 +191510,68 @@
                           },
                           "significantChange": {
                             "type": "boolean"
+                          },
+                          "itemScores": {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "pain",
+                              "tiredness",
+                              "drowsiness",
+                              "nausea",
+                              "lackOfAppetite",
+                              "shortnessOfBreath",
+                              "depression",
+                              "anxiety",
+                              "wellbeing"
+                            ],
+                            "properties": {
+                              "pain": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "tiredness": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "drowsiness": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "nausea": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "lackOfAppetite": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "shortnessOfBreath": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "depression": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "anxiety": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "wellbeing": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              }
+                            }
                           }
                         }
                       }
@@ -193139,7 +193201,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "Receive a raw 835 already staged in MinIO; dedups + emits m25.edi.835_received (§17 system principal, WX-PR-012)",
+        "summary": "Receive a raw 835 already staged in the object store; dedups + emits m25.edi.835_received (§17 system principal, WX-PR-012)",
         "parameters": [],
         "responses": {
           "200": {
@@ -285725,6 +285787,68 @@
                           },
                           "significantChange": {
                             "type": "boolean"
+                          },
+                          "itemScores": {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "pain",
+                              "tiredness",
+                              "drowsiness",
+                              "nausea",
+                              "lackOfAppetite",
+                              "shortnessOfBreath",
+                              "depression",
+                              "anxiety",
+                              "wellbeing"
+                            ],
+                            "properties": {
+                              "pain": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "tiredness": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "drowsiness": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "nausea": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "lackOfAppetite": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "shortnessOfBreath": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "depression": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "anxiety": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              },
+                              "wellbeing": {
+                                "minimum": 0,
+                                "maximum": 10,
+                                "type": "number"
+                              }
+                            }
                           }
                         }
                       }
@@ -419145,80 +419269,6 @@
         }
       }
     },
-    "/api/v1/webhooks/minio/access-log": {
-      "post": {
-        "operationId": "postApiV1WebhooksMinioAccesslog",
-        "tags": [
-          "22-documents"
-        ],
-        "summary": "Legacy alias for the object-store audit receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8)",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "received",
-                    "recorded",
-                    "unattributed",
-                    "duplicates"
-                  ],
-                  "properties": {
-                    "received": {
-                      "type": "integer"
-                    },
-                    "recorded": {
-                      "type": "integer"
-                    },
-                    "unattributed": {
-                      "type": "integer"
-                    },
-                    "duplicates": {
-                      "type": "integer"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "4XX": {
-            "$ref": "#/components/responses/Error"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "object",
-                    "patternProperties": {
-                      "^(.*)$": {}
-                    }
-                  },
-                  {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "patternProperties": {
-                        "^(.*)$": {}
-                      }
-                    }
-                  }
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/webhooks/object-store/access-log": {
       "post": {
         "operationId": "postApiV1WebhooksObjectstoreAccesslog",
@@ -422094,7 +422144,7 @@
                       "required": [
                         "db",
                         "valkey",
-                        "minio",
+                        "objectStore",
                         "outbox"
                       ],
                       "properties": {
@@ -422122,7 +422172,7 @@
                             }
                           ]
                         },
-                        "minio": {
+                        "objectStore": {
                           "anyOf": [
                             {
                               "const": "ok",

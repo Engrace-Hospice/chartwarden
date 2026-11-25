@@ -49,7 +49,7 @@ side with no collisions:
 | Web / console | 3000 (web), 3001 (admin) | **15000** |
 | Postgres | 5432 | **15432** |
 | Redis | 6379 | **15379** |
-| Object storage | 9000–9001 (MinIO) | — |
+| Object storage | 9000–9001 (RustFS, the dev compose store) | — |
 | Ollama | — | **15434** |
 
 Two consequences for the agent harness:

@@ -15,7 +15,7 @@
 > code set); **each owning module subscribes and runs its own code-usage scan within its RLS
 > boundary**, returning affected-record counts via its own reader/outbox — or M38 consults an
 > owner-published `CodeUsageReader` seam. M38 never scans another module's tables. The SECURITY DEFINER
-> `terminology_loader` function is hardened with `SET search_path = pg_catalog, public` (S12).
+> `terminology_loader` function is hardened with `SET search_path = pg_catalog, public, pg_temp` (S12).
 
 ## Changelog
 
@@ -172,7 +172,7 @@ erDiagram
         date released_on
         date effective_from
         date effective_to "nullable; null = current"
-        text source_file_ref "MinIO ref"
+        text source_file_ref "object-store ref"
         text checksum "sha256"
         timestamptz loaded_at
         uuid loaded_by FK
@@ -459,7 +459,7 @@ export const codeSystemVersions = pgTable('code_system_version', {
   releasedOn: date('released_on').notNull(),
   effectiveFrom: date('effective_from').notNull(),
   effectiveTo: date('effective_to'),                     // nullable; null = current
-  sourceFileRef: text('source_file_ref').notNull(),      // MinIO object id
+  sourceFileRef: text('source_file_ref').notNull(),      // object-store object id
   checksum: text('checksum').notNull(),                  // sha256 of source
   status: versionLoadStatus('status').notNull().default('loading'),
   loadedAt: timestamp('loaded_at', { withTimezone: true }).notNull().defaultNow(),
@@ -968,7 +968,7 @@ INSERT INTO value_set (id, name, description, scope) VALUES
 **POST /api/v1/admin/terminology/:system/load** — `terminology.admin.load` *(step-up re-auth)*
 ```typescript
 // Params { system }
-// Body  { version: Type.String(), sourceFileRef: Type.String(),    // MinIO id from upload step
+// Body  { version: Type.String(), sourceFileRef: Type.String(),    // object-store id from upload step
 //         reauthToken: Type.String() }
 // 200 -> { versionId, status: 'loading' }       // enqueues terminology.load_version
 // 401 REAUTH_REQUIRED; 409 VERSION_ALREADY_LOADED (idempotent on (system, version)) — returns existing versionId
@@ -1156,7 +1156,7 @@ M38 is mostly machinery consumed by other modules' UIs (problem list, order entr
 
 **Deprecation remediation** — group-by-deprecated-code view, sorted by affected record count desc. Each group expands to show sample record ids (with deep-link to the chart) and a one-click "view all affected records" filter. Where `mappingKind = 'equivalent'`, an inline "propose bulk update" affordance is shown (Phase 1 hands off to the consuming module's edit flow; Phase 2 may offer staged bulk patch).
 
-**Load a version (admin)** — three-step wizard: (1) upload source file (MinIO upload), system + version selection; (2) staged-diff preview (new codes, retired codes, changed displays, count of affected value sets); (3) step-up re-auth + confirm. After confirm, the job runs; the screen shows live status (`loading → staged → active`); on `active`, the value-set expansion and embedding refresh jobs are dispatched automatically.
+**Load a version (admin)** — three-step wizard: (1) upload source file (object-store upload), system + version selection; (2) staged-diff preview (new codes, retired codes, changed displays, count of affected value sets); (3) step-up re-auth + confirm. After confirm, the job runs; the screen shows live status (`loading → staged → active`); on `active`, the value-set expansion and embedding refresh jobs are dispatched automatically.
 
 ### 5.3 Accessibility (WCAG 2.1 AA)
 

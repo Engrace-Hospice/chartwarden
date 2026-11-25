@@ -2,8 +2,11 @@ import {
   type EncounterDiscipline,
   type EncounterStatus,
   type EncounterType,
+  LATE_ENTRY_REASON_MIN_CHARS,
+  LATE_ENTRY_REASON_TIERS,
   type LateEntryTier,
   type LocalDate,
+  calendarDaysBetween,
   isValidEncounterDisciplinePair,
 } from "@chartwarden/types";
 // apps/backend/src/modules/08-encounters/lifecycle/validation.ts — M8-T04 (§2.7).
@@ -22,8 +25,8 @@ import { EncounterStateError, type M8ErrorCode, require_ } from "./errors";
 
 /** Minimum free-text lengths the §2.5/§2.7 guards enforce. */
 export const TEXT_MINIMUMS = {
-  /** §2.5 late-entry / significant-late-entry reason. */
-  lateEntryReason: 40,
+  /** §2.5 late-entry / significant-late-entry reason (shared with the composer through @chartwarden/types). */
+  lateEntryReason: LATE_ENTRY_REASON_MIN_CHARS,
   /** §2.3 admin void reason. */
   voidReason: 40,
   /** §2.5 significant-late-entry (3–14d) Clinical Supervisor override reason (also a DB CHECK). */
@@ -42,13 +45,6 @@ export const STEP_UP_MAX_AGE_SECONDS = 300;
 /** The disciplines whose primary signature routes the encounter into `cosign_pending` (§2.3). */
 export const COSIGN_REQUIRED_DISCIPLINES: ReadonlyArray<EncounterDiscipline> = ["lpn", "chha"];
 
-/** §2.5 — late-entry tiers that demand a `late_entry_reason` ≥ 40 chars at sign. */
-const LATE_ENTRY_REASON_TIERS: ReadonlyArray<LateEntryTier> = [
-  "late_entry",
-  "significant_late_entry",
-  "administrative_override",
-];
-
 // ── §2.7 async rule catalog (data — surfaced via the named `m8.*` outbox event, never a sync block) ──
 
 /** The §2.7 async rules: the outbox event each raises for a downstream module to act on. */
@@ -64,8 +60,7 @@ export const ASYNC_VALIDATION_EVENTS = {
 
 /** Whole calendar days from `a` to `b` (b - a). Negative when `b` precedes `a`. */
 export function daysBetween(a: LocalDate, b: LocalDate): number {
-  const ms = Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`);
-  return Math.round(ms / 86_400_000);
+  return calendarDaysBetween(a, b);
 }
 
 // ── §2.7 synchronous validators (each raises the catalogued code on failure) ────────────────────────

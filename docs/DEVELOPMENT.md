@@ -76,8 +76,9 @@ wardenx-compose-clamav` for the orphaned old volumes, re-copy `.env.example` to 
 **Local object store: RustFS (was MinIO), and the `chartwarden` Compose project.** The dev stack and CI run
 RustFS (`rustfs/rustfs`, S3 on `:9000`, console on `:9001`, root key `chartwarden` /
 `chartwarden-object-store-dev-secret`). Production runs SeaweedFS (ADR-0050 D6). The backend uses the
-vendor-neutral `OBJECT_STORE_*` contract; `MINIO_*` remains a temporary rollback alias only. If your `.env` still
-sets `MINIO_SECRET_KEY=chartwarden-minio-secret`, replace the old names with `OBJECT_STORE_*` and use
+vendor-neutral `OBJECT_STORE_*` contract; the old `MINIO_*` names are no longer read, so a stale `.env` that still
+sets them leaves object storage unconfigured (uploads answer 503). If yours still sets
+`MINIO_SECRET_KEY=chartwarden-minio-secret`, replace the old names with `OBJECT_STORE_*` and use
 `OBJECT_STORE_SECRET_KEY=chartwarden-object-store-dev-secret`.
 `docker-compose.yml` also sets `name: chartwarden`, so containers, images and volumes are `chartwarden-*` /
 `chartwarden_*` whatever the checkout directory is called. To move an existing stack (previously the
@@ -200,7 +201,8 @@ passes. To run it end to end against a local model:
    FY2026 + FY2027 releases (checksum-pinned, cached in `.cache/`) into M38 and replaces the subset in place.
    On a database with no ICD-10-CM version at all the intake job skips the coding checks and says so
    (`coding.status: icd10cm_not_loaded`).
-   The docling-worker OCRs with Tesseract by default (`DOCLING_OCR_ENGINE=easyocr` to switch back).
+   The docling-worker OCRs with Tesseract and falls back to RapidOCR for a document Tesseract fails on
+   (`DOCLING_OCR_ENGINE` / `DOCLING_OCR_BACKUP`: `tesseract`, `rapidocr`, `easyocr`; backup `none` turns it off).
    A synthetic 21-page complex referral packet + answer key lives in
    `apps/backend/__tests__/fixtures/doclens-complex-packet/` (regenerate with
    `services/docling-worker/.venv/bin/python scripts/doclens/make-complex-packet.py <dir>`).

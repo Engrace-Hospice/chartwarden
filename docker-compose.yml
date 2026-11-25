@@ -60,8 +60,8 @@ services:
 
   # Local object store: RustFS (Apache-2.0, speaks the S3 + MinIO admin APIs). It replaced MinIO here and in CI; production
   # runs SeaweedFS (ADR-0050 D6). The backend reaches it through the vendor-neutral `OBJECT_STORE_*` env names, the S3
-  # adapter's contract (the legacy `MINIO_*` names are still read, for a production rollback window only; these services
-  # are built from this tree, so they need no alias). `bun run test:object-store:conformance:live` proves the adapter
+  # adapter's contract (the old `MINIO_*` names are no longer read: a stale `.env` that still sets them leaves object
+  # storage unconfigured). `bun run test:object-store:conformance:live` proves the adapter
   # against RustFS (scripts/object-store-conformance/rustfs-up.sh). Console on :9001.
   rustfs:
     image: rustfs/rustfs:1.0.4

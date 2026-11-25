@@ -169,6 +169,39 @@ describe("the sections an aide note drafts", () => {
     );
   });
 
+  it("states the dependence score and its change since the previous visit in the drafted adl text, and a new prior moves the content hash", () => {
+    const base = aideInputs();
+    const recordedAdl = {
+      items: { bathing: "limited_assist", dressing: "extensive_assist" },
+    } as const;
+    const now: DraftInputs = { ...base, context: { ...base.context, recordedAdl } };
+    const earlier = (level: "independent" | "limited_assist"): DraftInputs => ({
+      ...now,
+      context: {
+        ...now.context,
+        priorAdl: { on: "2026-11-10", items: { bathing: level, dressing: level } },
+      },
+    });
+    expect(textOf(now, "adl")).toContain(
+      "dependent in 2 of 2 assessed ADLs (bathing and dressing).",
+    );
+    expect(textOf(earlier("independent"), "adl")).toContain(
+      "dependent in 2 of 2 assessed ADLs (bathing and dressing), up from 0 of 2 assessed at the visit on 2026-11-10.",
+    );
+    expect(textOf(earlier("independent"), "adl")).toBe(
+      [
+        describeRecordedAdl(recordedAdl, earlier("independent").context.priorAdl),
+        "Care-plan intervention performed: Skin assessment and repositioning schedule review.",
+      ].join(" "),
+    );
+    const hashOf = (inputs: DraftInputs): string | undefined => {
+      const section = sectionOf(inputs, "adl");
+      return section.state === "drafted" ? section.contentHash : undefined;
+    };
+    expect(hashOf(earlier("independent"))).not.toBe(hashOf(now));
+    expect(hashOf(earlier("independent"))).not.toBe(hashOf(earlier("limited_assist")));
+  });
+
   it("names the recorded ADLs as a source of the section, first as they lead the text, and none when no ADL was recorded", () => {
     const withAdl = sectionOf(aideInputs(), "adl");
     expect(withAdl.state === "drafted" && withAdl.sourceRefs.map((ref) => ref.kind)).toEqual([

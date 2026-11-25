@@ -128,7 +128,7 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
     ).rows[0].id as string;
     const v = (
       await admin.query(
-        `INSERT INTO document_version (organization_id, document_id, version_number, minio_object_key,
+        `INSERT INTO document_version (organization_id, document_id, version_number, object_key,
            mime_type, byte_size, sha256_hex, uploaded_by_kind)
          VALUES ($1,$2,'1',$3,'application/pdf','1','abc','system') RETURNING id`,
         [ORG, doc, `uploads/${doc}/v1`],
@@ -193,10 +193,12 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
           }) as Fields,
     }),
   };
-  // A list field reads every visible entry (Docling may return the whole list as one block).
+  // A list field reads every visible entry (Docling may return the whole list as one block). Stage 5 asks for
+  // the list path WITHOUT an index (`unindexedFieldPath`): an index counts entries across the whole document,
+  // not within the crop, so a reading keyed by index would never be asked for.
   const READINGS: Record<string, string[] | null> = {
-    "allergies[0].substance": ["Penicillin"],
-    "medications[0].name": ["Furosemide 40 mg PO daily", "Methadone 20 mg PO q8h"],
+    "allergies[].substance": ["Penicillin"],
+    "medications[].name": ["Furosemide 40 mg PO daily", "Methadone 20 mg PO q8h"],
     "patient.dateOfBirth": null, // illegible
   };
   const visionCalls: string[] = [];
@@ -796,7 +798,7 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
     });
     // Only high/medium-risk values went to the vision model; each crop is the value's box, padded.
     expect(visionCalls.sort()).toEqual(
-      ["allergies[0].substance", "medications[0].name", "patient.dateOfBirth"].sort(),
+      ["allergies[].substance", "medications[].name", "patient.dateOfBirth"].sort(),
     );
     expect(crops).toContainEqual({ page: 2, crop: [0, 104, 348, 130], scale: 3 });
 

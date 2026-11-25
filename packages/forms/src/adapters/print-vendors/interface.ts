@@ -21,7 +21,7 @@ export interface PrintVendorAdapter {
   dispatch(args: {
     readonly organizationId: string;
     readonly documentVersionId: string;
-    readonly minioObjectKey: string;
+    readonly objectKey: string;
   }): Promise<PrintDispatchResult>;
 }
 

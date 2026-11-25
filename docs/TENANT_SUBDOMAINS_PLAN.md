@@ -226,7 +226,7 @@ answers 401 `SESSION_CLASS_MISMATCH` for a portal-class session outside `/api/v1
 - Real-environment env file (`TENANT_BASE_DOMAIN`, `PASSKEY_RP_ID`, `BETTER_AUTH_URL`, `TRUSTED_PROXY_CIDRS`),
   own database and secrets. Widen nginx `server_name` to `*.chartwarden.com` on the VPS interim, or ingress
   path rules on Talos. Path routing: `/api/` backend, `/portal/` portal SPA, `/` staff SPA.
-- CSP: `img-src` and `frame-src` to `'self'` plus the explicit `storage.` host (done in the tenant image build; `connect-src` needs no change, nothing fetches storage directly).
+- CSP: `img-src`, `frame-src` and `connect-src` to the explicit `storage.` host (done in the tenant image build; `connect-src` needs it because the verified upload PUTs to the presigned URL straight from the browser).
 - Ops runbook section; `smoke.sh` probes a sample tenant host and a wrong-tenant request.
 - Edge must serve the portal build for EVERY `/portal/*` path (a deep-link reload such as `/portal/p/<id>/care-plan`, and the
   magic-link return `/portal/signed-in`) with its own `index.html` fallback, and must not shadow it with the staff SPA's
@@ -239,7 +239,7 @@ answers 401 `SESSION_CLASS_MISMATCH` for a portal-class session outside `/api/v1
 asset 404, `/portal` 308). `nginx/chartwarden-tenant.conf` is the apex + wildcard vhost (overwrites `X-Forwarded-Host`).
 `.env.tenant.example` + an optional `TENANT_BASE_DOMAIN` mode in `bootstrap-vps.sh`, `smoke.sh` tenant probes, and
 `deploy/production/TENANT_EDGE.md` (runbook). Open: the real-environment release workflow (the build arg is baked, so it
-needs its own image build), and the CSP tightening, both now done: the `CSP_STORAGE_ORIGIN` build arg in `Dockerfile.web` narrows `img-src`/`frame-src`
+needs its own image build), and the CSP tightening, both now done: the `CSP_STORAGE_ORIGIN` build arg in `Dockerfile.web` narrows `img-src`/`frame-src`/`connect-src`
 to the `storage.` host in the tenant image; the demo image keeps the shared snippet.
 
 ### Phase 6 — provisioning (PR B)

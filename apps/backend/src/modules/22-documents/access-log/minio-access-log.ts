@@ -180,7 +180,7 @@ export async function ingestConsumptions(
         const [version] = await tx
           .select({ id: DOC_VERSION.id, documentId: DOC_VERSION.documentId })
           .from(DOC_VERSION)
-          .where(eq(DOC_VERSION.minioObjectKey, c.objectKey))
+          .where(eq(DOC_VERSION.objectKey, c.objectKey))
           .limit(1);
         if (!version) return "unattributed";
 

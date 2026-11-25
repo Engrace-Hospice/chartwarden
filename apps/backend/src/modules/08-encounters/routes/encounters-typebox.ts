@@ -1,5 +1,10 @@
 import { pageQuery, parse } from "@chartwarden/shared/route-kit";
-import { CHART_PROMOTION_REJECT_REASONS, ENCOUNTER_VISIT_MODALITIES } from "@chartwarden/types";
+import {
+  CHART_PROMOTION_REJECT_REASONS,
+  ENCOUNTER_VISIT_MODALITIES,
+  LATE_ENTRY_REASON_MAX_CHARS,
+  LATE_ENTRY_REASON_MIN_CHARS,
+} from "@chartwarden/types";
 // apps/backend/src/modules/08-encounters/routes/encounters-typebox.ts — M8-T09 TypeBox route schemas
 // (§4.2). Named `encounters-typebox` (NOT `*schema*`) so the table-ownership import heuristic never
 // mistakes a TypeBox import for a Drizzle one. Validation runs through TypeBox `Value` → M1's
@@ -185,7 +190,7 @@ export const EvvReconcileSchema = Type.Object({
 // GAP-013: a note documented > 24h after the visit must carry the clinician's own late-entry reason
 // (>= 40 chars, §2.5/§2.7). The TIER is never a field — the server computes it from service_date.
 export const FinalizeEncounterSchema = Type.Object({
-  lateEntryReason: Type.Optional(Text(40)),
+  lateEntryReason: Type.Optional(Text(LATE_ENTRY_REASON_MIN_CHARS, LATE_ENTRY_REASON_MAX_CHARS)),
 });
 
 export const HearthnoteEnhanceSchema = Type.Object({
@@ -208,7 +213,7 @@ export const ModificationDecisionSchema = Type.Object({
 export const AttestationSchema = Type.Object({
   attestationConfirmed: Type.Literal(true),
   // GAP-013: supplied here only when the note slipped into a later tier between finalize and sign.
-  lateEntryReason: Type.Optional(Text(40)),
+  lateEntryReason: Type.Optional(Text(LATE_ENTRY_REASON_MIN_CHARS, LATE_ENTRY_REASON_MAX_CHARS)),
 });
 
 /** The primary sign: the attestation plus how and when the visit happened (the cosignature and addendum

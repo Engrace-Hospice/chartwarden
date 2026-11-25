@@ -174,7 +174,7 @@ describe.skipIf(!DB_URL)(
 
       const documentVersion = (
         await db.query(
-          `INSERT INTO document_version (organization_id, document_id, version_number, minio_object_key,
+          `INSERT INTO document_version (organization_id, document_id, version_number, object_key,
            mime_type, byte_size, sha256_hex, uploaded_by_kind)
          VALUES ($1,$2,'1','minio/key-m22${n}','application/pdf','1024','abc123','system') RETURNING id`,
           [org, document],

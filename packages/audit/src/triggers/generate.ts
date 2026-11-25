@@ -13,7 +13,7 @@
 //     owned by the migration runner (chartwarden_admin) and run with full RLS-bypassing admin rights
 //     on every PHI write. chartwarden_audit_writer holds INSERT-only on audit_event (no UPDATE/DELETE,
 //     no BYPASSRLS), so the definer can append to the log and nothing more.
-//   • `SET search_path = pg_catalog, public` on every definer function (standard PG hardening).
+//   • `SET search_path = pg_catalog, public, pg_temp` (pg_temp last, so a temp object never shadows a name) on every definer function (standard PG hardening).
 //   • The INSERT-only RLS policy + grant that lets the writer role append are emitted once by
 //     `auditWriterGrantsDDL()` (audit_event has RLS with policies only TO chartwarden_app, so without
 //     this the definer's inserts are denied).
@@ -136,7 +136,7 @@ export function generateAuditTrigger(opts: GenerateAuditTriggerOptions): string 
   return `CREATE OR REPLACE FUNCTION ${fn}() RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, public
+SET search_path = pg_catalog, public, pg_temp
 AS $$
 DECLARE
   v_before jsonb;

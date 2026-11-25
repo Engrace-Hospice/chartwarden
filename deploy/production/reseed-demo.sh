@@ -94,7 +94,7 @@ test -s "$backup"
 
 echo "== starting throwaway sign-up-open api (no published port) =="
 docker rm -f "$run_name" > /dev/null 2>&1 || true # stale container from a killed earlier run
-# --no-recreate: the uploaded compose.yml must never recreate the live api/valkey/minio.
+# --no-recreate: the uploaded compose.yml must never recreate the live api/valkey/seaweedfs.
 dc --profile seed up -d --wait --no-recreate seed-api
 
 echo "== seeding (db:seed:all) =="

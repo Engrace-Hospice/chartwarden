@@ -14,6 +14,16 @@ target so backend contracts do not extend the obsolete Capacitor design; histori
 remain historical. The ratification does not claim that native device controls have been completed or
 that the security owner has signed ADR-0072 decisions 8-12 as controls.
 
+## Document Control — object store reconciliation (2026-11-22, no version bump)
+
+This document named MinIO as the object store. The product owner's amendment of [ADR-0050](../adr/ADR-0050-talos-kubernetes-platform.md) D6 (2026-11-05) replaced it: production runs **SeaweedFS**; local development, CI and the separate-host second copy run **RustFS**; MinIO and Garage are not the stores. Sources: that amendment, `deploy/production/README.md` ("Object store: the environment contract", "Object store: second copy"), `docker-compose.yml`, `scripts/object-store-copy.ts`. Module prose now says "the object store" (the S3-compatible store behind M22's SigV4 adapter) unless a sentence is about one environment. This document names no identifier that carried the old name (the formerly `MINIO_*` environment variables are `OBJECT_STORE_*`).
+
+|Change                                                                                                                                                                                                                                                                                  |Driver                                                              |
+|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------|
+|§5 Object storage (under Tech Stack), §8, §10.7.8, §11 (M22, M28), §17 TARGET block, §24 and §25.11: "MinIO" becomes "the object store" (SeaweedFS in production, RustFS locally and in CI). The §8 scope is one bucket per tenant, `tenant-<orgId>` (not a `tenant/<org_id>/` prefix), reached by a credential scoped to `tenant-*` and `chartwarden-*`.|ADR-0050 D6 amendment; `deriveTenantBucket` in `apps/backend/src/modules/22-documents/lifecycle/storage.ts`; `deploy/production/object-store/app-policy.json`|
+|§5 "Object lock and versioning for HIPAA retention" and the §24 retention claims that lean on it are now TARGET with a TODAY line: the primary and the second copy have no Object Lock; the off-site bucket (enabled in production per the owner) carries a COMPLIANCE lock that `cw-backup.sh` verifies on every snapshot, and it is not a 7-year control.|`deploy/production/README.md` (Backups and restore; second copy)    |
+|§24 bucket lifecycle rules (other than the M25 `m25-835/` staging expiry the code applies) are marked design intent.                                                                                                                                                                  |`scripts/backfill-tenant-buckets.ts`; `apps/backend/src/m25-staged-835-config.ts`|
+
 ## Document Control — FireNote and DocLens corrections (2026-11-18)
 
 Two statements in §10.5 and §11 did not match a corpus check on 2026-11-18 and are corrected in place; no decision changes. Decision record: [ADR-0114](../adr/ADR-0114-deterministic-visit-note-drafting.md) (Accepted, 2026-11-19). Design: `docs/implementation/04-visit-note-drafting-redesign.md`.
@@ -297,7 +307,7 @@ Organization (tenant — the ChartWarden customer)
 > built. Verified as **absent from every `package.json` in the workspace**:
 >
 > `@tanstack/*` · `socket.io` · `xstate` · `@fastify/*` (any plugin) · `@opentelemetry/*` ·
-> `@sentry/*` · the `minio` client · `puppeteer` · `react-pdf` · `testcontainers` · `msw` ·
+> `@sentry/*` · the `minio` npm client (the S3 adapter is hand-written SigV4 over `fetch`) · `puppeteer` · `react-pdf` · `testcontainers` · `msw` ·
 > `recharts` · `iconsax` · `shadcn/ui` · the Stripe SDK · `@anthropic-ai/sdk`.
 >
 > | This document says | Reality |
@@ -316,12 +326,13 @@ Organization (tenant — the ChartWarden customer)
 > | `apps/mobile/` | **Does not exist in this repository.** The product direction is a separate React Native/Expo repository, `wardenx-mobile`; ADR-0072 supersedes ADR-0035 (ratified 2026-11-18). |
 > | `packages/rules-engine` | **Does not exist.** |
 > | §9's `apps/backend/src/{routes,services}` + `packages/db/src/repos` | **Do not exist.** The real layout is per-module vertical slices under `apps/backend/src/modules/NN-name/`. |
+> | MinIO (§5 Object storage, §8, §17, DR/BCP) | **SeaweedFS in production; RustFS for local development, CI and the second copy.** Garage (the earlier D6 text) is superseded. — **ADR-0050 D6 amendment (2026-11-05)** |
 >
 > **26 of the 47 real packages are undocumented here.** `ls packages/` is authoritative.
 >
 > **§12 (Python sidecars) and §17 (dev topology) are `STATUS: TARGET — NOT BUILT` in their
-> entirety.** So is the DR VM fleet described in DR/BCP (Pangolin, PgBouncer, PBS, a MinIO cluster,
-> PagerDuty, Grafana, Sentry). The repo already uses this idiom — `ops/pgbackrest/*.template`,
+> entirety.** So is the DR VM fleet described in DR/BCP (Pangolin, PgBouncer, PBS, an object-store
+> cluster, PagerDuty, Grafana, Sentry). The repo already uses this idiom — `ops/pgbackrest/*.template`,
 > `Dockerfile`, `docker-compose.yml` and `deploy.yml` all carry "SCAFFOLD, NOT VALIDATED" headers;
 > these sections simply never got one.
 
@@ -450,10 +461,10 @@ chartwarden/
 
 ### Object storage
 
-- MinIO (Docker locally; Docker on TrueNAS in prod)
-- Per-tenant bucket scope with strict IAM
-- Platform-shared `platform/ml-models/` for local model artifacts
-- Object lock and versioning for HIPAA retention
+- An S3-compatible object store reached through M22's SigV4 adapter (`OBJECT_STORE_*` environment). **Production: SeaweedFS** (the `seaweedfs` service in `deploy/production/compose.yml`: single-node all-in-one `weed server -s3`, one volume per bucket, no in-store replication). **Local development and CI: RustFS** (`docker-compose.yml`; the CI job `object-store-conformance-live` runs the real adapter against SeaweedFS and RustFS). **Second copy: RustFS on another host**, a one-way hourly sync by `scripts/object-store-copy.ts` (not enabled in production yet; a sync, not an archive). Decision: ADR-0050 D6 amendment (2026-11-05)
+- Per-tenant bucket scope with strict IAM: one bucket per tenant (`tenant-<orgId>`), and the application credential is bound to `deploy/production/object-store/app-policy.json`
+- Platform-shared `platform/ml-models/` for local model artifacts *(design intent: no code writes that path today)*
+- Object lock and versioning for HIPAA retention — **TARGET**. **TODAY:** the primary and the second copy have no Object Lock. The off-site bucket (enabled in production per the owner; the repo holds no evidence of it running, DR/BCP §4.8.7 are the operator steps) carries a COMPLIANCE lock, default retention at least 100 days, that the operator creates and `cw-backup.sh` verifies on every snapshot: the snapshot fails when the mode is not COMPLIANCE or the days are below `BACKUP_OFFSITE_MIN_LOCK_DAYS` (default 100). Noncurrent versions expire at 120 days (operator-set, unchecked), and the lock is not a 7-year control. Partition rotation covers database rows, not object bytes: objects persist on the primary until M22's eraser removes them. The M22 adapter's erase is version-aware, and the application credential cannot change bucket versioning
 
 ### PDF generation
 
@@ -877,7 +888,7 @@ Funeral home staff get a tightly scoped per-deceased-patient session for body re
 
 1. **RLS at the database** — every PHI table has `organization_id`; session sets `app.org_id` via `SET LOCAL`; policies enforce match
 1. **Envelope encryption** for sensitive columns (SSN, financial account numbers, narrative blocks containing high-sensitivity content) — DEK per tenant, KEK held by app, rotation supported
-1. **Per-tenant object storage scope** — MinIO bucket prefix `tenant/<org_id>/` with IAM policies preventing cross-tenant signing
+1. **Per-tenant object storage scope** — one bucket per tenant, `tenant-<orgId>`, derived from the organization id inside the adapter, so the adapter derives the bucket but the credential itself spans every tenant bucket (isolation is application-layer); the single application credential is bound to `deploy/production/object-store/app-policy.json` (buckets matching `tenant-*` and `chartwarden-*` only). There is no per-tenant IAM identity
 1. **Per-tenant DoseSpot clinic registration** — credentials vaulted per-tenant in the M40 secret store, keyed by tenant (the once-planned `packages/dosespot/credentials` path was never created)
 1. **Per-tenant Xero connection** — OAuth tokens scoped per tenant, refresh isolated
 1. **Tenant boundary in logs** — every log line carries `tenant_id`; Sentry events tagged; Grafana dashboards filtered
@@ -1592,7 +1603,7 @@ For embedding generation (BGE, MiniLM, E5):
 For task-specific classifiers (DocLens document type, etc.):
 
 - Trained via ChartWarden ML pipeline (see Module 32)
-- Stored in MLflow + MinIO `platform/ml-models/`
+- Stored in MLflow + the object store (`platform/ml-models/`)
 - Served via FastAPI in `ml-worker`
 
 ### 10.7.7 Hardware Configuration
@@ -1607,7 +1618,7 @@ Cloud-portability: when ChartWarden moves to cloud, ml-worker maps to GPU instan
 
 ### 10.7.8 Model Artifact Storage
 
-Local model artifacts stored in MinIO:
+Local model artifacts stored in the object store (design intent: no code writes this layout today):
 
 ```
 platform/
@@ -1670,7 +1681,7 @@ Each module is a complete spec produced as a separate document under `docs/modul
 #### Module 1 — Foundation
 
 - **Purpose:** Bootstrap monorepo, base infra, error envelope, logging, observability scaffold, dev environment
-- **Key:** Turborepo + Bun setup, Docker Compose with PG/Valkey/MinIO, Pino logger with PHI scrubbing, OpenTelemetry SDK, error envelope shape, request correlation IDs
+- **Key:** Turborepo + Bun setup, Docker Compose with PG/Valkey/the object store (RustFS locally), Pino logger with PHI scrubbing, OpenTelemetry SDK, error envelope shape, request correlation IDs
 - **Deliverables:** Working `bun dev`, base Fastify server with health endpoint, base TanStack Start app, base CI pipeline
 
 #### Module 2 — Identity & Org (three-tier tenancy)
@@ -1859,7 +1870,7 @@ Each module is a complete spec produced as a separate document under `docs/modul
 #### Module 22 — Document Management
 
 - **Entities:** Document, DocumentVersion, DocumentTag, FormTemplate, FormFill, ExtractionJob, ClassifiedPage, ExtractedCandidate, ExtractionReview, ExtractionDecision, ExtractionProvenance
-- **Storage:** MinIO with per-tenant bucket scope; signed URLs
+- **Storage:** the object store with per-tenant bucket scope (`tenant-<orgId>`); signed URLs
 - **OCR:** Docling worker processes uploads; LangExtract worker extracts structured data per schema
 - **DocLens (see §10.6):** Full patient intake document extraction pipeline — classifier, per-type schemas (11 supported), Claude verification on high-risk fields, side-by-side review UI, chart writeback to Modules 5/7/9/11/12, full provenance, HearthNote selection seeding
 - **PDF generation:** declarative `FormSpec` forms over the in-repo standard-font PDF writer (`react-pdf` and `puppeteer` are not installed; see the implementation-divergence banner near the top of this document)
@@ -2010,7 +2021,7 @@ Same architecture pattern as §11.A (Claim Pre-Submission Validation Framework) 
 #### Module 28 — FHIR Gateway
 
 - **Resources (v1):** Patient, Encounter, Observation, MedicationRequest, MedicationAdministration, Condition, CarePlan, Goal, DocumentReference, Practitioner, PractitionerRole, Organization
-- **Endpoints:** Standard FHIR REST (`/fhir/r4/...`), `$everything` per patient, system bulk export (NDJSON to MinIO)
+- **Endpoints:** Standard FHIR REST (`/fhir/r4/...`), `$everything` per patient, system bulk export (NDJSON to the object store)
 - **US Core:** Conform to v6 (R4-based); v10 (R6-based) when published
 - **Inbound:** FHIR import for selected resources (patient demographic from ADT, medication history)
 
@@ -2065,7 +2076,7 @@ See §10 for capability inventory, discipline rules, and §10.7 for model backen
   - `embeddings-worker` (Python): sentence-transformers + ONNX for local embedding generation (BGE, MiniLM, E5)
   - `anthropic-client` (TS, in `packages/ai-platform`): Anthropic API client with retries, ZDR enforcement, PHI minimization
   - (Phase 2 optional) `llm-worker` (Python): dedicated vLLM serving for high-throughput local LLM workloads; split from ml-worker when scale demands
-- **Local model artifact storage:** MinIO `platform/ml-models/` with subdirectories for Ollama models, embedding models, custom classifiers; aligned with MLflow versioning
+- **Local model artifact storage:** the object store, `platform/ml-models/` with subdirectories for Ollama models, embedding models, custom classifiers; aligned with MLflow versioning
 - **Model registry:** MLflow self-hosted on Proxmox; tracks both cloud-backend usage (model versions, prompt versions, calibration metrics) and local-backend deployments (model artifacts, training runs, evaluation runs); per-capability per-backend calibration metrics
 - **Capability routing config:** *target — `packages/ai-platform/config/routing.yaml` does not exist yet; backend selection ships as code in `packages/ai-platform/src/backends`*. The planned config declares per-capability default backend, allowed backends, tenant-override permission, fallback chain
 - **Tenant routing override:** Tenant settings include `ai_routing_preference`: `prefer_cloud` (default) | `prefer_local` | `cloud_only` | `local_only` — drives backend selection within allowed set
@@ -2398,11 +2409,13 @@ Test data fixtures in `packages/db/__tests__/` (the planned `packages/db/test-fi
 
 ## 17. Local Development (MacBook Pro)
 
-> **STATUS: TARGET — NOT BUILT.** The compose topology below (valkey/minio/mailpit/mlflow via
+> **STATUS: TARGET — NOT BUILT.** The compose topology below (valkey/rustfs/mailpit/mlflow via
 > `infra/docker/dev.compose.yaml`) does not exist — there is no `infra/` directory. Real local dev
 > is `bun install`, a `docker run` of Postgres, `bun run db:migrate && bun run db:seed`, then
-> `bun run dev` (web on 5173, portal 5174, admin 5175, backend 3000). See `docs/DEVELOPMENT.md`,
-> which is maintained; this section is not.
+> `bun run dev` (web on 5173, portal 5174, admin 5175, backend 3000). The repo-root
+> `docker-compose.yml` is the real local Compose stack, and its object store is RustFS (S3 on
+> `:9000`, console on `:9001`); production runs SeaweedFS (ADR-0050 D6 amendment). See
+> `docs/DEVELOPMENT.md`, which is maintained; this section is not.
 
 
 ```yaml
@@ -2410,7 +2423,7 @@ Test data fixtures in `packages/db/__tests__/` (the planned `packages/db/test-fi
 services:
   postgres:              # PG18 + pgvector + pgcrypto
   valkey:
-  minio:
+  rustfs:                # object store (rustfs/rustfs:1.0.4): S3 :9000, console :9001; the real block is in docker-compose.yml
   mailpit:               # local SMTP capture
   docling-worker:
   langextract-worker:
@@ -3010,16 +3023,18 @@ The architecture provides the surfaces. The Compliance Officer role operates the
 
 ## 24. Data Retention Matrix
 
-Consolidated retention policy across all data classes ChartWarden stores. Drives audit partition retention classes (Module 1), MinIO bucket lifecycle policies, Valkey TTLs, and the destruction certification workflow per HIPAA §164.310(d)(2)(i). State-specific variations override defaults where state law requires longer retention; legal hold overrides everything.
+Consolidated retention policy across all data classes ChartWarden stores. Drives audit partition retention classes (Module 1), object-store bucket lifecycle rules, Valkey TTLs, and the destruction certification workflow per HIPAA §164.310(d)(2)(i). State-specific variations override defaults where state law requires longer retention; legal hold overrides everything.
+
+> **Object-store rows: TARGET versus TODAY (2026-11-22).** The retention periods, tiers and lifecycle rules for object-store data below are the requirement (TARGET). **TODAY:** (1) no Object Lock or WORM is applied to the primary or the second copy; the off-site Object-Lock mirror (enabled in production per the owner; COMPLIANCE, at least 100 days, verified by `cw-backup.sh` on every snapshot, noncurrent versions expire at 120 days) is not a 7-year control; partition rotation covers database rows, not object bytes, so objects persist on the primary until M22's eraser removes them; (2) objects on the primary and the second copy are plaintext at rest with host disk encryption only (no gate checks it; the off-site mirror is SSE-C encrypted under one platform backup key), a gap tracked as `compliance/controls.yaml` CW-AC-05 (partial), so an "AES-256 at rest" cell is a TARGET for object-store data; a plaintext copy of every document also remains in the retired `<prefix>_minio-data` volume on a host that went through the SeaweedFS cutover and has not removed it (outside the backups, no recorded removal deadline: the owner decides); (3) the only lifecycle rule the code applies is the M25 `m25-835/` staging expiry (`scripts/backfill-tenant-buckets.ts`), so every other lifecycle or tier rule here is design intent; (4) no storage-tier transition is configured in the repo.
 
 ### 24.1 Retention Matrix
 
 |Data class                                                                 |Default retention                                                                                          |State variations                                                                                             |Encryption                                                                         |Destruction method                                                  |Storage tier transition                                                                                |
 |---------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------|--------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------|
-|**Clinical record (encounter notes, assessments, care plans, orders, MAR)**|**7 years from last patient contact** (HIPAA floor 6 — §164.530(j)(2); standardized to 7, ADR-0004)        |Oregon: 7 years from last contact; minors: until age 21; varies by state — state config table holds overrides|AES-256 at rest, TLS in transit                                                    |Cryptographic erasure of partition; certificate of destruction filed|Hot (PG) for 2 years; warm (MinIO Standard) for years 3-7; cold (MinIO Glacier-equivalent) for years 8+|
+|**Clinical record (encounter notes, assessments, care plans, orders, MAR)**|**7 years from last patient contact** (HIPAA floor 6 — §164.530(j)(2); standardized to 7, ADR-0004)        |Oregon: 7 years from last contact; minors: until age 21; varies by state — state config table holds overrides|AES-256 at rest, TLS in transit                                                    |Cryptographic erasure of partition; certificate of destruction filed|Hot (PG) for 2 years; warm (object store, standard tier) for years 3-7; cold (object-store archive tier) for years 8+ (TARGET: no tiering is configured in the repo today)|
 |**Patient demographics and election records**                              |Same as clinical record                                                                                    |Same                                                                                                         |Same                                                                               |Same                                                                |Same                                                                                                   |
 |**HOPE assessments + HIS records**                                         |**7 years from submission** (matches clinical record, ADR-0004)                                            |Match clinical record                                                                                        |Same                                                                               |Same                                                                |Same                                                                                                   |
-|**Claims (837), remittances (835), acknowledgments (999, 277CA)**          |7 years (CMS suggests 10 years; HIPAA requires 6; we standardize on 7 unless state requires more)          |Some states extend to 10                                                                                     |Same                                                                               |Same; object-lock retention enforced on MinIO buckets               |Hot for current + prior fiscal year; warm thereafter                                                   |
+|**Claims (837), remittances (835), acknowledgments (999, 277CA)**          |7 years (CMS suggests 10 years; HIPAA requires 6; we standardize on 7 unless state requires more)          |Some states extend to 10                                                                                     |Same                                                                               |Same; object-lock retention is TARGET (not provided on the primary or the second copy; the off-site Object-Lock mirror is enabled in production per the owner and is not a 7-year control, see the note above)|Hot for current + prior fiscal year; warm thereafter                                                   |
 |**Cost reports + supporting workpapers**                                   |7 years (CMS audit window can reopen older claims; we retain 7)                                            |None                                                                                                         |Same                                                                               |Same                                                                |Warm immediately on submission                                                                         |
 |**Audit log — `audit_event` retention_class=operational**                  |1 year                                                                                                     |None                                                                                                         |Same                                                                               |Partition detach + erase                                            |Hot for 3 months; warm thereafter                                                                      |
 |**Audit log — `audit_event` retention_class=compliance**                   |7 years default (HIPAA floor 6 — §164.316(b)(2)); matches §7 audit retention                               |Some states 7+ years (covered by default)                                                                   |Same                                                                               |Same                                                                |Hot for 6 months; warm for 6.5 years; cold thereafter                                                  |
@@ -3030,10 +3045,10 @@ Consolidated retention policy across all data classes ChartWarden stores. Drives
 |**Sessions**                                                               |15 min idle; 8 hr work-session; 24 hr hard maximum; 5 min UI screen lock (ADR-0004, per §7/§14)            |None                                                                                                         |Per-session token; HMAC-protected                                                  |Direct delete on expiry                                             |Hot only (Valkey)                                                                                      |
 |**Idempotency keys**                                                       |24 hours                                                                                                   |None                                                                                                         |n/a (no PHI in keys)                                                               |TTL expiry                                                          |Hot only (Valkey + PG mirror)                                                                          |
 |**Outbox events**                                                          |30 days post-dispatch                                                                                      |None                                                                                                         |n/a                                                                                |Direct delete                                                       |Hot only (PG)                                                                                          |
-|**DocLens working files (intake bundle PDFs, intermediate parses)**        |30 days from job completion                                                                                |None                                                                                                         |Same as clinical                                                                   |MinIO lifecycle policy auto-delete                                  |Hot only                                                                                               |
+|**DocLens working files (intake bundle PDFs, intermediate parses)**        |30 days from job completion                                                                                |None                                                                                                         |Same as clinical                                                                   |Object-store lifecycle rule auto-delete (TARGET: not applied by code today)|Hot only                                                                                               |
 |**Telehealth recordings (if enabled and consented)**                       |Per-tenant config + per-consent terms; default 90 days                                                     |Vary by state; some prohibit recording                                                                       |Same as clinical                                                                   |Direct delete                                                       |Warm                                                                                                   |
 |**AI prompts/responses sent to Anthropic**                                 |If no PHI (system-only): 6 months for evaluation; if PHI: 6 years (compliance class)                       |Match clinical record                                                                                        |Per-message; Anthropic Zero Data Retention enabled where contracted                |Cryptographic erasure                                               |Warm                                                                                                   |
-|**ML model artifacts (MLflow + MinIO)**                                    |Indefinite while in production; archived 7 years after deprecation                                         |None                                                                                                         |Same                                                                               |Versioned cold storage                                              |Cold after retirement                                                                                  |
+|**ML model artifacts (MLflow + the object store)**                                    |Indefinite while in production; archived 7 years after deprecation                                         |None                                                                                                         |Same                                                                               |Versioned cold storage                                              |Cold after retirement                                                                                  |
 |**MLflow run metadata**                                                    |3 years                                                                                                    |None                                                                                                         |Per-run                                                                            |Direct delete                                                       |Hot for 6 months; warm thereafter                                                                      |
 |**Backups (pgBackRest snapshots + WAL)**                                   |Daily for 30 days; weekly for 12 weeks; monthly for 7 years; annual for 10 years                           |None — backups inherit retention of the longest-retention data class they contain                            |Encrypted backup files                                                             |Cryptographic erasure                                               |Warm/cold per age                                                                                      |
 |**System logs (Loki)**                                                     |90 days hot; 1 year cold (PHI-scrubbed before ingestion)                                                   |None                                                                                                         |At-rest on Loki backend                                                            |Direct delete                                                       |Hot/cold per age                                                                                       |
@@ -3169,7 +3184,7 @@ Standardized patterns that every module follows. Locks the patterns explicitly; 
 **Pattern:**
 
 - **Unit tests** for pure functions (validators, parsers, calculators)
-- **Integration tests** with Testcontainers — real PostgreSQL, Valkey, MinIO containers
+- **Integration tests** with Testcontainers — real PostgreSQL, Valkey and object-store (RustFS, SeaweedFS) containers
 - **RLS isolation tests** required for every PHI-bearing module — cross-tenant denial cases
 - **E2E tests** with Playwright for critical user flows
 - **Snapshot tests** for SQL migrations (catches accidental destructive changes)

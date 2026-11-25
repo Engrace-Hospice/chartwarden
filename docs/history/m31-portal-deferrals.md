@@ -105,7 +105,7 @@ version through M22's published `PortalDocumentReader.resolvePortalDocumentVersi
 ACTIVE version, only for the session patient's own, patient-facing, non-superseded/non-destroyed document), then (b) calls
 `mintPortalDownloadUrl({documentVersionId, portalSessionId, portalAccountId, patientId, organizationId})` with the account,
 session and patient taken from the SERVER-assembled session (`attributes.portalAccountId` / `.sessionId` / `.sessionPatientId`).
-The mint also stopped presigning an invented `portal/<versionId>` key: it presigns the version's real `minio_object_key` in the
+The mint also stopped presigning an invented `portal/<versionId>` key: it presigns the version's real `object_key` in the
 tenant bucket (TTL 3600 s). The M22 gates are unchanged (owner, patient-facing, F-197 SUD consent re-check) plus a new
 `not_active` denial for superseded/destroyed documents. Response: `{ url, expiresAt, patientId }` (`patientId` = the session
 patient, used only for M4 attribution).

@@ -63,6 +63,50 @@ Common encounter types: `routine_visit`, `admission_visit`, `recert_visit`,
 
 ---
 
+## Plan and Next Visit (the `plan` section)
+
+For the server the section is unchanged: required, counted by the gate on its statements or its free text,
+free text stored verbatim, nothing assembled from it beyond that text. In the editor, above the free text, it
+shows a panel that is advisory, except that words typed in the entry fields and not saved hold Finalize and the leave prompt. The sources and their strength (Medicare rule,
+CMS guidance, guideline, common practice) are in
+[`docs/research/HOSPICE_VISIT_PLAN_AND_NEXT_VISIT_RESEARCH.md`](../../../research/HOSPICE_VISIT_PLAN_AND_NEXT_VISIT_RESEARCH.md);
+its clinical wording was signed off by Lora, RN on 2026-11-25 (section 3 of
+[`docs/clinical-review/CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md`](../../../clinical-review/CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md), signed with sections 1-6, not item by item).
+
+- **What this section covers** — a short list of what a plan and next-visit entry usually holds, each item
+  labelled with the kind of source behind it and its citation (no federal rule sets a minimum visit frequency
+  or a note format, and none is claimed).
+- **Next visit and schedule** — read only. The patient's upcoming visits from the scheduling module
+  (`GET /api/v1/visits?patient=`, `visit.read`, scoped by the server), and what the plan of care orders as
+  visits for the note's discipline (the care-plan intervention's machine-form frequency, `count:visit:period`).
+  The advisory says "No RN visit is scheduled in the next 30 days that you can see" when there is none, or
+  "N visits scheduled in the next D days; the plan of care orders …" when the schedule is short of the order;
+  an order it cannot read as a visit cadence (as-needed, a range, free text) is shown in the plan's words and
+  never counted. A refused or failed read says so; it never reads as an empty schedule. This note's own visit
+  is not counted as upcoming.
+- **Schedule next visit** — a link, opened in a new tab so the note and anything unsaved stay put, to
+  `/calendar?patient=<id>&newVisit=1`: the Scheduling New Visit form for this patient. The link carries the
+  patient id and nothing else (no visit purpose and no date in the URL, which reaches browser history and
+  access logs): the clinician chooses the purpose and the day in the scheduler, whose own checks
+  (eligibility, credentials, caseload, time off) decide; the note books nothing. A viewer with `visit.read` but not `visit.create` gets a link to the
+  patient's schedule instead.
+- **Follow-ups from this visit** — the plan-of-care changes proposed from this visit (drafts and pending) with a
+  button to the Plan of care step, and the pain helper's plan-of-care review prompt when the note raises one.
+- **Write the entry (optional)** — next visit by / date, focus, follow-ups, orders and supplies pending,
+  teaching and instructions given, and "call the hospice if". Pressing **Save** puts the filled
+  fields into the free text below as fixed sentences, each field's words exactly as typed, under what the
+  clinician already wrote; adding the same lines twice adds nothing, and focus moves to the first field. **Discard entries** empties every field;
+  **Clear** empties only the five free-text boxes and keeps the discipline and the date. **Use the next
+  scheduled visit** fills the day and the discipline from the earliest upcoming visit.
+
+Not built: the aide's 14-day supervisory visit due date (M15's aide-supervision roster needs the discipline
+plan id), a prospective last-days-of-life visit expectation (the SIA calculator is retrospective billing,
+and HVLDL is a quality measure, not a visit rule), a wound-recheck or pain-reassessment interval (no
+sourced interval), and a server-stated "next scheduled visit" sentence in the assembled note (it needs an
+assembly and corpus change).
+
+---
+
 ## Drafted Sections (ADR-0114; only while the tenant's draft switch is on)
 
 When the tenant has the visit-note draft switched on (`CHARTWARDEN_UI_VISIT_NOTE_DRAFT_POLICY`) and at least
@@ -290,7 +334,9 @@ is; an amendment never re-opens billing.
   that cannot be changed says why beside it (for example "Links can change only while the note is a draft.").
 - Latest assessment scores + trend (M09): the latest PPS and ESAS-r reading up to the visit, the change
   against the reading before it, and the last few readings. Shown with the draft only; nothing renders without
-  a scored reading or for a viewer who may not read scales.
+  a scored reading or for a viewer who may not read scales. Under the ESAS-r total, when that reading carries
+  its nine item scores, an advisory "Consider a fuller symptom assessment" lists each item scoring 4 or more of
+  10 (research benchmark, Oldenmenger 2013). It is a prompt only: no tier, no "notify" wording, nothing blocks.
 - Required HOPE items when a HOPE timepoint (M10)
 - AI narrative enhancement (Layer-2) — per-passage **accept / edit / reject** with diff vs
   Layer-1; provenance + model shown

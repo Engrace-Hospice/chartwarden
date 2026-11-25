@@ -124,7 +124,7 @@ describe.skipIf(!DB_URL)("M22 internal-only documents — LIVE Postgres (ADR-010
     ).rows[0].id as string;
     const version = (
       await admin.query(
-        `INSERT INTO document_version (organization_id, document_id, version_number, minio_object_key, mime_type, byte_size,
+        `INSERT INTO document_version (organization_id, document_id, version_number, object_key, mime_type, byte_size,
            sha256_hex, uploaded_by_kind)
          VALUES ($1,$2,'1',$3,'application/pdf','1024','abc123','system') RETURNING id`,
         [ORG_A, document, `m22-internal/${key}`],

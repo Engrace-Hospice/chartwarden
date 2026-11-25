@@ -2688,7 +2688,7 @@ ABAC predicate evaluates against the M3 named registry.
   last_observed_at.
 - Inline edit of par_min and par_target (saves via PUT `/par-stock/:id`).
 - "Record observation" modal: select item, enter current quantity, optionally upload
-  a photo (stored in MinIO; URI saved on the observation event in M4 audit, not on
+  a photo (stored in the object store; URI saved on the observation event in M4 audit, not on
   the par_stock row).
 
 ### 5.8 S21.7 Vendor Routing Admin (`/supplies/vendor-routing`)
@@ -2747,7 +2747,7 @@ ABAC predicate evaluates against the M3 named registry.
 
 **Form fields:**
 
-- Photo of package at delivery location (camera capture; uploaded to MinIO).
+- Photo of package at delivery location (camera capture; uploaded to the object store).
 - GPS location capture (Capacitor Geolocation; recorded in attestation jsonb).
 - Recipient name (if no caregiver signature is being captured).
 - Recipient relationship to patient (dropdown).
@@ -2778,7 +2778,7 @@ ABAC predicate evaluates against the M3 named registry.
   primary reconciler.
 - Optional disposal method (if controlled substances are being destroyed at the bedside
   per 21 CFR §1317): destruction method, disposal location, disposal witness.
-- Signature capture (canvas; saved as PNG to MinIO).
+- Signature capture (canvas; saved as PNG to the object store).
 - "Witness attest" → PATCH `/comfort-kit-returns/:id` with witness payload.
 
 ### 5.12 Notifications & Empty States
@@ -3276,7 +3276,7 @@ and dedicated k6 perf coverage on the routing engine and the par-monitor cron.
 
 ### 9.2 Integration Tests (Testcontainers)
 
-PostgreSQL 18 + Valkey + an in-process MinIO mock + a one-process Fastify backend with M2/M3/M4/M21
+PostgreSQL 18 + Valkey + an in-process S3-compatible object-store mock + a one-process Fastify backend with M2/M3/M4/M21
 loaded. Outbox is real (Postgres) but consumed in-process via the test harness's worker
 pool so events flow end-to-end.
 

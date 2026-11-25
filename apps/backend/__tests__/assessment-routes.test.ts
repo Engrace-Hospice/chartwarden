@@ -882,3 +882,148 @@ describe("GAP-182 — /internal/assessments/* are system-principal-only seam rou
     await app.close();
   });
 });
+
+// The composer's advisory ESAS-r symptom prompt reads the nine ESAS-r item scores off the series point (still under
+// `assessment.read_trend`). Only the nine numbers travel: never the free-text note, the "other" symptom or who reported it.
+describe("the ESAS-r item scores on a series point", () => {
+  const ESAS_FULL = "90000000-0000-4000-8000-0000000000e1";
+  const ESAS_LEGACY = "90000000-0000-4000-8000-0000000000e2";
+  const NINE = {
+    pain: 6,
+    tiredness: 4,
+    drowsiness: 1,
+    nausea: 0,
+    lackOfAppetite: 3,
+    shortnessOfBreath: 7,
+    depression: 2,
+    anxiety: 5,
+    wellbeing: 4,
+  };
+  const FREE_TEXT = "synthetic free-text note that must never leave the record";
+  const esasSeed = (): ExtraSeed => ({
+    assessments: [
+      {
+        id: ESAS_FULL,
+        organizationId: ORG,
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        scaleType: "esas_r",
+        capturedByDiscipline: "rn",
+        recordedByUserId: "rn_1",
+        score: 32,
+        scoreInterpretation: "ESAS-r total 32/90",
+        data: {
+          ...NINE,
+          otherSymptom: { label: "itch", severity: 8 },
+          reportedBy: "patient",
+          otherSymptomText: FREE_TEXT,
+        },
+        capturedAt: "2026-06-19T09:00:00.000Z",
+      },
+      {
+        id: ESAS_LEGACY,
+        organizationId: ORG,
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        scaleType: "esas_r",
+        capturedByDiscipline: "rn",
+        recordedByUserId: "rn_1",
+        score: 20,
+        scoreInterpretation: "ESAS-r total 20/90",
+        data: { pain: 6 },
+        capturedAt: "2026-06-18T09:00:00.000Z",
+      },
+    ],
+  });
+  const seriesUrl = (scale: string, patient = PATIENT): string =>
+    `/api/v1/patients/${patient}/scales/${scale}/series?from=2026-06-01&to=2026-06-30`;
+
+  it("carries exactly the nine numeric scores of an ESAS-r reading and no free text", async () => {
+    const { app } = makeServer(esasSeed());
+    const res = await app.inject({ method: "GET", url: seriesUrl("esas_r"), headers: RN });
+    expect(res.statusCode).toBe(200);
+    const full = res
+      .json()
+      .points.find((p: { assessmentId: string }) => p.assessmentId === ESAS_FULL);
+    expect(full.score).toBe(32);
+    expect(full.itemScores).toEqual(NINE);
+    expect(res.body).not.toContain(FREE_TEXT);
+    expect(res.body).not.toContain("otherSymptom");
+    expect(res.body).not.toContain("reportedBy");
+    await app.close();
+  });
+
+  it("leaves itemScores off a reading that does not hold all nine items", async () => {
+    const { app } = makeServer(esasSeed());
+    const res = await app.inject({ method: "GET", url: seriesUrl("esas_r"), headers: RN });
+    const legacy = res
+      .json()
+      .points.find((p: { assessmentId: string }) => p.assessmentId === ESAS_LEGACY);
+    expect(legacy.score).toBe(20);
+    expect(legacy).not.toHaveProperty("itemScores");
+    await app.close();
+  });
+
+  it("leaves itemScores off every other scale, even when the record has fields of the same names", async () => {
+    const { app } = makeServer({
+      assessments: [
+        {
+          id: "90000000-0000-4000-8000-0000000000e3",
+          organizationId: ORG,
+          patientId: PATIENT,
+          admissionId: ADMISSION,
+          scaleType: "pps",
+          capturedByDiscipline: "rn",
+          recordedByUserId: "rn_1",
+          score: 50,
+          data: { ...NINE },
+          capturedAt: "2026-06-19T09:00:00.000Z",
+        },
+      ],
+    });
+    const res = await app.inject({ method: "GET", url: seriesUrl("pps"), headers: RN });
+    expect(res.statusCode).toBe(200);
+    for (const point of res.json().points) expect(point).not.toHaveProperty("itemScores");
+    await app.close();
+  });
+
+  // AIMS only: SUD redaction applies to AIMS, and `seriesItemScores` answers {} for any scale but ESAS-r, so this proves the redacted
+  // AIMS point carries no `itemScores` key. The `redacted=true` branch for an ESAS-r row is unreachable through the route today
+  // (an ESAS-r capture is never SUD-context) and is covered in series-item-scores.test.ts.
+  it("a redacted (non-consented SUD-context) AIMS point carries no score and no itemScores", async () => {
+    const { app } = makeServer({
+      assessments: [
+        {
+          id: "90000000-0000-4000-8000-0000000000e4",
+          organizationId: ORG,
+          patientId: "22222222-2222-4222-8222-222222222299",
+          admissionId: ADMISSION,
+          scaleType: "aims",
+          capturedByDiscipline: "rn",
+          recordedByUserId: "rn_1",
+          sudContext: true,
+          score: 4,
+          data: { ...NINE },
+          capturedAt: "2026-06-19T09:00:00.000Z",
+        },
+      ],
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: seriesUrl("aims", "22222222-2222-4222-8222-222222222299"),
+      headers: RN,
+    });
+    const [point] = res.json().points;
+    expect(point.score).toBeNull();
+    expect(point).not.toHaveProperty("itemScores");
+    await app.close();
+  });
+
+  it("stays behind assessment.read_trend: a reader without it gets 403 and no scores", async () => {
+    const { app } = makeServer(esasSeed());
+    const res = await app.inject({ method: "GET", url: seriesUrl("esas_r"), headers: VIEWER });
+    expect(res.statusCode).toBe(403);
+    expect(res.body).not.toContain("itemScores");
+    await app.close();
+  });
+});

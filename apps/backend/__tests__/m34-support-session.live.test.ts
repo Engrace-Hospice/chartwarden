@@ -619,8 +619,8 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
       const sessionId = await sessionRow(TENANT_ORG, grantId);
       await asApp(TENANT_ORG, async (c) => {
         // a revoke must carry a reason; migration 1487 lets the session close as grant_revoked only after it. This runs before the
-        // temp traps below because the grant's own audit trigger (migration 0053, search_path pg_catalog, public) is not what this
-        // test pins: the traps cover the session and ledger evidence.
+        // temp traps below because the grant's own audit trigger is not what this test pins: the traps cover the session and ledger
+        // evidence.
         await expect(
           c.query("UPDATE support_consent_grant SET revoked_at = now() WHERE id = $1", [grantId]),
         ).rejects.toThrow(

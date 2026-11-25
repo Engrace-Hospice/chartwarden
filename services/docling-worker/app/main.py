@@ -21,7 +21,9 @@ import hmac
 import logging
 import os
 import tempfile
+import threading
 import time
+from contextvars import ContextVar
 from functools import lru_cache
 from typing import Any, Callable
 
@@ -65,9 +67,52 @@ def require_service_token(authorization: str | None = Header(default=None)) -> N
 Converter = Callable[[str], Any]
 
 
-@lru_cache(maxsize=1)
-def _docling_converter() -> Converter:
+OCR_ENGINES = ("rapidocr", "tesseract", "easyocr")
+
+
+def _engine_from_env(name: str, default: str, *, allow_none: bool = False) -> str | None:
+    """An OCR engine name from the environment. Unset or empty means the default; "none" turns the backup off."""
+    value = (os.environ.get(name, "").strip() or default).lower()
+    if value == "none" and allow_none:
+        return None
+    if value not in OCR_ENGINES:
+        raise ValueError(f"{name} must be one of {', '.join(OCR_ENGINES)}{' or none' if allow_none else ''}")
+    return value
+
+
+# A misspelt engine name stops the service at startup instead of failing every first request with a 500.
+_engine_from_env("DOCLING_OCR_ENGINE", "tesseract")
+_engine_from_env("DOCLING_OCR_BACKUP", "rapidocr", allow_none=True)
+
+# Ids of the /parse call on this thread, for the fallback warning (only ids: never document text).
+_request_ids: ContextVar[str] = ContextVar("docling_request_ids", default="")
+_converter_lock = threading.Lock()
+
+
+def _ocr_options(engine: str) -> Any:
     # Imported lazily: Docling pulls torch and its layout models, which tests never need.
+    if engine == "rapidocr":
+        from docling.datamodel.pipeline_options import RapidOcrOptions
+
+        return RapidOcrOptions(lang=["en"], force_full_page_ocr=True)  # PP-OCR models on onnxruntime
+    if engine == "tesseract":
+        from docling.datamodel.pipeline_options import TesseractCliOcrOptions
+
+        return TesseractCliOcrOptions(lang=["eng"], force_full_page_ocr=True)
+    return None  # easyocr: Docling's own default
+
+
+def _converter_for(engine: str) -> Converter:
+    """The converter for one OCR engine. Each loads its own layout and TableFormer models: measured peak memory is
+    ~1.4 GB with Tesseract alone and ~2.5 GB once the backup has loaded too (evicting the first did not give it
+    back), over the production worker's 2 GB limit. Production therefore sets DOCLING_OCR_BACKUP=none until the
+    limit is raised."""
+    with _converter_lock:  # two requests failing at once must not each build the backup
+        return _build_converter(engine)
+
+
+@lru_cache(maxsize=None)
+def _build_converter(engine: str) -> Converter:
     from docling.datamodel.base_models import InputFormat
     from docling.datamodel.pipeline_options import PdfPipelineOptions
     from docling.document_converter import DocumentConverter, ImageFormatOption, PdfFormatOption
@@ -78,13 +123,9 @@ def _docling_converter() -> Converter:
         options.artifacts_path = artifacts  # the models baked into the image; never a runtime download
     options.do_ocr = True  # faxes are images of text
     options.do_table_structure = True
-    # OCR engine (F-238). Tesseract is the default: on the DocLens complex-packet fixture (21 faxed pages,
-    # scripts/doclens/make-complex-packet.py) it read 42/55 key phrases exactly vs EasyOCR's 15/55, and
-    # 21/31 ICD-10 codes vs 14/31, in ~1/10th of the CPU time. EasyOCR stays selectable.
-    if os.environ.get("DOCLING_OCR_ENGINE", "tesseract").lower() == "tesseract":
-        from docling.datamodel.pipeline_options import TesseractCliOcrOptions
-
-        options.ocr_options = TesseractCliOcrOptions(lang=["eng"], force_full_page_ocr=True)
+    ocr_options = _ocr_options(engine)
+    if ocr_options is not None:
+        options.ocr_options = ocr_options
     converter = DocumentConverter(
         format_options={
             InputFormat.PDF: PdfFormatOption(pipeline_options=options),
@@ -94,6 +135,35 @@ def _docling_converter() -> Converter:
 
     def convert(path: str) -> Any:
         return converter.convert(path, max_num_pages=MAX_PAGES).document
+
+    return convert
+
+
+@lru_cache(maxsize=1)
+def _docling_converter() -> Converter:
+    # OCR engine (F-238). Tesseract is the primary and RapidOCR (PaddleOCR's PP-OCR models on onnxruntime) the
+    # backup: if the primary raises on a document, the same document is parsed again with the backup, so an OCR
+    # fault never fails an intake. Through the whole DocLens complex-packet pipeline Tesseract kept 19/19 document
+    # dates and 10 stage-5 disagreements; RapidOCR (which reads "Blvd" where Tesseract reads "Blwvd") lost the H&P
+    # date (it ran "09/17/2026Author:" together) and doubled the disagreements to 20, at ~2x the CPU time.
+    # EasyOCR (15/55 key phrases, ~10x slower than Tesseract) stays selectable.
+    primary_engine = _engine_from_env("DOCLING_OCR_ENGINE", "tesseract") or "tesseract"
+    backup_engine = _engine_from_env("DOCLING_OCR_BACKUP", "rapidocr", allow_none=True)
+    if backup_engine is None or backup_engine == primary_engine:
+        return _converter_for(primary_engine)
+
+    def convert(path: str) -> Any:
+        try:
+            return _converter_for(primary_engine)(path)
+        except Exception as exc:  # noqa: BLE001 — Docling raises many types; the class is enough, never the text
+            log.warning(
+                "ocr engine %s failed (%s); retrying with %s %s",
+                primary_engine,
+                type(exc).__name__,
+                backup_engine,
+                _request_ids.get(),
+            )
+            return _converter_for(backup_engine)(path)
 
     return convert
 
@@ -166,6 +236,7 @@ def parse(
     with tempfile.NamedTemporaryFile(suffix=suffix) as tmp:
         tmp.write(data)
         tmp.flush()
+        ids = _request_ids.set(f"job={req.job_id} corr={x_correlation_id}")
         try:
             doc = converter(tmp.name)
         except HTTPException:
@@ -175,6 +246,8 @@ def parse(
                 "parse failed job=%s corr=%s error=%s", req.job_id, x_correlation_id, type(exc).__name__
             )
             raise HTTPException(status_code=422, detail="docling_parse_failed") from exc
+        finally:
+            _request_ids.reset(ids)
     pages = document_to_pages(doc)
     log.info(
         "parsed job=%s corr=%s pages=%d blocks=%d ms=%d",

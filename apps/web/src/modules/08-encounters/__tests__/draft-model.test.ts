@@ -351,15 +351,57 @@ describe("trendOf", () => {
     const points = [1, 2, 3, 4, 5, 6].map((n) => point(`2026-11-0${n}T10:00:00Z`, n * 10));
     expect(trendOf(points).recent).toHaveLength(4);
   });
+
+  describe("the ESAS-r item scores of a reading", () => {
+    const earlier = {
+      pain: 2,
+      tiredness: 2,
+      drowsiness: 0,
+      nausea: 0,
+      lackOfAppetite: 0,
+      shortnessOfBreath: 0,
+      depression: 0,
+      anxiety: 0,
+      wellbeing: 2,
+    };
+    const later = { ...earlier, pain: 6 };
+
+    it("rides with the latest reading up to the visit time, and only that one", () => {
+      const trend = trendOf(
+        [
+          { capturedAt: "2026-11-10T10:00:00Z", score: 6, itemScores: earlier },
+          { capturedAt: "2026-11-17T10:00:00Z", score: 10, itemScores: later },
+          { capturedAt: "2026-11-19T10:00:00Z", score: 30, itemScores: { ...later, pain: 10 } },
+        ],
+        "2026-11-17T23:59:59.999Z",
+      );
+      expect(trend.latest?.itemScores).toEqual(later);
+      expect(trend.previous?.itemScores).toEqual(earlier);
+    });
+
+    it("is absent from a reading that came without them", () => {
+      const trend = trendOf([point("2026-11-10T10:00:00Z", 6)]);
+      expect(trend.latest).not.toHaveProperty("itemScores");
+    });
+  });
 });
 
 describe("trendWindow", () => {
-  it("covers the 90 days up to the service date", () => {
-    expect(trendWindow("2026-11-17")).toEqual({ from: "2026-08-19", to: "2026-11-17" });
+  it("covers the 90 days up to the service date, and reads to the end of the next UTC day for a reading stamped after local midnight", () => {
+    expect(trendWindow("2026-11-17")).toEqual({ from: "2026-08-19", to: "2026-11-18" });
+  });
+
+  it("rolls the day after over a month and a year end without a time-zone drift", () => {
+    expect(trendWindow("2026-11-30")?.to).toBe("2026-12-01");
+    expect(trendWindow("2026-12-31")?.to).toBe("2027-01-01");
+    expect(trendWindow("2028-02-28")?.to).toBe("2028-02-29");
   });
 
   it("takes only the date of a date-time", () => {
-    expect(trendWindow("2026-11-17T08:00:00.000Z")?.to).toBe("2026-11-17");
+    expect(trendWindow("2026-11-17T08:00:00.000Z")).toEqual({
+      from: "2026-08-19",
+      to: "2026-11-18",
+    });
   });
 
   it("has no window for a service date it cannot read, instead of throwing", () => {

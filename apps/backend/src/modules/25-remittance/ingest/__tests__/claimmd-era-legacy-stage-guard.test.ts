@@ -60,7 +60,7 @@ describe("M25 legacy intake vs Claim.MD stage identity", () => {
         providerEntityId: PROVIDER,
         payerId: PROVIDER,
         payerKind: "medicare",
-        minioObjectKey: "synthetic-key",
+        objectKey: "synthetic-key",
         fileSha256: createHash("sha256").update(RAW).digest("hex"),
         rawEdi: RAW,
       },

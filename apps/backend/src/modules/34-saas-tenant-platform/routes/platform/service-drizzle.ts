@@ -1585,6 +1585,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             409,
           );
         }
+        // `bundleMinioObjectKey` is the persisted JSON key of the hold event's `shard_receipt` (kept; only the column was renamed).
         const receipt = (latest.shardReceipt ?? {}) as {
           bundleMinioObjectKey?: string;
           bundleSha256?: string;
@@ -1605,7 +1606,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         await repo.update(jobId, {
           status: "fulfilled",
           fulfilledAt: now,
-          bundleMinioObjectKey: receipt.bundleMinioObjectKey,
+          bundleObjectKey: receipt.bundleMinioObjectKey,
           bundleSha256: receipt.bundleSha256,
           bundleSizeBytes: String(receipt.bundleSizeBytes),
           bundlePresignedUrlExpiresAt: new Date(now.getTime() + TENANT_EXPORT_OBJECT_TTL_MS),

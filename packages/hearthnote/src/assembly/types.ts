@@ -119,6 +119,16 @@ export interface RecordedAdl {
   readonly devices?: readonly AdlDevice[];
 }
 
+/**
+ * The ADL levels recorded on the patient's previous signed visit, so the note can state the change in dependence since then.
+ * Only the levels are kept (continence and devices are not part of the score).
+ */
+export interface PriorRecordedAdl {
+  readonly items?: RecordedAdl["items"];
+  /** That visit's service date, as the caller formatted it (assembly never computes time). */
+  readonly on: string;
+}
+
 export const APPETITE_LEVELS = ["good", "fair", "poor", "none"] as const;
 export type AppetiteLevel = (typeof APPETITE_LEVELS)[number];
 
@@ -265,6 +275,8 @@ export interface AssemblyContext {
   readonly recordedVitals?: RecordedVitals;
   /** Functional status recorded on this visit. Rendered under the template's ADL-summary section. */
   readonly recordedAdl?: RecordedAdl;
+  /** The ADL levels of the patient's previous signed visit, so the functional-status sentence can state the change since then. */
+  readonly priorAdl?: PriorRecordedAdl;
   /** Nutrition and hydration recorded on this visit. Rendered under the template's nutrition-summary section. */
   readonly recordedNutrition?: RecordedNutrition;
   /** The wounds assessed on this visit, in the order recorded. Rendered under the template's wound-summary section. */

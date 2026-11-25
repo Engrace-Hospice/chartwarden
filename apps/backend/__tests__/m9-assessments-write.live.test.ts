@@ -680,6 +680,122 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
     expect(ev[0].prior_assessment_id).not.toBeNull();
   });
 
+  it("significant change — esas_symptom_ge_7 keys on the worst ITEM (6 does not fire, 7 does), never the total or the optional 'other' symptom", async () => {
+    // The rule reads `maxSymptomScore`, which the recording path never passed, so it could not fire. The
+    // three captures keep the TOTAL tiny (6, 7, 0) so `esas_total_increase_20_in_7d` cannot be what fires:
+    // only the per-item rule is under test.
+    const sitedSvc = createDbAssessmentRouteService(handle.db, outbox, {
+      resolve: async () => ({ providerEntityId: providerA, locationId: locationA }),
+      resolveAnchor: async () => ({
+        siting: { providerEntityId: providerA, locationId: locationA },
+        anchor: { status: "active", activatedAt: "2026-01-01" },
+      }),
+    });
+    const esas = (over: Record<string, unknown>) => ({
+      pain: 0,
+      tiredness: 0,
+      drowsiness: 0,
+      nausea: 0,
+      lackOfAppetite: 0,
+      shortnessOfBreath: 0,
+      depression: 0,
+      anxiety: 0,
+      wellbeing: 0,
+      ...over,
+    });
+    const ruleRows = async (assessmentId: string) =>
+      (
+        await admin.query(
+          "SELECT rule_id, delta_value, threshold_value, status FROM significant_change_event WHERE clinical_assessment_id=$1",
+          [assessmentId],
+        )
+      ).rows;
+    const at = (day: string) => `2026-01-${day}T12:00:00.000Z`;
+
+    // Worst item 6: just below the trigger.
+    const below = await sitedSvc.recordAssessment(
+      ORG_A,
+      recorderOf[ORG_A],
+      PATIENT,
+      recordArgs({ scaleType: "esas_r" as never, capturedAt: at("20"), data: esas({ pain: 6 }) }),
+    );
+    expect(await ruleRows(below.id)).toHaveLength(0);
+
+    // Worst item 7: at the trigger. The delta is the item score, the threshold the platform 7.
+    const atEdge = await sitedSvc.recordAssessment(
+      ORG_A,
+      recorderOf[ORG_A],
+      PATIENT,
+      recordArgs({
+        scaleType: "esas_r" as never,
+        capturedAt: at("21"),
+        data: esas({ shortnessOfBreath: 7 }),
+      }),
+    );
+    const fired = await ruleRows(atEdge.id);
+    expect(fired).toHaveLength(1);
+    expect(fired[0].rule_id).toBe("esas_symptom_ge_7");
+    expect(Number(fired[0].delta_value)).toBe(7);
+    expect(Number(fired[0].threshold_value)).toBe(7);
+    expect(fired[0].status).toBe("open");
+    // Not a critical rule: the alert is `medium` and stays `medium` until acknowledged. Only the critical rules escalate on no
+    // acknowledge (`escalatesOnNoAck`), so no `high` and no medical-director route for this one.
+    const evId = (
+      await admin.query("SELECT id FROM significant_change_event WHERE clinical_assessment_id=$1", [
+        atEdge.id,
+      ])
+    ).rows[0].id as string;
+    expect(await eventsFor(evId)).toContain("m9.assessment.significant_change");
+    const payload = (
+      await admin.query(
+        "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m9.assessment.significant_change'",
+        [evId],
+      )
+    ).rows[0].payload as { severity: string; ruleId: string };
+    expect(payload.ruleId).toBe("esas_symptom_ge_7");
+    expect(payload.severity).toBe("medium");
+    // The fired event is audited as it is written: the DB trigger `audit_phi_write_significant_change_event` (migration 0033) records the insert.
+    const insertAudit = await admin.query(
+      "SELECT 1 FROM audit_event WHERE resource_id = $1 AND event_type = 'significant_change_event.insert'",
+      [evId],
+    );
+    expect(insertAudit.rows.length).toBeGreaterThan(0);
+
+    // The optional "other" symptom is outside the nine scored items, as it is outside the total.
+    const other = await sitedSvc.recordAssessment(
+      ORG_A,
+      recorderOf[ORG_A],
+      PATIENT,
+      recordArgs({
+        scaleType: "esas_r" as never,
+        capturedAt: at("22"),
+        data: esas({ otherSymptom: { label: "itch", severity: 9 } }),
+      }),
+    );
+    expect(await ruleRows(other.id)).toHaveLength(0);
+
+    // An item outside 0 to 10 is refused (422), not stored: the total (11) is inside 0..90, so without the check the record would
+    // read "severe (≥7): pain" while no alert could fire for it.
+    const invalidCaptured = at("23");
+    await expect(
+      sitedSvc.recordAssessment(
+        ORG_A,
+        recorderOf[ORG_A],
+        PATIENT,
+        recordArgs({
+          scaleType: "esas_r" as never,
+          capturedAt: invalidCaptured,
+          data: esas({ pain: 11 }),
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_ITEM_SCORE", statusCode: 422 });
+    const stored = await admin.query(
+      "SELECT 1 FROM clinical_assessment WHERE patient_id=$1 AND scale_type='esas_r' AND captured_at=$2",
+      [PATIENT, invalidCaptured],
+    );
+    expect(stored.rows).toHaveLength(0);
+  });
+
   it("reassessment-due-scan (GAP-181) — persists the due ledger for ACTIVE patients, announces each overdue episode once, tightens per tenant policy, closes on discharge", async () => {
     const cadencePatient = randomUUID();
     const sitedSvc = createDbAssessmentRouteService(handle.db, outbox, {

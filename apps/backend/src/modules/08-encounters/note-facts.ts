@@ -93,6 +93,7 @@ export async function readRecordedFacts(
         ? vitals
         : { ...vitals, priorWeight: findings.priorWeight },
     ...(findings.adl === undefined ? {} : { recordedAdl: findings.adl }),
+    ...(findings.priorAdl === undefined ? {} : { priorAdl: findings.priorAdl }),
     ...(findings.nutrition === undefined ? {} : { recordedNutrition: findings.nutrition }),
     ...(wounds.length === 0 ? {} : { recordedWounds: wounds }),
     ...(r.fallOccurredOn === null ? {} : { linkedFall: { occurredOn: r.fallOccurredOn } }),

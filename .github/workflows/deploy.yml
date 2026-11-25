@@ -261,8 +261,8 @@ jobs:
           push: true
           tags: ghcr.io/engrace-hospice/chartwarden-web:sha-${{ env.RELEASE_SHA }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
-          # VITE_TENANT_BASE_DOMAIN shows the "find my organization" landing at app.<base>; CSP_STORAGE_ORIGIN pins img-src and
-          # frame-src to https://storage.<base> instead of any https: (see Dockerfile.web). Both empty on a single-host demo.
+          # VITE_TENANT_BASE_DOMAIN shows the "find my organization" landing at app.<base>; CSP_STORAGE_ORIGIN pins img-src,
+          # frame-src and connect-src to https://storage.<base> instead of any https: (see Dockerfile.web). Both empty on a single-host demo.
           build-args: |
             VITE_TENANT_BASE_DOMAIN=${{ steps.demo_tenant.outputs.base_domain }}
             CSP_STORAGE_ORIGIN=${{ steps.demo_tenant.outputs.storage_origin }}

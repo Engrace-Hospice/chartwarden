@@ -32,7 +32,7 @@ export const documentVersions = pgTable(
       .references(() => documents.id),
     versionNumber: text("version_number").notNull(), // app-side serial within document
     replacesVersionId: uuid("replaces_version_id"),
-    minioObjectKey: text("minio_object_key").notNull(), // DENYLISTED (§3.6) — tenant+patient prefix
+    objectKey: text("object_key").notNull(), // DENYLISTED (§3.6) — tenant+patient prefix
     mimeType: text("mime_type").notNull(),
     byteSize: text("byte_size").notNull(), // bigint stored as text per M1 convention
     sha256Hex: text("sha256_hex").notNull(),
@@ -59,7 +59,7 @@ export const documentVersions = pgTable(
       t.documentId,
       t.versionNumber,
     ),
-    byMinioKey: uniqueIndex("document_version_minio_key_uk").on(t.minioObjectKey),
+    byObjectKey: uniqueIndex("document_version_object_key_uk").on(t.objectKey),
     bySha256: index("document_version_sha256_idx").on(t.sha256Hex),
     byOrgCreated: index("document_version_org_created_idx").on(
       t.organizationId,

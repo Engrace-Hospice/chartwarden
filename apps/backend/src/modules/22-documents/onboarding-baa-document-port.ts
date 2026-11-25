@@ -6,7 +6,7 @@
 // input. Nothing is read back and nothing is listed. The document is filed under the operator's own membership (the platform org's), the
 // attribution the document table's write-audit trigger also records through `app.user_id`.
 //
-// FAIL CLOSED like every M22 upload: no object store configured (`MINIO_*` unset) answers a typed 503 and nothing is stored; with
+// FAIL CLOSED like every M22 upload: no object store configured (`OBJECT_STORE_*` unset) answers a typed 503 and nothing is stored; with
 // production (or `DOCUMENT_UPLOAD_SCAN_REQUIRED=true` in acceptance) an unbound scanner does too.
 import { type DbClient, schema } from "@chartwarden/db";
 import { ChartWardenError, type OrgId } from "@chartwarden/types";
@@ -129,7 +129,7 @@ export function buildTenantBaaDocumentOnboardingPort(
   };
 }
 
-/** The production port: the bound object store (`MINIO_*`) and the scan posture the other M22 uploads use. */
+/** The production port: the bound object store (`OBJECT_STORE_*`) and the scan posture the other M22 uploads use. */
 export function buildEnvTenantBaaDocumentOnboardingPort(
   db: DbClient,
   logger: UploadLogger,

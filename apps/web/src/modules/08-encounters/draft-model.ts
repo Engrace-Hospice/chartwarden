@@ -1,6 +1,7 @@
 // apps/web/src/modules/08-encounters — the pure rules behind the visit-note draft screens (ADR-0114). No I/O, no clock: the words a
 // clinician reads for each section state, which sections still need them, how the server's refusals read, and the score trend. The
 // server decides every state; this only names it.
+import type { EsasrItemScores } from "@chartwarden/types";
 import type { StatusTone } from "@chartwarden/ui";
 import type {
   DraftOrigin,
@@ -326,11 +327,14 @@ export function resolutionNote(
 export interface ScorePoint {
   readonly capturedAt: string;
   readonly score: number | null;
+  /** The nine item scores of an ESAS-r reading, when the server sent them (older records and other scales have none). */
+  readonly itemScores?: EsasrItemScores;
 }
 
 export interface ScoredReading {
   readonly capturedAt: string;
   readonly score: number;
+  readonly itemScores?: EsasrItemScores;
 }
 
 export interface ScoreTrend {
@@ -350,7 +354,13 @@ export function trendOf(points: readonly ScorePoint[], notAfter?: string): Score
   const scored = points
     .flatMap((point): ScoredReading[] =>
       point.score !== null && Date.parse(point.capturedAt) <= ceiling
-        ? [{ capturedAt: point.capturedAt, score: point.score }]
+        ? [
+            {
+              capturedAt: point.capturedAt,
+              score: point.score,
+              ...(point.itemScores ? { itemScores: point.itemScores } : {}),
+            },
+          ]
         : [],
     )
     .sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt));
@@ -367,17 +377,20 @@ export function trendOf(points: readonly ScorePoint[], notAfter?: string): Score
 const TREND_WINDOW_DAYS = 90;
 const MS_PER_DAY = 86_400_000;
 
+const isoDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
+
 /**
- * The series window the trend reads: the 90 days up to the visit's service date (the route takes whole dates, end of day inclusive).
- * Null for a service date that is not a date: there is no window to ask for, and `toISOString` would throw.
+ * The series window the trend reads: the 90 days up to the visit's service date. The route takes whole UTC dates (end of day inclusive)
+ * while the service date is the organization's local calendar day, so a reading taken in the evening there is stamped on the NEXT UTC
+ * day; `to` is therefore the day after the service date, and `trendOf` (capped at the visit time, the end of the local day) drops
+ * whatever lies past the visit. Null for a service date that is not a date: there is no window to ask for, and `toISOString` would throw.
  */
 export function trendWindow(
   serviceDate: string,
 ): { readonly from: string; readonly to: string } | null {
-  const to = serviceDate.slice(0, 10);
-  const end = Date.parse(`${to}T00:00:00Z`);
+  const end = Date.parse(`${serviceDate.slice(0, 10)}T00:00:00Z`);
   if (Number.isNaN(end)) return null;
-  return { from: new Date(end - TREND_WINDOW_DAYS * MS_PER_DAY).toISOString().slice(0, 10), to };
+  return { from: isoDay(end - TREND_WINDOW_DAYS * MS_PER_DAY), to: isoDay(end + MS_PER_DAY) };
 }
 
 export function describeChange(change: number | null): string {

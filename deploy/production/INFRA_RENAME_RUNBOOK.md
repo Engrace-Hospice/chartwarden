@@ -1,5 +1,11 @@
 # Infrastructure rename runbook: wardenx -> chartwarden
 
+> **Superseded for the object store (historical runbook).** Every MinIO step below describes a stack that no longer exists:
+> production's object store is SeaweedFS, and `compose.yml` has no `minio` service, `minio-provision`, `minio-data` volume or
+> `MINIO_*` variable (`volumes-copy.sh` does not copy a `minio-data` volume, and `preflight.sh` refuses a host that has one but
+> no `seaweedfs-data`). Read this for the rename procedure only and do not run its MinIO commands; see `README.md`
+> ("Object store: the environment contract"). The audit webhook now posts to `/api/v1/webhooks/object-store/access-log`.
+
 Operator runbook for the infrastructure identifiers that a code merge CANNOT rename safely. The
 product/code rename is already merged. Nothing below is automated; each step is manual, ordered, and
 reversible until its "commit point". Run it from a maintenance window the operator owns. Never run
@@ -398,7 +404,8 @@ mc du local/wardenx-platform-terminology; mc du local/chartwarden-platform-termi
 ```
 
 Verification: terminology release job reads/writes the new bucket; `GET /api/ready` (readiness probe)
-healthy; MinIO audit webhook still posts to `/api/v1/webhooks/minio/access-log` for the new bucket
+healthy; MinIO audit webhook still posts to `/api/v1/webhooks/minio/access-log` for the new bucket (historical: that path is
+removed, the sender now posts to `/api/v1/webhooks/object-store/access-log`)
 (`mc admin config get local audit_webhook`; the webhook target is server-wide, buckets need no per-bucket
 hook). Keep the old buckets read-only for at least one release cycle; delete only after the operator
 confirms (`mc rb --force local/wardenx-platform-terminology`). Rollback: revert the code change AND re-add the
@@ -645,8 +652,8 @@ Targets: `app.chartwarden.cloud` (web), `api.chartwarden.cloud` (api), `storage.
 Verified by grep: no application code hardcodes these hosts (`apps/` and `packages/` carry them only as test fixtures). Runtime hosts come from
 `BETTER_AUTH_URL`, `TRUSTED_ORIGINS` (also the CORS allow-list, `resolveWebTrustedOrigins`), `STORAGE_PUBLIC_ORIGIN` (also `MINIO_PUBLIC_ENDPOINT`,
 derived in compose), `M34_INVITATION_ACCEPT_URL`, `FHIR_TOKEN_ENDPOINT_URL`, `PASSKEY_RP_ID` / `WEBAUTHN_RP_ID`, and optionally `WEB_APP_URL` (falls back
-to `BETTER_AUTH_URL` when unset: check `grep WEB_APP_URL .env.production`). Session cookies are host-only (no cross-subdomain cookies), the SPA CSP is
-`connect-src 'self'`, and the demo has `TENANT_BASE_DOMAIN` unset (ADR-0088), so ADR-0049 tenant-subdomain parsing is inactive and `app.`/`api.`/`storage.`
+to `BETTER_AUTH_URL` when unset: check `grep WEB_APP_URL .env.production`). Session cookies are host-only (no cross-subdomain cookies), the SPA CSP's
+`connect-src` is `'self' wss: https:` (the storage origin is reached directly by the verified upload), and the demo has `TENANT_BASE_DOMAIN` unset (ADR-0088), so ADR-0049 tenant-subdomain parsing is inactive and `app.`/`api.`/`storage.`
 are not read as tenant slugs. If `TENANT_BASE_DOMAIN` is ever set to `chartwarden.cloud`, those three labels would first have to be reserved.
 
 Only the operator can do:

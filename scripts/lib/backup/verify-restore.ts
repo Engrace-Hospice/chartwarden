@@ -35,6 +35,7 @@ import {
   locate,
   objectRefCheck,
   reconcileRef,
+  resolveObjectRefSource,
   unclassifiedRefColumns,
 } from "./object-refs";
 
@@ -269,7 +270,7 @@ export async function rlsSmoke(adminUrl: string, appUrl: string): Promise<Check[
   });
 }
 
-async function liveRefs(c: Client): Promise<{ refs: LiveRef[]; discovered: string[] }> {
+export async function liveRefs(c: Client): Promise<{ refs: LiveRef[]; discovered: string[] }> {
   const discovered = (
     await c.query(
       `SELECT c.relname || '.' || a.attname AS col FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid
@@ -280,7 +281,8 @@ async function liveRefs(c: Client): Promise<{ refs: LiveRef[]; discovered: strin
     )
   ).rows.map((r) => r.col as string);
   const refs: LiveRef[] = [];
-  for (const s of OBJECT_REF_SOURCES) {
+  for (const registered of OBJECT_REF_SOURCES) {
+    const s = resolveObjectRefSource(registered, discovered);
     const sha = s.shaColumn ? `t."${s.shaColumn}"` : "NULL";
     const rows = (
       await c.query(

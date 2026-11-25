@@ -89,7 +89,7 @@ describe.skipIf(!DB_URL)("M25 manual match + adjustment override — LIVE Postgr
       await admin.query(
         `INSERT INTO remittance_advice (organization_id, provider_entity_id, payer_id, payer_kind,
            interchange_control_number, transaction_set_control_number, payment_method, total_payment_amount,
-           production_date, minio_object_key, file_sha256, parse_status)
+           production_date, object_key, file_sha256, parse_status)
          VALUES ($1,$2,$3,'medicare',$4,$5,'eft',$6, now(),'k',$7,'partial_posted') RETURNING id, received_at`,
         [
           ORG,

@@ -825,7 +825,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       providerEntityId: PE,
       payerId: PE,
       payerKind: "medicare" as const,
-      minioObjectKey: "minio/cycle.835",
+      objectKey: "minio/cycle.835",
       fileSha256: sha256Hex(raw),
       rawEdi: raw,
     };

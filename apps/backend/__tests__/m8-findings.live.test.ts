@@ -15,7 +15,9 @@
  *      its template has a section that states it (422 FINDING_NOT_IN_NOTE otherwise).
  *   6. only the AUTHOR's first write starts a clockless draft's closure clock (`draft_opened`), once.
  *   7. weight history reads the patient's earlier SIGNED encounters (plus this visit's own weight), across tenants not at all.
- *   8. `loadRecordedFindings` hands the note facts what was stored and nothing for an empty record.
+ *   8. `loadRecordedFindings` hands the note facts what was stored and nothing for an empty record, and, beside this visit's ADL
+ *      levels, the ADL levels of the patient's latest earlier SIGNED visit that assessed any (`priorAdl`): never a draft, finalized,
+ *      void, later or same-day visit, another patient's, or another tenant's; the gate's cheap read never reads it.
  *   9. the HTTP routes behind the real guards and a DB-backed server: the read event lands with the encounter as its resource id and
  *      the PATIENT in its context; the optional If-Match refuses a stale record (409 STALE_VERSION); an AI principal is refused.
  *  11. the application role can update what a record says and nothing that says what it IS (42501 on an identity column), and the
@@ -55,9 +57,11 @@ import {
 } from "../src/modules/08-encounters/erasers/encounter-eraser";
 import {
   type FindingsService,
+  PRIOR_ADL_READ_CAP,
   createDrizzleFindingsService,
   loadRecordedFindings,
   loadRecordedRecords,
+  readPriorAdl,
   readWeightHistory,
   registerFindingsRoutes,
 } from "../src/modules/08-encounters/findings/index";
@@ -1029,6 +1033,180 @@ describe.skipIf(!DB_URL)("M8 findings (ADLs, nutrition, weight history) — LIVE
       await expect(
         inOrg(ORG_B, (tx) => readWeightHistory(tx, { organizationId: ORG_B, encounterId })),
       ).rejects.toBeInstanceOf(NotFoundError);
+      await expect(
+        inOrg(ORG_B, (tx) => readPriorAdl(tx, { organizationId: ORG_B, encounterId })),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+
+    describe("the previous signed visit's ADL levels (priorAdl)", () => {
+      /** An encounter holding an ADL record: recorded while a draft (the only state that takes a PUT), then moved to `status`. */
+      async function seedAdlVisit(
+        org: OrgFixture,
+        author: Member,
+        patientId: string,
+        serviceDate: string,
+        status: EncounterStatus,
+        items: Record<string, string>,
+      ): Promise<string> {
+        const id = await seedEncounter({ org, author, patientId, serviceDate });
+        await svc.putAdl(org.orgId, id, { items } as never, author.membershipId);
+        if (status !== "draft") await setStatus(id, status);
+        return id;
+      }
+      const factsOf = (encounterId: string) =>
+        inOrg(ORG_A, (tx) => loadRecordedFindings(tx, { organizationId: ORG_A, encounterId }));
+
+      it("is the latest earlier signed visit that assessed an ADL, skipping a visit that assessed none", async () => {
+        const patientId = randomUUID();
+        await seedAdlVisit(orgs.A, authorA, patientId, "2026-03-01", "signed", {
+          bathing: "limited_assist",
+          eating: "independent",
+        });
+        await seedAdlVisit(orgs.A, authorA, patientId, "2026-02-20", "signed", {
+          bathing: "total_dependence",
+        });
+        // a more recent signed visit whose only ADL did not occur says nothing about dependence
+        await seedAdlVisit(orgs.A, authorA, patientId, "2026-03-05", "signed", {
+          dressing: "did_not_occur",
+        });
+        const current = await seedAdlVisit(orgs.A, authorA, patientId, SERVICE_DATE, "draft", {
+          bathing: "extensive_assist",
+        });
+
+        expect((await factsOf(current)).priorAdl).toEqual({
+          on: "2026-03-01",
+          items: { bathing: "limited_assist", eating: "independent" },
+        });
+      });
+
+      it("counts signed, cosign-pending and cosigned visits and nothing else", async () => {
+        const patientId = randomUUID();
+        const current = await seedAdlVisit(orgs.A, authorA, patientId, SERVICE_DATE, "draft", {
+          bathing: "limited_assist",
+        });
+        // none of these is a signed earlier visit of this patient in this tenant
+        await seedAdlVisit(orgs.A, otherA, patientId, "2026-03-02", "draft", {
+          bathing: "independent",
+        });
+        await seedAdlVisit(orgs.A, otherA, patientId, "2026-03-03", "finalized", {
+          bathing: "independent",
+        });
+        await seedAdlVisit(orgs.A, authorA, patientId, "2026-03-04", "voided", {
+          bathing: "independent",
+        });
+        await seedAdlVisit(orgs.A, authorA, patientId, "2026-03-12", "signed", {
+          bathing: "independent",
+        });
+        await seedAdlVisit(orgs.A, authorA, patientId, SERVICE_DATE, "signed", {
+          bathing: "independent",
+        });
+        await seedAdlVisit(orgs.A, authorA, randomUUID(), "2026-03-06", "signed", {
+          bathing: "independent",
+        });
+        await seedAdlVisit(orgs.B, authorB, patientId, "2026-03-07", "signed", {
+          bathing: "independent",
+        });
+        expect((await factsOf(current)).priorAdl).toBeUndefined();
+
+        await seedAdlVisit(orgs.A, authorA, patientId, "2026-02-01", "cosigned", {
+          bathing: "supervision",
+        });
+        expect((await factsOf(current)).priorAdl).toEqual({
+          on: "2026-02-01",
+          items: { bathing: "supervision" },
+        });
+        await seedAdlVisit(orgs.A, authorA, patientId, "2026-02-15", "cosign_pending", {
+          bathing: "extensive_assist",
+        });
+        expect((await factsOf(current)).priorAdl).toEqual({
+          on: "2026-02-15",
+          items: { bathing: "extensive_assist" },
+        });
+      });
+
+      it("is read only beside this visit's own ADL levels, and never by the gate's cheap read", async () => {
+        const patientId = randomUUID();
+        await seedAdlVisit(orgs.A, authorA, patientId, "2026-03-01", "signed", {
+          bathing: "limited_assist",
+        });
+        // a visit that recorded only continence and devices states no dependence, so it states no prior either
+        const continenceOnly = await seedEncounter({ org: orgs.A, author: authorA, patientId });
+        await svc.putAdl(
+          ORG_A,
+          continenceOnly,
+          { bladder: "continent", devices: ["cane"] },
+          authorA.membershipId,
+        );
+        expect((await factsOf(continenceOnly)).priorAdl).toBeUndefined();
+
+        const withItems = await seedAdlVisit(orgs.A, authorA, patientId, SERVICE_DATE, "draft", {
+          bathing: "limited_assist",
+        });
+        expect((await factsOf(withItems)).priorAdl).toBeDefined();
+        const cheap = await inOrg(ORG_A, (tx) =>
+          loadRecordedRecords(tx, { organizationId: ORG_A, encounterId: withItems }),
+        );
+        expect(Object.keys(cheap)).toEqual(["adl"]);
+      });
+
+      it("never takes another tenant's visit of the same patient id, in either direction, and still finds its own", async () => {
+        const patientId = randomUUID();
+        // tenant A's signed visit is more recent than anything tenant B holds below
+        await seedAdlVisit(orgs.A, authorA, patientId, "2026-03-01", "signed", {
+          bathing: "independent",
+        });
+        const currentB = await seedAdlVisit(orgs.B, authorB, patientId, SERVICE_DATE, "draft", {
+          bathing: "limited_assist",
+        });
+        const factsOfB = () =>
+          inOrg(ORG_B, (tx) =>
+            loadRecordedFindings(tx, { organizationId: ORG_B, encounterId: currentB }),
+          );
+        expect((await factsOfB()).priorAdl).toBeUndefined();
+
+        await seedAdlVisit(orgs.B, authorB, patientId, "2026-02-01", "signed", {
+          bathing: "supervision",
+        });
+        expect((await factsOfB()).priorAdl).toEqual({
+          on: "2026-02-01",
+          items: { bathing: "supervision" },
+        });
+        // tenant B's context asking about tenant A's encounter is the non-leaking 404, whatever organization it names
+        const currentA = await seedAdlVisit(orgs.A, authorA, patientId, SERVICE_DATE, "draft", {
+          bathing: "limited_assist",
+        });
+        for (const organizationId of [ORG_A, ORG_B]) {
+          await expect(
+            inOrg(ORG_B, (tx) => readPriorAdl(tx, { organizationId, encounterId: currentA })),
+          ).rejects.toBeInstanceOf(NotFoundError);
+        }
+      });
+
+      it(`reads back at most ${PRIOR_ADL_READ_CAP} earlier signed visits: one older than that many that assessed no ADL is not reached`, async () => {
+        const patientId = randomUUID();
+        await seedAdlVisit(orgs.A, authorA, patientId, "2025-12-01", "signed", {
+          bathing: "total_dependence",
+        });
+        const currentVisit = await seedAdlVisit(orgs.A, authorA, patientId, SERVICE_DATE, "draft", {
+          bathing: "limited_assist",
+        });
+        const day = (n: number) => `2026-01-${String(n).padStart(2, "0")}`;
+        // PRIOR_ADL_READ_CAP - 1 newer visits whose only ADL did not occur: the older visit is the last one read
+        for (let n = 1; n < PRIOR_ADL_READ_CAP; n += 1) {
+          await seedAdlVisit(orgs.A, authorA, patientId, day(n), "signed", {
+            dressing: "did_not_occur",
+          });
+        }
+        expect((await factsOf(currentVisit)).priorAdl).toEqual({
+          on: "2025-12-01",
+          items: { bathing: "total_dependence" },
+        });
+        // one more empty visit pushes it past the lookback
+        await seedAdlVisit(orgs.A, authorA, patientId, day(PRIOR_ADL_READ_CAP), "signed", {
+          dressing: "did_not_occur",
+        });
+        expect((await factsOf(currentVisit)).priorAdl).toBeUndefined();
+      });
     });
   });
 

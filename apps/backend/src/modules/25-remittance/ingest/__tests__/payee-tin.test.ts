@@ -59,7 +59,7 @@ function receive(
       providerEntityId,
       payerId: PE,
       payerKind,
-      minioObjectKey: "k",
+      objectKey: "k",
       fileSha256: createHash("sha256").update(RAW, "utf8").digest("hex"),
       rawEdi: RAW,
     },

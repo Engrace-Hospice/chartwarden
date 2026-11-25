@@ -50,7 +50,7 @@ function run(args: string[], env: Record<string, string> = {}): { code: number; 
   return { code: r.status ?? -1, out: `${r.stdout}${r.stderr}` };
 }
 
-const SRC = ["old_postgres-data", "old_minio-data"].join("\n");
+const SRC = ["old_postgres-data", "old_seaweedfs-data"].join("\n");
 
 describe("volumes-copy.sh", () => {
   it("rejects a bad mode, a bad prefix and identical prefixes", () => {
@@ -65,16 +65,23 @@ describe("volumes-copy.sh", () => {
     expect(r.out).toContain("no object-store source volume");
   });
 
-  it("accepts SeaweedFS's volume as the object store once MinIO's is gone (post-cutover)", () => {
+  it("accepts SeaweedFS's volume as the object store and never looks for or copies the retired MinIO volume", () => {
     const r = run(["verify", "old", "new"], {
-      STUB_VOLUMES: "old_postgres-data\nold_seaweedfs-data\nnew_postgres-data\nnew_seaweedfs-data",
+      STUB_VOLUMES:
+        "old_postgres-data\nold_seaweedfs-data\nold_minio-data\nnew_postgres-data\nnew_seaweedfs-data",
     });
     expect(r.out).not.toContain("no object-store source volume");
-    expect(r.out).toContain("skip old_minio-data (absent)");
+    expect(r.out).not.toContain("minio-data");
+  });
+
+  it("refuses when only the retired MinIO volume exists as an object-store source", () => {
+    const r = run(["copy", "old", "new"], { STUB_VOLUMES: "old_postgres-data\nold_minio-data" });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("no object-store source volume (old_seaweedfs-data)");
   });
 
   it("refuses when a container still uses a source volume, before copying anything", () => {
-    const r = run(["copy", "old", "new"], { STUB_VOLUMES: SRC, STUB_BUSY: "old_minio-data" });
+    const r = run(["copy", "old", "new"], { STUB_VOLUMES: SRC, STUB_BUSY: "old_seaweedfs-data" });
     expect(r.code).toBe(1);
     expect(r.out).toContain("in use by a container");
     expect(r.out).not.toContain("copy old_");
@@ -97,7 +104,7 @@ describe("volumes-copy.sh", () => {
 
   it("never prints identical when the manifest cannot be read", () => {
     const r = run(["verify", "old", "new"], {
-      STUB_VOLUMES: `${SRC}\nnew_postgres-data\nnew_minio-data`,
+      STUB_VOLUMES: `${SRC}\nnew_postgres-data\nnew_seaweedfs-data`,
       STUB_RUN_FAIL: "1",
     });
     expect(r.code).toBe(1);
@@ -106,7 +113,7 @@ describe("volumes-copy.sh", () => {
 
   it("verifies identical trees and leaves the source untouched", () => {
     const r = run(["verify", "old", "new"], {
-      STUB_VOLUMES: `${SRC}\nnew_postgres-data\nnew_minio-data`,
+      STUB_VOLUMES: `${SRC}\nnew_postgres-data\nnew_seaweedfs-data`,
     });
     expect(r.code, r.out).toBe(0);
     expect(r.out).toContain("ok   postgres-data identical");

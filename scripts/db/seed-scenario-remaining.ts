@@ -67,7 +67,7 @@ import { Client } from "pg";
  *     unconditionally hard-coded to throw `DegradedError` regardless of config
  *     (`documents-route-service-db.ts`'s `uploadDocument`) — dead code, not a config gap. (b) The real
  *     two-step verified-upload handshake needs a live MinIO the local environment doesn't have running
- *     (`docker compose up -d rustfs` + `MINIO_*` env vars, neither present) — confirmed via the backend's
+ *     (`docker compose up -d rustfs` + `OBJECT_STORE_*` env vars, neither present) — confirmed via the backend's
  *     own readiness probe reading `disabled`. The M39-consent-signing auto-render alt-path is ALSO a dead
  *     end for a third, independent reason: `registerDocumentSeams` in `index.ts` never passes a `store:`
  *     override, so the render consumer's document-row write lands in `createInMemoryDocumentSeamStore()`'s
@@ -204,7 +204,7 @@ async function seedDocument(
   const documentId = firstRow(doc, "seed-scenario-remaining: document insert").id;
   const version = await db.query<{ id: string }>(
     `INSERT INTO document_version
-       (organization_id, document_id, version_number, minio_object_key, mime_type, byte_size,
+       (organization_id, document_id, version_number, object_key, mime_type, byte_size,
         sha256_hex, sha256_verified_at, uploaded_by_membership_id, uploaded_by_kind)
      VALUES ($1,$2,'1',$3,'application/pdf','102400',
              '0000000000000000000000000000000000000000000000000000000000000000', now(), $4, 'user')

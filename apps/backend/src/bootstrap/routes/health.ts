@@ -20,7 +20,7 @@ export const ReadyResponseSchema = Type.Object({
   checks: Type.Object({
     db: CheckState,
     valkey: CheckState,
-    minio: CheckState,
+    objectStore: CheckState,
     outbox: CheckState,
     capabilities: Type.Optional(
       Type.Record(
@@ -41,7 +41,7 @@ export const VersionResponseSchema = Type.Object({
 export interface ReadinessChecks {
   readonly db: "ok" | "fail";
   readonly valkey: "ok" | "fail";
-  readonly minio: "ok" | "fail";
+  readonly objectStore: "ok" | "fail";
   /** TASK-040B — pending-row backlog depth on `outbox_event`; "fail" past a configured ceiling. */
   readonly outbox: "ok" | "fail";
   /** Sanitized product capabilities; disabled is explicit but does not mean the host is unhealthy. */
@@ -54,7 +54,7 @@ export type ReadinessProbe = () => Promise<ReadinessChecks>;
 export const defaultReadinessProbe: ReadinessProbe = async () => ({
   db: "ok",
   valkey: "ok",
-  minio: "ok",
+  objectStore: "ok",
   outbox: "ok",
 });
 
@@ -65,7 +65,9 @@ export function registerHealthRoutes(app: FastifyInstance, probe: ReadinessProbe
 
   app.get("/ready", async (_req, reply) => {
     const checks = await probe();
-    const allOk = [checks.db, checks.valkey, checks.minio, checks.outbox].every((v) => v === "ok");
+    const allOk = [checks.db, checks.valkey, checks.objectStore, checks.outbox].every(
+      (v) => v === "ok",
+    );
     return reply.code(allOk ? 200 : 503).send({ status: allOk ? "ready" : "not_ready", checks });
   });
 

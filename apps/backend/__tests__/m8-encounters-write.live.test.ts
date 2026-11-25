@@ -26,6 +26,7 @@ import {
   narrativeVocabReleaseById,
 } from "@chartwarden/narrative-vocab";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
+import { LATE_ENTRY_REASON_MIN_CHARS } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
@@ -563,6 +564,24 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       });
       await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
       expect(await signedTier(id)).toBe("late_entry");
+    });
+
+    it("the service reads the shared 40-character minimum itself: 39 characters is as good as none (nothing stored), 40 is kept", async () => {
+      const id = await draft("routine_visit", "rn", { serviceDate: "2026-01-13" });
+      const reasonOf = (length: number) => "late-".repeat(20).slice(0, length);
+      await expect(
+        svc.finalize(ORG_A, id, SERVICE_DATE as never, {
+          lateEntryReason: reasonOf(LATE_ENTRY_REASON_MIN_CHARS - 1),
+        }),
+      ).rejects.toMatchObject({ statusCode: 422, code: "LATE_ENTRY_REASON_REQUIRED" });
+      expect(await tierOf(id)).toEqual({ late_entry_tier: "normal", late_entry_reason: null });
+      await svc.finalize(ORG_A, id, SERVICE_DATE as never, {
+        lateEntryReason: reasonOf(LATE_ENTRY_REASON_MIN_CHARS),
+      });
+      expect(await tierOf(id)).toEqual({
+        late_entry_tier: "late_entry",
+        late_entry_reason: reasonOf(LATE_ENTRY_REASON_MIN_CHARS),
+      });
     });
 
     it("6 days late: sign is refused until a Clinical Supervisor override is recorded", async () => {
