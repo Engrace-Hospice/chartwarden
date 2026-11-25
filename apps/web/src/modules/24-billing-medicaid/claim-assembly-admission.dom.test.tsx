@@ -79,6 +79,44 @@ const BLOCKED_ARRANGEMENT_PREVIEW = {
   enrollmentReadiness: [],
   selectedClearinghouse: { status: "unavailable", vendor: null, configurationStatus: null },
   tradingPartnerCredential: { status: "missing", reasonCode: "TRADING_PARTNER_CREDENTIAL_MISSING" },
+  pricing: {
+    status: "unresolved",
+    assessedAt: "2026-11-25T00:00:00.000Z",
+    coversRequestedPeriod: true,
+    requiredInputs: ["Clinical quantity evidence"],
+    segments: [
+      {
+        serviceFrom: "2026-01-01",
+        serviceTo: "2026-01-31",
+        serviceCategory: "RHC",
+        status: "unresolved",
+        rateStatus: "missing",
+        unitBasis: null,
+        rateCents: null,
+        rateLocalityCode: null,
+        rateEffectiveFrom: null,
+        rateEffectiveTo: null,
+        rateSourceKind: null,
+        rateEvidenceVersion: null,
+        methodologyVersion: null,
+        pricingMethod: null,
+        quantityConversionMethod: null,
+        minimumDurationMethod: null,
+        minimumClinicalMinutes: null,
+        roundingBoundary: null,
+        chargeCeilingMethod: null,
+        chargeCeilings: [],
+        quantityStatus: "missing",
+        baseReimbursementCents: null,
+        reimbursementEstimateCents: null,
+        actualBilledChargeCents: null,
+        reasonCodes: ["RATE_LOCALITY_UNRESOLVED"],
+      },
+    ],
+    reimbursementEstimateTotalCents: null,
+    actualBilledChargeTotalCents: null,
+    submissionAvailable: false,
+  },
   electronicSubmissionAvailable: false,
   isAdvisorySnapshot: true,
 };
@@ -360,11 +398,61 @@ describe("the billing context step shows what the server resolved", () => {
     expect(fieldValue("Claim enrollment")).toBe("Missing · Enrollment evidence missing");
   });
 
-  it("keeps the policy-coupled statements next to the unqualified payer policy they depend on", async () => {
+  it("shows missing pricing inputs next to the unqualified payer policy they depend on", async () => {
     await reachBillingContext();
     expect(fieldValue("Payer authorization evidence")).toContain("Unqualified payer policy");
     expect(fieldValue("Clinical quantity")).toContain("Clinical quantity missing or unqualified");
-    expect(fieldValue("Pricing information")).toContain("Pricing information required");
+    expect(screen.getByRole("region", { name: "Pricing assessment" })).toHaveTextContent(
+      "No complete reimbursement estimate is available. Missing facts are not shown as a zero amount.",
+    );
+    expect(fieldValue("Electronic submission")).toContain("Unavailable");
+  });
+
+  it("shows a synthetic reimbursement estimate separately from the billed charge and submission state", async () => {
+    previewBody = {
+      ...BLOCKED_ARRANGEMENT_PREVIEW,
+      pricing: {
+        ...BLOCKED_ARRANGEMENT_PREVIEW.pricing,
+        status: "fully_resolved",
+        requiredInputs: [],
+        segments: [
+          {
+            ...BLOCKED_ARRANGEMENT_PREVIEW.pricing.segments[0],
+            status: "resolved",
+            rateStatus: "qualified",
+            unitBasis: "per_day",
+            rateCents: 1200,
+            rateLocalityCode: "SYNTHETIC-LOCALITY",
+            rateEffectiveFrom: "2026-01-01",
+            rateSourceKind: "cco_contract",
+            rateEvidenceVersion: 1,
+            methodologyVersion: 1,
+            pricingMethod: "per_day",
+            quantityConversionMethod: "daily_units",
+            minimumDurationMethod: "not_applicable",
+            minimumClinicalMinutes: null,
+            roundingBoundary: "not_applicable",
+            chargeCeilingMethod: "none",
+            quantityStatus: "verified",
+            baseReimbursementCents: 1200,
+            reimbursementEstimateCents: 1200,
+            reasonCodes: [],
+          },
+        ],
+        reimbursementEstimateTotalCents: 1200,
+      },
+    };
+    await reachBillingContext();
+    const pricing = screen.getByRole("region", { name: "Pricing assessment" });
+    expect(pricing).toHaveTextContent("Estimated reimbursement: $12.00");
+    expect(pricing).toHaveTextContent("locality SYNTHETIC-LOCALITY");
+    expect(fieldValue("Clinical quantity")).toContain(
+      "Verified quantity evidence is present for the reimbursement estimate",
+    );
+    expect(pricing).toHaveTextContent(
+      "not the provider's billed charge, payer-allowed amount, or payment",
+    );
+    expect(pricing).toHaveTextContent("actual billed amount remains unavailable");
     expect(fieldValue("Electronic submission")).toContain("Unavailable");
   });
 });

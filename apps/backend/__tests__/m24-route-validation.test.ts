@@ -242,6 +242,7 @@ describe("M24 assembly preview read audit", () => {
         "room_and_board",
         "medicare_coordination",
         "payer_authorization_evidence",
+        "pricing",
       ],
     });
     expect(auditConfig).not.toHaveProperty("none");

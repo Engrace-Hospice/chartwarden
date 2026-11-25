@@ -43,7 +43,7 @@ import {
   runMedicaidRules,
 } from "@chartwarden/medicaid-adapters";
 import { withOrgContext } from "@chartwarden/tenancy";
-import type { PatientCoverageReader } from "@chartwarden/types";
+import type { PatientAddressReader, PatientCoverageReader } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray } from "drizzle-orm";
 import {
@@ -56,6 +56,9 @@ import {
   inclusiveLocEndDateForAdmission,
   patientLifecycleServiceRangeIssue,
 } from "../claim-range-guards";
+import { verifyStoredRhcPricingSnapshots } from "../pricing/rhc-pricing-snapshot";
+import type { CanonicalPayerIdentityReader } from "../routes/write-service-drizzle";
+import { readMedicaidRatePolicyLineage } from "../routes/write-service-drizzle";
 import { M24_QUEUES, M24_QUEUE_PARAMS } from "./queues";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -113,6 +116,7 @@ export interface RevalidateWorkerDeps {
       | (AdmissionStayForClaim & {
           readonly patientId: string;
           readonly providerEntityId: string | null;
+          readonly version?: number;
         })
       | null
     >;
@@ -122,6 +126,10 @@ export interface RevalidateWorkerDeps {
       admissionId: string,
     ): Promise<ReadonlyArray<CurrentLocPeriodForClaim>>;
   };
+  /** M40 canonical payer and dated program-classification reader. */
+  readonly canonicalPayerReader?: CanonicalPayerIdentityReader;
+  /** M5 PHI-minimal, transaction-bound residence history for local RHC snapshot revalidation. */
+  readonly patientAddresses?: Pick<PatientAddressReader, "residencesBetweenInTransaction">;
   now?: () => Date;
   readonly outbox: RevalidateWorkerOutboxPort;
 }
@@ -136,6 +144,7 @@ async function resolvePayerContext(
   primaryPayerCoverageId: string | null;
   /** Set only from the transaction-bound M6 snapshot for a matching death discharge. */
   inclusiveEndDate?: string | null;
+  admissionVersion?: number;
 }> {
   if (!deps.coverages) {
     return {
@@ -258,6 +267,7 @@ async function resolvePayerContext(
     hasConcurrentMedicareAndMedicaidCoverage,
     primaryPayerCoverageId: primary.coverage.id,
     inclusiveEndDate: inclusiveLocEndDateForAdmission(admission),
+    admissionVersion: admission.version,
   };
 }
 
@@ -267,26 +277,28 @@ async function verifyHospiceClaimSnapshot(
   claim: typeof schema.medicaidClaim.$inferSelect,
   lines: readonly (typeof schema.medicaidClaimLine.$inferSelect)[],
   inclusiveEndDate: string | null,
-): Promise<boolean> {
-  if (claim.kind === "rb_only") return true;
+): Promise<{ readonly verified: boolean; readonly periods: readonly CurrentLocPeriodForClaim[] }> {
+  if (claim.kind === "rb_only") return { verified: true, periods: [] };
   const readPeriods = deps.admissions?.periodsForAdmissionInTransaction;
-  if (!readPeriods) return false;
+  if (!readPeriods) return { verified: false, periods: [] };
   try {
     const periods = await readPeriods(tx, claim.organizationId, claim.admissionId);
-    return (
-      hospiceClaimLineSnapshotIssue({
-        lines,
-        periods,
-        organizationId: claim.organizationId,
-        providerEntityId: claim.providerEntityId,
-        claimId: claim.id,
-        serviceFrom: day(claim.serviceFrom),
-        serviceTo: day(claim.serviceTo),
-        inclusiveEndDate,
-      }) === null
-    );
+    return {
+      verified:
+        hospiceClaimLineSnapshotIssue({
+          lines,
+          periods,
+          organizationId: claim.organizationId,
+          providerEntityId: claim.providerEntityId,
+          claimId: claim.id,
+          serviceFrom: day(claim.serviceFrom),
+          serviceTo: day(claim.serviceTo),
+          inclusiveEndDate,
+        }) === null,
+      periods,
+    };
   } catch {
-    return false;
+    return { verified: false, periods: [] };
   }
 }
 
@@ -336,13 +348,60 @@ export async function runMedicaidRevalidate(
     // Other optional readers remain unbound in this worker, but payer responsibility is mandatory and
     // comes from the same transaction-bound M5 interval snapshot used by claim assembly.
     const resolvedPayer = await resolvePayerContext(tx, deps, claim);
-    const hospiceClaimSnapshotVerified = await verifyHospiceClaimSnapshot(
+    const hospiceSnapshot = await verifyHospiceClaimSnapshot(
       tx,
       deps,
       claim,
       lineRows,
       resolvedPayer.inclusiveEndDate ?? null,
     );
+    let hospicePricingSnapshotVerified = claim.kind === "rb_only";
+    let hospiceInstitutionalFormatQualified = claim.kind === "rb_only";
+    if (
+      claim.kind !== "rb_only" &&
+      claim.canonicalPayerId &&
+      claim.medicaidProgramKind === "managed_care" &&
+      deps.canonicalPayerReader?.medicaidProgramClassifications
+    ) {
+      try {
+        const assessedAt = now.toISOString();
+        const rateRows = await readMedicaidRatePolicyLineage(tx, {
+          organizationId: claim.organizationId,
+          providerEntityId: claim.providerEntityId,
+          canonicalPayerId: claim.canonicalPayerId,
+          programKind: "managed_care",
+          serviceState: claim.serviceState,
+          serviceTo: day(claim.serviceTo),
+          assessedAt,
+        });
+        const pricingVerification = await verifyStoredRhcPricingSnapshots({
+          tx,
+          claim,
+          lines: lineRows,
+          locPeriods: hospiceSnapshot.periods,
+          admissionVersion: resolvedPayer.admissionVersion,
+          rateRows,
+          payerReader: {
+            resolvePayer: deps.canonicalPayerReader.resolvePayer,
+            medicaidProgramClassifications:
+              deps.canonicalPayerReader.medicaidProgramClassifications,
+          },
+          residenceReader:
+            deps.patientAddresses?.residencesBetweenInTransaction !== undefined
+              ? {
+                  residencesBetweenInTransaction: (...args) =>
+                    deps.patientAddresses!.residencesBetweenInTransaction!(...args),
+                }
+              : undefined,
+          assessedAt,
+        });
+        hospicePricingSnapshotVerified = pricingVerification.pricingSnapshotVerified;
+        hospiceInstitutionalFormatQualified = pricingVerification.institutionalFormatQualified;
+      } catch {
+        hospicePricingSnapshotVerified = false;
+        hospiceInstitutionalFormatQualified = false;
+      }
+    }
     const ctx: MedicaidValidationContext = {
       orgId: job.organizationId,
       asOfDate: day(claim.serviceFrom),
@@ -387,7 +446,9 @@ export async function runMedicaidRevalidate(
       // The platform-required rule therefore keeps R&B claims out of READY until an authorized validation route
       // performs those transaction-bound checks.
       rbClaimSnapshotVerified: false,
-      hospiceClaimSnapshotVerified,
+      hospiceClaimSnapshotVerified: hospiceSnapshot.verified,
+      hospicePricingSnapshotVerified,
+      hospiceInstitutionalFormatQualified,
       rateLookups: [],
       payerResponsibility: resolvedPayer.payerResponsibility,
       evvBrackets: [],

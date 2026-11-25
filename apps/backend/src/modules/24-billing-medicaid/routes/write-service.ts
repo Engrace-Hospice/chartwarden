@@ -74,6 +74,56 @@ export interface AssemblyPreviewArrangement {
   status: "candidate" | "blocked" | "unresolved";
   reasonCode: string | null;
 }
+export interface AssemblyPreviewPricing {
+  status:
+    | "fully_resolved"
+    | "partially_resolved"
+    | "unresolved"
+    | "ambiguous"
+    | "unsupported"
+    | "unavailable";
+  assessedAt: string;
+  coversRequestedPeriod: boolean;
+  requiredInputs: readonly string[];
+  segments: readonly {
+    serviceFrom: string;
+    serviceTo: string;
+    serviceCategory: "RHC" | "CHC" | "IRC" | "GIP" | "IN_HOME_RESPITE" | null;
+    status: "resolved" | "partial" | "unresolved" | "ambiguous" | "unsupported";
+    rateStatus: "qualified" | "missing" | "ambiguous" | "unverified" | "unsupported";
+    unitBasis: "per_day" | "per_hour" | null;
+    rateCents: number | null;
+    rateLocalityCode: string | null;
+    rateEffectiveFrom: string | null;
+    rateEffectiveTo: string | null;
+    rateSourceKind: string | null;
+    rateEvidenceVersion: number | null;
+    methodologyVersion: number | null;
+    pricingMethod: "per_day" | "per_hour" | "fixed_contract_unit" | null;
+    quantityConversionMethod:
+      | "daily_units"
+      | "hourly_prorated_minutes"
+      | "hourly_each_hour_or_part"
+      | null;
+    minimumDurationMethod: "not_applicable" | "not_required" | "minimum_minutes" | null;
+    minimumClinicalMinutes: number | null;
+    roundingBoundary: "not_applicable" | "service_day" | "segment" | null;
+    chargeCeilingMethod: "none" | "lower_of_rate_and_usual_charge" | "contract_maximum" | null;
+    chargeCeilings: readonly {
+      method: "lower_of_rate_and_usual_charge" | "contract_maximum";
+      amountCents: number;
+      boundary: "service_day" | "segment";
+    }[];
+    quantityStatus: "verified" | "missing" | "unverified";
+    baseReimbursementCents: number | null;
+    reimbursementEstimateCents: number | null;
+    actualBilledChargeCents: number | null;
+    reasonCodes: readonly string[];
+  }[];
+  reimbursementEstimateTotalCents: number | null;
+  actualBilledChargeTotalCents: number | null;
+  submissionAvailable: false;
+}
 export interface AssemblyPreviewView {
   primaryCoverage: AssemblyPreviewCoverage;
   medicaidCoverage: AssemblyPreviewCoverage;
@@ -169,6 +219,7 @@ export interface AssemblyPreviewView {
       | "unavailable";
     reasonCode: string;
   };
+  pricing: AssemblyPreviewPricing;
   electronicSubmissionAvailable: false;
   isAdvisorySnapshot: true;
 }

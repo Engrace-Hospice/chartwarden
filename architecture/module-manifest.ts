@@ -1057,6 +1057,8 @@ export const MODULES: ModuleDef[] = [
       "medicaid_enrollment_evidence",
       "medicaid_payer_authorization_event",
       "medicaid_payer_rate_policy",
+      "medicaid_hospice_billing_evidence",
+      "medicaid_claim_line_pricing_snapshot",
     ],
   },
   {

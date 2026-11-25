@@ -42,6 +42,7 @@ export * from "./line-assembly";
 export * from "./service-segmentation";
 export * from "./payer-authorization";
 export * from "./payer-rate-policy";
+export * from "./hospice-pricing";
 // Production-facing mapping remains fail-closed until authoritative clinical, payer, rate and route evidence exists.
 export { mapQualifiedM24ClaimToInstitutionalDocument } from "./m24-institutional-837i";
 export type {

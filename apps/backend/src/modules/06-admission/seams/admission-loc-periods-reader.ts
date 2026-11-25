@@ -20,6 +20,8 @@ const SYSTEM_USER_ID = "";
 
 export interface AdmissionLocPeriod {
   readonly id: string;
+  readonly version: number;
+  readonly updatedAt: Date;
   readonly levelOfCare: (typeof LOC.$inferSelect)["levelOfCare"];
   readonly effectiveAt: Date;
   readonly endedAt: Date | null;
@@ -37,6 +39,7 @@ export interface AdmissionLocPeriodsReader {
   ): Promise<{
     patientId: string;
     providerEntityId: string | null;
+    version: number;
     locationId: string | null;
     serviceAddressState: string | null;
     dischargedAt: Date | null;
@@ -62,6 +65,7 @@ export interface AdmissionLocPeriodsReader {
   ): Promise<{
     patientId: string;
     providerEntityId: string | null;
+    version: number;
     locationId: string | null;
     serviceAddressState: string | null;
     dischargedAt: Date | null;
@@ -97,6 +101,7 @@ export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPerio
         .select({
           patientId: ADM.patientId,
           providerEntityId: ADM.providerEntityId,
+          version: ADM.version,
           locationId: ADM.locationId,
           serviceAddressState: ADM.serviceAddressState,
           dischargedAt: ADM.dischargedAt,
@@ -134,6 +139,7 @@ export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPerio
         .select({
           patientId: ADM.patientId,
           providerEntityId: ADM.providerEntityId,
+          version: ADM.version,
           locationId: ADM.locationId,
           serviceAddressState: ADM.serviceAddressState,
           dischargedAt: ADM.dischargedAt,
@@ -170,6 +176,8 @@ export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPerio
       return tx
         .select({
           id: LOC.id,
+          version: LOC.version,
+          updatedAt: LOC.updatedAt,
           levelOfCare: LOC.levelOfCare,
           effectiveAt: LOC.effectiveAt,
           endedAt: LOC.endedAt,
@@ -191,6 +199,8 @@ export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPerio
         (tx as unknown as DbClient)
           .select({
             id: LOC.id,
+            version: LOC.version,
+            updatedAt: LOC.updatedAt,
             levelOfCare: LOC.levelOfCare,
             effectiveAt: LOC.effectiveAt,
             endedAt: LOC.endedAt,

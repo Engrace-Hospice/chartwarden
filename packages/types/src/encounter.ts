@@ -310,6 +310,13 @@ export interface SignedEncounterDigest {
    * check-in/out or clinician-entered), or `null` when the bracket is incomplete or non-positive. `null` means
    * UNRESOLVED — consumers must report it, never treat it as zero minutes (M15's 418.78(e) hour ledger, GAP-044). */
   readonly durationMinutes: number | null;
+  /** Owner-backed actual interval fields for downstream clinical quantity assessment. Optional only
+   * for backward-compatible in-memory consumers; the production M8 reader populates every field. */
+  readonly providerEntityId?: string | null;
+  readonly startedAt?: IsoInstant | null;
+  readonly endedAt?: IsoInstant | null;
+  readonly timeSource?: EncounterTimeSource | null;
+  readonly sourceVersion?: number;
 }
 
 /** A signed addendum projection inside an {@link EncounterRenderPayload}. */

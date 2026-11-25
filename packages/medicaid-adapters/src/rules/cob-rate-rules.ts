@@ -150,3 +150,33 @@ export const medicaidRateSchedulePresentForServiceDate: MedicaidRule = {
     );
   },
 };
+
+/** Non-overridable platform gate until M24 persists and revalidates payer-specific pricing evidence. */
+export const medicaidPayerRatePolicySnapshotVerified: MedicaidRule = {
+  key: "medicaid_payer_rate_policy_snapshot_verified",
+  version: 1,
+  category: "rate",
+  title: "Payer-specific pricing snapshot is verified",
+  description:
+    "Every hospice line must carry an immutable payer-specific pricing snapshot that remains valid for its service facts.",
+  severity: "error",
+  regulatoryRequired: false,
+  platformRequired: true,
+  applicableStates: [],
+  check: (ctx) => {
+    const KEY = "medicaid_payer_rate_policy_snapshot_verified";
+    if (!ctx.lines.some((line) => !line.isRb) || ctx.hospicePricingSnapshotVerified) {
+      return pass(KEY, "error", "No hospice pricing snapshot failure was identified.");
+    }
+    return fail(
+      KEY,
+      "error",
+      "Hospice claim lines do not carry an immutable, payer-specific pricing snapshot.",
+      {
+        summary:
+          "Keep the claim in draft preparation until payer-rate, clinical quantity, billed-charge, and institutional-unit evidence can be revalidated.",
+        fixAction: "resolve_medicaid_rate_policy_snapshot",
+      },
+    );
+  },
+};
