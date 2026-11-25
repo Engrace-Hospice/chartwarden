@@ -109,8 +109,9 @@ export type ScaleLicenseStatus = "active" | "pending_renewal" | "expired";
 // ── §4.9 / M09-F12 significant-change severity floor (declared as data) ──────────────────────────────
 
 /** The per-alert severity the significant-change detector assigns (§4.9). `clinical_urgent` is set at
- * first emission for {@link CRITICAL_RULES}; `medium` for all other rules at first emission; `high`
- * after a 24h no-ack escalation (§2.2.2; the change-escalation cron, M9-T06). */
+ * first emission for {@link CRITICAL_RULES}; `medium` for all other rules at first emission, and it stays `medium`: only a
+ * CRITICAL rule escalates on 24h without an acknowledge (`escalatesOnNoAck`; §2.2.2; the change-escalation cron, M9-T06), which is
+ * the only way a `high` is reached. */
 export type AssessmentAlertSeverity = "clinical_urgent" | "medium" | "high";
 
 /**
@@ -185,8 +186,8 @@ export type M9EventName = (typeof M9_EVENT_NAMES)[number];
 /**
  * §4.9 — the typed alert M36 receives when `m9.assessment.significant_change` fires. Severity is
  * assigned at first emission by the detector (§4.9 / M09-F12): {@link CRITICAL_RULES} → `clinical_urgent`
- * (medical director notified immediately); all other rules → `medium`, upgradable to `high` after 24h
- * without ack (the change-escalation cron). The `recipients` block declares the fan-out M36 resolves.
+ * (medical director notified immediately); all other rules → `medium`, which does not escalate (only CRITICAL rules do, on 24h
+ * without ack, via the change-escalation cron). The `recipients` block declares the fan-out M36 resolves.
  */
 export interface AssessmentSignificantChangeAlert {
   readonly kind: "m9.assessment.significant_change";

@@ -14,9 +14,10 @@ Published ESAS cut-offs are **calibrations of the patient's own "mild, moderate,
 validated action thresholds. The one review that says what to do at a score (Oldenmenger 2013) recommends a score of
 4 or more only as a **prompt for a more comprehensive symptom assessment**, finds evidence missing for 7 of 9 items,
 and advises caution about fixed cut-offs in guidelines and quality indicators. So the composer builds that one prompt
-and nothing else: no severity tier, no "notify the physician" wording, no total-score band. Separately, the sources
-agree on 7 as the severe cut-off (comparison table below), with the same limits; using it for an M9 alert and the
-assessment record line is a proposal, not in this change (see "Where 7 could be used").
+and nothing else: no severity tier, no "notify the physician" wording, no total-score band. Separately, the M9 platform
+alert and the assessment record line call an item of 7 or more severe: the sources agree on 7 as the severe cut-off
+(comparison table below), with the same limits, so it is built there as a platform rule and not as advice shown to the
+author (see "Where 7 is used").
 
 ## Corrections to the starting leads
 
@@ -72,26 +73,28 @@ population. It is not a severity rating and blocks nothing.
 ## Not built
 
 In the composer prompt: a severity tier at 7 (the sources agree on 7, but Selby's per-item exceptions are second-hand
-and the ESAS-r study differs, so 7 is not used in the composer; the M9 proposal is below), any "notify the physician"
+and the ESAS-r study differs, so 7 lives only as the M9 alert and record line below), any "notify the physician"
 wording (no source validates a score as an escalation trigger; the one escalation ladder is unreferenced regional
 guidance that disagrees with itself), and any total-score band anywhere (no source gives one).
 
-## Where 7 could be used (M9; a proposal, not in this change)
+## Where 7 is used (M9, not the composer)
 
-Nothing in M9 is changed by this change. A cut-off of 7 applied there would serve two things: the existing
-`esas_symptom_ge_7` change rule (an alert asking for a look at the item; a tenant cannot move it) and the assessment
-record's line ("severe (≥7): pain"). For the pain item 7 to 10 is also CMS HOPE's severe band and NCCN v2.2023 PAIN-A, the
-band the pain helper already uses (`PAIN_SEVERE_MIN_SCORE`). It is a calibration of the patient's own word "severe", not a
-validated action threshold, and per-item values differ (dyspnea 6 and fatigue 8 from a secondary source; the ESAS-r study in
-Japan mostly 5 to 6), so such an alert would say nothing about what to do.
+One constant, `ESAS_R_SEVERE_ITEM_MIN_SCORE = 7` (`packages/assessments/src/scales/esas-r/severe-item.ts`, with the sources and
+limits beside it), read by two things: the `esas_symptom_ge_7` change rule (an alert asking for a look at the item; a tenant
+cannot move it) and the assessment record's line ("severe (≥7): pain"). For the pain item 7 to 10 is also CMS HOPE's
+severe band and NCCN v2.2023 PAIN-A, the band the pain helper already uses (`PAIN_SEVERE_MIN_SCORE`). It is a calibration
+of the patient's own word "severe", not a validated action threshold, and per-item values differ (dyspnea 6 and fatigue 8
+from a secondary source; the ESAS-r study in Japan mostly 5 to 6), so the alert says nothing about what to do.
 
 ## Repo state found during the research (not part of this change)
 
 M9 already has two ESAS-r rules in `packages/assessments/src/detector.ts`: `esas_symptom_ge_7` and
-`esas_total_increase_20_in_7d`. `esas_symptom_ge_7` can never fire: the recording path
-(`assessments-route-service-db.ts`, `detectSignificantChanges` call) does not pass `maxSymptomScore`, which the rule
-reads. Passing the worst of the nine item scores is a proposal, not in this change. The rule is the platform's own Module 9
-rule at 7 and a tenant cannot move it; the sources for 7 are under "Where 7 could be used". The total-score bands that
-`interpret()` prints (30 or less mild, 60 or less moderate, above 60 high, zero "no symptom burden") have no published
-source; the only published total-score evidence found is change thresholds (Hui 2015: +3 / -4). Removing them, and giving
-the record line the total as a number plus "severe (≥7): items", is likewise a proposal, not in this change.
+`esas_total_increase_20_in_7d`. `esas_symptom_ge_7` could never fire: the recording path
+(`assessments-route-service-db.ts`, `detectSignificantChanges` call) did not pass `maxSymptomScore`, which the rule
+reads. Fixed 2026-11-25 (the worst of the nine item scores is now passed; live test in
+`m9-assessments-write.live.test.ts`; entry in `docs/api/CHANGES.md`). The rule is the platform's own Module 9 rule at 7
+and a tenant cannot move it; the sources for 7 are under "Where 7 is used". The total-score bands that `interpret()`
+printed (30 or less mild, 60 or less moderate, above 60 high, zero "no symptom burden") had no published source; the only
+published total-score evidence found is change thresholds (Hui 2015: +3 / -4). They were removed 2026-11-25: the record
+line now gives the total as a number and, when an item is at 7 or more, "severe (≥7): items". Readings recorded before
+that keep the old words.

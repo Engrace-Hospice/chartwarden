@@ -987,7 +987,10 @@ describe("the ESAS-r item scores on a series point", () => {
     await app.close();
   });
 
-  it("withholds itemScores from a redacted (non-consented SUD-context) point with the score", async () => {
+  // AIMS only: SUD redaction applies to AIMS, and `seriesItemScores` answers {} for any scale but ESAS-r, so this proves the redacted
+  // AIMS point carries no `itemScores` key. The `redacted=true` branch for an ESAS-r row is unreachable through the route today
+  // (an ESAS-r capture is never SUD-context) and is covered in series-item-scores.test.ts.
+  it("a redacted (non-consented SUD-context) AIMS point carries no score and no itemScores", async () => {
     const { app } = makeServer({
       assessments: [
         {

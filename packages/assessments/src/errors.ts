@@ -30,6 +30,10 @@ export const M9_ERROR_STATUS = {
   // §4.4 — server-authoritative scoring sanity (D6): an out-of-published-range computed score is a
   // scoring-function bug, never user error — always 500, client retry won't help.
   SCORE_OUT_OF_RANGE: 500,
+  // A scale item the CLIENT sent that is not a whole number inside the published item range (ESAS-r: nine items, each 0 to 10).
+  // Unlike SCORE_OUT_OF_RANGE this is user error, so 422: the total can look fine while an item is not (pain 11 with the rest 0), and a
+  // stored item the significant-change rule cannot read would leave the record saying "severe" while no alert fires.
+  INVALID_ITEM_SCORE: 422,
   // §4.4 / §2.2.1 — correction-chain integrity (the append-only amendment path).
   CORRECTION_MISMATCH: 422,
   CORRECTION_TARGET_NOT_ACTIVE: 409,

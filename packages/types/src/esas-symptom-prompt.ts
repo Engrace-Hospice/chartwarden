@@ -10,6 +10,10 @@
 // `docs/clinical-review/CLINICAL_SIGNOFF_2026-11-VISIT_NOTE_COMPOSER.md` was signed off by Lora, RN on 2026-11-25; the evidence caveats
 // (one cut-off for all nine items, abstract-only sources) are in `docs/research/ESAS_R_CUTOFFS_RESEARCH.md`, so do not read the number as a
 // clinical rule beyond its stated source.
+//
+// The M9 alert at 7 (`ESAS_R_SEVERE_ITEM_MIN_SCORE`, packages/assessments/src/scales/esas-r/severe-item.ts) is a SEPARATE platform rule with its
+// own sources and limits. It raises a significant-change alert and words the assessment record ("severe (≥7): pain", shown on the M9
+// assessment screens); this prompt does not show it and makes no severity claim of its own.
 
 /** The nine ESAS-r items in the published order. The keys are the `EsasrData` field names (`@chartwarden/assessments`). */
 export const ESAS_R_ITEM_KEYS = [

@@ -270,18 +270,24 @@ export const RequestSummaryDocumentResponseSchema = Type.Object({
   requested: Type.Literal(true),
 });
 
+/** One ESAS-r item score: 0 to 10. */
+const ITEM_SCORE = Type.Number({ minimum: 0, maximum: 10 });
+
 /** The nine numeric ESAS-r item scores of one capture (0 best, 10 worst). Numbers only: never the "other" symptom or any free text. */
-export const EsasrItemScoresResponseSchema = Type.Object({
-  pain: Type.Number(),
-  tiredness: Type.Number(),
-  drowsiness: Type.Number(),
-  nausea: Type.Number(),
-  lackOfAppetite: Type.Number(),
-  shortnessOfBreath: Type.Number(),
-  depression: Type.Number(),
-  anxiety: Type.Number(),
-  wellbeing: Type.Number(),
-});
+export const EsasrItemScoresResponseSchema = Type.Object(
+  {
+    pain: ITEM_SCORE,
+    tiredness: ITEM_SCORE,
+    drowsiness: ITEM_SCORE,
+    nausea: ITEM_SCORE,
+    lackOfAppetite: ITEM_SCORE,
+    shortnessOfBreath: ITEM_SCORE,
+    depression: ITEM_SCORE,
+    anxiety: ITEM_SCORE,
+    wellbeing: ITEM_SCORE,
+  },
+  { additionalProperties: false },
+);
 
 /**
  * One scored point in a series (§4.3 `SeriesPointDto`). `itemScores` is present only for an `esas_r` capture that holds all nine items
