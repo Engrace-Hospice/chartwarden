@@ -74,7 +74,7 @@ Revision 2: corrected the tenant-administrator audit statement, added the condit
 
 Designated authority: Privacy Officer (interim), `docs/architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md`.
 
-## Addendum 1 — no production `superadmin` exists (drafted by engineering 2026-11-25; not in force until the reviewer signs)
+## Addendum 1 — no production `superadmin` exists (drafted by engineering and signed by the reviewer, 2026-11-25)
 
 Finding: an operator ran the platform-staff query of OPS_RUNBOOK §16.5 on the production database on 2026-11-25 and
 supplied the result. The only platform-role holder is `orgadmin@chartwarden.local` (`platform_ops`, `platform_admin`).
