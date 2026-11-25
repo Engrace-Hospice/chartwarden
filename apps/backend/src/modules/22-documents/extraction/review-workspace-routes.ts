@@ -579,7 +579,14 @@ export function registerDocLensReviewWorkspaceRoutes(
     "/api/v1/intake/uploads/:id/pages/:page/image",
     {
       preHandler: [INTAKE_REVIEW],
-      config: { auditRead: { resourceKind: "intake_page_image", resourceIdParam: "id" } },
+      config: {
+        auditRead: {
+          resourceKind: "intake_page_image",
+          resourceIdParam: "id",
+          // The render knows the patient the packet is filed under; the audit names it.
+          patientIdContextAttribute: "readAuditPatientId",
+        },
+      },
     },
     async (request, reply) => {
       const { organizationId } = writeActorOf(request);
@@ -594,6 +601,7 @@ export function registerDocLensReviewWorkspaceRoutes(
         request.id,
         sudContentAccessOf(request),
       );
+      if (out.patientId) request.context.attributes.readAuditPatientId = out.patientId;
       return reply
         .header("content-type", "image/png")
         .header("cache-control", "private, max-age=300")

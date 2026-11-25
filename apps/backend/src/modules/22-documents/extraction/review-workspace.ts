@@ -359,7 +359,13 @@ export interface ReviewWorkspaceService {
     correlationId: string,
     sudAccess?: SudContentAccess,
     scope?: SupportReadScope,
-  ): Promise<{ png: Uint8Array; pageWidth: number; pageHeight: number }>;
+  ): Promise<{
+    png: Uint8Array;
+    pageWidth: number;
+    pageHeight: number;
+    /** The patient the packet is filed under; the read audit names it. */
+    readonly patientId?: string | null;
+  }>;
   resolveSud(
     organizationId: string,
     actor: { userId: string; membershipId: string },
@@ -855,7 +861,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
         bucket: deriveTenantBucket(organizationId),
         objectKey: source.objectKey,
       });
-      return deps.docling.render({
+      const rendered = await deps.docling.render({
         organizationId,
         jobId: batchId,
         sourceUrl: url,
@@ -863,6 +869,8 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
         page,
         scale: 2,
       });
+      // The patient the packet is filed under, so the read audit can name it (the accounting of disclosures).
+      return { ...rendered, patientId: source.patientId };
     },
 
     async resolveSud(organizationId, actor, batchId, outcome, reason) {

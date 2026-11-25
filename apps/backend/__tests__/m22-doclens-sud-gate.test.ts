@@ -369,6 +369,8 @@ function makeServer(
       | undefined
     >,
     consentPatients: [] as string[],
+    /** The patient a response asked the read audit to name (`readAuditPatientId`). */
+    auditedPatients: [] as unknown[],
     renders: 0,
     supportResolutions: [] as string[],
     supportAudits: [] as Array<{
@@ -433,7 +435,7 @@ function makeServer(
         await resolveSudContentAccess(access, { sudStatus, patientId: PATIENT }),
       );
       calls.renders += 1;
-      return { png: new Uint8Array([1]), pageWidth: 1, pageHeight: 1 };
+      return { png: new Uint8Array([1]), pageWidth: 1, pageHeight: 1, patientId: PATIENT };
     },
   } as unknown as ReviewWorkspaceService;
 
@@ -453,6 +455,9 @@ function makeServer(
   };
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+  app.addHook("onSend", async (request) => {
+    calls.auditedPatients.push(request.context.attributes.readAuditPatientId);
+  });
   registerDocLensReviewWorkspaceRoutes(app, service, platformSupportAccess);
   return { app, calls };
 }
@@ -484,6 +489,13 @@ describe("GAP-067 — DocLens review routes compose the Part 2 need-to-know chec
     expect(body.candidates[1].value).toBe("Methadone 20 mg");
     // The predicate is asked about the BATCH's patient (server-derived), not a client-supplied one.
     expect(calls.consentPatients).toEqual([PATIENT]);
+  });
+
+  it("a tenant page-image read asks the read audit to name the patient the packet is filed under", async () => {
+    const { app, calls } = makeServer("confirmed");
+    const res = await app.inject({ method: "GET", url: imageUrl, headers: as("rn_ok") });
+    expect(res.statusCode).toBe(200);
+    expect(calls.auditedPatients).toEqual([PATIENT]);
   });
 
   it("a licensed reviewer with NO consent sees a PENDING detection (adjudicating it is internal use)", async () => {
