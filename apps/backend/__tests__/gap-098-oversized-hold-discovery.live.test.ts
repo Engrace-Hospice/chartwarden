@@ -127,6 +127,7 @@ describe.skipIf(!DB_URL)("GAP-098 — M34 oversized-hold discovery, LIVE Postgre
           org,
           jobId,
           JSON.stringify({
+            // The persisted JSON key of a hold event's shard_receipt (kept; only the column was renamed).
             bundleMinioObjectKey: `exports/tenant/${jobId}.tar.gz`,
             bundleSha256: "deadbeef",
             bundleSizeBytes: opts.sizeBytes ?? 60 * 1024 * 1024 * 1024,
@@ -396,7 +397,7 @@ describe.skipIf(!DB_URL)("GAP-098 — M34 oversized-hold discovery, LIVE Postgre
         await p.markGenerating(jobId);
         await p.holdForOversizedApproval({
           jobId,
-          bundleMinioObjectKey: `exports/tenant/${jobId}.tar.gz`,
+          bundleObjectKey: `exports/tenant/${jobId}.tar.gz`,
           bundleSha256: "deadbeef",
           bundleSizeBytes: 60 * 1024 * 1024 * 1024,
           recordCount: 20_000,
@@ -415,6 +416,7 @@ describe.skipIf(!DB_URL)("GAP-098 — M34 oversized-hold discovery, LIVE Postgre
       });
       // The object key + sha256 stay OUT: an alert body naming the artifact handle is a step toward a
       // bundle being fetched from a notification instead of through the audited release route.
+      expect(alert?.payload.bundleObjectKey).toBeUndefined();
       expect(alert?.payload.bundleMinioObjectKey).toBeUndefined();
       expect(alert?.payload.bundleSha256).toBeUndefined();
     });
@@ -431,7 +433,7 @@ describe.skipIf(!DB_URL)("GAP-098 — M34 oversized-hold discovery, LIVE Postgre
           await p.markGenerating(jobId);
           await p.holdForOversizedApproval({
             jobId,
-            bundleMinioObjectKey: `exports/tenant/${jobId}.tar.gz`,
+            bundleObjectKey: `exports/tenant/${jobId}.tar.gz`,
             bundleSha256: "deadbeef",
             bundleSizeBytes: 60 * 1024 * 1024 * 1024,
             recordCount: 20_000,

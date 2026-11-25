@@ -85,7 +85,7 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
     },
   );
 
-  // WX-PR-012 (route #32) — receive a raw 835 already staged in MinIO by the (unbuilt) clearinghouse-pull
+  // WX-PR-012 (route #32) — receive a raw 835 already staged in the object store by the (unbuilt) clearinghouse-pull
   // transport. Only mounted when a real ingest service is supplied (M25RouteServices.ingestService) —
   // never a deny-stub 501, simply absent, matching the "not wired yet" posture the rest of the module
   // already documents for its other unwired forward seams.
@@ -98,10 +98,11 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
       },
       async (request, reply) => {
         const actor = actorOf(request);
-        const body = parse(ReceiveAdviceRequestSchema, request.body);
+        const { minioObjectKey, ...body } = parse(ReceiveAdviceRequestSchema, request.body);
+        // The request field keeps its published name (OpenAPI contract); the service input and the column are `objectKey`.
         const result = await ingestService.receiveAdvice(
           { organizationId: actor.organizationId },
-          body,
+          { ...body, objectKey: minioObjectKey },
         );
         if (result.outcome === "malformed") {
           return reply.code(422).send({ outcome: result.outcome, reason: result.reason });

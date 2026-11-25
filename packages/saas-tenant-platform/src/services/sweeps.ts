@@ -47,7 +47,7 @@ export interface ExpiringBundle {
   /** The presigned-URL expiry; the object is reaped once `now >= expiresAt` (D19, 7 days post-fulfil). */
   readonly presignedUrlExpiresAt: Date | null;
   /** The MinIO object key, or `null` if the bundle was never assembled (nothing to delete). */
-  readonly minioObjectKey: string | null;
+  readonly objectKey: string | null;
 }
 
 /** The ports the bundle-expiry sweep binds at the route/worker boot layer. */
@@ -65,10 +65,10 @@ export interface BundleExpirySweepPorts {
    * at the boot layer). Idempotent: a missing object is a no-op success (an earlier run may have
    * reaped it before the row was cleared).
    */
-  deleteBundleObject(kind: BundleExportKind, minioObjectKey: string): Promise<void>;
+  deleteBundleObject(kind: BundleExportKind, objectKey: string): Promise<void>;
   /**
    * Clear the bundle-artifact handles on the job row (the M34 DSAR / tenant-export repository
-   * `update(...)`): null out `bundleMinioObjectKey` + `bundlePresignedUrlExpiresAt` so no stale
+   * `update(...)`): null out `bundleObjectKey` + `bundlePresignedUrlExpiresAt` so no stale
    * presigned URL can be re-minted. The status + event ledger are untouched (audit survives).
    */
   clearBundleArtifact(kind: BundleExportKind, jobId: string): Promise<void>;
@@ -113,8 +113,8 @@ export async function runBundleExpirySweep(
   let objectsDeleted = 0;
   for (const bundle of due) {
     let objectDeleted = false;
-    if (bundle.minioObjectKey !== null) {
-      await ports.deleteBundleObject(bundle.kind, bundle.minioObjectKey);
+    if (bundle.objectKey !== null) {
+      await ports.deleteBundleObject(bundle.kind, bundle.objectKey);
       objectDeleted = true;
       objectsDeleted += 1;
     }

@@ -457,7 +457,7 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
         documentId,
         versionNumber: String(versionNumber),
         replacesVersionId,
-        minioObjectKey: objectKey,
+        objectKey,
         mimeType: verified.mimeType,
         byteSize: String(verified.byteSize),
         sha256Hex: verified.sha256Hex,

@@ -259,10 +259,9 @@ OS with no SSH and no shell.
 >   store resumes, so callers treat a timed-out write as unknown and verify it.
 > - **Status:** the production cutover is built (`deploy/production/compose.yml`, `deploy.sh`): `seaweedfs`,
 >   `object-store-provision` (identities rendered by `scripts/storage/seaweedfs-identities.ts`, the code the CI
->   store also runs), `fluent-bit` (on its own `audit` network with seaweedfs and api), and a one-time
->   `object-store-migrate` mirror from MinIO with checksums, run with the api/worker stopped; the marker is written
->   only after it succeeds, and a failure restores MinIO on its port (README, "Object store: the SeaweedFS cutover").
->   It takes effect on the first deploy after merge.
+>   store also runs), and `fluent-bit` (on its own `audit` network with seaweedfs and api). The cutover is done:
+>   the one-time `object-store-migrate` mirror and the MinIO rollback path were removed (README, "Object store: the
+>   environment contract").
 >   Not yet moved: the coordinated backup drill and `restore.sh` still stand up MinIO for their isolated
 >   environments (they read MinIO's on-disk layout); the backup's object restore keeps the SHA-256 on any store.
 

@@ -297,7 +297,7 @@ export type M22TableName =
 export const M22_AUDIT_DENYLIST: { readonly [K in M22TableName]: readonly string[] } = {
   document: ["title"],
   document_upload: ["title", "object_key", "expected_sha256_hex"],
-  document_version: ["byte_payload_cipher", "minio_object_key"],
+  document_version: ["byte_payload_cipher", "object_key"],
   document_tag: ["tag_value"],
   document_access_log: ["purpose", "recipient_class"],
   document_legal_hold: [],

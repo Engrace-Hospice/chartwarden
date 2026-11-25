@@ -198,17 +198,17 @@ describe.skipIf(!DB_URL)("GAP-094 — M34 tenant export, LIVE Postgres", () => {
     expect(result.outcome).toBe("fulfilled");
     expect(result.modules.map((m) => m.moduleKey)).toEqual(["m05", "m06"]);
     expect(result.totalRowCount).toBe(4);
-    expect(result.bundleMinioObjectKey).toBe(`exports/tenant/${jobId}.tar.gz`);
+    expect(result.bundleObjectKey).toBe(`exports/tenant/${jobId}.tar.gz`);
 
     // The archive really landed in the object store — and is a REAL, system-tar-extractable ustar.tar.gz,
     // not a renamed JSON blob (the whole point of GAP-094's own tar builder, tenant-export-tar.ts).
     const stored = await objects.inspectObject({
       bucket: deriveTenantBucket(ORG),
-      objectKey: result.bundleMinioObjectKey,
+      objectKey: result.bundleObjectKey,
     });
     expect(stored).not.toBeNull();
     expect(stored?.byteSize).toBeGreaterThan(0);
-    const bytes = objectBytes.get(`${deriveTenantBucket(ORG)}/${result.bundleMinioObjectKey}`);
+    const bytes = objectBytes.get(`${deriveTenantBucket(ORG)}/${result.bundleObjectKey}`);
     if (!bytes) throw new Error("bundle object bytes not found in the in-memory object store");
     const dir = mkdtempSync(join(tmpdir(), "wx-gap094-live-"));
     try {
@@ -236,11 +236,11 @@ describe.skipIf(!DB_URL)("GAP-094 — M34 tenant export, LIVE Postgres", () => {
 
     // The job row carries the real artifacts.
     const { rows: jobRows } = await admin.query(
-      "SELECT status, bundle_minio_object_key, bundle_sha256, bundle_module_inventory FROM tenant_export_job WHERE id=$1",
+      "SELECT status, bundle_object_key, bundle_sha256, bundle_module_inventory FROM tenant_export_job WHERE id=$1",
       [jobId],
     );
     expect(jobRows[0].status).toBe("fulfilled");
-    expect(jobRows[0].bundle_minio_object_key).toBe(result.bundleMinioObjectKey);
+    expect(jobRows[0].bundle_object_key).toBe(result.bundleObjectKey);
     expect(jobRows[0].bundle_module_inventory.modules).toHaveLength(2);
 
     // The §7.6 ledger chain landed for real.
@@ -267,7 +267,7 @@ describe.skipIf(!DB_URL)("GAP-094 — M34 tenant export, LIVE Postgres", () => {
     // presign in isolation).
     const fulfilledJobId = (
       await admin.query(
-        `INSERT INTO tenant_export_job (organization_id, requested_purpose, requesting_membership_id, status, bundle_minio_object_key, bundle_sha256)
+        `INSERT INTO tenant_export_job (organization_id, requested_purpose, requesting_membership_id, status, bundle_object_key, bundle_sha256)
          VALUES ($1,'migration','${ACTOR_MEMBERSHIP}','fulfilled','exports/tenant/manual-fixture.tar.gz','deadbeef') RETURNING id`,
         [ORG],
       )

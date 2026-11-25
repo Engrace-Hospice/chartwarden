@@ -34,7 +34,7 @@ export const dsarExportJob = pgTable(
     fulfilledAt: timestamp("fulfilled_at", { withTimezone: true }),
     deniedReason: text("denied_reason"),
     bundleDocumentId: uuid("bundle_document_id"), // M22 doc id (app-validated)
-    bundleMinioObjectKey: text("bundle_minio_object_key"),
+    bundleObjectKey: text("bundle_object_key"),
     bundleSha256: text("bundle_sha256"),
     bundlePresignedUrlExpiresAt: timestamp("bundle_presigned_url_expires_at", {
       withTimezone: true,

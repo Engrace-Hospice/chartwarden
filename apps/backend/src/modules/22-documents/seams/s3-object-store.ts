@@ -70,18 +70,18 @@ export interface TenantStorageEnsureResult {
 
 /**
  * Read the vendor-neutral object-store env contract and return a {@link S3ObjectStoreConfig}, or null
- * when the deployment has not configured object storage. The legacy MINIO_* names remain fallbacks
- * for one rollback compatibility window; OBJECT_STORE_* wins whenever both are present.
+ * when the deployment has not configured object storage. Only the OBJECT_STORE_* names are read: the
+ * retired MINIO_* aliases are ignored, so a host env file that still carries them changes nothing.
  */
 export function s3ObjectStoreConfigFromEnv(
   env: Record<string, string | undefined>,
 ): S3ObjectStoreConfig | null {
-  const endpoint = (env.OBJECT_STORE_ENDPOINT ?? env.MINIO_ENDPOINT)?.trim();
-  const publicEndpoint = (env.OBJECT_STORE_PUBLIC_ENDPOINT ?? env.MINIO_PUBLIC_ENDPOINT)?.trim();
-  const accessKeyId = (env.OBJECT_STORE_ACCESS_KEY ?? env.MINIO_ACCESS_KEY)?.trim();
-  const secretAccessKey = (env.OBJECT_STORE_SECRET_KEY ?? env.MINIO_SECRET_KEY)?.trim();
+  const endpoint = env.OBJECT_STORE_ENDPOINT?.trim();
+  const publicEndpoint = env.OBJECT_STORE_PUBLIC_ENDPOINT?.trim();
+  const accessKeyId = env.OBJECT_STORE_ACCESS_KEY?.trim();
+  const secretAccessKey = env.OBJECT_STORE_SECRET_KEY?.trim();
   if (!endpoint || !accessKeyId || !secretAccessKey) return null;
-  const region = (env.OBJECT_STORE_REGION ?? env.MINIO_REGION)?.trim();
+  const region = env.OBJECT_STORE_REGION?.trim();
   return {
     endpoint,
     ...(publicEndpoint ? { publicEndpoint } : {}),

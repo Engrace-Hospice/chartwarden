@@ -184,7 +184,7 @@ export async function completeExportJob(
           organizationId,
           jobId: args.jobId,
           resourceType: a.resourceType,
-          minioObjectKey: a.objectKey,
+          objectKey: a.objectKey,
           byteSize: a.byteSize,
           rowCount: a.rowCount,
           checksumSha256: a.checksumSha256,
@@ -237,7 +237,7 @@ export async function listJobArtifacts(
       .orderBy(asc(ARTIFACT.resourceType));
     return rows.map((r) => ({
       resourceType: r.resourceType,
-      objectKey: r.minioObjectKey,
+      objectKey: r.objectKey,
       byteSize: r.byteSize,
       rowCount: r.rowCount,
       checksumSha256: r.checksumSha256,
@@ -405,7 +405,7 @@ export async function expiredJobIdsWithLiveArtifacts(
         and(
           eq(ARTIFACT.organizationId, organizationId),
           eq(JOB.status, "expired"),
-          sql`${ARTIFACT.minioObjectKey} <> ''`,
+          sql`${ARTIFACT.objectKey} <> ''`,
         ),
       )
       .limit(limit);
@@ -415,7 +415,7 @@ export async function expiredJobIdsWithLiveArtifacts(
 
 /**
  * Record that one artifact's object is gone: the key is blanked (the row's size, count and checksum stay as
- * the disclosure-accounting evidence — §3.7 "minio_object_key purged ... row metadata persists"). A blank
+ * the disclosure-accounting evidence — §3.7 "object_key purged ... row metadata persists"). A blank
  * key is also the sweeper's "already purged" marker, which is what makes a re-run a no-op.
  */
 export async function markArtifactPurged(
@@ -427,12 +427,12 @@ export async function markArtifactPurged(
   await withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     await asTx(tx)
       .update(ARTIFACT)
-      .set({ minioObjectKey: "" })
+      .set({ objectKey: "" })
       .where(
         and(
           eq(ARTIFACT.jobId, jobId),
           eq(ARTIFACT.organizationId, organizationId),
-          eq(ARTIFACT.minioObjectKey, objectKey),
+          eq(ARTIFACT.objectKey, objectKey),
         ),
       );
   });

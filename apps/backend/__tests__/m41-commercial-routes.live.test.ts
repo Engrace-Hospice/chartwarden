@@ -670,7 +670,7 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
         providerEntityId,
         payerId,
         payerKind: "commercial",
-        minioObjectKey: rawKey,
+        objectKey: rawKey,
         fileSha256: sha256Hex(raw),
         rawEdi: raw,
       },

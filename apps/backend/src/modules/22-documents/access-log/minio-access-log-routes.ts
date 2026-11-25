@@ -1,6 +1,7 @@
 // apps/backend/src/modules/22-documents/access-log/minio-access-log-routes.ts — object-store audit webhooks
 // (GAP-141): the S3-compatible object-store audit receiver. SeaweedFS posts its API audit records here through
-// Fluent Bit; the parser also accepts RustFS and legacy MinIO records.
+// Fluent Bit; the parser also accepts RustFS and MinIO-shaped records. Only this canonical path is served: the
+// former /api/v1/webhooks/minio/access-log alias is gone (404).
 //
 // AUTH. Server-to-server, no session: the audit sink bearer is compared in CONSTANT TIME against
 // `OBJECT_STORE_AUDIT_WEBHOOK_TOKEN`
@@ -9,7 +10,7 @@
 //
 // RESPONSES. 200 with counts once the batch is processed (including when every record was dropped as
 // unattributed — that is an accepted audit gap, not a delivery failure); 401 on a bad/missing token; 503 when
-// unconfigured OR when the database is unavailable (MinIO retries a non-2xx delivery from its own queue).
+// unconfigured OR when the database is unavailable (Fluent Bit retries a non-2xx delivery).
 import { timingSafeEqual } from "node:crypto";
 import type { DbClient } from "@chartwarden/db";
 import { ChartWardenError } from "@chartwarden/types";
@@ -23,11 +24,11 @@ export interface MinioAccessLogRouteDeps {
   readonly now?: () => Date;
 }
 
-/** Prefer the vendor-neutral name while an old release can still roll back on MINIO_*. */
+/** The vendor-neutral token only: the retired MINIO_ACCESS_LOG_WEBHOOK_TOKEN is ignored. */
 export function objectStoreAuditWebhookTokenFromEnv(
   env: Record<string, string | undefined>,
 ): string | undefined {
-  return env.OBJECT_STORE_AUDIT_WEBHOOK_TOKEN ?? env.MINIO_ACCESS_LOG_WEBHOOK_TOKEN;
+  return env.OBJECT_STORE_AUDIT_WEBHOOK_TOKEN;
 }
 
 /** Constant-time bearer compare that never throws on a length mismatch. */
@@ -68,11 +69,8 @@ export function registerMinioAccessLogRoute(
     return reply.code(200).send({ received: consumptions.length, ...result });
   };
 
-  // Literal registrations are deliberate: the route/OpenAPI fitness scanners treat these as the source of truth.
+  // Literal registration is deliberate: the route/OpenAPI fitness scanners treat it as the source of truth.
   app.post("/api/v1/webhooks/object-store/access-log", async (request, reply) =>
-    handleAccessLog(request.body, request.headers.authorization, reply),
-  );
-  app.post("/api/v1/webhooks/minio/access-log", async (request, reply) =>
     handleAccessLog(request.body, request.headers.authorization, reply),
   );
 }

@@ -196,7 +196,7 @@ describe.skipIf(!DB_URL)("M25 commercial 835 matching (#725) - LIVE Postgres", (
       providerEntityId: o.pe,
       payerId: o.payerId,
       payerKind: "commercial" as const,
-      minioObjectKey: `minio/${isa}.835`,
+      objectKey: `minio/${isa}.835`,
       fileSha256: sha256Hex(raw),
       rawEdi: raw,
     };

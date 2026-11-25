@@ -15136,7 +15136,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Receive a raw 835 already staged in MinIO; dedups + emits m25.edi.835_received (§17 system principal, WX-PR-012) */
+        /** Receive a raw 835 already staged in the object store; dedups + emits m25.edi.835_received (§17 system principal, WX-PR-012) */
         post: operations["postApiV1InternalRemittanceAdvices"];
         delete?: never;
         options?: never;
@@ -31451,23 +31451,6 @@ export interface paths {
         put?: never;
         /** Inbound Claim.MD webhook, test account (Auth-Signature-Base64 HMAC-verified) */
         post: operations["postApiV1WebhooksClaimmdTest"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/webhooks/minio/access-log": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Legacy alias for the object-store audit receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8) */
-        post: operations["postApiV1WebhooksMinioAccesslog"];
         delete?: never;
         options?: never;
         head?: never;
@@ -129994,41 +129977,6 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
-    postApiV1WebhooksMinioAccesslog: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    [key: string]: unknown;
-                } | {
-                    [key: string]: unknown;
-                }[];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        received: number;
-                        recorded: number;
-                        unattributed: number;
-                        duplicates: number;
-                    };
-                };
-            };
-            "4XX": components["responses"]["Error"];
-            "5XX": components["responses"]["Error"];
-        };
-    };
     postApiV1WebhooksObjectstoreAccesslog: {
         parameters: {
             query?: never;
@@ -130984,7 +130932,7 @@ export interface operations {
                         checks: {
                             db: "ok" | "fail";
                             valkey: "ok" | "fail";
-                            minio: "ok" | "fail";
+                            objectStore: "ok" | "fail";
                             outbox: "ok" | "fail";
                             capabilities?: {
                                 [key: string]: "ready" | "disabled" | "degraded";

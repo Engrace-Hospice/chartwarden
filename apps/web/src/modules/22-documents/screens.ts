@@ -61,8 +61,10 @@ const IntakeBatchDetail = lazy(() =>
 const IntakeReviewQueue = lazy(() =>
   import("./intake-review-queue").then((m) => ({ default: m.IntakeReviewQueue })),
 );
-const DocLensReviewWorkspace = lazy(() =>
-  import("./doclens-review-workspace").then((m) => ({ default: m.DocLensReviewWorkspace })),
+const UnifiedReviewWorkspace = lazy(() =>
+  import("./unified-review/unified-review-workspace").then((m) => ({
+    default: m.UnifiedReviewWorkspace,
+  })),
 );
 const PatientDocuments = lazy(() =>
   import("./patient-documents").then((m) => ({ default: m.PatientDocuments })),
@@ -118,7 +120,7 @@ export const documentScreens: ScreenRegistryModule<ComponentType> = {
       path: "/intake/:batchId/review",
       title: "Extraction review",
       requiredPermission: "intake.review",
-      screen: DocLensReviewWorkspace,
+      screen: UnifiedReviewWorkspace,
     },
     {
       // INTAKE.BatchDetail — per-batch DocLens pipeline view; reached from the intake queue (param path, no nav).

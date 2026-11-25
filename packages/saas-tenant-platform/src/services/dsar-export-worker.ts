@@ -74,7 +74,7 @@ export interface DsarDocumentUploadRequest {
   readonly aggregateType: typeof DSAR_DOCUMENT_AGGREGATE_TYPE;
   readonly retentionClass: typeof DSAR_DOCUMENT_RETENTION_CLASS;
   /** The MinIO object key of the assembled (encrypted) Bundle archive M22 renders the PDF from. */
-  readonly bundleMinioObjectKey: string;
+  readonly bundleObjectKey: string;
   /** The integrity digest of the assembled Bundle (must match the file the patient downloads, §7.3 step 7). */
   readonly bundleSha256: string;
   /** True so M22 knows the source may carry Part-2 material that the shards already redacted (metadata flag). */
@@ -99,7 +99,7 @@ export interface DsarExportRunResult {
   readonly shardReceipts: readonly DsarShardReceipt[];
   readonly resourceCount: number;
   readonly bundleSha256: string;
-  readonly bundleMinioObjectKey: string;
+  readonly bundleObjectKey: string;
   readonly bundlePresignedUrlExpiresAt: Date;
   /** The M22 document id the chart PDF rendered under (returned synchronously, GAP-048). */
   readonly bundleDocumentId: string;
@@ -145,7 +145,7 @@ export interface DsarExportWorkerPorts {
     jobId: string,
     patch: {
       readonly status: "generating" | "review_pending";
-      readonly bundleMinioObjectKey?: string;
+      readonly bundleObjectKey?: string;
       readonly bundleSha256?: string;
       readonly bundlePresignedUrlExpiresAt?: Date;
       readonly bundleDocumentId?: string;
@@ -289,7 +289,7 @@ export async function runDsarExportJob(
     aggregateId: jobId,
     aggregateType: DSAR_DOCUMENT_AGGREGATE_TYPE,
     retentionClass: DSAR_DOCUMENT_RETENTION_CLASS,
-    bundleMinioObjectKey: objectKey,
+    bundleObjectKey: objectKey,
     bundleSha256,
     partTwoRedactionApplied: true,
     title: `DSAR export — patient ${patientId}`,
@@ -299,7 +299,7 @@ export async function runDsarExportJob(
   // 6. Record the bundle artifacts + advance to `review_pending` (the DSAR officer takes it from here).
   await ports.updateJob(jobId, {
     status: "review_pending",
-    bundleMinioObjectKey: objectKey,
+    bundleObjectKey: objectKey,
     bundleSha256,
     bundlePresignedUrlExpiresAt,
     bundleDocumentId,
@@ -331,7 +331,7 @@ export async function runDsarExportJob(
     shardReceipts,
     resourceCount,
     bundleSha256,
-    bundleMinioObjectKey: objectKey,
+    bundleObjectKey: objectKey,
     bundlePresignedUrlExpiresAt,
     bundleDocumentId,
     status: "review_pending",

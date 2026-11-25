@@ -76,9 +76,17 @@ services:
       BACKUP_OFFSITE_S3_ACCESS_KEY: ${BACKUP_OFFSITE_S3_ACCESS_KEY:?set in .env.production (the backup key id)}
       BACKUP_OFFSITE_S3_SECRET_KEY_FILE: /run/secrets/backup_offsite_secret_key
       BACKUP_OBJECT_SSE_C_KEY_FILE: /run/secrets/backup_object_sse_c_key
+      BACKUP_SOURCE_OBJECT_STORE_URL: http://seaweedfs:8333
+      BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY: ${BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY:?set in .env.production}
+      BACKUP_SOURCE_OBJECT_STORE_SECRET_KEY_FILE: /run/secrets/backup_source_object_store_secret_key
+      # TEMPORARY ALIAS: delete when CHARTWARDEN_BACKUP_IMAGE is repinned to an image built from this commit.
+      # The sidecar image is digest-pinned and deploy.sh never recreates it, so until it is repinned the running (or a
+      # recreated) sidecar still runs a cw-backup.sh that reads the OLD names and would die on
+      # `BACKUP_SOURCE_MINIO_ACCESS_KEY is not set`. Same values, same secret mount; the new image ignores them.
       BACKUP_SOURCE_MINIO_URL: http://seaweedfs:8333
-      BACKUP_SOURCE_MINIO_ACCESS_KEY: ${BACKUP_SOURCE_MINIO_ACCESS_KEY:?set in .env.production}
-      BACKUP_SOURCE_MINIO_SECRET_KEY_FILE: /run/secrets/backup_source_minio_secret_key
+      BACKUP_SOURCE_MINIO_ACCESS_KEY: ${BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY:?set in .env.production}
+      BACKUP_SOURCE_MINIO_SECRET_KEY_FILE: /run/secrets/backup_source_object_store_secret_key
+      # END TEMPORARY ALIAS
       BACKUP_SNAPSHOT_INTERVAL_S: ${BACKUP_SNAPSHOT_INTERVAL_S:-900}
       BACKUP_DB_BACKUP_HOUR_UTC: ${BACKUP_DB_BACKUP_HOUR_UTC:-2}
       BACKUP_FULL_BACKUP_WEEKDAY: ${BACKUP_FULL_BACKUP_WEEKDAY:-7}
@@ -93,7 +101,7 @@ services:
       - backup_pg_offsite_cipher_pass
       - backup_offsite_secret_key
       - backup_object_sse_c_key
-      - backup_source_minio_secret_key
+      - backup_source_object_store_secret_key
     # Hardened: no capabilities, no privilege gain, read-only root filesystem; only its volumes and tmpfs are writable.
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
@@ -122,14 +130,14 @@ services:
 
   # The read-only object-store key the backup lists and reads with (never the app key, which can delete): the overlay
   # hands its secret to compose.yml's object-store-provision, which binds it to object-store/reader-policy.json.
-  # deploy.sh adds this overlay to that run whenever BACKUP_SOURCE_MINIO_ACCESS_KEY is configured, so a deploy never
+  # deploy.sh adds this overlay to that run whenever BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY is configured, so a deploy never
   # drops the reader. (SeaweedFS reads its identities at start: recreate seaweedfs after a manual run; see header.)
   object-store-provision:
     environment:
-      SEAWEEDFS_READER_BACKUP_ACCESS_KEY: ${BACKUP_SOURCE_MINIO_ACCESS_KEY:?set in .env.production}
-      SEAWEEDFS_READER_BACKUP_SECRET_KEY_FILE: /run/secrets/backup_source_minio_secret_key
+      SEAWEEDFS_READER_BACKUP_ACCESS_KEY: ${BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY:?set in .env.production}
+      SEAWEEDFS_READER_BACKUP_SECRET_KEY_FILE: /run/secrets/backup_source_object_store_secret_key
     secrets:
-      - backup_source_minio_secret_key
+      - backup_source_object_store_secret_key
 
 secrets:
   backup_pg_local_cipher_pass:
@@ -142,8 +150,8 @@ secrets:
     file: ./secrets/backup_offsite_secret_key
   backup_object_sse_c_key:
     file: ./secrets/backup_object_sse_c_key
-  backup_source_minio_secret_key:
-    file: ./secrets/backup_source_minio_secret_key
+  backup_source_object_store_secret_key:
+    file: ./secrets/backup_source_object_store_secret_key
 
 volumes:
   pg-socket:

@@ -24,12 +24,12 @@ function fakeRepos(): BundleExpiryRepos & {
       listByPresignedExpiry: async () => [
         {
           id: "d1",
-          bundleMinioObjectKey: "exports/dsar/d1.ndjson.gz",
+          bundleObjectKey: "exports/dsar/d1.ndjson.gz",
           bundlePresignedUrlExpiresAt: PAST,
         },
         {
           id: "d2",
-          bundleMinioObjectKey: "exports/dsar/d2.ndjson.gz",
+          bundleObjectKey: "exports/dsar/d2.ndjson.gz",
           bundlePresignedUrlExpiresAt: FUTURE,
         },
       ],
@@ -42,7 +42,7 @@ function fakeRepos(): BundleExpiryRepos & {
     },
     tenantExport: {
       listByPresignedExpiry: async () => [
-        { id: "t1", bundleMinioObjectKey: null, bundlePresignedUrlExpiresAt: PAST },
+        { id: "t1", bundleObjectKey: null, bundlePresignedUrlExpiresAt: PAST },
       ],
       update: async (id) => {
         calls.push(`tenant.update:${id}`);

@@ -112,13 +112,13 @@ describe("envelope gating", () => {
     expectDegraded(t, "X12_835_PARSE_FAILED", "ISA15");
     expect(parseX12835(t, "medicare", { allowTestFiles: true }).ok).toBe(true);
     const viaClient = await createX12835Client({ allowTestFiles: true }).parse835({
-      minioObjectKey: "k",
+      objectKey: "k",
       payerProgram: "medicare",
       rawEdi: t,
     });
     expect(viaClient.ok).toBe(true);
     const strict = await createX12835Client().parse835({
-      minioObjectKey: "k",
+      objectKey: "k",
       payerProgram: "medicare",
       rawEdi: t,
     });
@@ -167,7 +167,7 @@ describe("staged-object read failures", () => {
     const client = createX12835Client({
       readRaw: () => Promise.reject(new Error("https://minio.internal:9000/bucket-secret denied")),
     });
-    const r = await client.parse835({ minioObjectKey: "k", payerProgram: "medicare" });
+    const r = await client.parse835({ objectKey: "k", payerProgram: "medicare" });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.degraded.code).toBe("X12_835_RAW_READ");

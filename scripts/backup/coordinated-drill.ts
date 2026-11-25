@@ -387,16 +387,16 @@ async function main(): Promise<number> {
       "BACKUP_OFFSITE_S3_SECRET_KEY_FILE=/run/secrets/backup_secret",
       "BACKUP_PG_LOCAL_CIPHER_PASS_FILE=/run/secrets/local_cipher",
       "BACKUP_OBJECT_SSE_C_KEY_FILE=/run/secrets/sse_c",
-      "BACKUP_SOURCE_MINIO_URL=http://srcminio:9000",
-      `BACKUP_SOURCE_MINIO_ACCESS_KEY=${reader.user}`,
-      "BACKUP_SOURCE_MINIO_SECRET_KEY_FILE=/run/secrets/source_secret",
+      "BACKUP_SOURCE_OBJECT_STORE_URL=http://srcminio:9000",
+      `BACKUP_SOURCE_OBJECT_STORE_ACCESS_KEY=${reader.user}`,
+      "BACKUP_SOURCE_OBJECT_STORE_SECRET_KEY_FILE=/run/secrets/source_secret",
     ]);
     // The restore gets the READ-ONLY key; restore.sh additionally filters what reaches its containers.
     writeEnv(restoreEnv, [
       `BACKUP_OFFSITE_S3_ACCESS_KEY=${offUsers.restore.user}`,
       "BACKUP_OFFSITE_S3_SECRET_KEY_FILE=/run/secrets/restore_secret",
       "BACKUP_OBJECT_SSE_C_KEY_FILE=/run/secrets/sse_c",
-      "BACKUP_SOURCE_MINIO_SECRET_KEY_FILE=/run/secrets/source_secret",
+      "BACKUP_SOURCE_OBJECT_STORE_SECRET_KEY_FILE=/run/secrets/source_secret",
     ]);
     const backupArgs = (
       args: readonly string[],
@@ -770,9 +770,9 @@ async function main(): Promise<number> {
       BACKUP_IMAGE: image,
       RESTORE_ID: restoreId,
       RESTORE_PG_PORT: String(rPg),
-      RESTORE_MINIO_PORT: String(rMinio),
+      RESTORE_OBJECT_STORE_PORT: String(rMinio),
       // restore.sh refuses a tag: resolve the local image to its digest.
-      RESTORE_MINIO_IMAGE: sh("docker", [
+      RESTORE_OBJECT_STORE_IMAGE: sh("docker", [
         "image",
         "inspect",
         "--format",
@@ -798,9 +798,9 @@ async function main(): Promise<number> {
     const target = {
       adminUrl: renv.RESTORE_ADMIN_URL as string,
       appUrl: renv.RESTORE_APP_URL as string,
-      minioEndpoint: renv.RESTORE_MINIO_ENDPOINT as string,
-      minioAccessKey: renv.RESTORE_MINIO_ACCESS_KEY as string,
-      minioSecretKey: renv.RESTORE_MINIO_SECRET_KEY as string,
+      minioEndpoint: renv.RESTORE_OBJECT_STORE_ENDPOINT as string,
+      minioAccessKey: renv.RESTORE_OBJECT_STORE_ACCESS_KEY as string,
+      minioSecretKey: renv.RESTORE_OBJECT_STORE_SECRET_KEY as string,
       marker,
       manifest,
     };
