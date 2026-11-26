@@ -2223,9 +2223,10 @@ controls:
     status: partial
     evidence:
       - file: docs/architecture/CHARTWARDEN_SECURITY_HARDENING_v0_2.md
+      - file: docs/compliance/risk-analysis/README.md
       - script: arch:architecture-docs
     gap:
-      reason: The threat model exists, but a dated, signed-off HIPAA risk analysis (likelihood x impact per asset, with the Privacy/Security Officer's acceptance) is an administrative artifact this repo does not yet hold.
+      reason: The threat model exists and a risk-analysis pack now exists beside it (docs/compliance/risk-analysis/, prepared by engineering from repository evidence - asset and data-flow inventory, scoring method, threats and vulnerabilities mapped to register rows and ADRs, a residual-risk register and a blank sign-off page), but it is a draft with every likelihood, impact and treatment cell unscored. What remains is the administrative artifact this repo does not yet hold - the accountable owner's review, the likelihood x impact scoring and treatment decisions per asset, and the dated signature with the Privacy/Security Officer's acceptance.
       owner: security-officer
       review_by: 2027-01-31
 
