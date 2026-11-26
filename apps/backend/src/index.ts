@@ -260,6 +260,7 @@ import {
   runParitySweep,
   scheduleDailyUtc,
 } from "./bootstrap/rust-bridge/index";
+import { buildSecurityAlertSink } from "./bootstrap/security-alert-sink";
 import { siteDisplayForOrg } from "./bootstrap/site-display-for-org";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store";
@@ -492,6 +493,7 @@ import {
   registerAuditOpsWorkers,
   scheduleAuditOpsJobs,
 } from "./modules/04-audit/jobs/audit-ops-workers";
+import { M4_SECURITY_REVIEW_PLATFORM_JOB_ID } from "./modules/04-audit/jobs/security-review-job";
 import {
   activeLegalHoldScopeForOrg,
   activeLegalHoldScopeInTransaction,
@@ -4098,6 +4100,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   if (platformDbHandle) registerPlatformJob(M17_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M3_CLOSE_ENGAGEMENTS_PLATFORM_JOB_ID); // GAP-011 — authz.close_engagements fan-out
   if (platformDbHandle) registerPlatformJob(M4_AUDIT_JOBS_PLATFORM_JOB_ID); // GAP-014 — M4 audit jobs' active-org fan-out
+  if (platformDbHandle) registerPlatformJob(M4_SECURITY_REVIEW_PLATFORM_JOB_ID); // CW-MON-01 — the org-less authentication lane of the security review
   if (platformDbHandle) registerPlatformJob(M18_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M15_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M5_GEOCODE_COVERAGE_JOB_ID);
@@ -11066,10 +11069,26 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           : {}),
         log: (message: string, detail: Record<string, unknown>) => app.log.error(detail, message),
       };
+      // CW-MON-01 — the scheduled review of the audit trail (`audit.security_review`, every 15 min): detection rules over
+      // the org-less authentication events (platform lane, audited platform context) and every active org's events (org
+      // lane, `withOrgContext`). New findings go to the existing ops alert path (a log line + OPS_ALERT_WEBHOOK_URL, the
+      // same destination as the DLQ and platform-ops notices); the review record is appended to the audit trail. With no
+      // webhook configured an alert is logged and recorded `no_destination`, never silently dropped.
+      const m4SecurityReview = {
+        db: dbHandle.db,
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        listOrgs: () => m4AuditOrgs.listActiveOrgs(),
+        sink: buildSecurityAlertSink({
+          webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
+          log: (message: string) => app.log.warn(message),
+        }),
+      };
       const m4Workers = registerAuditOpsWorkers({
         connection: queueConnection,
         ops: m4Ops,
         integrity: m4Integrity,
+        securityReview: m4SecurityReview,
       });
       attachDlqAlertsToAll(m4Workers, "m4");
       app.addHook("onClose", () => Promise.all(m4Workers.map((w) => w.close())));
@@ -11077,13 +11096,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         exports: m34DsarObjectStore !== null,
         destruction: destructionDbHandle !== undefined,
         integrity: true,
+        securityReview: true,
       })
         .then((queues) => {
           app.addHook("onClose", () => Promise.all(queues.map((q) => q.close())));
         })
         .catch((err) => app.log.error(err, "M4 audit job schedule registration failed"));
       app.log.info(
-        `M4 audit workers constructed: retention_scan, seal_partition, integrity_sample${m34DsarObjectStore ? ", build_export" : ""}${destructionDbHandle ? ", execute_destruction" : ""}`,
+        `M4 audit workers constructed: retention_scan, seal_partition, integrity_sample, security_review${m34DsarObjectStore ? ", build_export" : ""}${destructionDbHandle ? ", execute_destruction" : ""}`,
       );
     } else {
       app.log.warn(

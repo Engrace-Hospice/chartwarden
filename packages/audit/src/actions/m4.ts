@@ -36,4 +36,23 @@ export const M4_ACTION_CATALOG: ModuleActionCatalog = [
     denylistCategories: [],
     isPartTwoEligible: false,
   },
+  // CW-MON-01 — the review of the audit trail itself. Ids, counts, ISO instants and rule codes only (no PHI, no free text).
+  {
+    action: "m4.security_review.completed",
+    moduleOwner: "m4",
+    defaultRetentionClass: "compliance",
+    description:
+      "One run of the security review of the audit trail finished for an organization (or the org-less platform lane): the window reviewed, events scanned, findings, alerts delivered, failed or deferred. Its windowTo is the next run's cursor.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
+    action: "m4.security_review.alert_raised",
+    moduleOwner: "m4",
+    defaultRetentionClass: "compliance",
+    description:
+      "A security detection rule fired and an alert was sent to the ops destination (ruleId, subject reference, count, window, sample event ids, fingerprint, delivery outcome: delivered, failed or no_destination).",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
 ];

@@ -1,8 +1,10 @@
 # AiSOC alongside ChartWarden — integration plan
 
-Status: **plan**. This document closes nothing until the work below lands. It is the evidence pointer
-for control **CW-MON-01** (`compliance/controls.yaml`), which stays `gap` until detections and alert
-routing are proven.
+Status: **plan, and optional since the in-app review landed.** CW-MON-01 is now closed in part by ChartWarden's own
+scheduled review of the audit trail ([`docs/runbooks/security-alert-review.md`](../runbooks/security-alert-review.md):
+detection rules over the audit events, alerts on the existing ops path, a durable review log). AiSOC is no longer on the
+critical path; it stays a candidate for what that review does not do (geolocated impossible travel, correlation into incidents,
+host and edge logs, Postgres `pgaudit` rules). Phases 1–3 below are the original plan for those, not the control's evidence.
 
 ## What AiSOC is, and isn't, for us
 
