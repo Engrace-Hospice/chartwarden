@@ -2614,6 +2614,9 @@ controls:
       # hold of unknown scope.
       - file: apps/backend/__tests__/hope-retention-hold-fail-closed.test.ts
       - script: test:m11:lab-result-review:live
+      # #1136 — the M11 eraser also deletes critical_lab_result_resolution (patient FK ON DELETE restrict, append-only trigger
+      # that admits only the destruction role's DELETE) before the ledger rows it points at; proven as the destruction role.
+      - script: test:m11:critical-lab-resolution:live
       - script: test:m36:retention-destruction:live
       - script: test:m36:retention-governance:live
       - file: docs/runbooks/m36-retention-destruction.md
@@ -2674,11 +2677,26 @@ controls:
       - script: test:m11:lab-result-edge-cases:live
       - script: test:m11:lab-results-applier:live
       - script: test:m11:lab-result-review:live
+      # #1136 — the resolve path. A prescriber resolves a quarantined (no-order) critical result as "matched to order X"
+      # (a lab order of the same patient) or "reviewed, no action", with a required reason. The decision is one APPEND-ONLY
+      # row (who, discipline, DB-stamped when; INSERT-only grant + trigger, so it cannot be re-opened, rewritten or deleted
+      # by the app role) in critical_lab_result_resolution; the ledger row is never updated. The route needs orders.complete,
+      # a prescriber discipline and the patient on the caller's scope (404 otherwise, 403 for a non-prescriber); the queue
+      # and the by-id read are read-audited (the by-id one carries resourceIdParam). The write audit scrubs the reason and
+      # m11.order.critical_lab_resolved (ids only) is published in the same transaction through the real catalog-validating
+      # publisher. The escalation sweep skips a resolved result. Proven live as chartwarden_app: RLS, cross-tenant 404, audit
+      # + read-audit events, 409 on a second resolve, grants + trigger on UPDATE/DELETE, publish-failure rollback, the sweep,
+      # and the destruction path (the eraser deletes the resolution before its ledger row).
+      - script: test:m11:critical-lab-resolution:live
+      - file: apps/backend/__tests__/critical-lab-resolution.test.ts
       - script: arch:outbox-bindings
       - file: packages/db/migrations/1297_m11_critical_lab_result.sql
       - file: packages/db/migrations/1298_m11_critical_lab_destruction_and_observation_at.sql
+      - file: packages/db/migrations/1558_m11_critical_lab_result_resolution.sql
+      - file: apps/backend/src/modules/11-orders/critical-lab-resolution.ts
+      - file: apps/backend/src/modules/11-orders/routes/critical-lab-routes.ts
     gap:
-      reason: A quarantined (no-order) critical result is paged and escalated once to the medical director + attending, but the queue has no resolve / acknowledge path (no endpoint or screen to say "matched to order X" or "reviewed, no action"); a row stays quarantined, with escalated_at set, until someone edits the database. Until that exists the control proves delivery, not resolution.
+      reason: A quarantined (no-order) critical result can now be resolved in the app (#1136; endpoints, audit, event and live proof in the evidence), but three things remain. (1) No screen. The queue and the resolve are API-only because the UI screen corpus has no quarantine-queue screen (docs/design/screens/clinical/CHARTWARDEN_UI_ORDERS.md specs only the lab results-pending-review queue), so a clinician cannot reach them without a client until a screen is specified and built (owner decision). (2) "Matched to order X" RECORDS the clinician's determination and the order it belongs to; it does not attach the observation to that order, so the order's own results-received / pending-review state is unchanged (attaching stays with M29's applier). (3) Resolving does not recall or annotate the M36 pages already delivered (the caseload RN's, and the medical director's and attending's escalation); they stay as delivered, because an M36 alert has no resolved state to set. A mistaken resolution is not re-opened by design (the table is append-only); correcting one is a new clinical action, and an audited re-open is not built.
       owner: clinical-platform
       review_by: 2027-01-31
 

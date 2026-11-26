@@ -174,6 +174,8 @@ export const M11_EVENT_NAMES = [
   "m11.order.transmission_terminal_failed",
   "m11.order.results_received",
   "m11.order.results_received_critical",
+  // #1136 (CW-CS-01) — a quarantined (no-order) critical lab result was resolved by a prescriber.
+  "m11.order.critical_lab_resolved",
   "m11.order.results_overdue",
   "m11.order.idg_drafted",
   "m11.order.standing_created",

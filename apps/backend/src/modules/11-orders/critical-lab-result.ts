@@ -7,6 +7,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
+import { criticalLabOpen } from "./critical-lab-resolution";
 
 const CLR = schema.criticalLabResults;
 const ORDER = schema.orderRecords;
@@ -136,7 +137,7 @@ export interface QuarantinedCritical {
 }
 
 /**
- * Escalate every quarantined (no-order) critical whose response clock has lapsed, once. Each row is stamped and
+ * Escalate every quarantined (no-order), still-unresolved critical whose response clock has lapsed, once. Each row is stamped and
  * escalated in ITS OWN transaction: the guarded UPDATE stamps `escalated_at` and `escalate` (the M36 page) runs in the
  * same transaction, so a failed page rolls back only that row's stamp and the next tick retries it (the alert's
  * correlation id keeps a retry from paging twice). One poison row never blocks or rolls back the others; failures are
@@ -168,7 +169,8 @@ export async function sweepQuarantinedCriticalLabs(
         .where(
           and(
             eq(CLR.organizationId, organizationId),
-            eq(CLR.disposition, "quarantined_no_order"),
+            // #1136 — quarantined AND not yet resolved: a result a clinician has already cleared is never paged again.
+            criticalLabOpen(),
             isNull(CLR.escalatedAt),
             lte(CLR.respondBy, now),
           ),
@@ -187,7 +189,7 @@ export async function sweepQuarantinedCriticalLabs(
           const stamped = await (scoped as unknown as DbClient)
             .update(CLR)
             .set({ escalatedAt: now, updatedAt: now })
-            .where(and(eq(CLR.id, r.id), isNull(CLR.escalatedAt)))
+            .where(and(eq(CLR.id, r.id), isNull(CLR.escalatedAt), criticalLabOpen()))
             .returning({ id: CLR.id });
           if (stamped.length === 0) return false;
           await deps.escalate(organizationId, {
