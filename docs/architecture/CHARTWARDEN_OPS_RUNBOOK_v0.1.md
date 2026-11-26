@@ -146,6 +146,7 @@ Maintenance windows announced to customers ≥ 7 days in advance via status page
 | August | Policy review — every ChartWarden policy reviewed for currency | Compliance |
 | October | Encryption key rotation (production data keys) | Engineering |
 | December | Year-end audit log retention compliance verification | Compliance |
+| Floating | Incident-response tabletop drill (DR_BCP §8.6; kit: `docs/runbooks/incident-response-drill.md`) — not yet run | Security officer |
 | Floating | SOC 2 audit (when sought — Phase 3) | External auditor |
 | Floating | HITRUST audit (when sought — future) | External auditor |
 
@@ -307,6 +308,18 @@ Triggers for immediate rollback:
 - p99 latency > 2× baseline sustained for > 5 minutes
 - New SEV-1 or SEV-2 incident traced to deploy
 - Critical regression discovered by customer
+
+> **Today's rollback (single-host stack).** The commands below are the multi-VM target: `chartwarden-edge-01`, `lb-cli` and
+> blue/green containers do not exist. Production rolls back by running **Release and deploy** manually from the commit to
+> restore, or by running `deploy/production/deploy.sh` with the previous immutable `sha-` image tags (never `:latest`); see
+> `deploy/production/README.md`, "Rolling back". Migrations are forward-only: `deploy.sh` restores the previous release
+> automatically after a failed deploy only over `-- compat: expand` migrations and otherwise holds (exit 75) for an operator, so
+> a rollback after a contract migration is an operator decision (README, "Rollback and migrations"). **That hold covers only the
+> migrations the image being deployed still has pending: a manual redeploy of the previous image onto a schema a newer release
+> already advanced holds nothing.** Before a manual rollback read the ledger (`_chartwarden_migration`) and the `-- compat:`
+> headers of the migrations the bad release applied. During an incident,
+> preserve the evidence first (container logs, image digests, the rows or documents involved): a rollback recreates the
+> api, worker and web containers. The 5-minute target below is the target topology's and has not been measured here.
 
 ```bash
 # 1. Re-weight to previous version
@@ -1136,18 +1149,35 @@ Triggers:
 - Secret accidentally committed to public repo
 - Vendor reports key exposure
 - Suspicious activity attributable to a specific credential
+- A folder or workstation holding secrets (a restore-secrets folder, an operator laptop that can decrypt the environment file)
+  was shared or may be compromised; then **every secret it could read** is a trigger, not one
+- A key sat where more than the intended people could read it, and you cannot show nobody did
+
+Declare the incident first (DR_BCP §2.3). A secret value is never pasted into a channel, ticket or comparison.
 
 ```bash
-# 1. Immediately revoke the compromised credential at source
+# 1. Preserve the access history of where it leaked (share log, repo traffic, provider log) BEFORE cleaning up
+# 2. Immediately revoke the compromised credential at source
 # (For external services: revoke in vendor console)
 # (For internal: revoke in DB / SOPS)
-
-# 2. Generate replacement
-# 3. Roll out replacement urgently (not via maintenance window)
-# 4. Investigate scope of compromise
-# 5. HIPAA breach assessment if PHI access possible
-# 6. Document in incident retrospective
+# 3. Generate replacement  — only if the secret rotates (see the table below)
+# 4. Update the offline escrow with the replacement BEFORE retiring anything it replaces
+# 5. Roll out replacement urgently (not via maintenance window)
+# 6. Investigate scope of compromise
+# 7. HIPAA breach assessment if PHI access possible (DR_BCP §9.3)
+# 8. Document in incident retrospective
 ```
+
+Which procedure, by what leaked (order secrets by what they open: data and other secrets first, vendor keys next):
+
+| Leaked | Follow | Note |
+|---|---|---|
+| Off-site backup keys (S3 access keys, pgBackRest passphrases, SSE-C key) | DR_BCP §4.8.5, "Leaked-key response" | Rotation is not retroactive: pgBackRest history stays readable to a holder of the leaked key and bucket access for about 7 months, and the object mirror has no expiry (read the bucket's live lock and lifecycle first) |
+| `M34_TENANT_KEK` | §8.3.3 | Rotatable: active key, retired list, re-wrap, prune last |
+| `MESSAGING_ENCRYPTION_KEY`, `TWO_FACTOR_ENCRYPTION_KEY`, `M24_CREDENTIAL_ENCRYPTION_KEY` | §8.3.3 | **No rotation exists**: step 3 cannot be done. Escalate to the breach assessment and the re-encryption project; record it as a blocking finding |
+| `BETTER_AUTH_SECRET` | §8.2.1 | Every session of every tenant is invalidated; a customer-visible decision for the IC |
+| Operator account or workstation | DR_BCP §10.4.2 | Containment before rotation; evidence in the same hour |
+| `SOPS_AGE_KEY` | §8.4 | Rotating it re-encrypts every SOPS file; treat everything it opened as exposed |
 
 #### 8.2.x Clearinghouse credential rejected at runtime (Stedi key or MAC submitter credential)
 
@@ -1161,21 +1191,30 @@ Different from credentials. Encryption keys must be rotated with backward-compat
 
 #### 8.3.1 pgBackRest Cipher Rotation
 
+> **Single-host stack (today).** pgBackRest runs inside the `backup` sidecar and the `postgres` container
+> (DR_BCP §4.8), not as `sudo -u postgres` on a VM; the passphrases are the `BACKUP_PG_LOCAL_CIPHER_PASS` and
+> `BACKUP_PG_OFFSITE_CIPHER_PASS` secret files (DR_BCP §4.8.4). The sidecar reads the stanza from `BACKUP_PG_STANZA`, but the
+> postgres container's `archive_command` in `deploy/production/compose.backup.yml` names the stanza literally, so both change
+> together; this path has not been rehearsed. Update the offline escrow before retiring anything. After a leak read DR_BCP §4.8.5,
+> "Leaked-key response", first.
+
 ```bash
-# 1. Generate new cipher
+# 1. Generate new cipher, and put it in the offline escrow NOW (a lost shell would orphan every backup written under it)
 NEW_PASS=$(openssl rand -base64 48)
 
 # 2. pgBackRest does not natively support cipher rotation
 # Approach: create new stanza with new cipher; cut over
 
-# 3. Configure new stanza
-sudo -u postgres pgbackrest --stanza=chartwarden-v2 --repo1-cipher-pass=$NEW_PASS stanza-create
+# 3. Configure new stanza. pgBackRest refuses a secure option (the cipher passphrase) on the command line, which would also
+#    expose it in the process list: pass it in the environment (not as `env VAR=value cmd`, which shows it in `ps`) or the config file
+export PGBACKREST_REPO1_CIPHER_PASS="$NEW_PASS"
+sudo --preserve-env=PGBACKREST_REPO1_CIPHER_PASS -u postgres pgbackrest --stanza=chartwarden-v2 stanza-create
 
 # 4. Take fresh full backup under new stanza
-sudo -u postgres pgbackrest --stanza=chartwarden-v2 --type=full backup
+sudo --preserve-env=PGBACKREST_REPO1_CIPHER_PASS -u postgres pgbackrest --stanza=chartwarden-v2 --type=full backup
 
-# 5. Verify backup is good
-sudo -u postgres pgbackrest --stanza=chartwarden-v2 --type=full verify
+# 5. Verify backup is good (`verify` takes no --type)
+sudo --preserve-env=PGBACKREST_REPO1_CIPHER_PASS -u postgres pgbackrest --stanza=chartwarden-v2 verify
 
 # 6. Update postgresql.conf to use new stanza for archive-push
 # 7. Cut over backup scheduling to chartwarden-v2

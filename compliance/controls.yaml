@@ -2300,15 +2300,19 @@ controls:
 
   - id: CW-IR-01
     title: Security incident procedures and breach-notification workflow
-    hipaa: ["164.308(a)(6)", "164.404"]
+    hipaa: ["164.308(a)(6)", "164.404", "164.410", "164.314(a)(2)(i)(C)"]
     soc2: ["CC7.3", "CC7.4", "CC7.5"]
     status: partial
     evidence:
       - file: docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md
       - file: docs/architecture/CHARTWARDEN_OPS_RUNBOOK_v0.1.md
       - script: arch:architecture-docs
+      # CW-IR-01 drill kit (a tabletop with real responders is still to run): facilitator guide, three scenario cards, record template.
+      - file: docs/runbooks/incident-response-drill.md
+      - file: docs/runbooks/incident-response-drill-scenarios.md
+      - file: audit/incident-drill/TEMPLATE-drill-record.md
     gap:
-      reason: Procedures are written; no tabletop exercise or incident-drill record exists yet to show they were exercised during an observation window.
+      reason: Procedures are written and a tabletop drill kit now exists (three scenarios, facilitator script, roles, clock fields, a record template; the text errors it surfaced in the DR/BCP and ops runbook are corrected, but control gaps it lists stay open, such as a single operator for every incident role and keys with no emergency rotation). No drill has been run, so no tabletop with the real responders and no signed record under audit/incident-drill/ exists and the procedures are unproven by the people who would use them. Running the drill is the remaining gap.
       owner: security-officer
       review_by: 2027-01-31
 
