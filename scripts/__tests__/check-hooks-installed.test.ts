@@ -82,7 +82,7 @@ describe("the script, in a throwaway clone", () => {
   });
 
   /**
-   * Every spawn here gets the scrubbed environment: this suite runs inside `.githooks/pre-push` (`bun run test`),
+   * Every git spawn in this suite gets the scrubbed environment: it runs inside `.githooks/pre-push` (`bun run test`),
    * where git exports GIT_DIR / GIT_INDEX_FILE, and an inherited one would aim `git init` and `git config` at the
    * REAL repository (and leave its core.hooksPath disabled when an assertion fails).
    */
@@ -117,13 +117,18 @@ describe("the script, in a throwaway clone", () => {
   }
 
   it("is unaffected by GIT_DIR in the parent environment, as when the suite runs under a git hook", () => {
+    const realEnv = scrubbedGitEnv(repoRoot);
     const realGitDir = spawnSync("git", ["rev-parse", "--absolute-git-dir"], {
       cwd: repoRoot,
       encoding: "utf8",
+      env: realEnv,
     }).stdout.trim();
     const readReal = () =>
-      spawnSync("git", ["config", "--get", "core.hooksPath"], { cwd: repoRoot, encoding: "utf8" })
-        .stdout;
+      spawnSync("git", ["config", "--get", "core.hooksPath"], {
+        cwd: repoRoot,
+        encoding: "utf8",
+        env: realEnv,
+      }).stdout;
     const before = readReal();
     const saved = process.env.GIT_DIR;
     process.env.GIT_DIR = realGitDir;
@@ -196,7 +201,14 @@ describe("the script, in a throwaway clone", () => {
     const check = run(dir, []);
     expect(check.code).toBe(1);
     expect(check.out).toContain("git could not read its configuration");
-    expect(run(dir, ["--install"]).code).toBe(1);
+    const install = run(dir, ["--install"]);
+    expect(install.code).toBe(1);
+    expect(install.out).toContain("git could not read its configuration");
+  });
+
+  it("the git environment this suite builds carries no GIT_DIR or GIT_INDEX_FILE", () => {
+    const keys = Object.keys(envFor(repoRoot, {}));
+    expect(keys.filter((k) => k.startsWith("GIT_") && !k.startsWith("GIT_CONFIG"))).toEqual([]);
   });
 
   it("--install is idempotent: nothing to write, nothing to fail", () => {

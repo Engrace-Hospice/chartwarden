@@ -164,15 +164,24 @@ function runsOnEveryPullRequestToMain(doc: unknown): boolean {
   return true;
 }
 
+/** A step that can be skipped or can fail without failing its job: the job would report green without doing its work. */
+function isUnreliableStep(step: unknown): boolean {
+  if (!isObject(step)) return false;
+  const tolerant = step["continue-on-error"] !== undefined && step["continue-on-error"] !== false;
+  return "if" in step || tolerant;
+}
+
 /**
  * A job whose result a required check can trust: it always runs (no `if`, no `needs` on a job that may be
  * skipped, no matrix that renames it), is not a reusable-workflow call (its context would be `caller / callee`),
- * cannot fail without failing the check (`continue-on-error`) and has a literal name.
+ * cannot fail without failing the check (no `continue-on-error` on the job or on any step, no step `if`) and has a
+ * literal name. A `run: ... || true` still passes; CODEOWNERS review of the workflow is what covers that.
  */
 function isTrustworthyJob(job: unknown): job is Json {
   if (!isObject(job)) return false;
   if ("if" in job || "uses" in job || "needs" in job || "strategy" in job) return false;
   if (job["continue-on-error"] !== undefined && job["continue-on-error"] !== false) return false;
+  if (asArray(job.steps).some(isUnreliableStep)) return false;
   return !(typeof job.name === "string" && job.name.includes("${{"));
 }
 

@@ -64,11 +64,18 @@ interface GitResult {
   readonly status: number | null;
   readonly out: string;
   readonly failedToRun: boolean;
+  /** What git printed on stderr, so a failure names git's own reason. */
+  readonly err: string;
 }
 
 function git(root: string, args: readonly string[]): GitResult {
   const r = spawnSync("git", [...args], { cwd: root, encoding: "utf8" });
-  return { status: r.status, out: (r.stdout ?? "").trim(), failedToRun: r.error !== undefined };
+  return {
+    status: r.status,
+    out: (r.stdout ?? "").trim(),
+    failedToRun: r.error !== undefined,
+    err: (r.stderr ?? "").trim(),
+  };
 }
 
 /** No `.git` (a directory, or the file a linked worktree has) means nothing to protect; anything else must be readable. */
@@ -85,7 +92,11 @@ function readHooksPath(root: string): HooksPathRead {
   if (r.failedToRun) return { hooksPath: undefined, error: "git could not be run" };
   if (r.status === 0) return { hooksPath: r.out, error: undefined };
   if (r.status === 1) return { hooksPath: undefined, error: undefined };
-  return { hooksPath: undefined, error: `git could not read its configuration (exit ${r.status})` };
+  const why = r.err === "" ? "" : `: ${r.err}`;
+  return {
+    hooksPath: undefined,
+    error: `git could not read its configuration (exit ${r.status})${why}`,
+  };
 }
 
 function readHookFile(root: string, name: string): HookFile {
@@ -109,7 +120,14 @@ function install(root: string): number {
     console.log("hooks: no .git here (an image build, a tarball): nothing to install");
     return 0;
   }
-  const current = readHooksPath(root).hooksPath;
+  const read = readHooksPath(root);
+  if (read.error !== undefined) {
+    console.error(
+      `hooks: ${read.error}. The secret scan would not run on commit; fix the repository, then ${REMEDY}.`,
+    );
+    return 1;
+  }
+  const current = read.hooksPath;
   if (current !== undefined && resolve(root, current) === resolve(root, HOOKS_DIR)) {
     console.log(`hooks: core.hooksPath already -> ${HOOKS_DIR}`);
     return 0;
@@ -117,7 +135,7 @@ function install(root: string): number {
   const set = git(root, ["config", "core.hooksPath", HOOKS_DIR]);
   if (set.status !== 0) {
     console.error(
-      `hooks: could not set core.hooksPath to ${HOOKS_DIR}: the secret scan would not run on commit. Fix the git config error, then ${REMEDY}.`,
+      `hooks: could not set core.hooksPath to ${HOOKS_DIR}: the secret scan would not run on commit. ${set.err === "" ? "" : `git said: ${set.err}. `}Fix the git config error, then ${REMEDY}.`,
     );
     return 1;
   }

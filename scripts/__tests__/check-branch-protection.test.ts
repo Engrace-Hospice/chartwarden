@@ -171,6 +171,8 @@ describe("required checks must report on a pull request into main", () => {
       { strategy: { matrix: { os: ["a"] } } },
       { "continue-on-error": true },
       { name: "Secret and PHI scan ${{ matrix.os }}" },
+      { steps: [{ run: "true", if: "false" }] },
+      { steps: [{ run: "bun run arch:compliance", "continue-on-error": true }] },
     ])
       expect(missing(withJob("pull_request", job)), JSON.stringify(job)).toHaveLength(1);
     expect(missing(withJob("pull_request", { "continue-on-error": false }))).toEqual([]);
