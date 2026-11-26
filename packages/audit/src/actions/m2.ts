@@ -155,6 +155,16 @@ export const M2_ACTION_CATALOG: ModuleActionCatalog = [
   compliance("m2.auth.login_failed", "A sign-in credential or second factor was refused."),
   compliance("m2.auth.account_locked", "A sign-in was refused because the failed-attempt budget is spent."),
   compliance("m2.auth.logout", "A user signed out."),
+  // CW-AC-45 - the privileged-factor control. The refusal is sampled per session (a held session retries every route);
+  // the relaxation is written once per boot that runs with the matrix off. Ids, enums and a route template only.
+  compliance(
+    "m2.auth.mfa_enrolment_refused",
+    "An org-bound staff session was refused because its role's second factor is not enrolled or was not proven at sign-in (sampled per session).",
+  ),
+  compliance(
+    "m2.auth.mfa_enforcement_relaxed",
+    "The server booted with the second-factor matrix explicitly relaxed (CHARTWARDEN_MFA_ENFORCEMENT=false); carries the recorded reason.",
+  ),
   compliance("m2.auth.password_reset", "A password was reset through the single-use reset link."),
   compliance("m2.auth.2fa_enrolled", "A user began or completed authenticator (TOTP) enrolment."),
   compliance("m2.auth.2fa_disabled", "A user disabled their authenticator (TOTP) second factor."),

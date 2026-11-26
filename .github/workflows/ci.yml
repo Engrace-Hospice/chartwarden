@@ -998,6 +998,9 @@ jobs:
           - { name: "M31 portal invitee sign-in", scripts: "test:m31:portal-signin:live" }
           - { name: "M2 funeral / collaborator link redemption", scripts: "test:m2:link-redemption:live" }
           - { name: "M2 auth audit trail + MFA matrix", scripts: "test:m2:auth-hardening:live" }
+          # CW-AC-55 - the two tenant Part 2 intake reads behind the enforced second factor (org_admin passkey, administrator
+          # second factor), the administrator override closed to clinicians, break-glass and auditor sessions, read audit landing.
+          - { name: "M22 Part 2 reads behind the enforced second factor", scripts: "test:m22:part2-admin-factor:live" }
           - { name: "M3 role-template materialization", scripts: "test:m3:role-templates:live" }
           - { name: "M4 legal-hold supremacy at destruction", scripts: "test:m4:legal-hold-supremacy:live" }
           # GAP-008 - a legal hold is an append-only overlay, not a retention_class flip (ADR-0043): materialiser, DELETE guard,
@@ -1888,6 +1891,9 @@ jobs:
       # https origins, and prove nothing more about these workflows. The production-configuration boot
       # is a different question and has its own job (`outbox-boot`).
       NODE_ENV: development
+      # The server-side MFA matrix is enforced by default (CW-AC-45); these specs sign in password-only as seeded staff, so the
+      # dev stack relaxes it explicitly. The enforced path is proven live by `m2-auth-hardening` and `m22-part2-admin-factor`.
+      CHARTWARDEN_MFA_ENFORCEMENT: "false"
       PORT: "3000"
       E2E_BASE_URL: http://localhost:5173
       # MEASURED, not assumed. Without this the run is RED: a serial Playwright pass plus the seed

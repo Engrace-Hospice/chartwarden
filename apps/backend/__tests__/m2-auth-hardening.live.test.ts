@@ -15,6 +15,7 @@ import {
   resetRbacEngine,
   resolveMfaEnforcement,
 } from "@chartwarden/auth";
+import { auditPlatformEvent } from "@chartwarden/audit";
 import { createDbClient } from "@chartwarden/db";
 import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
@@ -25,7 +26,9 @@ import { createAuthAuditSink } from "../src/modules/02-identity/audit/auth-event
 import {
   createDbActiveMembershipLister,
   createMfaEnrolmentGate,
+  createMfaRefusalAuditor,
 } from "../src/modules/02-identity/mfa-enrolment-gate";
+import { recordMfaRelaxation } from "../src/modules/02-identity/mfa-relaxation";
 import {
   createDbMfaEnrollmentReader,
   createDbSessionProofReader,
@@ -48,7 +51,11 @@ import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
  *   - no audit payload contains the password or the email address;
  *   - a password-only clinician's org-bound session is refused 403 MFA_ENROLMENT_REQUIRED on a clinical route while
  *     /api/auth/* stays reachable; a verified TOTP row lifts the hold; an org_admin with a TOTP but no passkey is
- *     still held until a passkey exists;
+ *     still held until a passkey exists; a platform-owned superadmin is held to a passkey too, and a tenant
+ *     `administrator` to a second factor (the CW-AC-55 remainder, pinned);
+ *   - enforcement is the code DEFAULT (no variable set), and every refusal writes ONE sampled, org-scoped
+ *     `m2.auth.mfa_enrolment_refused` row (ids and enums; no address) through the real sink, while an admitted
+ *     request writes none (CW-AC-45);
  *   - `two-factor/disable` is refused 403 for a clinician whose only factor is the TOTP.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m2:auth-hardening:live
@@ -109,6 +116,34 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
       [ORG, membershipId, roleId],
     );
     return { email, password, userId };
+  }
+
+  const refusalAuditErrors: unknown[] = [];
+
+  /**
+   * The `m2.auth.mfa_enrolment_refused` rows for one user. The hook records them off the request path (it never waits
+   * for the audit write), so poll briefly for the row to land instead of racing it.
+   */
+  async function refusalRows(userId: string, expected = 1) {
+    let rows: { organization_id: string | null; severity: string; outcome: string; context: Record<string, unknown> }[] = [];
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      rows = (
+        await admin.query(
+          "SELECT organization_id, severity, outcome, context FROM audit_event WHERE event_type='m2.auth.mfa_enrolment_refused' AND actor_user_id=$1 ORDER BY created_at",
+          [userId],
+        )
+      ).rows;
+      if (rows.length >= expected) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return rows;
+  }
+
+  /** The rows after the expected ones landed AND a late extra one had a short window to show up (a negative check). */
+  async function settledRefusalRows(userId: string, expected: number) {
+    await refusalRows(userId, expected);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return refusalRows(userId, 0);
   }
 
   const signIn = (email: string, password: string) =>
@@ -176,9 +211,9 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
         createDbActorEnrichmentReader(handle.db as never),
       ),
     );
-    // Enforcement forced ON: the production default, regardless of NODE_ENV in this lane.
+    // Enforcement by the code DEFAULT (CW-AC-45): no variable is set in this lane, in any NODE_ENV.
     const gate = createMfaEnrolmentGate({
-      enforced: resolveMfaEnforcement({ CHARTWARDEN_MFA_ENFORCEMENT: "true" }),
+      enforced: resolveMfaEnforcement({}),
       factors: createDbMfaEnrollmentReader(handle.db as never),
       sessionProvedFactor: createDbSessionProofReader(handle.db as never),
       roleKeysForMembership: async ({ organizationId, membershipId }) =>
@@ -198,6 +233,11 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
         mfaEnrolment: {
           check: ({ userId, sessionId, roleKeys }) =>
             gate.forRoles({ userId, sessionId, roleKeys }),
+          // The production wiring: the REAL audit sink behind the REAL sampler (apps/backend/src/index.ts).
+          onRefused: createMfaRefusalAuditor({
+            sink: createAuthAuditSink({ db: handle.db as never }),
+            onError: (err) => refusalAuditErrors.push(err),
+          }),
         },
       }),
     });
@@ -302,6 +342,25 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
     const held = await app.inject({ method: "GET", url: "/__probe/clinical", headers: { cookie } });
     expect(held.statusCode).toBe(403);
     expect(held.json().error.code).toBe("MFA_ENROLMENT_REQUIRED");
+    // The refusal is audited: one ORG-scoped row under the tenant's own RLS scope, ids and enums only, and a second
+    // refusal of the same session inside the sampling window writes no second row.
+    const refusals = await refusalRows(u.userId);
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]).toMatchObject({
+      organization_id: ORG,
+      severity: "warn",
+      outcome: "failure",
+      context: {
+        requirement: "second_factor",
+        reason: "not_enrolled",
+        method: "GET",
+        routeTemplate: "/__probe/clinical",
+        userId: u.userId,
+      },
+    });
+    expect(JSON.stringify(refusals[0]?.context)).not.toContain(u.email);
+    await app.inject({ method: "GET", url: "/__probe/clinical", headers: { cookie } });
+    expect(await refusalRows(u.userId, 2)).toHaveLength(1);
     // Better Auth's own surface stays reachable so the user CAN enrol.
     const session = await app.inject({
       method: "GET",
@@ -331,6 +390,11 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
       headers: { cookie },
     });
     expect(lifted.statusCode).toBe(200);
+    // Allowed means no refusal: the two rows are the two refusals above (not enrolled, then enrolled but unproven).
+    expect((await settledRefusalRows(u.userId, 2)).map((r) => r.context.reason)).toEqual([
+      "not_enrolled",
+      "not_verified",
+    ]);
   });
 
   it("an org_admin with only a TOTP stays held until a passkey exists", async () => {
@@ -382,6 +446,133 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
       headers: { cookie },
     });
     expect(lifted.statusCode).toBe(200);
+    // Both refusals are audited with the PASSKEY requirement; the admitted request wrote nothing.
+    const refusals = await settledRefusalRows(u.userId, 2);
+    expect(refusals.map((r) => [r.context.requirement, r.context.reason])).toEqual([
+      ["passkey", "not_enrolled"],
+      ["passkey", "not_verified"],
+    ]);
+    expect(refusals.every((r) => r.organization_id === ORG)).toBe(true);
+  });
+
+  it("a tenant `administrator` needs a second factor, not specifically a passkey (the CW-AC-55 remainder)", async () => {
+    // `administrator` is not in PASSKEY_REQUIRED_ROLE_KEYS: it is held to the second-factor matrix of every staff role.
+    // This pins that, so widening the passkey set to it is a deliberate change that updates this test and the register.
+    const u = await seedStaff("tadm", "administrator");
+    const { cookie, sessionId } = await boundSession(u.email, u.password, u.userId);
+    const held = await app.inject({ method: "GET", url: "/__probe/clinical", headers: { cookie } });
+    expect(held.statusCode).toBe(403);
+    expect(held.json().error.code).toBe("MFA_ENROLMENT_REQUIRED");
+    expect((await refusalRows(u.userId))[0]?.context).toMatchObject({
+      requirement: "second_factor",
+      reason: "not_enrolled",
+    });
+    await admin.query(
+      "INSERT INTO two_factor (user_id, secret_encrypted, verified) VALUES ($1,'sealed',true)",
+      [u.userId],
+    );
+    await admin.query(
+      "UPDATE session SET last_step_up_at=now(), last_step_up_factor='totp' WHERE id=$1",
+      [sessionId],
+    );
+    const admitted = await app.inject({
+      method: "GET",
+      url: "/__probe/clinical",
+      headers: { cookie },
+    });
+    expect(admitted.statusCode).toBe(200);
+  });
+
+  it("a platform-owned superadmin is held to a passkey, as the real chartwarden_app role reads it", async () => {
+    // The platform org here has no tenant_account, which is what migration 1501's binding trigger requires.
+    const u = await seedStaff("sup", "rn_sup");
+    await admin.query(
+      `INSERT INTO role (organization_id,key,name,category,enabled,system_default,scope_level)
+         SELECT NULL,'superadmin','Superadmin','admin_executive',true,true,'organization'
+         WHERE NOT EXISTS (SELECT 1 FROM role WHERE key='superadmin' AND organization_id IS NULL)`,
+    );
+    const roleId = (
+      await admin.query("SELECT id FROM role WHERE key='superadmin' AND organization_id IS NULL")
+    ).rows[0].id as string;
+    await admin.query(
+      "UPDATE membership_role SET role_id=$1 WHERE membership_id=(SELECT id FROM membership WHERE user_id=$2)",
+      [roleId, u.userId],
+    );
+    await admin.query(
+      "INSERT INTO role_permission (organization_id,role_id,permission_key) VALUES ($1,$2,'mfa.probe') ON CONFLICT DO NOTHING",
+      [ORG, roleId],
+    );
+    await admin.query(
+      "INSERT INTO two_factor (user_id, secret_encrypted, verified) VALUES ($1,'sealed',true)",
+      [u.userId],
+    );
+    const { cookie, sessionId } = await boundSession(u.email, u.password, u.userId);
+    await admin.query(
+      "UPDATE session SET last_step_up_at=now(), last_step_up_factor='totp' WHERE id=$1",
+      [sessionId],
+    );
+    const totpOnly = await app.inject({
+      method: "GET",
+      url: "/__probe/clinical",
+      headers: { cookie },
+    });
+    expect(totpOnly.statusCode).toBe(403);
+    expect((await refusalRows(u.userId))[0]?.context).toMatchObject({
+      requirement: "passkey",
+      reason: "not_enrolled",
+    });
+    await admin.query(
+      "INSERT INTO passkey (user_id, credential_id, public_key) VALUES ($1,$2,'pk')",
+      [u.userId, randomUUID()],
+    );
+    await admin.query("UPDATE session SET last_step_up_factor='webauthn' WHERE id=$1", [sessionId]);
+    const afterPasskey = await app.inject({
+      method: "GET",
+      url: "/__probe/clinical",
+      headers: { cookie },
+    });
+    // superadmin's permissions derive from the catalog (superadmin-permissions.ts), which has no `mfa.probe`, so the probe
+    // is a plain permission refusal - but it is no longer the MFA hold, and the passkey proof wrote no second refusal row.
+    expect(afterPasskey.statusCode).toBe(403);
+    expect(afterPasskey.json().error.code).toBe("FORBIDDEN");
+    expect(await settledRefusalRows(u.userId, 1)).toHaveLength(1);
+  });
+
+  it("a relaxed boot writes its critical row through the REAL platform audit writer as chartwarden_app", async () => {
+    const logged: string[] = [];
+    await recordMfaRelaxation({
+      enforced: resolveMfaEnforcement({ CHARTWARDEN_MFA_ENFORCEMENT: "false" }),
+      env: {
+        NODE_ENV: "production",
+        CHARTWARDEN_MFA_RELAXATION_REASON: "CHG-0001 synthetic bounded window for the live proof",
+      },
+      audit: (event) => auditPlatformEvent(handle.db as never, event),
+      log: {
+        warn: (_context, message) => logged.push(`warn: ${message}`),
+        error: (_context, message) => logged.push(`error: ${message}`),
+      },
+    });
+    expect(logged.filter((l) => l.startsWith("error"))).toEqual([]);
+    const rows = (
+      await admin.query(
+        "SELECT organization_id, resource_kind, severity, outcome, context FROM audit_event WHERE event_type='m2.auth.mfa_enforcement_relaxed'",
+      )
+    ).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      organization_id: null,
+      resource_kind: "auth_policy",
+      severity: "critical",
+      outcome: "success",
+      context: {
+        reason: "CHG-0001 synthetic bounded window for the live proof",
+        nodeEnv: "production",
+      },
+    });
+  });
+
+  it("recorded no refusal-audit failure over the whole lane", () => {
+    expect(refusalAuditErrors).toEqual([]);
   });
 
   it("two-factor/disable is refused 403 for a clinician whose only factor is the TOTP", async () => {
