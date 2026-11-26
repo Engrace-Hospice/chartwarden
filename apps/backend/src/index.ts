@@ -378,6 +378,11 @@ import {
   parseClaimsBillingEnforcement,
   withClaimsBillingGate,
 } from "./bootstrap/claims-billing-gate";
+import {
+  bindGateModeAudit,
+  createGateFindingSink,
+  gateModeBoundFacts,
+} from "./bootstrap/claims-billing-gate-audit";
 import { executedBaaGate } from "./bootstrap/death-notification-baa-gate";
 import { buildFuneralLinkPort } from "./bootstrap/death-notification-funeral-link";
 import {
@@ -9732,9 +9737,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   }
   // ADR-0110 D6 — bind the gate's mode + logger now that the seams are validated. The billing routes only mount on a
   // database boot, so that is where a shadow/enforce mode needs the real entitlement reader (refuse to boot otherwise).
+  // CW-AC-24 — below `enforce` (log-only) each would-block is also written as a platform audit finding, and every boot records
+  // the mode (and the operator's reason) so the trail shows when the gate ran log-only and the boot that flipped it.
   configureClaimsBillingGate({
     mode: claimsBillingMode,
     log: (message, detail) => app.log.warn(detail, message),
+    ...(dbHandle ? { recordFinding: createGateFindingSink(dbHandle.db) } : {}),
   });
   if (dbHandle) assertClaimsBillingSeamBound(claimsBillingMode);
   app.log.info(`Claims-billing add-on enforcement: ${claimsBillingMode}`);
@@ -9743,6 +9751,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     process.env.NODE_ENV,
   );
   if (enforcementWarning) app.log.warn(enforcementWarning);
+  if (dbHandle) {
+    await bindGateModeAudit(
+      dbHandle.db,
+      gateModeBoundFacts(claimsBillingMode, process.env, requestedRole),
+      (message, err) => app.log.error({ err }, message),
+    );
+  }
   m31Warn = (message, context) => app.log.warn(context, message);
   m36TaskWarn = (message, context) => app.log.warn(context, message);
   m36HandoffWarn = (message, context) => app.log.warn(context, message);

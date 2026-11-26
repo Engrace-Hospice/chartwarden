@@ -1494,6 +1494,66 @@ and acknowledgment evidence; never manually mark it accepted or move the deadlin
   KEK, not the tenant's DEK, so destroying the tenant's DEK does not make it unreadable either. They stay, and the held fingerprints
   keep reserving those credentials, until a database-level procedure removes them.
 
+### 8.7 Claims-Billing Gate: Enforcement Default, Log-Only and the Production Flip (CW-AC-24, ADR-0110 D6)
+
+The gate refuses a tenant's NEW claims and eligibility work (402 `CLAIMS_BILLING_ADDON_REQUIRED`, the reason as the detail code) and
+holds its queued new-work jobs while its clearinghouse is not live or its subscription is suspended, paused or canceled. Reads, voids,
+NOE / NOTR / transfer notices and in-flight work are not gated by it. The worker hold of §8.6 is a separate transport fact and applies
+in every mode.
+
+- **Mode.** `CLAIMS_BILLING_ENFORCEMENT` unset means `enforce`. `shadow` is log-only (the would-deny is logged and recorded, the work
+  goes ahead); `off` evaluates nothing. In production either needs `CLAIMS_BILLING_LOG_ONLY_REASON` (20 to 200 characters: the
+  decision, who owns the flip, by when; never patient data), or the API refuses to boot. Every boot of every process writes one
+  platform audit row, `m23.claims_billing_gate.mode_bound`, with the mode and the reason, so the trail shows when a deployment ran
+  log-only, why, and the boot that flipped it to `enforce`. A production boot below `enforce` also logs a warning, and it is never
+  unaudited: if that row cannot be written the process refuses to boot (any other boot logs the failure and goes on).
+- **What log-only would have blocked.** While `shadow`, each refusal `enforce` would have made (a would-deny, or a failed entitlement
+  read that `enforce` answers with 503 or a hold) is a platform-scoped audit row, `m23.claims_billing_gate.would_block`, once per
+  process, organization, route or queue, and reason per hour. A void claim an exemption lets through leaves no row, and neither does
+  an organization `enforce` would let through. Read them as a platform role (a tenant session sees none):
+
+  ```sql
+  SELECT context->>'organizationId'                    AS organization_id,
+         context->>'outcome'                            AS outcome,   -- would_deny | would_fail_closed
+         context->>'reason'                             AS reason,
+         coalesce(context->>'route', context->>'queue') AS site,
+         count(*)                                       AS hourly_rows,
+         min(created_at) AS first_seen, max(created_at) AS last_seen
+    FROM audit_event
+   WHERE event_type = 'm23.claims_billing_gate.would_block'
+     AND created_at >= now() - interval '30 days'
+   GROUP BY 1, 2, 3, 4
+   ORDER BY last_seen DESC;
+  ```
+
+**Rollout checklist (the production flip can hold claims. Merging this change is itself the flip for any production environment that
+does not pin a mode, so step 0 is done before the merge).**
+
+0. **Before this change merges:** the code default is now `enforce`, and `main` auto-deploys. A production environment file with no
+   `CLAIMS_BILLING_ENFORCEMENT` enforces at the next deploy. If production is to stay log-only until the review below, put
+   `CLAIMS_BILLING_ENFORCEMENT=shadow` and a `CLAIMS_BILLING_LOG_ONLY_REASON` in `.env.production` first and check the boot log
+   (`Claims-billing add-on enforcement: shadow`) and the `mode_bound` row. A file that already sets `shadow` or `off` needs the
+   reason too: without it the deploy's environment validation fails before any migration or service is touched, and the previous
+   release keeps running.
+1. Finish the §8.6 cutover (`CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS`): an unlisted tenant with no clearinghouse of its own is already held
+   in every mode, and `enforce` adds the 402 on top.
+2. Run log-only for a window the owner chooses (at least one full billing cycle), then run the query above. For each organization:
+   expected (it has no live clearinghouse, or it bills `outside`: the tenant must choose and activate one) or a fault (a live tenant
+   that sends today and would be refused: fix its configuration, or list it in the fallback list, before the flip).
+   An empty result is evidence only if every process ran `shadow` for the whole window and every finding was written: check that the
+   `m23.claims_billing_gate.mode_bound` rows in the window all say `shadow` (an `off` boot evaluates nothing and records nothing), and
+   search the logs for `claims-billing finding not recorded` (a failed audit write leaves a gap there, not in the table).
+3. Any `would_fail_closed` row means the entitlement read failed while the work was allowed. `enforce` answers that with 503 and a
+   hold, so find the cause (database health, the M23 and M35 readers) before the flip.
+4. Confirm no CMS-deadline work depends on a gated path (NOE, NOTR and transfer notices, voids and in-flight claims are exempt).
+   The Claim.MD webhook sweep also asks the gate: under `enforce`, the inbound receipts of a refused organization wait as
+   `awaiting_entitlement` (kept and re-checked, not published) until it is entitled again, so a tenant whose Claim.MD configuration
+   is `not_active` stops receiving responses too.
+5. Flip: remove `CLAIMS_BILLING_ENFORCEMENT` and `CLAIMS_BILLING_LOG_ONLY_REASON` (or set `enforce`) and deploy. Confirm the boot
+   log says `enforce` and the new `mode_bound` row has `mode: enforce`.
+6. Watch for a day: 402 `CLAIMS_BILLING_ADDON_REQUIRED`, 503 `BILLING_ENTITLEMENT_UNAVAILABLE`, held new-work jobs. To roll back, set
+   `shadow` with a reason and deploy; held jobs run on their next 15-minute check.
+
 ---
 
 ## 9. Monitoring & Alerting Operations

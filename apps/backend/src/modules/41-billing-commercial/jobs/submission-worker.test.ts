@@ -51,6 +51,10 @@ const syntheticClaimX12 = readFileSync(
   "utf8",
 );
 
+// These tests exercise the drain and its per-org clearinghouse, not the claims-billing gate. An unconfigured gate enforces
+// (CW-AC-24) and the entitlement seam is unbound here, so the gate stays out of the way; the ADR-0110 block below sets its own modes.
+beforeEach(() => configureClaimsBillingGate({ mode: "off" }));
+
 describe("M41 Claim.MD evidence reservation", () => {
   const base = {
     vendor: "claimmd",

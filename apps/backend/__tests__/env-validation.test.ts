@@ -143,16 +143,52 @@ describe("collectEnvProblems", () => {
     expect(integrationEnabled(GOOD, FHIR_TOKEN_ENDPOINT_ENABLED_ENV)).toBe(true);
   });
 
-  it("ADR-0110: CLAIMS_BILLING_ENFORCEMENT is optional (shadow), but a set value must be off|shadow|enforce", () => {
-    for (const mode of ["off", "shadow", "enforce"]) {
-      expect(collectEnvProblems({ ...GOOD, CLAIMS_BILLING_ENFORCEMENT: mode })).toEqual([]);
-    }
+  it("ADR-0110: CLAIMS_BILLING_ENFORCEMENT is optional (enforce), but a set value must be off|shadow|enforce", () => {
+    expect(collectEnvProblems({ ...GOOD })).toEqual([]);
+    expect(collectEnvProblems({ ...GOOD, CLAIMS_BILLING_ENFORCEMENT: "enforce" })).toEqual([]);
     expect(collectEnvProblems({ ...GOOD, CLAIMS_BILLING_ENFORCEMENT: "on" })).toEqual([
       {
         key: "CLAIMS_BILLING_ENFORCEMENT",
-        problem: "must be one of off, shadow, enforce (or unset for shadow)",
+        problem: "must be one of off, shadow, enforce (or unset for enforce)",
       },
     ]);
+  });
+
+  it("CW-AC-24: running the claims-billing gate below enforce needs a written reason in production", () => {
+    const reason = "CW-AC-24 log-only until the 2027-01 rollout review";
+    for (const mode of ["off", "shadow"]) {
+      expect(collectEnvProblems({ ...GOOD, CLAIMS_BILLING_ENFORCEMENT: mode })).toEqual([
+        {
+          key: "CLAIMS_BILLING_LOG_ONLY_REASON",
+          problem: expect.stringContaining(`is required while CLAIMS_BILLING_ENFORCEMENT=${mode}`),
+        },
+      ]);
+      expect(
+        collectEnvProblems({
+          ...GOOD,
+          CLAIMS_BILLING_ENFORCEMENT: mode,
+          CLAIMS_BILLING_LOG_ONLY_REASON: reason,
+        }),
+      ).toEqual([]);
+    }
+    expect(
+      collectEnvProblems({
+        ...GOOD,
+        CLAIMS_BILLING_ENFORCEMENT: "shadow",
+        CLAIMS_BILLING_LOG_ONLY_REASON: "too short",
+      }),
+    ).toEqual([
+      { key: "CLAIMS_BILLING_LOG_ONLY_REASON", problem: expect.stringContaining("20-200") },
+    ]);
+    // a stale reason beside an enforcing gate is harmless, and outside production nothing is required
+    expect(collectEnvProblems({ ...GOOD, CLAIMS_BILLING_LOG_ONLY_REASON: reason })).toEqual([]);
+    expect(
+      collectEnvProblems({
+        ...GOOD,
+        NODE_ENV: "development",
+        CLAIMS_BILLING_ENFORCEMENT: "shadow",
+      }),
+    ).toEqual([]);
   });
 
   it("rejects an ambiguous external-gateway switch value", () => {
@@ -751,7 +787,10 @@ describe("collectEnvProblems - CHARTWARDEN_MFA_ENFORCEMENT relaxation", () => {
   it("refuses to boot a production relaxation that gives no reason, or too short a one", () => {
     expect(keysFor({ CHARTWARDEN_MFA_ENFORCEMENT: "false" })).toEqual([MFA_RELAXATION_REASON_ENV]);
     expect(
-      keysFor({ CHARTWARDEN_MFA_ENFORCEMENT: "false", CHARTWARDEN_MFA_RELAXATION_REASON: "  ok  " }),
+      keysFor({
+        CHARTWARDEN_MFA_ENFORCEMENT: "false",
+        CHARTWARDEN_MFA_RELAXATION_REASON: "  ok  ",
+      }),
     ).toEqual([MFA_RELAXATION_REASON_ENV]);
     expect(() => assertProductionEnv({ ...GOOD, CHARTWARDEN_MFA_ENFORCEMENT: "false" })).toThrow(
       /CHARTWARDEN_MFA_RELAXATION_REASON/,

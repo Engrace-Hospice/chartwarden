@@ -44,13 +44,21 @@ export function isOrgIdList(raw: string): boolean {
   return raw.split(",").every((id) => ORG_ID_SHAPE.test(id.trim()));
 }
 
-/** ADR-0110 D6 — the claims-billing add-on enforcement mode (the gate lives in ./claims-billing-gate.ts). */
+/**
+ * ADR-0110 D6 (amended, CW-AC-24) — the claims-billing gate's enforcement mode (the gate lives in ./claims-billing-gate.ts).
+ * `enforce` is the default: an unset variable refuses a new-work request and holds a queued job. `shadow` (log-only: the
+ * would-deny is recorded and the work goes ahead) and `off` (nothing evaluated) are deliberate choices, and a production
+ * boot refuses either one without a written reason in CLAIMS_BILLING_LOG_ONLY_REASON (the boot also audits the mode).
+ */
 export const CLAIMS_BILLING_ENFORCEMENT_ENV = "CLAIMS_BILLING_ENFORCEMENT";
 export const CLAIMS_BILLING_ENFORCEMENT_MODES = ["off", "shadow", "enforce"] as const;
 export type ClaimsBillingEnforcementMode = (typeof CLAIMS_BILLING_ENFORCEMENT_MODES)[number];
-export const DEFAULT_CLAIMS_BILLING_ENFORCEMENT: ClaimsBillingEnforcementMode = "shadow";
+export const DEFAULT_CLAIMS_BILLING_ENFORCEMENT: ClaimsBillingEnforcementMode = "enforce";
+export const CLAIMS_BILLING_LOG_ONLY_REASON_ENV = "CLAIMS_BILLING_LOG_ONLY_REASON";
+export const CLAIMS_BILLING_LOG_ONLY_REASON_MIN_LENGTH = 20;
+export const CLAIMS_BILLING_LOG_ONLY_REASON_MAX_LENGTH = 200;
 
-/** Parse the mode; unset → shadow; anything else than the three values throws (fail closed at boot). */
+/** Parse the mode; unset → enforce; anything else than the three values throws (fail closed at boot). */
 export function parseClaimsBillingEnforcement(
   env: Readonly<Record<string, string | undefined>>,
 ): ClaimsBillingEnforcementMode {
@@ -62,6 +70,59 @@ export function parseClaimsBillingEnforcement(
   throw new Error(
     `${CLAIMS_BILLING_ENFORCEMENT_ENV} must be one of ${CLAIMS_BILLING_ENFORCEMENT_MODES.join(", ")} (got '${raw}')`,
   );
+}
+
+// The same shapes the clearinghouse free-text screen refuses (tenant-clearinghouse/screening.ts): an SSN, or an MBI (hyphens ignored).
+const REASON_SSN_SHAPE = /(?<!\d)\d{3}[\s.-]?\d{2}[\s.-]?\d{4}(?!\d)/u;
+const REASON_MBI_SHAPE =
+  /(?<![0-9A-Z])[1-9][AC-HJ-NP-RT-Y][0-9AC-HJ-NP-RT-Y][0-9][AC-HJ-NP-RT-Y][0-9AC-HJ-NP-RT-Y][0-9][AC-HJ-NP-RT-Y]{2}[0-9]{2}(?![0-9A-Z])/iu;
+const LOOKS_LIKE_IDENTIFIER_MARKER = "[withheld: looked like a patient identifier]";
+
+function looksLikePatientIdentifier(text: string): boolean {
+  return REASON_SSN_SHAPE.test(text) || REASON_MBI_SHAPE.test(text.replace(/-/g, ""));
+}
+
+/**
+ * The operator's written reason for running the gate below `enforce`, or undefined when blank. Control characters become
+ * spaces and the text is cut one character past the maximum (so an over-long reason is still seen as over-long), and a
+ * reason shaped like an SSN or an MBI is replaced by a marker: this string ends up in an append-only audit row in every
+ * environment, not only where production refuses it (`claimsBillingLogOnlyReasonProblem`).
+ */
+export function parseClaimsBillingLogOnlyReason(
+  env: Readonly<Record<string, string | undefined>>,
+): string | undefined {
+  const raw = env[CLAIMS_BILLING_LOG_ONLY_REASON_ENV]
+    ?.replace(/\p{Cc}+/gu, " ")
+    .trim()
+    .slice(0, CLAIMS_BILLING_LOG_ONLY_REASON_MAX_LENGTH + 1);
+  if (!raw) return undefined;
+  return looksLikePatientIdentifier(raw) ? LOOKS_LIKE_IDENTIFIER_MARKER : raw;
+}
+
+/**
+ * Why a deployment running the gate below `enforce` is refused, or null when it is fine (`enforce` needs no reason). The
+ * reason is recorded in the boot audit row, so it names the decision and who owns the flip (a ticket id, a date), never
+ * patient data.
+ */
+export function claimsBillingLogOnlyReasonProblem(
+  mode: ClaimsBillingEnforcementMode,
+  env: Readonly<Record<string, string | undefined>>,
+): string | null {
+  if (mode === "enforce") return null;
+  const reason = parseClaimsBillingLogOnlyReason(env);
+  if (!reason) {
+    return `is required while ${CLAIMS_BILLING_ENFORCEMENT_ENV}=${mode}: say why the claims-billing gate is not enforcing (it is audited at every boot)`;
+  }
+  if (reason === LOOKS_LIKE_IDENTIFIER_MARKER) {
+    return "must not look like a patient identifier (an SSN or an MBI): it is recorded in the audit trail";
+  }
+  if (
+    reason.length < CLAIMS_BILLING_LOG_ONLY_REASON_MIN_LENGTH ||
+    reason.length > CLAIMS_BILLING_LOG_ONLY_REASON_MAX_LENGTH
+  ) {
+    return `must be ${CLAIMS_BILLING_LOG_ONLY_REASON_MIN_LENGTH}-${CLAIMS_BILLING_LOG_ONLY_REASON_MAX_LENGTH} characters`;
+  }
+  return null;
 }
 /** Claim.MD webhook intake switch: only the exact value `true` turns it on (default off until a real delivery is seen). */
 export const CLAIMMD_WEBHOOK_ENABLED_ENV = "CLAIMMD_WEBHOOK_ENABLED";
@@ -691,11 +752,17 @@ export function collectEnvProblems(env: EnvLike): EnvProblem[] {
     }
   }
   try {
-    parseClaimsBillingEnforcement(env);
+    const reasonProblem = claimsBillingLogOnlyReasonProblem(
+      parseClaimsBillingEnforcement(env),
+      env,
+    );
+    if (reasonProblem) {
+      problems.push({ key: CLAIMS_BILLING_LOG_ONLY_REASON_ENV, problem: reasonProblem });
+    }
   } catch {
     problems.push({
       key: CLAIMS_BILLING_ENFORCEMENT_ENV,
-      problem: `must be one of ${CLAIMS_BILLING_ENFORCEMENT_MODES.join(", ")} (or unset for shadow)`,
+      problem: `must be one of ${CLAIMS_BILLING_ENFORCEMENT_MODES.join(", ")} (or unset for enforce)`,
     });
   }
   const clearinghouseVendor = env[CLEARINGHOUSE_VENDOR_ENV]?.trim();
