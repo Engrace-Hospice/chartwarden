@@ -64,7 +64,10 @@ describe("MedicaidAdapterRegistry", () => {
   it("Oregon deny-stubs the not-yet-wired wire I/O but keeps real metadata + TOB", async () => {
     const or = new MedicaidAdapterRegistry().requireAdapterForState("OR");
     expect(or.metadata.acceptsDocumentedMissingEvv).toBe(false);
-    expect(or.metadata.combinesHospiceAndRb).toBe(true);
+    expect(or.metadata.combinesHospiceAndRb).toBe(false);
+    expect(or.metadata.supportedChannels).toEqual([]);
+    expect(or.metadata.ackMode).toBe("unqualified");
+    expect(or.metadata.supportedTobs).toEqual(["811", "812", "813", "814"]);
     expect(or.replacementTob("811")).toBe("817");
     expect(or.voidTob("811")).toBe("818");
     await expect(
@@ -150,7 +153,9 @@ describe("electronicSubmissionRefusal follow-ups (S11)", () => {
   it("does not infer an Oregon FFS destination from a missing MCO mapping", () => {
     const r = electronicSubmissionRefusal("OR", false, null);
     expect(r?.code).toBe(MEDICAID_NO_ELECTRONIC_GATEWAY_CODE);
-    expect(r?.message).toMatch(/cannot verify whether this OR coverage is fee-for-service/);
+    expect(r?.message).toMatch(
+      /cannot verify which Medicaid program is responsible for this OR service window/,
+    );
   });
 
   it("does not infer FFS from a missing MCO mapping and never treats a gateway as certification", () => {
@@ -169,9 +174,44 @@ describe("electronicSubmissionRefusal follow-ups (S11)", () => {
       submissionAvailable: false,
       status: "unsupported_program_route",
     });
+    expect(medicaidClaimRouteReadiness("OR", "mco-id", true, "ffs_open_card", true)).toMatchObject({
+      programKind: "ffs_open_card",
+      programAssignmentVerified: true,
+      requestedChannel: null,
+      submissionAvailable: false,
+      reasonCode: "MEDICAID_FFS_ROUTE_UNVERIFIED",
+    });
     expect(medicaidClaimRouteReadiness("WA", "mco-id", true).status).toBe(
       "unsupported_state_program",
     );
+  });
+
+  it.each(["unresolved", "ambiguous", "unsupported"] as const)(
+    "never reports a verified program assignment for the %s kind, whatever the caller passes",
+    (kind) => {
+      expect(medicaidClaimRouteReadiness("OR", null, true, kind, true)).toMatchObject({
+        programKind: kind,
+        programAssignmentVerified: false,
+      });
+    },
+  );
+
+  it.each(["ffs_open_card", "managed_care", "other_managed_care"] as const)(
+    "passes the caller's verified flag through for the resolved %s kind",
+    (kind) => {
+      expect(
+        medicaidClaimRouteReadiness("OR", "mco-id", true, kind, true).programAssignmentVerified,
+      ).toBe(true);
+      expect(
+        medicaidClaimRouteReadiness("OR", "mco-id", true, kind, false).programAssignmentVerified,
+      ).toBe(false);
+    },
+  );
+
+  it("does not verify the legacy NULL-MCO derivation either", () => {
+    expect(
+      medicaidClaimRouteReadiness("OR", null, true, undefined, true).programAssignmentVerified,
+    ).toBe(false);
   });
 
   it("the web claim editor uses the same code string as the backend", () => {

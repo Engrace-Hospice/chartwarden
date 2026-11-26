@@ -48,7 +48,7 @@ if [[ "${BIL_TEST_ONLY:-}" == "m23-claim-submission" ]]; then
   exit 0
 fi
 if [[ "${BIL_TEST_ONLY:-}" == "rls" ]]; then
-  bunx vitest run packages/db/migrations/__tests__/m25-rls-isolation.live.test.ts
+  bunx vitest run apps/backend/__tests__/m25-rls-isolation.live.test.ts
   exit 0
 fi
 if [[ "${BIL_TEST_ONLY:-}" == "claimmd-ops" ]]; then

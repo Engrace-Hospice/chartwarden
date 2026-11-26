@@ -15,6 +15,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -26,7 +27,8 @@ import {
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { m24ClaimKind, m24ClaimLineLoc, m24ClaimState } from "./enums";
+import { m24ClaimKind, m24ClaimLineLoc, m24ClaimState, m24MedicaidProgramKind } from "./enums";
+import { medicaidPayerRatePolicy } from "./payer-rate-policy";
 
 // ---- medicaid_claim — claim root; PARTITION BY LIST(provider_entity_id) ----
 export const medicaidClaim = pgTable(
@@ -54,8 +56,14 @@ export const medicaidClaim = pgTable(
     statePlanCodeId: uuid("state_plan_code_id").notNull(), // logical FK → M40
     statePlanCodeSnapshot: varchar("state_plan_code_snapshot", { length: 32 }).notNull(),
 
-    mcoId: uuid("mco_id"), // null = FFS / Open Card
+    mcoId: uuid("mco_id"), // M40 logical MCO identity; NULL is not evidence of FFS.
     mcoSnapshot: jsonb("mco_snapshot"),
+    // Nullable for historical compatibility. NULL on an existing claim means legacy unresolved;
+    // new assembly writes an explicit kind and immutable dated resolution snapshot.
+    medicaidProgramKind: m24MedicaidProgramKind("medicaid_program_kind"),
+    canonicalPayerId: uuid("canonical_payer_id"), // logical M40 payer identity
+    programAssignmentId: uuid("program_assignment_id"), // logical M24 evidence identity
+    programResolutionSnapshot: jsonb("program_resolution_snapshot"),
 
     medicareClaimId: uuid("medicare_claim_id"), // logical FK → M23 (dual-eligible COB)
     medicareSecondaryContextSnapshot: jsonb("medicare_secondary_context_snapshot"),
@@ -129,6 +137,8 @@ export const medicaidClaimLine = pgTable(
 
     lineNumber: integer("line_number").notNull(),
     serviceDate: timestamp("service_date", { withTimezone: true, mode: "date" }).notNull(),
+    // NULL is retained only for legacy rows whose original span cannot be reconstructed safely.
+    serviceDateTo: timestamp("service_date_to", { withTimezone: true, mode: "date" }),
 
     revenueCode: varchar("revenue_code", { length: 4 }).notNull(),
     qCode: varchar("q_code", { length: 8 }).notNull(),
@@ -143,8 +153,10 @@ export const medicaidClaimLine = pgTable(
 
     rateAtAssemblyCents: integer("rate_at_assembly_cents").notNull(),
     // logical FK → medicaid_state_rate_schedule; NULL for an R&B line (rb_day.per_diem_cents_snapshot is
-    // the rate source there, not a per-county schedule — see 0178 / the rateScheduleRequiresNonRb CHECK).
+    // the rate source there, not a per-county schedule — see 0178 / the rateSourceExactlyOne CHECK).
     stateRateScheduleIdSnapshot: uuid("state_rate_schedule_id_snapshot"),
+    // M24 payer-rate evidence has a distinct identity; it must never be stored in the legacy M40 schedule field.
+    payerRatePolicyIdSnapshot: uuid("payer_rate_policy_id_snapshot"),
 
     chargesCents: integer("charges_cents").notNull(),
     cobPaidCents: integer("cob_paid_cents"),
@@ -169,11 +181,25 @@ export const medicaidClaimLine = pgTable(
       "medicaid_claim_line_rb_requires_rb_day",
       sql`(is_rb = false) OR (is_rb = true AND rb_day_id IS NOT NULL)`,
     ),
-    rateScheduleRequiresNonRb: check(
-      "medicaid_claim_line_rate_schedule_requires_non_rb",
-      sql`(is_rb = true) OR (is_rb = false AND state_rate_schedule_id_snapshot IS NOT NULL)`,
+    payerRateSnapshotFk: foreignKey({
+      name: "medicaid_claim_line_payer_rate_snapshot_fk",
+      columns: [t.organizationId, t.payerRatePolicyIdSnapshot],
+      foreignColumns: [medicaidPayerRatePolicy.organizationId, medicaidPayerRatePolicy.id],
+    }).onDelete("restrict"),
+    payerRateSnapshotFkIx: index("medicaid_claim_line_payer_rate_snapshot_fk_ix")
+      .on(t.organizationId, t.payerRatePolicyIdSnapshot)
+      .where(sql`payer_rate_policy_id_snapshot IS NOT NULL`),
+    rateSourceExactlyOne: check(
+      "medicaid_claim_line_rate_source_exactly_one",
+      sql`(is_rb = true AND state_rate_schedule_id_snapshot IS NULL AND payer_rate_policy_id_snapshot IS NULL) OR
+          (is_rb = false AND ((state_rate_schedule_id_snapshot IS NOT NULL AND payer_rate_policy_id_snapshot IS NULL) OR
+                              (state_rate_schedule_id_snapshot IS NULL AND payer_rate_policy_id_snapshot IS NOT NULL)))`,
     ),
     unitsPositive: check("medicaid_claim_line_units_positive", sql`units > 0`),
+    serviceRangeValid: check(
+      "medicaid_claim_line_service_range_valid",
+      sql`service_date_to IS NULL OR service_date <= service_date_to`,
+    ),
     ratePositive: check("medicaid_claim_line_rate_positive", sql`rate_at_assembly_cents > 0`),
   }),
 );

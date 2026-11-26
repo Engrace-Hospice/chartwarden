@@ -204855,6 +204855,444 @@
         }
       }
     },
+    "/api/v1/medicaid-chc-pricing-preparations": {
+      "post": {
+        "operationId": "postApiV1Medicaidchcpricingpreparations",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Prepare and persist source-verified local CHC hourly pricing; institutional units remain unqualified",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "preparationId",
+                    "version",
+                    "serviceDate",
+                    "observedMinutes",
+                    "qualifiedMinutes",
+                    "reimbursementHours",
+                    "rateCentsPerHour",
+                    "estimatedReimbursementCents",
+                    "billedChargeCents",
+                    "institutionalUnits",
+                    "institutionalFormatQualified",
+                    "verification"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "preparationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "version": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "serviceDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "observedMinutes": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "qualifiedMinutes": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reimbursementHours": {
+                      "anyOf": [
+                        {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rateCentsPerHour": {
+                      "anyOf": [
+                        {
+                          "description": "Integer cents (D8)",
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "estimatedReimbursementCents": {
+                      "anyOf": [
+                        {
+                          "description": "Integer cents (D8)",
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "billedChargeCents": {
+                      "anyOf": [
+                        {
+                          "description": "Integer cents (D8)",
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "institutionalUnits": {
+                      "const": "unqualified",
+                      "type": "string"
+                    },
+                    "institutionalFormatQualified": {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    "verification": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "status",
+                            "preparationId",
+                            "version",
+                            "fingerprint"
+                          ],
+                          "properties": {
+                            "status": {
+                              "const": "current",
+                              "type": "string"
+                            },
+                            "preparationId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "version": {
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "fingerprint": {
+                              "pattern": "^[0-9a-f]{64}$",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "status",
+                            "reasonCode"
+                          ],
+                          "properties": {
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "stale",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unresolved",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ambiguous",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unsupported",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "reasonCode": {
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "patientId",
+                  "admissionId",
+                  "providerEntityId",
+                  "serviceDate"
+                ],
+                "properties": {
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "admissionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "serviceDate": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-chc-pricing-preparations/{id}": {
+      "get": {
+        "operationId": "getApiV1MedicaidchcpricingpreparationsById",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Read and source-revalidate a local CHC pricing preparation; this does not create an institutional claim",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "preparationId",
+                    "version",
+                    "serviceDate",
+                    "observedMinutes",
+                    "qualifiedMinutes",
+                    "reimbursementHours",
+                    "rateCentsPerHour",
+                    "estimatedReimbursementCents",
+                    "billedChargeCents",
+                    "institutionalUnits",
+                    "institutionalFormatQualified",
+                    "verification"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "preparationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "version": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "serviceDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "observedMinutes": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "qualifiedMinutes": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reimbursementHours": {
+                      "anyOf": [
+                        {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rateCentsPerHour": {
+                      "anyOf": [
+                        {
+                          "description": "Integer cents (D8)",
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "estimatedReimbursementCents": {
+                      "anyOf": [
+                        {
+                          "description": "Integer cents (D8)",
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "billedChargeCents": {
+                      "anyOf": [
+                        {
+                          "description": "Integer cents (D8)",
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "institutionalUnits": {
+                      "const": "unqualified",
+                      "type": "string"
+                    },
+                    "institutionalFormatQualified": {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    "verification": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "status",
+                            "preparationId",
+                            "version",
+                            "fingerprint"
+                          ],
+                          "properties": {
+                            "status": {
+                              "const": "current",
+                              "type": "string"
+                            },
+                            "preparationId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "version": {
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "fingerprint": {
+                              "pattern": "^[0-9a-f]{64}$",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "status",
+                            "reasonCode"
+                          ],
+                          "properties": {
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "stale",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unresolved",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ambiguous",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unsupported",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "reasonCode": {
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/medicaid-claims": {
       "get": {
         "operationId": "getApiV1Medicaidclaims",
@@ -205050,6 +205488,9 @@
                           "serviceFrom",
                           "serviceTo",
                           "mcoId",
+                          "medicaidProgramKind",
+                          "canonicalPayerId",
+                          "programResolutionSnapshot",
                           "medicareClaimId",
                           "rbArrangementId",
                           "medicaidClaimControlNumber",
@@ -205143,6 +205584,60 @@
                                 "format": "uuid",
                                 "type": "string"
                               },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "medicaidProgramKind": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "ffs_open_card",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "managed_care",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "other_managed_care",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unsupported",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unresolved",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "ambiguous",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "canonicalPayerId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "programResolutionSnapshot": {
+                            "anyOf": [
+                              {},
                               {
                                 "type": "null"
                               }
@@ -205331,17 +205826,32 @@
                               "programKind": {
                                 "anyOf": [
                                   {
+                                    "const": "ffs_open_card",
+                                    "type": "string"
+                                  },
+                                  {
                                     "const": "managed_care",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "other_managed_care",
                                     "type": "string"
                                   },
                                   {
                                     "const": "unresolved",
                                     "type": "string"
+                                  },
+                                  {
+                                    "const": "ambiguous",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unsupported",
+                                    "type": "string"
                                   }
                                 ]
                               },
                               "programAssignmentVerified": {
-                                "const": false,
                                 "type": "boolean"
                               },
                               "requestedChannel": {
@@ -205465,6 +205975,9 @@
                     "serviceFrom",
                     "serviceTo",
                     "mcoId",
+                    "medicaidProgramKind",
+                    "canonicalPayerId",
+                    "programResolutionSnapshot",
                     "medicareClaimId",
                     "rbArrangementId",
                     "medicaidClaimControlNumber",
@@ -205558,6 +206071,60 @@
                           "format": "uuid",
                           "type": "string"
                         },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "medicaidProgramKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canonicalPayerId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "programResolutionSnapshot": {
+                      "anyOf": [
+                        {},
                         {
                           "type": "null"
                         }
@@ -205746,17 +206313,32 @@
                         "programKind": {
                           "anyOf": [
                             {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
                               "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
                               "type": "string"
                             },
                             {
                               "const": "unresolved",
                               "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
                             }
                           ]
                         },
                         "programAssignmentVerified": {
-                          "const": false,
                           "type": "boolean"
                         },
                         "requestedChannel": {
@@ -205873,10 +206455,12 @@
                       },
                       "serviceFrom": {
                         "format": "date",
+                        "description": "The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).",
                         "type": "string"
                       },
                       "serviceTo": {
                         "format": "date",
+                        "description": "The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).",
                         "type": "string"
                       },
                       "kind": {
@@ -205912,10 +206496,12 @@
                       },
                       "serviceFrom": {
                         "format": "date",
+                        "description": "The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).",
                         "type": "string"
                       },
                       "serviceTo": {
                         "format": "date",
+                        "description": "The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).",
                         "type": "string"
                       },
                       "kind": {
@@ -205955,10 +206541,12 @@
                       },
                       "serviceFrom": {
                         "format": "date",
+                        "description": "The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).",
                         "type": "string"
                       },
                       "serviceTo": {
                         "format": "date",
+                        "description": "The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).",
                         "type": "string"
                       },
                       "kind": {
@@ -206041,6 +206629,9 @@
                     "serviceFrom",
                     "serviceTo",
                     "mcoId",
+                    "medicaidProgramKind",
+                    "canonicalPayerId",
+                    "programResolutionSnapshot",
                     "medicareClaimId",
                     "rbArrangementId",
                     "medicaidClaimControlNumber",
@@ -206134,6 +206725,60 @@
                           "format": "uuid",
                           "type": "string"
                         },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "medicaidProgramKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canonicalPayerId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "programResolutionSnapshot": {
+                      "anyOf": [
+                        {},
                         {
                           "type": "null"
                         }
@@ -206322,17 +206967,32 @@
                         "programKind": {
                           "anyOf": [
                             {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
                               "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
                               "type": "string"
                             },
                             {
                               "const": "unresolved",
                               "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
                             }
                           ]
                         },
                         "programAssignmentVerified": {
-                          "const": false,
                           "type": "boolean"
                         },
                         "requestedChannel": {
@@ -206452,6 +207112,9 @@
                     "serviceFrom",
                     "serviceTo",
                     "mcoId",
+                    "medicaidProgramKind",
+                    "canonicalPayerId",
+                    "programResolutionSnapshot",
                     "medicareClaimId",
                     "rbArrangementId",
                     "medicaidClaimControlNumber",
@@ -206545,6 +207208,60 @@
                           "format": "uuid",
                           "type": "string"
                         },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "medicaidProgramKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canonicalPayerId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "programResolutionSnapshot": {
+                      "anyOf": [
+                        {},
                         {
                           "type": "null"
                         }
@@ -206733,17 +207450,32 @@
                         "programKind": {
                           "anyOf": [
                             {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
                               "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
                               "type": "string"
                             },
                             {
                               "const": "unresolved",
                               "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
                             }
                           ]
                         },
                         "programAssignmentVerified": {
-                          "const": false,
                           "type": "boolean"
                         },
                         "requestedChannel": {
@@ -206877,6 +207609,9 @@
                     "serviceFrom",
                     "serviceTo",
                     "mcoId",
+                    "medicaidProgramKind",
+                    "canonicalPayerId",
+                    "programResolutionSnapshot",
                     "medicareClaimId",
                     "rbArrangementId",
                     "medicaidClaimControlNumber",
@@ -206970,6 +207705,60 @@
                           "format": "uuid",
                           "type": "string"
                         },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "medicaidProgramKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canonicalPayerId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "programResolutionSnapshot": {
+                      "anyOf": [
+                        {},
                         {
                           "type": "null"
                         }
@@ -207158,17 +207947,32 @@
                         "programKind": {
                           "anyOf": [
                             {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
                               "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
                               "type": "string"
                             },
                             {
                               "const": "unresolved",
                               "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
                             }
                           ]
                         },
                         "programAssignmentVerified": {
-                          "const": false,
                           "type": "boolean"
                         },
                         "requestedChannel": {
@@ -207416,6 +208220,7 @@
                       "medicaidClaimId",
                       "lineNumber",
                       "serviceDate",
+                      "serviceDateTo",
                       "revenueCode",
                       "qCode",
                       "levelOfCare",
@@ -207441,6 +208246,17 @@
                       "serviceDate": {
                         "format": "date",
                         "type": "string"
+                      },
+                      "serviceDateTo": {
+                        "anyOf": [
+                          {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       },
                       "revenueCode": {
                         "type": "string"
@@ -207558,6 +208374,9 @@
                     "serviceFrom",
                     "serviceTo",
                     "mcoId",
+                    "medicaidProgramKind",
+                    "canonicalPayerId",
+                    "programResolutionSnapshot",
                     "medicareClaimId",
                     "rbArrangementId",
                     "medicaidClaimControlNumber",
@@ -207651,6 +208470,60 @@
                           "format": "uuid",
                           "type": "string"
                         },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "medicaidProgramKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canonicalPayerId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "programResolutionSnapshot": {
+                      "anyOf": [
+                        {},
                         {
                           "type": "null"
                         }
@@ -207839,17 +208712,32 @@
                         "programKind": {
                           "anyOf": [
                             {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
                               "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
                               "type": "string"
                             },
                             {
                               "const": "unresolved",
                               "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
                             }
                           ]
                         },
                         "programAssignmentVerified": {
-                          "const": false,
                           "type": "boolean"
                         },
                         "requestedChannel": {
@@ -208166,6 +209054,9 @@
                     "serviceFrom",
                     "serviceTo",
                     "mcoId",
+                    "medicaidProgramKind",
+                    "canonicalPayerId",
+                    "programResolutionSnapshot",
                     "medicareClaimId",
                     "rbArrangementId",
                     "medicaidClaimControlNumber",
@@ -208259,6 +209150,60 @@
                           "format": "uuid",
                           "type": "string"
                         },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "medicaidProgramKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canonicalPayerId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "programResolutionSnapshot": {
+                      "anyOf": [
+                        {},
                         {
                           "type": "null"
                         }
@@ -208447,17 +209392,32 @@
                         "programKind": {
                           "anyOf": [
                             {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
                               "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
                               "type": "string"
                             },
                             {
                               "const": "unresolved",
                               "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
                             }
                           ]
                         },
                         "programAssignmentVerified": {
-                          "const": false,
                           "type": "boolean"
                         },
                         "requestedChannel": {
@@ -208910,6 +209870,9 @@
                     "serviceFrom",
                     "serviceTo",
                     "mcoId",
+                    "medicaidProgramKind",
+                    "canonicalPayerId",
+                    "programResolutionSnapshot",
                     "medicareClaimId",
                     "rbArrangementId",
                     "medicaidClaimControlNumber",
@@ -209003,6 +209966,60 @@
                           "format": "uuid",
                           "type": "string"
                         },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "medicaidProgramKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canonicalPayerId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "programResolutionSnapshot": {
+                      "anyOf": [
+                        {},
                         {
                           "type": "null"
                         }
@@ -209191,17 +210208,32 @@
                         "programKind": {
                           "anyOf": [
                             {
+                              "const": "ffs_open_card",
+                              "type": "string"
+                            },
+                            {
                               "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_managed_care",
                               "type": "string"
                             },
                             {
                               "const": "unresolved",
                               "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
                             }
                           ]
                         },
                         "programAssignmentVerified": {
-                          "const": false,
                           "type": "boolean"
                         },
                         "requestedChannel": {
@@ -209333,6 +210365,12 @@
                     "arrangementListStatus",
                     "medicareEvidence",
                     "stateBillingPolicy",
+                    "programResponsibility",
+                    "payerAuthorizationEvidence",
+                    "enrollmentReadiness",
+                    "selectedClearinghouse",
+                    "tradingPartnerCredential",
+                    "pricing",
                     "electronicSubmissionAvailable",
                     "isAdvisorySnapshot"
                   ],
@@ -209772,6 +210810,915 @@
                         }
                       ]
                     },
+                    "programResponsibility": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "programKind",
+                        "canonicalPayerId",
+                        "canonicalPayerName",
+                        "reasonCode"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "missing",
+                              "type": "string"
+                            },
+                            {
+                              "const": "pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "rejected",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "revoked",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "changes",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "programKind": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "ffs_open_card",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "managed_care",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "other_managed_care",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unsupported",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unresolved",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ambiguous",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "canonicalPayerId": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "canonicalPayerName": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reasonCode": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "payerAuthorizationEvidence": {
+                      "type": "object",
+                      "required": [
+                        "clinicalDocuments",
+                        "notification",
+                        "authorization",
+                        "policyQualification",
+                        "reasonCodes"
+                      ],
+                      "properties": {
+                        "clinicalDocuments": {
+                          "anyOf": [
+                            {
+                              "const": "missing",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unverified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "available",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "notification": {
+                          "anyOf": [
+                            {
+                              "const": "missing",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unverified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "prepared",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sent",
+                              "type": "string"
+                            },
+                            {
+                              "const": "acknowledged",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "authorization": {
+                          "anyOf": [
+                            {
+                              "const": "missing",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unverified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "approved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "denied",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "revoked",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "policyQualification": {
+                          "const": "unqualified",
+                          "type": "string"
+                        },
+                        "reasonCodes": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "enrollmentReadiness": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "status",
+                          "reasonCode",
+                          "vendorPayerId"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "not_applicable",
+                                "type": "string"
+                              },
+                              {
+                                "const": "missing",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "verified",
+                                "type": "string"
+                              },
+                              {
+                                "const": "expired",
+                                "type": "string"
+                              },
+                              {
+                                "const": "revoked",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ambiguous",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unavailable",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "reasonCode": {
+                            "type": "string"
+                          },
+                          "vendorPayerId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "selectedClearinghouse": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "vendor",
+                        "configurationStatus"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "selected",
+                              "type": "string"
+                            },
+                            {
+                              "const": "missing",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "vendor": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "configurationStatus": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "tradingPartnerCredential": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reasonCode"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "configured",
+                              "type": "string"
+                            },
+                            {
+                              "const": "missing",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "future",
+                              "type": "string"
+                            },
+                            {
+                              "const": "partial",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "reasonCode": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "pricing": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "assessedAt",
+                        "coversRequestedPeriod",
+                        "requiredInputs",
+                        "segments",
+                        "reimbursementEstimateTotalCents",
+                        "actualBilledChargeTotalCents",
+                        "submissionAvailable"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "fully_resolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "partially_resolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "assessedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "coversRequestedPeriod": {
+                          "type": "boolean"
+                        },
+                        "requiredInputs": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "segments": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "serviceFrom",
+                              "serviceTo",
+                              "serviceCategory",
+                              "serviceLocationKind",
+                              "status",
+                              "rateStatus",
+                              "unitBasis",
+                              "rateCents",
+                              "rateLocalityCode",
+                              "rateEffectiveFrom",
+                              "rateEffectiveTo",
+                              "rateSourceKind",
+                              "rateEvidenceVersion",
+                              "methodologyVersion",
+                              "pricingMethod",
+                              "quantityConversionMethod",
+                              "minimumDurationMethod",
+                              "minimumClinicalMinutes",
+                              "roundingBoundary",
+                              "chargeCeilingMethod",
+                              "chargeCeilings",
+                              "quantityStatus",
+                              "baseReimbursementCents",
+                              "reimbursementEstimateCents",
+                              "actualBilledChargeCents",
+                              "reasonCodes"
+                            ],
+                            "properties": {
+                              "serviceFrom": {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              "serviceTo": {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              "serviceCategory": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "RHC",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "CHC",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "IRC",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "GIP",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "IN_HOME_RESPITE",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "serviceLocationKind": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "home",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "facility",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "status": {
+                                "anyOf": [
+                                  {
+                                    "const": "resolved",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "partial",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unresolved",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "ambiguous",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unsupported",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "rateStatus": {
+                                "anyOf": [
+                                  {
+                                    "const": "qualified",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "missing",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "ambiguous",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unverified",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unsupported",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "unitBasis": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "per_day",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "per_hour",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "rateCents": {
+                                "anyOf": [
+                                  {
+                                    "description": "Integer cents (D8)",
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "rateLocalityCode": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "rateEffectiveFrom": {
+                                "anyOf": [
+                                  {
+                                    "format": "date",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "rateEffectiveTo": {
+                                "anyOf": [
+                                  {
+                                    "format": "date",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "rateSourceKind": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "rateEvidenceVersion": {
+                                "anyOf": [
+                                  {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "methodologyVersion": {
+                                "anyOf": [
+                                  {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "pricingMethod": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "per_day",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "per_hour",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "fixed_contract_unit",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "quantityConversionMethod": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "daily_units",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "hourly_prorated_minutes",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "hourly_each_hour_or_part",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "minimumDurationMethod": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "not_applicable",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "not_required",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "minimum_minutes",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "minimumClinicalMinutes": {
+                                "anyOf": [
+                                  {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "roundingBoundary": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "not_applicable",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "service_day",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "segment",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "chargeCeilingMethod": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "none",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "lower_of_rate_and_usual_charge",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "contract_maximum",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "chargeCeilings": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "method",
+                                    "amountCents",
+                                    "boundary"
+                                  ],
+                                  "properties": {
+                                    "method": {
+                                      "anyOf": [
+                                        {
+                                          "const": "lower_of_rate_and_usual_charge",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "contract_maximum",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "amountCents": {
+                                      "description": "Integer cents (D8)",
+                                      "type": "integer"
+                                    },
+                                    "boundary": {
+                                      "anyOf": [
+                                        {
+                                          "const": "service_day",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "segment",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              "quantityStatus": {
+                                "anyOf": [
+                                  {
+                                    "const": "verified",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "missing",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unverified",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "baseReimbursementCents": {
+                                "anyOf": [
+                                  {
+                                    "description": "Integer cents (D8)",
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "reimbursementEstimateCents": {
+                                "anyOf": [
+                                  {
+                                    "description": "Integer cents (D8)",
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "actualBilledChargeCents": {
+                                "anyOf": [
+                                  {
+                                    "description": "Integer cents (D8)",
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "reasonCodes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "reimbursementEstimateTotalCents": {
+                          "anyOf": [
+                            {
+                              "description": "Integer cents (D8)",
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "actualBilledChargeTotalCents": {
+                          "anyOf": [
+                            {
+                              "description": "Integer cents (D8)",
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "submissionAvailable": {
+                          "const": false,
+                          "type": "boolean"
+                        }
+                      }
+                    },
                     "electronicSubmissionAvailable": {
                       "const": false,
                       "type": "boolean"
@@ -209821,10 +211768,12 @@
                   },
                   "serviceFrom": {
                     "format": "date",
+                    "description": "The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).",
                     "type": "string"
                   },
                   "serviceTo": {
                     "format": "date",
+                    "description": "The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).",
                     "type": "string"
                   }
                 }
@@ -210059,6 +212008,757 @@
                     "type": "string"
                   },
                   "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-enrollment-evidence": {
+      "post": {
+        "operationId": "postApiV1Medicaidenrollmentevidence",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Record a provider enrollment, payer participation, transaction enrollment, or route qualification candidate as pending",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "status"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "const": "pending",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "serviceState",
+                  "evidenceKind",
+                  "effectiveFrom"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "serviceState": {
+                    "minLength": 2,
+                    "maxLength": 2,
+                    "pattern": "^[A-Z]{2}$",
+                    "type": "string"
+                  },
+                  "programKind": {
+                    "anyOf": [
+                      {
+                        "const": "ffs_open_card",
+                        "type": "string"
+                      },
+                      {
+                        "const": "managed_care",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other_managed_care",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "canonicalPayerId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "clearinghouse": {
+                    "anyOf": [
+                      {
+                        "const": "stedi",
+                        "type": "string"
+                      },
+                      {
+                        "const": "claimmd",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "vendorAccountRef": {
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9._:-]+$",
+                    "type": "string"
+                  },
+                  "sourceEnvironment": {
+                    "anyOf": [
+                      {
+                        "const": "test",
+                        "type": "string"
+                      },
+                      {
+                        "const": "production",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "evidenceFreshUntil": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "vendorPayerId": {
+                    "minLength": 1,
+                    "maxLength": 80,
+                    "type": "string"
+                  },
+                  "transactionType": {
+                    "anyOf": [
+                      {
+                        "const": "837I",
+                        "type": "string"
+                      },
+                      {
+                        "const": "835",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "evidenceKind": {
+                    "anyOf": [
+                      {
+                        "const": "state_medicaid_provider_enrollment",
+                        "type": "string"
+                      },
+                      {
+                        "const": "mco_participation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "837i_enrollment",
+                        "type": "string"
+                      },
+                      {
+                        "const": "835_era_enrollment",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clearinghouse_payer_route",
+                        "type": "string"
+                      },
+                      {
+                        "const": "institutional_format_qualification",
+                        "type": "string"
+                      },
+                      {
+                        "const": "payer_transport_certification",
+                        "type": "string"
+                      },
+                      {
+                        "const": "production_activation_approval",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-enrollment-evidence/{id}/revoke": {
+      "post": {
+        "operationId": "postApiV1MedicaidenrollmentevidenceByIdRevoke",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Revoke verified enrollment evidence with a reason and version check",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "version"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "revoked",
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "reasonCode",
+                  "providerEntityId"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "reasonCode": {
+                    "anyOf": [
+                      {
+                        "const": "source_corrected",
+                        "type": "string"
+                      },
+                      {
+                        "const": "payer_withdrawal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "coverage_changed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-enrollment-evidence/{id}/verify": {
+      "post": {
+        "operationId": "postApiV1MedicaidenrollmentevidenceByIdVerify",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Independently verify provider enrollment evidence with source and secured evidence reference",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "version"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "verified",
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "verificationSource",
+                  "evidenceReference",
+                  "providerEntityId"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "verificationSource": {
+                    "anyOf": [
+                      {
+                        "const": "state_portal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "payer_written_confirmation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clearinghouse_written_confirmation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "executed_contract",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clearinghouse_sandbox",
+                        "type": "string"
+                      },
+                      {
+                        "const": "internal_approval",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "evidenceReference": {
+                    "minLength": 6,
+                    "maxLength": 200,
+                    "pattern": "^(doc|registry|approval|ticket):[A-Za-z0-9._/-]{1,190}$",
+                    "type": "string"
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-program-assignments": {
+      "post": {
+        "operationId": "postApiV1Medicaidprogramassignments",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Record a candidate patient Medicaid program assignment; new records remain pending until independently verified",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "status"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "const": "pending",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "patientId",
+                  "patientPayerId",
+                  "admissionId",
+                  "providerEntityId",
+                  "serviceState",
+                  "programKind",
+                  "effectiveFrom",
+                  "sourceKind"
+                ],
+                "properties": {
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "patientPayerId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "admissionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "serviceState": {
+                    "minLength": 2,
+                    "maxLength": 2,
+                    "pattern": "^[A-Z]{2}$",
+                    "type": "string"
+                  },
+                  "programKind": {
+                    "anyOf": [
+                      {
+                        "const": "ffs_open_card",
+                        "type": "string"
+                      },
+                      {
+                        "const": "managed_care",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other_managed_care",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unsupported",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unresolved",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "canonicalPayerId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "sourceKind": {
+                    "anyOf": [
+                      {
+                        "const": "manual_candidate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "payer_document",
+                        "type": "string"
+                      },
+                      {
+                        "const": "state_response",
+                        "type": "string"
+                      },
+                      {
+                        "const": "imported",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "evidenceReference": {
+                    "minLength": 6,
+                    "maxLength": 200,
+                    "pattern": "^(doc|registry|approval|ticket):[A-Za-z0-9._/-]{1,190}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-program-assignments/{id}/revoke": {
+      "post": {
+        "operationId": "postApiV1MedicaidprogramassignmentsByIdRevoke",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Revoke verified Medicaid program assignment evidence with a reason and version check",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "version"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "revoked",
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "reasonCode",
+                  "providerEntityId",
+                  "patientId"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "reasonCode": {
+                    "anyOf": [
+                      {
+                        "const": "source_corrected",
+                        "type": "string"
+                      },
+                      {
+                        "const": "payer_withdrawal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "coverage_changed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-program-assignments/{id}/verify": {
+      "post": {
+        "operationId": "postApiV1MedicaidprogramassignmentsByIdVerify",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Independently verify a program assignment against M40 payer identity and secured external evidence",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "version"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "verified",
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "verificationSource",
+                  "evidenceReference",
+                  "providerEntityId",
+                  "patientId"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "verificationSource": {
+                    "anyOf": [
+                      {
+                        "const": "state_portal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "payer_written_confirmation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "executed_contract",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "evidenceReference": {
+                    "minLength": 6,
+                    "maxLength": 200,
+                    "pattern": "^(doc|registry|approval|ticket):[A-Za-z0-9._/-]{1,190}$",
+                    "type": "string"
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "patientId": {
                     "format": "uuid",
                     "type": "string"
                   }
@@ -337967,6 +340667,932 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/medicaid-era-artifacts/{artifactId}/evaluate": {
+      "post": {
+        "operationId": "postApiV1RemittanceMedicaideraartifactsByArtifactIdEvaluate",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Re-evaluate a scoped staged Medicaid ERA without posting or claim transitions",
+        "parameters": [
+          {
+            "name": "artifactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reviewId",
+                        "version",
+                        "replay"
+                      ],
+                      "properties": {
+                        "status": {
+                          "const": "review_saved",
+                          "type": "string"
+                        },
+                        "reviewId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "replay": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reasonCode"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            },
+                            {
+                              "const": "held",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "reasonCode": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/medicaid-era-reviews": {
+      "get": {
+        "operationId": "getApiV1RemittanceMedicaiderareviews",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Tenant- and provider-scoped nonposting Medicaid ERA review worklist",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "pattern": "^[0-9]{1,3}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "providerEntityId",
+                          "assessmentTrustStatus",
+                          "assessmentSemantics",
+                          "assessmentObservedAt",
+                          "vendor",
+                          "sourceEnvironment",
+                          "canonicalPayerId",
+                          "programId",
+                          "decisionStatus",
+                          "reasonCodes",
+                          "claimMatchStatus",
+                          "duplicateStatus",
+                          "workflowState",
+                          "version",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "assessmentTrustStatus": {
+                            "anyOf": [
+                              {
+                                "const": "legacy_unverified",
+                                "type": "string"
+                              },
+                              {
+                                "const": "isolated_evaluator",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "assessmentSemantics": {
+                            "anyOf": [
+                              {
+                                "const": "point_in_time_nonposting",
+                                "type": "string"
+                              },
+                              {
+                                "const": "snapshot_unavailable",
+                                "type": "string"
+                              },
+                              {
+                                "const": "legacy_unverified",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "assessmentObservedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "vendor": {
+                            "const": "claimmd",
+                            "type": "string"
+                          },
+                          "sourceEnvironment": {
+                            "anyOf": [
+                              {
+                                "const": "test",
+                                "type": "string"
+                              },
+                              {
+                                "const": "production",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "canonicalPayerId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "programId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "decisionStatus": {
+                            "type": "string"
+                          },
+                          "reasonCodes": {
+                            "maxItems": 32,
+                            "type": "array",
+                            "items": {
+                              "minLength": 2,
+                              "maxLength": 64,
+                              "type": "string"
+                            }
+                          },
+                          "claimMatchStatus": {
+                            "type": "string"
+                          },
+                          "duplicateStatus": {
+                            "type": "string"
+                          },
+                          "workflowState": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/medicaid-era-reviews/{id}": {
+      "get": {
+        "operationId": "getApiV1RemittanceMedicaiderareviewsById",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Authorized PHI-minimal detail for a nonposting Medicaid ERA review",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "providerEntityId",
+                    "assessmentTrustStatus",
+                    "assessmentSemantics",
+                    "assessmentObservedAt",
+                    "vendor",
+                    "accountReference",
+                    "sourceEnvironment",
+                    "sourceDigest",
+                    "canonicalPayerId",
+                    "programId",
+                    "assessmentVersion",
+                    "decisionStatus",
+                    "reasonCodes",
+                    "claimMatchStatus",
+                    "duplicateStatus",
+                    "safeSummary",
+                    "workflowState",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "assessmentTrustStatus": {
+                      "anyOf": [
+                        {
+                          "const": "legacy_unverified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "isolated_evaluator",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "assessmentSemantics": {
+                      "anyOf": [
+                        {
+                          "const": "point_in_time_nonposting",
+                          "type": "string"
+                        },
+                        {
+                          "const": "snapshot_unavailable",
+                          "type": "string"
+                        },
+                        {
+                          "const": "legacy_unverified",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "assessmentObservedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "vendor": {
+                      "const": "claimmd",
+                      "type": "string"
+                    },
+                    "accountReference": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceEnvironment": {
+                      "anyOf": [
+                        {
+                          "const": "test",
+                          "type": "string"
+                        },
+                        {
+                          "const": "production",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceDigest": {
+                      "anyOf": [
+                        {
+                          "pattern": "^[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canonicalPayerId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "programId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "assessmentVersion": {
+                      "type": "string"
+                    },
+                    "decisionStatus": {
+                      "type": "string"
+                    },
+                    "reasonCodes": {
+                      "maxItems": 32,
+                      "type": "array",
+                      "items": {
+                        "minLength": 2,
+                        "maxLength": 64,
+                        "type": "string"
+                      }
+                    },
+                    "claimMatchStatus": {
+                      "type": "string"
+                    },
+                    "duplicateStatus": {
+                      "type": "string"
+                    },
+                    "safeSummary": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {}
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "workflowState": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/medicaid-era-reviews/{id}/disposition": {
+      "post": {
+        "operationId": "postApiV1RemittanceMedicaiderareviewsByIdDisposition",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record a versioned nonposting Medicaid ERA investigation disposition",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version",
+                    "workflowState",
+                    "replay"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "workflowState": {
+                      "type": "string"
+                    },
+                    "replay": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "state",
+                  "reasonCode"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "state": {
+                    "anyOf": [
+                      {
+                        "const": "investigating",
+                        "type": "string"
+                      },
+                      {
+                        "const": "follow_up_required",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reviewed_not_posted",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reopened",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reasonCode": {
+                    "minLength": 2,
+                    "maxLength": 64,
+                    "pattern": "^[A-Z0-9_]+$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/medicaid-era-reviews/{id}/history": {
+      "get": {
+        "operationId": "getApiV1RemittanceMedicaiderareviewsByIdHistory",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Append-only investigation history for a Medicaid ERA review",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "version",
+                          "action",
+                          "reasonCode",
+                          "actorMembershipId",
+                          "trustStatus",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "version": {
+                            "type": "integer"
+                          },
+                          "action": {
+                            "type": "string"
+                          },
+                          "reasonCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "actorMembershipId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "trustStatus": {
+                            "anyOf": [
+                              {
+                                "const": "legacy_unverified",
+                                "type": "string"
+                              },
+                              {
+                                "const": "isolated_evaluator",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/medicaid-era-reviews/{id}/notes": {
+      "post": {
+        "operationId": "postApiV1RemittanceMedicaiderareviewsByIdNotes",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Append a coded, PHI-minimal note to a Medicaid ERA investigation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version",
+                    "workflowState",
+                    "replay"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "workflowState": {
+                      "type": "string"
+                    },
+                    "replay": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "reasonCode"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "reasonCode": {
+                    "minLength": 2,
+                    "maxLength": 64,
+                    "pattern": "^[A-Z0-9_]+$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/medicaid-era-reviews/{id}/reassess": {
+      "post": {
+        "operationId": "postApiV1RemittanceMedicaiderareviewsByIdReassess",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Reassess an evaluator-qualified Medicaid ERA review using its server-resolved source",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reviewId",
+                        "version",
+                        "replay"
+                      ],
+                      "properties": {
+                        "status": {
+                          "const": "review_saved",
+                          "type": "string"
+                        },
+                        "reviewId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "replay": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reasonCode"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            },
+                            {
+                              "const": "held",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "reasonCode": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

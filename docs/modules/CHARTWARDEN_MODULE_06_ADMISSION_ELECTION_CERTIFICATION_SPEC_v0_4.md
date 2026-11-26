@@ -613,6 +613,13 @@ Two kinds: **synchronous** (run inside the service, return inline errors before 
 | `R-ADM-03` `for_cause` discharge requires explicit DON + Medical Director co-sign (two distinct users with the respective roles) | `executeDischarge` | `FOR_CAUSE_REQUIRES_COSIGN` (409) |
 | `R-LCP-01` GIP requires uncontrolled-symptoms or end-of-life-imminent documentation (free-text in `reason`, min 30 chars). **Complementary to D12, not a competing rule (GAP-122):** D12's three attestations (`gipAttestations.*`, all `true`) are enforced at the clinician-initiated `POST /admissions/:id/level-of-care` route (`412 GIP_DOCUMENTATION_INCOMPLETE`); this reason floor is enforced inside the state machine, so it also covers the M11 level-of-care-order path, whose attestation is the signed order itself | `requestAssign` | `GIP_DOCUMENTATION_INSUFFICIENT` (422) |
 | `R-LCP-02` CHC requires evidence of 8+ hours of skilled care over 24h documented (a flag + reason for now; M8 visit aggregation in Phase 2) | `requestAssign` | warning surfaced (Phase 1) / `CHC_INSUFFICIENT_EVIDENCE` (409, Phase 2) |
+
+**As-built M24 local CHC pricing input (L8A.2C2, 2026-11-25):** M6 remains the owner of the LOC assignment,
+including its clinical indication/reason, status, effective interval, assigning actor and source version.
+M24 reads those facts on its locked transaction and combines them with M8 signed actual-care intervals and
+a separately verified, explicitly synthetic managed-care method before qualifying minutes for a local
+hourly preparation. This narrow integration is not a payer rule, does not change M6's LOC state machine,
+and does not establish EOCCO/Oregon billing eligibility or institutional units.
 | `R-RV-01` Revocation effective date cannot precede signed date | DB CHECK + service | `REVOCATION_EFFECTIVE_BEFORE_SIGNED` (422) |
 | `R-XFR-01` Only one transfer per benefit period | `createTransfer` | `TRANSFER_LIMIT_EXCEEDED` (409) |
 | `R-XFR-02` Transfer-in must include the source CCN (validated against NPPES CCN registry via M40) and the carried `period_sequence_at_transfer` | `createAdmission(transferIn=true)` | `TRANSFER_IN_SOURCE_INVALID` (422) |

@@ -64,8 +64,16 @@ describe("read999EnvelopeDates", () => {
 describe("read277caStatusDates", () => {
   it("returns each claim's STC02 status effective date keyed by its TRN02 control number", () => {
     expect(read277caStatusDates(ACK_277CA)).toEqual([
-      { claimControlNumber: "H00001-260301-0abcd-00", statusEffectiveDate: "2026-03-07" },
-      { claimControlNumber: "H00001-260302-0bcde-00", statusEffectiveDate: null },
+      {
+        claimControlNumber: "H00001-260301-0abcd-00",
+        statusEffectiveDate: "2026-03-07",
+        statusCategoryCode: "A1",
+      },
+      {
+        claimControlNumber: "H00001-260302-0bcde-00",
+        statusEffectiveDate: null,
+        statusCategoryCode: "A7",
+      },
     ]);
   });
 

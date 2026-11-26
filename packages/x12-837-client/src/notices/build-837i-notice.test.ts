@@ -105,6 +105,15 @@ describe("build837iNotice — input validation names the field, never the value"
     [{ subscriber: { ...NOE_INPUT.subscriber, birthDate: "2030-01-01" } }, "subscriber.birthDate"],
   ])("refuses %#", (patch, field) => bad(patch, field));
 
+  // A Medicare-only NOE: the shared party loops would accept these, so the notice builder refuses them itself.
+  it.each([
+    [{ claimFilingIndicator: "MC" }, "claimFilingIndicator"],
+    [{ claimFilingIndicator: "MA" }, "claimFilingIndicator"],
+    [{ commercial: { claimFilingIndicator: "CI" } }, "commercial"],
+  ])("refuses a payer override the notice type does not carry %#", (patch, field) =>
+    bad(patch, field),
+  );
+
   it("refuses a missing or null control number rather than coercing it", () => {
     for (const controlNumber of [undefined, null]) {
       bad({ notice: { ...NOE_INPUT.notice, controlNumber } as never }, "notice.controlNumber");

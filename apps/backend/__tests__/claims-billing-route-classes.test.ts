@@ -71,6 +71,7 @@ const MODULES: readonly ModuleCase[] = [
       "POST /api/v1/medicaid-claims/:id/submit",
       "POST /api/v1/medicaid-claims/:id/replace",
       "POST /api/v1/medicaid-eligibility-checks",
+      "POST /api/v1/medicaid-chc-pricing-preparations",
     ],
   },
   {

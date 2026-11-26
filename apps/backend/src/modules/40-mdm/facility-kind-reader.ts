@@ -9,7 +9,7 @@
 // so the chase is repeated here over the same columns). Bounded hops (a merge cycle is impossible by the CHECK but a
 // bound keeps a corrupt chain from looping).
 import { type DbClient, schema } from "@chartwarden/db";
-import { inArray } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 
 export type FacilityKindValue = (typeof schema.facilities.$inferSelect)["kind"];
 
@@ -27,7 +27,7 @@ async function mergeResolved<T>(
   // requested id -> the id currently being resolved (follows merges)
   const pending = new Map<string, string>(facilityIds.map((id) => [id, id]));
   for (let hop = 0; hop <= MAX_MERGE_HOPS && pending.size > 0; hop++) {
-    const rows = await db
+    const query = db
       .select({
         id: F.id,
         kind: F.kind,
@@ -36,6 +36,7 @@ async function mergeResolved<T>(
       })
       .from(F)
       .where(inArray(F.id, [...new Set(pending.values())]));
+    const rows = await query;
     const byId = new Map(rows.map((r) => [r.id, r]));
     for (const [requested, current] of [...pending]) {
       const row = byId.get(current);
@@ -59,6 +60,40 @@ export function facilityKindsForIds(
   facilityIds: readonly string[],
 ): Promise<ReadonlyMap<string, FacilityKindValue>> {
   return mergeResolved(db, facilityIds, (row) => row.kind);
+}
+
+/**
+ * The active M40 facility kind for each requested id, read under a row-share lock on the consumer's
+ * transaction. Only a facility that is its own survivor is answered: an id that was merged into another
+ * facility is ABSENT here (the caller's M5 address names a facility that no longer exists as such), so
+ * a pricing plan never names an id that the database guard would refuse to snapshot.
+ */
+export function facilityKindsForIdsInTransaction(
+  transaction: unknown,
+  facilityIds: readonly string[],
+): Promise<ReadonlyMap<string, FacilityKindValue>> {
+  if (facilityIds.length === 0) return Promise.resolve(new Map());
+  // FOR SHARE requires UPDATE privilege on the canonical table. Keep that capability inside M40's
+  // SECURITY DEFINER read function rather than granting it to the application role.
+  return (async () => {
+    const { rows } = await (transaction as DbClient).execute(sql`
+      SELECT requested_facility_id AS "requestedId", resolved_facility_id AS "resolvedId",
+             facility_kind AS kind, facility_status AS status
+        FROM m40_facility_kind_for_ids_locked(${JSON.stringify([...new Set(facilityIds)])}::jsonb)
+    `);
+    return new Map(
+      (
+        rows as {
+          requestedId: string;
+          resolvedId: string;
+          kind: FacilityKindValue;
+          status: string;
+        }[]
+      )
+        .filter((row) => row.status === "active" && row.resolvedId === row.requestedId)
+        .map((row) => [row.requestedId, row.kind]),
+    );
+  })();
 }
 
 /**

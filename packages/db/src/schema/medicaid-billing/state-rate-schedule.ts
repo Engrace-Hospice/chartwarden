@@ -12,16 +12,7 @@
 // A schedule row with level_of_care='NF_RB' would be actively wrong to bill from, so the CHECK below forbids
 // it outright rather than merely omitting seed data for it.
 import { sql } from "drizzle-orm";
-import {
-  check,
-  index,
-  integer,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { check, index, integer, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { m24ClaimLineLoc } from "./enums";
 
 export const medicaidStateRateSchedule = pgTable(
@@ -33,6 +24,11 @@ export const medicaidStateRateSchedule = pgTable(
     levelOfCare: m24ClaimLineLoc("level_of_care").notNull(),
     countyCode: text("county_code"), // null = statewide default rate for this state+LOC+window
 
+    // Existing rows stay unqualified until a reviewer verifies their payer scope and provenance.
+    canonicalPayerId: uuid("canonical_payer_id"), // logical M40 reference; required for verified rows
+    rateSourceKind: text("rate_source_kind").notNull().default("legacy_unqualified"),
+    verificationStatus: text("verification_status").notNull().default("unverified"),
+
     rateCents: integer("rate_cents").notNull(),
 
     effectiveFrom: timestamp("effective_from", { withTimezone: true }).notNull(),
@@ -42,14 +38,26 @@ export const medicaidStateRateSchedule = pgTable(
     loadedAt: timestamp("loaded_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    uniqueByStateLocCountyFrom: uniqueIndex("medicaid_state_rate_schedule_uq").on(
-      t.stateCode,
-      t.levelOfCare,
-      t.countyCode,
-      t.effectiveFrom,
-    ),
+    uniqueByStateLocCountyFrom: unique("medicaid_state_rate_schedule_uq")
+      .on(t.stateCode, t.levelOfCare, t.canonicalPayerId, t.countyCode, t.effectiveFrom)
+      .nullsNotDistinct(),
     byStateLoc: index("medicaid_state_rate_schedule_state_loc_idx").on(t.stateCode, t.levelOfCare),
+    verifiedPayerRange: index("medicaid_state_rate_schedule_verified_payer_range_ix")
+      .on(t.stateCode, t.canonicalPayerId, t.levelOfCare, t.effectiveFrom, t.effectiveTo)
+      .where(sql`verification_status = 'verified'`),
     ratePositive: check("medicaid_state_rate_schedule_rate_positive", sql`rate_cents > 0`),
+    sourceKindValid: check(
+      "medicaid_state_rate_schedule_source_kind_valid",
+      sql`rate_source_kind IN ('legacy_unqualified', 'oha_ffs_schedule')`,
+    ),
+    verificationStatusValid: check(
+      "medicaid_state_rate_schedule_verification_status_valid",
+      sql`verification_status IN ('unverified', 'verified', 'expired', 'revoked')`,
+    ),
+    verifiedRateHasPayer: check(
+      "medicaid_state_rate_schedule_verified_payer",
+      sql`verification_status <> 'verified' OR (canonical_payer_id IS NOT NULL AND rate_source_kind = 'oha_ffs_schedule')`,
+    ),
     noRbSchedule: check("medicaid_state_rate_schedule_no_rb", sql`level_of_care <> 'NF_RB'`),
   }),
 );

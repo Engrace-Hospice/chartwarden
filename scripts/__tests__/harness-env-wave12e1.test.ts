@@ -225,20 +225,36 @@ describe("held against the REAL env (BSD env on macOS; GNU env on Linux is not v
   const REAL = "/usr/bin/env";
   const hasSplit =
     existsSync(REAL) && spawnSync(REAL, ["-S", "echo ok"], { encoding: "utf8" }).stdout === "ok\n";
+  const hasPathSearch =
+    existsSync(REAL) &&
+    spawnSync(REAL, ["-S", "-P /bin:/usr/bin echo ok"], { encoding: "utf8" }).stdout === "ok\n";
   const run = (args: string[]): string =>
     spawnSync(REAL, args, { encoding: "utf8", env: { PATH: "/usr/bin:/bin" } }).stdout;
+  const leadingOptions = LEADING.filter(
+    (o) => (!o.startsWith("--") || o === "--") && !["-S", "-S -i", "-iS", "-vS", "-"].includes(o),
+  );
 
   it
     .skipIf(!hasSplit)
     // GNU env's long options (`--unset=X`, `--chdir=`, `--ignore-environment`) are not BSD env's: the reader accepts both, only BSD env is probed
-    .each(
-      LEADING.filter(
-        (o) =>
-          (!o.startsWith("--") || o === "--") && !["-S", "-S -i", "-iS", "-vS", "-"].includes(o),
-      ),
-    )("env -S '%s echo HIT' prints HIT, and so does the reader's command", (options) => {
-    expect(run(["-S", `${options} echo HIT`])).toBe("HIT\n");
-    expect(program(`env -S '${options} echo HIT'`).prog).toBe("echo");
+    .each(leadingOptions.filter((o) => !o.startsWith("-P")))(
+    "env -S '%s echo HIT' prints HIT, and so does the reader's command",
+    (options) => {
+      expect(run(["-S", `${options} echo HIT`])).toBe("HIT\n");
+      expect(program(`env -S '${options} echo HIT'`).prog).toBe("echo");
+    },
+  );
+
+  it.skipIf(!hasPathSearch).each(leadingOptions.filter((o) => o.startsWith("-P")))(
+    "BSD env -S '%s echo HIT' prints HIT, and so does the reader's command",
+    (options) => {
+      expect(run(["-S", `${options} echo HIT`])).toBe("HIT\n");
+      expect(program(`env -S '${options} echo HIT'`).prog).toBe("echo");
+    },
+  );
+
+  it("the reader parses BSD env -P even when the host env does not support it", () => {
+    expect(program("env -S '-P /bin:/usr/bin echo HIT'").prog).toBe("echo");
   });
 
   it.skipIf(!hasSplit)("nested -S and the lone dash run the command too", () => {

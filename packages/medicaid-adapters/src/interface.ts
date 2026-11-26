@@ -88,7 +88,7 @@ export interface MedicaidAdapterMetadata {
   readonly combinesHospiceAndRb: boolean;
   readonly hasNoeEquivalent: boolean;
   readonly supportedChannels: ReadonlyArray<MedicaidChannel>;
-  readonly ackMode: "sync" | "async_poll";
+  readonly ackMode: "sync" | "async_poll" | "unqualified";
   readonly supportedTobs: ReadonlyArray<string>;
 }
 

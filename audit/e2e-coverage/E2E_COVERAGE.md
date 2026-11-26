@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 223 statically-routable `web` screen(s) — 209/223 E2E-reached, 209/223 axe-reached.
+**Coverage:** 224 statically-routable `web` screen(s) — 210/224 E2E-reached, 210/224 axe-reached.
 
 ## Zero E2E coverage
 
@@ -44,7 +44,7 @@
 
 ## Dynamic web screens (#852)
 
-43/122 registered `web` screens carrying a `:param` segment are axe-walked in `axe-route-walk.spec.ts`: patient-only paths plus seeded admission, Medicaid-claim and medication-order paths. Every id is resolved at run time through the signed-in app; none is copied from a seed constant. The rest are excluded, each with its reason:
+43/123 registered `web` screens carrying a `:param` segment are axe-walked in `axe-route-walk.spec.ts`: patient-only paths plus seeded admission, Medicaid-claim and medication-order paths. Every id is resolved at run time through the signed-in app; none is copied from a seed constant. The rest are excluded, each with its reason:
 
 | Screen id | Path | Permission | Why not walked |
 |---|---|---|---|
@@ -111,6 +111,7 @@
 | `admission.referral-detail` | `/referrals/:id` | referral.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `admission.intake-workspace` | `/referrals/:id/intake` | referral.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `prescribing.refill-detail` | `/refills/:id` | prescribing.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `remittance.medicaid-era-review` | `/remittance/medicaid-era-reviews/:id` | remittance.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `reporting.dashboard` | `/reports/dashboards/:dashboardId` | report.dashboard.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `reporting.role-dashboard` | `/reports/role/:roleKey` | report.dashboard.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `safety.incident.detail` | `/safety/incidents/:incidentId` | safety_incident.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |

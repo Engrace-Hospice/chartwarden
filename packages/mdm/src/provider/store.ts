@@ -17,6 +17,7 @@ import type {
   CanonicalFields,
   IdentifyingFields,
   MdmBaaGateResult,
+  MedicaidPayerProgramClassification,
   OverlayFields,
   SearchSpec,
 } from "../interfaces/entity-provider";
@@ -68,6 +69,15 @@ export interface MdmStore {
   /** The BAA-gate state for (org, kind, canonicalId) (§7.7). The as-of time-travel `BaaStatusProvider`
    *  seam (T06) supersedes this; the slice returns a recorded record or the `missing`/`n_a` default. */
   baaGate(orgId: string, kind: MdmEntityKind, canonicalId: string): Promise<MdmBaaGateResult>;
+
+  /** EVERY classification row for the (payer, state). The service window is not a filter: a superseding row that
+   *  end-dates another may lie outside it, and the consumer derives "superseded" from the rows it is handed. */
+  medicaidPayerProgramClassifications(
+    canonicalPayerId: string,
+    stateCode: string,
+    serviceFrom: string,
+    serviceTo: string,
+  ): Promise<readonly MedicaidPayerProgramClassification[]>;
 }
 
 // ── in-memory slice default ─────────────────────────────────────────────────────────────────
@@ -107,6 +117,7 @@ export interface InMemoryMdmSeed {
   readonly overlays?: readonly SeedOverlay[];
   readonly relationships?: readonly SeedRelationship[];
   readonly baas?: readonly SeedBaa[];
+  readonly medicaidPayerProgramClassifications?: readonly MedicaidPayerProgramClassification[];
 }
 
 /** Compound map key — space-joined; ids are uuids so no collision with the kind token. */
@@ -197,6 +208,14 @@ export function createInMemoryMdmStore(seed: InMemoryMdmSeed = {}): { store: Mdm
           status: "missing",
           expiresOn: null,
         }
+      );
+    },
+
+    async medicaidPayerProgramClassifications(canonicalPayerId, stateCode) {
+      // Every row for the (payer, state), never narrowed to the service window: a superseder that ends the
+      // superseded row before the window lies outside it, and the consumer needs it to see the row is not current.
+      return (seed.medicaidPayerProgramClassifications ?? []).filter(
+        (r) => r.canonicalPayerId === canonicalPayerId && r.stateCode === stateCode,
       );
     },
   };

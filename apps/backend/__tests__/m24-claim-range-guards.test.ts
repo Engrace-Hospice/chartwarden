@@ -1,6 +1,11 @@
+import { ValidationError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
+  MAX_ASSEMBLY_SERVICE_SPAN_DAYS,
+  MEDICAID_SERVICE_DATE_INVALID,
+  MEDICAID_SERVICE_SPAN_TOO_LONG,
   admissionServiceRangeIssue,
+  assertAssemblyServiceSpan,
   inclusiveLocEndDateForAdmission,
   patientLifecycleServiceRangeIssue,
 } from "../src/modules/24-billing-medicaid/claim-range-guards";
@@ -151,5 +156,54 @@ describe("M24 claim lifecycle range guards", () => {
     expect(
       admissionServiceRangeIssue({ ...activeAdmission, status: "discharged" }, "2026-03-10"),
     ).toMatchObject({ code: "MEDICAID_ADMISSION_LIFECYCLE_INCONSISTENT" });
+  });
+});
+
+describe("M24 assembly service-window cap", () => {
+  it("accepts a window of exactly the cap and a single day", () => {
+    expect(MAX_ASSEMBLY_SERVICE_SPAN_DAYS).toBe(366);
+    expect(() => assertAssemblyServiceSpan("2026-03-01", "2026-03-01")).not.toThrow();
+    // 2026-01-01 .. 2027-01-01 is 366 inclusive days.
+    expect(() => assertAssemblyServiceSpan("2026-01-01", "2027-01-01")).not.toThrow();
+  });
+
+  it("rejects a window one day over the cap with a typed validation error", () => {
+    const attempt = () => assertAssemblyServiceSpan("2026-01-01", "2027-01-02");
+    expect(attempt).toThrow(ValidationError);
+    try {
+      attempt();
+    } catch (error) {
+      expect(error).toMatchObject({
+        statusCode: 422,
+        details: [{ field: "serviceTo", code: MEDICAID_SERVICE_SPAN_TOO_LONG }],
+      });
+    }
+  });
+
+  it("rejects an open-ended window before any per-day expansion", () => {
+    expect(() => assertAssemblyServiceSpan("2026-01-01", "9999-12-31")).toThrow(ValidationError);
+  });
+
+  it("rejects an invalid date with its own code and the field that is wrong", () => {
+    const refusal = (from: string, to: string) => {
+      try {
+        assertAssemblyServiceSpan(from, to);
+      } catch (error) {
+        return error;
+      }
+      return null;
+    };
+    for (const [from, to, field] of [
+      ["2026-01-01", "not-a-date", "serviceTo"],
+      ["not-a-date", "2026-01-31", "serviceFrom"],
+      // a date that exists in no calendar rolls over under Date.parse, so it is refused, not shifted
+      ["2026-02-30", "2026-03-05", "serviceFrom"],
+      ["2026-03-01", "2026-04-31", "serviceTo"],
+    ] as const) {
+      expect(refusal(from, to), `${from}..${to}`).toMatchObject({
+        statusCode: 422,
+        details: [{ field, code: MEDICAID_SERVICE_DATE_INVALID }],
+      });
+    }
   });
 });

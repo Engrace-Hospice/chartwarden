@@ -309,6 +309,9 @@ export const patientAddressReaderDenyStub: PatientAddressReader = {
   residencesBetween() {
     throw new NotImplementedError("PatientAddressReader");
   },
+  residencesBetweenInTransaction() {
+    throw new NotImplementedError("PatientAddressReader");
+  },
   serviceAddressCoordinate() {
     throw new NotImplementedError("PatientAddressReader");
   },

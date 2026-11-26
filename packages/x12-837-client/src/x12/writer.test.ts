@@ -8,6 +8,7 @@ import {
   optionalText,
   prepareEnvelope,
   text,
+  transactionSetControlNumber,
   wrapTransaction,
 } from "./writer";
 
@@ -49,6 +50,17 @@ describe("prepareEnvelope + wrapTransaction", () => {
     expect(segments[5]).toEqual(["SE", "4", "0106"]);
     expect(segments[6]).toEqual(["GE", "1", "106"]);
     expect(segments[7]).toEqual(["IEA", "1", "000000106"]);
+  });
+
+  it("emits the ST02 a 999 echoes in AK202 through transactionSetControlNumber", () => {
+    expect(transactionSetControlNumber(7)).toBe("0007");
+    expect(transactionSetControlNumber(106)).toBe("0106");
+    expect(transactionSetControlNumber(123_456_789)).toBe("123456789");
+    const raw = wrapTransaction(prepareEnvelope({ ...ENVELOPE, interchangeControlNumber: 701 }), {
+      transactionSet: "837",
+      body: [],
+    });
+    expect(tokenizeInterchange(raw).segments[2]?.[2]).toBe(transactionSetControlNumber(701));
   });
 
   it("pads ISA06/ISA08 to 15 and ISA is 105 characters before its terminator (106 with it)", () => {

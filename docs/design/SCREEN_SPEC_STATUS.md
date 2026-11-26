@@ -89,6 +89,7 @@
 | `screens/revenue/CHARTWARDEN_UI_COMMERCIAL_BILLING.md` | built | `web/41-billing-commercial` | Claim queue, claim detail, supported payers. Sending is not a screen yet (submission slice) |
 | `screens/revenue/CHARTWARDEN_UI_CLAIMS_BILLING.md` | built | `web/23-billing-medicare` `web/24-billing-medicaid` |  |
 | `screens/revenue/CHARTWARDEN_UI_CLAIMMD_ERA_REVIEW.md` | built | `web/25-remittance` | claimmd-era-review; nonposting staged detail only |
+| `screens/revenue/CHARTWARDEN_UI_MEDICAID_ERA_REVIEW.md` | built | `web/25-remittance` | cursor-paginated nonposting investigation worklist; source evaluation remains in Claim.MD review |
 | `screens/revenue/CHARTWARDEN_UI_COST_REPORT_WORKSPACE.md` | built | `web/27-cost-report` |  |
 | `screens/revenue/CHARTWARDEN_UI_DENIALS_MANAGEMENT.md` | built | `web/25-remittance` | denials, appeals |
 | `screens/revenue/CHARTWARDEN_UI_ELIGIBILITY_VERIFICATION.md` | built | `web/23-billing-medicare` `web/24-billing-medicaid` | eligibility |

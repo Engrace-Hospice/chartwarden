@@ -54,6 +54,127 @@
 
 -----
 
+### As-built L8A.1 note — effective-dated rate policy and preview (2026-11-25)
+
+This note records implementation status and does not qualify a payer contract, tariff, clinical billing
+quantity or production claim format. See the [L8A.1 qualification report](../audits/billing-e2e/M24_1075_L8A1_RATE_POLICY_PRICING_QUALIFICATION_20261125.md).
+
+- M24's append-only `medicaid_payer_rate_policy` evidence is selected by exact organization, provider,
+  canonical payer/program, service state, locality, service category, unit basis, election-day bucket,
+  quality-reporting variant and effective service date. Evidence recorded or verified after the explicit
+  assessment time is excluded. Supersession/revocation lineage is preserved; terminal replacement heads
+  do not revive their predecessors.
+- Oregon FFS rows require the OHA source class and the source-backed methodology represented in the
+  policy row. Managed-care rows require payer/provider-specific contract evidence. No shared legacy state
+  schedule, Medicare rate, unrelated CCO rate or geographic fallback can price an Oregon CCO service.
+- A pure pricing engine calculates daily or explicit-minute hourly reimbursement estimates with integer
+  cents and the selected policy's rounding and ceiling semantics. The result keeps reimbursement estimate,
+  provider billed charge, payer-allowed amount and payment distinct; only the estimate may be present.
+  Quality, locality, election-day, clinical quantity, usual-charge and inpatient-respite sequence facts
+  require source-bound evidence. Missing evidence remains missing. In-home respite remains unsupported
+  because M6 does not yet publish the required service/quantity contract.
+- The existing claim-assembly preview reads payer-rate rows under organization context and returns
+  effective-dated pricing segments, evidence references, stable unresolved reasons and required inputs.
+  M5/M6/M40 owner readers for all policy and clinical evidence are not yet available to this preview, so
+  real current assessments remain partial or unresolved. No client-supplied facts qualify the result.
+- L8A.1 does not write priced claim lines. The current line snapshot points to the shared legacy
+  `state_rate_schedule`, so it cannot hold a `medicaid_payer_rate_policy` identity. L8A.2 must introduce
+  a source discriminator plus immutable rate-evidence ID/version, methodology version, effective span,
+  quantity/unit, calculation and ceiling/rounding snapshots, preserving reproducibility and allowing
+  multiple lines within one LOC period. Revalidation is required before any future READY transition.
+- Migration 1550 is `contract` because it replaces rate constraints; deployment remains held for the
+  normal operator process. Its defaults preserve historical rows as unqualified. Submission, financial
+  posting and priced assembly remain disabled.
+
+### As-built L8A.2 note — LOC integrity and pricing readiness hold (2026-11-25)
+
+This increment does not complete persisted payer-specific pricing. It records the integrity work and
+the remaining owner-data contract needed before a priced M24 draft can be assembled.
+
+- The M24 preview reads effective-dated rate lineage without dropping narrower successors whose end date
+  does not overlap the whole service window. The selector receives the supersession evidence needed to
+  avoid reviving an open-ended predecessor. The reader has a fixed fail-closed row bound.
+- Assembly reads current M6 LOC periods on the same transaction that locks and verifies the admission.
+  Stored daily claim lines may be split at a qualified boundary within one LOC period; validation requires
+  exact inclusive coverage with no gaps or overlaps. Historical lines whose end date is unknown remain
+  unusable for this validation.
+- `medicaid_payer_rate_policy_snapshot_verified` is a non-overridable platform rule. Rule set version 7
+  retains this pricing-integrity rule and adds `medicaid_hospice_institutional_format_qualified`: a verified
+  local pricing snapshot can pass, while a `local_draft_only` coding profile still cannot transition to
+  `READY` or enable submission.
+- Migration 1551 adds append-only source evidence profiles and immutable payer-rate line snapshots. The
+  first persisted slice is synthetic-testable managed-care Oregon daily RHC, with M6 LOC calendar days,
+  effective locality, quality-applicability evidence, separate provider charge evidence and local-draft-only
+  line semantics. A rate change within one LOC period produces distinct lines and snapshots; reimbursement
+  estimates remain separate from billed charges. No historical rows are backfilled.
+- CHC minutes, election-day buckets, in-home respite, inpatient LOC coding, production locality/quality
+  authoring, and payer-certified institutional codes remain unsupported and fail closed. The evidence
+  authoring/review experience is not implemented here. CW-DS-01 remains open for patient-linked evidence
+  and snapshots; this change defines no retention period or deletion workflow.
+- Manual and background validation use the same stored-snapshot revalidation service. It checks current
+  payer classification, LOC/admission version, rate and evidence lineage, snapshot identity/fingerprint,
+  inclusive coverage, quantities and arithmetic without rewriting the stored snapshot. See the
+  [L8A.2R qualification report](../audits/billing-e2e/M24_1075_L8A2R_PRICING_SNAPSHOT_PERSISTENCE_QUALIFICATION_20261125.md).
+
+### As-built L8A.2C note — evidence lineage and M8 interval facts (2026-11-25)
+
+Migration 1552 makes billing-evidence correction identity include patient and program scope, requires
+version progression and rejects correction branches. Evidence is resolved at the stated assessment time;
+overlapping heads hold, and adjacent evidence rows require segmentation that the current RHC snapshot
+format does not represent. A synthetic signed encounter now flows through M8's database reader into M24
+line linkage only when organization, provider, patient, admission, signature state and service segment
+match. M8 interval facts can also be normalized into observed CHC clinical minutes by local service day;
+this observation alone does not qualify CHC eligibility, pricing, institutional units or persisted CHC
+drafts. At that point, the RHC daily local-draft path remained the only supported priced assembly. See the
+[L8A.2C qualification report](../audits/billing-e2e/M24_1075_L8A2C_ADVANCED_CLINICAL_PRICING_QUALIFICATION_20261125.md).
+
+### As-built L8A.2C1 — generalized daily RHC snapshots and facility residence (2026-11-25)
+
+Migrations 1553–1554 add an M40-owned locked facility-kind reader and extend the existing M24 pricing
+snapshot table. Snapshot schema v1 retains its original home-RHC/Q5001 shape and verification behavior;
+schema v2 is restricted to the explicit assisted-living RHC/Q5002 `local_draft_only` profile. The shared
+daily planner now consumes an exact contiguous `segmentation_required` billing-evidence lineage and
+creates separate line plans and immutable snapshots with each evidence identity/version. Its ceiling
+allocation preserves one applicable segment ceiling across evidence-created line boundaries.
+The Drizzle payload is a discriminated TypeScript union and the write boundary checks its profile before
+persisting; SQL repeats the supported-profile check.
+
+Preview, transactional assembly, manual validation and background validation use the same RHC pricing
+resolver and source-grounded snapshot verifier. Q5002 requires an effective M5 facility residence and an
+active, non-merged M40 `alf` facility identity; the local billing evidence independently establishes the
+Q5002 coding profile. A private PostgreSQL fixture persisted a synthetic facility-based draft across
+adjacent evidence spans. The reimbursement estimate and separately evidenced billed charges remain
+distinct. This does not qualify an EOCCO rate, a payer-certified Q5002 code, or institutional transmission.
+CHC, IRC, GIP, election-history pricing and in-home respite remain blocked. The non-overridable
+`medicaid_hospice_institutional_format_qualified` rule continues to fail for local-draft coding, so the
+draft is not READY or sendable. See the
+[L8A.2C1 qualification report](../audits/billing-e2e/M24_1075_L8A2C1_GENERALIZED_DAILY_PRICING_QUALIFICATION_20261125.md).
+
+### As-built L8A.2C2 — local home-CHC hourly pricing preparation (2026-11-25)
+
+M24 now has a narrowly supported, append-only home-CHC pricing preparation, separate from `medicaid_claim`
+and `medicaid_claim_line`. `POST /api/v1/medicaid-chc-pricing-preparations` resolves current M5/M6/M8/M40
+and M24 evidence on the server, uses the shared CHC observation and qualification functions plus the
+existing `assessHospicePricing()` engine, and persists a versioned local-only snapshot in
+`medicaid_chc_pricing_preparation`. `GET /api/v1/medicaid-chc-pricing-preparations/:id` returns a scoped,
+source-grounded projection and withholds financial details when current evidence is stale or unresolved.
+The snapshot records observed and qualified minutes, signed encounter source identities/versions, CHC LOC
+and eligibility-method evidence, payer/rate and billing-evidence lineage, locality/quality facts, exact
+hourly calculation, independently sourced billed charges and a fingerprint. The record is append-only,
+explicitly nonposting, and has `institutionalUnits: unqualified` and
+`institutionalFormatQualified: false`. It is not a claim line, cannot become READY, and is not an 837I
+coding qualification.
+
+The supported synthetic fixture is one home CHC service day with verified M6 symptom-crisis LOC, signed
+RN actual-time M8 intervals, an explicit synthetic managed-care hourly method, qualified rate and charge
+evidence, and an authoritative service-location time zone. Observed intervals are clipped to the real
+local-day boundaries (including 23/25-hour DST days); overlapping intervals and missing/invalid source
+facts hold. The hourly reimbursement estimate remains separate from provider billed charges. No Oregon
+FFS or EOCCO methodology, tariff, clinical threshold or institutional unit is inferred from this local
+fixture. Unsupported fractional local persistence and all other advanced hospice categories remain held.
+Manual and background paths call the same current-source verifier and do not rewrite a stale snapshot.
+See the [L8A.2C2 qualification report](../audits/billing-e2e/M24_1075_L8A2C2_CHC_HOURLY_PRICING_QUALIFICATION_20261125.md).
+
 ## 1. Purpose & Scope
 
 ### 1.1 What This Module Does
@@ -444,7 +565,7 @@ voided → terminal (set when the underlying patient day is voided in M5 decease
 (Per-row, beyond the registry-driven §11.A rules in §4.5; these are the structural rules at row-write time.)
 
 - **`medicaid_claim`** — `service_from <= service_to`; `tob ∈ adapter.supportedTobs()`; `patient_payer_id` resolves to a Medicaid payer-kind at service-date (per M5 `PatientPayerReader.coverageKindOn()`); `state` matches `patient.state_at(service_date)` from M5; `medicare_claim_id` set requires `patient_payer.medicare_primary=true` on the period; `rb_arrangement_id` set requires `rb_arrangement.effective_from <= service_from AND (rb_arrangement.effective_to IS NULL OR rb_arrangement.effective_to >= service_to)`; `replaces_claim_id` set requires `tob ∈ {817, 818}` and the referenced row is ACK_ACCEPTED or PAID.
-- **`medicaid_claim_line`** — `service_date BETWEEN claim.service_from AND claim.service_to`; `revenue_code` valid via M38 `terminology.is_member_of(systemId='cms-revenue', code, valueSetId='vs.cms-hospice-revenue', asOfDate=service_date)`; `q_code` valid via M38 `terminology.is_member_of(systemId='hcpcs', code, valueSetId='vs.cms-hospice-q-codes', asOfDate=service_date)`; `level_of_care ∈ {RHC, CHC, IRC, GIP, NF_RB}`; `rate_at_assembly_cents > 0` (snapshot from `state_rate_schedule` at assembly); `units > 0`.
+- **`medicaid_claim_line`** — inclusive service span is bounded by the parent claim; `revenue_code` and `q_code` use the applicable M38 value sets; `level_of_care ∈ {RHC, CHC, IRC, GIP, NF_RB}`; `units > 0`; non-R&B lines carry exactly one pricing identity (legacy schedule or payer-rate policy). Migration 1551 requires a payer-rate line to have an immutable, source-evidence pricing snapshot and protects its line/snapshot amounts from mutation. Migration 1554 preserves the v1 home-RHC/Q5001 snapshot and permits only the explicit v2 assisted-living RHC/Q5002 local-draft profile.
 - **`medicaid_submission`** — `medicaid_claim_control_number` matches the deterministic format per §4.X; `attempt_index >= 0`; `state` matches `claim.state`; `channel ∈ {direct_mmis, cco_clearinghouse, sftp, portal}` and matches the routing decision (M40 `state_medicaid_mco.routing_channel` for the patient's MCO).
 - **`medicaid_acknowledgment`** — bound to a `medicaid_submission_id`; `kind ∈ {sync_999, sync_277ca, async_state_specific}`; `outcome ∈ {accepted, rejected, partial}`; `error_codes` (jsonb array) populated when rejected/partial.
 - **`medicaid_validation_run`** — `rule_registry_version` snapshot pinned at run-time; `triggered_by ∈ {user, assembly, upstream_change, scheduled}`; `claim_state_at_trigger` snapshot of the claim state.

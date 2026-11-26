@@ -8,7 +8,7 @@ import {
   useApiClient,
   useClaimsBilling,
 } from "@chartwarden/ui";
-import type { GateItem } from "@chartwarden/ui";
+import type { GateItem, operations } from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the MEDICAID ASSEMBLY WIZARD (R2, §5.1 #4). The stepped
 // draft-creation flow: patient + service range → server-resolved claim kinds → coverage/R&B/Medicare context
 // → review and assemble. The preview is advisory; the assembly service re-resolves payer coverage and R&B
@@ -28,6 +28,92 @@ import { humanize, kindLabel, shortId } from "./medicaid-status";
 import { Card, Field, alertStyle, inputStyle, mutedStyle, selectStyle } from "./medicaid-ui";
 
 type ClaimKind = "combined_hospice_rb" | "hospice_only" | "rb_only";
+
+/** Level-of-care codes are acronyms and render as written; `humanize` would turn "RHC" into "Rhc". */
+const SERVICE_CATEGORY_LABEL: Readonly<Record<string, string>> = {
+  RHC: "RHC",
+  CHC: "CHC",
+  IRC: "IRC",
+  GIP: "GIP",
+  IN_HOME_RESPITE: "In-home respite",
+};
+/** Rate source kinds carry acronyms (OHA, CCO) that `humanize` would flatten ("Cco contract"). */
+const RATE_SOURCE_KIND_LABEL: Readonly<Record<string, string>> = {
+  oha_ffs_schedule: "OHA fee-for-service schedule",
+  cco_contract: "CCO contract",
+  other_payer_contract: "Other payer contract",
+};
+/** Local RHC refusals whose code `humanize` would garble ("Rhc q5002 requires ...") and whose remedy differs. */
+const PRICING_REASON_LABEL: Readonly<Record<string, string>> = {
+  RHC_Q5001_REQUIRES_HOME_RESIDENCE:
+    "Q5001 prices a home residence, but the recorded residence is a facility.",
+  RHC_Q5002_REQUIRES_FACILITY_RESIDENCE:
+    "Q5002 prices an assisted-living facility residence, but the recorded residence is a home.",
+  RHC_Q5002_REQUIRES_ASSISTED_LIVING:
+    "The recorded facility is not an assisted-living facility, the only facility kind priced locally.",
+  RHC_DAILY_LOCAL_PROFILE_UNSUPPORTED:
+    "The billing evidence uses a local RHC code that is not priced (only Q5001 and Q5002 are).",
+  RHC_FACILITY_KIND_UNRESOLVED:
+    "The recorded facility has no active M40 record (it may be merged, deactivated or unknown).",
+};
+const labelFor = (labels: Readonly<Record<string, string>>, value: string): string =>
+  (Object.hasOwn(labels, value) ? labels[value] : undefined) ?? humanize(value);
+
+/**
+ * Local CHC preparation refusals (409 `error.code`) and non-current verification reason codes. `humanize` would print
+ * "Chc pricing snapshot stale", and one generic message would hide that a day with partial-hour minutes needs a
+ * different remedy than a missing level of care.
+ */
+const CHC_REASON_LABEL: Readonly<Record<string, string>> = {
+  CHC_LOCAL_HOURLY_CHARGE_QUANTITY_UNSUPPORTED:
+    "The day's qualified clinical minutes are not a whole number of hours, and only whole hours are priced locally.",
+  CHC_LOC_MISSING: "No continuous home care level of care is recorded for this service day.",
+  CHC_LOC_AMBIGUOUS:
+    "More than one level-of-care record covers this service day. Resolve the overlap first.",
+  CHC_LOC_ASSIGNMENT_MISSING:
+    "No continuous home care level-of-care assignment covers this service day.",
+  CHC_LOC_ASSIGNMENT_AMBIGUOUS:
+    "More than one level-of-care assignment covers this service day. Resolve the overlap first.",
+  CHC_PROVIDER_SCOPE_DENIED: "The selected provider entity is outside your access.",
+  CHC_ADMISSION_NOT_ACTIVE: "The admission is not active, so this day is not priced locally.",
+  CHC_ADMISSION_IDENTITY_MISMATCH:
+    "The admission does not belong to the selected patient and provider entity.",
+  CHC_CLINICAL_INDICATION_UNQUALIFIED:
+    "The day's level of care is not continuous home care for a symptom crisis, or has no assigning clinician.",
+  CHC_BILLED_CHARGE_OUT_OF_RANGE:
+    "The billed charge computed for this day is zero or larger than can be stored.",
+  CHC_SERVICE_TIMEZONE_UNRESOLVED:
+    "The service location's time zone is missing or inconsistent, so the local service day cannot be determined.",
+  CHC_SERVICE_TIMEZONE_INVALID:
+    "The service location's time zone is not valid, so the local service day cannot be determined.",
+  CHC_ACTOR_MEMBERSHIP_REQUIRED:
+    "Your session has no organization membership, and a preparation is recorded against one.",
+  CHC_HOME_RESIDENCE_REQUIRED:
+    "Local pricing needs a recorded home residence for this service day.",
+  CHC_HOME_RESIDENCE_MISSING: "No home residence is recorded for this service day.",
+  CHC_HOME_RESIDENCE_AMBIGUOUS:
+    "More than one residence covers this service day. Resolve the overlap first.",
+  MEDICAID_RATE_POLICY_UNRESOLVED: "No verified hourly rate evidence covers this service day.",
+  MEDICAID_PROGRAM_RESPONSIBILITY_UNRESOLVED:
+    "The Medicaid program assignment for this service day is not verified.",
+  CHC_PRICING_SNAPSHOT_STALE: "The prepared pricing no longer matches the current evidence.",
+  CHC_PRICING_SNAPSHOT_INTEGRITY_MISMATCH:
+    "The stored pricing snapshot failed its integrity check.",
+  CHC_CURRENT_EVIDENCE_UNAVAILABLE:
+    "The current evidence could not be read to re-verify the pricing.",
+  CHC_PREPARATION_NOT_FOUND: "The local preparation could not be found.",
+  CLAIMS_BILLING_ADDON_REQUIRED:
+    "Claims billing is paused for your organization, so new local preparations are unavailable.",
+};
+const CHC_ERROR_PREFIX = "Local CHC pricing could not be prepared.";
+const CHC_GENERIC_GUIDANCE =
+  "Confirm the day's clinical and pricing evidence. If it persists, contact support.";
+const CHC_UNREADABLE_MESSAGE =
+  "The local CHC pricing response could not be read. Reload the preview and try again. No claim was created.";
+const chcGuidance = (code: string | undefined): string =>
+  (code !== undefined && Object.hasOwn(CHC_REASON_LABEL, code)
+    ? CHC_REASON_LABEL[code]
+    : undefined) ?? CHC_GENERIC_GUIDANCE;
 
 interface AssemblyPreview {
   primaryCoverage: { status: string; coverageKind: string | null; rank: number | null };
@@ -63,8 +149,203 @@ interface AssemblyPreview {
     remittanceAdviceRecorded: boolean | null;
   };
   stateBillingPolicy: "not_applicable_to_primary_medicaid" | "unconfirmed" | "unresolved";
+  programResponsibility: {
+    status:
+      | "verified"
+      | "missing"
+      | "pending"
+      | "rejected"
+      | "expired"
+      | "revoked"
+      | "ambiguous"
+      | "changes"
+      | "unsupported"
+      | "unavailable";
+    programKind: string | null;
+    canonicalPayerId: string | null;
+    canonicalPayerName: string | null;
+    reasonCode: string;
+  };
+  payerAuthorizationEvidence: {
+    clinicalDocuments: string;
+    notification: string;
+    authorization: string;
+    policyQualification: "unqualified";
+    reasonCodes: string[];
+  };
+  enrollmentReadiness: {
+    kind: string;
+    status: string;
+    reasonCode: string;
+    vendorPayerId?: string | null;
+  }[];
+  selectedClearinghouse: {
+    status: string;
+    vendor: string | null;
+    configurationStatus: string | null;
+  };
+  tradingPartnerCredential: { status: string; reasonCode: string };
+  pricing: {
+    status:
+      | "fully_resolved"
+      | "partially_resolved"
+      | "unresolved"
+      | "ambiguous"
+      | "unsupported"
+      | "unavailable";
+    assessedAt: string;
+    coversRequestedPeriod: boolean;
+    requiredInputs: string[];
+    segments: {
+      serviceFrom: string;
+      serviceTo: string;
+      serviceCategory: "RHC" | "CHC" | "IRC" | "GIP" | "IN_HOME_RESPITE" | null;
+      serviceLocationKind: "home" | "facility" | null;
+      status: "resolved" | "partial" | "unresolved" | "ambiguous" | "unsupported";
+      rateStatus: "qualified" | "missing" | "ambiguous" | "unverified" | "unsupported";
+      unitBasis: "per_day" | "per_hour" | null;
+      rateCents: number | null;
+      rateLocalityCode: string | null;
+      rateEffectiveFrom: string | null;
+      rateEffectiveTo: string | null;
+      rateSourceKind: string | null;
+      rateEvidenceVersion: number | null;
+      methodologyVersion: number | null;
+      pricingMethod: "per_day" | "per_hour" | "fixed_contract_unit" | null;
+      quantityConversionMethod:
+        | "daily_units"
+        | "hourly_prorated_minutes"
+        | "hourly_each_hour_or_part"
+        | null;
+      minimumDurationMethod: "not_applicable" | "not_required" | "minimum_minutes" | null;
+      minimumClinicalMinutes: number | null;
+      roundingBoundary: "not_applicable" | "service_day" | "segment" | null;
+      chargeCeilingMethod: "none" | "lower_of_rate_and_usual_charge" | "contract_maximum" | null;
+      chargeCeilings: {
+        method: "lower_of_rate_and_usual_charge" | "contract_maximum";
+        amountCents: number;
+        boundary: "service_day" | "segment";
+      }[];
+      quantityStatus: "verified" | "missing" | "unverified";
+      baseReimbursementCents: number | null;
+      reimbursementEstimateCents: number | null;
+      actualBilledChargeCents: number | null;
+      reasonCodes: string[];
+    }[];
+    reimbursementEstimateTotalCents: number | null;
+    actualBilledChargeTotalCents: number | null;
+    submissionAvailable: false;
+  };
   electronicSubmissionAvailable: false;
   isAdvisorySnapshot: true;
+}
+
+/** The generated 200 body of the local CHC preparation POST, so a contract change surfaces as a type error here. */
+type ChcPricingPreparation =
+  operations["postApiV1Medicaidchcpricingpreparations"]["responses"][200]["content"]["application/json"];
+/** A preparation as shown, with when the browser received it (the response carries no assessment time). */
+interface ChcPreparationResult {
+  readonly preparation: ChcPricingPreparation;
+  readonly receivedAt: Date;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+const hasStrings = (value: unknown, keys: readonly string[]): boolean =>
+  isRecord(value) && keys.every((key) => typeof value[key] === "string");
+
+/**
+ * Runtime check of the preview before the wizard reads it. The response is untyped at the boundary, so a new web bundle
+ * served against an older backend (no `programResponsibility`, `selectedClearinghouse`, ...) would otherwise throw while
+ * rendering the billing-context step. It also pins the two facts the static copy below depends on: electronic
+ * submission is unavailable and the payer policy is unqualified. A preview that says otherwise is refused, not
+ * rendered under statements it would contradict.
+ */
+function isAssemblyPreview(value: unknown): value is AssemblyPreview {
+  if (!isRecord(value)) return false;
+  return (
+    hasStrings(value.primaryCoverage, ["status"]) &&
+    hasStrings(value.medicaidCoverage, ["status"]) &&
+    typeof value.payerResponsibility === "string" &&
+    hasStrings(value.recordedEligibility, ["status"]) &&
+    Array.isArray(value.claimKinds) &&
+    Array.isArray(value.rbArrangements) &&
+    typeof value.arrangementListStatus === "string" &&
+    hasStrings(value.medicareEvidence, ["match"]) &&
+    typeof value.stateBillingPolicy === "string" &&
+    hasStrings(value.programResponsibility, ["status", "reasonCode"]) &&
+    hasStrings(value.payerAuthorizationEvidence, [
+      "clinicalDocuments",
+      "notification",
+      "authorization",
+    ]) &&
+    isRecord(value.payerAuthorizationEvidence) &&
+    value.payerAuthorizationEvidence.policyQualification === "unqualified" &&
+    Array.isArray(value.enrollmentReadiness) &&
+    hasStrings(value.selectedClearinghouse, ["status"]) &&
+    hasStrings(value.tradingPartnerCredential, ["status", "reasonCode"]) &&
+    isRecord(value.pricing) &&
+    typeof value.pricing.status === "string" &&
+    Array.isArray(value.pricing.requiredInputs) &&
+    Array.isArray(value.pricing.segments) &&
+    value.pricing.submissionAvailable === false &&
+    value.electronicSubmissionAvailable === false
+  );
+}
+
+const CHC_NON_CURRENT_STATUSES: readonly string[] = [
+  "stale",
+  "unresolved",
+  "ambiguous",
+  "unsupported",
+];
+const CHC_NUMERIC_KEYS = [
+  "observedMinutes",
+  "qualifiedMinutes",
+  "reimbursementHours",
+  "rateCentsPerHour",
+  "estimatedReimbursementCents",
+  "billedChargeCents",
+] as const;
+const isNonNegativeOrNull = (value: unknown): boolean =>
+  value === null || (typeof value === "number" && Number.isFinite(value) && value >= 0);
+
+/**
+ * Runtime check of the preparation before amounts are formatted: a server a version apart would otherwise render
+ * "$NaN" or "$-1.00". Both outcomes need string ids and a known verification. A non-current one also needs its reason
+ * and renders no amounts. A current one must be the row its verification names (same preparation id and version), carry
+ * an ISO service date, non-negative finite-or-null figures, and still say institutional units are unqualified (the
+ * static copy beside it depends on that).
+ */
+function isChcPreparation(value: unknown): value is ChcPricingPreparation {
+  if (!isRecord(value) || !isRecord(value.verification)) return false;
+  if (typeof value.id !== "string" || typeof value.preparationId !== "string") return false;
+  const { status, reasonCode, preparationId, version, fingerprint } = value.verification;
+  if (status !== "current") {
+    return (
+      typeof status === "string" &&
+      CHC_NON_CURRENT_STATUSES.includes(status) &&
+      typeof reasonCode === "string"
+    );
+  }
+  return (
+    preparationId === value.preparationId &&
+    version === value.version &&
+    typeof fingerprint === "string" &&
+    typeof value.version === "number" &&
+    Number.isFinite(value.version) &&
+    typeof value.serviceDate === "string" &&
+    ISO_DATE_RE.test(value.serviceDate) &&
+    value.institutionalUnits === "unqualified" &&
+    value.institutionalFormatQualified === false &&
+    CHC_NUMERIC_KEYS.every((key) => isNonNegativeOrNull(value[key]))
+  );
+}
+
+function chcErrorMessage(payload: unknown): string {
+  const envelope = isRecord(payload) && isRecord(payload.error) ? payload.error : undefined;
+  const code = typeof envelope?.code === "string" ? envelope.code : undefined;
+  return `${CHC_ERROR_PREFIX} ${chcGuidance(code)} No claim was created.`;
 }
 
 function coverageLabel(coverage: AssemblyPreview["primaryCoverage"]): string {
@@ -109,6 +390,75 @@ const STEP_TITLES = ["Patient & dates", "Claim kind", "Billing context", "Review
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** The panel's one always-mounted status text: progress, then the outcome. Amounts never appear in it. */
+function chcStatusLine(busy: boolean, result: ChcPreparationResult | null): string {
+  if (busy) return "Checking evidence…";
+  if (result === null) return "";
+  const { verification } = result.preparation;
+  if (verification.status === "current")
+    return "Local CHC pricing prepared. The figures below were current when prepared and are not re-verified on this screen.";
+  return `Pricing evidence requires review. ${chcGuidance(verification.reasonCode)} Stored amounts are withheld until current evidence is verified.`;
+}
+
+const centsLabel = (cents: number | null, suffix: string): string =>
+  cents === null ? "Unavailable" : `$${(cents / 100).toFixed(2)} · ${suffix}`;
+
+/** A current local preparation. The caller renders it only for `verification.status === "current"`. */
+function ChcPreparationDetails({ result }: { result: ChcPreparationResult }): JSX.Element {
+  const { preparation, receivedAt } = result;
+  return (
+    <div style={pricingSegmentStyle}>
+      <Field
+        label="Local preparation"
+        value={`Current when prepared · version ${preparation.version} · ${preparation.serviceDate}`}
+      />
+      <Field
+        label="Prepared at"
+        value={`${receivedAt.toLocaleString()} · this browser's clock when the response arrived`}
+      />
+      <Field
+        label="Observed clinical minutes"
+        value={preparation.observedMinutes ?? "Unavailable"}
+      />
+      <Field
+        label="Qualified clinical minutes"
+        value={preparation.qualifiedMinutes ?? "Unavailable"}
+      />
+      <Field
+        label="Reimbursement quantity"
+        value={
+          preparation.reimbursementHours === null
+            ? "Unavailable"
+            : `${preparation.reimbursementHours} local hourly units; not institutional units`
+        }
+      />
+      <Field
+        label="Hourly reimbursement rate"
+        value={
+          preparation.rateCentsPerHour === null
+            ? "Unavailable"
+            : `$${(preparation.rateCentsPerHour / 100).toFixed(2)} per hour`
+        }
+      />
+      <Field
+        label="Estimated reimbursement"
+        value={centsLabel(preparation.estimatedReimbursementCents, "estimate only")}
+      />
+      <Field
+        label="Independently sourced billed charges"
+        value={centsLabel(
+          preparation.billedChargeCents,
+          "separate from reimbursement; not a claim amount",
+        )}
+      />
+      <Field
+        label="Institutional qualification"
+        value="Unqualified · this local preparation cannot enter READY or submission"
+      />
+    </div>
+  );
+}
+
 export function MedicaidAssemblyWizard(): JSX.Element {
   const client = useApiClient();
   const [step, setStep] = useState(0);
@@ -131,6 +481,10 @@ export function MedicaidAssemblyWizard(): JSX.Element {
   const claimsBilling = useClaimsBilling();
   const [error, setError] = useState<string | null>(null);
   const [assembledId, setAssembledId] = useState<string | null>(null);
+  const [chcPreparation, setChcPreparation] = useState<ChcPreparationResult | null>(null);
+  const chcGeneration = useRef(0);
+  const [chcPreparationBusy, setChcPreparationBusy] = useState(false);
+  const [chcPreparationError, setChcPreparationError] = useState<string | null>(null);
 
   const step1Valid =
     UUID_RE.test(patientId) &&
@@ -141,9 +495,24 @@ export function MedicaidAssemblyWizard(): JSX.Element {
     serviceFrom <= serviceTo;
   const needsRb = kind !== "hospice_only";
   const kindPreview = preview?.claimKinds.find((candidate) => candidate.kind === kind);
+  const hasVerifiedPricingQuantity =
+    preview !== null &&
+    preview.pricing.segments.length > 0 &&
+    preview.pricing.segments.every((segment) => segment.quantityStatus === "verified");
+  const hasUnverifiedPricingQuantity =
+    preview?.pricing.segments.some((segment) => segment.quantityStatus === "unverified") ?? false;
   const arrangementPreview = preview?.rbArrangements.find(
     (candidate) => candidate.id === rbArrangementId,
   );
+  const singleDayHomeChc =
+    serviceFrom === serviceTo &&
+    preview?.pricing.segments.some(
+      (segment) =>
+        segment.serviceCategory === "CHC" &&
+        segment.serviceLocationKind === "home" &&
+        segment.serviceFrom === serviceFrom &&
+        segment.serviceTo === serviceTo,
+    ) === true;
   const step2Valid =
     previewLoadState === "loaded" &&
     kindPreview?.payerPolicy === "permitted" &&
@@ -174,11 +543,11 @@ export function MedicaidAssemblyWizard(): JSX.Element {
         } as never,
       )) as { data?: unknown; error?: unknown };
       if (generation !== previewGeneration.current) return false;
-      if (requestError || !data) {
+      if (requestError || !isAssemblyPreview(data)) {
         setPreviewLoadState("failed");
         return false;
       }
-      setPreview(data as AssemblyPreview);
+      setPreview(data);
       setPreviewLoadState("loaded");
       return true;
     } catch {
@@ -197,6 +566,46 @@ export function MedicaidAssemblyWizard(): JSX.Element {
     setStep(0);
   }, []);
 
+  const prepareLocalChcPricing = useCallback(async () => {
+    // Creating a preparation is new claims-billing work (ADR-0110): paused without the add-on, like "Assemble draft".
+    if (chcPreparationBusy || claimsBilling.blocked || !singleDayHomeChc || !step1Valid) return;
+    const generation = ++chcGeneration.current;
+    setChcPreparationBusy(true);
+    setChcPreparationError(null);
+    setChcPreparation(null);
+    try {
+      const { data, error: requestError } = (await client.POST(
+        "/api/v1/medicaid-chc-pricing-preparations",
+        {
+          body: { patientId, admissionId, providerEntityId, serviceDate: serviceFrom },
+        } as never,
+      )) as { data?: unknown; error?: unknown };
+      if (generation !== chcGeneration.current) return;
+      if (requestError) {
+        setChcPreparationError(chcErrorMessage(requestError));
+      } else if (isChcPreparation(data)) {
+        setChcPreparation({ preparation: data, receivedAt: new Date() });
+      } else {
+        setChcPreparationError(CHC_UNREADABLE_MESSAGE);
+      }
+    } catch {
+      if (generation !== chcGeneration.current) return;
+      setChcPreparationError(chcErrorMessage(undefined));
+    } finally {
+      if (generation === chcGeneration.current) setChcPreparationBusy(false);
+    }
+  }, [
+    admissionId,
+    chcPreparationBusy,
+    claimsBilling.blocked,
+    client,
+    patientId,
+    providerEntityId,
+    serviceFrom,
+    singleDayHomeChc,
+    step1Valid,
+  ]);
+
   const goNext = useCallback(async () => {
     if (step === 0) {
       if (!step1Valid || !(await loadPreview())) return;
@@ -206,6 +615,18 @@ export function MedicaidAssemblyWizard(): JSX.Element {
     if (!stepValid) return;
     setStep((current) => Math.min(current + 1, STEP_TITLES.length - 1));
   }, [step, step1Valid, stepValid, loadPreview]);
+
+  // The one place a local CHC preparation is dropped: it is only as current as the evidence it was read from. The
+  // panel lives on the billing-context step, whose only exits are Continue to Review (left again only by Back) and
+  // Back; the range inputs that reload or invalidate the preview sit on step 0, reachable only by Back. Bumping the
+  // generation also makes a request still in flight ignore its own late response, its error and its busy reset.
+  const goBack = useCallback(() => {
+    chcGeneration.current += 1;
+    setChcPreparation(null);
+    setChcPreparationError(null);
+    setChcPreparationBusy(false);
+    setStep((current) => Math.max(0, current - 1));
+  }, []);
 
   const assemble = useCallback(async () => {
     if (busy || !step2Valid) return;
@@ -332,11 +753,7 @@ export function MedicaidAssemblyWizard(): JSX.Element {
       }
       footer={
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-          <Button
-            tone="secondary"
-            onClick={() => setStep((s) => Math.max(0, s - 1))}
-            disabled={step === 0 || busy}
-          >
+          <Button tone="secondary" onClick={goBack} disabled={step === 0 || busy}>
             Back
           </Button>
           {step < STEP_TITLES.length - 1 ? (
@@ -590,6 +1007,48 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                   value={responsibilityLabel(preview.payerResponsibility)}
                 />
                 <Field
+                  label="Medicaid program and payer"
+                  value={
+                    preview.programResponsibility.status === "verified"
+                      ? `${humanize(preview.programResponsibility.programKind ?? "program")} · ${preview.programResponsibility.canonicalPayerName ?? shortId(preview.programResponsibility.canonicalPayerId ?? "")}; verified assignment covers this service range`
+                      : `${humanize(preview.programResponsibility.status)} · ${humanize(preview.programResponsibility.reasonCode)}`
+                  }
+                />
+                <Field
+                  label="Selected clearinghouse"
+                  value={
+                    preview.selectedClearinghouse.status === "selected"
+                      ? `${preview.selectedClearinghouse.vendor ?? "Vendor unavailable"} · ${humanize(preview.selectedClearinghouse.configurationStatus ?? "configuration status unavailable")}`
+                      : humanize(
+                          preview.selectedClearinghouse.configurationStatus ??
+                            preview.selectedClearinghouse.status,
+                        )
+                  }
+                />
+                <Field
+                  label="Trading-partner credential configuration"
+                  value={`${humanize(preview.tradingPartnerCredential.status)} · ${humanize(preview.tradingPartnerCredential.reasonCode)}; configuration is not payer enrollment`}
+                />
+                <Field
+                  label="Clinical documents"
+                  value={`${humanize(preview.payerAuthorizationEvidence.clinicalDocuments)}; the signed clinical record remains owned by M6`}
+                />
+                <Field
+                  label="Payer notification"
+                  value={`${humanize(preview.payerAuthorizationEvidence.notification)}; sending a notice is not payer receipt`}
+                />
+                <Field
+                  label="Payer authorization evidence"
+                  value={`${humanize(preview.payerAuthorizationEvidence.authorization)} · ${humanize(preview.payerAuthorizationEvidence.policyQualification)} payer policy; this record does not authorize transmission`}
+                />
+                {preview.enrollmentReadiness.map((item) => (
+                  <Field
+                    key={item.kind}
+                    label={humanize(item.kind)}
+                    value={`${humanize(item.status)} · ${humanize(item.reasonCode)}${item.vendorPayerId ? ` · vendor payer ID ${item.vendorPayerId}` : ""}`}
+                  />
+                ))}
+                <Field
                   label="Recorded eligibility check"
                   value={
                     preview.recordedEligibility.status === "unavailable"
@@ -615,6 +1074,144 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                         ? "Cannot assess until payer responsibility is resolved"
                         : "Unconfirmed; secondary Medicaid claim formats remain unavailable"
                   }
+                />
+                <Field
+                  label="Clinical quantity"
+                  value={
+                    hasVerifiedPricingQuantity
+                      ? "Verified quantity evidence is present for the reimbursement estimate · 837I billing units remain separately unqualified"
+                      : hasUnverifiedPricingQuantity
+                        ? "Clinical quantity evidence is unverified · no hours are inferred from date-only LOC records"
+                        : "Clinical quantity missing or unqualified · no hours are inferred from date-only LOC records"
+                  }
+                />
+                <section aria-label="Pricing assessment" style={pricingPanelStyle}>
+                  <strong>Pricing assessment · {humanize(preview.pricing.status)}</strong>
+                  <p style={mutedStyle}>
+                    {preview.pricing.reimbursementEstimateTotalCents !== null
+                      ? `Estimated reimbursement: $${(preview.pricing.reimbursementEstimateTotalCents / 100).toFixed(2)}. This is not the provider's billed charge, payer-allowed amount, or payment.`
+                      : "No complete reimbursement estimate is available. Missing facts are not shown as a zero amount."}
+                  </p>
+                  {preview.pricing.actualBilledChargeTotalCents !== null ? (
+                    <p style={mutedStyle}>
+                      {`Evidence-based draft billed charge: $${(preview.pricing.actualBilledChargeTotalCents / 100).toFixed(2)}. This is separate from the reimbursement estimate and is not payer-allowed or paid.`}
+                    </p>
+                  ) : null}
+                  {preview.pricing.segments.map((segment, index) => (
+                    <div
+                      key={`${segment.serviceFrom}-${segment.serviceTo}-${segment.serviceCategory ?? "unknown"}-${index}`}
+                      style={pricingSegmentStyle}
+                    >
+                      <strong>
+                        {segment.serviceCategory
+                          ? segment.serviceCategory === "RHC" &&
+                            segment.status === "resolved" &&
+                            segment.serviceLocationKind === "facility"
+                            ? "Facility-based RHC"
+                            : segment.serviceCategory === "RHC" &&
+                                segment.status === "resolved" &&
+                                segment.serviceLocationKind === "home"
+                              ? "Home RHC"
+                              : labelFor(SERVICE_CATEGORY_LABEL, segment.serviceCategory)
+                          : "Service category unresolved"}
+                        {` · ${segment.serviceFrom}${segment.serviceTo === segment.serviceFrom ? "" : ` to ${segment.serviceTo}`}`}
+                      </strong>
+                      {segment.rateCents !== null ? (
+                        <p style={mutedStyle}>
+                          {`Rate $${(segment.rateCents / 100).toFixed(2)} ${segment.unitBasis === "per_hour" ? "per hour" : "per day"}${segment.pricingMethod === "fixed_contract_unit" ? " · contract-defined unit" : ""} · ${segment.rateSourceKind ? labelFor(RATE_SOURCE_KIND_LABEL, segment.rateSourceKind) : "Source unavailable"}${segment.rateLocalityCode ? ` · locality ${segment.rateLocalityCode}` : ""} · effective ${segment.rateEffectiveFrom ?? "unknown"}${segment.rateEffectiveTo ? ` through ${segment.rateEffectiveTo}` : " onward"}${segment.methodologyVersion === null ? "" : ` · method v${segment.methodologyVersion}`}`}
+                        </p>
+                      ) : (
+                        <p style={mutedStyle}>
+                          {segment.rateStatus === "ambiguous"
+                            ? "Conflicting rate evidence requires resolution."
+                            : segment.rateStatus === "unverified"
+                              ? "Rate source evidence is not verified."
+                              : segment.reasonCodes.some((reason) =>
+                                    Object.hasOwn(PRICING_REASON_LABEL, reason),
+                                  )
+                                ? "This service span cannot be priced locally."
+                                : "No exact qualified rate can be selected for this service span."}
+                        </p>
+                      )}
+                      {segment.actualBilledChargeCents !== null ? (
+                        <p style={mutedStyle}>
+                          {`Draft billed charge for this segment: $${(segment.actualBilledChargeCents / 100).toFixed(2)}.`}
+                        </p>
+                      ) : null}
+                      {segment.quantityConversionMethod ? (
+                        <p style={mutedStyle}>
+                          {`Quantity conversion: ${humanize(segment.quantityConversionMethod)}${segment.minimumDurationMethod === "minimum_minutes" && segment.minimumClinicalMinutes !== null ? ` · minimum ${segment.minimumClinicalMinutes} clinical minutes per service day` : ""}. This does not establish the claim's 837I units.`}
+                        </p>
+                      ) : null}
+                      {segment.reimbursementEstimateCents !== null ? (
+                        <p style={mutedStyle}>
+                          {`Reimbursement estimate: $${(segment.reimbursementEstimateCents / 100).toFixed(2)}`}
+                        </p>
+                      ) : null}
+                      {segment.chargeCeilings.map((ceiling, ceilingIndex) => (
+                        <p
+                          key={`${ceiling.method}-${ceiling.boundary}-${ceilingIndex}`}
+                          style={mutedStyle}
+                        >
+                          {`Applied ${humanize(ceiling.method)} ceiling: $${(ceiling.amountCents / 100).toFixed(2)} at ${humanize(ceiling.boundary)} scope`}
+                        </p>
+                      ))}
+                      {segment.reasonCodes.map((reason) => (
+                        <p key={reason} style={mutedStyle}>
+                          {labelFor(PRICING_REASON_LABEL, reason)}
+                        </p>
+                      ))}
+                    </div>
+                  ))}
+                  {preview.pricing.requiredInputs.length > 0 ? (
+                    <div>
+                      <span style={mutedStyle}>Required to complete pricing</span>
+                      <ul style={pricingListStyle}>
+                        {preview.pricing.requiredInputs.map((required) => (
+                          <li key={required}>{required}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  <p style={mutedStyle}>
+                    Any billed charge shown here comes from separately sourced evidence, not from a
+                    claim; no claim is created from these figures. Pricing does not establish payer
+                    enrollment, authorization, route qualification, or submission readiness.
+                  </p>
+                </section>
+                {singleDayHomeChc ? (
+                  <section aria-label="Local CHC pricing preparation" style={pricingPanelStyle}>
+                    <strong>Continuous home care · local pricing preparation</strong>
+                    <p style={mutedStyle}>
+                      Prepare one service day from signed clinical intervals and current verified
+                      pricing evidence. Only a day whose qualified clinical minutes are a whole
+                      number of hours is priced locally. This stores a local preparation, not a
+                      claim; institutional units and electronic submission remain unqualified.
+                    </p>
+                    <Button
+                      tone="secondary"
+                      onClick={() => void prepareLocalChcPricing()}
+                      disabled={chcPreparationBusy || !step1Valid || claimsBilling.blocked}
+                      loading={chcPreparationBusy}
+                    >
+                      {chcPreparationBusy ? "Checking evidence…" : "Prepare local CHC pricing"}
+                    </Button>
+                    <output style={{ ...mutedStyle, display: "block" }}>
+                      {chcStatusLine(chcPreparationBusy, chcPreparation)}
+                    </output>
+                    {chcPreparationError ? (
+                      <p role="alert" style={alertStyle}>
+                        {chcPreparationError}
+                      </p>
+                    ) : null}
+                    {chcPreparation?.preparation.verification.status === "current" ? (
+                      <ChcPreparationDetails result={chcPreparation} />
+                    ) : null}
+                  </section>
+                ) : null}
+                <Field
+                  label="Electronic submission"
+                  value="Unavailable · this workflow is for local draft preparation only"
                 />
                 {needsRb ? (
                   <Field
@@ -741,6 +1338,25 @@ const workspaceStyle = {
   display: "flex",
   flexDirection: "column" as const,
   gap: "1rem",
+};
+const pricingPanelStyle = {
+  display: "grid",
+  gap: "0.5rem",
+  padding: "0.75rem",
+  border: "1px solid var(--color-outline-variant)",
+  borderRadius: "var(--radius-md, 0.5rem)",
+  background: "var(--color-surface-container-low, var(--color-surface))",
+};
+const pricingSegmentStyle = {
+  display: "grid",
+  gap: "0.2rem",
+  paddingBlock: "0.5rem",
+  borderTop: "1px solid var(--color-outline-variant)",
+};
+const pricingListStyle = {
+  margin: 0,
+  paddingInlineStart: "1.25rem",
+  color: "var(--color-on-surface-variant)",
 };
 const fieldGridStyle = {
   display: "grid",

@@ -34,16 +34,19 @@ export function read999EnvelopeDates(raw: string): Ack999EnvelopeDates {
 export interface ClaimStatusDate {
   readonly claimControlNumber: string;
   readonly statusEffectiveDate: string | null;
+  /** STC01-1 of the claim's first STC (health care claim status category code, e.g. `A1`); null when absent. */
+  readonly statusCategoryCode: string | null;
 }
 
-/** Each claim-level (2200D) `TRN*2` control number with the STC02 of its first STC segment. */
+/** Each claim-level (2200D) `TRN*2` control number with the STC01-1 and STC02 of its first STC segment. */
 export function read277caStatusDates(raw: string): ClaimStatusDate[] {
-  const { segments } = tokenizeInterchange(raw);
+  const { segments, delimiters } = tokenizeInterchange(raw);
   const out: ClaimStatusDate[] = [];
   let inPatientLevel = false;
   let current: {
     claimControlNumber: string;
     statusEffectiveDate: string | null;
+    statusCategoryCode: string | null;
     seenStc: boolean;
   } | null = null;
   const flush = () => {
@@ -51,6 +54,7 @@ export function read277caStatusDates(raw: string): ClaimStatusDate[] {
       out.push({
         claimControlNumber: current.claimControlNumber,
         statusEffectiveDate: current.statusEffectiveDate,
+        statusCategoryCode: current.statusCategoryCode,
       });
     current = null;
   };
@@ -62,9 +66,15 @@ export function read277caStatusDates(raw: string): ClaimStatusDate[] {
       inPatientLevel = seg[3] === "PT";
     } else if (id === "TRN" && inPatientLevel && seg[1] === "2" && seg[2]) {
       flush();
-      current = { claimControlNumber: seg[2], statusEffectiveDate: null, seenStc: false };
+      current = {
+        claimControlNumber: seg[2],
+        statusEffectiveDate: null,
+        statusCategoryCode: null,
+        seenStc: false,
+      };
     } else if (id === "STC" && current && !current.seenStc) {
       current.seenStc = true;
+      current.statusCategoryCode = seg[1]?.split(delimiters.component)[0]?.trim() || null;
       current.statusEffectiveDate = x12DateToIso(seg[2]?.trim());
     } else if (id === "SE") {
       flush();

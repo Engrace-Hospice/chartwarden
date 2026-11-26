@@ -22,6 +22,9 @@ const RemittanceWorklist = lazy(() =>
 const ClaimMdEraReview = lazy(() =>
   import("./claimmd-era-review").then((m) => ({ default: m.ClaimMdEraReview })),
 );
+const MedicaidEraReviews = lazy(() =>
+  import("./medicaid-era-reviews").then((m) => ({ default: m.MedicaidEraReviews })),
+);
 const PayerAppealPaths = lazy(() =>
   import("./payer-appeal-paths").then((m) => ({ default: m.PayerAppealPaths })),
 );
@@ -60,6 +63,22 @@ export const remittanceScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "remittance.read",
       screen: ClaimMdEraReview,
+    },
+    {
+      id: "remittance.medicaid-era-reviews",
+      path: "/remittance/medicaid-era-reviews",
+      title: "Medicaid ERA reviews",
+      navGroup: "Billing",
+      requiredPermission: "remittance.read",
+      screen: MedicaidEraReviews,
+    },
+    {
+      id: "remittance.medicaid-era-review",
+      path: "/remittance/medicaid-era-reviews/:id",
+      title: "Medicaid ERA investigation",
+      navGroup: "Billing",
+      requiredPermission: "remittance.read",
+      screen: MedicaidEraReviews,
     },
     {
       id: "remittance.denials",

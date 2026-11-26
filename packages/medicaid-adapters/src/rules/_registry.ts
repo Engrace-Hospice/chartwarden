@@ -6,7 +6,7 @@ import { skip } from "./types";
 import type { MedicaidRule, MedicaidValidationContext, RuleParameters, RuleResult } from "./types";
 
 /** The platform-default rule-set version (stamped into medicaid_validation_run.rule_registry_version). */
-export const DEFAULT_MEDICAID_RULE_SET_VERSION = "5";
+export const DEFAULT_MEDICAID_RULE_SET_VERSION = "7";
 
 /** Per-rule parameter overlays keyed by rule.key (the tenant medicaid_validation_rule_config merge). */
 export type MedicaidRuleParameterOverlays = Readonly<Record<string, RuleParameters>>;

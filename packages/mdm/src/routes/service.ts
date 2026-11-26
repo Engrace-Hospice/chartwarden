@@ -149,6 +149,10 @@ export function createInMemoryMdmBackend(seed: InMemoryMdmBackendSeed = {}): {
     async canonicalFields<K extends MdmEntityKind>(kind: K, id: string) {
       return (canonicals.get(key(kind, id))?.fields as CanonicalFields<K> | undefined) ?? null;
     },
+    async medicaidPayerProgramClassifications() {
+      // The route-service slice has no source-backed classification fixtures; absence must stay unresolved.
+      return [];
+    },
     async overlay<K extends MdmEntityKind>(kind: K, orgId: string, canonicalId: string) {
       if (kind !== "physician") return null;
       return (overlays.get(key(orgId, canonicalId)) as OverlayFields<K> | undefined) ?? null;

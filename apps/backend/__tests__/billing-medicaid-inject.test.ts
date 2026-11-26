@@ -15,7 +15,7 @@
 // `createInMemoryMedicaidRedactStore` cover the upstream-consumer and eraser/redaction concerns only, not
 // this module's eighteen route-facing service methods), so this file is that backend, scoped to this file
 // only. The REAL Authorization Contract gates every route on the real §4.7 permission keys
-// (`M24_PERMISSION_KEY_LIST`), and the REAL `buildM24AbacPredicates` resolves the six §4.8 predicates M24
+// (`M24_PERMISSION_KEY_LIST`), and the REAL `buildM24AbacPredicates` resolves M24's §4.8 predicates
 // owns, closed over a resolver reading this same in-memory claim/arrangement/validation-result state — the
 // `buildOrderAbacPredicates`-over-`createInMemoryOrderBackend` pattern M11's test established. A permissive
 // `step_up_recent` stub is registered alongside them (this file's own fresh predicate registry, never the
@@ -145,6 +145,9 @@ function createM24Backend(): {
     medicareClaimId: null,
     rbArrangementId: null,
     medicaidClaimControlNumber: "MCN-0001",
+    medicaidProgramKind: null,
+    canonicalPayerId: null,
+    programResolutionSnapshot: null,
     state: "DRAFT",
     version: 1,
     validationRunIdLatest: RUN,
@@ -161,6 +164,7 @@ function createM24Backend(): {
       medicaidClaimId: CLAIM,
       lineNumber: 1,
       serviceDate: "2026-07-01",
+      serviceDateTo: null,
       revenueCode: "0651",
       qCode: "Q5001",
       levelOfCare: "RHC",
@@ -396,6 +400,9 @@ function createM24Backend(): {
         medicareClaimId: input.medicareClaimId ?? null,
         rbArrangementId: input.rbArrangementId ?? null,
         medicaidClaimControlNumber: `MCN-${id}`,
+        medicaidProgramKind: null,
+        canonicalPayerId: null,
+        programResolutionSnapshot: null,
         state: "DRAFT",
         version: 1,
         validationRunIdLatest: null,
@@ -652,6 +659,24 @@ function createM24Backend(): {
     async loadRateSchedule() {
       return { queued: true };
     },
+    async recordProgramAssignment() {
+      return { id: newId("program-assignment"), status: "pending" as const };
+    },
+    async recordEnrollmentEvidence() {
+      return { id: newId("enrollment-evidence"), status: "pending" as const };
+    },
+    async verifyProgramAssignment() {
+      return { status: "verified" as const, version: 2 };
+    },
+    async verifyEnrollmentEvidence() {
+      return { status: "verified" as const, version: 2 };
+    },
+    async revokeProgramAssignment() {
+      return { status: "revoked" as const, version: 2 };
+    },
+    async revokeEnrollmentEvidence() {
+      return { status: "revoked" as const, version: 2 };
+    },
   };
 
   const abacResolver: ReadingM24AbacResolver = {
@@ -668,6 +693,9 @@ function createM24Backend(): {
     },
     async loadResultRuleKey(_ctx, resultId) {
       return validationResults.get(resultId)?.ruleKey ?? null;
+    },
+    async loadChcPreparationScope() {
+      return null;
     },
   };
 
@@ -712,7 +740,7 @@ function makeServer() {
   ]);
   registerEffectivePermissionResolver(grantStore.store);
 
-  // A FRESH predicate registry per server (the M11-T06 precedent): the six §4.8 predicates M24 owns, built
+  // A FRESH predicate registry per server (the M11-T06 precedent): the §4.8 predicates M24 owns, built
   // over THIS backend's resolver, plus a permissive `step_up_recent` stub so the submit/replace/void/
   // override/activate/terminate/credential-admin/platform-admin routes' `requireStepUp` gate has a real
   // PASSING path in this file (see the file banner).

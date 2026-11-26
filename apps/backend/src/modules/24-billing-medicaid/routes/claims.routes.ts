@@ -62,7 +62,14 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
         auditRead: {
           resourceKind: "medicaid_claim_assembly_preview",
           patientIdBodyPath: "patientId",
-          fields: ["coverage", "eligibility", "room_and_board", "medicare_coordination"],
+          fields: [
+            "coverage",
+            "eligibility",
+            "room_and_board",
+            "medicare_coordination",
+            "payer_authorization_evidence",
+            "pricing",
+          ],
         },
       },
     },

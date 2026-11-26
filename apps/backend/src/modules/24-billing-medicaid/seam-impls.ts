@@ -16,9 +16,13 @@
 // against M23's `claim` table, or the reverse). The seam interfaces are declared locally (the
 // medicaid-adapters pure package owns no seam-DTO module) — they ship to @chartwarden/types at the M24 lock,
 // the subscription contract in §4.11.
+import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
+import { getMdmEntityProvider } from "../40-mdm/seams";
+import { qualifyMedicaidProgramClassification } from "./medicaid-payer-classification";
 import type { M24Actor } from "./routes/actor";
 import type { M24ReadService } from "./routes/read-service";
 
@@ -30,6 +34,10 @@ const systemActor = (orgId: string): M24Actor => ({
   providerEntityIds: [],
 });
 const cents = (n: number | null | undefined): string => String(n ?? 0);
+
+/** Hash a fixed, owner-side projection; raw payer/provider references stay inside the M24 seam. */
+const evidenceFingerprint = (value: unknown): string =>
+  createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
 
 // ── locally-declared seam contracts (PHI-free; cents-as-string) ─────────────────────────────────────────
 export interface DaysByLevelOfCare {
@@ -161,6 +169,15 @@ export interface MedicaidClaimMatchProvider {
     providerEntityId: string,
     keys: { readonly claimControlNumber?: string },
   ): Promise<MedicaidClaimMatchCandidateRow[]>;
+  submissionEvidenceForLine(
+    orgId: string,
+    providerEntityId: string,
+    keys: { readonly claimControlNumber: string },
+  ): Promise<MedicaidClaimSubmissionEvidence[]>;
+  eraEnrollmentEvidence(
+    orgId: string,
+    providerEntityId: string,
+  ): Promise<MedicaidEraEnrollmentEvidence[]>;
   patientIdForClaim(orgId: string, claimId: string): Promise<string | null>;
   /**
    * M25 milestone 11 (11a-1) - the facts M25 needs to render a Medicaid claim on the case view and (later) to
@@ -173,6 +190,80 @@ export interface MedicaidClaimMatchProvider {
    * The list is capped at {@link MEDICAID_CLAIM_IDS_CAP}; M25's payer badge asks once per worklist page.
    */
   medicaidClaimIds(orgId: string, claimIds: readonly string[]): Promise<ReadonlySet<string>>;
+}
+
+export interface MedicaidEraEnrollmentEvidence {
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  readonly vendor: "claimmd" | "stedi";
+  readonly accountReference: string;
+  readonly environment: "test" | "production";
+  readonly canonicalPayerId: string;
+  readonly programId: string;
+  readonly evidenceId: string;
+  readonly evidenceVersion: number;
+  readonly payerIdentifier: string | null;
+  readonly billingNpi: string;
+  readonly billingTin: null;
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string;
+  readonly evidenceReference: string;
+  readonly verifiedAt: string;
+  readonly evidenceFreshUntil: string;
+  readonly classificationRecordedAt: string;
+  /** Owner-computed digest of enrollment, M40 classification, freshness and provider identity inputs. */
+  readonly sourceEvidenceFingerprint: string;
+}
+
+export interface MedicaidClaimSubmissionEvidence {
+  readonly disposition: "SUBMISSION_UNVERIFIED" | "SUBMISSION_EVIDENCE";
+  /** Hidden unless a persisted, production-environment submission matches the exact claim version. */
+  readonly claimId: string | null;
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  readonly claimControlNumber: string | null;
+  readonly canonicalPayerId: string | null;
+  readonly programKind: string | null;
+  readonly serviceState: string;
+  readonly serviceFrom: string;
+  readonly serviceTo: string;
+  readonly claimState: string;
+  readonly claimVersion: number;
+  /** Digest of exact M24 claim, assignment, submission-attempt and acknowledgment evidence versions. */
+  readonly sourceEvidenceFingerprint: string;
+  /** Hidden (null) unless the result is proven, like every identifier below it. */
+  readonly replacesClaimId: string | null;
+  readonly replacedByClaimId: string | null;
+  readonly attempts: readonly {
+    /** Hidden (null) unless the result is proven. */
+    readonly submissionId: string | null;
+    readonly attemptIndex: number;
+    readonly claimVersion: number | null;
+    /** Hidden (null) unless the result is proven (a vendor-side reference). */
+    readonly sourceAccountRef: string | null;
+    readonly environment: string | null;
+    readonly vendor: string;
+    /** Hidden (null) unless the result is proven (a vendor-side reference). */
+    readonly vendorTransactionId: string | null;
+    readonly payerId: string | null;
+    /** Hidden (null) unless the result is proven. */
+    readonly payerClassificationId: string | null;
+    readonly programKind: string | null;
+    /** Hidden (null) unless the result is proven. */
+    readonly assignmentId: string | null;
+    readonly assignmentVersion: number | null;
+    readonly provenanceStatus: string;
+    readonly result: string;
+    readonly submittedAt: string | null;
+    readonly acknowledgments: readonly {
+      readonly kind: string;
+      readonly outcome: string;
+      /** Hidden (null) unless the result is proven (a payer-side reference). */
+      readonly payerClaimControlNumber: string | null;
+      readonly receivedAt: string;
+      readonly id: string | null;
+    }[];
+  }[];
 }
 
 /** Most ids one `medicaidClaimIds` call looks up (a worklist page); extra ids are ignored, never an error. */
@@ -389,6 +480,153 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
   };
 
   const claimMatch: MedicaidClaimMatchProvider = {
+    async eraEnrollmentEvidence(orgId, providerEntityId) {
+      return withOrgContext(db, systemActor(orgId), async (tx) => {
+        const EE = schema.medicaidEnrollmentEvidence;
+        const site = await buildFoundationSiteReader().providerEntityIdentifiers(
+          tx,
+          orgId,
+          providerEntityId,
+        );
+        if (!site?.npi) return [];
+        const rows = await tx
+          .select({
+            clearinghouse: EE.clearinghouse,
+            accountReference: EE.vendorAccountRef,
+            environment: EE.sourceEnvironment,
+            serviceState: EE.serviceState,
+            canonicalPayerId: EE.canonicalPayerId,
+            programKind: EE.programKind,
+            vendorPayerId: EE.vendorPayerId,
+            effectiveFrom: EE.effectiveFrom,
+            effectiveTo: EE.effectiveTo,
+            evidenceFreshUntil: EE.evidenceFreshUntil,
+            evidenceId: EE.id,
+            evidenceVersion: EE.version,
+            evidenceReference: EE.evidenceReference,
+            verifiedAt: EE.verifiedAt,
+            status: EE.status,
+            transactionType: EE.transactionType,
+            evidenceKind: EE.evidenceKind,
+            verificationSource: EE.verificationSource,
+            updatedAt: EE.updatedAt,
+          })
+          .from(EE)
+          .where(
+            and(
+              eq(EE.organizationId, orgId),
+              eq(EE.providerEntityId, providerEntityId),
+              eq(EE.evidenceKind, "835_era_enrollment"),
+              eq(EE.status, "verified"),
+              eq(EE.transactionType, "835"),
+              inArray(EE.clearinghouse, ["claimmd", "stedi"]),
+            ),
+          );
+        const output: MedicaidEraEnrollmentEvidence[] = [];
+        for (const row of rows) {
+          if (
+            !row.clearinghouse ||
+            !row.accountReference ||
+            !row.environment ||
+            !row.canonicalPayerId ||
+            !row.effectiveTo ||
+            !row.evidenceFreshUntil ||
+            !row.evidenceId ||
+            !Number.isSafeInteger(row.evidenceVersion) ||
+            !row.evidenceReference ||
+            !row.verifiedAt ||
+            !row.verificationSource ||
+            row.status !== "verified" ||
+            row.transactionType !== "835" ||
+            !row.vendorPayerId ||
+            !row.programKind
+          )
+            continue;
+          const classifications = await getMdmEntityProvider().medicaidPayerProgramClassifications(
+            orgId,
+            row.canonicalPayerId,
+            row.serviceState,
+            row.effectiveFrom,
+            row.effectiveTo,
+          );
+          // The verify path's qualifier, not a local filter: it retires superseded rows and refuses a window that
+          // a second verified classification contradicts, so evidence verification would now refuse is not offered.
+          const decision = qualifyMedicaidProgramClassification(
+            classifications,
+            row.programKind,
+            row.canonicalPayerId,
+            row.serviceState,
+            row.effectiveFrom,
+            row.effectiveTo,
+          );
+          if (!decision.qualified) continue;
+          const classification = decision.classification;
+          const providerIdentityFingerprint = evidenceFingerprint({
+            organizationId: orgId,
+            providerEntityId,
+            billingNpi: site.npi,
+          });
+          const sourceEvidenceFingerprint = evidenceFingerprint({
+            enrollment: {
+              id: row.evidenceId,
+              version: row.evidenceVersion,
+              status: row.status,
+              evidenceKind: row.evidenceKind,
+              transactionType: row.transactionType,
+              verificationSource: row.verificationSource,
+              effectiveFrom: row.effectiveFrom,
+              effectiveTo: row.effectiveTo,
+              evidenceFreshUntil: row.evidenceFreshUntil,
+              evidenceReference: row.evidenceReference,
+              verifiedAt: row.verifiedAt.toISOString(),
+              updatedAt: row.updatedAt.toISOString(),
+              vendorPayerId: row.vendorPayerId,
+              accountReference: row.accountReference,
+              environment: row.environment,
+              canonicalPayerId: row.canonicalPayerId,
+              programKind: row.programKind,
+            },
+            classification: {
+              id: classification.id,
+              classification: classification.classification,
+              stateCode: classification.stateCode,
+              effectiveFrom: classification.effectiveFrom,
+              effectiveTo: classification.effectiveTo,
+              verificationStatus: classification.verificationStatus,
+              sourceKind: classification.sourceKind,
+              sourceReference: classification.sourceReference,
+              verifiedAt: classification.verifiedAt,
+              verifiedBy: classification.verifiedBy,
+              supersedesId: classification.supersedesId,
+              recordedAt: classification.recordedAt,
+            },
+            providerIdentityFingerprint,
+          });
+          output.push({
+            organizationId: orgId,
+            providerEntityId,
+            vendor: row.clearinghouse as "claimmd" | "stedi",
+            accountReference: row.accountReference,
+            environment: row.environment as "test" | "production",
+            canonicalPayerId: row.canonicalPayerId,
+            programId: classification.id,
+            evidenceId: row.evidenceId,
+            evidenceVersion: row.evidenceVersion,
+            payerIdentifier: row.vendorPayerId,
+            billingNpi: site.npi,
+            billingTin: null,
+            effectiveFrom: row.effectiveFrom,
+            effectiveTo: row.effectiveTo,
+            evidenceReference: row.evidenceReference,
+            verifiedAt: row.verifiedAt.toISOString(),
+            evidenceFreshUntil: row.evidenceFreshUntil,
+            classificationRecordedAt: classification.recordedAt,
+            sourceEvidenceFingerprint,
+          });
+        }
+        return output;
+      });
+    },
     async candidatesForLine(orgId, providerEntityId, keys) {
       if (!keys.claimControlNumber) return [];
       return withOrgContext(db, systemActor(orgId), async (tx) => {
@@ -414,6 +652,308 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
           serviceFrom: r.serviceFrom.toISOString(),
           serviceTo: r.serviceTo.toISOString(),
         }));
+      });
+    },
+    async submissionEvidenceForLine(orgId, providerEntityId, keys) {
+      return withOrgContext(db, systemActor(orgId), async (tx) => {
+        const C = schema.medicaidClaim;
+        const S = schema.medicaidSubmission;
+        const A = schema.medicaidAcknowledgment;
+        const rows = await tx
+          .select({
+            claimId: C.id,
+            organizationId: C.organizationId,
+            providerEntityId: C.providerEntityId,
+            claimControlNumber: C.medicaidClaimControlNumber,
+            canonicalPayerId: C.canonicalPayerId,
+            claimMcoId: C.mcoId,
+            programAssignmentId: C.programAssignmentId,
+            programKind: C.medicaidProgramKind,
+            serviceState: C.serviceState,
+            serviceFrom: C.serviceFrom,
+            serviceTo: C.serviceTo,
+            claimState: C.state,
+            claimVersion: C.version,
+            replacesClaimId: C.replacesClaimId,
+            replacedByClaimId: C.replacedByClaimId,
+            submissionId: S.id,
+            attemptIndex: S.attemptIndex,
+            submittedClaimVersion: S.submittedClaimVersion,
+            submittedServiceState: S.serviceState,
+            submittedChannel: S.channel,
+            submittedMcoIdSnapshot: S.mcoIdSnapshot,
+            submittedClaimControlNumber: S.medicaidClaimControlNumber,
+            sourceAccountRef: S.sourceAccountRef,
+            environment: S.sourceEnvironment,
+            vendor: S.adapterVendor,
+            vendorTransactionId: S.vendorTransactionId,
+            payerId: S.canonicalPayerIdSnapshot,
+            payerClassificationId: S.payerClassificationIdSnapshot,
+            programKindSnapshot: S.programKindSnapshot,
+            assignmentId: S.programAssignmentIdSnapshot,
+            assignmentVersionSnapshot: S.programAssignmentVersionSnapshot,
+            provenanceStatus: S.sourceProvenanceStatus,
+            result: S.result,
+            submittedAt: S.submittedAt,
+            ackKind: A.kind,
+            ackOutcome: A.outcome,
+            payerClaimControlNumber: A.payerClaimControlNumber,
+            ackReceivedAt: A.receivedAt,
+            ackAcceptedLineNumbers: A.acceptedLineNumbers,
+            ackRejectedLineNumbers: A.rejectedLineNumbers,
+            ackErrorCodes: A.errorCodes,
+            assignmentStatus: schema.medicaidProgramAssignment.status,
+            assignmentVersion: schema.medicaidProgramAssignment.version,
+            assignmentPayerId: schema.medicaidProgramAssignment.canonicalPayerId,
+            assignmentClassificationId:
+              schema.medicaidProgramAssignment.canonicalPayerClassificationId,
+            assignmentState: schema.medicaidProgramAssignment.serviceState,
+            assignmentEffectiveFrom: schema.medicaidProgramAssignment.effectiveFrom,
+            assignmentEffectiveTo: schema.medicaidProgramAssignment.effectiveTo,
+            assignmentUpdatedAt: schema.medicaidProgramAssignment.updatedAt,
+            submissionCreatedAt: S.createdAt,
+            adapterVersion: S.adapterVersion,
+            ackId: A.id,
+          })
+          .from(C)
+          .leftJoin(
+            schema.medicaidProgramAssignment,
+            and(
+              eq(schema.medicaidProgramAssignment.id, C.programAssignmentId),
+              eq(schema.medicaidProgramAssignment.organizationId, C.organizationId),
+              eq(schema.medicaidProgramAssignment.providerEntityId, C.providerEntityId),
+            ),
+          )
+          .leftJoin(
+            S,
+            and(
+              eq(S.medicaidClaimId, C.id),
+              eq(S.organizationId, C.organizationId),
+              eq(S.providerEntityId, C.providerEntityId),
+            ),
+          )
+          .leftJoin(
+            A,
+            and(
+              eq(A.medicaidSubmissionId, S.id),
+              eq(A.organizationId, C.organizationId),
+              eq(A.medicaidClaimId, C.id),
+            ),
+          )
+          .where(
+            and(
+              eq(C.organizationId, orgId),
+              eq(C.providerEntityId, providerEntityId),
+              eq(C.medicaidClaimControlNumber, keys.claimControlNumber),
+            ),
+          )
+          .orderBy(asc(C.id), desc(S.attemptIndex), desc(A.receivedAt));
+
+        const byClaim = new Map<
+          string,
+          {
+            base: (typeof rows)[number];
+            attempts: Map<
+              string,
+              {
+                base: (typeof rows)[number];
+                acknowledgments: Array<{
+                  kind: string;
+                  outcome: string;
+                  payerClaimControlNumber: string | null;
+                  receivedAt: string;
+                  id: string;
+                  acceptedLineNumbers: unknown;
+                  rejectedLineNumbers: unknown;
+                  errorCodes: unknown;
+                }>;
+              }
+            >;
+          }
+        >();
+        for (const row of rows) {
+          let claim = byClaim.get(row.claimId);
+          if (!claim) {
+            claim = { base: row, attempts: new Map() };
+            byClaim.set(row.claimId, claim);
+          }
+          if (!row.submissionId) continue;
+          let attempt = claim.attempts.get(row.submissionId);
+          if (!attempt) {
+            attempt = { base: row, acknowledgments: [] };
+            claim.attempts.set(row.submissionId, attempt);
+          }
+          if (row.ackId && row.ackKind && row.ackOutcome && row.ackReceivedAt) {
+            attempt.acknowledgments.push({
+              kind: row.ackKind,
+              outcome: row.ackOutcome,
+              payerClaimControlNumber: row.payerClaimControlNumber,
+              receivedAt: row.ackReceivedAt.toISOString(),
+              id: row.ackId,
+              acceptedLineNumbers: row.ackAcceptedLineNumbers,
+              rejectedLineNumbers: row.ackRejectedLineNumbers,
+              errorCodes: row.ackErrorCodes,
+            });
+          }
+        }
+
+        return [...byClaim.values()].map(({ base, attempts }): MedicaidClaimSubmissionEvidence => {
+          const attemptRows = [...attempts.values()];
+          const attemptEvidence = attemptRows.map(({ base: s, acknowledgments }) => ({
+            submissionId: s.submissionId,
+            attemptIndex: s.attemptIndex,
+            claimVersion: s.submittedClaimVersion,
+            serviceState: s.submittedServiceState,
+            channel: s.submittedChannel,
+            mcoIdSnapshot: s.submittedMcoIdSnapshot,
+            claimControlNumber: s.submittedClaimControlNumber,
+            sourceAccountRef: s.sourceAccountRef,
+            environment: s.environment,
+            vendor: s.vendor,
+            vendorTransactionId: s.vendorTransactionId,
+            payerId: s.payerId,
+            payerClassificationId: s.payerClassificationId,
+            programKind: s.programKindSnapshot,
+            assignmentId: s.assignmentId,
+            assignmentVersion: s.assignmentVersionSnapshot,
+            provenanceStatus: s.provenanceStatus,
+            result: s.result,
+            submittedAt: s.submittedAt?.toISOString() ?? null,
+            createdAt: s.submissionCreatedAt?.toISOString() ?? null,
+            adapterVersion: s.adapterVersion,
+            acknowledgments: acknowledgments.map((ack) => ({
+              id: ack.id,
+              kind: ack.kind,
+              outcome: ack.outcome,
+              payerClaimControlNumber: ack.payerClaimControlNumber,
+              receivedAt: ack.receivedAt,
+              acceptedLineNumbers: ack.acceptedLineNumbers,
+              rejectedLineNumbers: ack.rejectedLineNumbers,
+              errorCodes: ack.errorCodes,
+            })),
+          }));
+          const sourceEvidenceFingerprint = evidenceFingerprint({
+            claim: {
+              claimId: base.claimId,
+              organizationId: base.organizationId,
+              providerEntityId: base.providerEntityId,
+              claimControlNumber: base.claimControlNumber,
+              canonicalPayerId: base.canonicalPayerId,
+              programAssignmentId: base.programAssignmentId,
+              programKind: base.programKind,
+              serviceState: base.serviceState,
+              serviceFrom: base.serviceFrom.toISOString(),
+              serviceTo: base.serviceTo.toISOString(),
+              claimState: base.claimState,
+              claimVersion: base.claimVersion,
+              mcoId: base.claimMcoId,
+              replacesClaimId: base.replacesClaimId,
+              replacedByClaimId: base.replacedByClaimId,
+            },
+            assignment: {
+              id: base.programAssignmentId,
+              status: base.assignmentStatus,
+              version: base.assignmentVersion,
+              canonicalPayerId: base.assignmentPayerId,
+              classificationId: base.assignmentClassificationId,
+              serviceState: base.assignmentState,
+              effectiveFrom: base.assignmentEffectiveFrom,
+              effectiveTo: base.assignmentEffectiveTo,
+              updatedAt: base.assignmentUpdatedAt?.toISOString() ?? null,
+            },
+            attempts: attemptEvidence,
+          });
+          const qualified = attemptRows.filter(
+            ({ base: s }) =>
+              s.provenanceStatus === "verified" &&
+              s.environment === "production" &&
+              !!s.sourceAccountRef &&
+              // `s.payerId` is the attempt's own payer snapshot; `s.canonicalPayerId` is the claim's, so comparing
+              // that one to `base` compared the claim to itself and let an attempt sent to another payer qualify.
+              !!s.payerId &&
+              s.payerId === base.canonicalPayerId &&
+              !!s.payerClassificationId &&
+              s.payerClassificationId === base.assignmentClassificationId &&
+              base.assignmentStatus === "verified" &&
+              // Payer ids compare as recorded, not through M40 merges: after a payer merge a claim or assignment
+              // keyed to the retired id stops matching, which fails closed (the evidence is re-recorded against
+              // the surviving payer).
+              base.assignmentPayerId === base.canonicalPayerId &&
+              base.assignmentState === base.serviceState &&
+              s.submittedServiceState === base.serviceState &&
+              s.submittedClaimControlNumber === base.claimControlNumber &&
+              s.submittedMcoIdSnapshot === base.claimMcoId &&
+              // The current M24 routing boundary derives these two channels from the claim's server-owned
+              // MCO identity. Compare the persisted route snapshot to that same boundary; this check does not
+              // treat a null MCO as FFS program evidence (the verified assignment/classification above does).
+              s.submittedChannel === (base.claimMcoId ? "cco_clearinghouse" : "direct_mmis") &&
+              s.assignmentVersionSnapshot === base.assignmentVersion &&
+              s.programKindSnapshot === base.programKind &&
+              !!s.assignmentId &&
+              s.assignmentId === base.programAssignmentId &&
+              s.submittedClaimVersion === base.claimVersion &&
+              !!s.submittedAt &&
+              !!s.vendorTransactionId &&
+              (s.result === "accepted_sync" || s.result === "pending_async"),
+          );
+          const activeClaim =
+            base.claimState !== "REPLACED" &&
+            base.claimState !== "VOIDED" &&
+            base.claimState !== "ABANDONED" &&
+            !base.replacedByClaimId;
+          const proven = qualified.length === 1 && activeClaim;
+          return {
+            disposition: proven ? "SUBMISSION_EVIDENCE" : "SUBMISSION_UNVERIFIED",
+            claimId: proven ? base.claimId : null,
+            organizationId: base.organizationId,
+            providerEntityId: base.providerEntityId,
+            claimControlNumber: proven ? base.claimControlNumber : null,
+            canonicalPayerId: proven ? base.canonicalPayerId : null,
+            programKind: proven ? base.programKind : null,
+            serviceState: base.serviceState,
+            serviceFrom: base.serviceFrom.toISOString().slice(0, 10),
+            serviceTo: base.serviceTo.toISOString().slice(0, 10),
+            claimState: base.claimState,
+            claimVersion: base.claimVersion,
+            sourceEvidenceFingerprint,
+            // An unproven result carries no claim control, payer, lineage, submission, assignment, account or
+            // transaction reference. Scoped vendor/environment status and an opaque evidence digest remain.
+            replacesClaimId: proven ? base.replacesClaimId : null,
+            replacedByClaimId: proven ? base.replacedByClaimId : null,
+            attempts: attemptRows.map(({ base: s, acknowledgments }) => ({
+              submissionId: proven ? s.submissionId! : null,
+              attemptIndex: s.attemptIndex!,
+              claimVersion: s.submittedClaimVersion,
+              sourceAccountRef: proven ? s.sourceAccountRef : null,
+              environment: s.environment,
+              vendor: s.vendor!,
+              vendorTransactionId: proven ? s.vendorTransactionId : null,
+              payerId: proven ? s.payerId : null,
+              payerClassificationId: proven ? s.payerClassificationId : null,
+              programKind: proven ? s.programKindSnapshot : null,
+              assignmentId: proven ? s.assignmentId : null,
+              assignmentVersion: s.assignmentVersionSnapshot,
+              provenanceStatus: s.provenanceStatus!,
+              result: s.result!,
+              submittedAt: s.submittedAt?.toISOString() ?? null,
+              acknowledgments: proven
+                ? acknowledgments.map((ack) => ({
+                    id: ack.id,
+                    kind: ack.kind,
+                    outcome: ack.outcome,
+                    payerClaimControlNumber: ack.payerClaimControlNumber,
+                    receivedAt: ack.receivedAt,
+                  }))
+                : acknowledgments.map((ack) => ({
+                    id: null,
+                    kind: ack.kind,
+                    outcome: ack.outcome,
+                    payerClaimControlNumber: null,
+                    receivedAt: ack.receivedAt,
+                  })),
+            })),
+          };
+        });
       });
     },
     async patientIdForClaim(orgId, claimId) {

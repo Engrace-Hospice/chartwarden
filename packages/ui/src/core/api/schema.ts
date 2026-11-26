@@ -16402,6 +16402,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/medicaid-chc-pricing-preparations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prepare and persist source-verified local CHC hourly pricing; institutional units remain unqualified */
+        post: operations["postApiV1Medicaidchcpricingpreparations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-chc-pricing-preparations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read and source-revalidate a local CHC pricing preparation; this does not create an institutional claim */
+        get: operations["getApiV1MedicaidchcpricingpreparationsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/medicaid-claims": {
         parameters: {
             query?: never;
@@ -16621,6 +16655,108 @@ export interface paths {
         put?: never;
         /** Refresh a patient's state/MCO eligibility as of a service date (adapter-gated; §4.4) */
         post: operations["postApiV1Medicaideligibilitychecks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-enrollment-evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a provider enrollment, payer participation, transaction enrollment, or route qualification candidate as pending */
+        post: operations["postApiV1Medicaidenrollmentevidence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-enrollment-evidence/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke verified enrollment evidence with a reason and version check */
+        post: operations["postApiV1MedicaidenrollmentevidenceByIdRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-enrollment-evidence/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Independently verify provider enrollment evidence with source and secured evidence reference */
+        post: operations["postApiV1MedicaidenrollmentevidenceByIdVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-program-assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a candidate patient Medicaid program assignment; new records remain pending until independently verified */
+        post: operations["postApiV1Medicaidprogramassignments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-program-assignments/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke verified Medicaid program assignment evidence with a reason and version check */
+        post: operations["postApiV1MedicaidprogramassignmentsByIdRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-program-assignments/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Independently verify a program assignment against M40 payer identity and secured external evidence */
+        post: operations["postApiV1MedicaidprogramassignmentsByIdVerify"];
         delete?: never;
         options?: never;
         head?: never;
@@ -27055,6 +27191,125 @@ export interface paths {
         put?: never;
         /** Manually match a remittance line to a claim (§4.1) */
         post: operations["postApiV1RemittanceLinesByIdManualmatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/medicaid-era-artifacts/{artifactId}/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-evaluate a scoped staged Medicaid ERA without posting or claim transitions */
+        post: operations["postApiV1RemittanceMedicaideraartifactsByArtifactIdEvaluate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/medicaid-era-reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tenant- and provider-scoped nonposting Medicaid ERA review worklist */
+        get: operations["getApiV1RemittanceMedicaiderareviews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/medicaid-era-reviews/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Authorized PHI-minimal detail for a nonposting Medicaid ERA review */
+        get: operations["getApiV1RemittanceMedicaiderareviewsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/medicaid-era-reviews/{id}/disposition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a versioned nonposting Medicaid ERA investigation disposition */
+        post: operations["postApiV1RemittanceMedicaiderareviewsByIdDisposition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/medicaid-era-reviews/{id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Append-only investigation history for a Medicaid ERA review */
+        get: operations["getApiV1RemittanceMedicaiderareviewsByIdHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/medicaid-era-reviews/{id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Append a coded, PHI-minimal note to a Medicaid ERA investigation */
+        post: operations["postApiV1RemittanceMedicaiderareviewsByIdNotes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/medicaid-era-reviews/{id}/reassess": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reassess an evaluator-qualified Medicaid ERA review using its server-resolved source */
+        post: operations["postApiV1RemittanceMedicaiderareviewsByIdReassess"];
         delete?: never;
         options?: never;
         head?: never;
@@ -81616,6 +81871,123 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1Medicaidchcpricingpreparations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: date */
+                    serviceDate: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        preparationId: string;
+                        version: number;
+                        /** Format: date */
+                        serviceDate: string;
+                        observedMinutes: number | null;
+                        qualifiedMinutes: number | null;
+                        reimbursementHours: number | null;
+                        rateCentsPerHour: number | null;
+                        estimatedReimbursementCents: number | null;
+                        billedChargeCents: number | null;
+                        /** @constant */
+                        institutionalUnits: "unqualified";
+                        /** @constant */
+                        institutionalFormatQualified: false;
+                        verification: {
+                            /** @constant */
+                            status: "current";
+                            /** Format: uuid */
+                            preparationId: string;
+                            version: number;
+                            fingerprint: string;
+                        } | {
+                            status: "stale" | "unresolved" | "ambiguous" | "unsupported";
+                            reasonCode: string;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MedicaidchcpricingpreparationsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        preparationId: string;
+                        version: number;
+                        /** Format: date */
+                        serviceDate: string;
+                        observedMinutes: number | null;
+                        qualifiedMinutes: number | null;
+                        reimbursementHours: number | null;
+                        rateCentsPerHour: number | null;
+                        estimatedReimbursementCents: number | null;
+                        billedChargeCents: number | null;
+                        /** @constant */
+                        institutionalUnits: "unqualified";
+                        /** @constant */
+                        institutionalFormatQualified: false;
+                        verification: {
+                            /** @constant */
+                            status: "current";
+                            /** Format: uuid */
+                            preparationId: string;
+                            version: number;
+                            fingerprint: string;
+                        } | {
+                            status: "stale" | "unresolved" | "ambiguous" | "unsupported";
+                            reasonCode: string;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1Medicaidclaims: {
         parameters: {
             query?: {
@@ -81658,6 +82030,9 @@ export interface operations {
                             /** Format: date */
                             serviceTo: string;
                             mcoId: string | null;
+                            medicaidProgramKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                            canonicalPayerId: string | null;
+                            programResolutionSnapshot: unknown | null;
                             medicareClaimId: string | null;
                             rbArrangementId: string | null;
                             medicaidClaimControlNumber: string;
@@ -81668,9 +82043,8 @@ export interface operations {
                             electronicSubmissionRefusal: string | null;
                             routeReadiness: {
                                 serviceState: string;
-                                programKind: "managed_care" | "unresolved";
-                                /** @constant */
-                                programAssignmentVerified: false;
+                                programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unresolved" | "ambiguous" | "unsupported";
+                                programAssignmentVerified: boolean;
                                 requestedChannel: "cco_clearinghouse" | null;
                                 /** @constant */
                                 localPreparationAvailable: true;
@@ -81716,9 +82090,15 @@ export interface operations {
                     admissionId: string;
                     /** Format: uuid */
                     providerEntityId: string;
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).
+                     */
                     serviceFrom: string;
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).
+                     */
                     serviceTo: string;
                     /** @constant */
                     kind: "hospice_only";
@@ -81729,9 +82109,15 @@ export interface operations {
                     admissionId: string;
                     /** Format: uuid */
                     providerEntityId: string;
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).
+                     */
                     serviceFrom: string;
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).
+                     */
                     serviceTo: string;
                     /** @constant */
                     kind: "rb_only";
@@ -81744,9 +82130,15 @@ export interface operations {
                     admissionId: string;
                     /** Format: uuid */
                     providerEntityId: string;
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).
+                     */
                     serviceFrom: string;
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).
+                     */
                     serviceTo: string;
                     /** @constant */
                     kind: "combined_hospice_rb";
@@ -81779,6 +82171,9 @@ export interface operations {
                         /** Format: date */
                         serviceTo: string;
                         mcoId: string | null;
+                        medicaidProgramKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                        canonicalPayerId: string | null;
+                        programResolutionSnapshot: unknown | null;
                         medicareClaimId: string | null;
                         rbArrangementId: string | null;
                         medicaidClaimControlNumber: string;
@@ -81789,9 +82184,8 @@ export interface operations {
                         electronicSubmissionRefusal: string | null;
                         routeReadiness: {
                             serviceState: string;
-                            programKind: "managed_care" | "unresolved";
-                            /** @constant */
-                            programAssignmentVerified: false;
+                            programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unresolved" | "ambiguous" | "unsupported";
+                            programAssignmentVerified: boolean;
                             requestedChannel: "cco_clearinghouse" | null;
                             /** @constant */
                             localPreparationAvailable: true;
@@ -81853,6 +82247,9 @@ export interface operations {
                         /** Format: date */
                         serviceTo: string;
                         mcoId: string | null;
+                        medicaidProgramKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                        canonicalPayerId: string | null;
+                        programResolutionSnapshot: unknown | null;
                         medicareClaimId: string | null;
                         rbArrangementId: string | null;
                         medicaidClaimControlNumber: string;
@@ -81863,9 +82260,8 @@ export interface operations {
                         electronicSubmissionRefusal: string | null;
                         routeReadiness: {
                             serviceState: string;
-                            programKind: "managed_care" | "unresolved";
-                            /** @constant */
-                            programAssignmentVerified: false;
+                            programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unresolved" | "ambiguous" | "unsupported";
+                            programAssignmentVerified: boolean;
                             requestedChannel: "cco_clearinghouse" | null;
                             /** @constant */
                             localPreparationAvailable: true;
@@ -81953,6 +82349,9 @@ export interface operations {
                         /** Format: date */
                         serviceTo: string;
                         mcoId: string | null;
+                        medicaidProgramKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                        canonicalPayerId: string | null;
+                        programResolutionSnapshot: unknown | null;
                         medicareClaimId: string | null;
                         rbArrangementId: string | null;
                         medicaidClaimControlNumber: string;
@@ -81963,9 +82362,8 @@ export interface operations {
                         electronicSubmissionRefusal: string | null;
                         routeReadiness: {
                             serviceState: string;
-                            programKind: "managed_care" | "unresolved";
-                            /** @constant */
-                            programAssignmentVerified: false;
+                            programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unresolved" | "ambiguous" | "unsupported";
+                            programAssignmentVerified: boolean;
                             requestedChannel: "cco_clearinghouse" | null;
                             /** @constant */
                             localPreparationAvailable: true;
@@ -82027,6 +82425,9 @@ export interface operations {
                         /** Format: date */
                         serviceTo: string;
                         mcoId: string | null;
+                        medicaidProgramKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                        canonicalPayerId: string | null;
+                        programResolutionSnapshot: unknown | null;
                         medicareClaimId: string | null;
                         rbArrangementId: string | null;
                         medicaidClaimControlNumber: string;
@@ -82037,9 +82438,8 @@ export interface operations {
                         electronicSubmissionRefusal: string | null;
                         routeReadiness: {
                             serviceState: string;
-                            programKind: "managed_care" | "unresolved";
-                            /** @constant */
-                            programAssignmentVerified: false;
+                            programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unresolved" | "ambiguous" | "unsupported";
+                            programAssignmentVerified: boolean;
                             requestedChannel: "cco_clearinghouse" | null;
                             /** @constant */
                             localPreparationAvailable: true;
@@ -82131,6 +82531,7 @@ export interface operations {
                         lineNumber: number;
                         /** Format: date */
                         serviceDate: string;
+                        serviceDateTo: string | null;
                         revenueCode: string;
                         qCode: string;
                         levelOfCare: "RHC" | "CHC" | "IRC" | "GIP" | "NF_RB";
@@ -82189,6 +82590,9 @@ export interface operations {
                         /** Format: date */
                         serviceTo: string;
                         mcoId: string | null;
+                        medicaidProgramKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                        canonicalPayerId: string | null;
+                        programResolutionSnapshot: unknown | null;
                         medicareClaimId: string | null;
                         rbArrangementId: string | null;
                         medicaidClaimControlNumber: string;
@@ -82199,9 +82603,8 @@ export interface operations {
                         electronicSubmissionRefusal: string | null;
                         routeReadiness: {
                             serviceState: string;
-                            programKind: "managed_care" | "unresolved";
-                            /** @constant */
-                            programAssignmentVerified: false;
+                            programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unresolved" | "ambiguous" | "unsupported";
+                            programAssignmentVerified: boolean;
                             requestedChannel: "cco_clearinghouse" | null;
                             /** @constant */
                             localPreparationAvailable: true;
@@ -82310,6 +82713,9 @@ export interface operations {
                         /** Format: date */
                         serviceTo: string;
                         mcoId: string | null;
+                        medicaidProgramKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                        canonicalPayerId: string | null;
+                        programResolutionSnapshot: unknown | null;
                         medicareClaimId: string | null;
                         rbArrangementId: string | null;
                         medicaidClaimControlNumber: string;
@@ -82320,9 +82726,8 @@ export interface operations {
                         electronicSubmissionRefusal: string | null;
                         routeReadiness: {
                             serviceState: string;
-                            programKind: "managed_care" | "unresolved";
-                            /** @constant */
-                            programAssignmentVerified: false;
+                            programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unresolved" | "ambiguous" | "unsupported";
+                            programAssignmentVerified: boolean;
                             requestedChannel: "cco_clearinghouse" | null;
                             /** @constant */
                             localPreparationAvailable: true;
@@ -82468,6 +82873,9 @@ export interface operations {
                         /** Format: date */
                         serviceTo: string;
                         mcoId: string | null;
+                        medicaidProgramKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                        canonicalPayerId: string | null;
+                        programResolutionSnapshot: unknown | null;
                         medicareClaimId: string | null;
                         rbArrangementId: string | null;
                         medicaidClaimControlNumber: string;
@@ -82478,9 +82886,8 @@ export interface operations {
                         electronicSubmissionRefusal: string | null;
                         routeReadiness: {
                             serviceState: string;
-                            programKind: "managed_care" | "unresolved";
-                            /** @constant */
-                            programAssignmentVerified: false;
+                            programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unresolved" | "ambiguous" | "unsupported";
+                            programAssignmentVerified: boolean;
                             requestedChannel: "cco_clearinghouse" | null;
                             /** @constant */
                             localPreparationAvailable: true;
@@ -82524,9 +82931,15 @@ export interface operations {
                     admissionId: string;
                     /** Format: uuid */
                     providerEntityId: string;
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).
+                     */
                     serviceFrom: string;
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The service window (serviceFrom through serviceTo, inclusive) must not exceed 366 days; a longer window is refused with VALIDATION_FAILED (detail code MEDICAID_SERVICE_SPAN_TOO_LONG).
+                     */
                     serviceTo: string;
                 };
             };
@@ -82582,6 +82995,82 @@ export interface operations {
                             remittanceAdviceRecorded: boolean | null;
                         };
                         stateBillingPolicy: "not_applicable_to_primary_medicaid" | "unconfirmed" | "unresolved";
+                        programResponsibility: {
+                            status: "verified" | "missing" | "pending" | "rejected" | "expired" | "revoked" | "ambiguous" | "changes" | "unsupported" | "unavailable";
+                            programKind: ("ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved" | "ambiguous") | null;
+                            canonicalPayerId: string | null;
+                            canonicalPayerName: string | null;
+                            reasonCode: string;
+                        };
+                        payerAuthorizationEvidence: {
+                            clinicalDocuments: "missing" | "unverified" | "available";
+                            notification: "missing" | "unverified" | "prepared" | "sent" | "acknowledged";
+                            authorization: "missing" | "unverified" | "pending" | "approved" | "denied" | "expired" | "revoked" | "ambiguous";
+                            /** @constant */
+                            policyQualification: "unqualified";
+                            reasonCodes: string[];
+                        };
+                        enrollmentReadiness: {
+                            kind: string;
+                            status: "not_applicable" | "missing" | "pending" | "verified" | "expired" | "revoked" | "ambiguous" | "unavailable";
+                            reasonCode: string;
+                            vendorPayerId: string | null;
+                        }[];
+                        selectedClearinghouse: {
+                            status: "selected" | "missing" | "unavailable";
+                            vendor: string | null;
+                            configurationStatus: string | null;
+                        };
+                        tradingPartnerCredential: {
+                            status: "configured" | "missing" | "expired" | "future" | "partial" | "ambiguous" | "unavailable";
+                            reasonCode: string;
+                        };
+                        pricing: {
+                            status: "fully_resolved" | "partially_resolved" | "unresolved" | "ambiguous" | "unsupported" | "unavailable";
+                            /** Format: date-time */
+                            assessedAt: string;
+                            coversRequestedPeriod: boolean;
+                            requiredInputs: string[];
+                            segments: {
+                                /** Format: date */
+                                serviceFrom: string;
+                                /** Format: date */
+                                serviceTo: string;
+                                serviceCategory: ("RHC" | "CHC" | "IRC" | "GIP" | "IN_HOME_RESPITE") | null;
+                                serviceLocationKind: ("home" | "facility") | null;
+                                status: "resolved" | "partial" | "unresolved" | "ambiguous" | "unsupported";
+                                rateStatus: "qualified" | "missing" | "ambiguous" | "unverified" | "unsupported";
+                                unitBasis: ("per_day" | "per_hour") | null;
+                                rateCents: number | null;
+                                rateLocalityCode: string | null;
+                                rateEffectiveFrom: string | null;
+                                rateEffectiveTo: string | null;
+                                rateSourceKind: string | null;
+                                rateEvidenceVersion: number | null;
+                                methodologyVersion: number | null;
+                                pricingMethod: ("per_day" | "per_hour" | "fixed_contract_unit") | null;
+                                quantityConversionMethod: ("daily_units" | "hourly_prorated_minutes" | "hourly_each_hour_or_part") | null;
+                                minimumDurationMethod: ("not_applicable" | "not_required" | "minimum_minutes") | null;
+                                minimumClinicalMinutes: number | null;
+                                roundingBoundary: ("not_applicable" | "service_day" | "segment") | null;
+                                chargeCeilingMethod: ("none" | "lower_of_rate_and_usual_charge" | "contract_maximum") | null;
+                                chargeCeilings: {
+                                    method: "lower_of_rate_and_usual_charge" | "contract_maximum";
+                                    /** @description Integer cents (D8) */
+                                    amountCents: number;
+                                    boundary: "service_day" | "segment";
+                                }[];
+                                quantityStatus: "verified" | "missing" | "unverified";
+                                baseReimbursementCents: number | null;
+                                reimbursementEstimateCents: number | null;
+                                actualBilledChargeCents: number | null;
+                                reasonCodes: string[];
+                            }[];
+                            reimbursementEstimateTotalCents: number | null;
+                            actualBilledChargeTotalCents: number | null;
+                            /** @constant */
+                            submissionAvailable: false;
+                        };
                         /** @constant */
                         electronicSubmissionAvailable: false;
                         /** @constant */
@@ -82667,6 +83156,260 @@ export interface operations {
                         /** Format: uuid */
                         checkId: string;
                         outcome: "active" | "inactive" | "unknown" | "mco_assignment" | "error";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Medicaidenrollmentevidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    serviceState: string;
+                    programKind?: "ffs_open_card" | "managed_care" | "other_managed_care";
+                    /** Format: uuid */
+                    canonicalPayerId?: string;
+                    clearinghouse?: "stedi" | "claimmd" | "other";
+                    vendorAccountRef?: string;
+                    sourceEnvironment?: "test" | "production";
+                    /** Format: date */
+                    evidenceFreshUntil?: string;
+                    vendorPayerId?: string;
+                    transactionType?: "837I" | "835";
+                    evidenceKind: "state_medicaid_provider_enrollment" | "mco_participation" | "837i_enrollment" | "835_era_enrollment" | "clearinghouse_payer_route" | "institutional_format_qualification" | "payer_transport_certification" | "production_activation_approval";
+                    /** Format: date */
+                    effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** @constant */
+                        status: "pending";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicaidenrollmentevidenceByIdRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    reasonCode: "source_corrected" | "payer_withdrawal" | "coverage_changed" | "other";
+                    /** Format: uuid */
+                    providerEntityId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "revoked";
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicaidenrollmentevidenceByIdVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    verificationSource: "state_portal" | "payer_written_confirmation" | "clearinghouse_written_confirmation" | "executed_contract" | "clearinghouse_sandbox" | "internal_approval";
+                    evidenceReference: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "verified";
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Medicaidprogramassignments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    patientPayerId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    serviceState: string;
+                    programKind: "ffs_open_card" | "managed_care" | "other_managed_care" | "unsupported" | "unresolved";
+                    /** Format: uuid */
+                    canonicalPayerId?: string;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
+                    sourceKind: "manual_candidate" | "payer_document" | "state_response" | "imported";
+                    evidenceReference?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** @constant */
+                        status: "pending";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicaidprogramassignmentsByIdRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    reasonCode: "source_corrected" | "payer_withdrawal" | "coverage_changed" | "other";
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: uuid */
+                    patientId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "revoked";
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicaidprogramassignmentsByIdVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    verificationSource: "state_portal" | "payer_written_confirmation" | "executed_contract";
+                    evidenceReference: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: uuid */
+                    patientId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "verified";
+                        version: number;
                     };
                 };
             };
@@ -114393,6 +115136,295 @@ export interface operations {
                     "application/json": {
                         id: string;
                         matchState: "posted" | "reversed" | "manual_matched";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RemittanceMedicaideraartifactsByArtifactIdEvaluate: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                artifactId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "review_saved";
+                        /** Format: uuid */
+                        reviewId: string;
+                        version: number;
+                        replay: boolean;
+                    } | {
+                        status: "unavailable" | "held";
+                        reasonCode: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceMedicaiderareviews: {
+        parameters: {
+            query?: {
+                limit?: string;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            assessmentTrustStatus: "legacy_unverified" | "isolated_evaluator";
+                            assessmentSemantics: "point_in_time_nonposting" | "snapshot_unavailable" | "legacy_unverified";
+                            assessmentObservedAt: string | null;
+                            /** @constant */
+                            vendor: "claimmd";
+                            sourceEnvironment: "test" | "production" | null;
+                            canonicalPayerId: string | null;
+                            programId: string | null;
+                            decisionStatus: string;
+                            reasonCodes: string[];
+                            claimMatchStatus: string;
+                            duplicateStatus: string;
+                            workflowState: string;
+                            version: number;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceMedicaiderareviewsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        assessmentTrustStatus: "legacy_unverified" | "isolated_evaluator";
+                        assessmentSemantics: "point_in_time_nonposting" | "snapshot_unavailable" | "legacy_unverified";
+                        assessmentObservedAt: string | null;
+                        /** @constant */
+                        vendor: "claimmd";
+                        accountReference: string | null;
+                        sourceEnvironment: "test" | "production" | null;
+                        sourceDigest: string | null;
+                        canonicalPayerId: string | null;
+                        programId: string | null;
+                        assessmentVersion: string;
+                        decisionStatus: string;
+                        reasonCodes: string[];
+                        claimMatchStatus: string;
+                        duplicateStatus: string;
+                        safeSummary: {
+                            [key: string]: unknown;
+                        } | null;
+                        workflowState: string;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RemittanceMedicaiderareviewsByIdDisposition: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    state: "investigating" | "follow_up_required" | "reviewed_not_posted" | "reopened";
+                    reasonCode: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                        workflowState: string;
+                        replay: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceMedicaiderareviewsByIdHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            version: number;
+                            action: string;
+                            reasonCode: string | null;
+                            actorMembershipId: string | null;
+                            trustStatus: "legacy_unverified" | "isolated_evaluator";
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RemittanceMedicaiderareviewsByIdNotes: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    reasonCode: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                        workflowState: string;
+                        replay: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RemittanceMedicaiderareviewsByIdReassess: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "review_saved";
+                        /** Format: uuid */
+                        reviewId: string;
+                        version: number;
+                        replay: boolean;
+                    } | {
+                        status: "unavailable" | "held";
+                        reasonCode: string;
                     };
                 };
             };

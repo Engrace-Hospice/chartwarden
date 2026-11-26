@@ -125,6 +125,12 @@ let manualScenario = false;
 let postingScenario = false;
 let postingApproved = false;
 let postingExecuted = false;
+let medicaidEvaluationReply: unknown = {
+  status: "review_saved",
+  reviewId: "a0000000-0000-4000-8000-00000000000a",
+  version: 1,
+  replay: false,
+};
 async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   if (failRequests) throw new Error("synthetic network failure");
   const request = new Request(input as RequestInfo, init);
@@ -135,6 +141,14 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     path: `${path}${url.search}`,
     key: request.headers.get("Idempotency-Key"),
   });
+  if (
+    request.method === "POST" &&
+    path === `/api/v1/remittance/medicaid-era-artifacts/${STAGE}/evaluate`
+  )
+    return new Response(JSON.stringify(medicaidEvaluationReply), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
   if (path.endsWith("/matching/claims/0/decision") && request.method === "POST") {
     decisionSaved = true;
     return new Response(
@@ -498,7 +512,94 @@ afterEach(() => {
   postingScenario = false;
   postingApproved = false;
   postingExecuted = false;
+  medicaidEvaluationReply = {
+    status: "review_saved",
+    reviewId: "a0000000-0000-4000-8000-00000000000a",
+    version: 1,
+    replay: false,
+  };
   writeScript = [];
+});
+
+describe("Claim.MD source entry to nonposting Medicaid review", () => {
+  it("evaluates only the selected staged artifact and keeps a read-only reviewer on the worklist", async () => {
+    render(
+      <ApiClientProvider
+        client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}
+      >
+        <SessionProvider
+          session={{
+            userId: "synthetic-user",
+            organizationId: "synthetic-org",
+            membershipId: "synthetic-membership",
+            roles: ["billing_specialist"],
+            permissions: ["remittance.read", "remittance.match_review"],
+            isAdmin: false,
+          }}
+        >
+          <ToastProvider>
+            <MemoryRouter>
+              <ClaimMdEraReview />
+            </MemoryRouter>
+          </ToastProvider>
+        </SessionProvider>
+      </ApiClientProvider>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Review remittance from Synthetic Payer" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Evaluate for Medicaid" }));
+    await screen.findByText("A nonposting Medicaid assessment was saved for investigation.");
+
+    const evaluation = calls.find((call) => call.method === "POST");
+    expect(evaluation?.path).toBe(`/api/v1/remittance/medicaid-era-artifacts/${STAGE}/evaluate`);
+    expect(evaluation?.key).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open review worklist" })).toBeTruthy();
+    expect(calls.filter((call) => call.method === "POST")).toHaveLength(1);
+    expect(
+      screen.queryByRole("button", { name: /Post|Approve plan|Execute approved posting/i }),
+    ).toBeNull();
+  });
+
+  it.each([
+    [{ status: "held", reasonCode: "SUBMISSION_UNVERIFIED" }, "Submission evidence is incomplete."],
+    [
+      { status: "unavailable", reasonCode: "SOURCE_ARTIFACT_UNAVAILABLE" },
+      "The staged source could not be read for evaluation.",
+    ],
+  ])(
+    "shows the evaluator's held or unavailable result without claiming a saved assessment",
+    async (reply, explanation) => {
+      medicaidEvaluationReply = reply;
+      render(
+        <ApiClientProvider
+          client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}
+        >
+          <SessionProvider
+            session={{
+              userId: "synthetic-user",
+              organizationId: "synthetic-org",
+              roles: [],
+              permissions: ["remittance.read", "remittance.match_review"],
+            }}
+          >
+            <ToastProvider>
+              <MemoryRouter>
+                <ClaimMdEraReview />
+              </MemoryRouter>
+            </ToastProvider>
+          </SessionProvider>
+        </ApiClientProvider>,
+      );
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Review remittance from Synthetic Payer" }),
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "Evaluate for Medicaid" }));
+      await screen.findByText(new RegExp(explanation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+      expect(screen.queryByRole("link", { name: "Open review worklist" })).toBeNull();
+    },
+  );
 });
 
 const POSTING_REVIEWER = {

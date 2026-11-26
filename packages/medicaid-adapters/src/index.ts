@@ -38,6 +38,21 @@ export * from "./oregon";
 export * from "./oregon/launch-gateway";
 // WX-PR-011 follow-up — the pure per-line hospice claim-line segment builder.
 export * from "./line-assembly";
+// L2B — effective-date segmentation and evidence-backed service quantity primitives.
+export * from "./service-segmentation";
+export * from "./payer-authorization";
+export * from "./payer-rate-policy";
+export * from "./hospice-pricing";
+// Production-facing mapping remains fail-closed until authoritative clinical, payer, rate and route evidence exists.
+export { mapQualifiedM24ClaimToInstitutionalDocument } from "./m24-institutional-837i";
+export type {
+  M24DocumentGap,
+  M24DocumentGapCode,
+  M24DocumentResult,
+  M24InstitutionalDocument,
+  M24InstitutionalLine,
+  M24QualifiedClaimFacts,
+} from "./m24-institutional-837i";
 // D14 the WA/ID/CA/NV Phase-1 deny-stub adapters + the shared factory.
 export * from "./deny-stub";
 export * from "./deny-stub-states";

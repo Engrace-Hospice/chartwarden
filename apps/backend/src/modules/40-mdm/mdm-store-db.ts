@@ -54,6 +54,7 @@ interface NppesSyncLogRow {
 const PH = schema.externalPhysicians;
 const FAC = schema.facilities;
 const PAY = schema.payers;
+const MEDICAID_PAYER_CLASS = schema.medicaidPayerProgramClassification;
 const OVERLAY = schema.externalPhysicianOverlay;
 const PROV = schema.mdmProvisional;
 const REL = schema.entityRelationships;
@@ -108,6 +109,7 @@ function mapPayer(r: typeof PAY.$inferSelect): CanonicalFields<"payer"> {
     displayName: r.name,
     x12PayerId: r.payerId,
     kind: r.kind,
+    stateCode: r.stateCode,
   };
 }
 
@@ -150,6 +152,53 @@ export function createDbMdmStore(db: DbClient): MdmStore {
       }
       const rows = await db.select().from(PAY).where(eq(PAY.id, id)).limit(1);
       return (rows[0] ? mapPayer(rows[0]) : null) as CanonicalFields<K> | null;
+    },
+
+    async medicaidPayerProgramClassifications(
+      canonicalPayerId,
+      stateCode,
+      _serviceFrom,
+      _serviceTo,
+    ) {
+      // EVERY row for the (payer, state), deliberately not narrowed to the service window. The table is append-only,
+      // so a classification is end-dated only by a superseding row, and that superseder may lie entirely outside the
+      // window (a row open since January, superseded with an end of March, asked about for May). Drop it here and the
+      // superseded row looks current and qualifies. M24's qualifyMedicaidProgramClassification derives the superseded
+      // set from the rows it is given and does the window logic itself; this is small global reference data.
+      const rows = await db
+        .select()
+        .from(MEDICAID_PAYER_CLASS)
+        .where(
+          and(
+            eq(MEDICAID_PAYER_CLASS.canonicalPayerId, canonicalPayerId),
+            eq(MEDICAID_PAYER_CLASS.stateCode, stateCode),
+          ),
+        );
+      return rows.map((r) => ({
+        id: r.id,
+        canonicalPayerId: r.canonicalPayerId,
+        stateCode: r.stateCode,
+        classification: r.classification as
+          | "oregon_ffs"
+          | "medicaid_cco"
+          | "other_managed_care"
+          | "unsupported",
+        effectiveFrom: r.effectiveFrom,
+        effectiveTo: r.effectiveTo,
+        verificationStatus: r.verificationStatus as
+          | "unverified"
+          | "verified"
+          | "rejected"
+          | "revoked"
+          | "superseded",
+        sourceKind: r.sourceKind,
+        sourceReference: r.sourceReference,
+        supersedesId: r.supersedesId,
+        verifiedAt:
+          typeof r.verifiedAt === "string" ? r.verifiedAt : (r.verifiedAt?.toISOString() ?? null),
+        verifiedBy: r.verifiedBy,
+        recordedAt: typeof r.recordedAt === "string" ? r.recordedAt : r.recordedAt.toISOString(),
+      }));
     },
 
     async overlay<K extends MdmEntityKind>(kind: K, orgId: string, canonicalId: string) {

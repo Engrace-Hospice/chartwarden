@@ -98,6 +98,7 @@ export {
 export {
   type FacilityKindValue,
   facilityKindsForIds,
+  facilityKindsForIdsInTransaction,
   facilityPostalCodesForIds,
 } from "./facility-kind-reader";
 export { createDbBaaStore, createDbMdmRouteService, createDbMdmStore } from "./mdm-store-db";

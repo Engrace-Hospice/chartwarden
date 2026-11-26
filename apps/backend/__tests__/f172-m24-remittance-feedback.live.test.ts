@@ -31,9 +31,10 @@ import { createHash } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@chartwarden/db";
+import { createDbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { ParsedRemittanceAdvice, X12WorkerResult } from "@chartwarden/x12-835-client";
+import { eq } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
@@ -475,10 +476,12 @@ describe.skipIf(!DB_URL)(
       const SHARED_CCN = "SHARED-CCN-001";
       const MEDICARE_CLAIM_ID = "00000000-0000-0000-0000-0000000c7201";
       const MEDICAID_CLAIM_ID = "00000000-0000-0000-0000-0000000c7202";
+      const MEDICAID_SUBMISSION_ID = "00000000-0000-0000-0000-0000000c7203";
+      let m24Seams: ReturnType<typeof registerM24PublishedSeams>;
 
       beforeAll(async () => {
         registerSeam("ClaimSubmissionReader", buildM23ClaimSubmissionReader(handle.db));
-        registerM24PublishedSeams(handle.db);
+        m24Seams = registerM24PublishedSeams(handle.db);
 
         await seedMedicareClaim({
           id: MEDICARE_CLAIM_ID,
@@ -493,6 +496,749 @@ describe.skipIf(!DB_URL)(
           state: "ACK_ACCEPTED",
           controlNumber: SHARED_CCN,
         });
+        await admin.query(
+          `INSERT INTO medicaid_submission
+           (id,organization_id,medicaid_claim_id,provider_entity_id,service_state,channel,
+            medicaid_claim_control_number,attempt_index,adapter_vendor,adapter_version,result,
+            vendor_transaction_id,submitted_at)
+           VALUES ($1,$2,$3,$4,'OR','cco_clearinghouse',$5,0,'synthetic-vendor','test',
+            'accepted_sync','synthetic-tx',now())`,
+          [MEDICAID_SUBMISSION_ID, ORG_A, MEDICAID_CLAIM_ID, peA, SHARED_CCN],
+        );
+      });
+
+      it("projects a stored attempt with no provenance as unverified and hides its identities", async () => {
+        const projected = await m24Seams!.claimMatch.submissionEvidenceForLine(ORG_A, peA, {
+          claimControlNumber: SHARED_CCN,
+        });
+        expect(projected).toHaveLength(1);
+        expect(projected[0]).toMatchObject({
+          disposition: "SUBMISSION_UNVERIFIED",
+          claimId: null,
+          replacesClaimId: null,
+          replacedByClaimId: null,
+          organizationId: ORG_A,
+          providerEntityId: peA,
+          claimVersion: 1,
+          claimState: "ACK_ACCEPTED",
+          // an unproven result hides the submission and assignment identities too (slice B contract)
+          attempts: [
+            {
+              submissionId: null,
+              assignmentId: null,
+              vendorTransactionId: null,
+              payerClassificationId: null,
+              sourceAccountRef: null,
+              environment: null,
+              provenanceStatus: "unverified",
+            },
+          ],
+        });
+        expect(
+          await m24Seams!.claimMatch.submissionEvidenceForLine(ORG_B, peA, {
+            claimControlNumber: SHARED_CCN,
+          }),
+        ).toEqual([]);
+        // The promotion guard is proven below on rows that satisfy every CHECK, where only the trigger can refuse.
+        expect((await loadMedicaidClaim(MEDICAID_CLAIM_ID))?.state).toBe("ACK_ACCEPTED");
+      });
+
+      // ── M24 submission provenance (1541): the guard, and the seam's SUBMISSION_EVIDENCE path ───────────────
+      // Every row below satisfies every CHECK the verified status asks for (account, environment, payer and
+      // classification snapshots, program kind, assignment id and version, claim version, submitted_at and the
+      // vendor transaction id). A refusal can therefore only be the guard trigger, and the controls prove each
+      // statement is otherwise valid by running it as the superuser, which the guard lets through.
+      const PAYER = "00000000-0000-0000-0000-0000000fa701";
+      const CLASSIFICATION = "00000000-0000-0000-0000-0000000fc701";
+      const MCO = "00000000-0000-0000-0000-0000000fd701";
+      const REVIEWER = "33333333-3333-3333-3333-3333333333aa";
+      let scenarioSeq = 0;
+
+      /** One attempt: every field defaults to the fully qualified value, and a key breaks exactly that value. */
+      type AttemptOptions = {
+        readonly serviceState?: string;
+        readonly channel?: string;
+        readonly mcoIdSnapshot?: string | null;
+        readonly claimControlNumber?: string;
+        readonly environment?: string;
+        readonly submittedClaimVersion?: number;
+        readonly provenance?: "verified" | "unverified";
+        readonly result?: string;
+        readonly sourceAccountRef?: string | null;
+        readonly payerSnapshot?: string | null;
+        readonly classificationSnapshot?: string | null;
+        readonly programKindSnapshot?: string;
+        readonly assignmentIdSnapshot?: string | null;
+        readonly assignmentVersionSnapshot?: number;
+        readonly submittedAt?: Date | null;
+        readonly vendorTransactionId?: string | null;
+      };
+
+      type ScenarioOptions = {
+        readonly orgId?: string;
+        readonly providerEntityId?: string;
+        readonly controlNumber?: string;
+        readonly claimState?: string;
+        readonly claimReplacedBy?: string | null;
+        readonly claimPayer?: string | null;
+        /** Default true: each attempt gets one acknowledgment. False leaves the attempts free to be re-keyed. */
+        readonly acknowledged?: boolean;
+        readonly assignment?: {
+          readonly status?: string;
+          readonly payer?: string | null;
+          readonly classification?: string | null;
+          readonly state?: string;
+          readonly version?: number;
+        };
+        readonly attempts?: readonly AttemptOptions[];
+      };
+
+      /** `value` unless it was left undefined (an explicit null is a value: it breaks the field on purpose). */
+      const orDefault = <T>(value: T | undefined, fallback: T): T =>
+        value === undefined ? fallback : value;
+
+      /**
+       * A verified program assignment, a claim naming it, and one submission attempt (with one acknowledgment that
+       * carries a payer claim control number) per entry of `attempts`.
+       */
+      async function seedScenario(options: ScenarioOptions = {}) {
+        scenarioSeq += 1;
+        const orgId = options.orgId ?? ORG_A;
+        const providerEntityId = options.providerEntityId ?? peA;
+        const controlNumber = options.controlNumber ?? `CN-SEAM-${scenarioSeq}`;
+        const claimId = randomUUID();
+        const assignmentId = randomUUID();
+        const assignment = options.assignment ?? {};
+        await admin.query(
+          `INSERT INTO medicaid_program_assignment
+             (id, organization_id, patient_id, patient_payer_id, admission_id, provider_entity_id, service_state,
+              program_kind, canonical_payer_id, canonical_payer_classification_id, status, effective_from,
+              source_kind, verification_source, evidence_reference, verified_at, verified_by_membership_id,
+              recorded_by_membership_id, version)
+           VALUES ($1,$2,$3,$4,$5,$6,$11,'managed_care',$7,$8,$12,'2026-01-01','manual_candidate',
+                   'state_registry','doc:synthetic-assignment',now(),$9,$10,$13)`,
+          [
+            assignmentId,
+            orgId,
+            randomUUID(),
+            randomUUID(),
+            randomUUID(),
+            providerEntityId,
+            orDefault(assignment.payer, PAYER),
+            orDefault(assignment.classification, CLASSIFICATION),
+            REVIEWER,
+            MEMBER,
+            assignment.state ?? "OR",
+            assignment.status ?? "verified",
+            assignment.version ?? 1,
+          ],
+        );
+        await seedMedicaidClaim({
+          id: claimId,
+          orgId,
+          providerEntityId,
+          state: options.claimState ?? "ACK_ACCEPTED",
+          controlNumber,
+        });
+        // The claim replaces an earlier one (a TOB 817 names its predecessor), so an unproven result that leaked the
+        // lineage would show it.
+        const replacesClaimId = randomUUID();
+        await admin.query(
+          `UPDATE medicaid_claim
+           SET canonical_payer_id=$2, program_assignment_id=$3, medicaid_program_kind='managed_care',
+               replaced_by_claim_id=$4, tob='817', replaces_claim_id=$5, mco_id=$6
+           WHERE id=$1`,
+          [
+            claimId,
+            orDefault(options.claimPayer, PAYER),
+            assignmentId,
+            options.claimReplacedBy ?? null,
+            replacesClaimId,
+            MCO,
+          ],
+        );
+        const submissionIds: string[] = [];
+        const attempts = options.attempts ?? [{}];
+        for (const [attemptIndex, attempt] of attempts.entries()) {
+          const submissionId = randomUUID();
+          await admin.query(
+            `INSERT INTO medicaid_submission
+               (id, organization_id, medicaid_claim_id, provider_entity_id, service_state, channel,
+                mco_id_snapshot, medicaid_claim_control_number, attempt_index, adapter_vendor, adapter_version,
+                source_account_ref, source_environment, canonical_payer_id_snapshot,
+                payer_classification_id_snapshot, program_kind_snapshot, program_assignment_id_snapshot,
+                program_assignment_version_snapshot, submitted_claim_version, source_provenance_status,
+                result, vendor_transaction_id, submitted_at)
+             VALUES ($1,$2,$3,$4,$19,$20,$21,COALESCE($22::varchar,$5::varchar),$6,'synthetic-vendor','test',
+                     $14,$7,$8,$9,$15,$10,$16,$11,$12,$17,$13,$18)`,
+            [
+              submissionId,
+              orgId,
+              claimId,
+              providerEntityId,
+              controlNumber,
+              attemptIndex,
+              attempt.environment ?? "production",
+              orDefault(attempt.payerSnapshot, PAYER),
+              orDefault(attempt.classificationSnapshot, CLASSIFICATION),
+              orDefault(attempt.assignmentIdSnapshot, assignmentId),
+              attempt.submittedClaimVersion ?? 1,
+              attempt.provenance ?? "verified",
+              orDefault(attempt.vendorTransactionId, `synthetic-tx-${scenarioSeq}-${attemptIndex}`),
+              orDefault(attempt.sourceAccountRef, "synthetic-account-1"),
+              attempt.programKindSnapshot ?? "managed_care",
+              attempt.assignmentVersionSnapshot ?? 1,
+              attempt.result ?? "accepted_sync",
+              orDefault(attempt.submittedAt, new Date()),
+              attempt.serviceState ?? "OR",
+              attempt.channel ?? "cco_clearinghouse",
+              orDefault(attempt.mcoIdSnapshot, MCO),
+              attempt.claimControlNumber ?? null,
+            ],
+          );
+          if (options.acknowledged !== false) {
+            await admin.query(
+              `INSERT INTO medicaid_acknowledgment
+                 (organization_id, medicaid_claim_id, medicaid_submission_id, kind, outcome, payer_claim_control_number)
+               VALUES ($1,$2,$3,'sync_277ca','accepted',$4)`,
+              [orgId, claimId, submissionId, `PCCN-${scenarioSeq}-${attemptIndex}`],
+            );
+          }
+          submissionIds.push(submissionId);
+        }
+        return {
+          orgId,
+          providerEntityId,
+          controlNumber,
+          claimId,
+          assignmentId,
+          replacesClaimId,
+          scenarioNumber: scenarioSeq,
+          submissionIds,
+        };
+      }
+
+      /**
+       * The verified CHECK keeps a NULL account, payer, classification, assignment, time or vendor transaction out of a
+       * verified row, so the seam's own test for each is reachable only without it. This drops the CHECK for the case,
+       * removes the rows the case wrote that the CHECK would refuse (their acknowledgments first), and puts the
+       * constraint back exactly as the catalog defined it.
+       */
+      async function withVerifiedCheckDropped<T>(run: () => Promise<T>): Promise<T> {
+        const name = "medicaid_submission_verified_provenance_ck";
+        const { rows } = await admin.query<{ definition: string }>(
+          "SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conname = $1",
+          [name],
+        );
+        const definition = rows[0]?.definition;
+        if (!definition) throw new Error(`${name} is not defined`);
+        const expression = definition.replace(/^CHECK /, "");
+        await admin.query(`ALTER TABLE medicaid_submission DROP CONSTRAINT ${name}`);
+        try {
+          return await run();
+        } finally {
+          await admin.query(
+            `DELETE FROM medicaid_acknowledgment WHERE medicaid_submission_id IN
+               (SELECT id FROM medicaid_submission WHERE NOT ${expression})`,
+          );
+          await admin.query(`DELETE FROM medicaid_submission WHERE NOT ${expression}`);
+          await admin.query(`ALTER TABLE medicaid_submission ADD CONSTRAINT ${name} ${definition}`);
+        }
+      }
+
+      /** The message of a refusal, with the driver's wrapped cause (drizzle puts the Postgres text in `cause`). */
+      async function refusalOf(
+        run: () => Promise<unknown>,
+        what = "the statement",
+      ): Promise<string> {
+        try {
+          await run();
+        } catch (error) {
+          const parts: string[] = [];
+          let current: unknown = error;
+          while (current instanceof Error) {
+            parts.push(current.message);
+            current = (current as Error & { cause?: unknown }).cause;
+          }
+          return parts.join(" | ");
+        }
+        throw new Error(`${what} was expected to be refused but it succeeded`);
+      }
+
+      type AppTx = Parameters<Parameters<typeof handle.db.transaction>[0]>[0];
+      const asApp = <T>(run: (tx: AppTx) => Promise<T>) =>
+        withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, run);
+
+      type SeamEvidence = Awaited<
+        ReturnType<NonNullable<typeof m24Seams>["claimMatch"]["submissionEvidenceForLine"]>
+      >;
+      function expectUnproven(evidence: SeamEvidence, why: string): void {
+        expect(evidence, why).toHaveLength(1);
+        const [result] = evidence;
+        expect(result?.disposition, why).toBe("SUBMISSION_UNVERIFIED");
+        // An unproven result carries no identity a caller could follow (slice B contract): not the claim, its
+        // lineage, the submission, the assignment, the vendor transaction, the payer classification or the payer
+        // claim control number of an acknowledgment. Every scenario seeds each of them, so a null is a hidden value.
+        expect(result?.claimId, why).toBeNull();
+        expect(result?.claimControlNumber, why).toBeNull();
+        expect(result?.canonicalPayerId, why).toBeNull();
+        expect(result?.programKind, why).toBeNull();
+        expect(result?.replacesClaimId, why).toBeNull();
+        expect(result?.replacedByClaimId, why).toBeNull();
+        expect(result?.attempts.length, why).toBeGreaterThan(0);
+        for (const attempt of result?.attempts ?? []) {
+          expect(attempt.submissionId, why).toBeNull();
+          expect(attempt.assignmentId, why).toBeNull();
+          expect(attempt.vendorTransactionId, why).toBeNull();
+          expect(attempt.payerClassificationId, why).toBeNull();
+          expect(attempt.payerId, why).toBeNull();
+          expect(attempt.programKind, why).toBeNull();
+          expect(attempt.acknowledgments.length, why).toBeGreaterThan(0);
+          for (const acknowledgment of attempt.acknowledgments) {
+            expect(acknowledgment.payerClaimControlNumber, why).toBeNull();
+          }
+        }
+      }
+
+      it("the application role cannot promote a fully populated attempt to verified, and an update of a verified attempt keeps working", async () => {
+        const { submissionIds } = await seedScenario({
+          attempts: [{ provenance: "unverified" }],
+        });
+        const submissionId = submissionIds[0] as string;
+        const promote = () =>
+          asApp((tx) =>
+            tx
+              .update(schema.medicaidSubmission)
+              .set({ sourceProvenanceStatus: "verified" })
+              .where(eq(schema.medicaidSubmission.id, submissionId)),
+          );
+        expect(await refusalOf(promote)).toMatch(/qualified server-owned path/);
+
+        // Control: the same promotion is valid for a server-owned (non-application) path, so the refusal above was
+        // the guard and not a CHECK.
+        await admin.query(
+          "UPDATE medicaid_submission SET source_provenance_status='verified' WHERE id=$1",
+          [submissionId],
+        );
+
+        // A6: once an attempt is verified the application keeps updating it: the result, the polling schedule, the
+        // terminal time and the error detail are none of the frozen columns. (adapter_vendor and adapter_version ARE
+        // frozen on a verified row: the worker writes them after adapter.submit returns, in the same transaction as
+        // the terminalizing update, while the attempt is still unverified. A future path that verified an attempt
+        // before that write would fail with the provenance-guard error.)
+        const updated = await asApp((tx) =>
+          tx
+            .update(schema.medicaidSubmission)
+            .set({
+              result: "pending_async",
+              errorCode: "SYNTHETIC",
+              errorMessage: "synthetic polling detail",
+              nextPollAt: new Date(Date.now() + 60_000),
+              terminalAt: new Date(),
+            })
+            .where(eq(schema.medicaidSubmission.id, submissionId))
+            .returning({ id: schema.medicaidSubmission.id }),
+        );
+        expect(updated).toHaveLength(1);
+        const settled = await asApp((tx) =>
+          tx
+            .update(schema.medicaidSubmission)
+            .set({ result: "accepted_sync", nextPollAt: null, terminalAt: new Date() })
+            .where(eq(schema.medicaidSubmission.id, submissionId))
+            .returning({ id: schema.medicaidSubmission.id }),
+        );
+        expect(settled).toHaveLength(1);
+      });
+
+      // Every column the verification stands on or that says which attempt the row IS: rewriting any of them would
+      // keep the row verified while changing what it proves (the seam joins an attempt to its claim by
+      // medicaid_claim_id). The values are otherwise valid for the row (another claim of the same organization and
+      // provider entity, another provider entity of the organization, a free attempt index...), and each case runs
+      // the identical statement as the superuser right after, so a refusal can only be the guard.
+      it("the application role cannot rewrite any identity or provenance column of a verified attempt", async () => {
+        const otherClaim = await seedScenario({ attempts: [] });
+        const otherProviderEntity = (
+          await admin.query(
+            `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+             VALUES ($1,'711113','PE three','7111111137','enc','0930') RETURNING id`,
+            [ORG_A],
+          )
+        ).rows[0].id as string;
+        type SubmissionColumns = Partial<typeof schema.medicaidSubmission.$inferInsert>;
+        const frozen: readonly {
+          readonly column: string;
+          readonly key: keyof SubmissionColumns;
+          readonly value: unknown;
+        }[] = [
+          { column: "id", key: "id", value: randomUUID() },
+          { column: "organization_id", key: "organizationId", value: ORG_B },
+          { column: "medicaid_claim_id", key: "medicaidClaimId", value: otherClaim.claimId },
+          { column: "provider_entity_id", key: "providerEntityId", value: otherProviderEntity },
+          { column: "service_state", key: "serviceState", value: "WA" },
+          { column: "channel", key: "channel", value: "direct_mmis" },
+          { column: "mco_id_snapshot", key: "mcoIdSnapshot", value: randomUUID() },
+          {
+            column: "medicaid_claim_control_number",
+            key: "medicaidClaimControlNumber",
+            value: "CN-REWRITTEN",
+          },
+          { column: "attempt_index", key: "attemptIndex", value: 7 },
+          { column: "adapter_vendor", key: "adapterVendor", value: "another-vendor" },
+          { column: "adapter_version", key: "adapterVersion", value: "another" },
+          {
+            column: "source_provenance_status",
+            key: "sourceProvenanceStatus",
+            value: "unverified",
+          },
+          { column: "source_account_ref", key: "sourceAccountRef", value: "another-account" },
+          { column: "source_environment", key: "sourceEnvironment", value: "test" },
+          {
+            column: "canonical_payer_id_snapshot",
+            key: "canonicalPayerIdSnapshot",
+            value: randomUUID(),
+          },
+          {
+            column: "payer_classification_id_snapshot",
+            key: "payerClassificationIdSnapshot",
+            value: randomUUID(),
+          },
+          { column: "program_kind_snapshot", key: "programKindSnapshot", value: "unsupported" },
+          {
+            column: "program_assignment_id_snapshot",
+            key: "programAssignmentIdSnapshot",
+            value: randomUUID(),
+          },
+          {
+            column: "program_assignment_version_snapshot",
+            key: "programAssignmentVersionSnapshot",
+            value: 9,
+          },
+          { column: "submitted_claim_version", key: "submittedClaimVersion", value: 9 },
+          { column: "submitted_at", key: "submittedAt", value: new Date("2020-01-01T00:00:00Z") },
+          { column: "vendor_transaction_id", key: "vendorTransactionId", value: "another-tx" },
+        ];
+        for (const { column, key, value } of frozen) {
+          const { submissionIds } = await seedScenario({ attempts: [{}], acknowledged: false });
+          const submissionId = submissionIds[0] as string;
+          const refusal = await refusalOf(
+            () =>
+              asApp((tx) =>
+                tx
+                  .update(schema.medicaidSubmission)
+                  .set({ [key]: value } as SubmissionColumns)
+                  .where(eq(schema.medicaidSubmission.id, submissionId)),
+              ),
+            `rewriting ${column} of a verified attempt`,
+          );
+          expect(refusal, column).toMatch(/qualified server-owned path/);
+          // Control: the same change is valid for a server-owned (non-application) path.
+          const control = await admin.query(
+            `UPDATE medicaid_submission SET ${column}=$2 WHERE id=$1`,
+            [submissionId, value],
+          );
+          expect(control.rowCount, `control: ${column} outside the app role`).toBe(1);
+        }
+      });
+
+      it("the application role cannot insert a verified attempt", async () => {
+        const { claimId, assignmentId, controlNumber } = await seedScenario({ attempts: [] });
+        const verifiedAttempt = (vendorTransactionId: string) => ({
+          organizationId: ORG_A,
+          medicaidClaimId: claimId,
+          providerEntityId: peA,
+          serviceState: "OR",
+          channel: "cco_clearinghouse",
+          medicaidClaimControlNumber: controlNumber,
+          adapterVendor: "synthetic-vendor",
+          adapterVersion: "test",
+          sourceAccountRef: "synthetic-account-1",
+          sourceEnvironment: "production",
+          canonicalPayerIdSnapshot: PAYER,
+          payerClassificationIdSnapshot: CLASSIFICATION,
+          programKindSnapshot: "managed_care",
+          programAssignmentIdSnapshot: assignmentId,
+          programAssignmentVersionSnapshot: 1,
+          submittedClaimVersion: 1,
+          sourceProvenanceStatus: "verified",
+          result: "accepted_sync" as const,
+          vendorTransactionId,
+          submittedAt: new Date(),
+        });
+        expect(
+          await refusalOf(() =>
+            asApp((tx) =>
+              tx.insert(schema.medicaidSubmission).values(verifiedAttempt("synthetic-app-insert")),
+            ),
+          ),
+        ).toMatch(/qualified server-owned path/);
+        // Control: the identical row is valid when written outside the application role.
+        const { rows } = await admin.query(
+          `INSERT INTO medicaid_submission
+             (organization_id, medicaid_claim_id, provider_entity_id, service_state, channel,
+              medicaid_claim_control_number, adapter_vendor, adapter_version, source_account_ref,
+              source_environment, canonical_payer_id_snapshot, payer_classification_id_snapshot,
+              program_kind_snapshot, program_assignment_id_snapshot, program_assignment_version_snapshot,
+              submitted_claim_version, source_provenance_status, result, vendor_transaction_id, submitted_at)
+           VALUES ($1,$2,$3,'OR','cco_clearinghouse',$4,'synthetic-vendor','test','synthetic-account-1',
+                   'production',$5,$6,'managed_care',$7,1,1,'verified','accepted_sync','synthetic-super-insert',now())
+           RETURNING id`,
+          [ORG_A, claimId, peA, controlNumber, PAYER, CLASSIFICATION, assignmentId],
+        );
+        expect(rows).toHaveLength(1);
+      });
+
+      // The verified CHECK, not the guard: the superuser passes the guard (it only constrains chartwarden_app), so a
+      // refusal here can only be the CHECK. A NULL would pass `col > 0` (NULL is not false), hence the IS NOT NULL.
+      it("a verified attempt cannot have its assignment version snapshot nulled or set to zero (the CHECK refuses it)", async () => {
+        const { submissionIds } = await seedScenario({ attempts: [{}], acknowledged: false });
+        const submissionId = submissionIds[0] as string;
+        const setSnapshot = (value: number | null) =>
+          admin.query(
+            "UPDATE medicaid_submission SET program_assignment_version_snapshot=$2 WHERE id=$1",
+            [submissionId, value],
+          );
+        for (const value of [null, 0]) {
+          const refusal = await refusalOf(
+            () => setSnapshot(value),
+            `setting the snapshot to ${value}`,
+          );
+          expect(refusal, `${value}`).toMatch(/medicaid_submission_verified_provenance_ck/);
+          expect(refusal, `${value}`).not.toMatch(/qualified server-owned path/);
+        }
+        // Control: the same statement with a positive version is valid, so the refusals above were the CHECK.
+        expect((await setSnapshot(2)).rowCount).toBe(1);
+      });
+
+      it("a fully verified production attempt on the exact claim version is SUBMISSION_EVIDENCE with its identities", async () => {
+        const scenario = await seedScenario();
+        const evidence = await m24Seams!.claimMatch.submissionEvidenceForLine(ORG_A, peA, {
+          claimControlNumber: scenario.controlNumber,
+        });
+        expect(evidence).toHaveLength(1);
+        expect(evidence[0]).toMatchObject({
+          disposition: "SUBMISSION_EVIDENCE",
+          claimId: scenario.claimId,
+          replacesClaimId: scenario.replacesClaimId,
+          replacedByClaimId: null,
+          organizationId: ORG_A,
+          providerEntityId: peA,
+          canonicalPayerId: PAYER,
+          programKind: "managed_care",
+          claimVersion: 1,
+          attempts: [
+            {
+              submissionId: scenario.submissionIds[0],
+              assignmentId: scenario.assignmentId,
+              vendorTransactionId: `synthetic-tx-${scenario.scenarioNumber}-0`,
+              payerClassificationId: CLASSIFICATION,
+              environment: "production",
+              provenanceStatus: "verified",
+              sourceAccountRef: "synthetic-account-1",
+              acknowledgments: [{ payerClaimControlNumber: `PCCN-${scenario.scenarioNumber}-0` }],
+            },
+          ],
+        });
+      });
+
+      // ── One refusal per qualification predicate of the seam ─────────────────────────────────────────────────
+      // Each case builds the fully qualified scenario (the test above proves it is SUBMISSION_EVIDENCE) and breaks
+      // exactly one thing. The predicates, in the order of the seam's `qualified` filter and then its claim tests:
+      //   attempt: provenance verified, production environment, source account, result accepted or pending_async,
+      //     submitted time, vendor transaction id, service state/channel/MCO/control snapshots exact, submitted at
+      //     the claim version, assignment snapshot present and
+      //     equal to the claim's assignment, assignment version equal to the assignment's, program kind snapshot
+      //     equal to the claim's, payer snapshot equal to the claim's payer, classification snapshot present and
+      //     equal to the assignment's
+      //   assignment: verified, payer equal to the claim's, state equal to the claim's service state
+      //   claim: names a payer, state not REPLACED / VOIDED / ABANDONED, no successor
+      //   result: exactly one attempt qualifies
+      // The cases marked `dropsVerifiedCheck` break a column the verified CHECK would not let a verified row hold
+      // NULL, so the CHECK is out of the way for that case only. "names a payer", "assignment snapshot present" and
+      // "classification snapshot present" are each also implied by the equality test beside them unless both sides
+      // are NULL, which is how those cases isolate them.
+      const OTHER_PAYER = "00000000-0000-0000-0000-0000000fa702";
+      const OTHER_CLASSIFICATION = "00000000-0000-0000-0000-0000000fc702";
+      const OTHER_ASSIGNMENT = "00000000-0000-0000-0000-0000000fb702";
+      const SUCCESSOR_CLAIM = "00000000-0000-0000-0000-0000000c7fff";
+      type RefusalCase = {
+        readonly predicate: string;
+        readonly options: ScenarioOptions;
+        readonly dropsVerifiedCheck?: true;
+      };
+      const REFUSALS: readonly RefusalCase[] = [
+        {
+          predicate: "attempt service state matches the claim",
+          options: { attempts: [{ serviceState: "WA" }] },
+        },
+        {
+          predicate: "attempt channel matches the claim program route",
+          options: { attempts: [{ channel: "direct_mmis" }] },
+        },
+        {
+          predicate: "attempt MCO snapshot matches the claim",
+          options: { attempts: [{ mcoIdSnapshot: "00000000-0000-0000-0000-00000000ffff" }] },
+        },
+        {
+          predicate: "attempt control number matches the claim",
+          options: { attempts: [{ claimControlNumber: "CN-OTHER" }] },
+        },
+        {
+          predicate: "attempt provenance is verified",
+          options: { attempts: [{ provenance: "unverified" }] },
+        },
+        {
+          predicate: "attempt environment is production",
+          options: { attempts: [{ environment: "test" }] },
+        },
+        {
+          predicate: "attempt names a source account",
+          options: { attempts: [{ sourceAccountRef: null }] },
+          dropsVerifiedCheck: true,
+        },
+        {
+          predicate: "attempt result: pending",
+          options: { attempts: [{ result: "pending" }] },
+        },
+        {
+          predicate: "attempt result: rejected_sync",
+          options: { attempts: [{ result: "rejected_sync" }] },
+        },
+        {
+          predicate: "attempt result: transport_failure",
+          options: { attempts: [{ result: "transport_failure" }] },
+        },
+        {
+          predicate: "attempt result: timeout",
+          options: { attempts: [{ result: "timeout" }] },
+        },
+        {
+          predicate: "attempt result: cancelled",
+          options: { attempts: [{ result: "cancelled" }] },
+        },
+        {
+          predicate: "attempt carries a submitted time",
+          options: { attempts: [{ submittedAt: null }] },
+          dropsVerifiedCheck: true,
+        },
+        {
+          predicate: "attempt carries a vendor tx id",
+          options: { attempts: [{ vendorTransactionId: null }] },
+          dropsVerifiedCheck: true,
+        },
+        {
+          predicate: "attempt was submitted at claim version",
+          options: { attempts: [{ submittedClaimVersion: 2 }] },
+        },
+        {
+          predicate: "attempt names an assignment",
+          options: { attempts: [{ assignmentIdSnapshot: null }] },
+          dropsVerifiedCheck: true,
+        },
+        {
+          predicate: "attempt assignment is the claim's",
+          options: { attempts: [{ assignmentIdSnapshot: OTHER_ASSIGNMENT }] },
+        },
+        {
+          predicate: "attempt assignment version is current",
+          options: { assignment: { version: 2 } },
+        },
+        {
+          predicate: "attempt program kind is the claim's",
+          options: { attempts: [{ programKindSnapshot: "ffs_open_card" }] },
+        },
+        {
+          predicate: "attempt payer is the claim's payer",
+          options: { attempts: [{ payerSnapshot: OTHER_PAYER }] },
+        },
+        {
+          predicate: "attempt names a payer classification",
+          options: {
+            assignment: { classification: null },
+            attempts: [{ classificationSnapshot: null }],
+          },
+          dropsVerifiedCheck: true,
+        },
+        {
+          predicate: "attempt classification is assignment's",
+          options: { attempts: [{ classificationSnapshot: OTHER_CLASSIFICATION }] },
+        },
+        { predicate: "assignment is verified", options: { assignment: { status: "revoked" } } },
+        {
+          predicate: "assignment payer is the claim's payer",
+          options: { assignment: { payer: OTHER_PAYER } },
+        },
+        {
+          predicate: "assignment state is the claim's state",
+          options: { assignment: { state: "WA" } },
+        },
+        {
+          predicate: "claim names a payer",
+          options: {
+            claimPayer: null,
+            assignment: { payer: null },
+            attempts: [{ payerSnapshot: null }],
+          },
+          dropsVerifiedCheck: true,
+        },
+        {
+          predicate: "claim is not REPLACED",
+          options: { claimState: "REPLACED" },
+        },
+        { predicate: "claim is not VOIDED", options: { claimState: "VOIDED" } },
+        { predicate: "claim is not ABANDONED", options: { claimState: "ABANDONED" } },
+        { predicate: "claim has no successor", options: { claimReplacedBy: SUCCESSOR_CLAIM } },
+        { predicate: "exactly one attempt qualifies", options: { attempts: [{}, {}] } },
+      ];
+
+      it.each(REFUSALS)(
+        "breaking only $predicate is SUBMISSION_UNVERIFIED and exposes no identity",
+        async ({ predicate, options, dropsVerifiedCheck }) => {
+          const evidenceFor = async () => {
+            const scenario = await seedScenario(options);
+            return m24Seams!.claimMatch.submissionEvidenceForLine(ORG_A, peA, {
+              claimControlNumber: scenario.controlNumber,
+            });
+          };
+          const evidence = dropsVerifiedCheck
+            ? await withVerifiedCheckDropped(evidenceFor)
+            : await evidenceFor();
+          expectUnproven(evidence, predicate);
+        },
+      );
+
+      it("evidence is scoped to the provider entity: the same control number under another provider entity of the same org is a different claim", async () => {
+        const peA2 = (
+          await admin.query(
+            `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+             VALUES ($1,'711112','PE two','7111111129','enc','0930') RETURNING id`,
+            [ORG_A],
+          )
+        ).rows[0].id as string;
+        const shared = "CN-SEAM-CROSS-PE";
+        const first = await seedScenario({ controlNumber: shared });
+        const second = await seedScenario({
+          controlNumber: shared,
+          providerEntityId: peA2,
+          attempts: [{ environment: "test" }],
+        });
+        const forFirst = await m24Seams!.claimMatch.submissionEvidenceForLine(ORG_A, peA, {
+          claimControlNumber: shared,
+        });
+        expect(forFirst).toHaveLength(1);
+        expect(forFirst[0]).toMatchObject({
+          disposition: "SUBMISSION_EVIDENCE",
+          claimId: first.claimId,
+          providerEntityId: peA,
+        });
+        const forSecond = await m24Seams!.claimMatch.submissionEvidenceForLine(ORG_A, peA2, {
+          claimControlNumber: shared,
+        });
+        expectUnproven(
+          forSecond,
+          "the other provider entity's claim has only a test-environment attempt",
+        );
+        expect(forSecond[0]?.providerEntityId).toBe(peA2);
+        expect(second.claimId).not.toBe(first.claimId);
       });
 
       function buildIngestService() {

@@ -63,6 +63,8 @@ export function createMdmEntityProvider(store: MdmStore): MdmEntityProvider {
     resolvePharmacy: (orgId, id) => resolveKind(orgId, "pharmacy", id),
     resolveReferralSource: (orgId, id) => resolveKind(orgId, "referral_source", id),
     resolvePayer: (orgId, id) => resolveKind(orgId, "payer", id),
+    medicaidPayerProgramClassifications: (_orgId, payerId, stateCode, serviceFrom, serviceTo) =>
+      store.medicaidPayerProgramClassifications(payerId, stateCode, serviceFrom, serviceTo),
     resolveDmeVendor: (orgId, id) => resolveKind(orgId, "dme_vendor", id),
     resolveFuneralHome: (orgId, id) => resolveKind(orgId, "funeral_home", id),
 

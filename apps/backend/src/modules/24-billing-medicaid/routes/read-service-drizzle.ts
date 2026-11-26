@@ -93,6 +93,9 @@ export function buildDrizzleM24ReadService(
     serviceFrom: day(r.serviceFrom),
     serviceTo: day(r.serviceTo),
     mcoId: r.mcoId ?? null,
+    medicaidProgramKind: r.medicaidProgramKind ?? null,
+    canonicalPayerId: r.canonicalPayerId ?? null,
+    programResolutionSnapshot: r.programResolutionSnapshot ?? null,
     medicareClaimId: r.medicareClaimId ?? null,
     rbArrangementId: r.rbArrangementId ?? null,
     medicaidClaimControlNumber: r.medicaidClaimControlNumber,
@@ -100,13 +103,22 @@ export function buildDrizzleM24ReadService(
     version: r.version,
     validationRunIdLatest: r.validationRunIdLatest ?? null,
     eligibilityOutcomeSnapshot: r.eligibilityOutcomeSnapshot ?? null,
+    // `programAssignmentVerified` reads the assembly-time snapshot, not the assignment's live status (see the write
+    // service's toClaimView): revoking an assignment does not reach a claim already assembled.
     electronicSubmissionRefusal:
-      electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState), r.mcoId ?? null)
-        ?.message ?? null,
+      electronicSubmissionRefusal(
+        r.serviceState,
+        isGatewayBound(r.serviceState),
+        r.mcoId ?? null,
+        r.medicaidProgramKind ?? "unresolved",
+        (r.programResolutionSnapshot as { status?: unknown } | null)?.status === "verified",
+      )?.message ?? null,
     routeReadiness: medicaidClaimRouteReadiness(
       r.serviceState,
       r.mcoId ?? null,
       isGatewayBound(r.serviceState),
+      r.medicaidProgramKind ?? "unresolved",
+      (r.programResolutionSnapshot as { status?: unknown } | null)?.status === "verified",
     ),
     createdAt: iso(r.createdAt),
     updatedAt: iso(r.updatedAt),
@@ -234,6 +246,7 @@ export function buildDrizzleM24ReadService(
             medicaidClaimId: r.medicaidClaimId,
             lineNumber: r.lineNumber,
             serviceDate: day(r.serviceDate),
+            serviceDateTo: r.serviceDateTo ? day(r.serviceDateTo) : null,
             revenueCode: r.revenueCode,
             qCode: r.qCode,
             levelOfCare: r.levelOfCare,

@@ -1,6 +1,6 @@
 // M35-T04 — §4.13/§4.14/§8.7 Stripe adapter pure cores (verifier / redactor / idempotency / dispatcher /
 // webhook ingestion). Pure, no DB — in-memory fakes for every injected port.
-import { createHmac } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import type { OrgId, StripeApiCallAuditId } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import { createStripeClient, failClosedStripeHttpPort } from "../src/stripe/client";
@@ -54,7 +54,7 @@ describe("redactForAudit (§8.7)", () => {
 
   it("redacts secret-shaped VALUES regardless of key", () => {
     const out = redactForAudit({
-      note: "the key is sk_live_ABCDEF1234567890",
+      note: `sk_live_${randomBytes(24).toString("hex")}`,
       ok: "plain",
     }) as Record<string, unknown>;
     expect(out.note).toBe(REDACTED);
