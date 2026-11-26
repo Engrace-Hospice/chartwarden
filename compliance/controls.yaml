@@ -1535,8 +1535,9 @@ controls:
     soc2: ["CC7.2", "CC4.1"]
     status: implemented
     evidence:
-      # CW-MON-01 reviews this trail (scheduled detections and alerts) and reads it through one platform-login grant: SELECT on six
-      # audit_event columns, context included, across tenants (BYPASSRLS), bounded by an organization_id IS NULL predicate (migration 1561).
+      # CW-MON-01 reviews this trail (scheduled detections and alerts). Its org lane reads under RLS as chartwarden_app; its org-less lane
+      # reads the sign-in events through three bounded SECURITY DEFINER readers (migration 1566): the platform login has no SELECT on audit_event
+      # (closed months stay readable and detachable through the audit.archive functions; see the CW-MON-01 gap).
       - script: test:m4:audit-integrity:live
       - script: test:m4:read-audit:live
       # Every SECURITY DEFINER function, the audit-writing ones included, ends its search_path in pg_temp, so a temp table named
@@ -2272,8 +2273,13 @@ controls:
       - file: apps/backend/src/bootstrap/security-alert-sink.ts
       - file: apps/backend/__tests__/security-review-job.test.ts
       - file: apps/backend/__tests__/security-alert-sink.test.ts
-      # The platform carrier reads six audit_event columns for the org-less lane (migration 1561, re-granted by the provisioner).
-      - file: packages/db/migrations/1561_m4_security_review_platform_audit_read.sql
+      # The platform login holds no SELECT on audit_event: the org-less lane reads through three bounded SECURITY DEFINER readers
+      # (migration 1566, which revokes the column grant migration 1561 gave it; the provisioner grants EXECUTE and revokes it again on
+      # every run). The live suite proves the readers return the rules' inputs only, every bound is refused with 22023, a direct read is
+      # refused with 42501, the tenant pool cannot execute them, and the owner role itself sees org-less rows only. The unit test proves
+      # the platform scope's SQL never names audit_event.
+      - file: packages/db/migrations/1566_m4_security_review_platform_audit_reader.sql
+      - file: packages/audit/__tests__/security-review-reader.test.ts
       - file: scripts/db/provision-runtime-roles.ts
       # check:boot:platform asserts, with a queue connection, that the backend logs the review worker among the constructed M4 audit
       # workers (a bound worker is not a computing one).
@@ -2299,11 +2305,21 @@ controls:
         rows; a forgery that looks like a real run cannot be told from one). Only active and suspended
         organizations are reviewed, so the tenant-offboarding shred event (data.destruction_certified) is not. Delivery is at least once
         (it happens inside the run's transaction, so a failure after a send re-sends it). Host, edge and Postgres (pgaudit) logs are not
-        reviewed (docs/compliance/AISOC_INTEGRATION.md). The platform login now holds SELECT on six audit_event columns across tenants,
-        context included (it is BYPASSRLS, so only the review's own organization_id IS NULL predicate, proved by the live suite, keeps it
-        to org-less rows), and a tenant row's context can hold short free text the denylist does not catch (the context.reason of an
-        account deactivation or organization change, a collaborator's patientId); narrowing it to a SECURITY DEFINER reader is the follow-up. The org-less platform-lane review
-        records are in no hash-chain seal (the chain is per organization). The per-scope advisory lock is takeable by any database role
+        reviewed (docs/compliance/AISOC_INTEGRATION.md). The platform login (BYPASSRLS) holds no SELECT on audit_event: the org-less
+        lane reads through three SECURITY DEFINER readers (migration 1566): the signals reader returns org-less sign-in rows only, as ids,
+        an instant and three context keys, within a 25 hour window, 48 hours back and a row cap; the cursor and alert-memory readers
+        return keys of the review's own org-less records. They are owned by a NOLOGIN role that row security confines to org-less rows,
+        so no tenant row or free text can reach the review through them. What remains: the org-less authentication rows themselves (an
+        email hash and a /24 or /48 network, which an alert already carries; whether portal or caregiver sign-ins reach
+        m2.auth.login_failed is not verified, so "no PHI" is claimed for workforce sign-ins only), and EXECUTE on the readers for the
+        platform carrier. NOT closed by this control: the platform carrier still holds EXECUTE on the audit.archive job's SECURITY
+        DEFINER functions (migration 0432 and 1053). audit_archive_read_batch returns whole rows (before and after included) of every
+        tenant's closed monthly partitions, and audit_archive_detach detaches a closed partition from audit_event (kept, never dropped)
+        with no audit row of its own and a legal-hold guard that trusts a caller argument, so "the platform login cannot read tenant
+        audit rows" is not true of closed months and the same login can take a closed month out of every audit_event scan (integrity and
+        availability, HIPAA 164.312(c)(1)); a carrier of its own for audit.archive is a separate follow-up. Migration 1566 is a contract migration that deploy.sh holds for an operator, so a database
+        it has not been applied to still carries the column grant of 1561 (six audit_event columns, context included, across tenants).
+        The org-less platform-lane review records are in no hash-chain seal (the chain is per organization). The per-scope advisory lock is takeable by any database role
         (a held lock makes the scope skip; the job logs each skip but stays green). A second-factor removal by a session with no bound
         organization is written org-less and is seen by neither lane. Break-glass already pages the tenant's compliance officer
         in-app (GAP-010); this review is the second line, to the ops path.

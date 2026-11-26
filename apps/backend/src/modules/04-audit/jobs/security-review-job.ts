@@ -4,7 +4,8 @@
 // Until this job, M4 recorded audit events and nothing read them. Every tick (a cron is not a request) this job:
 //   · PLATFORM LANE — once: reviews the org-less authentication events (failed sign-ins, lockouts, successful sign-ins) that
 //     no tenant context can read, under an audited `withPlatformContext` (job id `m4.security_review`, reading
-//     `organization_id IS NULL` rows only, through the platform login's column grant);
+//     `organization_id IS NULL` rows only, through three bounded SECURITY DEFINER readers: the platform login has no SELECT
+//     on `audit_event` itself, migration 1566);
 //   · ORG LANE — for every active or suspended organization: reviews that organization's events under its own `withOrgContext`
 //     (`systemOrgContext`: a null system actor, never an ambient request actor), so RLS scopes every read.
 // Each run evaluates the rules in `@chartwarden/audit` (`SECURITY_RULES`), raises every NEW finding through the alert sink
