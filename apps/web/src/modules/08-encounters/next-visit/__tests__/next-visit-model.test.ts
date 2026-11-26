@@ -33,6 +33,7 @@ const visit = (over: Partial<UpcomingVisit> & Pick<UpcomingVisit, "id">): Upcomi
   status: "published",
   visitPurpose: "routine_visit",
   scheduledStartedAt: at(3),
+  serviceDate: at(3).slice(0, 10),
   ...over,
 });
 
@@ -330,14 +331,20 @@ describe("scheduleNextVisitHref", () => {
 });
 
 describe("visitByOf", () => {
-  it("names the discipline a scheduled visit is with, the physician or NP as the plan entry names it", () => {
-    expect(visitByOf("routine_visit")).toBe("rn");
+  it("names the discipline of a visit whose purpose only one discipline makes, the physician or NP as the plan entry names it", () => {
+    expect(visitByOf("recert")).toBe("rn");
     expect(visitByOf("aide_poc")).toBe("chha");
     expect(visitByOf("f2f")).toBe("md_np");
     expect(visitByOf("future_purpose")).toBe("");
   });
 
-  it("names, for every purpose packages/scheduling schedules, the first discipline it accepts for that purpose", () => {
+  it("leaves the discipline unstated when the purpose is one several disciplines make (a routine visit may be the LPN's)", () => {
+    for (const purpose of ["routine_visit", "prn", "pronouncement", "huv1", "huv2", "sfv"]) {
+      expect(visitByOf(purpose), purpose).toBe("");
+    }
+  });
+
+  it("agrees, for every purpose packages/scheduling schedules, with the disciplines it accepts: named when they are one choice, unstated otherwise", () => {
     const source = readFileSync(
       join(__dirname, "../../../../../../../packages/scheduling/src/policy.ts"),
       "utf8",
@@ -345,10 +352,15 @@ describe("visitByOf", () => {
     const block = source.match(
       /export const VISIT_PURPOSE_DISCIPLINES[^=]*=\s*\{([\s\S]*?)\n\} as const;/,
     )?.[1];
-    const entries = [...(block ?? "").matchAll(/^ {2}(\w+): \["([a-z]+)"/gm)];
+    const entries = [...(block ?? "").matchAll(/^ {2}(\w+): \[([^\]]*)\]/gm)];
     expect(entries.length).toBeGreaterThan(0);
-    for (const [, purpose, first] of entries) {
-      expect(visitByOf(purpose as string), purpose).toBe(first === "md" ? "md_np" : first);
+    for (const [, purpose, list] of entries) {
+      const choices = new Set(
+        [...(list as string).matchAll(/"([a-z]+)"/g)].map(([, d]) =>
+          d === "md" || d === "np" ? "md_np" : (d as string),
+        ),
+      );
+      expect(visitByOf(purpose as string), purpose).toBe(choices.size === 1 ? [...choices][0] : "");
     }
   });
 });

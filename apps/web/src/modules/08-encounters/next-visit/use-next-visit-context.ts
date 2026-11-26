@@ -54,6 +54,7 @@ async function readVisits(
         status: v.status,
         visitPurpose: v.visitPurpose,
         scheduledStartedAt: v.scheduledStartedAt,
+        serviceDate: v.serviceDate,
       })),
     };
   } catch {
