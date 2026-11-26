@@ -503,6 +503,7 @@
     "arch:vuln-allowlist": "bun run scripts/check-vuln-allowlist.ts",
     "arch:docling-lock": "bun run scripts/check-docling-lock.ts",
     "arch:compliance": "bun run scripts/check-compliance-controls.ts",
+    "arch:vendor-agreements": "bun run scripts/check-vendor-agreements.ts",
     "arch:branch-protection": "bun run scripts/check-branch-protection.ts",
     "arch:hooks-installed": "bun run scripts/check-hooks-installed.ts",
     "ops:verify-branch-protection": "bun run scripts/verify-branch-protection.ts",

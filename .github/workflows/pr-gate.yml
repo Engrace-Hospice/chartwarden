@@ -92,3 +92,5 @@ jobs:
         run: bun run arch:branch-protection
       - name: No committed conflict markers
         run: bun run arch:merge-artifacts
+      - name: Vendor-agreement register
+        run: bun run arch:vendor-agreements
