@@ -10,8 +10,8 @@
 --     and `m4-security-review.live.test.ts` proves a tenant's rows are never returned by the platform lane. The column list is the
 --     database-side bound.
 --   · `context` of a TENANT row is therefore readable by the platform login in principle, and it is not only ids, hashes and
---     codes: the audit denylist catches named fields, not every free-text field, so a row can hold a short `reason` (break-glass,
---     destruction) or a `patientId` (a collaborator invitation). The platform login already reads cross-tenant tables
+--     codes: the audit denylist catches named fields, not every free-text field, so a row can hold a short `reason` (the
+--     `context.reason` of m2.user.deactivated and m2.organization.*) or a `patientId` (a collaborator invitation). The platform login already reads cross-tenant tables
 --     (`scripts/db/provision-runtime-roles.ts`), so this is an increment, not a new class of access, but it is not tightly
 --     bounded. The grant is recorded in `compliance/controls.yaml` (CW-MON-01); a SECURITY DEFINER reader that returns only the
 --     org-less authentication rows and the three scalar keys the review needs is the follow-up that would bound it.

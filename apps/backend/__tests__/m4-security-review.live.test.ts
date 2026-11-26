@@ -419,7 +419,8 @@ describe.skipIf(!DB_URL)("M4 security review of the audit trail — LIVE Postgre
         context: { ipPrefix: "192.0.2.0/24", emailHash: `a${i}`.padEnd(32, "0") },
       });
     }
-    for (const [i, prefix] of ["198.51.100.0/24", "198.51.101.0/24", "198.51.102.0/24"].entries()) {
+    // three networks, all in the RFC 5737 documentation ranges
+    for (const [i, prefix] of ["192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24"].entries()) {
       await seed({
         organizationId: null,
         eventType: "m2.auth.login_succeeded",
@@ -475,6 +476,15 @@ describe.skipIf(!DB_URL)("M4 security review of the audit trail — LIVE Postgre
     );
     expect(visibleToTenant.rows[0]?.n).toBe(0);
     // … and the platform login reads the six granted columns only: never the before/after snapshots or the user agent.
+    // the grant is exactly the six columns the review selects (a later per-column grant of `after` or `source_ip` fails this)
+    const granted = await admin.query(
+      `SELECT column_name FROM information_schema.column_privileges
+        WHERE table_schema = 'public' AND table_name = 'audit_event' AND grantee = 'chartwarden_platform' AND privilege_type = 'SELECT'
+        ORDER BY column_name`,
+    );
+    expect(granted.rows.map((r) => r.column_name)).toEqual(
+      ["actor_user_id", "context", "created_at", "event_type", "id", "organization_id"].sort(),
+    );
     expect(await sqlState(sql`SELECT before FROM audit_event LIMIT 1`)).toBe("42501");
     expect(await sqlState(sql`SELECT user_agent FROM audit_event LIMIT 1`)).toBe("42501");
     await expect(
@@ -484,8 +494,8 @@ describe.skipIf(!DB_URL)("M4 security review of the audit trail — LIVE Postgre
 
   it("holds a sustained attack to one alert: an earlier window of the same pattern inside the cooldown raises nothing, another network still does", async () => {
     // Thirty minutes ago: before the alert the platform lane raised for 192.0.2.0/24 (a different window, a new fingerprint),
-    // and inside the one-hour cooldown. The same shape from 198.51.101.0/24 has no earlier alert.
-    for (const prefix of ["192.0.2.0/24", "198.51.101.0/24"]) {
+    // and inside the one-hour cooldown. The same shape from 198.51.100.0/24 has no earlier alert.
+    for (const prefix of ["192.0.2.0/24", "198.51.100.0/24"]) {
       for (let i = 0; i < 15; i += 1) {
         await seed({
           organizationId: null,
@@ -498,7 +508,7 @@ describe.skipIf(!DB_URL)("M4 security review of the audit trail — LIVE Postgre
     const { alerts, sink } = collect();
     const { run } = ran(await runSecurityReviewForPlatform(deps(sink)));
     expect(alerts.map((a) => `${a.ruleId}:${a.subject.ref}`)).toEqual([
-      "auth.brute_force_by_network:198.51.101.0/24",
+      "auth.brute_force_by_network:198.51.100.0/24",
     ]);
     expect(run.findings).toBeGreaterThanOrEqual(3); // both new windows and the one already raised were seen
   });

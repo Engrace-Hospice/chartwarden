@@ -47,7 +47,7 @@ Nothing here is applied by the code change; an operator sets it.
 |---|---|
 | `OPS_ALERT_WEBHOOK_URL` | The destination, **the same variable the DLQ and platform-ops notices use**. It must be **https** (plain http only to the loopback): anything else is a loud *failed* delivery that sends nothing. Each alert is one `POST` of `{ kind: "security_alert", summary, details, correlationId, occurredAt }`. A `2xx` is *delivered*; any other status (a redirect included: redirects are refused), or a 5 s timeout, is *failed* and retried by the next run. |
 | *(unset)* | The alert is still logged (`🔒 security alert [...]`) and recorded with `delivery: no_destination`, the run is `ok`, and the boot log warns once. **That is not monitoring**: no human is told, and those alerts are never re-sent once a webhook is set. Production must set the webhook. |
-| `DATABASE_PLATFORM_URL` | Required (see above). The platform carrier needs `SELECT` on six `audit_event` columns (`id, created_at, organization_id, actor_user_id, event_type, context`): migration 1561 grants it where the carrier exists, and `bun run db:provision-roles` re-grants it. Check: `SELECT has_column_privilege('chartwarden_platform', 'audit_event', 'event_type', 'SELECT');` **Know what this grants:** the platform login is BYPASSRLS, so the grant lets it read those columns of *every* tenant's audit rows, `context` included, and `context` can hold ids and short free text the denylist does not catch (a break-glass or destruction `reason`, a collaborator's `patientId`). Only the review's own `organization_id IS NULL` predicate (proved by the live suite) keeps it to org-less rows. Narrowing it to a SECURITY DEFINER reader is the follow-up. |
+| `DATABASE_PLATFORM_URL` | Required (see above). The platform carrier needs `SELECT` on six `audit_event` columns (`id, created_at, organization_id, actor_user_id, event_type, context`): migration 1561 grants it where the carrier exists, and `bun run db:provision-roles` re-grants it. Check: `SELECT has_column_privilege('chartwarden_platform', 'audit_event', 'event_type', 'SELECT');` **Know what this grants:** the platform login is BYPASSRLS, so the grant lets it read those columns of *every* tenant's audit rows, `context` included, and `context` can hold ids and short free text the denylist does not catch (the `context.reason` of an account deactivation or organization change, a collaborator's `patientId`). Only the review's own `organization_id IS NULL` predicate (proved by the live suite) keeps it to org-less rows. Narrowing it to a SECURITY DEFINER reader is the follow-up. |
 
 `details` is the alert and nothing else: rule id, severity, counts, ISO window, event ids, a subject *reference* (a user id, a /24
 network prefix, or the first 12 characters of a credential hash), the organization id, and the runbook anchor. No name, note, patient or
@@ -58,7 +58,10 @@ it. Treat the destination as workforce-confidential, like the audit log.)
 **Open decisions (owner: security officer; not made by the code):**
 
 1. **Which production destination reaches a human** (an on-call paging channel, not a log or an unwatched channel), and a test alert sent
-   to it once it exists.
+   to it once it exists. **Set and test it before the change that enables this deploys**: alerts raised while it is unset are recorded
+   `no_destination` and never re-sent, and the first run reviews the previous 24 hours. Record the receiver in the BAA register
+   (CW-BA-01): its vendor and whether a BAA or a "PHI-free metadata only" decision covers it (an alert carries organization and user
+   ids, a /24 prefix and a short credential-hash reference, no PHI).
 2. **Who reviews, and who covers them.** Name the reviewer(s) and the backup, and the response time per severity (suggested:
    `critical` within the hour, `warn` the same business day).
 3. **Whether security alerts get their own channel** apart from ops notices (today they share `OPS_ALERT_WEBHOOK_URL`).
@@ -229,7 +232,9 @@ from its own definition, and every rule id needs an anchor in this file. The con
   now" skips the gap before it. The cursor is clamped (a row stamped in the future is ignored, and `windowTo` is held to a few minutes
   past the row's own time, so a "reviewed up to next week" row cannot blind the review) but a forgery that looks like a real run
   cannot be told from one. That needs compromise first; the weekly review (per-organization run counts) is how a silent scope shows.
-  The advisory lock is likewise takeable by any database role: a held lock makes a scope skip (the job logs each skip).
+  The advisory lock is likewise takeable by any database role: a held lock makes a scope skip (the job logs each skip but stays green).
+- A second-factor removal (`m2.auth.2fa_disabled`) by a session with no bound organization is written org-less, which neither lane
+  reads for that event type; only one made inside an organization session alerts.
 
 - Impossible travel is a network-change proxy (section 4), not geolocation; a true check needs a geo source.
 - Cross-tenant access attempts return 404 by design and leave no audit event, so there is nothing to alert on.

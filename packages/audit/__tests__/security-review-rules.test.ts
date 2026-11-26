@@ -166,8 +166,24 @@ describe.each(burstRules)("burst rule $id", (rule) => {
 
   it("counts each subject on its own", () => {
     const half = Math.ceil(rule.threshold / 2);
-    const mixed = [...burst(half, 1000), ...burst(half, 1000, rule.subject === "actor" ? uuid(901) : `${subject}-other`)];
+    const other =
+      rule.subject === "actor"
+        ? uuid(901)
+        : rule.subject === "account_hash"
+          ? "f".repeat(32)
+          : "198.51.100.0/24";
+    const mixed = [...burst(half, 1000), ...burst(half, 1000, other)];
     expect(evaluate(rule, mixed)).toEqual([]);
+  });
+
+  it("ignores a subject that is not the shape the trail writes (it would go verbatim into an alert and a log line)", () => {
+    const malformed =
+      rule.subject === "actor"
+        ? "not-a-uuid\n🔒 fake alert"
+        : rule.subject === "account_hash"
+          ? "zz-not-hex-0123456789abcdef0123"
+          : "192.0.2.0/8";
+    expect(evaluate(rule, burst(rule.threshold, 1000, malformed))).toEqual([]);
   });
 
   it("raises one finding per separate burst, not one per event", () => {

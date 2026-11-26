@@ -77,19 +77,27 @@ export interface FindingScope {
 
 const ms = (iso: string): number => Date.parse(iso);
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** `credentialKey` (packages/auth) writes the first 32 hex characters of a SHA-256. */
+const CREDENTIAL_HASH = /^[0-9a-f]{32}$/i;
+
 /** The shape `ipPrefixOf` (packages/auth) writes: a /24 for IPv4, a /48 for IPv6. */
 const NETWORK_PREFIX = /^[0-9a-f:.]{3,39}\/(24|48)$/i;
 
 function subjectOf(event: ReviewEvent, kind: SubjectKind): string | null {
   switch (kind) {
-    case "actor":
-      return event.contextUserId ?? event.actorUserId;
+    case "actor": {
+      // A user id is a uuid. `context.userId` is free jsonb that a writer of the trail could fill with anything, and a subject goes
+      // verbatim into an alert and a log line, so anything that is not a uuid is not a subject.
+      const id = event.contextUserId ?? event.actorUserId;
+      return id !== null && UUID.test(id) ? id : null;
+    }
     case "ip_prefix":
       // Only a well-formed prefix is a network: "unknown" is what the auth bridge writes for an address it could not parse, and a
       // subject goes verbatim into an alert and a log line, so anything that is not hex digits, dots and colons plus /24 or /48 is out.
       return event.ipPrefix !== null && NETWORK_PREFIX.test(event.ipPrefix) ? event.ipPrefix : null;
     case "account_hash":
-      return event.accountHash;
+      return event.accountHash !== null && CREDENTIAL_HASH.test(event.accountHash) ? event.accountHash : null;
   }
 }
 

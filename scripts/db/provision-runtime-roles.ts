@@ -44,6 +44,9 @@
  * LEAST-PRIVILEGE POSTURE (documented, deliberate): the `chartwarden_platform` carrier's grant list is
  * ENUMERATED below — it is not `chartwarden_admin`. If a platform code path hits a missing grant it
  * fails loudly with 42501 and the fix is one line HERE, reviewed — never a blanket ALL.
+ * Note one grant that is wider than its use: CW-MON-01 (migration 1561) gives the carrier SELECT on six `audit_event` columns,
+ * `context` included. The login is BYPASSRLS, so that reaches every tenant's audit rows; only the security review's own
+ * `organization_id IS NULL` predicate (proved live) keeps it to the org-less sign-in events. See compliance/controls.yaml CW-MON-01.
  * ONE deliberate exception is a role MEMBERSHIP rather than an enumerated grant: `claimmd_capture` (the NOLOGIN role that
  * owns the central Claim.MD stream, inbox and ERA-staging privileges, enumerated in migrations 1350/1351/1353/1354/1356/1357/1358/1360/1396),
  * granted here exactly as those migrations grant it when the carrier already exists. It carries those tables' grants for the

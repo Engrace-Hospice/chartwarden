@@ -20,7 +20,8 @@ ECC or with `scripts/harness/`:
 | Build time (what reaches main) | `arch:fitness`, CI, pre-commit/pre-push | Tenancy, audit, ABAC, scanners, signed images |
 | **Run time (what happens in production)** | **AiSOC** | Reviewing audit and auth events, detections, incidents (HIPAA §164.308(a)(1)(ii)(D), (a)(5)(ii)(C); SOC 2 CC7.2–CC7.3) |
 
-That runtime row is the gap ChartWarden has today. M4 records audit events, but nothing reviews them.
+That runtime row was the gap: M4 recorded audit events and nothing reviewed them. ChartWarden's own scheduled review now covers the
+core of it (see the status above); this table describes where AiSOC would add to it.
 
 ## Ground rules (HIPAA)
 
