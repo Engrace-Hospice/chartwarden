@@ -10,15 +10,21 @@ import {
   docTypeLabel,
   identityNeedsAnswer,
 } from "../doclens-model";
+import type { SafeguardFocus, SafeguardSelection } from "./review-exception-tasks";
+import { revealSafeguardBlock, safeguardBlockId } from "./review-safeguard-focus";
 
 export function ReviewSafeguardPanel({
   workspace,
-  selectedPage,
+  selection,
+  onFocusBlock,
   refresh,
   supportAccess,
 }: {
   workspace: Workspace;
-  selectedPage: number | null;
+  /** The page and block the parent has open; each new object is a new request, even for the same block. */
+  selection: SafeguardSelection | null;
+  /** The reviewer chose the source of a block from inside the panel: the parent keeps the list in step. */
+  onFocusBlock: (focus: SafeguardFocus, page: number) => void;
   refresh: () => Promise<Workspace | null>;
   supportAccess?: PlatformSupportAccess | null;
 }): JSX.Element {
@@ -28,6 +34,8 @@ export function ReviewSafeguardPanel({
   const [error, setError] = useState<string | null>(null);
   const [sudRejecting, setSudRejecting] = useState(false);
   const [sudReason, setSudReason] = useState("");
+  const selectedPage = selection?.page ?? null;
+  const current = selection?.focus ?? null;
   const flagged = workspace.documents.filter(identityNeedsAnswer);
   const preferredPage =
     selectedPage ?? workspace.sud.indicators[0]?.page ?? flagged[0]?.pageFrom ?? null;
@@ -37,15 +45,39 @@ export function ReviewSafeguardPanel({
     () => (workspace.sud.contentRedacted ? "forbidden" : "loading"),
   );
   const [readyPage, setReadyPage] = useState<number | null>(null);
+  const rootRef = useRef<HTMLElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   const sourceGeneration = useRef(0);
+  const sudPage = workspace.sud.indicators[0]?.page ?? null;
   useEffect(() => {
     if (selectedPage !== null) setActivePage(selectedPage);
   }, [selectedPage]);
+  useEffect(() => {
+    // Only a deliberate choice scrolls and focuses; a restore or an in-panel click just marks the block.
+    if (!selection?.reveal) return;
+    if (selection.page !== null) setActivePage(selection.page);
+    if (!selection.focus) return;
+    const block = rootRef.current?.querySelector<HTMLElement>(
+      `[data-safeguard-block="${safeguardBlockId(selection.focus)}"]`,
+    );
+    if (block) revealSafeguardBlock(block);
+  }, [selection]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: page changes and explicit retries must lock resolution until the replacement image loads.
   useEffect(() => {
     sourceGeneration.current += 1;
     setSourceState(workspace.sud.contentRedacted ? "forbidden" : "loading");
     setReadyPage(null);
+    // A cached image can fire `load` before this passive effect runs; keep it loaded.
+    const image = imageRef.current;
+    if (
+      !workspace.sud.contentRedacted &&
+      activePage !== null &&
+      image?.complete &&
+      image.naturalWidth > 0
+    ) {
+      setReadyPage(activePage);
+      setSourceState("ready");
+    }
   }, [activePage, sourceAttempt, workspace.sud.contentRedacted]);
   const activePageMetadata = workspace.pages.find((page) => page.page === activePage) ?? null;
   const activeIndicators = workspace.sud.indicators.filter(
@@ -72,7 +104,6 @@ export function ReviewSafeguardPanel({
     workspace.review?.status === "complete" || workspace.batch.status === "writeback_complete";
   const locked = workspace.review?.status === "in_progress" && !workspace.review.isMine;
   const disabled = Boolean(supportAccess) || busy || refreshPending || complete || locked;
-  const sudPage = workspace.sud.indicators[0]?.page ?? null;
   const sudDisabled = disabled || !evidenceReadyFor(sudPage);
 
   async function saveSud(outcome: "confirmed" | "rejected", reason?: string): Promise<void> {
@@ -104,7 +135,11 @@ export function ReviewSafeguardPanel({
   }
 
   return (
-    <section className="wx-unified-safeguards" aria-labelledby="unified-safeguards-title">
+    <section
+      ref={rootRef}
+      className="wx-unified-safeguards"
+      aria-labelledby="unified-safeguards-title"
+    >
       <header>
         <div>
           <span className="wx-unified-category">Clinical safeguards</span>
@@ -175,6 +210,7 @@ export function ReviewSafeguardPanel({
             />
             <div className="wx-unified-source-page">
               <img
+                ref={imageRef}
                 key={`${activePage}:${sourceAttempt}`}
                 src={pageImageUrl(workspace.batch.id, activePage, supportAccess)}
                 alt={`Page ${activePage} of the safeguard source document`}
@@ -206,9 +242,13 @@ export function ReviewSafeguardPanel({
       </div>
 
       {workspace.sud.status === "detected" ? (
-        <div
+        <fieldset
           className="wx-unified-safeguard-task"
-          data-selected={selectedPage === workspace.sud.indicators[0]?.page}
+          aria-label="Part 2 / SUD safeguard"
+          data-safeguard-block="sud"
+          data-selected={sudPage !== null && selectedPage === sudPage}
+          aria-current={current?.kind === "sud" ? "true" : undefined}
+          tabIndex={-1}
         >
           <div>
             <strong>Part 2 / SUD safeguard</strong>
@@ -228,7 +268,10 @@ export function ReviewSafeguardPanel({
                 <button
                   type="button"
                   className="wx-btn-secondary"
-                  onClick={() => setActivePage(sudPage)}
+                  onClick={() => {
+                    setActivePage(sudPage);
+                    onFocusBlock({ kind: "sud" }, sudPage);
+                  }}
                 >
                   Review source page {sudPage}
                 </button>
@@ -288,7 +331,7 @@ export function ReviewSafeguardPanel({
               )}
             </>
           )}
-        </div>
+        </fieldset>
       ) : (
         <div className="wx-unified-safeguard-task">
           <strong>Part 2 / SUD safeguard</strong>
@@ -318,8 +361,12 @@ export function ReviewSafeguardPanel({
             pageFrom={document.pageFrom}
             title={`${docTypeLabel(document.documentType)} · page ${document.pageFrom}`}
             selected={activePage === document.pageFrom}
+            current={current?.kind === "identity" && current.page === document.pageFrom}
             disabled={disabled || !evidenceReadyFor(document.pageFrom)}
-            onReviewSource={() => setActivePage(document.pageFrom)}
+            onReviewSource={() => {
+              setActivePage(document.pageFrom);
+              onFocusBlock({ kind: "identity", page: document.pageFrom }, document.pageFrom);
+            }}
             onError={setError}
             onBusy={setBusy}
             onSaved={refreshSafeguards}
@@ -335,6 +382,7 @@ function IdentityTask({
   pageFrom,
   title,
   selected,
+  current,
   disabled,
   onReviewSource,
   onError,
@@ -345,6 +393,7 @@ function IdentityTask({
   pageFrom: number;
   title: string;
   selected: boolean;
+  current: boolean;
   disabled: boolean;
   onReviewSource: () => void;
   onError: (error: string | null) => void;
@@ -383,7 +432,14 @@ function IdentityTask({
   };
 
   return (
-    <div className="wx-unified-safeguard-task" data-selected={selected}>
+    <fieldset
+      className="wx-unified-safeguard-task"
+      aria-label={`Patient identity · ${title}`}
+      data-safeguard-block={safeguardBlockId({ kind: "identity", page: pageFrom })}
+      data-selected={selected}
+      aria-current={current ? "true" : undefined}
+      tabIndex={-1}
+    >
       <div>
         <strong>Patient identity · {title}</strong>
         <StatusPill label="Identity review required" tone="critical" />
@@ -440,6 +496,6 @@ function IdentityTask({
           </button>
         </div>
       )}
-    </div>
+    </fieldset>
   );
 }

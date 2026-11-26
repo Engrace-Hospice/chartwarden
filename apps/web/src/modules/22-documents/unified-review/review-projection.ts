@@ -93,6 +93,11 @@ export function candidateIsOtherPatient(workspace: Workspace, candidate: Candida
   );
 }
 
+/** A candidate the reviewer can open as a field task: not withheld, not another patient's. */
+export function candidateIsSelectable(workspace: Workspace, candidate: Candidate): boolean {
+  return !candidate.redacted && !candidateIsOtherPatient(workspace, candidate);
+}
+
 function categoryFor(candidate: Candidate): string {
   if (candidate.fieldPath.startsWith("patient.address.")) return "Address";
   if (candidate.fieldPath.startsWith("patient.")) return "Patient information";

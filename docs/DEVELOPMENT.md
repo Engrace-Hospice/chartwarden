@@ -121,6 +121,25 @@ number of permission keys satisfies it.
 The fitness gates are **armed-but-inert**: they pass with no source and begin enforcing
 automatically as a module's schema/seams/events land.
 
+### The web container (the built SPA from Compose)
+
+The Compose `web` service serves the **built** staff SPA (`apps/web`, `vite build`, via `Dockerfile.web`, the
+production web image's recipe) with nginx at **http://localhost:5176**, and proxies same-origin `/api`, `/version`,
+`/webhooks` and `/socket.io` (WebSocket upgrade included) to `api:3000`, as the Vite dev proxy does. Unknown paths fall
+back to `index.html`; the patient portal is at `/portal/`. The nginx conf is dev-only,
+[`deploy/dev/web-nginx.conf`](../deploy/dev/web-nginx.conf) (mounted, so editing it needs only
+`docker compose restart web`); unlike production it sends no CSP, which would block the `http://localhost:9000`
+object-store previews.
+
+- **Start / rebuild:** `docker compose up -d --build web`. It also converges `api` and its dependencies (recreating any
+  whose Compose config changed), so for a plain web rebuild add `--no-deps`: `docker compose up -d --build --no-deps web`.
+  The container serves a build, not your working tree, so rebuild after every web change; use host Vite
+  (`bun run dev:web`) for hot reload.
+- **Port:** `WEB_PORT` (default `5176`). Host Vite owns `5173`; to replace it, stop Vite and run with `WEB_PORT=5173`.
+- **Origins:** `api`, `worker` (`TRUSTED_ORIGINS`) and `rustfs` (`RUSTFS_CORS_ALLOWED_ORIGINS`) list
+  `http://localhost:5173` to `5176`. After pulling a change to those lists, recreate them
+  (`docker compose up -d api worker rustfs`) or sign-in from the new origin fails with `INVALID_ORIGIN`.
+
 ### Runtime login roles (deployment precondition)
 
 The migrations define NOLOGIN carrier roles only — deployment (or a local full-stack run) must

@@ -311,6 +311,25 @@ test("WardenLens unified review is exception-first, accessible, and responsive",
         .toBeLessThanOrEqual(2);
       await expect(page.locator(".wx-unified-task-column")).toBeInViewport();
 
+      // D-01/D-03: the SUD exception names a field candidate on its page, but it must open the Part 2
+      // safeguard block (marked, focused and scrolled into the task column), never that field's task.
+      const priorities = page.getByRole("complementary", { name: "Review priorities" });
+      await priorities.getByRole("button", { name: /Part 2 \/ SUD safeguards/ }).click();
+      await priorities
+        .getByRole("button", { name: /Part 2 \/ SUD safeguard is unresolved/ })
+        .click();
+      const sudBlock = page.getByRole("group", { name: "Part 2 / SUD safeguard" });
+      await expect(sudBlock).toHaveAttribute("aria-current", "true");
+      await expect(sudBlock).toBeFocused();
+      expect(
+        await sudBlock.evaluate((block) => {
+          const column = block.closest(".wx-unified-task-column")?.getBoundingClientRect();
+          const top = block.getBoundingClientRect().top;
+          return column ? top >= column.top - 1 && top < column.bottom : false;
+        }),
+        "the SUD block should sit inside the visible task column",
+      ).toBe(true);
+
       await page.getByRole("button", { name: /Patient identity & demographics/ }).click();
       await page
         .getByRole("button", { name: /Review decision/ })

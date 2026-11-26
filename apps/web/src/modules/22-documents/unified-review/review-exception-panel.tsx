@@ -1,16 +1,34 @@
 import { Glyph, StatusPill } from "@chartwarden/ui";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import type { ReviewExceptionSummary, ReviewExceptionTask } from "./review-exception-tasks";
 
+const NO_TASKS: ReadonlySet<string> = new Set();
+
 export function ReviewExceptionPanel({
   summary,
+  selectedTaskIds = NO_TASKS,
+  expandSelected = false,
   onSelect,
 }: {
   summary: ReviewExceptionSummary;
+  /** The tasks whose work is open in the task column; their rows are marked as current. */
+  selectedTaskIds?: ReadonlySet<string>;
+  /** Open the categories holding those rows (a restored or deliberately opened task), not for the default one. */
+  expandSelected?: boolean;
   onSelect: (task: ReviewExceptionTask) => void;
 }): JSX.Element {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const selectedCategoryKey = expandSelected
+    ? summary.categories
+        .filter((category) => category.tasks.some((task) => selectedTaskIds.has(task.id)))
+        .map((category) => category.id)
+        .join("|")
+    : "";
+  useEffect(() => {
+    if (!selectedCategoryKey) return;
+    setExpanded((current) => new Set([...current, ...selectedCategoryKey.split("|")]));
+  }, [selectedCategoryKey]);
 
   return (
     <aside className="wx-unified-exceptions" aria-label="Review priorities">
@@ -77,10 +95,12 @@ export function ReviewExceptionPanel({
                           <button
                             type="button"
                             aria-describedby={`${task.id}-reasons`}
+                            aria-current={selectedTaskIds.has(task.id) ? "true" : undefined}
                             onClick={() => onSelect(task)}
                           >
                             <span>
                               <strong>{task.title}</strong>
+                              {task.subject ? <small>{task.subject}</small> : null}
                               <small>
                                 {task.reasons.length} reason{task.reasons.length === 1 ? "" : "s"}
                               </small>

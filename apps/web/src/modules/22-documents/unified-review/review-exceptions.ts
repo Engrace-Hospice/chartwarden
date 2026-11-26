@@ -1,5 +1,5 @@
-import type { Workspace } from "../doclens-api";
-import { docTypeLabel, identityNeedsAnswer, pct } from "../doclens-model";
+import type { Candidate, Workspace } from "../doclens-api";
+import { docTypeLabel, fieldLabel, identityNeedsAnswer, pct } from "../doclens-model";
 import type { ReviewFieldGroupProjection } from "./review-projection";
 import { type ReviewSectionId, sectionIndex } from "./review-sections";
 
@@ -24,12 +24,27 @@ export interface ReviewExceptionProjection {
   readonly sectionId: ReviewSectionId;
   readonly title: string;
   readonly detail: string;
+  /** Secondary line that tells same-titled rows apart: field, extracted value and page. */
+  readonly subject?: string;
   readonly candidateId: string | null;
   readonly page: number | null;
 }
 
 export interface ReviewExceptionRuntime {
   readonly sourceUnavailablePages?: ReadonlySet<number>;
+}
+
+const SUBJECT_VALUE_MAX = 80;
+
+/** Never carries a withheld (Part 2) value; long values are cut so one row stays one line or two. */
+function candidateSubject(candidate: Candidate): string {
+  const where = fieldLabel(candidate.fieldPath);
+  const page = `p.${candidate.page}`;
+  if (candidate.redacted) return `${where}: withheld · ${page}`;
+  const value = candidate.value ?? "no value extracted";
+  const shown =
+    value.length > SUBJECT_VALUE_MAX ? `${value.slice(0, SUBJECT_VALUE_MAX).trimEnd()}…` : value;
+  return `${where}: ${shown} · ${page}`;
 }
 
 function groupExceptions(group: ReviewFieldGroupProjection): readonly ReviewExceptionProjection[] {
@@ -73,6 +88,7 @@ function groupExceptions(group: ReviewFieldGroupProjection): readonly ReviewExce
       title: `${group.label} differs from the vision check`,
       detail:
         "Compare the extracted value with the source and give a reason if accepting it unchanged.",
+      subject: candidateSubject(vision),
       candidateId: vision.id,
       page: vision.page,
     });
@@ -86,6 +102,7 @@ function groupExceptions(group: ReviewFieldGroupProjection): readonly ReviewExce
       sectionId: group.sectionId,
       title: `${group.label} needs high-risk review`,
       detail: "This candidate requires an eligible clinician's explicit field-level decision.",
+      subject: candidateSubject(highRisk),
       candidateId: highRisk.id,
       page: highRisk.page,
     });
@@ -99,6 +116,7 @@ function groupExceptions(group: ReviewFieldGroupProjection): readonly ReviewExce
       sectionId: group.sectionId,
       title: `${group.label} needs a closer look`,
       detail: `${pct(lowConfidence.confidence)} extraction confidence; confirm it against page ${lowConfidence.page}.`,
+      subject: candidateSubject(lowConfidence),
       candidateId: lowConfidence.id,
       page: lowConfidence.page,
     });
@@ -112,6 +130,7 @@ function groupExceptions(group: ReviewFieldGroupProjection): readonly ReviewExce
       sectionId: group.sectionId,
       title: `${group.label} needs a decision`,
       detail: `${undecided.length} of ${group.observations.length} source observation${group.observations.length === 1 ? "" : "s"} remain undecided.`,
+      subject: candidateSubject(firstUndecided),
       candidateId: firstUndecided.id,
       page: firstUndecided.page,
     });

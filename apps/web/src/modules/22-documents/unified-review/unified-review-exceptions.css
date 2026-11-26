@@ -1,0 +1,21 @@
+/* Selected states for the exception list rows and the safeguard blocks they open. */
+.wx-unified-exception-task > button[aria-current="true"] {
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface-lowest));
+  box-shadow: inset 3px 0 var(--color-primary);
+}
+.wx-unified-exception-task > button[aria-current="true"] strong {
+  color: var(--color-primary);
+}
+
+.wx-unified-safeguard-task[aria-current="true"] {
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface-lowest));
+  box-shadow: inset 3px 0 var(--color-primary);
+}
+.wx-unified-safeguard-task[tabindex]:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: -3px;
+}
+fieldset.wx-unified-safeguard-task {
+  min-width: 0;
+  margin: 0;
+}
