@@ -1,0 +1,18 @@
+/* The two review panels: the live status region and the "Change decision" button. */
+
+/* An always-mounted live region (so a change is announced) that is empty most of the time must not
+   take a grid row or a gap of its own. Out of flow it stays in the accessibility tree. */
+.wx-unified-status {
+  display: block;
+  min-width: 0;
+}
+.wx-unified-status:empty {
+  position: absolute;
+}
+.wx-unified-status:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+.wx-unified-change {
+  justify-self: start;
+}

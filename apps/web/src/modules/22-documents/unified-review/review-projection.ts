@@ -11,6 +11,7 @@ import {
   type ReviewSectionDefinition,
   type ReviewSectionId,
   sectionForField,
+  sectionIndex,
 } from "./review-sections";
 
 export type ReviewGroupState = "reviewed" | "partially-reviewed" | "review-required";
@@ -165,8 +166,7 @@ export function projectReviewGroups(workspace: Workspace): readonly ReviewFieldG
     })
     .sort(
       (a, b) =>
-        REVIEW_SECTIONS.findIndex((section) => section.id === a.sectionId) -
-          REVIEW_SECTIONS.findIndex((section) => section.id === b.sectionId) ||
+        sectionIndex(a.sectionId) - sectionIndex(b.sectionId) ||
         a.label.localeCompare(b.label) ||
         a.id.localeCompare(b.id),
     );
@@ -175,8 +175,9 @@ export function projectReviewGroups(workspace: Workspace): readonly ReviewFieldG
 export function projectUnifiedReview(
   workspace: Workspace,
   exceptionCounts: Readonly<Partial<Record<ReviewSectionId, number>>> = {},
+  /** The workspace's groups when the caller already holds them: the same objects keep the memoised rows still. */
+  groups: readonly ReviewFieldGroupProjection[] = projectReviewGroups(workspace),
 ): ReviewProjection {
-  const groups = projectReviewGroups(workspace);
   const sections = REVIEW_SECTIONS.map((definition) => {
     const sectionGroups = groups.filter((group) => group.sectionId === definition.id);
     const candidateCount = sectionGroups.reduce(

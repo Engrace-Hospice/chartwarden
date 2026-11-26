@@ -1,63 +1,94 @@
 import { Glyph, StatusPill } from "@chartwarden/ui";
-import { useState } from "react";
+import { memo, useId, useMemo, useState } from "react";
 import type { JSX } from "react";
+import type { Candidate } from "../doclens-api";
 import { decisionLabel, docTypeLabel, pct } from "../doclens-model";
 import {
   NO_VALUE_LABEL,
   type ObservationValue,
+  type ObservationValueKind,
   consolidateObservations,
+  extractedValues,
+  observationDisplayValue,
+  observationKind,
   visibleValue,
 } from "./review-observation-values";
 import type { ReviewFieldGroupProjection, ReviewObservation } from "./review-projection";
 
-interface ObservationActions {
-  readonly onSelectSource: (candidateId: string) => void;
-  readonly onReviewDecision: (candidateId: string) => void;
+interface ReviewAction {
+  /**
+   * Opens the observation's review task: its source page, the highlighted location and the decision.
+   * The clicked button comes with it, so closing the task can hand focus back to it.
+   */
+  readonly onReview: (candidateId: string, trigger: HTMLElement | null) => void;
+  /** True while a decision is being saved: no task opens until it has ended. */
+  readonly disabled?: boolean;
+}
+
+/** Names a value that is not a plain extraction, so a rejected value cannot pass for an accepted one. */
+function ValueMarker({ kind }: { kind: ObservationValueKind }): JSX.Element | null {
+  if (kind === "correction") {
+    return <span className="wx-unified-observation-marker">Approved correction</span>;
+  }
+  if (kind === "rejected") return <span className="wx-unified-observation-marker">Rejected</span>;
+  return null;
+}
+
+/** The decision state and vision flag of one source. A rejection is already named by its marker. */
+function decisionLine(candidate: Candidate, kind: ObservationValueKind): string {
+  const decided = candidate.decision ? decisionLabel(candidate.decision.decision) : null;
+  const parts = [
+    kind === "rejected" ? null : (decided ?? "No decision recorded"),
+    candidate.vision.status === "disagreed" ? "Vision disagreement" : null,
+  ];
+  return parts.filter((part) => part !== null).join(" · ");
+}
+
+/**
+ * The accessible name of a button that names a value. It is a hidden element the button points at, not
+ * an `aria-label`: an extracted value (a name, a date of birth) is never copied into a DOM attribute.
+ */
+function NameSource({ id, children }: { id: string; children: string }): JSX.Element {
+  return (
+    <span id={id} hidden>
+      {children}
+    </span>
+  );
 }
 
 function ObservationRow({
   observation: { candidate, document },
-  onSelectSource,
-  onReviewDecision,
-}: ObservationActions & { observation: ReviewObservation }): JSX.Element {
+  onReview,
+  disabled,
+}: ReviewAction & { observation: ReviewObservation }): JSX.Element {
+  const kind = observationKind(candidate);
+  const shown = observationDisplayValue(candidate);
+  const line = decisionLine(candidate, kind);
+  const nameId = useId();
   return (
     <li data-candidate-id={candidate.id}>
       <div className="wx-unified-observation-value">
-        {candidate.redacted ? (
-          <strong>Part 2 content withheld</strong>
-        ) : candidate.decision?.decision === "approve_with_edit" &&
-          candidate.decision.editedValue !== null ? (
-          <>
-            <strong>{candidate.decision.editedValue}</strong>
-            <span>Approved correction</span>
-            <span>Extracted: {visibleValue(candidate.value) ?? NO_VALUE_LABEL}</span>
-          </>
-        ) : (
-          <strong>{visibleValue(candidate.value) ?? NO_VALUE_LABEL}</strong>
-        )}
+        <strong>{shown}</strong>
+        <ValueMarker kind={kind} />
+        {kind === "correction" ? (
+          <span>Extracted: {visibleValue(candidate.value) ?? NO_VALUE_LABEL}</span>
+        ) : null}
         <span>
           {document?.title ?? docTypeLabel(candidate.documentType)} · Page {candidate.page} ·{" "}
           {pct(candidate.confidence)} confidence
         </span>
-        <span>
-          {candidate.decision ? decisionLabel(candidate.decision.decision) : "No decision recorded"}
-          {candidate.vision.status === "disagreed" ? " · Vision disagreement" : ""}
-        </span>
+        {line ? <span>{line}</span> : null}
       </div>
       <div className="wx-unified-observation-actions">
+        <NameSource id={nameId}>{`Review ${shown}, page ${candidate.page}`}</NameSource>
         <button
           type="button"
           className="wx-btn-secondary wx-btn-sm"
-          onClick={() => onSelectSource(candidate.id)}
+          aria-labelledby={nameId}
+          disabled={disabled}
+          onClick={(event) => onReview(candidate.id, event.currentTarget)}
         >
-          <Glyph name="eye" size={15} /> Preview source
-        </button>
-        <button
-          type="button"
-          className="wx-btn-secondary wx-btn-sm"
-          onClick={() => onReviewDecision(candidate.id)}
-        >
-          Review decision <Glyph name="arrow-right" size={15} />
+          Review <Glyph name="arrow-right" size={15} />
         </button>
       </div>
     </li>
@@ -79,33 +110,35 @@ function ConsolidatedValue({
   value,
   expanded,
   onToggle,
-  onSelectSource,
-  onReviewDecision,
-}: ObservationActions & {
+  onReview,
+  disabled,
+}: ReviewAction & {
   value: ObservationValue;
   expanded: boolean;
   onToggle: () => void;
 }): JSX.Element {
-  const sourcesId = `unified-sources-${value.observations[0]?.candidate.id ?? value.key}`;
+  const sourcesId = useId();
+  const nameId = useId();
   const shown = value.displayValue ?? NO_VALUE_LABEL;
-  const toggleLabel = expanded ? "Hide sources" : "Show sources";
+  const extracted = extractedValues(value);
   return (
-    <li className="wx-unified-observation-consolidated" data-value-key={value.key}>
+    <li>
       <div className="wx-unified-observation-value">
         <strong>{shown}</strong>
-        {value.kind === "correction" ? <span>Approved correction</span> : null}
-        {value.kind === "rejected" ? <span>Rejected</span> : null}
+        <ValueMarker kind={value.kind} />
+        {extracted.length > 0 ? <span>Extracted: {extracted.join(", ")}</span> : null}
         <span>{consolidatedSummary(value)}</span>
       </div>
+      <NameSource id={nameId}>{`Sources for ${shown}`}</NameSource>
       <button
         type="button"
         className="wx-btn-secondary wx-btn-sm wx-unified-observation-toggle"
         aria-expanded={expanded}
         aria-controls={sourcesId}
-        aria-label={`${toggleLabel} for ${shown}`}
+        aria-labelledby={nameId}
         onClick={onToggle}
       >
-        {toggleLabel} <Glyph name={expanded ? "chevron-down" : "chevron-right"} size={15} />
+        Sources <Glyph name={expanded ? "chevron-down" : "chevron-right"} size={15} />
       </button>
       {expanded ? (
         <ul id={sourcesId} className="wx-unified-observation-sources">
@@ -113,8 +146,8 @@ function ConsolidatedValue({
             <ObservationRow
               key={observation.candidate.id}
               observation={observation}
-              onSelectSource={onSelectSource}
-              onReviewDecision={onReviewDecision}
+              onReview={onReview}
+              disabled={disabled}
             />
           ))}
         </ul>
@@ -136,16 +169,17 @@ function groupStatus(group: ReviewFieldGroupProjection): {
   return { label: "Review required", tone: "warning" };
 }
 
-export function ReviewFieldGroup({
+/** Pass a stable `onReview` (and an unchanged `group` between refreshes) so the memo can skip renders. */
+export const ReviewFieldGroup = memo(function ReviewFieldGroup({
   group,
-  onSelectSource,
-  onReviewDecision,
-}: ObservationActions & {
+  onReview,
+  disabled,
+}: ReviewAction & {
   group: ReviewFieldGroupProjection;
 }): JSX.Element {
   const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(() => new Set());
   const status = groupStatus(group);
-  const values = consolidateObservations(group.observations);
+  const values = useMemo(() => consolidateObservations(group.observations), [group.observations]);
   const toggle = (key: string): void =>
     setExpandedKeys((current) => {
       const next = new Set(current);
@@ -173,8 +207,8 @@ export function ReviewFieldGroup({
             <ObservationRow
               key={only.candidate.id}
               observation={only}
-              onSelectSource={onSelectSource}
-              onReviewDecision={onReviewDecision}
+              onReview={onReview}
+              disabled={disabled}
             />
           ) : (
             <ConsolidatedValue
@@ -182,12 +216,12 @@ export function ReviewFieldGroup({
               value={value}
               expanded={expandedKeys.has(value.key)}
               onToggle={() => toggle(value.key)}
-              onSelectSource={onSelectSource}
-              onReviewDecision={onReviewDecision}
+              onReview={onReview}
+              disabled={disabled}
             />
           );
         })}
       </ul>
     </article>
   );
-}
+});

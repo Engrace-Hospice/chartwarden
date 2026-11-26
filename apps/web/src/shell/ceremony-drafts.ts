@@ -1,6 +1,7 @@
 // apps/web/src/shell — the in-memory ceremony/wizard draft store (see modules/23-billing-medicare/write-workflow.ts
-// for why it is memory only, never browser storage). It lives in the shell so sign-out and the idle screen lock can
-// forget every draft: a draft can carry PHI and must not outlive the session.
+// for why it is memory only, never browser storage). It lives in the shell so sign-out (the lock screen's sign-out link
+// included) and session expiry can forget every draft: a draft can carry PHI and must not outlive the session. An idle
+// lock keeps drafts.
 import { clearAllLastReviewTasks } from "./last-review-task";
 import { clearAllStepUpDrafts } from "./step-up-redirect";
 
@@ -21,7 +22,7 @@ export function clearDraft(key: string): void {
   drafts.delete(key);
 }
 
-/** Forget every stashed draft (sign-out, screen lock). */
+/** Forget every stashed draft (sign-out, session expiry; not an idle lock). */
 export function clearAllDrafts(): void {
   drafts.clear();
   clearAllStepUpDrafts(); // the in-memory step-up drafts go with them

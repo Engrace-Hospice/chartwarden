@@ -1,6 +1,7 @@
 import type { SafeguardFocus } from "./review-exception-tasks";
 
 const TASK_COLUMN_SELECTOR = ".wx-unified-task-column";
+const BLOCK_SELECTOR = "[data-safeguard-block]";
 
 /** The `data-safeguard-block` value of a safeguard block. */
 export function safeguardBlockId(focus: SafeguardFocus): string {
@@ -24,4 +25,12 @@ export function revealSafeguardBlock(block: HTMLElement): void {
     column.scrollTop += block.getBoundingClientRect().top - column.getBoundingClientRect().top;
   else block.scrollIntoView({ block: "start" });
   block.focus({ preventScroll: true });
+}
+
+/**
+ * A button inside a safeguard block is about to unmount because its job is done ("Review source page"
+ * once the page shows): park focus on the block so keyboard and screen-reader users are not dropped.
+ */
+export function focusEnclosingBlock(control: HTMLElement): void {
+  control.closest<HTMLElement>(BLOCK_SELECTOR)?.focus({ preventScroll: true });
 }

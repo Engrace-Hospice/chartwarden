@@ -1,6 +1,8 @@
 # WardenLens V3.2 — Browser UX Acceptance Audit
 
-Date: 2026-11-25 · Method: interactive Chrome session against `http://localhost:5173` · No application code, database rows or Git history were changed by the audit.
+Date: 2026-11-25 · Method: interactive Chrome session against `http://localhost:5173` · No application code or Git history changed; the audit recorded five decisions and started a review in the local dev database (section 3).
+
+> **Status, 2026-11-26.** This is a status note, not a re-run: no scenario was repeated and the findings below are as audited. Changes on branch `feat/wardenlens-unified-review-ux` address D-01, D-02, D-03, D-04 (the field-task panel and the safeguard panel viewer both show the page at a readable size with Fit width / Actual size and a translucent highlight), D-05, D-07, D-09 and D-10; D-06 only in part (the open task's row is marked as current; the category header is unchanged). D-08 (the rejection reason is still optional) and D-11 (no link from the referral to the unified review) are **not** addressed. The scenarios have not been re-run against the rebuilt backend, so the verdict stays **NO-GO**. The screenshots indexed in section 10 are kept locally and are not committed: they total about 19 MB and the PHI scan cannot read images.
 
 ## 1. Executive summary
 
@@ -141,7 +143,7 @@ Why WL-06 completion is BLOCKED: all six referrals have an unresolved patient ma
 
 ## 10. Screenshot index
 
-All files are in `screenshots/` (PNG converted from the tool's JPEG).
+The files were saved in `screenshots/` of the auditor's checkout (PNG converted from the tool's JPEG); they are not committed (see the status note at the top).
 `00-application-home` (signed-in home), `00a-login-unauthenticated`, `01-intake-review-queue`, `01a-intake-referrals-list`, `02-unified-workspace-initial`, `03`–`07` (WL-01), `08`–`12` (WL-02), `13`, `13a`, `14`, `15`, `17`, `17b`, `18` (WL-03), `19`–`26` (WL-04), `27`–`30`, `28b` (WL-05), `31`, `32` (WL-06), `40-intermediate-width-layout`, `43-review-owned-by-another-user`, `48`–`52`, `53-mobile-500-smallest-reachable`, `56a-keyboard-focus-visible`, `57-overall-workspace`, `59-final-review-state`.
 **Not captured (scenario not executed or blocked):** 16, 33–39, 41, 42, 44–47, 54–56, 58 (the most confusing interaction is `12-sud-safeguard-task.png`).
 

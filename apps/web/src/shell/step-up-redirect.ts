@@ -149,7 +149,7 @@ export function discardStepUpDrafts(owner: StepUpDraftOwner, action: string): vo
   }
 }
 
-/** Forget every stashed step-up draft and the return marker (sign-out, screen lock). */
+/** Forget every stashed step-up draft and the return marker (sign-out, session expiry; not an idle lock). */
 export function clearAllStepUpDrafts(): void {
   drafts.clear();
   // The shared kit keeps its own stores (a memory map and a sessionStorage entry) for the forms built on it: forget those too.

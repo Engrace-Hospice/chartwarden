@@ -142,6 +142,54 @@ export function exceptionTaskTarget(task: ReviewExceptionTask): ReviewTaskTarget
   return { kind: "safeguard", page: task.page, focus: null };
 }
 
+const DEFAULT_PRIORITY = 2;
+
+function taskFrom(id: string, reasons: readonly ReviewExceptionProjection[]): ReviewExceptionTask {
+  const ordered = [...reasons].sort(
+    (a, b) => a.priority - b.priority || a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id),
+  );
+  const first = ordered[0] as ReviewExceptionProjection;
+  const subject = ordered.find((reason) => reason.subject)?.subject;
+  return {
+    id,
+    categoryId: categoryFor(ordered),
+    sectionId: first.sectionId,
+    title: first.title,
+    ...(subject ? { subject } : {}),
+    candidateId: first.candidateId,
+    page: first.page,
+    blocked: ordered.some((reason) => BLOCKED_KINDS.has(reason.kind)),
+    reasons: ordered,
+  };
+}
+
+/** Unblocked first, then the first reason's priority, title, numeric-aware subject, and id. */
+function compareTasks(a: ReviewExceptionTask, b: ReviewExceptionTask): number {
+  return (
+    Number(a.blocked) - Number(b.blocked) ||
+    (a.reasons[0]?.priority ?? DEFAULT_PRIORITY) - (b.reasons[0]?.priority ?? DEFAULT_PRIORITY) ||
+    a.title.localeCompare(b.title) ||
+    (a.subject ?? "").localeCompare(b.subject ?? "", "en-US", { numeric: true }) ||
+    a.id.localeCompare(b.id)
+  );
+}
+
+function categoryOf(
+  definition: (typeof CATEGORY_DEFINITIONS)[number],
+  tasks: readonly ReviewExceptionTask[],
+): ReviewExceptionCategory {
+  const categoryTasks = tasks
+    .filter((task) => task.categoryId === definition.id)
+    .sort(compareTasks);
+  return {
+    ...definition,
+    tasks: categoryTasks,
+    exceptionCount: categoryTasks.reduce((count, task) => count + task.reasons.length, 0),
+    actionableCount: categoryTasks.filter((task) => !task.blocked).length,
+    blockedCount: categoryTasks.filter((task) => task.blocked).length,
+  };
+}
+
 /**
  * Consolidates presentation only. Every raw exception remains in exactly one task's `reasons` array.
  * Candidate IDs and safeguard/page identities remain the stable task keys.
@@ -154,52 +202,16 @@ export function projectExceptionSummary(
     const key = taskKey(exception);
     grouped.set(key, [...(grouped.get(key) ?? []), exception]);
   }
-
-  const tasks = [...grouped.entries()].map(([id, reasons]) => {
-    const ordered = [...reasons].sort(
-      (a, b) => a.priority - b.priority || a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id),
-    );
-    const first = ordered[0] as ReviewExceptionProjection;
-    const subject = ordered.find((reason) => reason.subject)?.subject;
-    return {
-      id,
-      categoryId: categoryFor(ordered),
-      sectionId: first.sectionId,
-      title: first.title,
-      ...(subject ? { subject } : {}),
-      candidateId: first.candidateId,
-      page: first.page,
-      blocked: ordered.some((reason) => BLOCKED_KINDS.has(reason.kind)),
-      reasons: ordered,
-    } satisfies ReviewExceptionTask;
-  });
-
-  const categories = CATEGORY_DEFINITIONS.map((definition) => {
-    const categoryTasks = tasks
-      .filter((task) => task.categoryId === definition.id)
-      .sort(
-        (a, b) =>
-          Number(a.blocked) - Number(b.blocked) ||
-          (a.reasons[0]?.priority ?? 2) - (b.reasons[0]?.priority ?? 2) ||
-          a.title.localeCompare(b.title) ||
-          (a.subject ?? "").localeCompare(b.subject ?? "", "en-US", { numeric: true }) ||
-          a.id.localeCompare(b.id),
-      );
-    return {
-      ...definition,
-      tasks: categoryTasks,
-      exceptionCount: categoryTasks.reduce((count, task) => count + task.reasons.length, 0),
-      actionableCount: categoryTasks.filter((task) => !task.blocked).length,
-      blockedCount: categoryTasks.filter((task) => task.blocked).length,
-    } satisfies ReviewExceptionCategory;
-  }).filter((category) => category.tasks.length > 0);
-
+  const tasks = [...grouped.entries()].map(([id, reasons]) => taskFrom(id, reasons));
+  const blockedTaskCount = tasks.filter((task) => task.blocked).length;
   return {
-    categories,
+    categories: CATEGORY_DEFINITIONS.map((definition) => categoryOf(definition, tasks)).filter(
+      (category) => category.tasks.length > 0,
+    ),
     taskCount: tasks.length,
     underlyingExceptionCount: exceptions.length,
-    actionableTaskCount: tasks.filter((task) => !task.blocked).length,
-    blockedTaskCount: tasks.filter((task) => task.blocked).length,
+    actionableTaskCount: tasks.length - blockedTaskCount,
+    blockedTaskCount,
   };
 }
 
@@ -222,8 +234,11 @@ export function openTaskIds(
   const members = groups.find((group) => group.candidateIds.includes(candidateId))
     ?.candidateIds ?? [candidateId];
   for (const category of summary.categories)
-    for (const task of category.tasks)
+    for (const task of category.tasks) {
+      // A safeguard task borrows a candidate id only to name a page; it is not open because that field is.
+      if (exceptionTaskTarget(task).kind !== "candidate") continue;
       if (task.reasons.some((reason) => reason.candidateId && members.includes(reason.candidateId)))
         ids.add(task.id);
+    }
   return ids;
 }

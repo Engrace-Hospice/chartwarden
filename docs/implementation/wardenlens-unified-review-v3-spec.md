@@ -126,7 +126,8 @@ reviewer and backend completion operation remain authoritative.
 - `ReviewExceptionPanel` renders six collapsible categories. Selecting a candidate task opens that
   candidate inline; selecting identity or Part 2 opens the safeguard task.
 - `ReviewFieldGroup` lists all original observations, provenance, risk, confidence, and independent
-  decision state. Preview and Review decision select the same candidate without route navigation.
+  decision state. Each source observation has one Review button, named "Review <value>, page <n>",
+  that opens its review task without route navigation.
 - `ReviewSourcePanel` is the inline review task. It requests the authorized page image, overlays the
   candidate bounding box, reports loading/loaded/forbidden/unavailable/retry states, and owns a
   candidate-specific comparison checkbox. Accept, edit, and reject call the existing M22 decision API.

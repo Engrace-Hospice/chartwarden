@@ -19,3 +19,13 @@ fieldset.wx-unified-safeguard-task {
   min-width: 0;
   margin: 0;
 }
+
+/* Forced colors drop backgrounds and box-shadows, so the current row, block and section are marked by an
+   edge in the system highlight colour instead. */
+@media (forced-colors: active) {
+  .wx-unified-exception-task > button[aria-current="true"],
+  .wx-unified-safeguard-task[aria-current="true"],
+  .wx-unified-sections > button.is-selected {
+    border-inline-start: 0.25rem solid Highlight;
+  }
+}

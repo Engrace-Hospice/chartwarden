@@ -1,6 +1,6 @@
 // apps/web/src/modules/34-saas/wizard — what a billing panel keeps through a Re-verify: the form's NON-secret fields, in the shell's
-// owner-scoped step-up store (`org|user|action|resource`), so sign-out, the idle lock and a session that expires wipe it with every other
-// draft (clearAllDrafts), and another user on the same tab never sees it. In process memory only, never Web Storage. A write-only
+// owner-scoped step-up store (`org|user|action|resource`), so sign-out and a session that expires wipe it with every other
+// draft (clearAllDrafts; an idle lock keeps it), and another user on the same tab never sees it. In process memory only, never Web Storage. A write-only
 // secret (a vendor credential, a client secret) is never stashed at all.
 import { useEffect, useState } from "react";
 import {

@@ -1,8 +1,8 @@
-import { forgetLastReviewTask, rememberLastReviewTask } from "../../../shell/last-review-task";
 // Which review task to reopen after a reload (the storage itself is `shell/last-review-task`, which
-// sign-out and the idle lock clear). The Part 2 / SUD safeguard is never remembered, because its id
-// alone would reveal that this batch has Part 2 content: opening it forgets the earlier task and a
-// reload falls back to the default task.
+// sign-out and session expiry clear; an idle lock keeps it). The Part 2 / SUD safeguard and a withheld
+// Part 2 field are never remembered, because the id alone would reveal that this batch has Part 2
+// content: opening one forgets the earlier task and a reload falls back to the default task.
+import { forgetLastReviewTask, rememberLastReviewTask } from "../../../shell/last-review-task";
 import type { Workspace } from "../doclens-api";
 import { identityNeedsAnswer } from "../doclens-model";
 import {

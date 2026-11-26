@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { recallLastReviewTask, rememberLastReviewTask } from "../../../shell/last-review-task";
 import type { Candidate, Workspace } from "../doclens-api";
-import { rememberOpenedTask, restoreTaskTarget } from "./review-last-task";
+import { rememberOpenedTask, restoreTaskTarget } from "./review-task-memory";
 
 const BATCH = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 

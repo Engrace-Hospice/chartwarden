@@ -335,15 +335,19 @@ services:
   # production web image's recipe; deploy/dev/web-nginx.conf is mounted over its nginx conf and proxies same-origin /api,
   # /version, /webhooks and /socket.io to `api`, like the Vite dev proxy. Host Vite owns :5173, so this defaults to :5176;
   # to replace Vite, stop it and set WEB_PORT=5173.
+  # Opt-in: a plain `docker compose up -d` does not start (or build) it. Naming the service starts it
+  # (`docker compose up -d --build web`); `--profile web` also includes it in a bare up/down/stop/ps.
+  # Loopback only: the conf sends none of production's security headers, so it is not exposed to the network.
   # Rebuild after a web change: `docker compose up -d --build --no-deps web` (without --no-deps it also converges api's deps).
   web:
+    profiles: ["web"]
     build:
       context: .
       dockerfile: Dockerfile.web
     mem_limit: 128m
     cpus: 0.5
     ports:
-      - "${WEB_PORT:-5176}:8080"
+      - "127.0.0.1:${WEB_PORT:-5176}:8080"
     volumes:
       - ./deploy/dev/web-nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:

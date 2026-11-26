@@ -97,20 +97,16 @@ function groupFor(
 }
 
 function mount(group: ReviewFieldGroupProjection) {
-  const onSelectSource = vi.fn();
-  const onReviewDecision = vi.fn();
-  render(
-    <ReviewFieldGroup
-      group={group}
-      onSelectSource={onSelectSource}
-      onReviewDecision={onReviewDecision}
-    />,
-  );
-  return { onSelectSource, onReviewDecision };
+  const onReview = vi.fn();
+  const view = render(<ReviewFieldGroup group={group} onReview={onReview} />);
+  const refresh = (next: ReviewFieldGroupProjection): void =>
+    view.rerender(<ReviewFieldGroup group={next} onReview={onReview} />);
+  return { onReview, refresh, container: view.container };
 }
 
 const CITY = "patient.address.city";
 const STREET = "patient.address.line1";
+const REVIEW_BUTTON = /^Review .+, page \d+$/;
 
 function sixSalems(): Candidate[] {
   return [
@@ -123,6 +119,12 @@ function sixSalems(): Candidate[] {
   ];
 }
 
+function rowFor(candidateId: string): HTMLElement {
+  const row = document.querySelector<HTMLElement>(`[data-candidate-id="${candidateId}"]`);
+  if (!row) throw new Error(`Expected a visible row for ${candidateId}`);
+  return row;
+}
+
 describe("ReviewFieldGroup consolidation", () => {
   it("shows identical values once with a source count, a decided summary and a collapsed disclosure", () => {
     mount(groupFor(sixSalems(), CITY));
@@ -131,45 +133,70 @@ describe("ReviewFieldGroup consolidation", () => {
     expect(screen.getByText(/6 sources/)).toBeTruthy();
     expect(screen.getByText(/3 of 6 decided/)).toBeTruthy();
     expect(screen.getAllByText("Salem")).toHaveLength(1);
-    const disclosure = screen.getByRole("button", { name: /Show sources/ });
+    const disclosure = screen.getByRole("button", { name: "Sources for Salem" });
     expect(disclosure.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByRole("button", { name: /Preview source/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Review decision/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: REVIEW_BUTTON })).toBeNull();
   });
 
-  it("reveals every per-source row, each with its own actions, and collapses again", () => {
+  it("reveals every per-source row with its one Review button, and collapses again", () => {
     const candidates = sixSalems();
-    const { onSelectSource, onReviewDecision } = mount(groupFor(candidates, CITY));
+    const { onReview } = mount(groupFor(candidates, CITY));
 
-    const disclosure = screen.getByRole("button", { name: /Show sources/ });
+    const disclosure = screen.getByRole("button", { name: "Sources for Salem" });
     fireEvent.click(disclosure);
 
     expect(disclosure.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getAllByRole("button", { name: /Preview source/ })).toHaveLength(6);
-    expect(screen.getAllByRole("button", { name: /Review decision/ })).toHaveLength(6);
+    expect(screen.getAllByRole("button", { name: REVIEW_BUTTON })).toHaveLength(6);
+    expect(screen.getAllByRole("button")).toHaveLength(7);
+    expect(screen.queryByRole("button", { name: /Preview source|Review decision/ })).toBeNull();
     expect(screen.getByText(/Synthetic document 3 · Page 3 · 90% confidence/)).toBeTruthy();
     expect(screen.getAllByText("Approved")).toHaveLength(3);
     expect(screen.getAllByText("No decision recorded")).toHaveLength(3);
 
-    const thirdRow = document.querySelector<HTMLElement>(
-      `[data-candidate-id="${candidates[2]?.id}"]`,
-    );
-    if (!thirdRow) throw new Error("Expected the third source row");
-    fireEvent.click(within(thirdRow).getByRole("button", { name: /Preview source/ }));
-    expect(onSelectSource).toHaveBeenCalledTimes(1);
-    expect(onSelectSource).toHaveBeenCalledWith(candidates[2]?.id);
-    fireEvent.click(within(thirdRow).getByRole("button", { name: /Review decision/ }));
-    expect(onReviewDecision).toHaveBeenCalledTimes(1);
-    expect(onReviewDecision).toHaveBeenCalledWith(candidates[2]?.id);
+    const thirdRow = rowFor(candidates[2]?.id ?? "");
+    const review = within(thirdRow).getByRole("button", { name: "Review SALEM, page 3" });
+    expect(review.textContent?.trim()).toBe("Review");
+    fireEvent.click(review);
+    expect(onReview).toHaveBeenCalledTimes(1);
+    expect(onReview).toHaveBeenCalledWith(candidates[2]?.id, expect.any(HTMLElement));
 
     fireEvent.click(disclosure);
     expect(disclosure.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByRole("button", { name: /Preview source/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: REVIEW_BUTTON })).toBeNull();
+  });
+
+  it("keeps the toggle's accessible name fixed and lets aria-expanded carry the state", () => {
+    mount(groupFor(sixSalems(), CITY));
+
+    const disclosure = screen.getByRole("button", { name: "Sources for Salem" });
+    expect(disclosure.textContent?.trim()).toBe("Sources");
+    fireEvent.click(disclosure);
+
+    expect(screen.getByRole("button", { name: "Sources for Salem" })).toBe(disclosure);
+    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+    expect(disclosure.textContent?.trim()).toBe("Sources");
+  });
+
+  it("writes no normalised value into the DOM beyond what the reviewer already reads", () => {
+    const { container } = mount(groupFor(sixSalems(), CITY));
+    fireEvent.click(screen.getByRole("button", { name: "Sources for Salem" }));
+
+    expect(container.querySelector("[data-value-key]")).toBeNull();
+    for (const element of container.querySelectorAll("*")) {
+      for (const attribute of element.getAttributeNames()) {
+        expect(element.getAttribute(attribute)).not.toMatch(/salem/i);
+      }
+    }
+    const controls = screen.getByRole("button", { name: "Sources for Salem" });
+    expect(controls.getAttribute("aria-controls")).not.toMatch(/salem/i);
+    expect(
+      container.querySelector(`#${CSS.escape(controls.getAttribute("aria-controls") ?? "")}`),
+    ).toBeTruthy();
   });
 
   it("offers no group-level decision control", () => {
     mount(groupFor(sixSalems(), CITY));
-    fireEvent.click(screen.getByRole("button", { name: /Show sources/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Sources for Salem" }));
 
     expect(screen.queryByRole("button", { name: /accept|reject|approve|edit/i })).toBeNull();
   });
@@ -190,7 +217,7 @@ describe("ReviewFieldGroup consolidation", () => {
     expect(screen.getByText("1400 Harbor Blvd")).toBeTruthy();
     expect(screen.getByText("1400 Harbor Blwvd")).toBeTruthy();
     expect(screen.getAllByText(/2 sources/)).toHaveLength(3);
-    expect(screen.getAllByRole("button", { name: /Show sources/ })).toHaveLength(3);
+    expect(screen.getAllByRole("button", { name: /^Sources for/ })).toHaveLength(3);
   });
 
   it("expands one value without expanding another", () => {
@@ -202,10 +229,12 @@ describe("ReviewFieldGroup consolidation", () => {
     ];
     mount(groupFor(street, STREET));
 
-    fireEvent.click(screen.getAllByRole("button", { name: /Show sources/ })[0] as HTMLElement);
+    fireEvent.click(screen.getAllByRole("button", { name: /^Sources for/ })[0] as HTMLElement);
 
-    expect(screen.getAllByRole("button", { name: /Preview source/ })).toHaveLength(2);
-    expect(screen.getAllByRole("button", { name: /Show sources/ })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: REVIEW_BUTTON })).toHaveLength(2);
+    const [expanded, collapsed] = screen.getAllByRole("button", { name: /^Sources for/ });
+    expect(expanded?.getAttribute("aria-expanded")).toBe("true");
+    expect(collapsed?.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("does not merge an approved correction with an identical extracted value", () => {
@@ -217,13 +246,23 @@ describe("ReviewFieldGroup consolidation", () => {
 
     expect(screen.getByText("Approved correction")).toBeTruthy();
     expect(screen.getByText("Extracted: Salem")).toBeTruthy();
-    const correctedRow = document.querySelector<HTMLElement>(
-      `[data-candidate-id="${corrected.id}"]`,
-    );
-    if (!correctedRow) throw new Error("Expected the correction to stay on its own visible row");
+    const correctedRow = rowFor(corrected.id);
     expect(within(correctedRow).getByText("Keizer")).toBeTruthy();
-    expect(within(correctedRow).getByRole("button", { name: /Review decision/ })).toBeTruthy();
+    expect(
+      within(correctedRow).getByRole("button", { name: "Review Keizer, page 1" }),
+    ).toBeTruthy();
     expect(screen.getByText(/2 sources/)).toBeTruthy();
+  });
+
+  it("marks a single rejected observation as Rejected once, beside its value", () => {
+    const rejected = candidate(1, CITY, "Salem", { decision: decision("reject") });
+    mount(groupFor([rejected], CITY));
+
+    const row = rowFor(rejected.id);
+    const marker = within(row).getByText("Rejected");
+    expect(within(row).getAllByText("Rejected")).toHaveLength(1);
+    expect(marker.previousElementSibling?.textContent).toBe("Salem");
+    expect(within(row).queryByText("No decision recorded")).toBeNull();
   });
 
   it("keeps a rejected observation out of a consolidated row of identical values", () => {
@@ -231,30 +270,26 @@ describe("ReviewFieldGroup consolidation", () => {
     const open = [candidate(2, CITY, "Salem"), candidate(3, CITY, "Salem")];
     mount(groupFor([rejected, ...open], CITY));
 
-    const rejectedRow = document.querySelector<HTMLElement>(`[data-candidate-id="${rejected.id}"]`);
-    if (!rejectedRow) throw new Error("Expected the rejected observation on its own visible row");
-    expect(within(rejectedRow).getByText("Rejected")).toBeTruthy();
+    expect(within(rowFor(rejected.id)).getByText("Rejected")).toBeTruthy();
     expect(screen.getByText(/2 sources/)).toBeTruthy();
   });
 
-  it("never merges withheld Part 2 observations", () => {
+  it("never merges withheld Part 2 observations, and never shows their value", () => {
     const withheld = [
-      candidate(1, CITY, null, { redacted: true }),
-      candidate(2, CITY, null, { redacted: true }),
+      candidate(1, CITY, "Synthetic withheld text", { redacted: true }),
+      candidate(2, CITY, "Synthetic withheld text", { redacted: true }),
     ];
     mount(groupFor(withheld, CITY));
 
     expect(screen.getAllByText("Part 2 content withheld")).toHaveLength(2);
-    expect(screen.queryByRole("button", { name: /Show sources/ })).toBeNull();
-  });
-
-  it("flags a vision disagreement that sits inside a consolidated row", () => {
-    const disagreed = candidate(2, CITY, "Salem", {
-      vision: { status: "disagreed", observedValue: "Keizer" },
-    });
-    mount(groupFor([candidate(1, CITY, "Salem"), disagreed], CITY));
-
-    expect(screen.getByText(/Vision disagreement/)).toBeTruthy();
+    expect(screen.queryByText(/Synthetic withheld text/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Sources for/ })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Review Part 2 content withheld, page 1" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Review Part 2 content withheld, page 2" }),
+    ).toBeTruthy();
   });
 
   it("treats empty and whitespace-only values as no value, never as text and never as a real value", () => {
@@ -266,34 +301,141 @@ describe("ReviewFieldGroup consolidation", () => {
     ];
     mount(groupFor(blanks, CITY));
 
-    expect(
-      screen.getByRole("button", { name: "Show sources for No value extracted" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sources for No value extracted" })).toBeTruthy();
     expect(screen.getByText(/3 sources/)).toBeTruthy();
     expect(screen.getByText("Salem")).toBeTruthy();
     for (const strong of document.querySelectorAll("strong")) {
       expect(strong.textContent?.trim()).not.toBe("");
     }
-    for (const button of screen.getAllByRole("button", { name: /Show sources/ })) {
-      expect(button.getAttribute("aria-label")?.trim()).not.toMatch(/for$/);
+    for (const button of screen.getAllByRole("button", { name: /^Sources for/ })) {
+      const name = document.getElementById(button.getAttribute("aria-labelledby") ?? "");
+      expect(name?.textContent?.trim()).not.toMatch(/for$/);
     }
   });
 
-  it("names a single blank observation as no value", () => {
+  it("names a single blank observation as no value, in the row and in its Review button", () => {
     mount(groupFor([candidate(1, CITY, "  ")], CITY));
 
     expect(screen.getByText("No value extracted")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Review No value extracted, page 1" })).toBeTruthy();
   });
 
-  it("renders a single observation as before, with no disclosure", () => {
+  it("renders a single observation with one Review button and no disclosure", () => {
     const only = candidate(1, CITY, "Salem");
-    const { onSelectSource, onReviewDecision } = mount(groupFor([only], CITY));
+    const { onReview } = mount(groupFor([only], CITY));
 
-    expect(screen.queryByRole("button", { name: /sources/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Sources/ })).toBeNull();
     expect(screen.getByText("Salem")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Preview source/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Review decision/ }));
-    expect(onSelectSource).toHaveBeenCalledWith(only.id);
-    expect(onReviewDecision).toHaveBeenCalledWith(only.id);
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Review Salem, page 1" }));
+    expect(onReview).toHaveBeenCalledTimes(1);
+    expect(onReview).toHaveBeenCalledWith(only.id, expect.any(HTMLElement));
+  });
+});
+
+describe("ReviewFieldGroup consolidated details", () => {
+  it("names the original extractions behind a consolidated correction without expanding it", () => {
+    const corrections = [
+      candidate(1, CITY, "Salem", { decision: decision("approve_with_edit", "Keizer") }),
+      candidate(2, CITY, "Salm", { decision: decision("approve_with_edit", " keizer") }),
+      candidate(3, CITY, "SALEM", { decision: decision("approve_with_edit", "Keizer") }),
+    ];
+    mount(groupFor(corrections, CITY));
+
+    expect(screen.getByText("Keizer")).toBeTruthy();
+    expect(screen.getByText("Approved correction")).toBeTruthy();
+    expect(screen.getByText("Extracted: Salem, Salm")).toBeTruthy();
+    expect(screen.getByText("3 sources · 3 of 3 decided")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: REVIEW_BUTTON })).toBeNull();
+  });
+
+  it("shows the Approved correction badge and each row's own original once expanded", () => {
+    const corrections = [
+      candidate(1, CITY, "Salem", { decision: decision("approve_with_edit", "Keizer") }),
+      candidate(2, CITY, "Salm", { decision: decision("approve_with_edit", "Keizer") }),
+    ];
+    mount(groupFor(corrections, CITY));
+    fireEvent.click(screen.getByRole("button", { name: "Sources for Keizer" }));
+
+    expect(screen.getAllByText("Approved correction")).toHaveLength(3);
+    expect(within(rowFor(corrections[0]?.id ?? "")).getByText("Extracted: Salem")).toBeTruthy();
+    expect(within(rowFor(corrections[1]?.id ?? "")).getByText("Extracted: Salm")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Review Keizer, page 1" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: REVIEW_BUTTON })).toHaveLength(2);
+  });
+
+  it("shows the Rejected badge on a consolidated rejection, with no Extracted line", () => {
+    const rejections = [
+      candidate(1, CITY, "Salem", { decision: decision("reject") }),
+      candidate(2, CITY, "salem", { decision: decision("reject") }),
+    ];
+    mount(groupFor(rejections, CITY));
+
+    expect(screen.getByText("Rejected")).toBeTruthy();
+    expect(screen.getByText("2 sources · 2 of 2 decided")).toBeTruthy();
+    expect(screen.queryByText(/Extracted:/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sources for Salem" }));
+    expect(screen.getAllByText("Rejected")).toHaveLength(3);
+  });
+
+  it("counts the vision disagreements inside a consolidated row", () => {
+    const disagreed = { status: "disagreed", observedValue: "Keizer" } as const;
+    mount(
+      groupFor(
+        [
+          candidate(1, CITY, "Salem"),
+          candidate(2, CITY, "Salem", { vision: disagreed }),
+          candidate(3, CITY, "Salem", { vision: disagreed }),
+        ],
+        CITY,
+      ),
+    );
+
+    expect(screen.getByText("3 sources · 0 of 3 decided · Vision disagreement (2)")).toBeTruthy();
+  });
+
+  it("flags a vision disagreement on a single row", () => {
+    mount(
+      groupFor(
+        [candidate(1, CITY, "Salem", { vision: { status: "disagreed", observedValue: "Keizer" } })],
+        CITY,
+      ),
+    );
+
+    expect(screen.getByText("No decision recorded · Vision disagreement")).toBeTruthy();
+  });
+
+  it("keeps a disclosure open when the workspace refreshes with the same values", () => {
+    const { refresh } = mount(groupFor(sixSalems(), CITY));
+    fireEvent.click(screen.getByRole("button", { name: "Sources for Salem" }));
+    expect(screen.getAllByRole("button", { name: REVIEW_BUTTON })).toHaveLength(6);
+
+    const refreshed = sixSalems().map((item) => ({ ...item, decision: decision("approve") }));
+    refresh(groupFor(refreshed, CITY));
+
+    const disclosure = screen.getByRole("button", { name: "Sources for Salem" });
+    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getAllByRole("button", { name: REVIEW_BUTTON })).toHaveLength(6);
+    expect(screen.getByText("6 sources · 6 of 6 decided")).toBeTruthy();
+  });
+
+  it("collapses a disclosure whose value changes key, as when an approval becomes a correction", () => {
+    const pair = [candidate(1, CITY, "Salem"), candidate(2, CITY, "Salem")];
+    const { refresh } = mount(groupFor(pair, CITY));
+    fireEvent.click(screen.getByRole("button", { name: "Sources for Salem" }));
+    expect(screen.getAllByRole("button", { name: REVIEW_BUTTON })).toHaveLength(2);
+
+    refresh(
+      groupFor(
+        pair.map((item) => ({ ...item, decision: decision("approve_with_edit", "Keizer") })),
+        CITY,
+      ),
+    );
+
+    const disclosure = screen.getByRole("button", { name: "Sources for Keizer" });
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("button", { name: REVIEW_BUTTON })).toBeNull();
+    expect(screen.getByText("Extracted: Salem")).toBeTruthy();
   });
 });

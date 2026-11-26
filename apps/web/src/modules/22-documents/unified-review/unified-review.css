@@ -5,7 +5,7 @@
 .wx-unified-eyebrow,
 .wx-unified-category {
   color: var(--color-muted);
-  font-size: 0.6875rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -116,7 +116,7 @@
   outline: none;
 }
 .wx-unified-task-column:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
+  outline: 3px solid var(--color-focus-ring);
   outline-offset: 3px;
   border-radius: var(--radius-lg);
 }
@@ -281,7 +281,7 @@
 .wx-unified-group header p {
   margin: 0;
   color: var(--color-muted);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
 }
 .wx-unified-observations {
   margin: 0.75rem 0 0;
@@ -320,11 +320,15 @@
 }
 .wx-unified-observation-value span {
   color: var(--color-muted);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
+}
+.wx-unified-observation-value .wx-unified-observation-marker {
+  color: var(--color-on-surface);
+  font-weight: 700;
 }
 .wx-unified-observation-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
 }
 .wx-unified-observation-actions > * {
   width: 100%;
@@ -340,7 +344,7 @@
 }
 .wx-unified-exceptions > header small {
   color: var(--color-muted);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
 }
 .wx-unified-exception-categories > section + section {
   border-top: 1px solid var(--color-card-border);
@@ -405,14 +409,14 @@
 }
 .wx-unified-exceptions small {
   color: var(--color-muted);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   overflow-wrap: anywhere;
 }
 .wx-unified-exception-task > ul {
   margin: 0.25rem 0 0;
   padding: 0 1rem 0.75rem 2rem;
   color: var(--color-muted);
-  font-size: 0.6875rem;
+  font-size: 0.8125rem;
 }
 .wx-unified-empty {
   display: flex;
@@ -424,36 +428,7 @@
   font-size: 0.8125rem;
 }
 
-/* Shared evidence stage: the safeguard panel renders its source page with these three rules. */
-.wx-unified-source-stage {
-  position: relative;
-  display: grid;
-  place-items: center;
-  min-height: 20rem;
-  max-height: 30rem;
-  padding: 1rem;
-  overflow: auto;
-  background: var(--color-surface-container);
-}
-.wx-unified-source-page {
-  position: relative;
-  width: fit-content;
-  max-width: 100%;
-}
-.wx-unified-source-page > img {
-  display: block;
-  max-width: 100%;
-  max-height: 26rem;
-  object-fit: contain;
-  box-shadow: var(--shadow-soft);
-}
-.wx-unified-source-stage > .wx-status-pill {
-  position: absolute;
-  top: 1rem;
-  left: 1rem;
-}
-
-/* Review task viewer (ReviewSourcePanel): fills the panel width inside its own scroll box. */
+/* Source viewer (SourceViewer, both review panels): fills the panel width inside its own scroll box. */
 .wx-unified-source-viewer {
   display: grid;
   align-content: center;
@@ -488,6 +463,11 @@
 .wx-unified-source-viewport {
   max-height: 30rem;
   overflow: auto;
+}
+/* The viewport is keyboard-focusable so a keyboard user can scroll a zoomed page. */
+.wx-unified-source-viewport:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: -3px;
 }
 .wx-unified-source-sheet {
   position: relative;
@@ -593,10 +573,6 @@
   padding: 1rem;
   border-top: 1px solid var(--color-card-border);
 }
-.wx-unified-safeguard-task[data-selected="true"] {
-  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface-lowest));
-  box-shadow: inset 3px 0 var(--color-primary);
-}
 .wx-unified-safeguard-task > div:first-child {
   display: flex;
   justify-content: space-between;
@@ -662,14 +638,6 @@
   .wx-unified-sections > button > svg:last-child {
     grid-column: 3;
     grid-row: 1 / span 2;
-  }
-  .wx-unified-observations > li,
-  .wx-unified-observation-sources > li {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .wx-unified-observation-actions {
-    grid-template-columns: minmax(0, 1fr);
   }
   .wx-unified-task-column {
     position: static;

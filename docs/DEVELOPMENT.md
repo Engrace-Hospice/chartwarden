@@ -128,14 +128,19 @@ production web image's recipe) with nginx at **http://localhost:5176**, and prox
 `/webhooks` and `/socket.io` (WebSocket upgrade included) to `api:3000`, as the Vite dev proxy does. Unknown paths fall
 back to `index.html`; the patient portal is at `/portal/`. The nginx conf is dev-only,
 [`deploy/dev/web-nginx.conf`](../deploy/dev/web-nginx.conf) (mounted, so editing it needs only
-`docker compose restart web`); unlike production it sends no CSP, which would block the `http://localhost:9000`
-object-store previews.
+`docker compose restart web`); unlike production it sends none of production's security headers (CSP, frame-ancestors,
+HSTS, nosniff, Referrer-Policy), the CSP among them because it would block the `http://localhost:9000` object-store
+previews. Do not use this container as evidence of CSP or header behaviour.
 
+- **Opt-in:** the service has `profiles: ["web"]`, so a plain `docker compose up -d` neither builds nor starts it.
+  Naming it activates the profile (`docker compose up -d --build web`); add `--profile web` to include it in a bare
+  `up`, `down`, `stop` or `ps`.
 - **Start / rebuild:** `docker compose up -d --build web`. It also converges `api` and its dependencies (recreating any
   whose Compose config changed), so for a plain web rebuild add `--no-deps`: `docker compose up -d --build --no-deps web`.
   The container serves a build, not your working tree, so rebuild after every web change; use host Vite
   (`bun run dev:web`) for hot reload.
-- **Port:** `WEB_PORT` (default `5176`). Host Vite owns `5173`; to replace it, stop Vite and run with `WEB_PORT=5173`.
+- **Port:** `WEB_PORT` (default `5176`), published on loopback only (`127.0.0.1`), so it is not reachable from other
+  machines. Host Vite owns `5173`; to replace it, stop Vite and run with `WEB_PORT=5173`.
 - **Origins:** `api`, `worker` (`TRUSTED_ORIGINS`) and `rustfs` (`RUSTFS_CORS_ALLOWED_ORIGINS`) list
   `http://localhost:5173` to `5176`. After pulling a change to those lists, recreate them
   (`docker compose up -d api worker rustfs`) or sign-in from the new origin fails with `INVALID_ORIGIN`.

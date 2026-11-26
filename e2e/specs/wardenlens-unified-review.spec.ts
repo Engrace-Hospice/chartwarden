@@ -7,6 +7,9 @@ import { expectNoAxeViolations, signInAs } from "../fixtures/helpers";
 
 const BATCH = "a1000000-0000-4000-8000-000000000001";
 
+/** The one review button on an observation row: "Review <value>, page <n>". */
+const REVIEW_ROW = /^Review .+, page \d+$/;
+
 const SYNTHETIC_PAGES = Array.from({ length: 19 }, (_, index) => index + 1);
 const SYNTHETIC_DOCUMENTS = SYNTHETIC_PAGES.map((page) => ({
   pageFrom: page,
@@ -97,7 +100,10 @@ function observation(
     page,
     bbox: [190, 170, 400, 212] as [number, number, number, number],
     vision: {
-      status: riskLevel === "high" ? ("verified" as const) : ("not_required" as const),
+      status: (riskLevel === "high" ? "verified" : "not_required") as
+        | "verified"
+        | "not_required"
+        | "disagreed",
       observedValue: null as string | null,
     },
     sudDetected: page === 3,
@@ -187,6 +193,34 @@ async function capture(page: Page, viewport: (typeof VIEWPORTS)[number]): Promis
     ),
     fullPage: true,
   });
+}
+
+/**
+ * The six identical sources of a medication consolidate into one row, so a per-source Review button
+ * exists only once its disclosure is open. Opens the last disclosure and returns the last Review button.
+ */
+async function lastReviewButton(page: Page) {
+  const sources = page.getByRole("button", { name: /^Sources for / }).last();
+  await sources.scrollIntoViewIfNeeded();
+  if ((await sources.getAttribute("aria-expanded")) !== "true") await sources.click();
+  return page.getByRole("button", { name: REVIEW_ROW }).last();
+}
+
+/**
+ * D-01/D-03: the SUD exception names a field candidate on its page, but it must open the Part 2
+ * safeguard block (marked and focused), never that field's task. Opening a task can auto-expand its
+ * category, so the category is clicked only while it is collapsed.
+ */
+async function openSudSafeguard(page: Page) {
+  const priorities = page.getByRole("complementary", { name: "Review priorities" });
+  const category = priorities.getByRole("button", { name: /Part 2 \/ SUD safeguards/ });
+  await category.scrollIntoViewIfNeeded();
+  if ((await category.getAttribute("aria-expanded")) !== "true") await category.click();
+  await priorities.getByRole("button", { name: /Part 2 \/ SUD safeguard is unresolved/ }).click();
+  const block = page.getByRole("group", { name: "Part 2 / SUD safeguard" });
+  await expect(block).toHaveAttribute("aria-current", "true");
+  await expect(block).toBeFocused();
+  return block;
 }
 
 test("WardenLens unified review is exception-first, accessible, and responsive", async ({
@@ -297,7 +331,7 @@ test("WardenLens unified review is exception-first, accessible, and responsive",
       expect(positions?.clinical.x).toBeLessThan(positions?.task.x ?? 0);
       expect(positions?.task.x).toBeLessThan(positions?.exceptions.x ?? 0);
 
-      const deepDecision = page.getByRole("button", { name: /Review decision/ }).last();
+      const deepDecision = await lastReviewButton(page);
       await deepDecision.scrollIntoViewIfNeeded();
       const mainScrollport = page.locator(".wx-main");
       const scrollBeforeDecision = await mainScrollport.evaluate((element) => element.scrollTop);
@@ -311,16 +345,8 @@ test("WardenLens unified review is exception-first, accessible, and responsive",
         .toBeLessThanOrEqual(2);
       await expect(page.locator(".wx-unified-task-column")).toBeInViewport();
 
-      // D-01/D-03: the SUD exception names a field candidate on its page, but it must open the Part 2
-      // safeguard block (marked, focused and scrolled into the task column), never that field's task.
-      const priorities = page.getByRole("complementary", { name: "Review priorities" });
-      await priorities.getByRole("button", { name: /Part 2 \/ SUD safeguards/ }).click();
-      await priorities
-        .getByRole("button", { name: /Part 2 \/ SUD safeguard is unresolved/ })
-        .click();
-      const sudBlock = page.getByRole("group", { name: "Part 2 / SUD safeguard" });
-      await expect(sudBlock).toHaveAttribute("aria-current", "true");
-      await expect(sudBlock).toBeFocused();
+      // The block is also scrolled into the task column.
+      const sudBlock = await openSudSafeguard(page);
       expect(
         await sudBlock.evaluate((block) => {
           const column = block.closest(".wx-unified-task-column")?.getBoundingClientRect();
@@ -329,12 +355,10 @@ test("WardenLens unified review is exception-first, accessible, and responsive",
         }),
         "the SUD block should sit inside the visible task column",
       ).toBe(true);
+      await expectNoAxeViolations(page);
 
       await page.getByRole("button", { name: /Patient identity & demographics/ }).click();
-      await page
-        .getByRole("button", { name: /Review decision/ })
-        .first()
-        .click();
+      await page.getByRole("button", { name: REVIEW_ROW }).first().click();
       const confirmation = page.getByRole("checkbox", { name: /I compared this with the source/ });
       await expect(confirmation).toBeEnabled();
       await confirmation.check();
@@ -381,10 +405,12 @@ test("WardenLens unified review is exception-first, accessible, and responsive",
       expect(positions?.task.y).toBeLessThan(positions?.clinical.y ?? 0);
 
       const taskColumn = page.locator(".wx-unified-task-column");
-      const mobileDecision = page.getByRole("button", { name: /Review decision/ }).last();
+      // Focus lands on the opened task's heading (the column is only the fallback).
+      const taskHeading = taskColumn.locator("[data-task-heading]");
+      const mobileDecision = await lastReviewButton(page);
       await mobileDecision.scrollIntoViewIfNeeded();
       await mobileDecision.click();
-      await expect(taskColumn).toBeFocused();
+      await expect(taskHeading).toBeFocused();
       await expect(taskColumn).toBeInViewport();
 
       const priorities = page.getByRole("complementary", { name: "Review priorities" });
@@ -397,8 +423,13 @@ test("WardenLens unified review is exception-first, accessible, and responsive",
         .getByRole("button", { name: /Mobile phone/ })
         .first()
         .click();
-      await expect(taskColumn).toBeFocused();
+      await expect(taskHeading).toBeFocused();
       await expect(taskColumn).toBeInViewport();
+
+      // The narrow layout reveals the Part 2 safeguard block the same way: focused, in view, accessible.
+      const mobileSudBlock = await openSudSafeguard(page);
+      await expect(mobileSudBlock).toBeInViewport();
+      await expectNoAxeViolations(page);
     }
   }
 });

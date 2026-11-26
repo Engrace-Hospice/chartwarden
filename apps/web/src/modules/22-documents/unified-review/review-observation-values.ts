@@ -15,6 +15,7 @@ export interface ObservationValue {
 }
 
 export const NO_VALUE_LABEL = "No value extracted";
+export const WITHHELD_LABEL = "Part 2 content withheld";
 
 /** The value when it has visible text; null for null, empty and whitespace-only, which are no value. */
 export function visibleValue(value: string | null): string | null {
@@ -29,7 +30,13 @@ export function effectiveObservationValue(candidate: Candidate): string | null {
     : candidate.value;
 }
 
-function observationKind(candidate: Candidate): ObservationValueKind {
+/** The text a row shows as the observation's value: the withheld wording, the effective value or "no value". */
+export function observationDisplayValue(candidate: Candidate): string {
+  if (candidate.redacted) return WITHHELD_LABEL;
+  return visibleValue(effectiveObservationValue(candidate)) ?? NO_VALUE_LABEL;
+}
+
+export function observationKind(candidate: Candidate): ObservationValueKind {
   if (candidate.redacted) return "withheld";
   const kind = candidate.decision?.decision;
   if (kind === "approve_with_edit" && candidate.decision?.editedValue !== null) return "correction";
@@ -71,4 +78,20 @@ export function consolidateObservations(
     byKey.set(key, { head: { key, kind, displayValue, observations: [] }, members: [observation] });
   }
   return [...byKey.values()].map(({ head, members }) => ({ ...head, observations: members }));
+}
+
+/**
+ * The distinct values originally extracted behind a consolidated approved correction, in source
+ * order, so the reviewer can still see what the correction replaced. Empty for every other kind:
+ * there the extracted value is the displayed value.
+ */
+export function extractedValues({ kind, observations }: ObservationValue): readonly string[] {
+  if (kind !== "correction") return [];
+  const byNormalized = new Map<string, string>();
+  for (const { candidate } of observations) {
+    const key = normalizedCandidateValue(candidate);
+    if (!byNormalized.has(key))
+      byNormalized.set(key, visibleValue(candidate.value) ?? NO_VALUE_LABEL);
+  }
+  return [...byNormalized.values()];
 }

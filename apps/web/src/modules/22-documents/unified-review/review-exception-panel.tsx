@@ -1,5 +1,5 @@
 import { Glyph, StatusPill } from "@chartwarden/ui";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import type { ReviewExceptionSummary, ReviewExceptionTask } from "./review-exception-tasks";
 
@@ -8,27 +8,33 @@ const NO_TASKS: ReadonlySet<string> = new Set();
 export function ReviewExceptionPanel({
   summary,
   selectedTaskIds = NO_TASKS,
-  expandSelected = false,
+  revealVersion = 0,
+  disabled = false,
   onSelect,
 }: {
   summary: ReviewExceptionSummary;
   /** The tasks whose work is open in the task column; their rows are marked as current. */
   selectedTaskIds?: ReadonlySet<string>;
-  /** Open the categories holding those rows (a restored or deliberately opened task), not for the default one. */
-  expandSelected?: boolean;
-  onSelect: (task: ReviewExceptionTask) => void;
+  /**
+   * Counts the times a task was chosen or restored (0: only the default task is open). Each new value opens
+   * the categories holding the open task's rows again, even after the reviewer collapsed them.
+   */
+  revealVersion?: number;
+  /** True while a decision is being saved: the rows that switch task wait. */
+  disabled?: boolean;
+  /** `trigger` is the row that was chosen, so the caller can return focus to it. */
+  onSelect: (task: ReviewExceptionTask, trigger: HTMLElement) => void;
 }): JSX.Element {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
-  const selectedCategoryKey = expandSelected
-    ? summary.categories
-        .filter((category) => category.tasks.some((task) => selectedTaskIds.has(task.id)))
-        .map((category) => category.id)
-        .join("|")
-    : "";
+  const revealedVersion = useRef(0);
   useEffect(() => {
-    if (!selectedCategoryKey) return;
-    setExpanded((current) => new Set([...current, ...selectedCategoryKey.split("|")]));
-  }, [selectedCategoryKey]);
+    if (revealVersion === 0 || revealVersion === revealedVersion.current) return;
+    revealedVersion.current = revealVersion;
+    const holding = summary.categories
+      .filter((category) => category.tasks.some((task) => selectedTaskIds.has(task.id)))
+      .map((category) => category.id);
+    if (holding.length > 0) setExpanded((current) => new Set([...current, ...holding]));
+  }, [revealVersion, selectedTaskIds, summary]);
 
   return (
     <aside className="wx-unified-exceptions" aria-label="Review priorities">
@@ -96,7 +102,8 @@ export function ReviewExceptionPanel({
                             type="button"
                             aria-describedby={`${task.id}-reasons`}
                             aria-current={selectedTaskIds.has(task.id) ? "true" : undefined}
-                            onClick={() => onSelect(task)}
+                            disabled={disabled}
+                            onClick={(event) => onSelect(task, event.currentTarget)}
                           >
                             <span>
                               <strong>{task.title}</strong>

@@ -1,7 +1,7 @@
 // apps/web/src/modules/34-saas/wizard — what a form keeps through the step-up round trip (Re-verify), and how it is kept. A draft here can
 // hold free text a person typed (an evidence note, a skip reason, a go-live note), so it lives in the shell's scoped store: process
 // memory only (never Web Storage), filed under org|user|action|name so only the same person in the same organization can read it back,
-// forgotten by sign-out and the idle screen lock (`clearAllDrafts`), dropped after 15 minutes, and restored only on the return from
+// forgotten by sign-out and an expired session (`clearAllDrafts`; an idle screen lock keeps them), dropped after 15 minutes, and restored only on the return from
 // the step-up page (the history state the kit's StepUpCard returns with). Never put a secret or a consent tick in one.
 import { isStepUpReturn } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";

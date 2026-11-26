@@ -1,5 +1,6 @@
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
@@ -9,6 +10,7 @@ import { UnifiedReviewWorkspace } from "./unified-review-workspace";
 const BATCH = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const PHONE = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
 const NEXT = "cccccccc-3333-4333-8333-cccccccccccc";
+const REVIEW_PHONE = "Review (503) 555-0177, page 1";
 
 const workspace: Workspace = {
   batch: {
@@ -214,7 +216,7 @@ describe("UnifiedReviewWorkspace", () => {
     const task = document.querySelector<HTMLElement>(".wx-unified-task-column");
     if (!task) throw new Error("Expected the unified task column");
     task.scrollTop = 180;
-    fireEvent.click(screen.getByRole("button", { name: /Review decision/ }));
+    fireEvent.click(screen.getByRole("button", { name: REVIEW_PHONE }));
     expect(screen.getByRole("region", { name: /Review task/ })).toBeTruthy();
     expect(task.scrollTop).toBe(0);
     expect(screen.getByRole("heading", { name: "Mobile phone", level: 2 })).toBeTruthy();
@@ -452,14 +454,13 @@ describe("UnifiedReviewWorkspace", () => {
     expect(
       (await screen.findByRole("link", { name: "Back to referral intake" })).getAttribute("href"),
     ).toBe(returnTo);
-    fireEvent.click(screen.getByRole("button", { name: /Review decision/ }));
+    fireEvent.click(screen.getByRole("button", { name: REVIEW_PHONE }));
     expect(screen.getByRole("region", { name: /Review task/ })).toBeTruthy();
 
     const detailed = screen.getByRole("link", { name: /Legacy detailed reviewer/ });
     const detailedUrl = new URL(detailed.getAttribute("href") ?? "", "http://localhost");
     expect(detailedUrl.searchParams.get("returnTo")).toBe(returnTo);
 
-    fireEvent.click(screen.getByRole("button", { name: /Preview source/ }));
     fireEvent.click(screen.getByText("Advanced tools"));
     const sourceReview = screen.getByRole("link", {
       name: /Leave unified workspace for legacy reviewer/,
@@ -480,25 +481,35 @@ describe("UnifiedReviewWorkspace", () => {
     );
   });
 
-  it("supports keyboard activation of section disclosure controls", async () => {
+  it("opens a section from the keyboard on a native button", async () => {
+    const user = userEvent.setup();
     mount();
     const medications = await screen.findByRole("button", { name: /Medications & allergies/ });
+    expect(medications.tagName).toBe("BUTTON");
+    expect(medications.getAttribute("aria-expanded")).toBe("false");
+
     medications.focus();
-    fireEvent.keyDown(medications, { key: "Enter" });
-    fireEvent.click(medications);
+    await user.keyboard("{Enter}");
     expect(medications.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("heading", { name: "Medications & allergies" })).toBeTruthy();
+
+    const diagnoses = screen.getByRole("button", { name: /Diagnoses & clinical history/ });
+    diagnoses.focus();
+    await user.keyboard(" ");
+    expect(diagnoses.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("turns a source-image failure into an exception and offers a safe retry", async () => {
     pageStatus = 503;
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: /Preview source/ }));
+    fireEvent.click(await screen.findByRole("button", { name: REVIEW_PHONE }));
     const image = screen.getByRole("img", { name: /Page 1 of the source document/ });
     fireEvent.error(image);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Source page could not be loaded");
-    fireEvent.click(screen.getByRole("button", { name: /Other review requirements/ }));
+    // Opening the task already opened the category that holds its row; only click a closed one.
+    const category = screen.getByRole("button", { name: /Other review requirements/ });
+    if (category.getAttribute("aria-expanded") !== "true") fireEvent.click(category);
     await waitFor(() => expect(screen.getByText("Source page 1 is unavailable")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: /Retry source/ }));
     expect(screen.getByText("Source page 1 is unavailable")).toBeTruthy();
@@ -511,9 +522,24 @@ describe("UnifiedReviewWorkspace", () => {
     expect(screen.getByText(/does not confirm the source/)).toBeTruthy();
   });
 
+  it("reopens the field task behind an unavailable source page from its priorities row", async () => {
+    pageStatus = 503;
+    mount();
+    fireEvent.error(await screen.findByRole("img", { name: /Page 1 of the source document/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Source page could not be loaded");
+    fireEvent.click(screen.getByRole("button", { name: /Close task/ }));
+    expect(screen.getByText("Select a review task")).toBeTruthy();
+
+    const category = screen.getByRole("button", { name: /Other review requirements/ });
+    if (category.getAttribute("aria-expanded") !== "true") fireEvent.click(category);
+    fireEvent.click(screen.getByRole("button", { name: /Source page 1 is unavailable/ }));
+
+    expect(screen.getByRole("heading", { name: "Mobile phone", level: 2 })).toBeTruthy();
+  });
+
   it("requires a visible source and explicit comparison before an inline decision", async () => {
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: /Review decision/ }));
+    fireEvent.click(await screen.findByRole("button", { name: REVIEW_PHONE }));
 
     const accept = screen.getByRole("button", { name: "Accept extracted value" });
     const confirmation = screen.getByRole("checkbox", { name: /I compared this with the source/ });
@@ -553,7 +579,7 @@ describe("UnifiedReviewWorkspace", () => {
         within(panel).getByRole("button", { name: /Mobile phone needs high-risk review/ }),
       );
       expect(document.activeElement).toBe(
-        screen.getByRole("region", { name: "Active review task" }),
+        screen.getByRole("heading", { name: "Mobile phone", level: 2 }),
       );
     } finally {
       candidate.confidence = original.confidence;
@@ -743,259 +769,15 @@ describe("UnifiedReviewWorkspace", () => {
         await screen.findByRole("heading", { name: "Review patient information" }),
       ).toBeTruthy();
       expect(screen.queryByRole("heading", { name: "Mobile phone", level: 2 })).toBeNull();
-      expect(screen.queryByRole("button", { name: /Review decision/ })).toBeNull();
+      expect(screen.queryAllByRole("button", { name: /, page \d+$/ })).toHaveLength(0);
       expect(screen.getByRole("region", { name: "Review progress" })).toHaveTextContent(
         "0 of 0 observations decided",
       );
+      expect(screen.getByText("Select a review task")).toBeTruthy();
+      expect(screen.getByText(/No extracted observations are mapped to this section/)).toBeTruthy();
+      expect(screen.getByRole("button", { name: /Patient identity.*1 blocked/ })).toBeTruthy();
     } finally {
       document.identity = { status: "match", disagreeing: [], resolution: null };
     }
-  });
-});
-
-describe("UnifiedReviewWorkspace review task routing", () => {
-  const SUD_PAGE = 1;
-  const IDENTITY_PAGE = 2;
-  const COLUMN_TOP = 100;
-  const BLOCK_TOP = 1700;
-  const DIAGNOSIS_ONE = "11111111-1111-4111-8111-111111111111";
-  const DIAGNOSIS_TWO = "22222222-2222-4222-8222-222222222222";
-  const TASK_KEY = `wx.unified-review-task:${BATCH}`;
-  let pristine: Workspace;
-
-  beforeEach(() => {
-    pristine = structuredClone(workspace);
-  });
-  afterEach(() => {
-    Object.assign(workspace, structuredClone(pristine));
-  });
-
-  function phoneCandidate(): Workspace["candidates"][number] {
-    const phone = workspace.candidates[0];
-    if (!phone) throw new Error("Expected the synthetic phone candidate");
-    return phone;
-  }
-
-  function detectSud(): void {
-    phoneCandidate().sudDetected = true;
-    workspace.sud = {
-      ...workspace.sud,
-      status: "detected",
-      indicators: [
-        {
-          page: SUD_PAGE,
-          category: "sud",
-          ruleId: "synthetic-rule",
-          term: "synthetic term",
-          bbox: [1, 1, 2, 2],
-        },
-      ],
-    };
-  }
-
-  function addDocumentNeedingIdentity(): void {
-    workspace.pages.push({
-      page: IDENTITY_PAGE,
-      width: 612,
-      height: 792,
-      documentType: "discharge_summary",
-      confidence: 0.98,
-      needsHumanClassification: false,
-    });
-    workspace.documents.push({
-      pageFrom: IDENTITY_PAGE,
-      pageTo: IDENTITY_PAGE,
-      documentType: "discharge_summary",
-      title: "Discharge summary 2",
-      date: null,
-      duplicateOfPage: null,
-      boundary: null,
-      identity: { status: "possible", disagreeing: ["lastName"], resolution: null },
-    });
-    workspace.candidates.push({
-      ...phoneCandidate(),
-      id: NEXT,
-      fieldPath: "patient.email",
-      description: "email",
-      value: "synthetic@example.test",
-      page: IDENTITY_PAGE,
-      decision: null,
-    });
-  }
-
-  function addHighRiskDiagnoses(): void {
-    const phone = phoneCandidate();
-    workspace.candidates.push(
-      {
-        ...phone,
-        id: DIAGNOSIS_ONE,
-        fieldPath: "diagnoses[0].description",
-        value: "Dependence on supplemental oxygen",
-        riskLevel: "high",
-        decision: null,
-      },
-      {
-        ...phone,
-        id: DIAGNOSIS_TWO,
-        fieldPath: "diagnoses[1].description",
-        value: "Chronic kidney disease stage 4",
-        riskLevel: "high",
-        decision: null,
-      },
-    );
-  }
-
-  function stubLayout(blockTops: Readonly<Record<string, number>>): void {
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
-      this: HTMLElement,
-    ) {
-      const top = this.classList.contains("wx-unified-task-column")
-        ? COLUMN_TOP
-        : (blockTops[this.dataset.safeguardBlock ?? ""] ?? 0);
-      return { top, bottom: top, left: 0, right: 0, width: 0, height: 0, x: 0, y: top } as DOMRect;
-    });
-  }
-
-  async function prioritiesPanel(): Promise<HTMLElement> {
-    return await screen.findByRole("complementary", { name: "Review priorities" });
-  }
-
-  it("opens the Part 2 / SUD safeguard block, not a field task, for the SUD exception", async () => {
-    detectSud();
-    stubLayout({ sud: BLOCK_TOP });
-    mount();
-    const panel = await prioritiesPanel();
-
-    fireEvent.click(within(panel).getByRole("button", { name: /Part 2 \/ SUD safeguards/ }));
-    fireEvent.click(
-      within(panel).getByRole("button", { name: /Part 2 \/ SUD safeguard is unresolved/ }),
-    );
-
-    expect(screen.getByRole("heading", { name: "Documents & protected information" })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Mobile phone", level: 2 })).toBeNull();
-    const sud = screen.getByRole("group", { name: "Part 2 / SUD safeguard" });
-    expect(sud.getAttribute("aria-current")).toBe("true");
-    expect(document.activeElement).toBe(sud);
-    expect(document.querySelector<HTMLElement>(".wx-unified-task-column")?.scrollTop).toBe(
-      BLOCK_TOP - COLUMN_TOP,
-    );
-  });
-
-  it("marks and scrolls to the selected identity block inside the task column", async () => {
-    detectSud();
-    addDocumentNeedingIdentity();
-    stubLayout({ [`identity-${IDENTITY_PAGE}`]: BLOCK_TOP });
-    mount();
-    const panel = await prioritiesPanel();
-
-    fireEvent.click(within(panel).getByRole("button", { name: /^Patient identity \d+ task/ }));
-    fireEvent.click(
-      within(panel).getByRole("button", {
-        name: new RegExp(`Patient identity needs review on page ${IDENTITY_PAGE}`),
-      }),
-    );
-
-    const identity = screen.getByRole("group", { name: /Patient identity.*page 2/ });
-    expect(identity.getAttribute("aria-current")).toBe("true");
-    expect(document.activeElement).toBe(identity);
-    expect(document.querySelector<HTMLElement>(".wx-unified-task-column")?.scrollTop).toBe(
-      BLOCK_TOP - COLUMN_TOP,
-    );
-    expect(
-      screen.getByRole("group", { name: "Part 2 / SUD safeguard" }).getAttribute("aria-current"),
-    ).toBeNull();
-  });
-
-  it("tells same-titled high-risk rows apart by field, value and page", async () => {
-    addHighRiskDiagnoses();
-    mount();
-    const panel = await prioritiesPanel();
-
-    fireEvent.click(within(panel).getByRole("button", { name: /High-risk clinical information/ }));
-
-    expect(within(panel).getAllByText("Diagnosis needs high-risk review")).toHaveLength(2);
-    expect(
-      within(panel).getByText("Diagnosis 1 · description: Dependence on supplemental oxygen · p.1"),
-    ).toBeTruthy();
-    expect(
-      within(panel).getByText("Diagnosis 2 · description: Chronic kidney disease stage 4 · p.1"),
-    ).toBeTruthy();
-  });
-
-  it("toggles a category from its title and marks the open task's row", async () => {
-    addHighRiskDiagnoses();
-    mount();
-    const panel = await prioritiesPanel();
-    const category = within(panel).getByRole("button", { name: /High-risk clinical information/ });
-
-    fireEvent.click(within(panel).getByText("High-risk clinical information"));
-    expect(category.getAttribute("aria-expanded")).toBe("true");
-    fireEvent.click(within(panel).getByText("High-risk clinical information"));
-    expect(category.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(category);
-
-    const first = within(panel).getByRole("button", { name: /Diagnosis 1 · description/ });
-    const second = within(panel).getByRole("button", { name: /Diagnosis 2 · description/ });
-    expect(first.getAttribute("aria-current")).toBeNull();
-    fireEvent.click(first);
-    expect(first.getAttribute("aria-current")).toBe("true");
-    expect(second.getAttribute("aria-current")).toBeNull();
-    fireEvent.click(second);
-    expect(second.getAttribute("aria-current")).toBe("true");
-    expect(first.getAttribute("aria-current")).toBeNull();
-  });
-
-  it("reopens the task last opened for this batch after a reload, storing only its id", async () => {
-    addDocumentNeedingIdentity();
-    workspace.documents[1] = {
-      ...(workspace.documents[1] as Workspace["documents"][number]),
-      identity: { status: "match", disagreeing: [], resolution: null },
-    };
-    mount();
-    expect(await screen.findByRole("heading", { name: "Mobile phone", level: 2 })).toBeTruthy();
-    const email = screen.getByRole("heading", { name: "Email", level: 3 }).closest("article");
-    if (!email) throw new Error("Expected the email group");
-    fireEvent.click(within(email).getByRole("button", { name: /Review decision/ }));
-    expect(await screen.findByRole("heading", { name: "Email", level: 2 })).toBeTruthy();
-
-    const stored = Object.keys(window.sessionStorage).map((key) =>
-      window.sessionStorage.getItem(key),
-    );
-    expect(stored).toEqual([`candidate:${NEXT}`]);
-    expect(window.sessionStorage.getItem(TASK_KEY)).toBe(`candidate:${NEXT}`);
-
-    cleanup();
-    mount();
-    expect(await screen.findByRole("heading", { name: "Email", level: 2 })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Mobile phone", level: 2 })).toBeNull();
-  });
-
-  it("reopens the safeguard block that was last opened", async () => {
-    detectSud();
-    mount();
-    const panel = await prioritiesPanel();
-    fireEvent.click(within(panel).getByRole("button", { name: /Part 2 \/ SUD safeguards/ }));
-    fireEvent.click(
-      within(panel).getByRole("button", { name: /Part 2 \/ SUD safeguard is unresolved/ }),
-    );
-    expect(window.sessionStorage.getItem(TASK_KEY)).toBe("safeguard:sud");
-
-    cleanup();
-    mount();
-    const sud = await screen.findByRole("group", { name: "Part 2 / SUD safeguard" });
-    expect(sud.getAttribute("aria-current")).toBe("true");
-    expect(screen.queryByRole("heading", { name: "Mobile phone", level: 2 })).toBeNull();
-  });
-
-  it.each([
-    ["a candidate that no longer exists", "candidate:ffffffff-ffff-4fff-8fff-ffffffffffff"],
-    ["an identity task that is resolved", "identity:9"],
-    ["a SUD task that is not detected", "safeguard:sud"],
-  ])("falls back to the default task when the remembered task is %s", async (_label, taskId) => {
-    window.sessionStorage.setItem(TASK_KEY, taskId);
-    mount();
-
-    expect(await screen.findByRole("heading", { name: "Mobile phone", level: 2 })).toBeTruthy();
-    expect(screen.queryByRole("group", { name: "Part 2 / SUD safeguard" })).toBeNull();
   });
 });

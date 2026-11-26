@@ -4,8 +4,10 @@ import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LAST_REVIEW_TASK_KEY_PREFIX } from "../../../shell/last-review-task";
 import { SessionProvider } from "../../../shell/session";
 import type { Workspace } from "../doclens-api";
+import { overrideImageProperty } from "./review-test-support";
 import { UnifiedReviewWorkspace } from "./unified-review-workspace";
 
 const BATCH = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
@@ -18,8 +20,9 @@ const IDENTITY_PAGE = 2;
 const SECOND_IDENTITY_PAGE = 3;
 const COLUMN_TOP = 100;
 const BLOCK_TOP = 1700;
-const TASK_KEY = `wx.unified-review-task:${BATCH}`;
+const TASK_KEY = `${LAST_REVIEW_TASK_KEY_PREFIX}${BATCH}`;
 const REASON = "Identifiers match this synthetic patient";
+const EMAIL_REVIEW = (page: number): string => `Review synthetic@example.test, page ${page}`;
 
 type WorkspaceCandidate = Workspace["candidates"][number];
 
@@ -211,14 +214,12 @@ describe("UnifiedReviewWorkspace review task routing", () => {
     });
   }
 
-  const unresolvedIdentity = {
-    status: "possible",
-    disagreeing: ["lastName"],
-    resolution: null,
-  } as const;
+  function unresolvedIdentity(): Workspace["documents"][number]["identity"] {
+    return { status: "possible", disagreeing: ["lastName"], resolution: null };
+  }
 
   function addDocumentNeedingIdentity(page = IDENTITY_PAGE): void {
-    addDocument(page, unresolvedIdentity);
+    addDocument(page, unresolvedIdentity());
   }
 
   function addEmailCandidate(page: number): void {
@@ -280,8 +281,10 @@ describe("UnifiedReviewWorkspace review task routing", () => {
     return await screen.findByRole("complementary", { name: "Review priorities" });
   }
 
+  /** A task that is open already opened the category holding its row; only click a closed one. */
   function openCategory(panel: HTMLElement, name: RegExp): void {
-    fireEvent.click(within(panel).getByRole("button", { name }));
+    const category = within(panel).getByRole("button", { name });
+    if (category.getAttribute("aria-expanded") !== "true") fireEvent.click(category);
   }
 
   function openSudTask(panel: HTMLElement): void {
@@ -404,10 +407,12 @@ describe("UnifiedReviewWorkspace review task routing", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Diagnoses & clinical history/ }));
     const group = screen.getByRole("heading", { name: "Diagnosis", level: 3 }).closest("article");
     if (!group) throw new Error("Expected the diagnosis group");
-    fireEvent.click(within(group).getByRole("button", { name: /Show sources for/ }));
-    const second = within(group).getAllByRole("button", { name: /Review decision/ })[1];
-    if (!second) throw new Error("Expected a second observation");
-    fireEvent.click(second);
+    fireEvent.click(within(group).getByRole("button", { name: /sources for/i }));
+    fireEvent.click(
+      within(group).getByRole("button", {
+        name: "Review Dependence on supplemental oxygen, page 2",
+      }),
+    );
 
     expect(
       screen.getByRole("heading", { name: "Diagnosis 1 · description", level: 2 }),
@@ -427,7 +432,7 @@ describe("UnifiedReviewWorkspace review task routing", () => {
     expect(await screen.findByRole("heading", { name: "Mobile phone", level: 2 })).toBeTruthy();
     const email = screen.getByRole("heading", { name: "Email", level: 3 }).closest("article");
     if (!email) throw new Error("Expected the email group");
-    fireEvent.click(within(email).getByRole("button", { name: /Review decision/ }));
+    fireEvent.click(within(email).getByRole("button", { name: EMAIL_REVIEW(IDENTITY_PAGE) }));
     expect(await screen.findByRole("heading", { name: "Email", level: 2 })).toBeTruthy();
 
     const stored = Object.keys(window.sessionStorage).map((key) =>
@@ -489,7 +494,7 @@ describe("UnifiedReviewWorkspace review task routing", () => {
     const panel = await prioritiesPanel();
     const email = screen.getByRole("heading", { name: "Email", level: 3 }).closest("article");
     if (!email) throw new Error("Expected the email group");
-    fireEvent.click(within(email).getByRole("button", { name: /Review decision/ }));
+    fireEvent.click(within(email).getByRole("button", { name: EMAIL_REVIEW(IDENTITY_PAGE) }));
     expect(window.sessionStorage.getItem(TASK_KEY)).toBe(`candidate:${EMAIL}`);
 
     openSudTask(panel);
@@ -557,9 +562,8 @@ describe("UnifiedReviewWorkspace review task routing", () => {
 
   it("treats a page image that finished loading before the effects ran as loaded", async () => {
     // A cached image fires `load` before React's passive reset effect; the reset must not undo it.
-    const proto = HTMLImageElement.prototype;
-    Object.defineProperty(proto, "complete", { value: true, configurable: true });
-    Object.defineProperty(proto, "naturalWidth", { value: 612, configurable: true });
+    const restoreComplete = overrideImageProperty("complete", true);
+    const restoreWidth = overrideImageProperty("naturalWidth", 612);
     try {
       addDocumentNeedingIdentity();
       window.sessionStorage.setItem(TASK_KEY, `identity:${IDENTITY_PAGE}`);
@@ -571,12 +575,12 @@ describe("UnifiedReviewWorkspace review task routing", () => {
       );
       expect(screen.getByRole("button", { name: "Another patient" })).toBeEnabled();
     } finally {
-      Reflect.deleteProperty(proto, "complete");
-      Reflect.deleteProperty(proto, "naturalWidth");
+      restoreWidth();
+      restoreComplete();
     }
   });
 
-  it("does not re-focus a stale safeguard block when the task closes after a candidate was auto-selected", async () => {
+  it("keeps the safeguard panel open when the workspace refreshes after an identity save", async () => {
     detectSud();
     addDocumentNeedingIdentity(IDENTITY_PAGE);
     addDocumentNeedingIdentity(SECOND_IDENTITY_PAGE);
@@ -598,12 +602,63 @@ describe("UnifiedReviewWorkspace review task routing", () => {
     fireEvent.click(within(second).getByRole("button", { name: "Same patient" }));
     fireEvent.change(within(second).getByLabelText("Reason"), { target: { value: REASON } });
     fireEvent.click(within(second).getByRole("button", { name: "Save identity resolution" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("group", { name: /Patient identity.*page 3/ })).toBeNull(),
+    );
+    expect(screen.getByRole("heading", { name: "Documents & protected information" })).toBeTruthy();
+    expect(screen.queryByText("Select a review task")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Mobile phone", level: 2 })).toBeNull();
+    expect(document.activeElement?.hasAttribute("data-safeguard-block")).toBe(false);
+  });
+
+  it("opens no task for a row without a block and forgets the remembered task", async () => {
+    window.sessionStorage.setItem(TASK_KEY, `candidate:${PHONE}`);
+    workspace.review = {
+      id: "review-1",
+      status: "in_progress",
+      reviewerMembershipId: "membership-2",
+      isMine: false,
+    };
+    mount();
+    const panel = await prioritiesPanel();
     expect(await screen.findByRole("heading", { name: "Mobile phone", level: 2 })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: /Close task/ }));
+    openCategory(panel, /Other review requirements/);
+    fireEvent.click(
+      within(panel).getByRole("button", { name: /Another reviewer owns this review/ }),
+    );
 
-    await screen.findByRole("heading", { name: "Documents & protected information" });
-    expect(document.querySelector('.wx-unified-safeguards [aria-current="true"]')).toBeNull();
+    expect(screen.getByRole("heading", { name: "Documents & protected information" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Mobile phone", level: 2 })).toBeNull();
+    expect(window.sessionStorage.getItem(TASK_KEY)).toBeNull();
+    expect(scrollIntoView).not.toHaveBeenCalled();
     expect(document.activeElement?.closest("[data-safeguard-block]")).toBeNull();
+    expect(
+      within(panel)
+        .getByRole("button", { name: /Another reviewer owns this review/ })
+        .getAttribute("aria-current"),
+    ).toBe("true");
+  });
+
+  it("opens the safeguard panel for an extraction that is unavailable", async () => {
+    workspace.jobs.push({
+      id: "job-failed",
+      documentType: "discharge_summary",
+      status: "failed",
+      pageFrom: 5,
+      pageTo: 5,
+      failureReason: null,
+    });
+    mount();
+    const panel = await prioritiesPanel();
+    openCategory(panel, /Other review requirements/);
+
+    fireEvent.click(
+      within(panel).getByRole("button", { name: /Extraction unavailable for page 5/ }),
+    );
+
+    expect(screen.getByRole("heading", { name: "Documents & protected information" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Mobile phone", level: 2 })).toBeNull();
   });
 });
