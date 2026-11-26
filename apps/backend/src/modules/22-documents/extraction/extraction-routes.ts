@@ -95,6 +95,7 @@ export function registerDocLensExtractionRoutes(
         batchId: id,
         actorUserId: userId,
         correlationId: request.id,
+        retryFailedBatch: true,
       });
       return reply.code(202).send({ batchId: id, status: "queued" });
     },

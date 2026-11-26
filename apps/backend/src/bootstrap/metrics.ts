@@ -100,6 +100,94 @@ export function registerBullMQQueueMetrics(registry: Registry, queues: readonly 
   });
 }
 
+// ── WardenLens operational metrics ───────────────────────────────────────────────────────────────
+
+export type WardenLensFailureStage =
+  | "parsing"
+  | "classification"
+  | "extraction"
+  | "processing";
+
+export interface WardenLensBacklogSample {
+  readonly awaitingCapability: number;
+  readonly reviewBacklog: number;
+  readonly stalledProcessing: number;
+}
+
+export interface WardenLensMetricsHooks {
+  recordQueueWait(elapsedMs: number): void;
+  recordUploadToProcessing(elapsedMs: number): void;
+  recordFailure(stage: WardenLensFailureStage): void;
+  recordRetry(): void;
+  setWorkerAvailable(available: boolean): void;
+}
+
+/**
+ * WardenLens telemetry uses only bounded stage/state labels. Tenant, batch, document, patient and
+ * dependency-error values are intentionally absent so metrics cannot become a PHI or credential side channel.
+ */
+export function registerWardenLensMetrics(
+  registry: Registry,
+  deps: { readonly backlog?: () => Promise<WardenLensBacklogSample | null> } = {},
+): WardenLensMetricsHooks {
+  const queueWait = new Histogram({
+    name: "chartwarden_wardenlens_queue_wait_seconds",
+    help: "Time a WardenLens intake job waited before worker processing",
+    buckets: [0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 300, 900],
+    registers: [registry],
+  });
+  const uploadToProcessing = new Histogram({
+    name: "chartwarden_wardenlens_upload_to_processing_seconds",
+    help: "Elapsed time from verified batch upload to WardenLens processing completion",
+    buckets: [1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600],
+    registers: [registry],
+  });
+  const failures = new Counter({
+    name: "chartwarden_wardenlens_failures_total",
+    help: "WardenLens processing failures by bounded stage",
+    labelNames: ["stage"] as const,
+    registers: [registry],
+  });
+  const retries = new Counter({
+    name: "chartwarden_wardenlens_retry_attempts_total",
+    help: "WardenLens queue retry attempts after an initial processing failure",
+    registers: [registry],
+  });
+  const workerAvailable = new Gauge({
+    name: "chartwarden_wardenlens_worker_available",
+    help: "Whether this process has an available WardenLens worker",
+    registers: [registry],
+  });
+  workerAvailable.set(0);
+  new Gauge({
+    name: "chartwarden_wardenlens_backlog",
+    help: "WardenLens backlog by bounded workflow state (-1 means not measurable)",
+    labelNames: ["state"] as const,
+    registers: [registry],
+    async collect() {
+      let sample: WardenLensBacklogSample | null = null;
+      try {
+        sample = deps.backlog ? await deps.backlog() : null;
+      } catch {
+        sample = null;
+      }
+      this.set({ state: "awaiting_capability" }, sample?.awaitingCapability ?? -1);
+      this.set({ state: "review" }, sample?.reviewBacklog ?? -1);
+      this.set({ state: "stalled" }, sample?.stalledProcessing ?? -1);
+    },
+  });
+  const observeMs = (histogram: Histogram, elapsedMs: number) => {
+    if (Number.isFinite(elapsedMs) && elapsedMs >= 0) histogram.observe(elapsedMs / 1000);
+  };
+  return {
+    recordQueueWait: (elapsedMs) => observeMs(queueWait, elapsedMs),
+    recordUploadToProcessing: (elapsedMs) => observeMs(uploadToProcessing, elapsedMs),
+    recordFailure: (stage) => failures.inc({ stage }),
+    recordRetry: () => retries.inc(),
+    setWorkerAvailable: (available) => workerAvailable.set(available ? 1 : 0),
+  };
+}
+
 // ── outbox-dispatcher metrics ───────────────────────────────────────────────────────────────────────
 
 /** The `OutboxTickSummary` shape this module needs — restated locally (not imported from

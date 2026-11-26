@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "assessmentDate": "2026-11-21/22 America/Los_Angeles",
+  "baseCommit": "e8fffe4d5",
+  "branch": "feat/wardenlens-operational-readiness",
+  "syntheticOnly": true,
+  "stack": {
+    "project": "wardenlensphase4",
+    "kind": "isolated-development-compose",
+    "images": {
+      "api": "sha256:d8eb692fe1295d481838d87d3d876a92af28cd3385b92f35a11265b9dc038b5f",
+      "docling": "sha256:ce6f1e7a6a464e2cd35ad9d0bc0803291b9398aea0062c12bb985a012ef0fbf7",
+      "postgres": "sha256:f0226f673743c56b9444ce8bdebba7a597e27dd5574a84da92c599c58bbb4c15"
+    },
+    "productionDoclingEnvelopeExercised": false,
+    "dockerDaemonPreflight": "local-unix-or-npipe-required",
+    "executionAuthorization": "explicit escalated approval for disposable WardenLens live validation"
+  },
+  "livePostgresql": {
+    "f236": { "status": "PASS", "passed": 13, "total": 13, "skipped": 0 },
+    "f237": { "status": "PASS", "passed": 16, "total": 16, "skipped": 0 }
+  },
+  "governedOnePageRun": {
+    "status": "PASS",
+    "observedAt": {
+      "uploaded": "2026-11-22T07:07:16.979Z",
+      "extractionCompleted": "2026-11-22T07:07:54.927Z",
+      "reviewCompleted": "2026-11-22T07:09:54.087Z"
+    },
+    "documentBytes": 87758,
+    "elapsedMs": 40880,
+    "batchFinalStatus": "writeback_complete",
+    "identityFinalStatus": "match",
+    "sudFinalStatus": "not_detected",
+    "candidateCount": 3,
+    "encryptedCandidateCount": 3,
+    "plaintextCandidateCount": 0,
+    "decisionCount": 3,
+    "provenanceCount": 0,
+    "actualClinicalWriteback": "BLOCKED",
+    "invocations": [
+      { "capability": "doclens_sud_detect", "backend": "local-llama-3.1-8b-instruct", "modelPin": "ollama/llama3.1:8b-instruct-q8_0", "status": "PASS", "inputTokens": 636, "outputTokens": 14, "durationMs": 8039 },
+      { "capability": "doclens_classify", "backend": "local-llama-3.1-8b-instruct", "modelPin": "ollama/llama3.1:8b-instruct-q8_0", "status": "PASS", "inputTokens": 495, "outputTokens": 17, "durationMs": 1659 },
+      { "capability": "doclens_extract", "backend": "local-llama-3.1-8b-instruct", "modelPin": "ollama/llama3.1:8b-instruct-q8_0", "status": "PASS", "inputTokens": 851, "outputTokens": 195, "durationMs": 8634 },
+      { "capability": "doclens_vision_verify", "backend": "local-qwen2.5-vl-7b-instruct", "modelPin": "ollama/qwen2.5vl:7b", "status": "PASS", "calls": 3, "inputTokens": 4268, "outputTokens": 81, "durationMs": 27595 }
+    ]
+  },
+  "largePacketDevRun": {
+    "status": "FAIL",
+    "uploadedAt": "2026-11-22T06:58:39.166Z",
+    "pages": 21,
+    "doclingExitCode": 137,
+    "queueAttempts": 3,
+    "batchStatusAfterFailure": "uploaded",
+    "classificationRows": 0,
+    "extractionJobRows": 0,
+    "candidateRows": 0,
+    "productionEnvelopeResult": "BLOCKED"
+  },
+  "referralAdmission": {
+    "status": "PASS",
+    "referralFinalState": "converted",
+    "admissionState": "pending",
+    "readinessBlockers": 9,
+    "servicesAutomaticallyActivated": false
+  },
+  "redisOutage": {
+    "status": "PASS",
+    "apiReadyWhileDown": 503,
+    "apiReadyAfterRecovery": 200
+  },
+  "credentialLogSafety": {
+    "status": "FAIL",
+    "observed": "dependency database-error logger emitted a disposable session token parameter",
+    "correctiveChange": "Better Auth duplicate logger disabled",
+    "regressionTest": "packages/auth/__tests__/identity-auth-config.test.ts",
+    "runtimeRevalidated": false
+  },
+  "score": { "value": 67, "maximum": 100, "decision": "NOT_READY" }
+}

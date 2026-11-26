@@ -11,6 +11,7 @@ import {
   registerBullMQQueueMetrics,
   registerHttpMetrics,
   registerOutboxMetrics,
+  registerWardenLensMetrics,
 } from "../metrics";
 
 describe("buildMetricsRegistry", () => {
@@ -133,6 +134,47 @@ describe("registerBullMQQueueMetrics", () => {
     expect(await registry.metrics()).toContain(
       'chartwarden_bullmq_queue_jobs{queue="hope.windows",state="waiting"} 7',
     );
+  });
+});
+
+describe("metricQueueNames", () => {
+  it("includes and deduplicates a queue whose worker is constructed later", () => {
+    expect(
+      metricQueueNames(
+        [{ name: "existing" }, { name: "existing" }],
+        ["m22-doclens-intake", "existing"],
+      ),
+    ).toEqual(["existing", "m22-doclens-intake"]);
+  });
+});
+
+describe("registerWardenLensMetrics", () => {
+  it("records bounded stage/outcome telemetry and lazy backlog gauges without identifiers", async () => {
+    const registry = buildMetricsRegistry();
+    const metrics = registerWardenLensMetrics(registry, {
+      backlog: async () => ({ awaitingCapability: 2, reviewBacklog: 4, stalledProcessing: 1 }),
+    });
+    metrics.recordQueueWait(1_250);
+    metrics.recordUploadToProcessing(5_000);
+    metrics.recordFailure("parsing");
+    metrics.recordFailure("classification");
+    metrics.recordRetry();
+    metrics.setWorkerAvailable(true);
+
+    const text = await registry.metrics();
+    expect(text).toContain("chartwarden_wardenlens_queue_wait_seconds_count 1");
+    expect(text).toContain("chartwarden_wardenlens_upload_to_processing_seconds_count 1");
+    expect(text).toContain('chartwarden_wardenlens_failures_total{stage="parsing"} 1');
+    expect(text).toContain('chartwarden_wardenlens_failures_total{stage="classification"} 1');
+    expect(text).toContain("chartwarden_wardenlens_retry_attempts_total 1");
+    expect(text).toContain('chartwarden_wardenlens_backlog{state="awaiting_capability"} 2');
+    expect(text).toContain('chartwarden_wardenlens_backlog{state="review"} 4');
+    expect(text).toContain('chartwarden_wardenlens_backlog{state="stalled"} 1');
+    expect(text).toContain("chartwarden_wardenlens_worker_available 1");
+    expect(text).not.toContain("organization=");
+    expect(text).not.toContain("batch=");
+    expect(text).not.toContain("document=");
+    expect(text).not.toContain("patient=");
   });
 });
 

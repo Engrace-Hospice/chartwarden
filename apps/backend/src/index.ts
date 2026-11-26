@@ -201,6 +201,7 @@ import {
   registerNoteClosureMetrics,
   registerOutboxMetrics,
   registerPartitionMetrics,
+  registerWardenLensMetrics,
 } from "./bootstrap/metrics";
 import { createNoteClosureGate } from "./bootstrap/note-closure-gate";
 import { createOrganizationStageReader } from "./bootstrap/onboarding-org-gate";
@@ -322,6 +323,7 @@ function m18CoordsKeys(): EvvCoordsKeyProvider {
 }
 // GAP-054 — the audited platform read behind the geocode-coverage gauge/boot warning (active-org list only).
 const M5_GEOCODE_COVERAGE_JOB_ID = "m5-geocode-coverage";
+const M22_WARDENLENS_METRICS_JOB_ID = "m22-wardenlens-metrics";
 // GAP-083 follow-up — the audited platform read behind the FHIR-client BAA boot warning (active-org list only).
 const M28_BAA_COVERAGE_JOB_ID = "m28-baa-coverage";
 // GAP-006 — boot-time backfill that materializes the tenant-assignable ROLE_TEMPLATES into every existing org.
@@ -1129,6 +1131,7 @@ import {
   getDocumentRenderer,
   isTenantBaaDocumentFiled,
   mountDocumentRoutes,
+  readWardenLensBacklogForOrg,
   registerAiBlockValidatorWorker,
   registerDocLensIntakeWorker,
   registerDocumentAbacPredicates,
@@ -4087,6 +4090,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   if (platformDbHandle) registerPlatformJob(M18_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M15_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M5_GEOCODE_COVERAGE_JOB_ID);
+  if (platformDbHandle) registerPlatformJob(M22_WARDENLENS_METRICS_JOB_ID);
   // CW-RUST-M02 P1 — the daily parity sweep's active-org list (only when the sweep is switched on).
   if (platformDbHandle && rustBridgeConfig.sweepEnabled)
     registerPlatformJob(RUST_PARITY_SWEEP_JOB_ID);
@@ -6210,6 +6214,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     ? createExportBuildEnqueuer(queueConnection)
     : null;
   // ── end WP 5.7 export builder/sweep binding
+  let wardenLensWorkerAvailable = false;
+  const readinessDoclingConfig = role === "api" ? null : doclingConfigFromEnv(process.env);
   const app = buildServer({
     db: dbHandle?.db,
     authenticate,
@@ -6259,6 +6265,18 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         : {}),
       outboxPendingDepth,
       outboxDepthThreshold: Number(process.env.OUTBOX_READY_DEPTH_THRESHOLD ?? 500),
+      ...(role !== "api"
+        ? {
+            pingDocling: async () => {
+              if (!readinessDoclingConfig) throw new Error("Docling is not configured");
+              const response = await fetch(`${readinessDoclingConfig.baseUrl}/health`, {
+                signal: AbortSignal.timeout(readinessDoclingConfig.timeoutMs ?? 3_000),
+              });
+              if (!response.ok) throw new Error(`Docling health returned HTTP ${response.status}`);
+            },
+            wardenLensWorkerAvailable: () => wardenLensWorkerAvailable,
+          }
+        : {}),
       capabilities: () => ({
         m22DocumentUpload: s3ObjectStoreConfigFromEnv(process.env) ? "ready" : "disabled",
         m23AsyncWorkers: m23SubmissionQueues ? "ready" : "disabled",
@@ -9586,6 +9604,28 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // correctly reads 0 since no dispatcher runs there); the BullMQ per-queue gauge only registers where
   // queues are actually constructed, further below, inside the worker-runner block.
   const metricsRegistry = buildMetricsRegistry();
+  const wardenLensMetrics = registerWardenLensMetrics(metricsRegistry, {
+    ...(dbHandle && platformDbHandle
+      ? {
+          backlog: async () => {
+            const activeOrgs = buildActiveOrgEnumerator({
+              platformDb: platformDbHandle.db,
+              auditBypass: m34PlatformBypassAuditor,
+              jobId: M22_WARDENLENS_METRICS_JOB_ID,
+              reason: "WardenLens operational backlog metrics: active-org list",
+            });
+            const totals = { awaitingCapability: 0, reviewBacklog: 0, stalledProcessing: 0 };
+            for (const { organizationId } of await activeOrgs.listActiveOrgs()) {
+              const sample = await readWardenLensBacklogForOrg(dbHandle.db, organizationId);
+              totals.awaitingCapability += sample.awaitingCapability;
+              totals.reviewBacklog += sample.reviewBacklog;
+              totals.stalledProcessing += sample.stalledProcessing;
+            }
+            return totals;
+          },
+        }
+      : {}),
+  });
   if (
     platformDbHandle &&
     claimMdRecoveryAccount &&
@@ -14895,10 +14935,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         codingTerminology: () => createCodingTerminology(),
         // F-238 — each document's name/DOB checked against the batch's patient (M5) or referral (M6).
         identityTargets: createIdentityTargetPorts(),
+        telemetry: wardenLensMetrics,
       },
       (msg, detail) => app.log.info(detail, msg),
+      undefined,
+      wardenLensMetrics,
     );
+    wardenLensWorkerAvailable = true;
     app.addHook("onClose", async () => {
+      wardenLensWorkerAvailable = false;
       await intakeWorker.close();
     });
   }

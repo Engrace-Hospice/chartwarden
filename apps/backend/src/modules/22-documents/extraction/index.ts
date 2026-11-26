@@ -114,14 +114,20 @@ export {
   visionReadingAgrees,
   type DocLensIntakeJob,
   type DocLensIntakeSummary,
+  markDocLensIntakeFailed,
   runDocLensIntake,
 } from "./intake-job";
 export {
   type DocLensIntakeEnqueue,
   M22_DOCLENS_INTAKE_QUEUE,
   createDocLensIntakeEnqueue,
+  docLensOperationalSummary,
   registerDocLensIntakeWorker,
 } from "./intake-queue";
+export {
+  type WardenLensBacklogCounts,
+  readWardenLensBacklogForOrg,
+} from "./operational-metrics-db";
 export {
   type ReviewQueueItem,
   type ReviewWorkspace,

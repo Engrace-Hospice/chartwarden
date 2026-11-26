@@ -29,7 +29,7 @@ import {
   type IntakeSudDetectedPayload,
   M22_INTAKE_SUD_DETECTED_EVENT,
 } from "@chartwarden/types";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import {
   type RecordsRequestMatchSummary,
@@ -209,6 +209,11 @@ export interface DocLensIntakeDeps {
   readonly codingTerminology?: () => CodingTerminologyAdapter;
   /** F-238 — M5 patient / M6 referral lookups for the per-document identity check (absent ⇒ not run). */
   readonly identityTargets?: IdentityTargetPorts;
+  /** Bounded, PHI-free operational telemetry. */
+  readonly telemetry?: {
+    recordUploadToProcessing(elapsedMs: number): void;
+    recordFailure(stage: "parsing" | "classification" | "extraction"): void;
+  };
 }
 
 /** F-237 — the risk tiers stage 5 re-reads from the page (medications/allergies + name/DOB). */
@@ -269,6 +274,47 @@ export interface DocLensIntakeJob {
   /** The user whose request started the run — the AI ledger's actor (M32 resolves the membership). */
   readonly actorUserId: string;
   readonly correlationId: string;
+  /** An explicit authenticated re-run may reopen a terminal `parse_failed` batch. */
+  readonly retryFailedBatch?: boolean;
+}
+
+export type DocLensTerminalFailureCode = "docling_unavailable" | "processing_error";
+
+/**
+ * Project an exhausted queue job into the PHI-safe, API-visible batch state. Raw dependency errors are
+ * deliberately excluded: provider/database messages can contain credentials, object URLs or document text.
+ */
+export async function markDocLensIntakeFailed(
+  deps: Pick<DocLensIntakeDeps, "db">,
+  job: DocLensIntakeJob,
+  failureCode: DocLensTerminalFailureCode,
+  attempts: number,
+): Promise<void> {
+  const processingFailure = {
+    code: failureCode,
+    attempts,
+    retryable: true,
+    failedAt: new Date().toISOString(),
+  };
+  await withOrgContext(
+    deps.db,
+    { organizationId: job.organizationId, userId: "" },
+    async (db) => {
+      const tx = db as DbClient;
+      await tx
+        .update(BATCH)
+        .set({
+          status: "parse_failed",
+          auditMetadata: sql`coalesce(${BATCH.auditMetadata}, '{}'::jsonb) || ${JSON.stringify({ processingFailure })}::jsonb`,
+        })
+        .where(
+          and(
+            eq(BATCH.id, job.batchId),
+            inArray(BATCH.status, [...PROCESSABLE_BATCH_STATUSES]),
+          ),
+        );
+    },
+  );
 }
 
 export type DocLensIntakeSummary =
@@ -350,6 +396,18 @@ async function runDocLensIntakeWhileProcessable(
       return fn(tx);
     });
 
+  if (job.retryFailedBatch) {
+    await inOrg(async (tx) => {
+      await tx
+        .update(BATCH)
+        .set({
+          status: "uploaded",
+          auditMetadata: sql`coalesce(${BATCH.auditMetadata}, '{}'::jsonb) - 'processingFailure'`,
+        })
+        .where(and(eq(BATCH.id, job.batchId), eq(BATCH.status, "parse_failed")));
+    });
+  }
+
   // ── 1. the batch and its filed source document ─────────────────────────────────────────────────────
   const source = await inOrg(async (tx) => {
     const [b] = await tx
@@ -357,6 +415,7 @@ async function runDocLensIntakeWhileProcessable(
         status: BATCH.status,
         documentId: BATCH.initialDocumentId,
         patientId: BATCH.patientId,
+        uploadedAt: BATCH.uploadedAt,
       })
       .from(BATCH)
       .where(eq(BATCH.id, job.batchId))
@@ -381,6 +440,7 @@ async function runDocLensIntakeWhileProcessable(
           documentId: b.documentId,
           objectKey: d.objectKey,
           patientId: b.patientId,
+          uploadedAt: b.uploadedAt,
         }
       : { kind: "unfiled" as const, documentId: b.documentId };
   });
@@ -400,6 +460,7 @@ async function runDocLensIntakeWhileProcessable(
         .then(() => undefined),
     );
   if (source.kind === "unfiled") {
+    deps.telemetry?.recordFailure("parsing");
     await setBatch("parse_failed");
     return { outcome: "parse_failed", reason: "source_document_has_no_filed_version" };
   }
@@ -424,6 +485,7 @@ async function runDocLensIntakeWhileProcessable(
     ).pages;
   } catch (err) {
     if (err instanceof DoclingParseError && err.kind !== "unavailable") {
+      deps.telemetry?.recordFailure("parsing");
       await setBatch("parse_failed");
       return { outcome: "parse_failed", reason: err.kind };
     }
@@ -614,16 +676,25 @@ async function runDocLensIntakeWhileProcessable(
   const classifierRef = new Map<number, string>();
   if (persistedPlan.length === 0) {
     const classified: ClassifiedPage[] = [];
+    let classificationRefusals = 0;
     for (const p of pages) {
-      const r = await deps.classifier().classify({
-        organizationId: org,
-        actorUserId: job.actorUserId,
-        documentId: source.documentId,
-        extractedText: pageText(p),
-        pageCount: pages.length,
-        pageNumber: p.page,
-      });
+      const r = await deps
+        .classifier()
+        .classify({
+          organizationId: org,
+          actorUserId: job.actorUserId,
+          documentId: source.documentId,
+          extractedText: pageText(p),
+          pageCount: pages.length,
+          pageNumber: p.page,
+        })
+        .catch((error) => {
+          deps.telemetry?.recordFailure("classification");
+          throw error;
+        });
       if (!r.available) {
+        deps.telemetry?.recordFailure("classification");
+        classificationRefusals += 1;
         refusals.push(`classify p${p.page}: ${r.detail ?? "refused"}`);
         classified.push(
           ...classifyPages(
@@ -647,6 +718,43 @@ async function runDocLensIntakeWhileProcessable(
         ),
       );
       classifierRef.set(p.page, `ai_invocation:${r.invocationId}`);
+    }
+    if (classificationRefusals > 0) {
+      await inProcessableOrg((tx) =>
+        tx
+          .update(BATCH)
+          .set({
+            status: "classifier_complete",
+            auditMetadata: sql`coalesce(${BATCH.auditMetadata}, '{}'::jsonb) || ${JSON.stringify({
+              classificationAwaitingCapability: {
+                refusedPages: classificationRefusals,
+                recordedAt: new Date().toISOString(),
+              },
+            })}::jsonb`,
+          })
+          .where(eq(BATCH.id, job.batchId))
+          .then(() => undefined),
+      );
+      return {
+        outcome: "awaiting_capability",
+        pages: pages.length,
+        jobs: 0,
+        candidates: 0,
+        dropped: {},
+        refusals,
+        vision: { verified: 0, disagreed: 0, unverified: 0 },
+        sud: { indicators: sudIndicators.length, pages: [...sudPages].sort((a, b) => a - b) },
+        identity: "not_configured",
+        recordsRequest,
+        documents: 0,
+        coding: {
+          status: deps.codingTerminology ? "icd10cm_not_loaded" : "not_configured",
+          codes: 0,
+          repaired: 0,
+          flags: 0,
+          unreadable: 0,
+        },
+      };
     }
     const proposed = splitPacket(pages, classified);
     await inProcessableOrg(async (tx) => {
@@ -674,6 +782,12 @@ async function runDocLensIntakeWhileProcessable(
           segmentBoundary: seg.boundary,
         })),
       );
+      await tx
+        .update(BATCH)
+        .set({
+          auditMetadata: sql`coalesce(${BATCH.auditMetadata}, '{}'::jsonb) - 'classificationAwaitingCapability'`,
+        })
+        .where(eq(BATCH.id, job.batchId));
     });
     persistedPlan = await loadClassificationPlan();
   }
@@ -781,20 +895,27 @@ async function runDocLensIntakeWhileProcessable(
       continue;
     }
 
-    const result = await deps.extractor().extract({
-      organizationId: org,
-      actorUserId: job.actorUserId,
-      documentId: source.documentId,
-      documentType: docType,
-      extractedText: "",
-      schemaKey: SCHEMA_KEY,
-      // `page_scan` fields (ICD-10-CM codes) are never asked of a model.
-      fieldSpecs: schemaFields
-        .filter((f) => f.source !== "page_scan")
-        .map((f) => ({ fieldPath: f.fieldPath, description: f.description })),
-      pages: runPages.map((p) => ({ page: p.page, text: pageText(p) })),
-    });
+    const result = await deps
+      .extractor()
+      .extract({
+        organizationId: org,
+        actorUserId: job.actorUserId,
+        documentId: source.documentId,
+        documentType: docType,
+        extractedText: "",
+        schemaKey: SCHEMA_KEY,
+        // `page_scan` fields (ICD-10-CM codes) are never asked of a model.
+        fieldSpecs: schemaFields
+          .filter((f) => f.source !== "page_scan")
+          .map((f) => ({ fieldPath: f.fieldPath, description: f.description })),
+        pages: runPages.map((p) => ({ page: p.page, text: pageText(p) })),
+      })
+      .catch((error) => {
+        deps.telemetry?.recordFailure("extraction");
+        throw error;
+      });
     if (!result.available) {
+      deps.telemetry?.recordFailure("extraction");
       refusals.push(
         `extract ${docType} p${run.pageNumbers.join(",")}: ${result.detail ?? "refused"}`,
       );
@@ -1079,6 +1200,7 @@ async function runDocLensIntakeWhileProcessable(
       .set({ status: persistedState.finalStatus })
       .where(and(eq(BATCH.id, job.batchId), eq(BATCH.status, "classifier_complete"))),
   );
+  deps.telemetry?.recordUploadToProcessing(Date.now() - source.uploadedAt.getTime());
   return {
     outcome:
       persistedState.finalStatus === "classifier_complete" ? "awaiting_capability" : "extracted",

@@ -32,6 +32,10 @@ export interface ReadinessProbeDeps {
    * listed but never checked is worse than one not listed.
    */
   readonly pingObjectStore?: () => Promise<void>;
+  /** Worker-role-only Docling health probe. Omitted on API-only processes. */
+  readonly pingDocling?: () => Promise<void>;
+  /** Whether this worker process constructed and still owns its WardenLens worker. */
+  readonly wardenLensWorkerAvailable?: () => boolean;
   /** Current outbox `pending`-row backlog depth across active orgs; omitted when the dispatcher isn't running. */
   readonly outboxPendingDepth?: () => Promise<number>;
   /** Depth at/above which `outbox` reports "fail" — a growing backlog signals a stuck dispatcher. */
@@ -121,11 +125,19 @@ export function buildReadinessProbe(deps: ReadinessProbeDeps): ReadinessProbe {
       checkReachable(deps.pingObjectStore, "minio", timeoutMs, log),
       checkOutboxDepth(deps.outboxPendingDepth, threshold, timeoutMs, log),
     ]);
+    const wardenlens =
+      deps.pingDocling || deps.wardenLensWorkerAvailable
+        ? {
+            docling: await checkReachable(deps.pingDocling, "docling", timeoutMs, log),
+            worker: deps.wardenLensWorkerAvailable?.() ? ("ok" as const) : ("fail" as const),
+          }
+        : undefined;
     return {
       db,
       valkey,
       minio,
       outbox,
+      ...(wardenlens ? { wardenlens } : {}),
       ...(deps.capabilities
         ? {
             capabilities:

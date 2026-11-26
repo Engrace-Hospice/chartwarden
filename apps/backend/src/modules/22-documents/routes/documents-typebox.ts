@@ -480,6 +480,15 @@ export const IntakeBatchViewSchema = Type.Object({
   status: lit(INTAKE_BATCH_STATUS),
   uploadedAt: Type.String({ format: "date-time" }),
   pages: Type.Integer(),
+  processingFailure: Type.Union([
+    Type.Object({
+      code: lit(["docling_unavailable", "processing_error"] as const),
+      attempts: Type.Integer({ minimum: 1 }),
+      retryable: Type.Boolean(),
+      failedAt: Type.String({ format: "date-time" }),
+    }),
+    Type.Null(),
+  ]),
   createdAt: Type.String({ format: "date-time" }),
 });
 

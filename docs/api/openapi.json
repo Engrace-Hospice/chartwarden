@@ -188497,6 +188497,7 @@
                     "status",
                     "uploadedAt",
                     "pages",
+                    "processingFailure",
                     "createdAt"
                   ],
                   "properties": {
@@ -188566,6 +188567,47 @@
                     },
                     "pages": {
                       "type": "integer"
+                    },
+                    "processingFailure": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "code",
+                            "attempts",
+                            "retryable",
+                            "failedAt"
+                          ],
+                          "properties": {
+                            "code": {
+                              "anyOf": [
+                                {
+                                  "const": "docling_unavailable",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "processing_error",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "attempts": {
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "retryable": {
+                              "type": "boolean"
+                            },
+                            "failedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "createdAt": {
                       "format": "date-time",
@@ -188675,6 +188717,7 @@
                     "status",
                     "uploadedAt",
                     "pages",
+                    "processingFailure",
                     "createdAt"
                   ],
                   "properties": {
@@ -188744,6 +188787,47 @@
                     },
                     "pages": {
                       "type": "integer"
+                    },
+                    "processingFailure": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "code",
+                            "attempts",
+                            "retryable",
+                            "failedAt"
+                          ],
+                          "properties": {
+                            "code": {
+                              "anyOf": [
+                                {
+                                  "const": "docling_unavailable",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "processing_error",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "attempts": {
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "retryable": {
+                              "type": "boolean"
+                            },
+                            "failedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "createdAt": {
                       "format": "date-time",
@@ -421314,6 +421398,39 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        "wardenlens": {
+                          "type": "object",
+                          "required": [
+                            "docling",
+                            "worker"
+                          ],
+                          "properties": {
+                            "docling": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "fail",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "worker": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "fail",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
                         },
                         "capabilities": {
                           "type": "object",

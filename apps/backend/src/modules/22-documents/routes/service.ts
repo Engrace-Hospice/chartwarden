@@ -148,6 +148,13 @@ export interface IntakeBatchView {
   readonly status: IntakeBatchStatus;
   readonly uploadedAt: string;
   readonly pages: number;
+  /** PHI-safe terminal processing metadata; raw provider/database error text is never exposed. */
+  readonly processingFailure: {
+    readonly code: "docling_unavailable" | "processing_error";
+    readonly attempts: number;
+    readonly retryable: boolean;
+    readonly failedAt: string;
+  } | null;
   readonly createdAt: string;
 }
 
@@ -903,6 +910,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
         status: rec.status,
         uploadedAt: rec.createdAt,
         pages: rec.pages,
+        processingFailure: null,
         createdAt: rec.createdAt,
       };
     },
@@ -915,6 +923,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
         status: r.status,
         uploadedAt: r.createdAt,
         pages: r.pages,
+        processingFailure: null,
         createdAt: r.createdAt,
       };
     },

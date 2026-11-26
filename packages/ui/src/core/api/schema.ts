@@ -76879,6 +76879,13 @@ export interface operations {
                         /** Format: date-time */
                         uploadedAt: string;
                         pages: number;
+                        processingFailure: {
+                            code: "docling_unavailable" | "processing_error";
+                            attempts: number;
+                            retryable: boolean;
+                            /** Format: date-time */
+                            failedAt: string;
+                        } | null;
                         /** Format: date-time */
                         createdAt: string;
                     };
@@ -76913,6 +76920,13 @@ export interface operations {
                         /** Format: date-time */
                         uploadedAt: string;
                         pages: number;
+                        processingFailure: {
+                            code: "docling_unavailable" | "processing_error";
+                            attempts: number;
+                            retryable: boolean;
+                            /** Format: date-time */
+                            failedAt: string;
+                        } | null;
                         /** Format: date-time */
                         createdAt: string;
                     };
@@ -130986,6 +131000,10 @@ export interface operations {
                             valkey: "ok" | "fail";
                             minio: "ok" | "fail";
                             outbox: "ok" | "fail";
+                            wardenlens?: {
+                                docling: "ok" | "fail";
+                                worker: "ok" | "fail";
+                            };
                             capabilities?: {
                                 [key: string]: "ready" | "disabled" | "degraded";
                             };

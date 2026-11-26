@@ -28,7 +28,9 @@ import {
   type DocLensExtractorPort,
   type DocLensSudDetectorPort,
   createCandidateValueCipher,
+  markDocLensIntakeFailed,
   parseDoclingResponse,
+  readWardenLensBacklogForOrg,
   runDocLensIntake,
 } from "../src/modules/22-documents/index";
 import {
@@ -325,6 +327,115 @@ describe.skipIf(!DB_URL)("F-236 — DocLens intake job + live M32 pipeline — L
       (await admin.query("SELECT status FROM intake_upload_batch WHERE id=$1", [batchId])).rows[0]
         ?.status,
     ).toBe("classifier_complete");
+  });
+
+  it("does not persist a partial classification plan and retries classification after capability recovery", async () => {
+    const baselineBacklog = await readWardenLensBacklogForOrg(handle.db, ORG_A);
+    const batchId = await seedBatch(ORG_A, true);
+    let available = false;
+    const recoveringClassifier: DocLensClassifierPort = {
+      async classify(input) {
+        if (!available) {
+          return { available: false, detail: "temporary provider detail must not become a plan" };
+        }
+        return classifier.classify(input);
+      },
+    };
+
+    const first = await runDocLensIntake(
+      deps({ classifier: () => recoveringClassifier }),
+      job(ORG_A, batchId),
+    );
+    expect(first).toMatchObject({ outcome: "awaiting_capability", jobs: 0, candidates: 0 });
+    const waiting = await admin.query(
+      `SELECT b.status,
+              b.audit_metadata ? 'classificationAwaitingCapability' AS awaiting,
+              count(p.id)::int AS plan_rows
+         FROM intake_upload_batch b
+         LEFT JOIN classified_page p ON p.intake_upload_batch_id=b.id
+        WHERE b.id=$1
+        GROUP BY b.id`,
+      [batchId],
+    );
+    expect(waiting.rows[0]).toEqual({
+      status: "classifier_complete",
+      awaiting: true,
+      plan_rows: 0,
+    });
+    expect((await readWardenLensBacklogForOrg(handle.db, ORG_A)).awaitingCapability).toBe(
+      baselineBacklog.awaitingCapability + 1,
+    );
+
+    available = true;
+    const resumed = await runDocLensIntake(
+      deps({ classifier: () => recoveringClassifier }),
+      job(ORG_A, batchId),
+    );
+    expect(resumed).toMatchObject({ outcome: "extracted", jobs: 2, candidates: 4 });
+    const recovered = await admin.query(
+      `SELECT b.status,
+              b.audit_metadata ? 'classificationAwaitingCapability' AS awaiting,
+              count(p.id)::int AS plan_rows
+         FROM intake_upload_batch b
+         LEFT JOIN classified_page p ON p.intake_upload_batch_id=b.id
+        WHERE b.id=$1
+        GROUP BY b.id`,
+      [batchId],
+    );
+    expect(recovered.rows[0]).toEqual({
+      status: "extraction_complete",
+      awaiting: false,
+      plan_rows: 2,
+    });
+    expect((await readWardenLensBacklogForOrg(handle.db, ORG_A)).awaitingCapability).toBe(
+      baselineBacklog.awaitingCapability,
+    );
+  });
+
+  it("surfaces a thrown classifier failure by stage and recovers without a partial plan", async () => {
+    const batchId = await seedBatch(ORG_A, true);
+    let throwFailure = true;
+    const recorded: string[] = [];
+    const throwingClassifier: DocLensClassifierPort = {
+      async classify(input) {
+        if (throwFailure) throw new Error("synthetic classifier transport failure");
+        return classifier.classify(input);
+      },
+    };
+    const telemetry = {
+      recordQueueWait: () => undefined,
+      recordUploadToProcessing: () => undefined,
+      recordFailure: (stage: string) => recorded.push(stage),
+      recordRetry: () => undefined,
+      setWorkerAvailable: () => undefined,
+    };
+
+    await expect(
+      runDocLensIntake(
+        deps({ classifier: () => throwingClassifier, telemetry }),
+        job(ORG_A, batchId),
+      ),
+    ).rejects.toThrow("synthetic classifier transport failure");
+    expect(recorded).toEqual(["classification"]);
+    expect(
+      (
+        await admin.query(
+          `SELECT b.status, count(p.id)::int AS plan_rows
+             FROM intake_upload_batch b
+             LEFT JOIN classified_page p ON p.intake_upload_batch_id=b.id
+            WHERE b.id=$1 GROUP BY b.id`,
+          [batchId],
+        )
+      ).rows[0],
+    ).toEqual({ status: "docling_complete", plan_rows: 0 });
+
+    throwFailure = false;
+    await expect(
+      runDocLensIntake(
+        deps({ classifier: () => throwingClassifier, telemetry }),
+        job(ORG_A, batchId),
+      ),
+    ).resolves.toMatchObject({ outcome: "extracted", jobs: 2, candidates: 4 });
   });
 
   it("keeps a partially refused batch out of review and resumes only the awaiting job", async () => {
@@ -765,6 +876,37 @@ describe.skipIf(!DB_URL)("F-236 — DocLens intake job + live M32 pipeline — L
       outcome: "skipped",
       reason: "batch_not_found",
     });
+  });
+
+  it("projects an exhausted dependency failure to the batch and an explicit retry resumes idempotently", async () => {
+    const batchId = await seedBatch(ORG_A, true);
+    await markDocLensIntakeFailed(
+      { db: handle.db },
+      job(ORG_A, batchId),
+      "docling_unavailable",
+      3,
+    );
+    const failed = await admin.query(
+      `SELECT status, audit_metadata->'processingFailure' AS failure
+         FROM intake_upload_batch WHERE id=$1`,
+      [batchId],
+    );
+    expect(failed.rows[0]).toMatchObject({
+      status: "parse_failed",
+      failure: { code: "docling_unavailable", attempts: 3, retryable: true },
+    });
+
+    const resumed = await runDocLensIntake(deps(), {
+      ...job(ORG_A, batchId),
+      retryFailedBatch: true,
+    });
+    expect(resumed).toMatchObject({ outcome: "extracted", pages: 2 });
+    const after = await admin.query(
+      `SELECT status, audit_metadata ? 'processingFailure' AS has_failure
+         FROM intake_upload_batch WHERE id=$1`,
+      [batchId],
+    );
+    expect(after.rows[0]).toEqual({ status: "extraction_complete", has_failure: false });
   });
 
   describe("the M32 pipeline over its real Drizzle stores", () => {

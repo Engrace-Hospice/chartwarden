@@ -20,6 +20,26 @@ describe("buildReadinessProbe", () => {
     await expect(probe()).resolves.toEqual({ db: "fail", valkey: "ok", minio: "ok", outbox: "ok" });
   });
 
+  it("reports configured WardenLens Docling and worker readiness and fails the route when either is down", async () => {
+    const app = Fastify();
+    registerHealthRoutes(
+      app,
+      buildReadinessProbe({
+        pingDocling: async () => {
+          throw new Error("unreachable");
+        },
+        wardenLensWorkerAvailable: () => false,
+        log: () => undefined,
+      }),
+    );
+    const res = await app.inject({ method: "GET", url: "/ready" });
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toMatchObject({
+      status: "not_ready",
+      checks: { wardenlens: { docling: "fail", worker: "fail" } },
+    });
+  });
+
   it("reports fail for a ping that hangs past the timeout", async () => {
     const probe = buildReadinessProbe({
       pingDb: () => new Promise(() => {}), // never resolves — a wedged pool

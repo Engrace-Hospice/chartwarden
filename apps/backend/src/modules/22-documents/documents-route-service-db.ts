@@ -120,6 +120,29 @@ const READ_WINDOW = 1000;
 
 const iso = (v: Date | string): string => (v instanceof Date ? v.toISOString() : String(v));
 
+const processingFailureOf = (metadata: unknown): IntakeBatchView["processingFailure"] => {
+  if (!metadata || typeof metadata !== "object") return null;
+  const candidate = (metadata as { processingFailure?: unknown }).processingFailure;
+  if (!candidate || typeof candidate !== "object") return null;
+  const failure = candidate as Record<string, unknown>;
+  if (
+    (failure.code !== "docling_unavailable" && failure.code !== "processing_error") ||
+    !Number.isInteger(failure.attempts) ||
+    Number(failure.attempts) < 1 ||
+    typeof failure.retryable !== "boolean" ||
+    typeof failure.failedAt !== "string" ||
+    !Number.isFinite(Date.parse(failure.failedAt))
+  ) {
+    return null;
+  }
+  return {
+    code: failure.code,
+    attempts: Number(failure.attempts),
+    retryable: failure.retryable,
+    failedAt: failure.failedAt,
+  };
+};
+
 /**
  * A READ, org-scoped under RLS. `userId` is empty because M4's audit triggers fire on writes only, and
  * a read leaves no trigger-written row to attribute — the §2.5 read trail is emitted separately by the
@@ -623,6 +646,7 @@ export function createDbDocumentRouteService(
             organizationId: BATCH.organizationId,
             patientId: BATCH.patientId,
             status: BATCH.status,
+            auditMetadata: BATCH.auditMetadata,
             uploadedAt: BATCH.uploadedAt,
           })
           .from(BATCH)
@@ -640,6 +664,7 @@ export function createDbDocumentRouteService(
           status: b.status,
           uploadedAt: iso(b.uploadedAt),
           pages: pages.length,
+          processingFailure: processingFailureOf(b.auditMetadata),
           createdAt: iso(b.uploadedAt),
         };
       });
@@ -970,6 +995,7 @@ export function createDbDocumentRouteService(
           status: b.status,
           uploadedAt: iso(b.uploadedAt),
           pages: 0,
+          processingFailure: null,
           createdAt: iso(b.uploadedAt),
         };
       });

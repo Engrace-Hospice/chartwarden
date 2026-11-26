@@ -135,7 +135,6 @@ describe("createVerifiedUploadService.initiate", () => {
     ).rejects.toThrow("provisioning unavailable");
     expect(touched).toEqual([`ensure:${ORG}`]);
   });
-
   it("validates a version target before provisioning object storage", async () => {
     const touched: string[] = [];
     const db = new Proxy(

@@ -1,0 +1,61 @@
+groups:
+  - name: chartwarden-wardenlens
+    rules:
+      - alert: WardenLensWorkerUnavailable
+        # API replicas intentionally expose 0 for this per-process gauge; aggregate across all
+        # scrape targets so an API series cannot page while at least one worker is registered.
+        expr: max(chartwarden_wardenlens_worker_available) < 1 or absent(chartwarden_wardenlens_worker_available)
+        for: 2m
+        labels: { severity: critical, service: wardenlens }
+        annotations:
+          summary: WardenLens worker is unavailable
+          runbook: docs/runbooks/wardenlens-operations.md#worker-unavailable
+      - alert: WardenLensQueueWaitHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(chartwarden_wardenlens_queue_wait_seconds_bucket[10m]))) > 120
+        for: 10m
+        labels: { severity: warning, service: wardenlens }
+        annotations:
+          summary: WardenLens queue wait p95 exceeds two minutes
+          runbook: docs/runbooks/wardenlens-operations.md#queue-wait-or-stalled-processing
+      - alert: WardenLensProcessingLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(chartwarden_wardenlens_upload_to_processing_seconds_bucket[15m]))) > 600
+        for: 15m
+        labels: { severity: warning, service: wardenlens }
+        annotations:
+          summary: WardenLens upload-to-processing p95 exceeds ten minutes
+          runbook: docs/runbooks/wardenlens-operations.md#processing-latency
+      - alert: WardenLensProcessingFailure
+        expr: sum by (stage) (increase(chartwarden_wardenlens_failures_total[10m])) > 0
+        for: 2m
+        labels: { severity: warning, service: wardenlens }
+        annotations:
+          summary: WardenLens processing failures detected
+          runbook: docs/runbooks/wardenlens-operations.md#processing-failures
+      - alert: WardenLensAwaitingCapability
+        expr: chartwarden_wardenlens_backlog{state="awaiting_capability"} > 0
+        for: 15m
+        labels: { severity: warning, service: wardenlens }
+        annotations:
+          summary: WardenLens work is waiting for governed AI capability
+          runbook: docs/runbooks/wardenlens-operations.md#awaiting-capability
+      - alert: WardenLensStalledProcessing
+        expr: chartwarden_wardenlens_backlog{state="stalled"} > 0
+        for: 5m
+        labels: { severity: critical, service: wardenlens }
+        annotations:
+          summary: WardenLens batches have remained in processing state for over fifteen minutes
+          runbook: docs/runbooks/wardenlens-operations.md#queue-wait-or-stalled-processing
+      - alert: WardenLensReviewBacklog
+        expr: chartwarden_wardenlens_backlog{state="review"} > 50
+        for: 30m
+        labels: { severity: warning, service: wardenlens }
+        annotations:
+          summary: WardenLens human-review backlog exceeds fifty batches
+          runbook: docs/runbooks/wardenlens-operations.md#review-backlog
+      - alert: WardenLensRetryBurst
+        expr: increase(chartwarden_wardenlens_retry_attempts_total[15m]) > 5
+        for: 5m
+        labels: { severity: warning, service: wardenlens }
+        annotations:
+          summary: WardenLens retry attempts are elevated
+          runbook: docs/runbooks/wardenlens-operations.md#processing-failures
