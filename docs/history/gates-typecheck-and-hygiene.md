@@ -1,6 +1,6 @@
-# Fitness gates: test typecheck, manifest mirror, merge artifacts, live-suite coverage, branch protection, hook install
+# Fitness gates: test typecheck, manifest mirror, merge artifacts, live-suite coverage, branch protection, hook install, vendor agreements
 
-> Rationale for `check-test-typecheck-coverage`, `check-manifest-mirror`, `check-merge-artifacts`, `check-live-suite-coverage`, `check-branch-protection`, `check-hooks-installed`. Moved verbatim from the repo-root `CLAUDE.md`; point-in-time narrative — generated reports under `audit/` are authoritative. Index: [`README.md`](./README.md).
+> Rationale for `check-test-typecheck-coverage`, `check-manifest-mirror`, `check-merge-artifacts`, `check-live-suite-coverage`, `check-branch-protection`, `check-hooks-installed`, `check-vendor-agreements`. Moved verbatim from the repo-root `CLAUDE.md`; point-in-time narrative — generated reports under `audit/` are authoritative. Index: [`README.md`](./README.md).
 
 - `scripts/check-test-typecheck-coverage.ts` — **test-tree typecheck coverage gate** (F-098,
   `bun run arch:test-typecheck`, in `arch:fitness`; `bun run typecheck` now runs `tsc -b` PLUS
@@ -136,3 +136,18 @@
   value differs, so a read-only config cannot fail a `bun install` that has nothing to change. The deliberate
   bypasses (`--no-verify`, `GITHUB_ACTIONS=true`) remain; only the required
   `Secret and PHI scan` check in `.github/workflows/pr-gate.yml`, once the ruleset is applied, covers those.
+- `scripts/check-vendor-agreements.ts` — **vendor-agreement register gate** (CW-BA-01, `bun run arch:vendor-agreements`,
+  in `arch:fitness`). BAA status lived only as prose (the §5 table of the integrations document, AI Governance §9, the
+  Claim.MD transport contract), so nothing could say that an integration needing a BAA had a row, or that a row reading
+  "signed" had a date. `compliance/vendor-agreements.yaml` is the register, METADATA ONLY: vendor, PHI exposure, scope,
+  status, evidence files and, once signed, the date, an opaque document reference and the confirming role (the gate
+  refuses contract text by length, any email, URL or phone number, and any key outside its closed schema). It
+  cross-checks the §2 table of `docs/architecture/CHARTWARDEN_INTEGRATIONS_v0_1.md`, read by its header: every row
+  whose `BAA req'd` cell is not "No", "N/A" or "via ..." (or also says "yes") must be claimed by a vendor row's
+  `inventory:` list, and an unreadable or ambiguous table fails closed. A `tenant-held` row may name only the
+  controls listed in `TENANT_HELD_CONTROLS` and claim only the rows they record. An agent never sets `signed` (a
+  person confirms the executed agreement): `pending` is the honest first state of every row. What it cannot prove stays
+  in the CW-BA-01 gap: that a document exists or says what the row claims, that a hosting or backup provider missing from
+  §2 is listed (the `evidence:` files are the reviewer's trail, not a detector), and that PHI stops flowing to a vendor
+  whose row is pending. `effectiveOn` and `expiresOn` are reserved for CW-AC-14 and CW-AC-17: they add the expiry rule
+  to `validityViolations` in this gate, not a second register.

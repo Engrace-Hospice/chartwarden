@@ -1,0 +1,383 @@
+# Vendor-agreement register (CW-BA-01). Checked by `bun run arch:vendor-agreements`
+# (scripts/check-vendor-agreements.ts; the rules and what the gate cannot prove are in its header).
+#
+# METADATA ONLY: vendor, scope, status, dates and an opaque reference to where the owner keeps the signed
+# document. Never contract text, a signature, a person's name or an email, URL or phone number.
+#
+# phi:       receives = the vendor stores or processes PHI. adjacent = no PHI by rule (the code keeps it out of
+#            the payload) but metadata or delivery state passes through, and a BAA is kept as defence in depth.
+#            none = no PHI; the scope says why.
+# status:    pending = no executed agreement is recorded. signed = the owner has confirmed an executed agreement
+#            (needs signedOn, documentRef, confirmedBy as a ROLE, confirmedOn; the gate refuses it without them).
+#            tenant-held = the agreement is the tenant's own, recorded per tenant in the database and tracked by
+#            the control named in trackedBy. not-required = phi none.
+# inventory: the numbers of the CHARTWARDEN_INTEGRATIONS_v0_1.md section 2 rows the row covers. The gate fails
+#            when a section 2 integration that needs a BAA is claimed by no row.
+# evidence:  repo files that show where the PHI flow or the hosting is declared (the reviewer's trail).
+#
+# An agent never sets `signed`: a person confirms the executed agreement, then flips the row.
+# effectiveOn / expiresOn are reserved on `agreement` for CW-AC-14 and CW-AC-17 (validity and expiry; issues
+# #1144 and #1143 extend this register, they do not add a second one).
+owner: privacy-officer
+review_by: 2027-01-31
+vendors:
+  # ---- Named vendors (every row is pending until a person confirms an executed agreement) ------------------
+  - id: anthropic
+    name: Anthropic
+    phi: receives
+    inventory: [16]
+    scope: >-
+      Cloud foundation-model API behind DocLens, HearthNote, Copilot and predictions (M32): receives
+      redacted clinical narrative text, only for a tenant that opted in. PHI may go only under a BAA plus a
+      Zero Data Retention addendum (AI Governance 9.1 and 9.2).
+    evidence:
+      - packages/ai-platform/src/backends/anthropic.ts
+      - docs/architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md
+    agreement: { kind: baa, status: pending }
+    note: >-
+      In progress per the owner. The Zero Data Retention addendum is a separate hard precondition: flip this
+      row only once the owner confirms both the executed BAA and the addendum.
+
+  - id: dosespot
+    name: DoseSpot
+    phi: receives
+    inventory: [1, 2]
+    scope: >-
+      E-prescribing (M12): patient demographics, medication orders and pharmacy routing. Surescripts is
+      reached only through DoseSpot's own agreements.
+    evidence:
+      - packages/dosespot
+      - docs/adr/ADR-0111-tenant-dosespot-clinic-registration.md
+    agreement: { kind: baa, status: pending }
+    note: >-
+      Production is refused unless DOSESPOT_PRODUCTION_ENABLED=true. That the flag is set only after the BAA
+      is executed is operating policy, not a machine check (CW-AC-21).
+
+  - id: claimmd
+    name: Claim.MD
+    phi: receives
+    inventory: [35]
+    scope: >-
+      ChartWarden's own clearinghouse account: X12 837I claims, 999 and 277CA acknowledgments and 835
+      remittances for the platform's demo tenants and for any organization named in
+      CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS. A tenant's own Claim.MD account is the tenant-clearinghouse row.
+    evidence:
+      - docs/audits/clearinghouse-integration/CLAIMMD_TRANSPORT_CONTRACT_20261104.md
+      - docs/adr/ADR-0053-clearinghouse-transport-port.md
+    agreement: { kind: baa, status: pending }
+    note: >-
+      The Claim.MD portal shows "BAA Received 11/4/2026" (transport contract, observed 2026-11-04). That is a
+      portal line, not a document in hand: the owner confirms the executed agreement and supplies its
+      documentRef before this row reads signed.
+
+  - id: stedi
+    name: Stedi
+    phi: receives
+    inventory: [35]
+    scope: >-
+      ChartWarden's own Stedi account (STEDI_API_KEY): the same X12 claim, acknowledgment and remittance
+      traffic as Claim.MD, for the platform's demo tenants and the env-fallback organizations. A tenant's
+      own Stedi account is the tenant-clearinghouse row.
+    evidence:
+      - packages/x12-837-client/src/clearinghouse
+      - docs/architecture/CHARTWARDEN_INTEGRATIONS_v0_1.md
+    agreement: { kind: baa, status: pending }
+    note: No Stedi BAA is recorded for the platform account (INTEGRATIONS section 5).
+
+  - id: tenant-clearinghouse
+    name: Tenant-held clearinghouse accounts (Stedi or Claim.MD)
+    phi: receives
+    inventory: [35]
+    scope: >-
+      A tenant's own Stedi or Claim.MD account. The tenant holds the vendor BAA and records it (holder, date,
+      document reference); a platform operator verifies it and can revoke it. Recorded per tenant in the
+      database, not here.
+    evidence:
+      - apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/baa.ts
+      - packages/db/migrations/1417_m23_tenant_clearinghouse_config.sql
+    agreement: { kind: baa, status: tenant-held, trackedBy: [CW-AC-17] }
+
+  - id: postmark
+    name: Postmark
+    phi: adjacent
+    inventory: [14]
+    scope: >-
+      Transactional and alert email (M36). By code rule the message carries no clinical content, only a
+      notice and an authenticated link, but recipient addresses and delivery state pass through.
+    evidence:
+      - docs/runbooks/transactional-email-postmark.md
+      - docs/history/m36-transactional-email-provider.md
+    agreement: { kind: baa, status: pending }
+    note: >-
+      INTEGRATIONS section 5 lists the BAA as TBD. It is kept as defence in depth. The adapter binds from its
+      environment variables once the sender is verified; nothing in code ties that binding to this row.
+
+  - id: twilio
+    name: Twilio
+    phi: adjacent
+    inventory: [12, 13]
+    scope: >-
+      SMS and voice alerts (M36, SOS escalation). No PHI in the payload by rule; phone numbers and delivery
+      state pass through once the transports are bound.
+    evidence:
+      - packages/messaging/src/dispatch/twilio-transports.ts
+      - apps/backend/src/modules/36-messaging/delivery/transport-binding.ts
+    agreement: { kind: baa, status: pending }
+    note: >-
+      The transports are built and bind as soon as the TWILIO_* environment variables, the webhook base URL
+      and a sender are set (the INTEGRATIONS inventory still says not built). Nothing in code ties that
+      binding to this row: the owner confirms the agreement before setting them in production.
+
+  - id: daily-co
+    name: Daily.co
+    phi: receives
+    inventory: [21]
+    scope: >-
+      Telehealth video (M31): the audio and video stream of a visit is PHI. A platform account or a
+      per-tenant account, finalised at onboarding (ADR-0041).
+    evidence:
+      - docs/adr/ADR-0041-telehealth-vendor-daily-co.md
+      - packages/telehealth-client
+    agreement: { kind: baa, status: pending }
+    note: The BAA must read executed before any production PHI video.
+
+  # ---- Hosting and infrastructure (not in the section 2 inventory, so `evidence` is the trail) ------------
+  - id: ovhcloud
+    name: OVHcloud
+    phi: receives
+    inventory: []
+    scope: >-
+      Planned production host (stage 1, Oregon bare metal): every tenant's database and object store would
+      live there. The off-site, BAA-covered backup target is a separate row.
+    evidence:
+      - docs/adr/ADR-0050-talos-kubernetes-platform.md
+      - docs/PLATFORM_TOOLS_MANUAL.md
+    agreement: { kind: baa, status: pending }
+    note: >-
+      The platform docs say production runs under a signed BAA, but no record is in the repo, and ADR-0050
+      asks to confirm the BAA covers the bare-metal product actually rented. The owner confirms both.
+
+  - id: hostinger
+    name: Hostinger
+    phi: receives
+    inventory: []
+    scope: >-
+      Hosts today's production (one Docker Compose VPS: database, object store, api, worker and web
+      containers) and the self-hosted CI runners. The stage-0 Talos cluster here is synthetic data only.
+    evidence:
+      - docs/adr/ADR-0050-talos-kubernetes-platform.md
+      - .github/workflows/deploy.yml
+      - deploy/production/compose.yml
+    agreement: { kind: baa, status: pending }
+    note: >-
+      ADR-0050 bars PHI on Hostinger until it signs a BAA, yet the Compose VPS stays production until the
+      OVHcloud cutover. Before any real patient data either a BAA is signed or the cutover is done; after
+      the cutover this row becomes phi none, not-required (a synthetic playground).
+
+  - id: github
+    name: GitHub
+    phi: none
+    inventory: []
+    scope: >-
+      Source control, Actions CI and the GHCR image registry. PHI never enters the repository or CI:
+      fixtures are synthetic and the PR gate runs a secret and PHI scan. If that stops being true this row
+      becomes phi receives with a BAA.
+    evidence:
+      - .claude/rules/phi-and-secrets.md
+      - .github/workflows/pr-gate.yml
+    agreement: { kind: none, status: not-required }
+
+  - id: cloudflare
+    name: Cloudflare
+    phi: none
+    inventory: []
+    scope: >-
+      DNS for the tenant base domains, every record DNS-only (grey cloud): requests do not pass through
+      Cloudflare, so it receives no PHI. Proxying (orange cloud) would carry PHI through a third party, and a
+      BAA is not available on self-serve plans.
+    evidence:
+      - deploy/production/TENANT_EDGE.md
+      - docs/adr/ADR-0088-tenant-base-domain-and-environments.md
+    agreement: { kind: none, status: not-required }
+    note: >-
+      If proxying is ever turned on this row becomes phi receives with a BAA. Nothing in code keeps a record
+      DNS-only.
+
+  - id: backup-offsite
+    name: TBD (off-site backup bucket provider)
+    phi: receives
+    inventory: []
+    scope: >-
+      Off-site backup bucket (cw-backup.sh, DR_BCP section 4.8): the Object-Lock object mirror and the
+      pgBackRest repo2 database repository, so database contents and PHI documents.
+    evidence:
+      - deploy/production/backup/cw-backup.sh
+      - deploy/production/compose.backup.yml
+    agreement: { kind: baa, status: pending }
+    note: >-
+      Enabled in production per the owner (2026-11-23). No provider name and no BAA record are in the repo:
+      the owner names the provider here and records the agreement.
+
+  - id: object-store-second-copy
+    name: TBD (object-store second copy host)
+    phi: receives
+    inventory: []
+    scope: >-
+      Host of the object-store second copy (deploy/production/replica/): every stored PHI document is
+      copied there.
+    evidence:
+      - deploy/production/replica/compose.yml
+      - deploy/production/compose.object-copy.yml
+    agreement: { kind: baa, status: pending }
+    note: >-
+      The owner states a BAA covers it (2026-11-06). The provider name and the BAA date are not in a repo
+      record: the owner supplies both.
+
+  - id: ops-alert-receiver
+    name: TBD (OPS_ALERT_WEBHOOK_URL receiver)
+    phi: adjacent
+    inventory: []
+    scope: >-
+      Receiver of the OPS_ALERT_WEBHOOK_URL alerts: object-copy failures (object keys, which carry the
+      patient id, the document kind and the tenant bucket name), security-review alerts (organization, user
+      and event ids), dead-letter alerts (organization and job ids) and platform-ops notices. Ids only as far
+      as the senders show, no names and no clinical content.
+    evidence:
+      - deploy/production/backup/cw-backup.sh
+      - apps/backend/src/bootstrap/security-alert-sink.ts
+      - apps/backend/src/bootstrap/dlq-alerts.ts
+      - apps/backend/src/bootstrap/platform-ops-notices.ts
+    agreement: { kind: baa, status: pending }
+    note: >-
+      The receiver is not named in the repo. Name it here and record an agreement, or move the alerts to a
+      receiver inside the BAA boundary.
+
+  # ---- Classes with no vendor selected yet: the row records the agreement owed (nothing in code ties a binding to it) ----
+  - id: mapbox
+    name: Mapbox
+    phi: adjacent
+    inventory: [22]
+    scope: >-
+      Route matrix and directions for field-visit routing (M17). By design a request carries coordinates only,
+      no address and no other PHI field (D9); visit coordinates are location data tied to patient visits.
+    evidence:
+      - packages/routing-client/src/mapbox-adapter.ts
+      - packages/routing-client/src/interface.ts
+    agreement: { kind: baa, status: pending }
+    note: >-
+      The adapter is a disabled stub whose calls always throw, so nothing is sent today; the provider choice
+      is the open ADR-007 decision. If self-hosted OSRM is chosen this row becomes phi none, not-required.
+      Geocoding a patient's address is a different path: the geocoder row.
+
+  - id: geocoder
+    name: TBD (address geocoder vendor, none selected)
+    phi: receives
+    inventory: []
+    scope: >-
+      Geocoding a patient's home address (M5 geocode_address, geofence baseline): the address leaves the
+      platform. No vendor is selected and the vendor registry is empty.
+    evidence:
+      - apps/backend/src/modules/05-patient/geocoder.ts
+    agreement: { kind: baa, status: pending }
+    note: >-
+      Binds only when GEOCODER_VENDOR names a registered adapter, GEOCODER_API_KEY is set and the operator
+      sets GEOCODER_BAA_ATTESTED=true. That flag is the operator's statement, not evidence, and nothing ties
+      it to this row.
+
+  - id: fhir-recipients
+    name: FHIR gateway recipients (per consuming partner)
+    phi: receives
+    inventory: [24]
+    scope: >-
+      Outbound FHIR R4 reads and bulk export to partners a tenant authorises, and inbound imports (M28). The
+      counterparty is the consuming partner, per recipient and use; 42 CFR Part 2 records are excluded from
+      export by default.
+    evidence:
+      - packages/fhir
+      - docs/architecture/CHARTWARDEN_INTEGRATIONS_v0_1.md
+    agreement: { kind: baa, status: pending }
+    note: The agreement varies by recipient and use (INTEGRATIONS section 6.24). No recipient is recorded here.
+
+  - id: cahps-vendor
+    name: CAHPS survey vendor (tenant-selected)
+    phi: receives
+    inventory: [8]
+    scope: >-
+      Decedent-caregiver contact details for the CAHPS Hospice survey. The vendor is tenant-configurable
+      (ADR-005 default).
+    evidence:
+      - packages/cahps-vendors
+    agreement: { kind: baa, status: pending }
+    note: The agreement is needed per selected vendor before any survey data flows.
+
+  - id: hospital-lab-feeds
+    name: Hospital ADT, lab and lab-order counterparties
+    phi: receives
+    inventory: [18, 19, 33]
+    scope: >-
+      Inbound ADT and lab results and outbound lab orders over HL7 v2 (M29, M11). The counterparty is the
+      sending hospital, HIE or reference lab, per feed.
+    evidence:
+      - apps/backend/src/modules/29-external-interfaces
+    agreement: { kind: baa, status: pending }
+    note: The agreement is per feed, set up at feed onboarding (INTEGRATIONS section 5). No feed is recorded here.
+
+  - id: evv-aggregator
+    name: EVV state aggregators (Sandata, open-model)
+    phi: receives
+    inventory: [26]
+    scope: >-
+      Electronic visit verification submissions per provider entity and state (M18): visit times and patient
+      and caregiver identity.
+    evidence:
+      - packages/evv-aggregators
+      - docs/adr/ADR-0020-integration-governance.md
+    agreement: { kind: trading-partner, status: pending }
+    note: A trading-partner agreement or BAA per state, executed before any Medicaid EVV submission (INT-014).
+
+  - id: dme-and-pharmacy
+    name: DME vendors and partner pharmacies (tenant-selected)
+    phi: receives
+    inventory: [27, 28]
+    scope: >-
+      Supply and comfort-kit orders (M21): patient name, address and items. Not built: no vendor port is
+      bound.
+    evidence:
+      - docs/architecture/CHARTWARDEN_INTEGRATIONS_v0_1.md
+    agreement: { kind: baa, status: pending }
+
+  - id: print-mail
+    name: Print and mail vendor
+    phi: receives
+    inventory: [29]
+    scope: >-
+      Statements and letters (M22): name, address and document content. Not built: no print-mail client
+      exists.
+    evidence:
+      - docs/architecture/CHARTWARDEN_INTEGRATIONS_v0_1.md
+    agreement: { kind: baa, status: pending }
+
+  - id: fax-ingest
+    name: Fax and secure-email vendor (and any esMD intermediary)
+    phi: receives
+    inventory: [30, 34]
+    scope: >-
+      Inbound fax or secure-email document ingest, outbound records-request fax (M22), and any fax vendor or
+      esMD intermediary bound for MAC filings (M25).
+    evidence:
+      - apps/backend/src/modules/22-documents/fax/outbound-fax.ts
+    agreement: { kind: baa, status: pending }
+    note: Production fax answers 503 until a vendor adapter is bound, which waits for its BAA.
+
+  - id: triage-vendor
+    name: After-hours triage vendor (tenant-selected)
+    phi: receives
+    inventory: [31]
+    scope: >-
+      After-hours clinical triage (M19): clinical content, and substance-use-disorder data only behind a
+      QSOA for 42 CFR Part 2.
+    evidence:
+      - packages/triage-vendors
+      - docs/adr/ADR-0014-part2-disclosure-gate.md
+    agreement: { kind: baa, status: pending }
+    note: Needs a BAA plus a QSOA before any SUD re-disclosure (ADR-0014).

@@ -271,6 +271,8 @@ For every inbound webhook (DoseSpot, Stripe, Twilio status, Postmark, telehealth
 
 The compliance-facing summary. Surveyors and customer security reviewers receive this table. "Status" must read EXECUTED before that integration carries production PHI.
 
+The machine-checked register is `compliance/vendor-agreements.yaml` (`bun run arch:vendor-agreements`, control CW-BA-01): one row per vendor or vendor class, every §2 integration that needs a BAA claimed by a row, and a status that stays `pending` until the owner confirms an executed agreement. It holds metadata only (no contract text, signature or contact detail). This table is the human summary: where the two disagree trust the register, and a row here should read EXECUTED only when the register holds `signed`.
+
 |Integration|PHI flows?|BAA / agreement type|Counterparty|Status|Notes|
 |-----------|----------|--------------------|------------|------|-----|
 |DoseSpot|Yes|BAA|DoseSpot|TBD — confirm executed before Module 12 prod|Surescripts coverage flows through DoseSpot's BAA chain|
