@@ -20,6 +20,12 @@ import {
   runLegalHoldMaterialiseForOrg,
   runRetentionScanForOrg,
 } from "./audit-job-ops";
+import {
+  SECURITY_REVIEW_CRON,
+  SECURITY_REVIEW_QUEUE,
+  type SecurityReviewDeps,
+  runSecurityReviewTick,
+} from "./security-review-job";
 
 const EXPORT_SWEEP_CRON = "*/2 * * * *";
 const DESTRUCTION_SWEEP_CRON = "*/10 * * * *";
@@ -35,6 +41,8 @@ export interface AuditOpsWorkerDeps {
   readonly ops: AuditJobOpsDeps;
   /** The sealed audit hash chain + sampled verification (§4.4). Absent ⇒ neither queue is constructed. */
   readonly integrity?: AuditIntegrityDeps;
+  /** CW-MON-01: the scheduled review of the audit trail + alerting. Absent ⇒ the queue is not constructed. */
+  readonly securityReview?: SecurityReviewDeps;
 }
 
 /** One Worker per bound queue; the destruction sweep only when an eraser (destruction credential) exists. */
@@ -83,7 +91,16 @@ export function registerAuditOpsWorkers(deps: AuditOpsWorkerDeps): Worker[] {
       ),
     );
   }
-  const { integrity } = deps;
+  const { integrity, securityReview } = deps;
+  // CW-MON-01: a failed tick (an undelivered alert, a scope that threw) FAILS the job; it never reports green.
+  if (securityReview) {
+    workers.push(
+      new Worker(SECURITY_REVIEW_QUEUE, () => runSecurityReviewTick(securityReview), {
+        connection,
+        concurrency: 1,
+      }),
+    );
+  }
   if (integrity) {
     workers.push(
       new Worker(
@@ -116,10 +133,13 @@ export function registerAuditOpsWorkers(deps: AuditOpsWorkerDeps): Worker[] {
 /** Register the repeatable triggers for the queues {@link registerAuditOpsWorkers} constructs. */
 export async function scheduleAuditOpsJobs(
   connection: ConnectionOptions,
-  opts: { exports: boolean; destruction: boolean; integrity?: boolean },
+  opts: { exports: boolean; destruction: boolean; integrity?: boolean; securityReview?: boolean },
 ): Promise<Queue[]> {
   const specs: { name: string; pattern: string }[] = [
     { name: LEGAL_HOLD_MATERIALISE_QUEUE, pattern: LEGAL_HOLD_MATERIALISE_CRON },
+    ...(opts.securityReview
+      ? [{ name: SECURITY_REVIEW_QUEUE, pattern: SECURITY_REVIEW_CRON }]
+      : []),
     { name: AUDIT_QUEUES.retentionScan, pattern: AUDIT_JOB_SCHEDULES.retentionScan },
     ...(opts.exports ? [{ name: AUDIT_QUEUES.buildExport, pattern: EXPORT_SWEEP_CRON }] : []),
     ...(opts.destruction

@@ -1521,6 +1521,8 @@ controls:
     soc2: ["CC7.2", "CC4.1"]
     status: implemented
     evidence:
+      # CW-MON-01 reviews this trail (scheduled detections and alerts) and reads it through one platform-login grant: SELECT on six
+      # audit_event columns, context included, across tenants (BYPASSRLS), bounded by an organization_id IS NULL predicate (migration 1561).
       - script: test:m4:audit-integrity:live
       - script: test:m4:read-audit:live
       # Every SECURITY DEFINER function, the audit-writing ones included, ends its search_path in pg_temp, so a temp table named
@@ -2234,11 +2236,65 @@ controls:
     title: Information system activity review and log-in monitoring (security alerting on audit events)
     hipaa: ["164.308(a)(1)(ii)(D)", "164.308(a)(5)(ii)(C)"]
     soc2: ["CC7.2", "CC7.3"]
-    status: gap
+    status: partial
     evidence:
+      # The scheduled review of the audit trail (queue audit.security_review, every 15 minutes): 15 detection rules as data, a
+      # pure evaluator, one run per scope that reads since the last clean review and raises each NEW finding once, and the
+      # review record (m4.security_review.completed / .alert_raised) appended to the audit trail. Two lanes: the org-less sign-in
+      # events (platform context, audited) and each active organization (withOrgContext). The live suite proves it as the real
+      # NOBYPASSRLS chartwarden_app and the platform login: events in, alert out, a review record written; a failed delivery is
+      # recorded, holds the cursor and is retried; no destination is recorded, not dropped; bulk access is aggregated in SQL; the
+      # platform lane reads org-less rows only; a tenant's events never reach another tenant's review.
+      - script: test:m4:security-review:live
+      - ci: "M4 security review of the audit trail"
+      - file: packages/audit/src/review/rules.ts
+      - file: packages/audit/src/review/evaluate.ts
+      - file: packages/audit/src/review/run.ts
+      - file: packages/audit/src/review/reader.ts
+      - file: packages/audit/src/review/record.ts
+      - file: packages/audit/__tests__/security-review-rules.test.ts
+      - file: packages/audit/__tests__/security-review-run.test.ts
+      - file: apps/backend/src/modules/04-audit/jobs/security-review-job.ts
+      - file: apps/backend/src/bootstrap/security-alert-sink.ts
+      - file: apps/backend/__tests__/security-review-job.test.ts
+      - file: apps/backend/__tests__/security-alert-sink.test.ts
+      # The platform carrier reads six audit_event columns for the org-less lane (migration 1561, re-granted by the provisioner).
+      - file: packages/db/migrations/1561_m4_security_review_platform_audit_read.sql
+      - file: scripts/db/provision-runtime-roles.ts
+      # check:boot:platform asserts, with a queue connection, that the backend logs the review worker among the constructed M4 audit
+      # workers (a bound worker is not a computing one).
+      - script: check:boot:platform
+      - file: docs/runbooks/security-alert-review.md
       - file: docs/compliance/AISOC_INTEGRATION.md
     gap:
-      reason: Audit events are recorded (CW-AU-01) but nothing reviews them — no detection rules for brute force, impossible travel, mass export or break-glass use, and no alert routing. Planned as a self-hosted SOC sidecar inside the BAA boundary; see docs/compliance/AISOC_INTEGRATION.md.
+      reason: >-
+        No destination that reaches a human is configured or tested, and no reviewer is named. With OPS_ALERT_WEBHOOK_URL unset an alert is
+        logged and recorded no_destination (a terminal, visible outcome, but nobody is told, and those alerts are never re-sent once a
+        webhook is set; the first run reviews the previous 24 hours); the weekly review and each alert's disposition are human records
+        outside the code (runbook section 2). The webhook receiver is not yet recorded in CW-BA-01 (vendor, BAA or a PHI-free-metadata
+        decision): an alert carries organization and user ids, a /24 network prefix and 12 hex characters of an unsalted email hash, no PHI. Delivery is one webhook POST with a 5 s timeout and a 15-minute retry: no
+        acknowledgement, escalation or on-call schedule. Detection limits, stated rather than implied: impossible travel is a network-change
+        proxy (one user from three /24 prefixes within an hour), not a distance check, because the trail holds no geolocation; cross-tenant
+        access attempts return 404 and leave no audit event, so they cannot alert; mass export covers only exports that write an audit
+        event (m4.audit_export.requested) plus bulk reads (100 distinct records in a fixed 15-minute bucket, so a burst split across a
+        bucket edge counts half); m3.authz.denied is sampled, so its counts are a floor. Reads are row-capped and share one cap across a
+        run's event types (a cap that is hit is recorded and raised as review.incomplete_scan, not silent); a pattern alerts about once an
+        hour per subject, and more than 10 of one rule (50 in all) in one run are rolled into one review.alert_flood alert, so the
+        destination can be kept busy at the cap but the cursor cannot be pinned. The review's cursor and its memory of what it raised
+        are audit rows, so a writer of the audit trail can forge them (the cursor is clamped to the clock and ignores future-stamped
+        rows; a forgery that looks like a real run cannot be told from one). Only active and suspended
+        organizations are reviewed, so the tenant-offboarding shred event (data.destruction_certified) is not. Delivery is at least once
+        (it happens inside the run's transaction, so a failure after a send re-sends it). Host, edge and Postgres (pgaudit) logs are not
+        reviewed (docs/compliance/AISOC_INTEGRATION.md). The platform login now holds SELECT on six audit_event columns across tenants,
+        context included (it is BYPASSRLS, so only the review's own organization_id IS NULL predicate, proved by the live suite, keeps it
+        to org-less rows), and a tenant row's context can hold short free text the denylist does not catch (the context.reason of an
+        account deactivation or organization change, a collaborator's patientId); narrowing it to a SECURITY DEFINER reader is the follow-up. The org-less platform-lane review
+        records are in no hash-chain seal (the chain is per organization). The per-scope advisory lock is takeable by any database role
+        (a held lock makes the scope skip; the job logs each skip but stays green). A second-factor removal by a session with no bound
+        organization is written org-less and is seen by neither lane. Break-glass already pages the tenant's compliance officer
+        in-app (GAP-010); this review is the second line, to the ops path.
+        CW-AC-47..52 and CW-AC-54 wait on this alerting: each adds one entry to SECURITY_RULES for its own audit event and drops its
+        "no alert" line (runbook section 5).
       owner: security-officer
       review_by: 2027-01-31
 

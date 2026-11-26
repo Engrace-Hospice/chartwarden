@@ -45,6 +45,8 @@ const M41_DRAIN_LOG = "M41 commercial submission drain constructed";
 // constructs the pull (it resolves each org's vendor per tick and skips an org with none); no platform vendor is needed.
 const TENANT_LOG = "Tenant clearinghouses: per organization";
 const PULL_REQUESTED = Boolean(process.env.REDIS_URL);
+// CW-MON-01 - the boot line that lists the constructed M4 audit workers; `security_review` must be among them.
+const M4_REVIEW_LOG = /M4 audit workers constructed:[^"\n]*security_review/;
 
 for (const key of ["DATABASE_URL", "DATABASE_PLATFORM_URL"]) {
   if (!process.env[key]) {
@@ -144,6 +146,13 @@ if (PULL_REQUESTED && !output.includes(PULL_LOG)) {
 if (Boolean(process.env.REDIS_URL) && !output.includes(M41_DRAIN_LOG)) {
   fail(
     `REDIS_URL is set but the backend never constructed the M41 commercial submission drain (no "${M41_DRAIN_LOG}" line) - queued commercial submissions would never be sent`,
+  );
+}
+// CW-MON-01 - the scheduled review of the audit trail is part of the M4 audit worker set; with a queue connection and the platform
+// pool it must be constructed (bound is not computing): a silent skip would leave every audit event unreviewed and unalerted.
+if (PULL_REQUESTED && !M4_REVIEW_LOG.test(output)) {
+  fail(
+    `REDIS_URL is set but the backend never constructed the M4 security review (no "M4 audit workers constructed: ... security_review" line) - the audit trail would be recorded and never reviewed`,
   );
 }
 if (WATCHER_REQUESTED && !output.includes(WATCHER_LOG)) {
