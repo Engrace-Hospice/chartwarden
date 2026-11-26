@@ -1,6 +1,7 @@
 # Who must review a change to the agent harness, the compliance record and the secret scanners.
-# Takes effect once main's branch protection requires code-owner review (open in #16); until then
-# it documents the owner and `arch:compliance` keeps it from being deleted.
+# Takes effect once the `main` ruleset (.github/rulesets/main.json, applied by hand per
+# docs/runbooks/main-branch-protection.md) requires code-owner review; until then it documents the
+# owner and `arch:compliance` / `arch:branch-protection` keep it from being deleted.
 /.claude/settings.json     @fabwebdev
 /.claude/rules/            @fabwebdev
 /.claude/agents/           @fabwebdev
@@ -17,3 +18,21 @@
 /.gitleaks.toml            @fabwebdev
 /.github/CODEOWNERS        @fabwebdev
 /.github/workflows/        @fabwebdev
+/.github/rulesets/         @fabwebdev
+# What decides what reaches production (CW-CM-01): the agent instructions, the deploy path, the gates that
+# gate it. `arch:branch-protection` fails when one of these loses its owner.
+/CLAUDE.md                 @fabwebdev
+/AGENTS.md                 @fabwebdev
+/.trivyignore.yaml         @fabwebdev
+/deploy/production/        @fabwebdev
+/scripts/db/migrate.ts     @fabwebdev
+/scripts/check-branch-protection.ts @fabwebdev
+/scripts/verify-branch-protection.ts @fabwebdev
+/scripts/check-hooks-installed.ts   @fabwebdev
+/scripts/check-release-gate.ts      @fabwebdev
+/scripts/check-merge-artifacts.ts   @fabwebdev
+/scripts/run-fitness-gates.ts       @fabwebdev
+# Every PR-gate check runs as `bun run <script>`, and the script bodies are in package.json; gitleaks reads
+# .gitleaksignore from the scanned tree, so a PR that adds one silences its own finding.
+/package.json              @fabwebdev
+/.gitleaksignore           @fabwebdev
