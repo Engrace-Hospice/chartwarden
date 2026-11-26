@@ -117,7 +117,13 @@ describe("runSecurityReviewTick", () => {
     runSecurityReview.mockResolvedValueOnce(skippedRun); // platform
     runSecurityReview.mockResolvedValueOnce(result()); // A
     runSecurityReview.mockResolvedValueOnce(skippedRun); // B
-    await expect(runSecurityReviewTick(deps())).resolves.toEqual({ orgs: 2 });
+    const log = vi.fn();
+    await expect(runSecurityReviewTick(deps({ log }))).resolves.toEqual({ orgs: 2 });
+    // …but never silent: a lock that stays taken for good would otherwise be invisible
+    expect(log.mock.calls.map((c) => c[0])).toEqual([
+      "M4 security review: platform lane skipped, another run holds its lock",
+      `M4 security review: org ${ORG_B} skipped, another run holds its lock`,
+    ]);
   });
 
   it("names at most five failed scopes and counts the rest", async () => {

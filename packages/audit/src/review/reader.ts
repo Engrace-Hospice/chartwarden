@@ -80,9 +80,15 @@ export async function readSignalEvents(
     readonly from: Date;
     readonly to: Date;
     readonly limit: number;
+    /**
+     * Keep the NEWEST `limit` rows instead of the oldest. The look-back overlap reads this way: the rows that stitch a burst
+     * straddling the cursor are the ones nearest it, and a cap must not drop those. Rows are returned oldest first either way.
+     */
+    readonly newestFirst?: boolean;
   },
 ): Promise<SignalRead> {
   if (query.eventTypes.length === 0) return { events: [], truncated: false };
+  const order = query.newestFirst ? sql`ORDER BY created_at DESC, id DESC` : sql`ORDER BY created_at, id`;
   const result = await db.execute<SignalRow>(sql`
     SELECT id::text AS id,
            ${isoOf("created_at")} AS created_at,
@@ -96,10 +102,11 @@ export async function readSignalEvents(
        AND event_type IN (${inList(query.eventTypes)})
        AND created_at >= ${query.from.toISOString()}::timestamptz
        AND created_at < ${query.to.toISOString()}::timestamptz
-     ORDER BY created_at, id
+     ${order}
      LIMIT ${query.limit + 1}
   `);
-  const rows = result.rows.slice(0, query.limit);
+  const kept = result.rows.slice(0, query.limit);
+  const rows = query.newestFirst ? [...kept].reverse() : kept;
   return {
     truncated: result.rows.length > query.limit,
     events: rows.map((r) => ({
@@ -179,24 +186,41 @@ export async function readBulkAccessHits(
   };
 }
 
-/** Where the previous review of this scope got to: the `windowTo` of its newest run that finished clean (`status: ok`), or null on the first run. */
+/**
+ * A run writes its row at the end of the transaction it started, with `windowTo` taken at its start, so `windowTo` is never more
+ * than a delivery budget (30 s) plus clock skew behind the row's own `created_at` — and never after it. This is the slack allowed
+ * before a `windowTo` that claims otherwise is treated as forged or corrupt.
+ */
+const CURSOR_SLACK_MS = 10 * 60_000;
+
+/**
+ * Where the previous review of this scope got to: the `windowTo` of its newest run that finished clean (`status: ok`), or null on the
+ * first run. The review's state lives in audit rows that any writer of the audit trail could append, so the cursor is bounded by
+ * what a real run could have written: rows stamped in the future are ignored, and `windowTo` is clamped to a few minutes past the
+ * row's own `created_at`. A forged "reviewed up to next week" row therefore cannot blind the review (a forged "reviewed up to just
+ * now" row still can skip the gap before it: that needs a writer of the audit trail, and is a stated limit).
+ */
 export async function readReviewCursor(
   db: ReviewSqlExecutor,
   scope: ReviewScope,
 ): Promise<Date | null> {
-  const result = await db.execute<{ window_to: string } & Record<string, unknown>>(sql`
-    SELECT context->>'windowTo' AS window_to
+  const result = await db.execute<{ window_to: string; row_at: string } & Record<string, unknown>>(sql`
+    SELECT context->>'windowTo' AS window_to,
+           ${isoOf("created_at")} AS row_at
       FROM audit_event
      WHERE ${scopeIs(scope)}
        AND event_type = ${SECURITY_REVIEW_COMPLETED_EVENT}
        AND context->>'status' = 'ok'
+       AND created_at <= now()
      ORDER BY created_at DESC, id DESC
      LIMIT 1
   `);
-  const at = result.rows[0]?.window_to;
-  if (at === undefined) return null;
-  const parsed = new Date(at);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  const row = result.rows[0];
+  if (row === undefined) return null;
+  const windowTo = Date.parse(row.window_to);
+  const rowAt = Date.parse(row.row_at);
+  if (Number.isNaN(windowTo) || Number.isNaN(rowAt)) return null;
+  return new Date(Math.min(windowTo, rowAt + CURSOR_SLACK_MS));
 }
 
 interface RaisedRow extends Record<string, unknown> {

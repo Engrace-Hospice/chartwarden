@@ -284,6 +284,21 @@ describe("findings", () => {
     expect(evaluate(rule, unparseable)).toEqual([]);
   });
 
+  it("only accepts a well-formed /24 or /48 as a network subject (it goes verbatim into an alert and a log line)", () => {
+    const rule = SECURITY_RULES.find((r) => r.id === "auth.brute_force_by_network") as BurstRule;
+    const fromPrefix = (ipPrefix: string) =>
+      evaluate(
+        rule,
+        Array.from({ length: rule.threshold }, (_, i) =>
+          event("m2.auth.login_failed", i * 1000, { ipPrefix }),
+        ),
+      );
+    for (const good of ["192.0.2.0/24", "2001:db8:1::/48"]) expect(fromPrefix(good)).toHaveLength(1);
+    for (const bad of ["192.0.2.0/8", "192.0.2.0/24\n🔒 fake alert", "<script>/24", "", "::ffff::/16"]) {
+      expect(fromPrefix(bad), JSON.stringify(bad)).toEqual([]);
+    }
+  });
+
   it("caps the sample of event ids while still counting the whole burst", () => {
     const [finding] = evaluate(login, failures());
     expect(login.threshold).toBeGreaterThan(MAX_SAMPLE_EVENT_IDS);

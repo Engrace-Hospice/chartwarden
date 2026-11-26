@@ -22,9 +22,13 @@ do for each alert. Control: `compliance/controls.yaml` CW-MON-01 (HIPAA §164.30
   once, and appends the review record. "Once" means: not the exact finding already raised (a fingerprint of rule + subject + trigger
   event), and, for a pattern rather than a single event, not the same rule and subject again within **one hour** of an alert for it.
   A sustained attack therefore alerts about once an hour per subject, not once per run.
-- **Bounded.** At most 50 individual alerts per run; any further new findings become **one** `review.alert_flood` alert (counted in
-  the run's `suppressed`), so an attacker who can mint findings cannot page-storm the destination or pin the cursor. Delivery is one
-  alert at a time, most severe first, and stops at the first failed delivery or after 30 seconds.
+- **Bounded, not prevented.** At most 10 individual alerts of one rule and 50 in all per run (so decoys minted for one rule cannot
+  crowd out another); any further new findings are rolled into **one** `review.alert_flood` alert (counted in the run's
+  `suppressed`), which itself pages at most about once an hour. This throttles rather than drops: a finding still inside the one-hour
+  look-back is raised by a later run, and an older one survives only as the `suppressed` count and in the audit log. An attacker who
+  can mint findings can still keep the destination busy at the cap; they cannot pin the cursor. Delivery is one alert at a time, most
+  severe first, and stops at the first failed delivery or after 30 seconds. A destination that permanently rejects one alert (an HTTP
+  4xx) therefore holds the alerts behind it until it is fixed: the job fails loudly each run meanwhile.
 - **A run that could not deliver an alert** (a failed delivery, or the stop above) is recorded `delivery_failed`, does not move the
   cursor, and fails the BullMQ job. The next run tries the rest again; what was delivered is not repeated. The job failure raises the
   DLQ notice, **which uses the same webhook**: when the destination itself is down, what remains is the failed-job log and the audit
@@ -41,7 +45,7 @@ Nothing here is applied by the code change; an operator sets it.
 
 | Setting | What it does |
 |---|---|
-| `OPS_ALERT_WEBHOOK_URL` | The destination, **the same variable the DLQ and platform-ops notices use** (https). Each alert is one `POST` of `{ kind: "security_alert", summary, details, correlationId, occurredAt }`. A `2xx` is *delivered*; any other status or a 5 s timeout is *failed* and retried by the next run. |
+| `OPS_ALERT_WEBHOOK_URL` | The destination, **the same variable the DLQ and platform-ops notices use**. It must be **https** (plain http only to the loopback): anything else is a loud *failed* delivery that sends nothing. Each alert is one `POST` of `{ kind: "security_alert", summary, details, correlationId, occurredAt }`. A `2xx` is *delivered*; any other status (a redirect included: redirects are refused), or a 5 s timeout, is *failed* and retried by the next run. |
 | *(unset)* | The alert is still logged (`🔒 security alert [...]`) and recorded with `delivery: no_destination`, the run is `ok`, and the boot log warns once. **That is not monitoring**: no human is told, and those alerts are never re-sent once a webhook is set. Production must set the webhook. |
 | `DATABASE_PLATFORM_URL` | Required (see above). The platform carrier needs `SELECT` on six `audit_event` columns (`id, created_at, organization_id, actor_user_id, event_type, context`): migration 1561 grants it where the carrier exists, and `bun run db:provision-roles` re-grants it. Check: `SELECT has_column_privilege('chartwarden_platform', 'audit_event', 'event_type', 'SELECT');` **Know what this grants:** the platform login is BYPASSRLS, so the grant lets it read those columns of *every* tenant's audit rows, `context` included, and `context` can hold ids and short free text the denylist does not catch (a break-glass or destruction `reason`, a collaborator's `patientId`). Only the review's own `organization_id IS NULL` predicate (proved by the live suite) keeps it to org-less rows. Narrowing it to a SECURITY DEFINER reader is the follow-up. |
 
@@ -77,23 +81,25 @@ In product: the audit log search (`GET /api/v1/audit/events?eventType=m4.securit
 its `audit.read` holders. The org-less (platform) rows are visible to platform operators with database access:
 
 ```sql
--- the weekly review: did every scope get reviewed, and did every alert go out?
-SELECT date_trunc('day', created_at) AS day, context->>'lane' AS lane,
+-- the weekly review: did every scope get reviewed, and did every alert go out? Per organization, so one scope going dark is
+-- not hidden among the others (organization_id is NULL for the platform lane).
+SELECT date_trunc('day', created_at) AS day, organization_id, context->>'lane' AS lane,
        count(*) FILTER (WHERE context->>'status' = 'ok')              AS ok_runs,
        count(*) FILTER (WHERE context->>'status' <> 'ok')             AS failed_runs,
        count(*) FILTER (WHERE (context->>'catchUpCapped')::boolean)   AS catch_up_capped,
-       count(*) FILTER (WHERE (context->>'overlapTruncated')::boolean
+       count(*) FILTER (WHERE (context->>'scanTruncated')::boolean
+                           OR (context->>'overlapTruncated')::boolean
                            OR (context->>'bulkTruncated')::boolean)   AS read_cap_hit,
        sum((context->>'newAlerts')::int)                              AS alerts,
        sum((context->>'noDestination')::int)                          AS no_destination,
        sum((context->>'suppressed')::int)                             AS suppressed
   FROM audit_event
  WHERE event_type = 'm4.security_review.completed' AND created_at > now() - interval '7 days'
- GROUP BY 1, 2 ORDER BY 1, 2;
+ GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
 ```
 
 **Weekly review (the HIPAA "regular review" evidence).** Once a week the named reviewer: (a) confirms each lane shows about 96 `ok` runs
-a day and explains any `failed_runs`, `catch_up_capped` or `read_cap_hit`; (b) checks `no_destination` is zero in production (anything
+a day **per organization** (a scope with none is the signal) and explains any `failed_runs`, `catch_up_capped` or `read_cap_hit`; (b) checks `no_destination` is zero in production (anything
 else means alerts went nowhere) and looks at `suppressed`; (c) opens every `alert_raised` of the week and confirms a disposition
 exists; (d) records that they did it. Step (d) is a human record: the code does not hold it.
 
@@ -183,16 +189,19 @@ database and open the integrity run (`audit_integrity_run`) named in the M36 ale
 
 <a id="review.alert_flood"></a>
 #### review.alert_flood (critical)
-More new findings than one run raises (50): the first 50 were raised one by one, and this alert stands for the rest (`count`). Something
-is producing findings in volume, most likely an attack on the sign-in endpoint (many networks failing at once) or a mass change by one
-administrator. The unraised findings are not lost: the events are in the audit log for the window shown, and the run's `suppressed`
-counts them. Open the window in the audit log and triage by event type and subject, and consider blocking at the edge.
+More new findings than one run raises (10 of one rule, 50 in all): the first were raised one by one, and this alert stands for the rest
+(`count`). Something is producing findings in volume, most likely an attack on the sign-in endpoint (many accounts or networks failing
+at once) or a mass change by one administrator. Findings still inside the one-hour look-back are raised by the next runs; any older
+one survives only as the run's `suppressed` count and in the audit log. Open the window in the audit log, triage by event type and
+subject, and consider blocking at the edge. This alert itself repeats at most about once an hour.
 
 <a id="review.incomplete_scan"></a>
 #### review.incomplete_scan (warn)
-The review could not read everything it should have. `subject.ref` lists why: `overlap_truncated` (the look-back read hit its row cap,
-so a burst that straddled the previous run may have been missed), `bulk_truncated` (more bulk-access buckets crossed the threshold than
-the aggregate returns), `catch_up_capped` (the worker was down more than a day, and the older part of the gap was not reviewed),
+The review could not read everything it should have. `subject.ref` lists why: `forward_truncated` (the new-events read hit its row cap:
+nothing is skipped yet, the next run continues from the last row read, but the review is **falling behind real time**, and a day
+behind it starts dropping events, see `catch_up_capped`), `overlap_truncated` (the look-back read hit its row cap, so the oldest
+look-back rows were dropped and a burst that began long before the previous run may have been missed), `bulk_truncated` (more
+bulk-access buckets crossed the threshold than the aggregate returns), `catch_up_capped` (the worker was down more than a day, and the older part of the gap was not reviewed),
 `cursor_stepped` (the read cap was filled by rows stamped in one millisecond, so the cursor stepped past the rest of them). Review the
 window in the audit log by hand for what the rule would have caught.
 
@@ -213,6 +222,14 @@ from its own definition, and every rule id needs an anchor in this file. The con
 `burst` per actor), `m8.encounter.draft_policy_changed` (CW-AC-49, `always`, org).
 
 ## 6. Stated limits
+
+- **The review's own state is audit rows.** Its cursor (`m4.security_review.completed`) and its memory of what it already raised
+  (`alert_raised`) are rows in the audit trail, so a writer of the trail (code running in the app pool, or someone with database write
+  access) can forge them: a forged `alert_raised` suppresses that alert, and a forged `completed` row stamped "reviewed up to just
+  now" skips the gap before it. The cursor is clamped (a row stamped in the future is ignored, and `windowTo` is held to a few minutes
+  past the row's own time, so a "reviewed up to next week" row cannot blind the review) but a forgery that looks like a real run
+  cannot be told from one. That needs compromise first; the weekly review (per-organization run counts) is how a silent scope shows.
+  The advisory lock is likewise takeable by any database role: a held lock makes a scope skip (the job logs each skip).
 
 - Impossible travel is a network-change proxy (section 4), not geolocation; a true check needs a geo source.
 - Cross-tenant access attempts return 404 by design and leave no audit event, so there is nothing to alert on.

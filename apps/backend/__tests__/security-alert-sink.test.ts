@@ -94,6 +94,36 @@ describe("buildSecurityAlertSink", () => {
     expect(log).toHaveBeenCalledWith(expect.stringContaining("TypeError"));
   });
 
+  it("sends nothing over clear text: a non-https destination is a loud failed delivery that never writes the URL", async () => {
+    for (const bad of [
+      "http://alerts.example.test/hook?secret=synthetic-123",
+      "not a url",
+      "ftp://alerts.example.test/x",
+    ]) {
+      const log = vi.fn();
+      const fetchImpl = vi.fn();
+      const sink = buildSecurityAlertSink({
+        webhookUrl: bad,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        log,
+      });
+      expect(await sink(alert), bad).toBe("failed");
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(log.mock.calls.map((c) => String(c[0])).join("\n")).not.toContain("synthetic-123");
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("not an https URL"));
+    }
+  });
+
+  it("allows plain http to the loopback (a receiver on the same host)", async () => {
+    const fetchImpl = respond(200);
+    const sink = buildSecurityAlertSink({
+      webhookUrl: "http://127.0.0.1:9999/hook",
+      fetchImpl,
+      log: vi.fn(),
+    });
+    expect(await sink(alert)).toBe("delivered");
+  });
+
   it("refuses redirects (a 307/308 would replay the body elsewhere) and releases the response body", async () => {
     const cancel = vi.fn(async () => undefined);
     const fetchImpl = vi.fn(async () => ({

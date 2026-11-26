@@ -55,6 +55,8 @@ export interface SecurityReviewDeps {
   readonly rules?: readonly SecurityRule[];
   readonly now?: () => Date;
   readonly newCorrelationId?: () => string;
+  /** Operational log line (a skipped scope). Ids only. */
+  readonly log?: (message: string) => void;
 }
 
 const inputFor = (deps: SecurityReviewDeps, tx: unknown, organizationId: string | null) => ({
@@ -97,8 +99,17 @@ export function runSecurityReviewForPlatform(
  * A run that left an alert undelivered is committed, then reported as a failure of the job. A run that was `skipped` (another run
  * of the scope held its lock) did nothing and is not a failure: that other run is the one that reviews it.
  */
-function assertDelivered(label: string, result: SecurityReviewResult): void {
-  if (result.skipped || result.run.status === "ok") return;
+function assertDelivered(
+  label: string,
+  result: SecurityReviewResult,
+  log?: (message: string) => void,
+): void {
+  if (result.skipped) {
+    // Silent would hide a lock that is stuck for good (a transaction that never ends): say it every time it happens.
+    log?.(`M4 security review: ${label} skipped, another run holds its lock`);
+    return;
+  }
+  if (result.run.status === "ok") return;
   throw new Error(
     `M4_SECURITY_REVIEW: ${label} left ${result.run.failed} alert(s) undelivered and ${result.run.deferred} deferred; the next run retries`,
   );
@@ -120,7 +131,7 @@ export async function runSecurityReviewTick(
     run: () => Promise<SecurityReviewResult>,
   ): Promise<void> => {
     try {
-      assertDelivered(label, await run());
+      assertDelivered(label, await run(), deps.log);
     } catch (error) {
       failures.push({ label, error });
     }

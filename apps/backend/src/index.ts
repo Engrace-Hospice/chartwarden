@@ -11087,6 +11087,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         platformDb: platformDbHandle.db,
         auditBypass: m34PlatformBypassAuditor,
         listOrgs: () => m4SecurityReviewOrgs.listActiveOrgs(),
+        log: (message: string) => app.log.warn(message),
         sink: buildSecurityAlertSink({
           webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
           log: (message: string) => app.log.warn(message),

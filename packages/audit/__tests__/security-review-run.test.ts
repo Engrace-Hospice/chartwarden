@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ALERT_COOLDOWN_MS,
-  MAX_ALERTS_PER_RUN,
+  MAX_ALERTS_PER_RULE_PER_RUN,
   MAX_CATCH_UP_MS,
   MAX_OVERLAP_ROWS,
   MAX_SIGNAL_ROWS,
@@ -74,7 +74,7 @@ const delivered: SecurityAlertSink = async () => "delivered";
 const review = (
   sink: SecurityAlertSink = delivered,
   organizationId: string | null = ORG,
-  extra: { deliveryBudgetMs?: number } = {},
+  extra: { deliveryBudgetMs?: number; now?: Date } = {},
 ) =>
   runSecurityReview({
     tx,
@@ -169,6 +169,37 @@ describe("the range a run reviews", () => {
         subject: { kind: "event", ref: "catch_up_capped" },
       }),
     ]);
+  });
+
+  it("never starts from a cursor that is ahead of the clock, whatever the stored row claims", async () => {
+    cursor.mockResolvedValue(new Date(NOW.getTime() + 7 * 24 * HOUR)); // a forged 'reviewed up to next week'
+    const { run } = await ran();
+    expect(run.windowFrom).toBe(NOW.toISOString());
+    expect(run.windowTo).toBe(NOW.toISOString());
+  });
+
+  it("reads the look-back newest-first, so a cap drops the oldest rows and keeps the ones a straddling burst needs", async () => {
+    cursor.mockResolvedValue(new Date(NOW.getTime() - HOUR));
+    await ran();
+    const [forward, overlap] = signal.mock.calls;
+    expect(forward?.[2].newestFirst).toBeUndefined();
+    expect(overlap?.[2].newestFirst).toBe(true);
+  });
+
+  it("raises an incomplete-scan alert when the forward read hit its cap: the review is falling behind real time", async () => {
+    const lastRow = breakGlass(2, "2026-11-26T11:10:00.000Z");
+    signal.mockResolvedValueOnce({
+      events: [breakGlass(1, "2026-11-26T11:00:00.000Z"), lastRow],
+      truncated: true,
+    });
+    signal.mockResolvedValueOnce({ events: [], truncated: false });
+    const { raised } = await ran();
+    expect(
+      raised.some(
+        (r) =>
+          r.alert.ruleId === "review.incomplete_scan" && r.alert.subject.ref === "forward_truncated",
+      ),
+    ).toBe(true);
   });
 
   it("stops the review at the last row read when the read was cut short, so the next run continues from there", async () => {
@@ -315,12 +346,12 @@ describe("raising alerts", () => {
 });
 
 describe("a flood of findings", () => {
-  it("raises MAX_ALERTS_PER_RUN individually and rolls the rest into ONE alert-flood alert, so the cursor still moves", async () => {
-    const events = Array.from({ length: MAX_ALERTS_PER_RUN + 7 }, (_, i) => breakGlass(i + 1));
+  it("raises MAX_ALERTS_PER_RULE_PER_RUN of one rule individually and rolls the rest into ONE alert-flood alert, so the cursor still moves", async () => {
+    const events = Array.from({ length: MAX_ALERTS_PER_RULE_PER_RUN + 7 }, (_, i) => breakGlass(i + 1));
     signal.mockResolvedValueOnce({ events, truncated: false });
     const sink = vi.fn<SecurityAlertSink>(async () => "delivered");
     const { run, raised } = await ran(sink);
-    expect(sink).toHaveBeenCalledTimes(MAX_ALERTS_PER_RUN + 1);
+    expect(sink).toHaveBeenCalledTimes(MAX_ALERTS_PER_RULE_PER_RUN + 1);
     const flood = raised.filter((r) => r.alert.ruleId === "review.alert_flood");
     expect(flood).toHaveLength(1);
     expect(flood[0]?.alert).toMatchObject({ count: 7, severity: "critical" });
@@ -328,8 +359,45 @@ describe("a flood of findings", () => {
       status: "ok",
       suppressed: 7,
       deferred: 0,
-      newAlerts: MAX_ALERTS_PER_RUN + 1,
+      newAlerts: MAX_ALERTS_PER_RULE_PER_RUN + 1,
     });
+  });
+
+  it("does not let one rule's findings crowd out another's: ten decoys of one rule, and a different rule's alert still goes out", async () => {
+    const decoys = Array.from({ length: MAX_ALERTS_PER_RULE_PER_RUN * 3 }, (_, i) => breakGlass(i + 1));
+    const other: ReviewEvent = { ...breakGlass(900), eventType: "m2.auth.2fa_disabled" };
+    signal.mockResolvedValueOnce({ events: [...decoys, other], truncated: false });
+    const { raised } = await ran();
+    expect(raised.map((r) => r.alert.ruleId)).toContain("access.second_factor_disabled");
+  });
+
+  it("holds a flood notice back while an earlier one is inside the cooldown, so it pages about once an hour, not once a run", async () => {
+    const events = Array.from({ length: MAX_ALERTS_PER_RULE_PER_RUN + 3 }, (_, i) => breakGlass(i + 1));
+    signal.mockResolvedValue({ events, truncated: false });
+    const first = await ran();
+    const flood = first.raised.find((r) => r.alert.ruleId === "review.alert_flood")?.alert as SecurityAlert;
+    raisedBefore.mockResolvedValue([
+      {
+        fingerprint: flood.fingerprint,
+        ruleId: flood.ruleId,
+        subjectKind: flood.subject.kind,
+        subjectRef: flood.subject.ref,
+        windowToMs: Date.parse(flood.windowTo) - 15 * MINUTE,
+      },
+    ]);
+    const second = await ran();
+    expect(second.raised.some((r) => r.alert.ruleId === "review.alert_flood")).toBe(false);
+    expect(second.run.suppressed).toBeGreaterThan(0); // still counted in the record
+  });
+
+  it("gives a notice the same fingerprint when a held cursor makes the next run re-raise it (a receiver can drop the repeat)", async () => {
+    cursor.mockResolvedValue(new Date(NOW.getTime() - 2 * HOUR)); // held: the cursor did not move between the two runs
+    bulk.mockResolvedValue({ hits: [], truncated: true });
+    const first = await ran(async () => "failed");
+    const retry = await ran(async () => "delivered", ORG, { now: new Date(NOW.getTime() + 15 * MINUTE) });
+    expect(first.raised[0]?.alert.ruleId).toBe("review.incomplete_scan");
+    expect(retry.raised[0]?.alert.windowTo).not.toBe(first.raised[0]?.alert.windowTo); // a different run…
+    expect(retry.raised[0]?.alert.fingerprint).toBe(first.raised[0]?.alert.fingerprint); // …the same notice
   });
 });
 

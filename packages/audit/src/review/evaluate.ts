@@ -77,13 +77,17 @@ export interface FindingScope {
 
 const ms = (iso: string): number => Date.parse(iso);
 
+/** The shape `ipPrefixOf` (packages/auth) writes: a /24 for IPv4, a /48 for IPv6. */
+const NETWORK_PREFIX = /^[0-9a-f:.]{3,39}\/(24|48)$/i;
+
 function subjectOf(event: ReviewEvent, kind: SubjectKind): string | null {
   switch (kind) {
     case "actor":
       return event.contextUserId ?? event.actorUserId;
     case "ip_prefix":
-      // "unknown" is what the auth bridge writes for an address it could not parse: not a network, so never a subject.
-      return event.ipPrefix === "unknown" ? null : event.ipPrefix;
+      // Only a well-formed prefix is a network: "unknown" is what the auth bridge writes for an address it could not parse, and a
+      // subject goes verbatim into an alert and a log line, so anything that is not hex digits, dots and colons plus /24 or /48 is out.
+      return event.ipPrefix !== null && NETWORK_PREFIX.test(event.ipPrefix) ? event.ipPrefix : null;
     case "account_hash":
       return event.accountHash;
   }
@@ -305,7 +309,9 @@ export function noticeFinding(
     windowFrom: fields.windowFrom,
     windowTo: fields.windowTo,
     sampleEventIds: [],
-    fingerprint: fingerprintOf(scope, rule.id, fields.ref, fields.windowTo),
+    // Keyed on where the range STARTED, not where it ended: a run that held its cursor (a failed delivery) re-raises the same
+    // notice with the same fingerprint, so a receiver can drop the repeat, while the next range starts elsewhere.
+    fingerprint: fingerprintOf(scope, rule.id, fields.ref, fields.windowFrom),
   };
 }
 

@@ -25,6 +25,19 @@ function describeFailure(err: unknown): string {
   return typeof code === "string" ? `${name} ${code}` : name;
 }
 
+/** https, or plain http to the loopback (a receiver on this host). Anything else, including an unparseable value, is refused. */
+function isAcceptableWebhook(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    return (
+      url.protocol === "https:" ||
+      (url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** The log line for one alert: ids and codes, greppable. */
 export function formatSecurityAlert(alert: SecurityAlert): string {
   const org = alert.organizationId ? ` org=${alert.organizationId}` : "";
@@ -41,9 +54,17 @@ export function buildSecurityAlertSink(opts?: {
   const webhookUrl = opts?.webhookUrl;
   const doFetch = opts?.fetchImpl ?? fetch;
   const now = opts?.now ?? (() => new Date());
+  const acceptableWebhook = webhookUrl === undefined || isAcceptableWebhook(webhookUrl);
   return async (alert): Promise<AlertDeliveryStatus> => {
     log(formatSecurityAlert(alert));
     if (!webhookUrl) return "no_destination";
+    if (!acceptableWebhook) {
+      // Loud and retried, not silent: the alert carries org, user and event ids, so it never goes over clear text.
+      log(
+        `⚠️  OPS_ALERT_WEBHOOK_URL is not an https URL: the security alert ${alert.ruleId} fp=${alert.fingerprint} was not sent`,
+      );
+      return "failed";
+    }
     try {
       const response = await doFetch(webhookUrl, {
         method: "POST",

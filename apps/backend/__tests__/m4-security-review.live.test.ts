@@ -365,6 +365,24 @@ describe.skipIf(!DB_URL)("M4 security review of the audit trail — LIVE Postgre
     expect(ran(await runSecurityReviewForOrg(deps(collect().sink), ORG_A)).run.status).toBe("ok");
   });
 
+  it("is not blinded by a forged cursor: a 'reviewed up to next week' row, and one stamped in the future, do not move the review past now", async () => {
+    // Two rows appended by someone who can write the audit trail (the review's cursor is an audit row, so this is the threat).
+    const nextWeek = new Date(Date.now() + 7 * 24 * 3600_000).toISOString();
+    for (const createdAt of ["now()", "now() + interval '1 hour'"]) {
+      await admin.query(
+        `INSERT INTO audit_event (organization_id, actor_kind, event_type, resource_kind, correlation_id, outcome, severity,
+           context, retention_class, created_at)
+         VALUES ($1,'system',$2,'security_review','forged-cursor','success','info',$3::jsonb,'compliance', ${createdAt})`,
+        [ORG_A, COMPLETED, JSON.stringify({ status: "ok", lane: "org", windowTo: nextWeek })],
+      );
+    }
+    await seed({ organizationId: ORG_A, actorUserId: USER_1, eventType: BREAK_GLASS, at: ago(0) });
+    const { alerts, sink } = collect();
+    const { run } = ran(await runSecurityReviewForOrg(deps(sink), ORG_A));
+    expect(alerts.map((a) => a.ruleId)).toEqual(["access.break_glass_invoked"]); // still seen: the cursor is clamped to the clock
+    expect(Date.parse(run.windowFrom)).toBeLessThanOrEqual(Date.now());
+  });
+
   it("flags bulk record access from the SQL aggregate: 120 distinct records fire, 99 do not", async () => {
     // All of one actor's reads at one instant inside the current fixed bucket (a fixed bucket is the rule's stated limit, so the
     // fixture stays clear of an edge): one second ago, or the bucket's own start when the bucket is younger than that.

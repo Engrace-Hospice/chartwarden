@@ -2270,7 +2270,10 @@ controls:
         event (m4.audit_export.requested) plus bulk reads (100 distinct records in a fixed 15-minute bucket, so a burst split across a
         bucket edge counts half); m3.authz.denied is sampled, so its counts are a floor. Reads are row-capped and share one cap across a
         run's event types (a cap that is hit is recorded and raised as review.incomplete_scan, not silent); a pattern alerts about once an
-        hour per subject, and more than 50 new findings in one run become one review.alert_flood alert. Only active and suspended
+        hour per subject, and more than 10 of one rule (50 in all) in one run are rolled into one review.alert_flood alert, so the
+        destination can be kept busy at the cap but the cursor cannot be pinned. The review's cursor and its memory of what it raised
+        are audit rows, so a writer of the audit trail can forge them (the cursor is clamped to the clock and ignores future-stamped
+        rows; a forgery that looks like a real run cannot be told from one). Only active and suspended
         organizations are reviewed, so the tenant-offboarding shred event (data.destruction_certified) is not. Delivery is at least once
         (it happens inside the run's transaction, so a failure after a send re-sends it). Host, edge and Postgres (pgaudit) logs are not
         reviewed (docs/compliance/AISOC_INTEGRATION.md). The platform login now holds SELECT on six audit_event columns across tenants,

@@ -18,9 +18,10 @@
 // sustained attack would otherwise re-fire with a new anchor each time.
 //
 // BOUNDED. Reads are row-capped; when the forward read is cut short the cursor stops at the last row read, so a flood of events can
-// neither make the next run skip anything nor stall it. More new findings than `MAX_ALERTS_PER_RUN` are rolled into one
-// `review.alert_flood` alert (an attacker who can mint findings cannot pin the cursor or page-storm the destination), and delivery
-// is sequential, most severe first, stops at the first failure, and stops after `DELIVERY_BUDGET_MS`.
+// neither make the next run skip anything nor stall it. More new findings than `MAX_ALERTS_PER_RULE_PER_RUN` of one rule (or
+// `MAX_ALERTS_PER_RUN` in all) are rolled into one `review.alert_flood` alert (an attacker who can mint findings cannot pin the
+// cursor, and cannot crowd one rule out with another's), and delivery is sequential, most severe first, stops at the first failure,
+// and stops after `DELIVERY_BUDGET_MS`. The review's own alerts (`review.*`) are held to the same once-per-cooldown rule.
 import {
   type RaisedAlertRef,
   type ReviewEvent,
@@ -69,6 +70,8 @@ export const MAX_SIGNAL_ROWS = 20_000;
 export const MAX_OVERLAP_ROWS = 5_000;
 /** Individual alerts raised in one run; the rest become one `review.alert_flood` alert. */
 export const MAX_ALERTS_PER_RUN = 50;
+/** Individual alerts of ONE rule raised in one run, so findings an attacker can mint cheaply (decoy usernames) cannot crowd out the other rules. */
+export const MAX_ALERTS_PER_RULE_PER_RUN = 10;
 /** How long one run may spend delivering while it holds its transaction and the scope's lock. */
 export const DELIVERY_BUDGET_MS = 30_000;
 
@@ -126,7 +129,8 @@ async function reviewRange(
   lookbackMs: number,
 ): Promise<ReviewRange> {
   const floor = new Date(now.getTime() - MAX_CATCH_UP_MS);
-  const cursor = await readReviewCursor(tx, scope);
+  const stored = await readReviewCursor(tx, scope);
+  const cursor = stored !== null && stored > now ? now : stored; // never ahead of the clock, whatever a row claims
   const from = cursor !== null && cursor > floor ? cursor : floor;
   return {
     from,
@@ -170,6 +174,7 @@ async function scanRange(
           from: overlapFrom,
           to: from,
           limit: MAX_OVERLAP_ROWS,
+          newestFirst: true, // a cap must drop the oldest look-back rows, not the ones a burst straddling the cursor needs
         })
       : { events: [] as readonly ReviewEvent[], truncated: false };
   const lastForward = forward.events[forward.events.length - 1];
@@ -219,7 +224,7 @@ async function newFindings(
   input: SecurityReviewInput,
   rules: readonly SecurityRule[],
   scan: Scan,
-): Promise<readonly SecurityFinding[]> {
+): Promise<{ readonly fresh: readonly SecurityFinding[]; readonly memory: readonly RaisedAlertRef[] }> {
   const memory: RaisedAlertRef[] = [
     ...(await readRaisedAlerts(
       input.tx,
@@ -246,7 +251,7 @@ async function newFindings(
       windowToMs: Date.parse(finding.windowTo),
     });
   }
-  return fresh;
+  return { fresh, memory };
 }
 
 /** The findings about the review itself, for what it could not do completely. */
@@ -268,6 +273,9 @@ function notices(
     );
   }
   const gaps = [
+    // The forward read hit its cap: the cursor stops at the last row read and the next run continues, so nothing is skipped YET,
+    // but the review is falling behind real time (past a day behind, `catch_up_capped` follows).
+    scan.forwardTruncated && !scan.cursorStepped ? "forward_truncated" : null,
     scan.overlapTruncated ? "overlap_truncated" : null,
     scan.bulkTruncated ? "bulk_truncated" : null,
     range.catchUpCapped ? "catch_up_capped" : null,
@@ -328,10 +336,23 @@ export async function runSecurityReview(input: SecurityReviewInput): Promise<Sec
   const range = await reviewRange(tx, scope, input.now, maxRuleWindowMs(rules));
   const scan = await scanRange(input, rules.filter(isSignal), rules.filter(isBulk), range);
 
-  const fresh = [...(await newFindings(input, rules, scan))].sort(bySeverityThenTime);
-  const individual = fresh.slice(0, MAX_ALERTS_PER_RUN);
+  const { fresh, memory } = await newFindings(input, rules, scan);
+  const perRule = new Map<string, number>();
+  const individual = [...fresh].sort(bySeverityThenTime).filter((finding) => {
+    const taken = perRule.get(finding.ruleId) ?? 0;
+    perRule.set(finding.ruleId, taken + 1);
+    return taken < MAX_ALERTS_PER_RULE_PER_RUN;
+  }).slice(0, MAX_ALERTS_PER_RUN);
   const suppressed = fresh.length - individual.length;
-  const due = [...individual, ...notices(scope, range, scan, suppressed)].sort(bySeverityThenTime);
+  // A notice is a pattern too (a sustained flood or a stuck read cap): once per cooldown per cause, not once per run.
+  const never = (): boolean => false;
+  const due = [
+    ...individual,
+    // (A notice's `windowFrom` is where its range started, possibly a day back; the cooldown is about WHEN it fired, so compare ends.)
+    ...notices(scope, range, scan, suppressed).filter(
+      (n) => !isWithinCooldown({ ...n, windowFrom: n.windowTo }, memory, ALERT_COOLDOWN_MS, never),
+    ),
+  ].sort(bySeverityThenTime);
   const raised = await raiseAll(input, due);
 
   const count = (status: AlertDeliveryStatus): number =>
