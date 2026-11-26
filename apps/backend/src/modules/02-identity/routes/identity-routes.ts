@@ -35,7 +35,7 @@ import {
   requireSession,
   resolveActorPermissions,
 } from "@chartwarden/auth";
-import { CredentialThrottleError } from "@chartwarden/auth";
+import { CredentialThrottleError, ipPrefixOf } from "@chartwarden/auth";
 import { ChartWardenError, ForbiddenError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -334,7 +334,23 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
         organizationId,
         membershipId: membership.membershipId,
       });
-      if (!verdict.satisfied) throw mfaEnrolmentRequired(verdict.requirement, verdict.reason);
+      if (!verdict.satisfied) {
+        // CW-AC-45 - the usual first refusal: audited off the request path, never allowed to change the answer.
+        const refusal = {
+          userId: actor.userId,
+          sessionId: actor.sessionId,
+          organizationId,
+          requirement: verdict.requirement,
+          reason: verdict.reason ?? "not_enrolled",
+          method: request.method,
+          routeTemplate: request.routeOptions?.url ?? "/api/v1/auth/select-organization",
+          ipPrefix: ipPrefixOf(request.ip ?? ""),
+        };
+        void Promise.resolve()
+          .then(() => deps.mfaGate?.onRefused?.(refusal))
+          .catch(() => undefined);
+        throw mfaEnrolmentRequired(verdict.requirement, verdict.reason);
+      }
     }
 
     const binding = await deps.sessions.bindOrganization({

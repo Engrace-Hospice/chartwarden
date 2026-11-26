@@ -18,6 +18,8 @@ export const AUTH_AUDIT_EVENTS = {
   loginFailed: "m2.auth.login_failed",
   accountLocked: "m2.auth.account_locked",
   logout: "m2.auth.logout",
+  mfaEnrolmentRefused: "m2.auth.mfa_enrolment_refused",
+  mfaEnforcementRelaxed: "m2.auth.mfa_enforcement_relaxed",
   passwordReset: "m2.auth.password_reset",
   twoFactorEnrolled: "m2.auth.2fa_enrolled",
   twoFactorDisabled: "m2.auth.2fa_disabled",

@@ -4,6 +4,12 @@
  * NODE_ENV=production must fail closed when a required secret is missing or weak; dev/test keep their
  * safe fallbacks (the check is a no-op). Pure rules, exercised against injected env maps.
  */
+import {
+  MFA_ENFORCEMENT_ENV as AUTH_MFA_ENFORCEMENT_ENV,
+  MFA_ENFORCEMENT_RELAXED_VALUE as AUTH_MFA_ENFORCEMENT_RELAXED_VALUE,
+  MFA_RELAXATION_REASON_ENV as AUTH_MFA_RELAXATION_REASON_ENV,
+  MFA_RELAXATION_REASON_MIN_LENGTH as AUTH_MFA_RELAXATION_REASON_MIN_LENGTH,
+} from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import {
   type EnvLike,
@@ -11,6 +17,9 @@ import {
   M23_LAUNCH_GATEWAY_ENABLED_ENV,
   M24_LAUNCH_GATEWAY_ENABLED_ENV,
   M34_PROVISION_GATEWAY_ENABLED_ENV,
+  MFA_ENFORCEMENT_ENV,
+  MFA_RELAXATION_REASON_ENV,
+  MFA_RELAXATION_REASON_MIN_LENGTH,
   assertProductionEnv,
   collectEnvProblems,
   cursorSigningKeyFrom,
@@ -718,5 +727,49 @@ describe("TENANT_BASE_DOMAIN (ADR-0049 D2 / D4, ADR-0088)", () => {
   });
   it("is not validated outside production", () => {
     expect(collectEnvProblems({ NODE_ENV: "development", TENANT_BASE_DOMAIN: "nope" })).toEqual([]);
+  });
+});
+
+// CW-AC-45 - relaxing the second-factor matrix in production needs a recorded reason.
+describe("collectEnvProblems - CHARTWARDEN_MFA_ENFORCEMENT relaxation", () => {
+  const keysFor = (extra: EnvLike) => collectEnvProblems({ ...GOOD, ...extra }).map((p) => p.key);
+
+  it("mirrors the @chartwarden/auth literals", () => {
+    expect(MFA_ENFORCEMENT_ENV).toBe(AUTH_MFA_ENFORCEMENT_ENV);
+    expect(MFA_RELAXATION_REASON_ENV).toBe(AUTH_MFA_RELAXATION_REASON_ENV);
+    expect(MFA_RELAXATION_REASON_MIN_LENGTH).toBe(AUTH_MFA_RELAXATION_REASON_MIN_LENGTH);
+    expect(AUTH_MFA_ENFORCEMENT_RELAXED_VALUE).toBe("false");
+  });
+
+  it("an unset or `true` value enforces, so there is nothing to explain", () => {
+    expect(keysFor({})).toEqual([]);
+    expect(keysFor({ CHARTWARDEN_MFA_ENFORCEMENT: "true" })).toEqual([]);
+    // a typo enforces too (resolveMfaEnforcement), so it needs no reason either
+    expect(keysFor({ CHARTWARDEN_MFA_ENFORCEMENT: "False" })).toEqual([]);
+  });
+
+  it("refuses to boot a production relaxation that gives no reason, or too short a one", () => {
+    expect(keysFor({ CHARTWARDEN_MFA_ENFORCEMENT: "false" })).toEqual([MFA_RELAXATION_REASON_ENV]);
+    expect(
+      keysFor({ CHARTWARDEN_MFA_ENFORCEMENT: "false", CHARTWARDEN_MFA_RELAXATION_REASON: "  ok  " }),
+    ).toEqual([MFA_RELAXATION_REASON_ENV]);
+    expect(() => assertProductionEnv({ ...GOOD, CHARTWARDEN_MFA_ENFORCEMENT: "false" })).toThrow(
+      /CHARTWARDEN_MFA_RELAXATION_REASON/,
+    );
+  });
+
+  it("boots a production relaxation that names the change ticket and why", () => {
+    expect(
+      keysFor({
+        CHARTWARDEN_MFA_ENFORCEMENT: "false",
+        CHARTWARDEN_MFA_RELAXATION_REASON: "CHG-0001 re-enrol passkeys after RP id change",
+      }),
+    ).toEqual([]);
+  });
+
+  it("is not validated outside production (the dev stack relaxes it with no ticket)", () => {
+    expect(
+      collectEnvProblems({ NODE_ENV: "development", CHARTWARDEN_MFA_ENFORCEMENT: "false" }),
+    ).toEqual([]);
   });
 });
