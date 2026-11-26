@@ -1,4 +1,4 @@
-// @chartwarden/db — `critical_lab_result_resolution` (M11; #1136 / CW-CS-01, migration 1558). One APPEND-ONLY row per
+// @chartwarden/db — `critical_lab_result_resolution` (M11; #1136 / CW-CS-01, migration 1559). One APPEND-ONLY row per
 // resolved quarantined critical lab result: what the clinician decided (`matched_to_order` + the order id, or
 // `reviewed_no_action`), the required reason, the resolving membership + the discipline they acted under, and the
 // database-stamped `resolved_at` (the app never supplies it). UNIQUE per result, so a result is resolved once; grants are

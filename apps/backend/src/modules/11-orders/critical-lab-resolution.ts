@@ -3,7 +3,7 @@
 //
 // A critical result bound to no order sits in the `critical_lab_result` ledger (migration 1297) as
 // `quarantined_no_order`, is paged at once and escalated once, and until now stayed there until someone edited the
-// database. Resolving it appends ONE row to `critical_lab_result_resolution` (migration 1558): what the clinician decided
+// database. Resolving it appends ONE row to `critical_lab_result_resolution` (migration 1559): what the clinician decided
 // (`matched_to_order` + the order, or `reviewed_no_action`), the required reason, who (membership + discipline) and when
 // (database clock). The ledger row itself is never updated, so the app role needs no new UPDATE grant, and the resolution
 // table is append-only (INSERT-only grant + trigger): a cleared result cannot be re-opened, rewritten or deleted by the

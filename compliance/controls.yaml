@@ -2692,7 +2692,7 @@ controls:
       - script: arch:outbox-bindings
       - file: packages/db/migrations/1297_m11_critical_lab_result.sql
       - file: packages/db/migrations/1298_m11_critical_lab_destruction_and_observation_at.sql
-      - file: packages/db/migrations/1558_m11_critical_lab_result_resolution.sql
+      - file: packages/db/migrations/1559_m11_critical_lab_result_resolution.sql
       - file: apps/backend/src/modules/11-orders/critical-lab-resolution.ts
       - file: apps/backend/src/modules/11-orders/routes/critical-lab-routes.ts
     gap:
