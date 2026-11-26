@@ -10,7 +10,6 @@ import { Button, InlineAlert, SelectField, TextAreaField, TextField } from "@cha
 import { useId, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { type PanelStatusListener, useReportPanelStatus } from "../../../shell/panel-status";
-import { localCalendarDay } from "../late-entry-reason";
 import { upcomingVisits, visitByOf } from "./next-visit-model";
 import { NextVisitSchedule } from "./next-visit-schedule";
 import { PLAN_ENTRY_GUIDE, PLAN_ENTRY_GUIDE_BASIS_LABEL } from "./plan-entry-guide";
@@ -129,8 +128,10 @@ function PlanNextVisitBody({
       : undefined;
   const fillFromSchedule = (): void => {
     if (!nextScheduled) return;
-    const day = localCalendarDay(new Date(nextScheduled.scheduledStartedAt));
-    set({ nextVisitDate: day, nextVisitBy: visitByOf(nextScheduled.visitPurpose) });
+    // The day is the organization's (`serviceDate`), not the device's: near midnight the two differ. "By" is left as the clinician had it
+    // when the purpose does not settle the discipline (a routine visit may be the RN's or the LPN's).
+    const by = visitByOf(nextScheduled.visitPurpose);
+    set({ nextVisitDate: nextScheduled.serviceDate, ...(by === "" ? {} : { nextVisitBy: by }) });
   };
 
   return (
