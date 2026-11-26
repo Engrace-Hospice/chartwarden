@@ -323,6 +323,22 @@ function makeServer(
       ],
     },
     {
+      // CW-AC-22: the BAA register's writes are the BAA steward's, a role of its own (not platform_ops).
+      orgId: ORG,
+      userId: "baa_steward_1",
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [
+            "platform_tenant_baa.read_platform",
+            "platform_tenant_baa.write_platform",
+          ],
+        },
+      ],
+    },
+    {
       orgId: ORG,
       userId: "org_admin_1",
       grants: [
@@ -392,6 +408,13 @@ const PLATFORM_OPS = {
   "x-test-membership": MEMBER_PLATFORM_OPS,
 };
 const PLATFORM_OPS_STEPUP = { ...PLATFORM_OPS, "x-step-up": "fresh" };
+const BAA_STEWARD = {
+  "x-test-user": "baa_steward_1",
+  "x-test-org": ORG,
+  "x-test-roles": "platform_baa_steward",
+  "x-test-membership": MEMBER_PLATFORM_OPS,
+};
+const BAA_STEWARD_STEPUP = { ...BAA_STEWARD, "x-step-up": "fresh" };
 // org_admin AND compliance_officer on one persona — a realistic tenant-side admin who is also the
 // compliance officer of record (the `tenant_platform_baa_compliance_officer` + `support_consent_grant`
 // issue-route spec note both name that persona explicitly).
@@ -1395,9 +1418,19 @@ describe("M34-saas-tenant-platform-inject — platform→tenant BAA register (§
     const list0 = await app.inject({
       method: "GET",
       url: "/api/v1/platform/baa-register",
-      headers: PLATFORM_OPS,
+      headers: BAA_STEWARD,
     });
     expect(list0.statusCode).toBe(200);
+    // platform_ops may still READ the register beside the wizard...
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/api/v1/platform/baa-register",
+          headers: PLATFORM_OPS,
+        })
+      ).statusCode,
+    ).toBe(200);
 
     // A register WRITE is a decision: it needs the write key AND a fresh step-up (the read key alone is not enough).
     const payload = {
@@ -1410,7 +1443,18 @@ describe("M34-saas-tenant-platform-inject — platform→tenant BAA register (§
         await app.inject({
           method: "POST",
           url: "/api/v1/platform/baa-register",
-          headers: PLATFORM_OPS,
+          headers: BAA_STEWARD,
+          payload,
+        })
+      ).statusCode,
+    ).toBe(403);
+    // ...but cannot WRITE it, even holding the write key and a fresh step-up: the predicate admits the steward alone (CW-AC-22).
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/v1/platform/baa-register",
+          headers: PLATFORM_OPS_STEPUP,
           payload,
         })
       ).statusCode,
@@ -1418,7 +1462,7 @@ describe("M34-saas-tenant-platform-inject — platform→tenant BAA register (§
     const create = await app.inject({
       method: "POST",
       url: "/api/v1/platform/baa-register",
-      headers: PLATFORM_OPS_STEPUP,
+      headers: BAA_STEWARD_STEPUP,
       payload,
     });
     expect(create.statusCode).toBe(201);
@@ -1429,7 +1473,7 @@ describe("M34-saas-tenant-platform-inject — platform→tenant BAA register (§
         await app.inject({
           method: "PATCH",
           url: `/api/v1/platform/baa-register/${baaId}`,
-          headers: PLATFORM_OPS,
+          headers: BAA_STEWARD,
           payload: { baaStatus: "executed" },
         })
       ).statusCode,
@@ -1438,7 +1482,7 @@ describe("M34-saas-tenant-platform-inject — platform→tenant BAA register (§
     const noDocument = await app.inject({
       method: "PATCH",
       url: `/api/v1/platform/baa-register/${baaId}`,
-      headers: PLATFORM_OPS_STEPUP,
+      headers: BAA_STEWARD_STEPUP,
       payload: { baaStatus: "executed" },
     });
     expect(noDocument.statusCode).toBe(422);
@@ -1446,14 +1490,14 @@ describe("M34-saas-tenant-platform-inject — platform→tenant BAA register (§
     const createExecutedNoDocument = await app.inject({
       method: "POST",
       url: "/api/v1/platform/baa-register",
-      headers: PLATFORM_OPS_STEPUP,
+      headers: BAA_STEWARD_STEPUP,
       payload: { ...payload, addendumVersion: "v-doc-less", baaStatus: "executed" },
     });
     expect(createExecutedNoDocument.statusCode).toBe(422);
     const update = await app.inject({
       method: "PATCH",
       url: `/api/v1/platform/baa-register/${baaId}`,
-      headers: PLATFORM_OPS_STEPUP,
+      headers: BAA_STEWARD_STEPUP,
       payload: { baaStatus: "executed", documentId: TENANT_BAA_DOCUMENT_ID },
     });
     expect(update.statusCode).toBe(200);
@@ -1465,7 +1509,7 @@ describe("M34-saas-tenant-platform-inject — platform→tenant BAA register (§
     const badUpdate = await app.inject({
       method: "PATCH",
       url: `/api/v1/platform/baa-register/${baaId}`,
-      headers: PLATFORM_OPS_STEPUP,
+      headers: BAA_STEWARD_STEPUP,
       payload: { documentId: elsewhere },
     });
     expect(badUpdate.statusCode).toBe(422);
@@ -1473,7 +1517,7 @@ describe("M34-saas-tenant-platform-inject — platform→tenant BAA register (§
     const badCreate = await app.inject({
       method: "POST",
       url: "/api/v1/platform/baa-register",
-      headers: PLATFORM_OPS_STEPUP,
+      headers: BAA_STEWARD_STEPUP,
       payload: {
         ...payload,
         addendumVersion: "v-elsewhere",

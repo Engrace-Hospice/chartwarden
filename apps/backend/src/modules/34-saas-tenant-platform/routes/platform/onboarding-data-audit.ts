@@ -6,6 +6,7 @@
 // Written on the SAME transaction as the business write (`audit()` is the only sanctioned writer of audit_event), so
 // the row commits or rolls back with the change it records.
 import { type AuditContext, type AuditExecutor, audit } from "@chartwarden/audit";
+import { PLATFORM_ONBOARDING_ROLE_KEYS } from "@chartwarden/auth";
 
 /** The platform operator making the call. Every field is server-assembled from the session, never from a body. */
 export interface OnboardingOperator {
@@ -87,14 +88,28 @@ export interface OnboardingAuditInput {
   readonly detail?: Readonly<Record<string, string | number | boolean>>;
 }
 
-/** The operator's platform role as recorded on the row (the `tenant_lifecycle_platform_ops` predicate admits only this). */
-const OPERATOR_ROLE = "platform_ops";
+/**
+ * The operator's platform role as recorded on the row: the role whose predicate admitted the call (the BAA steward for the BAA upload,
+ * else `platform_ops`), falling back to the first onboarding role they hold. Recorded for the trail only; authorization never reads it.
+ */
+function operatorRoleOf(op: OnboardingOperator, eventType: string): string {
+  const admitting =
+    eventType === ONBOARDING_DATA_AUDIT_EVENTS.baaDocumentUploaded
+      ? "platform_baa_steward"
+      : "platform_ops";
+  if (op.roles.includes(admitting)) return admitting;
+  return PLATFORM_ONBOARDING_ROLE_KEYS.find((role) => op.roles.includes(role)) ?? admitting;
+}
 
-const contextOf = (op: OnboardingOperator, target: OnboardingAuditTarget): AuditContext => ({
+const contextOf = (
+  op: OnboardingOperator,
+  target: OnboardingAuditTarget,
+  eventType: string,
+): AuditContext => ({
   organizationId: target.organizationId,
   userId: op.userId,
   actorKind: "user",
-  actorRole: OPERATOR_ROLE,
+  actorRole: operatorRoleOf(op, eventType),
   correlationId: op.request.correlationId ?? op.request.requestId ?? "",
   ...(op.request.requestId ? { requestId: op.request.requestId } : {}),
   ...(op.request.sourceIp ? { sourceIp: op.request.sourceIp } : {}),
@@ -107,7 +122,7 @@ export function recordOnboardingAudit(
   target: OnboardingAuditTarget,
   input: OnboardingAuditInput,
 ): Promise<void> {
-  return audit(tx, contextOf(op, target), {
+  return audit(tx, contextOf(op, target, input.eventType), {
     eventType: input.eventType,
     resourceKind: input.resourceKind,
     ...(input.resourceId ? { resourceId: input.resourceId } : {}),

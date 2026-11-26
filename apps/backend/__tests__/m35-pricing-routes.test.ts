@@ -200,6 +200,31 @@ function makeServer() {
     },
     {
       orgId: PLATFORM_ORG,
+      userId: "pricer",
+      grants: [
+        {
+          roleKey: "platform_pricing_operator",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: grantsOf("platform_pricing_operator"),
+        },
+      ],
+    },
+    {
+      // CW-AC-22: platform_ops holding the onboarding key anyway (a grant that outlived the split) is refused by the predicate.
+      orgId: PLATFORM_ORG,
+      userId: "ops-stale",
+      grants: [
+        {
+          roleKey: "platform_ops",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...grantsOf("platform_ops"), "subscription.onboard_platform"],
+        },
+      ],
+    },
+    {
+      orgId: PLATFORM_ORG,
       userId: "billing",
       grants: [
         {
@@ -246,9 +271,12 @@ function makeServer() {
   for (const [name, predicate] of Object.entries(buildM35AbacPredicates()))
     reg.register(name, predicate);
   reg.register("step_up_recent", async (context) => context.attributes.stepUpRecent === true);
-  // M34 owns the real predicate (the exact `platform_ops` role); this stand-in mirrors it so M35's wiring is exercised without M34.
+  // M34 owns the real predicates (one exact role each); these stand-ins mirror them so M35's wiring is exercised without M34.
   reg.register("tenant_lifecycle_platform_ops", async (context) =>
     context.roles.includes("platform_ops"),
+  );
+  reg.register("tenant_platform_pricing_operator", async (context) =>
+    context.roles.includes("platform_pricing_operator"),
   );
   registerAbacRegistry(reg);
 
@@ -268,6 +296,14 @@ const OPS = {
   "x-test-membership": OPS_MEMBERSHIP,
   "x-test-step-up": "1",
 };
+const PRICER = {
+  "x-test-user": "pricer",
+  "x-test-org": PLATFORM_ORG,
+  "x-test-roles": "platform_pricing_operator",
+  "x-test-membership": OPS_MEMBERSHIP,
+  "x-test-step-up": "1",
+};
+const OPS_STALE_KEY = { ...OPS, "x-test-user": "ops-stale" };
 const BILLING = {
   "x-test-user": "billing",
   "x-test-org": PLATFORM_ORG,
@@ -319,12 +355,12 @@ afterEach(() => {
 describe("onboarding step 2: POST /api/v1/platform/tenants/:orgSlug/subscription", () => {
   const url = "/api/v1/platform/tenants/acme-hospice/subscription";
 
-  it("platform_ops signs the tenant; the tenant is the PATH slug and the operator is the session, never the body", async () => {
+  it("the pricing operator signs the tenant; the tenant is the PATH slug and the operator is the session, never the body", async () => {
     const { app, calls } = makeServer();
     const res = await app.inject({
       method: "POST",
       url,
-      headers: { ...OPS, ...idem() },
+      headers: { ...PRICER, ...idem() },
       payload: CONTRACT_BODY,
     });
     expect(res.statusCode).toBe(201);
@@ -332,7 +368,7 @@ describe("onboarding step 2: POST /api/v1/platform/tenants/:orgSlug/subscription
     expect(calls.created).toHaveLength(1);
     expect(calls.created[0]).toMatchObject({
       orgSlug: "acme-hospice",
-      actor: { userId: "ops", membershipId: OPS_MEMBERSHIP },
+      actor: { userId: "pricer", membershipId: OPS_MEMBERSHIP },
       input: { planSlug: "hospice-standard-v1", billingServiceMode: "billing_software" },
     });
   });
@@ -347,7 +383,7 @@ describe("onboarding step 2: POST /api/v1/platform/tenants/:orgSlug/subscription
       const res = await app.inject({
         method: "POST",
         url,
-        headers: { ...OPS, ...idem() },
+        headers: { ...PRICER, ...idem() },
         payload: { ...CONTRACT_BODY, ...extra },
       });
       expect(res.statusCode).toBe(422);
@@ -360,7 +396,7 @@ describe("onboarding step 2: POST /api/v1/platform/tenants/:orgSlug/subscription
     const res = await app.inject({
       method: "POST",
       url,
-      headers: { ...OPS, ...idem() },
+      headers: { ...PRICER, ...idem() },
       payload: { ...CONTRACT_BODY, billingServiceMode: "free" },
     });
     expect(res.statusCode).toBe(422);
@@ -368,14 +404,14 @@ describe("onboarding step 2: POST /api/v1/platform/tenants/:orgSlug/subscription
 
   it("needs an Idempotency-Key", async () => {
     const { app, calls } = makeServer();
-    const res = await app.inject({ method: "POST", url, headers: OPS, payload: CONTRACT_BODY });
+    const res = await app.inject({ method: "POST", url, headers: PRICER, payload: CONTRACT_BODY });
     expect(res.statusCode).toBe(400);
     expect(calls.created).toHaveLength(0);
   });
 
   it("needs a fresh step-up", async () => {
     const { app, calls } = makeServer();
-    const { "x-test-step-up": _drop, ...stale } = OPS;
+    const { "x-test-step-up": _drop, ...stale } = PRICER;
     const res = await app.inject({
       method: "POST",
       url,
@@ -391,16 +427,16 @@ describe("onboarding step 2: POST /api/v1/platform/tenants/:orgSlug/subscription
     const res = await app.inject({
       method: "POST",
       url,
-      headers: { ...OPS, ...idem(), "x-test-actor-kind": "ai_agent" },
+      headers: { ...PRICER, ...idem(), "x-test-actor-kind": "ai_agent" },
       payload: CONTRACT_BODY,
     });
     expect(res.statusCode).toBe(403);
     expect(calls.created).toHaveLength(0);
   });
 
-  it("is platform_ops alone: a billing admin has no key, and even a key on platform_owner is denied by the lifecycle predicate", async () => {
+  it("is the pricing operator alone: a billing admin has no key, and even the key on platform_owner or on platform_ops is denied by the predicate", async () => {
     const { app, calls } = makeServer();
-    for (const headers of [BILLING, OWNER]) {
+    for (const headers of [BILLING, OWNER, OPS_STALE_KEY]) {
       const res = await app.inject({
         method: "POST",
         url,
@@ -442,13 +478,13 @@ describe("onboarding step 2: POST /api/v1/platform/tenants/:orgSlug/subscription
         await app.inject({
           method: "PUT",
           url: mode,
-          headers: { ...OPS, ...idem() },
+          headers: { ...PRICER, ...idem() },
           payload: body,
         })
       ).statusCode,
     ).toBe(200);
     expect(
-      (await app.inject({ method: "PUT", url: mode, headers: OPS, payload: body })).statusCode,
+      (await app.inject({ method: "PUT", url: mode, headers: PRICER, payload: body })).statusCode,
     ).toBe(400);
     expect(
       (

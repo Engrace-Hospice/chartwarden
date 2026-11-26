@@ -197,7 +197,7 @@ STRIDE categories:
   > user-agent binding.** Nothing expires a web session on idle today.
 - **Suspicious activity detection** — login from new geography, new device, off-hours pattern triggers re-auth and alert
 - **Rate limiting** — 5 failed logins per username per 10 min → temporary lockout; 30 failed logins per IP per 10 min → temporary block
-- **Phishing-resistant auth for high-privilege** — passkeys required for `platform_ops` and `org_admin` roles
+- **Phishing-resistant auth for high-privilege** — passkeys required for `platform_ops`, `org_admin` and the three onboarding duty roles split off `platform_ops` (`platform_baa_steward`, `platform_go_live_approver`, `platform_pricing_operator`; CW-AC-22)
 - **Account recovery hardening** — recovery requires multiple-factor verification including out-of-band; never restorable solely via email link
 
 **Validation:**
@@ -577,7 +577,7 @@ Module 2 (Identity & Organization) owns authentication implementation; this sect
 |------------------|---------------------------|-------------------------------------------------------|
 |Password          |Something you know         |All users (with restrictions per role)                 |
 |TOTP (RFC 6238)   |Something you have         |All clinical/admin users                               |
-|WebAuthn / Passkey|Something you have         |Required for platform_ops, org_admin; available to all |
+|WebAuthn / Passkey|Something you have         |Required for platform_ops (and its duty roles), org_admin; available to all |
 |SMS code          |Something you have (weaker)|Fallback only; phasing out per NIST SP 800-63B guidance|
 |Biometric (mobile)|Something you are          |Local to device; supplements server-side auth          |
 

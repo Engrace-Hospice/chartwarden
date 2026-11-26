@@ -216,6 +216,20 @@ const READER_WITHOUT_NOTICE_KEY = {
   ],
 };
 
+/** CW-AC-22: the go-live approver reads the clearinghouse choice its console panel shows before approval, and holds no other data key. */
+const APPROVER_READER = {
+  orgId: PLATFORM_ORG,
+  userId: "approver-reader-user",
+  grants: [
+    {
+      roleKey: "platform_go_live_approver",
+      enabled: true,
+      expiresAt: null,
+      permissionKeys: ["tenant_clearinghouse.read_platform"],
+    },
+  ],
+};
+
 /** An operator who may verify a tenant's BAA but may NOT revoke it: the two are separate keys. */
 const VERIFIER_ONLY = {
   orgId: PLATFORM_ORG,
@@ -282,11 +296,23 @@ function makeServer(
       WRITER_ONLY,
       PRICING_OPERATOR,
       READER_WITHOUT_NOTICE_KEY,
+      APPROVER_READER,
       VERIFIER_ONLY,
     ]).store,
   );
   const reg = createPredicateRegistry();
   reg.register("tenant_lifecycle_platform_ops", async (c) => c.roles.includes("platform_ops"));
+  reg.register("tenant_platform_onboarding_staff", async (c) =>
+    [
+      "platform_ops",
+      "platform_baa_steward",
+      "platform_go_live_approver",
+      "platform_pricing_operator",
+    ].some((role) => c.roles.includes(role)),
+  );
+  reg.register("tenant_platform_pricing_operator", async (c) =>
+    c.roles.includes("platform_pricing_operator"),
+  );
   reg.register("step_up_recent", async (c) => c.attributes.stepUpRecent === true);
   registerAbacRegistry(reg);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
@@ -1132,6 +1158,55 @@ describe("read guards", () => {
     });
     expect(keyless.statusCode).toBe(403);
     expect(calls.map((c) => c.method)).toEqual(["listProviderEntities"]);
+    await app.close();
+  });
+});
+
+// CW-AC-22: the clearinghouse READ is open to every onboarding role (the go-live approver's panel shows the tenant's choice before it enables
+// approval); the clearinghouse WRITE stays platform_ops' alone.
+describe("the clearinghouse read, for the go-live approver", () => {
+  const approver = {
+    "x-test-user": "approver-reader-user",
+    "x-test-org": PLATFORM_ORG,
+    "x-test-roles": "platform_go_live_approver",
+  };
+
+  it("lets the approver (with the read key) read the tenant's clearinghouse choice, and refuses its write", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const read = await app.inject({
+      method: "GET",
+      url: `${URL_BASE}/clearinghouse`,
+      headers: approver,
+    });
+    expect(read.statusCode, read.body).toBe(200);
+    expect(calls.map((c) => c.method)).toEqual(["getClearinghouse"]);
+    const write = await app.inject({
+      method: "PUT",
+      url: `${URL_BASE}/clearinghouse`,
+      headers: { ...approver, "x-step-up": "fresh", "idempotency-key": key() },
+      payload: {
+        vendor: "claimmd",
+        mode: "production",
+        secret: "fake-key-not-a-secret#2",
+        reason: "ticket CHG-77",
+      },
+    });
+    expect(write.statusCode).toBe(403);
+    expect(calls).toHaveLength(1);
+    await app.close();
+  });
+
+  it("still refuses a role that is not an onboarding role, even holding the read key", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const res = await app.inject({
+      method: "GET",
+      url: `${URL_BASE}/clearinghouse`,
+      headers: { ...approver, "x-test-roles": "platform_support_t2" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(calls).toEqual([]);
     await app.close();
   });
 });
@@ -2362,6 +2437,8 @@ describe("service: an operator's switch out of outside (order, any status, the m
   });
 });
 
+const BOTH_ROLES = "platform_ops,platform_pricing_operator";
+
 describe("the clearinghouse switch that names a billing mode is also a pricing write", () => {
   const SWITCH_BODY = {
     vendor: "claimmd",
@@ -2374,6 +2451,7 @@ describe("the clearinghouse switch that names a billing mode is also a pricing w
     app: ReturnType<typeof makeServer>,
     user: string,
     payload: Record<string, unknown>,
+    roles = "platform_ops",
   ) =>
     app.inject({
       method: "PUT",
@@ -2381,7 +2459,7 @@ describe("the clearinghouse switch that names a billing mode is also a pricing w
       headers: {
         "x-test-user": user,
         "x-test-org": PLATFORM_ORG,
-        "x-test-roles": "platform_ops",
+        "x-test-roles": roles,
         "x-step-up": "fresh",
         "idempotency-key": key(),
         "if-match": "4",
@@ -2398,10 +2476,19 @@ describe("the clearinghouse switch that names a billing mode is also a pricing w
     await app.close();
   });
 
-  it("lets an operator who also holds subscription.onboard_platform through", async () => {
+  it("CW-AC-22: refuses an account that holds the pricing key but not the pricing operator role (the predicate, not the key, decides)", async () => {
     const calls: Call[] = [];
     const app = makeServer(calls);
-    const res = await putAs(app, "pricing-user", SWITCH_BODY);
+    const res = await putAs(app, "pricing-user", SWITCH_BODY, "platform_ops");
+    expect(res.statusCode, res.body).toBe(403);
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it("lets an account that holds platform_ops AND the pricing operator role (and the pricing key) through", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const res = await putAs(app, "pricing-user", SWITCH_BODY, BOTH_ROLES);
     expect(res.statusCode, res.body).toBe(200);
     expect(calls.map((c) => c.method)).toEqual(["putClearinghouse"]);
     expect(calls[0]?.fields).toMatchObject({ billingServiceMode: "managed_billing" });
@@ -2411,13 +2498,15 @@ describe("the clearinghouse switch that names a billing mode is also a pricing w
   it("says in the answer when the vendor committed but the billing mode could not be confirmed (billingModeConfirmed: false), and says nothing otherwise", async () => {
     const calls: Call[] = [];
     const app = makeServer(calls);
-    const unconfirmed = await putAs(app, "pricing-user", {
-      ...SWITCH_BODY,
-      reason: "ticket CHG-unconfirmed",
-    });
+    const unconfirmed = await putAs(
+      app,
+      "pricing-user",
+      { ...SWITCH_BODY, reason: "ticket CHG-unconfirmed" },
+      BOTH_ROLES,
+    );
     expect(unconfirmed.statusCode, unconfirmed.body).toBe(200);
     expect(unconfirmed.json()).toMatchObject({ vendor: "claimmd", billingModeConfirmed: false });
-    const confirmed = await putAs(app, "pricing-user", SWITCH_BODY);
+    const confirmed = await putAs(app, "pricing-user", SWITCH_BODY, BOTH_ROLES);
     expect(confirmed.json()).not.toHaveProperty("billingModeConfirmed");
     await app.close();
   });

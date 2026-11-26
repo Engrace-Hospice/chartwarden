@@ -48,7 +48,7 @@ const PLAN_READ = "plan.admin.read";
 const PLAN_WRITE = "plan.admin.write";
 const PRICING_READ = "subscription.pricing_read_platform";
 const ONBOARD = "subscription.onboard_platform";
-const TENANT_LIFECYCLE_OPS = "tenant_lifecycle_platform_ops";
+const PRICING_OPERATOR = "tenant_platform_pricing_operator";
 /** The plan currency a form defaults to; a plan stores its own. */
 const DEFAULT_CURRENCY = "USD";
 
@@ -64,7 +64,7 @@ const PLAN_WRITE_GUARDS: Preflight[] = [
 const PRICING_READ_GUARDS: Preflight[] = [P(PRICING_READ), PLATFORM_SCOPE(PRICING_READ)];
 const ONBOARD_GUARDS: Preflight[] = [
   P(ONBOARD),
-  requireAbac(ONBOARD, TENANT_LIFECYCLE_OPS) as Preflight,
+  requireAbac(ONBOARD, PRICING_OPERATOR) as Preflight,
   STEP_UP(ONBOARD),
   rejectAiActor(
     "AI principals cannot sign a tenant's plan or change its billing service",

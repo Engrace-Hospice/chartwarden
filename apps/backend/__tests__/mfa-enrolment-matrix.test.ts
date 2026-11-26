@@ -1,4 +1,5 @@
 import {
+  PLATFORM_DUTY_ROLE_KEYS,
   evaluateMfa,
   mfaRequirementFor,
   registerIdentityAuth,
@@ -30,6 +31,10 @@ describe("the MFA matrix (pure)", () => {
     expect(mfaRequirementFor(["rn", "social_worker"])).toBe("second_factor");
     expect(mfaRequirementFor(["rn", "org_admin"])).toBe("passkey");
     expect(mfaRequirementFor(["platform_ops"])).toBe("passkey");
+    // CW-AC-22: the roles split off platform_ops carry its go-live, BAA and pricing powers, so a split does not lower the factor.
+    for (const role of PLATFORM_DUTY_ROLE_KEYS) {
+      expect(mfaRequirementFor([role]), role).toBe("passkey");
+    }
     // superadmin holds every platform role and org_admin, so it is held to the strongest factor of all of them.
     expect(mfaRequirementFor(["superadmin"])).toBe("passkey");
     expect(evaluateMfa(["superadmin"], { totp: true, passkey: false }).satisfied).toBe(false);

@@ -2310,13 +2310,18 @@ DATABASE_ADMIN_URL=<owner connection> bun run db:platform-role revoke \
 
 - **Allowed keys** are exactly the platform keys a predicate reads (`PLATFORM_GRANTABLE_ROLE_KEYS` in
   `packages/auth/src/roles/platform-reserved.ts`): `platform_owner`, `platform_admin`,
-  `platform_billing_admin`, `platform_support_t2`, `platform_sales`, `platform_ops`,
-  `platform_security_owner`, `ai_safety_owner`, `superadmin` ([ADR-0112](../adr/ADR-0112-superadmin-platform-role.md):
+  `platform_billing_admin`, `platform_support_t2`, `platform_sales`, `platform_ops`, the three onboarding duty roles
+  `platform_baa_steward`, `platform_go_live_approver` and `platform_pricing_operator` (CW-AC-22, split off `platform_ops`: see
+  [the rollout checklist](../runbooks/m34-platform-console-hardening.md)), `platform_security_owner`, `ai_safety_owner`, `superadmin` ([ADR-0112](../adr/ADR-0112-superadmin-platform-role.md):
   one role that reads as `administrator`, `org_admin` and every platform role; grant it to at most two named
   people, only in the ChartWarden platform org, and only once `CHARTWARDEN_MFA_ENFORCEMENT=true`; the CLI and a
   `membership_role` trigger (which also fires in a `replica` session) both refuse an organization that has a
   `tenant_account`, and a second trigger refuses giving the platform org one while it holds the binding). Any
   other key is refused before the database is touched.
+- **Separation of duties (CW-AC-22).** `platform_go_live_approver` is the second party of the two-party go-live, so the CLI refuses to bind it to
+  any account that holds `platform_ops`, `platform_baa_steward` or `platform_pricing_operator` on ANY of its memberships (and refuses those
+  roles on an approver's account): `PLATFORM_ROLE_CONFLICTS` in `packages/auth/src/roles/templates.ts`. `superadmin` is outside the rule by
+  design, and two accounts held by one person are not detectable, so the go-live guards also compare accounts.
 - **A grant needs an ACTIVE membership** in the named org. A platform role is bound to a membership; the CLI
   never creates users or memberships. A **revoke** also reaches a suspended membership, so an offboarded holder's
   binding cannot lie dormant and return on reactivation.

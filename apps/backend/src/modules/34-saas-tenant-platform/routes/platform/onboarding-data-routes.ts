@@ -102,9 +102,10 @@ const WRITE: readonly PreHandler[] = [
   requireIdempotencyKey(),
 ];
 
+// The read, not the write: the go-live approver's panel shows the tenant's clearinghouse choice before it enables approval (CW-AC-22).
 const CLEARINGHOUSE_READ: readonly PreHandler[] = [
   P(CLEARINGHOUSE_READ_KEY),
-  OPS(CLEARINGHOUSE_READ_KEY),
+  requireAbac(CLEARINGHOUSE_READ_KEY, "tenant_platform_onboarding_staff") as PreHandler,
 ];
 const CLEARINGHOUSE_WRITE: readonly PreHandler[] = [
   P(CLEARINGHOUSE_WRITE_KEY),
@@ -171,11 +172,16 @@ const refuseOversizedBaaUpload: PreHandler = async (request) => {
   }
 };
 
-const PRICING_WRITE: readonly PreHandler[] = [P(PRICING_WRITE_KEY), OPS(PRICING_WRITE_KEY)];
+// CW-AC-22: pricing is the pricing operator's, so an operator who names a billing mode on the clearinghouse switch must hold that role too.
+const PRICING_WRITE: readonly PreHandler[] = [
+  P(PRICING_WRITE_KEY),
+  requireAbac(PRICING_WRITE_KEY, "tenant_platform_pricing_operator") as PreHandler,
+];
 
 const BAA_DOCUMENT_UPLOAD: readonly PreHandler[] = [
   P(BAA_DOCUMENT_UPLOAD_KEY),
-  OPS(BAA_DOCUMENT_UPLOAD_KEY),
+  // CW-AC-22: the BAA steward's, not platform_ops'.
+  requireAbac(BAA_DOCUMENT_UPLOAD_KEY, "tenant_platform_baa_steward") as PreHandler,
   requireStepUp(BAA_DOCUMENT_UPLOAD_KEY) as PreHandler,
   rejectAiActor(),
   requireIdempotencyKey(),
@@ -414,7 +420,7 @@ export function registerOnboardingDataRoutes(
       const { reason, fields } = splitReason(
         parse(OnboardingClearinghousePutRequest, request.body),
       );
-      // A body that names a billing service mode is also a pricing write: the pricing key (and the platform_ops predicate) as well.
+      // A body that names a billing service mode is also a pricing write: the pricing key (and the pricing operator predicate) as well.
       if (fields.billingServiceMode !== undefined) {
         for (const guard of PRICING_WRITE) await guard(request, reply);
       }

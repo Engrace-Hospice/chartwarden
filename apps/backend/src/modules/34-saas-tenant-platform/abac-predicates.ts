@@ -1,4 +1,9 @@
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  PLATFORM_ONBOARDING_ROLE_KEYS,
+  registerPredicateIdempotent,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/34-saas-tenant-platform/abac-predicates.ts — M34 (§4.6).
 //
 // The NAMED ABAC predicate resolvers M34 OWNS and registers into M3's named-predicate registry
@@ -24,6 +29,12 @@ import { getSeam } from "../../bootstrap/index";
 /** The §4.6 predicate names M34 owns (registered into M3). Single-owner across the platform registry. */
 export const M34_ABAC_PREDICATES = [
   "tenant_lifecycle_platform_ops",
+  // CW-AC-22: the onboarding powers split off platform_ops. Each admits exactly its one role (a key bound to a role its predicate
+  // denies would be a control on paper only); the reader admits all four onboarding roles for the wizard and BAA-register reads.
+  "tenant_platform_onboarding_staff",
+  "tenant_platform_baa_steward",
+  "tenant_platform_go_live_approver",
+  "tenant_platform_pricing_operator",
   "tenant_consented_support_active",
   "support_session_actor_distinct_from_grantor",
   "dsar_export_patient_caseload_or_org_admin",
@@ -131,6 +142,15 @@ export function buildTenantPlatformAbacPredicates(
   return denyOnThrow({
     // platform-ops tenant surface: actor holds the `platform_ops` M3 RBAC role (M34-F03). §4.6.
     tenant_lifecycle_platform_ops: async (context) => isPlatformOps(context),
+
+    // CW-AC-22 — the onboarding duties split off `platform_ops`, one exact role each (see PLATFORM_BAA_STEWARD_KEYS and its siblings).
+    tenant_platform_onboarding_staff: async (context) =>
+      PLATFORM_ONBOARDING_ROLE_KEYS.some((role) => hasRole(context, role)),
+    tenant_platform_baa_steward: async (context) => hasRole(context, "platform_baa_steward"),
+    tenant_platform_go_live_approver: async (context) =>
+      hasRole(context, "platform_go_live_approver"),
+    tenant_platform_pricing_operator: async (context) =>
+      hasRole(context, "platform_pricing_operator"),
 
     // PHI-read elevation: an active, consented, actor-bound support session exists for the tenant. §4.6.
     tenant_consented_support_active: async (context, target) => {

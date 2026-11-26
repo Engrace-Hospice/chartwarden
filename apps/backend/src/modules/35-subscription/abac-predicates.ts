@@ -2,6 +2,7 @@ import {
   type AbacContext,
   type AbacTarget,
   PLATFORM_OPS_ROLE_KEYS,
+  PLATFORM_PRICING_READ_DUTY_ROLE_KEYS,
   registerPredicateIdempotent,
 } from "@chartwarden/auth";
 // apps/backend/src/modules/35-subscription/abac-predicates.ts — M35 (§4.8).
@@ -45,9 +46,16 @@ export type M35RegisteredAbacPredicate = (typeof M35_REGISTERED_ABAC_PREDICATES)
 /**
  * The platform-ops roles that satisfy `platform_billing_scope`. RE-DERIVED from the platform-owned role
  * catalog (`@chartwarden/auth` `PLATFORM_OPS_ROLE_KEYS`, registered as `platform_staff` templates in ADMIN-T02)
- * so the ABAC gate's admit-set and the role catalog are a single source and can never drift.
+ * so the ABAC gate's admit-set and the role catalog are a single source, plus the two duty roles that
+ * read pricing (`PLATFORM_PRICING_READ_DUTY_ROLE_KEYS`, also from the catalog, CW-AC-22).
  */
-const PLATFORM_BILLING_ROLES: readonly string[] = PLATFORM_OPS_ROLE_KEYS;
+const PLATFORM_BILLING_ROLES: readonly string[] = [
+  ...PLATFORM_OPS_ROLE_KEYS,
+  // CW-AC-22: the two duty roles that read pricing (the pricing operator, and the go-live approver for its console panel). Their one
+  // billing-scope key is `subscription.pricing_read_platform`; the BAA steward is not admitted. The other duty roles stay out of every
+  // role-set predicate that PLATFORM_OPS_ROLE_KEYS feeds (M2, M29, M33, the Claim.MD ops routes).
+  ...PLATFORM_PRICING_READ_DUTY_ROLE_KEYS,
+];
 
 /** The actor's ACTIVE membership id (server-assembled M2 session attribute); null when the session has none. */
 const actorMembershipId = (context: AbacContext): string | null => {

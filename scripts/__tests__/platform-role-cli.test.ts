@@ -9,7 +9,9 @@ import {
 import type { Client } from "pg";
 import { describe, expect, it } from "vitest";
 import {
+  assertNoPlatformRoleConflict,
   assertSuperadminOrg,
+  conflictingPlatformRoles,
   grantPlatformRole,
   platformRoleGrantKeys,
   platformRoleLabel,
@@ -175,5 +177,71 @@ describe("revoking superadmin ends the holder's sessions", () => {
     const { db, seen } = recordingDb(removedOne);
     await revokePlatformRole(db, { membershipId: "membership-1", key: "platform_ops" });
     expect(seen.some((sql) => /DELETE FROM session/i.test(sql))).toBe(false);
+  });
+});
+
+// CW-AC-22: the go-live approver is the second party of the two-party go-live, so no account may hold it beside another onboarding role.
+describe("conflictingPlatformRoles", () => {
+  it("names the held roles that conflict with the one being granted, in either direction", () => {
+    expect(conflictingPlatformRoles("platform_go_live_approver", ["platform_ops"])).toEqual([
+      "platform_ops",
+    ]);
+    expect(
+      conflictingPlatformRoles("platform_go_live_approver", [
+        "platform_baa_steward",
+        "platform_pricing_operator",
+        "platform_billing_admin",
+      ]),
+    ).toEqual(["platform_baa_steward", "platform_pricing_operator"]);
+    expect(conflictingPlatformRoles("platform_ops", ["platform_go_live_approver"])).toEqual([
+      "platform_go_live_approver",
+    ]);
+    expect(conflictingPlatformRoles("platform_baa_steward", ["platform_go_live_approver"])).toEqual(
+      ["platform_go_live_approver"],
+    );
+  });
+
+  it("lets the other onboarding roles sit together, and leaves superadmin and the billing roles outside the rule", () => {
+    expect(
+      conflictingPlatformRoles("platform_baa_steward", [
+        "platform_ops",
+        "platform_pricing_operator",
+      ]),
+    ).toEqual([]);
+    expect(conflictingPlatformRoles("platform_go_live_approver", ["superadmin"])).toEqual([]);
+    expect(conflictingPlatformRoles("superadmin", ["platform_go_live_approver"])).toEqual([]);
+    expect(conflictingPlatformRoles("platform_go_live_approver", ["platform_owner"])).toEqual([]);
+    expect(conflictingPlatformRoles("platform_go_live_approver", [])).toEqual([]);
+  });
+});
+
+describe("assertNoPlatformRoleConflict", () => {
+  const dbHolding = (...keys: string[]): Client =>
+    ({
+      query: async (sql: string) => {
+        expect(sql).toContain("m.user_id = m0.user_id"); // every membership of the account, not just the one named
+        expect(sql).toContain("mr.expires_at"); // an expired grant does not hold
+        return { rows: keys.map((key) => ({ key })) };
+      },
+    }) as unknown as Client;
+
+  it("refuses a grant that puts a conflicting pair on one account, and says what to do", async () => {
+    await expect(
+      assertNoPlatformRoleConflict(
+        dbHolding("platform_ops"),
+        "membership-1",
+        "platform_go_live_approver",
+      ),
+    ).rejects.toThrow(/already holds platform_ops.*one account may not hold both/);
+  });
+
+  it("allows a grant with no conflict", async () => {
+    await expect(
+      assertNoPlatformRoleConflict(
+        dbHolding("platform_ops"),
+        "membership-1",
+        "platform_baa_steward",
+      ),
+    ).resolves.toBeUndefined();
   });
 });

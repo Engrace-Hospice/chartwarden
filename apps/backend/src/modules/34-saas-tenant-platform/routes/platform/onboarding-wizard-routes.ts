@@ -1,7 +1,9 @@
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-wizard-routes.ts — M34 onboarding wizard v2.
 //
 // The PLATFORM-OPS side of the wizard (§4.1; `withPlatformContext`, audited). Every route is gated by a §4.5 permission key
-// AND the `tenant_lifecycle_platform_ops` ABAC predicate (the `platform_ops` role). Every WRITE additionally needs a fresh
+// AND an ABAC predicate: `tenant_lifecycle_platform_ops` (the `platform_ops` role) for the operator's own writes,
+// `tenant_platform_go_live_approver` (the `platform_go_live_approver` role, CW-AC-22) for approve / revoke, and
+// `tenant_platform_onboarding_staff` (any onboarding role) for the wizard read. Every WRITE additionally needs a fresh
 // step-up (§6/D10) and refuses an AI principal: the platform decisions here (attest a step, skip, re-open, assign the
 // compliance officer, approve or revoke a go-live) are human acts. The strict sequence, evidence and two-party rules are
 // enforced in the service (onboarding/wizard-service.ts), not here.
@@ -43,13 +45,19 @@ function platformActorOf(request: FastifyRequest): PlatformActor {
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 const OPS = (key: string): PreHandler =>
   requireAbac(key, "tenant_lifecycle_platform_ops") as PreHandler;
+/** The wizard read: the operator and the three duty roles (BAA steward, go-live approver, pricing operator) all work inside it. */
+const ONBOARDING_STAFF = (key: string): PreHandler =>
+  requireAbac(key, "tenant_platform_onboarding_staff") as PreHandler;
+/** Approve / revoke a go-live: the go-live approver role alone, never `platform_ops` (CW-AC-22). */
+const GO_LIVE_APPROVER = (key: string): PreHandler =>
+  requireAbac(key, "tenant_platform_go_live_approver") as PreHandler;
 const NO_AI = rejectAiActor(
   "AI principals cannot change a tenant's onboarding or go-live",
 ) as PreHandler;
-/** The guard chain of a platform write: permission, platform_ops ABAC, fresh step-up, human actor. */
-const WRITE = (key: string): PreHandler[] => [
+/** The guard chain of a platform write: permission, the role's ABAC (platform_ops unless given), fresh step-up, human actor. */
+const WRITE = (key: string, abac: (key: string) => PreHandler = OPS): PreHandler[] => [
   P(key),
-  OPS(key),
+  abac(key),
   requireStepUp(key) as PreHandler,
   NO_AI,
 ];
@@ -66,7 +74,7 @@ export function registerOnboardingWizardRoutes(
   app.get(
     "/api/v1/platform/tenants/:orgSlug/onboarding",
     {
-      preHandler: [P("onboarding.read_platform"), OPS("onboarding.read_platform")],
+      preHandler: [P("onboarding.read_platform"), ONBOARDING_STAFF("onboarding.read_platform")],
       config: { auditRead: { resourceKind: "onboarding_task", list: true } },
     },
     async (request) => {
@@ -136,7 +144,7 @@ export function registerOnboardingWizardRoutes(
 
   app.post(
     "/api/v1/platform/tenants/:orgSlug/go-live/approve",
-    { preHandler: WRITE(APPROVE) },
+    { preHandler: WRITE(APPROVE, GO_LIVE_APPROVER) },
     async (request) => {
       const actor = platformActorOf(request);
       const { orgSlug } = parse(OrgSlugParamsSchema, request.params);
@@ -150,7 +158,7 @@ export function registerOnboardingWizardRoutes(
 
   app.post(
     "/api/v1/platform/tenants/:orgSlug/go-live/revoke",
-    { preHandler: WRITE(APPROVE) },
+    { preHandler: WRITE(APPROVE, GO_LIVE_APPROVER) },
     async (request) => {
       const actor = platformActorOf(request);
       const { orgSlug } = parse(OrgSlugParamsSchema, request.params);

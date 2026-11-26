@@ -86,7 +86,7 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     resource: "onboarding_task",
     action: "read_platform",
     category: "platform",
-    abac: "tenant_lifecycle_platform_ops",
+    abac: "tenant_platform_onboarding_staff",
   },
   "onboarding.read_own": {
     resource: "onboarding_task",
@@ -292,7 +292,7 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     resource: "platform_tenant_baa_record",
     action: "read_platform",
     category: "platform",
-    abac: "tenant_lifecycle_platform_ops",
+    abac: "tenant_platform_onboarding_staff",
   },
   "platform_tenant_baa.read_own": {
     resource: "platform_tenant_baa_record",
@@ -343,13 +343,13 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     resource: "tenant_go_live_attestation",
     action: "approve_platform",
     category: "platform",
-    abac: "tenant_lifecycle_platform_ops",
+    abac: "tenant_platform_go_live_approver",
   },
   "platform_tenant_baa.write_platform": {
     resource: "platform_tenant_baa_record",
     action: "write_platform",
     category: "platform",
-    abac: "tenant_lifecycle_platform_ops",
+    abac: "tenant_platform_baa_steward",
   },
   // --- tenant onboarding data entered on the tenant's behalf (provider entities, locations, MAC credentials) ---
   // Writes are platform-ops only, step-up, reason-recorded and refused unless the tenant is still provisioning /
@@ -372,7 +372,7 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     resource: "tenant_clearinghouse",
     action: "read_platform",
     category: "platform",
-    abac: "tenant_lifecycle_platform_ops",
+    abac: "tenant_platform_onboarding_staff",
   },
   "tenant_clearinghouse.write_platform": {
     resource: "tenant_clearinghouse",
@@ -428,7 +428,7 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     resource: "tenant_baa_document",
     action: "upload_platform",
     category: "platform",
-    abac: "tenant_lifecycle_platform_ops",
+    abac: "tenant_platform_baa_steward",
   },
   // --- the tenant's DoseSpot clinic registration (tenant onboarding slice 4, ADR-0111): environment, clinic, sealed key ---
   // platform-ops only, step-up, reason-recorded, accepted only while the tenant is provisioning / onboarding (a deactivation is

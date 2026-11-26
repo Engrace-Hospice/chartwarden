@@ -25,7 +25,7 @@ export interface Session {
   displayName?: string;
   organizationName?: string;
   membershipId?: string;
-  /** The actor's M3-resolved role keys in the bound org — this app's login guard requires `platform_ops`. */
+  /** The actor's M3-resolved role keys in the bound org — this app's login guard requires an onboarding role (console-roles.ts). */
   roles?: string[];
   permissions?: string[];
   isAdmin?: boolean;
