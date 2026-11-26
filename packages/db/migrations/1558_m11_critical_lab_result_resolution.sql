@@ -12,7 +12,9 @@
 --     SELECT + INSERT only and a trigger rejects UPDATE and DELETE, so a cleared result cannot be re-opened, rewritten
 --     or silently un-cleared by anything running as the application role. The ledger row keeps its original
 --     disposition ('quarantined_no_order'); "open" is now "quarantined, no resolution row" (the escalation sweep and
---     the queue read both ask exactly that), so the app role gains NO new UPDATE grant on `critical_lab_result`.
+--     the queue read both ask exactly that), so the app role gains NO new UPDATE grant on `critical_lab_result`. A BEFORE
+--     INSERT trigger makes the claims above the database's own: it overwrites `resolved_at` with now() and requires the
+--     ledger row to be a QUARANTINED one of the same organization and patient.
 --   * `reason` is free clinical text: the audit trigger replaces it with '<changed>' in the before/after images
 --     (`audit_scrub`, denylist ['reason']), and it never rides the outbox event or an error message.
 --   * Destruction: like 1298's `order_result_review`, the destruction role gets SELECT + DELETE, an org-pinned FOR ALL
@@ -85,6 +87,32 @@ DO $$ BEGIN
     WITH CHECK (organization_id = nullif(current_setting('app.org_id', true), '')::uuid);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;--> statement-breakpoint
 
+-- The database, not the app, owns the clock and the shape of the claim: `resolved_at` is overwritten with now(), and the
+-- row must point at a QUARANTINED ledger row of the SAME organization and patient (the FK checks existence only, and
+-- bypasses RLS). SECURITY INVOKER: the ledger read runs under the caller's own RLS.
+CREATE OR REPLACE FUNCTION critical_lab_result_resolution_before_insert() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+BEGIN
+  NEW.resolved_at := now();
+  IF NOT EXISTS (
+    SELECT 1 FROM critical_lab_result c
+     WHERE c.id = NEW.critical_lab_result_id
+       AND c.organization_id = NEW.organization_id
+       AND c.patient_id = NEW.patient_id
+       AND c.disposition = 'quarantined_no_order'
+  ) THEN
+    RAISE EXCEPTION 'critical_lab_result_resolution must resolve a quarantined result of the same organization and patient'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+DROP TRIGGER IF EXISTS "trg_critical_lab_result_resolution_before_insert" ON "critical_lab_result_resolution";--> statement-breakpoint
+CREATE TRIGGER "trg_critical_lab_result_resolution_before_insert"
+  BEFORE INSERT ON "critical_lab_result_resolution"
+  FOR EACH ROW EXECUTE FUNCTION critical_lab_result_resolution_before_insert();--> statement-breakpoint
+
 CREATE OR REPLACE FUNCTION critical_lab_result_resolution_append_only() RETURNS trigger
 LANGUAGE plpgsql
 AS $$
@@ -105,7 +133,7 @@ CREATE TRIGGER "trg_critical_lab_result_resolution_append_only"
 CREATE OR REPLACE FUNCTION audit_phi_write_critical_lab_result_resolution() RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, public
+SET search_path = pg_catalog, public, pg_temp
 AS $$
 DECLARE
   v_before jsonb;

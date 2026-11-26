@@ -22,8 +22,12 @@ import {
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAbacRegistry,
+  resetBreakGlassAuditHook,
+  resetBreakGlassChecker,
   resetAuthorizationContract,
   resetRbacEngine,
+  setBreakGlassAuditHook,
+  setBreakGlassChecker,
 } from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -59,9 +63,12 @@ const RANDOM_ID = "99999999-0000-4999-8999-000000000000";
 const REASON = "Reviewed the result with the attending; patient already admitted to the hospital.";
 const obs = (n: number): string => `aaaaaaaa-1136-4000-8000-${String(n).padStart(12, "0")}`;
 
-type Who = "md" | "np" | "off" | "rn" | "reader" | "mdB";
+type Who = "md" | "np" | "off" | "rn" | "reader" | "mdB" | "ai";
 const READ_COMPLETE = ["orders.read", "orders.complete"];
-const USERS: Record<Who, { id: string; org: string; roles: string; perms: string[] }> = {
+const USERS: Record<
+  Who,
+  { id: string; org: string; roles: string; perms: string[]; actorKind?: string }
+> = {
   md: {
     id: "33333333-3333-3333-3333-333333333301",
     org: ORG_A,
@@ -81,6 +88,14 @@ const USERS: Record<Who, { id: string; org: string; roles: string; perms: string
     org: ORG_A,
     roles: "np",
     perms: ["orders.read"],
+  },
+  // An AI principal with every permission and a prescriber role: only the D13 AI-block refuses it.
+  ai: {
+    id: "33333333-3333-3333-3333-333333333307",
+    org: ORG_A,
+    roles: "medical_director",
+    perms: READ_COMPLETE,
+    actorKind: "ai_agent",
   },
   mdB: {
     id: "33333333-3333-3333-3333-333333333306",
@@ -118,6 +133,7 @@ describe.skipIf(!DB_URL)("CW-CS-01 critical lab result resolution — LIVE Postg
     request.context.organizationId = u.org;
     request.context.roles = u.roles.split(",");
     request.context.attributes.membershipId = membership[u.id] ?? "";
+    if (u.actorKind) request.context.attributes.actorKind = u.actorKind;
   }
   const as = (who: Who) => ({ "x-test-who": who });
 
@@ -358,11 +374,12 @@ describe.skipIf(!DB_URL)("CW-CS-01 critical lab result resolution — LIVE Postg
       resolution: null,
     });
     const audit = await admin.query(
-      `SELECT resource_id FROM audit_event
+      `SELECT resource_id, context FROM audit_event
         WHERE organization_id=$1 AND resource_kind='critical_lab_result' AND resource_id=$2 AND event_type LIKE '%viewed'`,
       [ORG_A, a.id],
     );
     expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0].context.patientId).toBe(PAT_A); // attributed to the patient for the §164.528 accounting
 
     const unknown = await get("md", RANDOM_ID);
     expect(unknown.statusCode).toBe(404);
@@ -461,6 +478,8 @@ describe.skipIf(!DB_URL)("CW-CS-01 critical lab result resolution — LIVE Postg
       { resolution: "matched_to_order", matchedOrderId: orderB, reason: REASON }, // another tenant's order
       { resolution: "matched_to_order", matchedOrderId: RANDOM_ID, reason: REASON }, // unknown
       { resolution: "closed", reason: REASON },
+      { resolution: "reviewed_no_action", reason: "😀".repeat(5) }, // 10 UTF-16 units but 5 characters
+      { resolution: "reviewed_no_action", reason: `${REASON}\u0000` }, // Postgres cannot store NUL
     ];
     for (const body of bad) {
       const res = await resolve("md", a.id, body);
@@ -560,7 +579,7 @@ describe.skipIf(!DB_URL)("CW-CS-01 critical lab result resolution — LIVE Postg
          VALUES ($1,$2,$3,'reviewed_no_action','a forged cross-tenant reason',gen_random_uuid(),'np')`,
         [ORG_A, PAT_A, a.id],
       ),
-    ).rejects.toThrow(/row-level security/);
+    ).rejects.toThrow(/row-level security|same organization and patient/); // the insert trigger or the policy, whichever fires first
   });
 
   it("a refused publish rolls the whole resolution back, and the result can be resolved afterwards", async () => {
@@ -619,9 +638,132 @@ describe.skipIf(!DB_URL)("CW-CS-01 critical lab result resolution — LIVE Postg
     expect(stamp(open.id)).not.toBeNull();
   });
 
+  it("an AI principal is refused (D13) even with every permission and a prescriber role", async () => {
+    const a = await quarantine(ORG_A, PAT_A);
+
+    expect((await resolve("ai", a.id, noAction())).statusCode).toBe(403);
+
+    expect(await resolutionRows(a.id)).toHaveLength(0);
+  });
+
+  it("break-glass opens the by-id READ of an off-caseload result but never the resolve", async () => {
+    const a = await quarantine(ORG_A, PAT_A);
+    setBreakGlassChecker((ctx) => (ctx.userId === USERS.off.id ? { eventId: "bg-1136" } : null));
+    setBreakGlassAuditHook(() => undefined);
+    try {
+      const read = await app.inject({
+        method: "GET",
+        url: `/api/v1/orders/critical-lab-results/${a.id}`,
+        headers: as("off"),
+      });
+      expect(read.statusCode).toBe(200); // the guard granted it; the service re-check honours the grant
+
+      expect((await resolve("off", a.id, noAction())).statusCode).toBe(404); // writes are non-bypassable
+      expect(await resolutionRows(a.id)).toHaveLength(0);
+    } finally {
+      resetBreakGlassChecker();
+      resetBreakGlassAuditHook();
+    }
+  });
+
+  it("the queue pages by (respond_by, id) without gaps or repeats, rejects tampered and cross-tenant cursors, and narrows to the caseload", async () => {
+    const rows = [await quarantine(ORG_A, PAT_A2), await quarantine(ORG_A, PAT_A2), await quarantine(ORG_A, PAT_A2)];
+    const ids = rows.map((r) => r.id).sort(); // equal respond_by: the id is the tie-break (uuid order == lowercase hex order)
+    await admin.query(
+      "UPDATE critical_lab_result SET respond_by = '2000-01-01T00:00:00.123456Z' WHERE id = ANY($1::uuid[])",
+      [ids],
+    );
+    const page = (who: Who, query: string) =>
+      app.inject({ method: "GET", url: `/api/v1/orders/critical-lab-results?${query}`, headers: as(who) });
+
+    const first = await page("md", "limit=2");
+    expect((first.json().items as { id: string }[]).map((i) => i.id)).toEqual(ids.slice(0, 2));
+    expect(first.json().nextCursor).toEqual(expect.any(String));
+    const second = await page("md", `limit=2&cursor=${encodeURIComponent(first.json().nextCursor)}`);
+    expect((second.json().items as { id: string }[])[0]?.id).toBe(ids[2]); // no gap, no repeat
+
+    expect((await page("md", "limit=2&cursor=garbage.garbage")).statusCode).toBe(422);
+    expect((await page("mdB", `limit=2&cursor=${encodeURIComponent(first.json().nextCursor)}`)).statusCode).toBe(422); // another org's cursor
+
+    // `np` is on PAT_A's caseload, not PAT_A2's: the filter (not an empty-caseload short circuit) keeps those rows out.
+    const np = await queueIds("np");
+    expect(np.some((id) => ids.includes(id))).toBe(false);
+    expect(await queueIds("md")).toEqual(expect.arrayContaining(ids));
+  });
+
+  it("two simultaneous resolves of one result: exactly one wins (200), the other is a clean 409, one row, one event", async () => {
+    const a = await quarantine(ORG_A, PAT_A);
+
+    const results = await Promise.all([resolve("md", a.id, noAction()), resolve("np", a.id, noAction())]);
+
+    expect(results.map((r) => r.statusCode).sort()).toEqual([200, 409]);
+    expect(await resolutionRows(a.id)).toHaveLength(1);
+    expect(await resolvedEvents(a.id)).toHaveLength(1);
+  });
+
+  it("the database stamps resolved_at and refuses a resolution that does not match its ledger row", async () => {
+    const a = await quarantine(ORG_A, PAT_A);
+    const paged = await quarantine(ORG_A, PAT_A, orderA); // 'paged', not quarantined
+    const insert = (org: string, patient: string, resultId: string, resolvedAt = "2000-01-01T00:00:00Z") =>
+      asApp<{ resolved_at: Date }>(
+        ORG_A,
+        `INSERT INTO critical_lab_result_resolution (organization_id, patient_id, critical_lab_result_id, resolution, reason, resolver_membership_id, resolver_discipline, resolved_at)
+         VALUES ($1,$2,$3,'reviewed_no_action','a direct insert reason',gen_random_uuid(),'np',$4) RETURNING resolved_at`,
+        [org, patient, resultId, resolvedAt],
+      );
+
+    const [stamped] = await insert(ORG_A, PAT_A, a.id); // a forged 2000-01-01 clock is overwritten
+    expect(Math.abs(new Date(stamped?.resolved_at as Date).getTime() - Date.now())).toBeLessThan(60_000);
+    await expect(insert(ORG_A, PAT_A2, a.id)).rejects.toThrow(/same organization and patient/);
+    await expect(insert(ORG_A, PAT_A, paged.id)).rejects.toThrow(/quarantined result/);
+  });
+
+  it("a resolver that holds the row lock cannot be raced by the escalation sweep: the cleared result is not paged", async () => {
+    const q = await quarantine(ORG_A, PAT_A);
+    const holder = new Client({ connectionString: DB_URL });
+    await holder.connect();
+    const paged: string[] = [];
+    try {
+      await holder.query("BEGIN");
+      await holder.query("SELECT id FROM critical_lab_result WHERE id=$1 FOR UPDATE", [q.id]);
+      await holder.query(
+        `INSERT INTO critical_lab_result_resolution (organization_id, patient_id, critical_lab_result_id, resolution, reason, resolver_membership_id, resolver_discipline)
+         VALUES ($1,$2,$3,'reviewed_no_action','held open by the test',$4,'medical_director')`,
+        [ORG_A, PAT_A, q.id, membership[USERS.md.id]],
+      );
+      const sweep = sweepQuarantinedCriticalLabs(
+        {
+          db: handle.db,
+          now: () => new Date(Date.now() + 2 * CRITICAL_LAB_NO_ORDER_RESPOND_WITHIN_MS),
+          escalate: async (_org, row) => {
+            paged.push(row.observationId);
+          },
+        },
+        ORG_A,
+      );
+      // Wait until the sweep is blocked behind the resolver's lock, then let the resolver commit.
+      for (let i = 0; i < 100; i++) {
+        const { rows } = await admin.query(
+          "SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type='Lock' AND datname=current_database()",
+        );
+        if (rows[0].n > 0) break;
+        await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+      }
+      await holder.query("COMMIT");
+      await sweep;
+    } finally {
+      await holder.end();
+    }
+
+    expect(paged).not.toContain(q.observationId);
+    const stamp = await admin.query("SELECT escalated_at FROM critical_lab_result WHERE id=$1", [q.id]);
+    expect(stamp.rows[0].escalated_at).toBeNull();
+  });
+
   it("the destruction path deletes the resolution before its ledger row, so the patient can be destroyed", async () => {
     const d = await quarantine(ORG_A, PAT_D);
     expect((await resolve("md", d.id, noAction())).statusCode).toBe(200);
+    const resolutionId = (await resolutionRows(d.id))[0].id as string;
     await admin.query(
       `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='cs01_destroyer') THEN
          CREATE ROLE cs01_destroyer LOGIN PASSWORD 'cs01_destroyer_pw' IN ROLE chartwarden_destruction;
@@ -647,6 +789,12 @@ describe.skipIf(!DB_URL)("CW-CS-01 critical lab result resolution — LIVE Postg
       await admin.query("DROP ROLE cs01_destroyer");
     }
     expect(await resolutionRows(d.id)).toHaveLength(0);
+    const deleteAudit = await admin.query(
+      "SELECT before FROM audit_event WHERE event_type='critical_lab_result_resolution.delete' AND resource_id=$1",
+      [resolutionId],
+    );
+    expect(deleteAudit.rows).toHaveLength(1);
+    expect(deleteAudit.rows[0].before.reason).toBe("<changed>"); // the reason is scrubbed from the delete image too
     await admin.query("DELETE FROM patient WHERE id=$1", [PAT_D]); // the restrict FKs no longer block it
   });
 });

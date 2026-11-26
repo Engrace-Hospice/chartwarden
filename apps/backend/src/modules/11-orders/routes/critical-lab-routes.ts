@@ -1,4 +1,9 @@
-import { hasOrgWideScope, requireAbac, requirePermission } from "@chartwarden/auth";
+import {
+  BREAK_GLASS_ATTRIBUTE,
+  hasOrgWideScope,
+  requireAbac,
+  requirePermission,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/11-orders/routes/critical-lab-routes.ts — the quarantined critical-lab queue and its
 // resolve workflow (#1136 / CW-CS-01).
 //
@@ -121,12 +126,27 @@ export function registerCriticalLabRoutes(app: FastifyInstance, deps: CriticalLa
     {
       preHandler: [READ, ...scopeGuard("orders.read", true)],
       // `resourceIdParam` is what puts the result's id on the read event; without it the event's resource id is empty.
-      config: { auditRead: { resourceKind: "critical_lab_result", resourceIdParam: "id" } },
+      // `patientIdPayloadPath` attributes the read to the patient, which the §164.528 accounting query joins on.
+      config: {
+        auditRead: {
+          resourceKind: "critical_lab_result",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "patientId",
+        },
+      },
     },
     async (request) => {
       const { id } = parse(CriticalLabResultParamsSchema, request.params);
       const { organizationId, assertInScope } = actorOf(request);
-      return getCriticalLabResult(deps, organizationId, id, assertInScope);
+      // A break-glass grant the guard above honoured opens THIS read: the service's own scope re-check ignores grants and
+      // would 404 an emergency read the guard just audited as granted. The resolve route never takes this path.
+      const breakGlass = typeof request.context.attributes[BREAK_GLASS_ATTRIBUTE] === "string";
+      return getCriticalLabResult(
+        deps,
+        organizationId,
+        id,
+        breakGlass ? async () => undefined : assertInScope,
+      );
     },
   );
 

@@ -186,7 +186,12 @@ export async function sweepQuarantinedCriticalLabs(
         deps.db,
         { organizationId, userId: CONSUMER_USER_ID },
         async (scoped) => {
-          const stamped = await (scoped as unknown as DbClient)
+          const tx = scoped as unknown as DbClient;
+          // #1136 — take the row lock in its OWN statement first. A resolver that holds the lock and has not committed
+          // would otherwise let this UPDATE wait and then proceed on a stale `NOT EXISTS` (a locked-but-unchanged row is
+          // not re-checked); after the lock the UPDATE below runs on a fresh snapshot and sees the committed resolution.
+          await tx.select({ id: CLR.id }).from(CLR).where(eq(CLR.id, r.id)).for("update");
+          const stamped = await tx
             .update(CLR)
             .set({ escalatedAt: now, updatedAt: now })
             .where(and(eq(CLR.id, r.id), isNull(CLR.escalatedAt), criticalLabOpen()))

@@ -61,6 +61,16 @@ describe("resolveCriticalLabResult — refusals before any database access", () 
     );
   });
 
+  it("counts characters as the database does, and refuses NUL (both would otherwise fail the INSERT as a 500)", async () => {
+    // Five emoji are ten UTF-16 units but five characters (`char_length`).
+    await expect(
+      run({ resolution: "reviewed_no_action", reason: "😀".repeat(5) }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    await expect(
+      run({ resolution: "reviewed_no_action", reason: `${REASON}\u0000` }),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
   it("refuses a matched_to_order with no order, and a reviewed_no_action that names one (422)", async () => {
     await expect(run({ resolution: "matched_to_order", reason: REASON })).rejects.toBeInstanceOf(
       ValidationError,
@@ -71,10 +81,18 @@ describe("resolveCriticalLabResult — refusals before any database access", () 
   });
 
   it("never echoes the reason in a refusal message", async () => {
-    const secret = "patient Pat Synthetic asked us not to say";
-    const error = await run({ resolution: "matched_to_order", reason: secret }).catch(
+    const secret = "Pat Syn"; // too short, so this takes the reason-refusal path and the message is built next to it
+    const tooShort = await run({ resolution: "reviewed_no_action", reason: secret }).catch(
       (e: unknown) => e,
     );
-    expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain("Pat Synthetic");
+    const mismatch = await run({
+      resolution: "reviewed_no_action",
+      matchedOrderId: ORDER,
+      reason: `${REASON} Pat Synthetic asked us not to say`,
+    }).catch((e: unknown) => e);
+    for (const error of [tooShort, mismatch]) {
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toMatch(/Pat Syn/);
+    }
   });
 });

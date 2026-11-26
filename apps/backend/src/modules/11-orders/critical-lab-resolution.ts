@@ -244,12 +244,14 @@ export async function resolveCriticalLabResult(
     throw new ForbiddenError("only a prescriber may resolve a critical lab result");
   }
   const reason = input.reason.trim();
-  if (reason.length < CRITICAL_LAB_REASON_MIN_LENGTH) {
+  // Count what the database counts (`char_length`: code points, not UTF-16 units) and refuse NUL (Postgres cannot store
+  // it): either would otherwise pass validation and fail the INSERT as a 500 whose logged error carries the reason.
+  if ([...reason].length < CRITICAL_LAB_REASON_MIN_LENGTH || reason.includes("\u0000")) {
     throw new ValidationError("a reason is required", [
       {
         field: "reason",
-        code: "too_short",
-        message: `at least ${CRITICAL_LAB_REASON_MIN_LENGTH} characters`,
+        code: "invalid_reason",
+        message: `at least ${CRITICAL_LAB_REASON_MIN_LENGTH} characters, and no NUL`,
       },
     ]);
   }
