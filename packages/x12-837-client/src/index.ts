@@ -258,7 +258,7 @@ export {
   type NoticeDocument,
   type NoticeKind,
 } from "./notices/build-837i-notice";
-export { X12BuildError } from "./x12/writer";
+export { X12BuildError, transactionSetControlNumber } from "./x12/writer";
 export {
   Claim837iBuildError,
   build837iClaim,

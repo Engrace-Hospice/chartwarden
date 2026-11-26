@@ -74,6 +74,8 @@ function baseCtx(): MedicaidValidationContext {
     ],
     rbClaimSnapshotVerified: true,
     hospiceClaimSnapshotVerified: true,
+    hospicePricingSnapshotVerified: true,
+    hospiceInstitutionalFormatQualified: true,
     rateLookups: [{ serviceDate: "2026-01-01", loc: "NF_RB", rateFound: true, rateCents: 20000 }],
     payerResponsibility: { status: "permitted", reasonCode: null },
     evvBrackets: [{ encounterId: "e1", bracketState: "compliant" }],
@@ -98,7 +100,7 @@ function baseCtx(): MedicaidValidationContext {
 
 describe("default Medicaid rule set", () => {
   it("distinguishes regulatory rules from non-regulatory platform safety gates", () => {
-    expect(DEFAULT_MEDICAID_RULES).toHaveLength(17);
+    expect(DEFAULT_MEDICAID_RULES).toHaveLength(19);
     expect(DEFAULT_MEDICAID_RULES.filter((r) => r.regulatoryRequired)).toHaveLength(11);
     expect(
       DEFAULT_MEDICAID_RULES.filter((r) => r.platformRequired)
@@ -106,7 +108,9 @@ describe("default Medicaid rule set", () => {
         .sort(),
     ).toEqual([
       "medicaid_hospice_claim_snapshot_verified",
+      "medicaid_hospice_institutional_format_qualified",
       "medicaid_medicare_linkage_supported",
+      "medicaid_payer_rate_policy_snapshot_verified",
       "medicaid_payer_responsibility_resolved",
       "medicaid_rb_claim_snapshot_verified",
       "medicare_primary_required_for_dual",
@@ -130,6 +134,40 @@ describe("default Medicaid rule set", () => {
     const summary = runMedicaidRules([rule!], unresolved, {}, new Set([rule!.key]));
     expect(summary.blockingFailures).toBe(1);
     expect(summary.overriddenCount).toBe(0);
+  });
+
+  it("keeps a local hospice coding profile out of READY even when pricing snapshots pass", () => {
+    const localContext: MedicaidValidationContext = {
+      ...baseCtx(),
+      claim: { ...baseCtx().claim, kind: "hospice_only" },
+      lines: baseCtx().lines.map((line) => ({
+        ...line,
+        isRb: false,
+        levelOfCare: "RHC",
+        revenueCode: "0651",
+        qCode: "Q5001",
+      })),
+      hospicePricingSnapshotVerified: true,
+      hospiceInstitutionalFormatQualified: false,
+    };
+    const summary = runMedicaidRules(DEFAULT_MEDICAID_RULES, localContext);
+    const format = summary.results.find(
+      (result) => result.ruleKey === "medicaid_hospice_institutional_format_qualified",
+    );
+    const pricing = summary.results.find(
+      (result) => result.ruleKey === "medicaid_payer_rate_policy_snapshot_verified",
+    );
+    expect(pricing?.passed).toBe(true);
+    expect(format?.passed).toBe(false);
+    expect(summary.blockingFailures).toBe(1);
+    expect(
+      runMedicaidRules(
+        DEFAULT_MEDICAID_RULES,
+        localContext,
+        {},
+        new Set(["medicaid_hospice_institutional_format_qualified"]),
+      ).blockingFailures,
+    ).toBeGreaterThan(0);
   });
 
   it("blocks background readiness for an R&B claim without a verified current snapshot", () => {
@@ -185,6 +223,39 @@ describe("default Medicaid rule set", () => {
     expect(rule!.check(context, {}).passed).toBe(true);
   });
 
+  it("blocks hospice claim readiness without a payer-rate snapshot and cannot be overridden", () => {
+    const rule = DEFAULT_MEDICAID_RULES.find(
+      (candidate) => candidate.key === "medicaid_payer_rate_policy_snapshot_verified",
+    );
+    expect(rule).toBeDefined();
+    expect(rule?.platformRequired).toBe(true);
+    const context = {
+      ...baseCtx(),
+      claim: { ...baseCtx().claim, kind: "hospice_only" as const },
+      lines: [
+        {
+          ...baseCtx().lines[0]!,
+          isRb: false,
+          levelOfCare: "RHC" as const,
+          revenueCode: "0651",
+        },
+      ],
+      hospicePricingSnapshotVerified: false,
+    };
+    const result = runMedicaidRules([rule!], context, {}, new Set([rule!.key]));
+    expect(result.results[0]).toMatchObject({ passed: false, severity: "error" });
+    expect(result.blockingFailures).toBe(1);
+    expect(result.overriddenCount).toBe(0);
+
+    const rbOnly = {
+      ...baseCtx(),
+      claim: { ...baseCtx().claim, kind: "rb_only" as const },
+      lines: [{ ...baseCtx().lines[0]!, isRb: true }],
+      hospicePricingSnapshotVerified: false,
+    };
+    expect(rule?.check(rbOnly, {}).passed).toBe(true);
+  });
+
   it("does not require an R&B snapshot for a hospice-only claim", () => {
     const rule = DEFAULT_MEDICAID_RULES.find(
       (candidate) => candidate.key === "medicaid_rb_claim_snapshot_verified",
@@ -223,12 +294,12 @@ describe("default Medicaid rule set", () => {
     expect(summary.blockingFailures).toBe(0);
     expect(summary.failedCount).toBe(0);
     expect(summary.warningCount).toBe(0);
-    expect(summary.results).toHaveLength(17);
+    expect(summary.results).toHaveLength(19);
   });
 
   it("the registry freezes and rejects post-freeze registration + duplicate keys", () => {
     const reg = createDefaultMedicaidRegistry();
-    expect(reg.all()).toHaveLength(17);
+    expect(reg.all()).toHaveLength(19);
     expect(() => reg.registerRule(DEFAULT_MEDICAID_RULES[0]!)).toThrow(/Duplicate/);
     reg.freeze();
     expect(reg.isFrozen()).toBe(true);

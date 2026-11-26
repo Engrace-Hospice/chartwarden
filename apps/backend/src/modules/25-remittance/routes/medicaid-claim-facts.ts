@@ -17,10 +17,104 @@ export interface MedicaidClaimContextView {
 export interface MedicaidClaimFactsView {
   claimContext(orgId: string, claimId: string): Promise<MedicaidClaimContextView | null>;
   medicaidClaimIds(orgId: string, claimIds: readonly string[]): Promise<ReadonlySet<string>>;
+  submissionEvidenceForLine(
+    orgId: string,
+    providerEntityId: string,
+    keys: { readonly claimControlNumber: string },
+  ): Promise<MedicaidSubmissionEvidenceView[]>;
+  eraEnrollmentEvidence(
+    orgId: string,
+    providerEntityId: string,
+  ): Promise<
+    readonly {
+      readonly organizationId: string;
+      readonly providerEntityId: string;
+      readonly vendor: "claimmd" | "stedi";
+      readonly accountReference: string;
+      readonly environment: "test" | "production";
+      readonly canonicalPayerId: string;
+      readonly programId: string;
+      readonly evidenceId: string;
+      readonly evidenceVersion: number;
+      readonly payerIdentifier: string | null;
+      readonly billingNpi: string;
+      readonly billingTin: null;
+      readonly effectiveFrom: string;
+      readonly effectiveTo: string;
+      readonly evidenceFreshUntil: string;
+      readonly evidenceReference: string;
+      readonly verifiedAt: string;
+      readonly classificationRecordedAt: string;
+      readonly sourceEvidenceFingerprint: string;
+    }[]
+  >;
+}
+
+export async function medicaidEraEnrollmentEvidence(
+  organizationId: string,
+  providerEntityId: string,
+  view: () => Pick<MedicaidClaimFactsView, "eraEnrollmentEvidence"> = liveView,
+) {
+  return view().eraEnrollmentEvidence(organizationId, providerEntityId);
+}
+
+export interface MedicaidSubmissionEvidenceView {
+  readonly disposition: "SUBMISSION_UNVERIFIED" | "SUBMISSION_EVIDENCE";
+  readonly claimId: string | null;
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  readonly claimControlNumber: string | null;
+  readonly canonicalPayerId: string | null;
+  readonly programKind: string | null;
+  readonly serviceState: string;
+  readonly serviceFrom: string;
+  readonly serviceTo: string;
+  readonly claimState: string;
+  readonly claimVersion: number;
+  readonly sourceEvidenceFingerprint: string;
+  readonly replacesClaimId: string | null;
+  readonly replacedByClaimId: string | null;
+  readonly attempts: readonly {
+    readonly submissionId: string | null;
+    readonly attemptIndex: number;
+    readonly claimVersion: number | null;
+    readonly sourceAccountRef: string | null;
+    readonly environment: string | null;
+    readonly vendor: string;
+    readonly vendorTransactionId: string | null;
+    readonly payerId: string | null;
+    readonly payerClassificationId: string | null;
+    readonly programKind: string | null;
+    readonly assignmentId: string | null;
+    readonly assignmentVersion: number | null;
+    readonly provenanceStatus: string;
+    readonly result: string;
+    readonly submittedAt: string | null;
+    readonly acknowledgments: readonly {
+      readonly kind: string;
+      readonly outcome: string;
+      readonly payerClaimControlNumber: string | null;
+      readonly receivedAt: string;
+      readonly id: string;
+    }[];
+  }[];
 }
 
 const liveView = (): MedicaidClaimFactsView =>
   getSeam("MedicaidClaimMatchProvider") as MedicaidClaimFactsView;
+
+/**
+ * Server-owned claim/submission evidence; incomplete attempts remain ID-hidden and unverified. Its one caller is the
+ * Medicaid ERA review evaluator's `claimCandidates` reader (`ingest/medicaid-era-review-readers.ts`).
+ */
+export async function medicaidSubmissionEvidence(
+  organizationId: string,
+  providerEntityId: string,
+  claimControlNumber: string,
+  view: () => Pick<MedicaidClaimFactsView, "submissionEvidenceForLine"> = liveView,
+): Promise<MedicaidSubmissionEvidenceView[]> {
+  return view().submissionEvidenceForLine(organizationId, providerEntityId, { claimControlNumber });
+}
 
 /** One seam call (one M24 connection): the claim's context, null when absent. Logs (ids only, no PHI) and rethrows on failure. */
 export async function medicaidClaimContext(

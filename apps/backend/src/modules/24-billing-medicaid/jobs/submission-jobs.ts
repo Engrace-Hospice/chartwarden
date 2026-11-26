@@ -185,6 +185,8 @@ export async function runClaimSubmit(
     claim.serviceState,
     claim.mcoId ?? null,
     false,
+    claim.medicaidProgramKind ?? "unresolved",
+    (claim.programResolutionSnapshot as { status?: unknown } | null)?.status === "verified",
   );
   if (!routeReadiness.submissionAvailable) {
     await terminalizeSubmissionAndTransition(
@@ -533,6 +535,8 @@ export async function runClaimPoll(
     claim.serviceState,
     claim.mcoId ?? null,
     false,
+    claim.medicaidProgramKind ?? "unresolved",
+    (claim.programResolutionSnapshot as { status?: unknown } | null)?.status === "verified",
   );
   if (!routeReadiness.submissionAvailable) return;
 

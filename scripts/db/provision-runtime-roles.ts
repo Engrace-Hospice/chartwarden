@@ -50,19 +50,46 @@
  * platform login (table-wide SELECT on `claimmd_era_m25_stage`, so across tenants), which is what `m23-claimmd-webhook.live`
  * proves is present after migrate-then-provision; compliance/controls.yaml CW-AC-10 names it.
  */
+import { readFileSync } from "node:fs";
 import { Client } from "pg";
+
+function runtimePassword(name: string): string | undefined {
+  const inline = process.env[name];
+  const file = process.env[`${name}_FILE`];
+  if (inline !== undefined && file) {
+    throw new Error(
+      `${name} and ${name}_FILE cannot both be set; keep the password out of env_file`,
+    );
+  }
+  if (!file) return inline;
+  const value = readFileSync(file, "utf8").trimEnd();
+  if (!value) throw new Error(`${name}_FILE is empty`);
+  return value;
+}
 
 const url = process.env.PROVISION_DATABASE_URL ?? process.env.DATABASE_SUPERUSER_URL;
 const platformPassword = process.env.CHARTWARDEN_PLATFORM_PASSWORD;
 const destructionPassword = process.env.CHARTWARDEN_DESTRUCTION_PASSWORD;
 // M36 WP 2.13: the only login that may call m36_reseal_message_revision (migration 1090). Operator-held, never an app credential.
 const bodyBackfillPassword = process.env.CHARTWARDEN_BODY_BACKFILL_PASSWORD;
+const m25EvaluatorPassword = runtimePassword("CHARTWARDEN_M25_EVALUATOR_PASSWORD");
+const revokeM25Evaluator = process.env.CHARTWARDEN_M25_EVALUATOR_REVOKE === "true";
+const m25EraSourcePassword = runtimePassword("CHARTWARDEN_M25_ERA_SOURCE_PASSWORD");
+const revokeM25EraSource = process.env.CHARTWARDEN_M25_ERA_SOURCE_REVOKE === "true";
 
 if (!url) {
   console.error("PROVISION_DATABASE_URL (superuser/owner) is required");
   process.exit(1);
 }
-if (!platformPassword && !destructionPassword && !bodyBackfillPassword) {
+if (
+  !platformPassword &&
+  !destructionPassword &&
+  !bodyBackfillPassword &&
+  !m25EvaluatorPassword &&
+  !revokeM25Evaluator &&
+  !m25EraSourcePassword &&
+  !revokeM25EraSource
+) {
   console.error(
     "set CHARTWARDEN_PLATFORM_PASSWORD, CHARTWARDEN_DESTRUCTION_PASSWORD and/or CHARTWARDEN_BODY_BACKFILL_PASSWORD (≥16 chars) — nothing to provision otherwise",
   );
@@ -72,6 +99,8 @@ for (const [name, pw] of [
   ["CHARTWARDEN_PLATFORM_PASSWORD", platformPassword],
   ["CHARTWARDEN_DESTRUCTION_PASSWORD", destructionPassword],
   ["CHARTWARDEN_BODY_BACKFILL_PASSWORD", bodyBackfillPassword],
+  ["CHARTWARDEN_M25_EVALUATOR_PASSWORD", m25EvaluatorPassword],
+  ["CHARTWARDEN_M25_ERA_SOURCE_PASSWORD", m25EraSourcePassword],
 ] as const) {
   if (pw !== undefined && pw.length < 16) {
     console.error(`${name} must be ≥16 characters`);
@@ -338,7 +367,142 @@ async function main(): Promise<void> {
   };
   const quoteLiteral = (v: string): string => `'${v.replaceAll("'", "''")}'`;
 
+  const quoteIdentifier = (v: string): string => `"${v.replaceAll('"', '""')}"`;
+  const terminateRoleSessions = async (roleName: string): Promise<void> => {
+    await db.query(
+      "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = $1 AND pid <> pg_backend_pid()",
+      [roleName],
+    );
+  };
+  const clearMemberships = async (loginName: string): Promise<void> => {
+    const memberships = await db.query<{ role_name: string }>(
+      "SELECT granted.rolname AS role_name FROM pg_auth_members membership " +
+        "JOIN pg_roles granted ON granted.oid = membership.roleid " +
+        "JOIN pg_roles member ON member.oid = membership.member " +
+        "WHERE member.rolname = $1",
+      [loginName],
+    );
+    for (const { role_name } of memberships.rows) {
+      await run(`REVOKE ${quoteIdentifier(role_name)} FROM ${quoteIdentifier(loginName)};`);
+    }
+    // Also clear reverse memberships. A role that is a member OF this login inherits
+    // its carrier grants even though the login itself has no unexpected memberships.
+    const reverseMemberships = await db.query<{ member_name: string }>(
+      "SELECT member.rolname AS member_name FROM pg_auth_members membership " +
+        "JOIN pg_roles granted ON granted.oid = membership.roleid " +
+        "JOIN pg_roles member ON member.oid = membership.member " +
+        "WHERE granted.rolname = $1 AND member.rolname <> $1",
+      [loginName],
+    );
+    for (const { member_name } of reverseMemberships.rows) {
+      await run(`REVOKE ${quoteIdentifier(loginName)} FROM ${quoteIdentifier(member_name)};`);
+    }
+  };
+  const assertNoOwnedObjects = async (roleName: string): Promise<void> => {
+    const owned = await db.query<{ count: string }>(
+      "SELECT count(*)::text AS count FROM pg_shdepend " +
+        "WHERE refclassid = 'pg_authid'::regclass " +
+        "AND refobjid = (SELECT oid FROM pg_roles WHERE rolname = $1) AND deptype = 'o'",
+      [roleName],
+    );
+    if (Number(owned.rows[0]?.count ?? "0") > 0)
+      throw new Error(`${roleName} owns database objects; refusing runtime-role provisioning`);
+  };
+  const assertSafeCarrier = async (roleName: string, approvedLogin: string): Promise<void> => {
+    const { rows } = await db.query<{
+      rolcanlogin: boolean;
+      rolsuper: boolean;
+      rolcreatedb: boolean;
+      rolcreaterole: boolean;
+      rolreplication: boolean;
+      rolbypassrls: boolean;
+      rolinherit: boolean;
+      has_memberships: boolean;
+    }>(
+      "SELECT r.rolcanlogin,r.rolsuper,r.rolcreatedb,r.rolcreaterole,r.rolreplication," +
+        "r.rolbypassrls,r.rolinherit,(EXISTS(SELECT 1 FROM pg_auth_members m WHERE m.member=r.oid) " +
+        "OR EXISTS(SELECT 1 FROM pg_auth_members m JOIN pg_roles member ON member.oid=m.member " +
+        "WHERE m.roleid=r.oid AND member.rolname<>$2)) AS has_memberships " +
+        "FROM pg_roles r WHERE r.rolname=$1",
+      [roleName, approvedLogin],
+    );
+    const role = rows[0];
+    if (
+      !role ||
+      role.rolcanlogin ||
+      role.rolsuper ||
+      role.rolcreatedb ||
+      role.rolcreaterole ||
+      role.rolreplication ||
+      role.rolbypassrls ||
+      role.rolinherit ||
+      role.has_memberships
+    )
+      throw new Error(
+        `${roleName} has unexpected attributes or memberships; refusing runtime-role provisioning`,
+      );
+  };
+  const provisionIsolatedLogin = async (
+    loginName: string,
+    carrierName: string,
+    password: string,
+  ): Promise<void> => {
+    await assertSafeCarrier(carrierName, loginName);
+    await assertNoOwnedObjects(carrierName);
+    await run(
+      `DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = ${quoteLiteral(loginName)}) THEN CREATE ROLE ${quoteIdentifier(loginName)}; END IF; END $$;`,
+    );
+    await assertNoOwnedObjects(loginName);
+    // Revoke even the approved membership first so an old ADMIN OPTION cannot survive rotation.
+    await clearMemberships(loginName);
+    await run(
+      `ALTER ROLE ${quoteIdentifier(loginName)} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT PASSWORD ${quoteLiteral(password)};`,
+    );
+    await run(`GRANT ${quoteIdentifier(carrierName)} TO ${quoteIdentifier(loginName)};`);
+    // A rotated password must also cut the sessions opened with the old one (a leaked credential's connection would
+    // otherwise stay usable); the isolated process reconnects with the new secret file.
+    await terminateRoleSessions(loginName);
+  };
+  const revokeIsolatedLogin = async (loginName: string): Promise<void> => {
+    await run(
+      `ALTER ROLE ${quoteIdentifier(loginName)} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT PASSWORD NULL;`,
+    );
+    await clearMemberships(loginName);
+    // Keep revocation explicit even if a future ALTER ROLE normalization changes its option list.
+    await run(`ALTER ROLE ${quoteIdentifier(loginName)} PASSWORD NULL;`);
+    await terminateRoleSessions(loginName);
+  };
+
   try {
+    if (revokeM25Evaluator) {
+      await revokeIsolatedLogin("chartwarden_m25_evaluator_login");
+      console.log("✓ chartwarden_m25_evaluator_login disabled and active sessions terminated");
+    } else if (m25EvaluatorPassword) {
+      const carrier = await db.query(
+        "SELECT 1 FROM pg_roles WHERE rolname = 'chartwarden_m25_evaluator'",
+      );
+      if (carrier.rowCount === 0)
+        throw new Error("chartwarden_m25_evaluator is missing — apply migration 1547 first");
+      await provisionIsolatedLogin(
+        "chartwarden_m25_evaluator_login",
+        "chartwarden_m25_evaluator",
+        m25EvaluatorPassword,
+      );
+      console.log(
+        "✓ chartwarden_m25_evaluator_login provisioned (least-privilege, isolated carrier)",
+      );
+    }
+    if (revokeM25EraSource) {
+      await revokeIsolatedLogin("chartwarden_m25_era_source_login");
+      console.log("✓ chartwarden_m25_era_source_login disabled and active sessions terminated");
+    } else if (m25EraSourcePassword) {
+      await provisionIsolatedLogin(
+        "chartwarden_m25_era_source_login",
+        "chartwarden_m25_era_source",
+        m25EraSourcePassword,
+      );
+      console.log("✓ chartwarden_m25_era_source_login provisioned (function-only source reader)");
+    }
     if (platformPassword) {
       // ── the chartwarden_platform carrier + its enumerated grants ─────────────────────────────────
       await run(`DO $$ BEGIN
@@ -499,6 +663,77 @@ async function main(): Promise<void> {
       for (const t of PLATFORM_PROVISION_UPDATE_TABLES) {
         await run(`GRANT UPDATE ON "${t}" TO chartwarden_platform;`);
       }
+      // Create the login before the Medicaid review revocations below. A fresh migrate-then-provision
+      // database has the carrier role only; existing installations already have this login. Both
+      // orders must leave the shared platform credential without assessment writes.
+      await run(`DO $$ BEGIN
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'chartwarden_platform_login') THEN
+          CREATE ROLE chartwarden_platform_login LOGIN IN ROLE chartwarden_platform;
+        END IF;
+      END $$;`);
+      await run(
+        `ALTER ROLE chartwarden_platform_login LOGIN BYPASSRLS PASSWORD ${quoteLiteral(platformPassword)};`,
+      );
+      await run("GRANT chartwarden_platform TO chartwarden_platform_login;");
+      // M25 Medicaid ERA assessments are evaluator-owned facts. The general platform credential is
+      // shared by API/worker/listener runtimes and must never regain assessment or history writes
+      // through a later role-provisioning run. Until an isolated evaluator writer exists, keep the
+      // records read-only to platform jobs and make the limitation explicit at provisioning time.
+      for (const table of ["medicaid_era_review", "medicaid_era_review_history"]) {
+        await run(`REVOKE ALL PRIVILEGES ON TABLE "${table}" FROM chartwarden_platform;`);
+        await run(`REVOKE ALL PRIVILEGES ON TABLE "${table}" FROM chartwarden_platform_login;`);
+      }
+      await run(`DO $$
+        DECLARE role_name text; table_name text; column_name text;
+        BEGIN
+          FOREACH role_name IN ARRAY ARRAY['chartwarden_platform', 'chartwarden_platform_login'] LOOP
+            FOREACH table_name IN ARRAY ARRAY['medicaid_era_review', 'medicaid_era_review_history'] LOOP
+              FOR column_name IN
+                SELECT attname FROM pg_attribute
+                 WHERE attrelid = table_name::regclass AND attnum > 0 AND NOT attisdropped
+              LOOP
+                EXECUTE format(
+                  'REVOKE INSERT (%1$I), UPDATE (%1$I), REFERENCES (%1$I) ON TABLE %2$I FROM %3$I',
+                  column_name, table_name, role_name
+                );
+              END LOOP;
+            END LOOP;
+          END LOOP;
+        END $$;`);
+      const medicaidEraWritePrivileges = await db.query<{ can_write: boolean }>(`
+        SELECT EXISTS (
+          SELECT 1
+          FROM unnest(ARRAY['medicaid_era_review', 'medicaid_era_review_history']) AS table_name
+          WHERE has_table_privilege('chartwarden_platform_login', table_name, 'INSERT')
+             OR has_table_privilege('chartwarden_platform_login', table_name, 'UPDATE')
+             OR has_table_privilege('chartwarden_platform_login', table_name, 'DELETE')
+             OR has_table_privilege('chartwarden_platform_login', table_name, 'TRUNCATE')
+        ) AS can_write
+      `);
+      if (medicaidEraWritePrivileges.rows[0]?.can_write) {
+        throw new Error(
+          "chartwarden_platform_login must remain read-only for Medicaid ERA assessment and history tables",
+        );
+      }
+      const medicaidEraColumnWritePrivileges = await db.query<{ can_write: boolean }>(`
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_attribute a
+          JOIN pg_class c ON c.oid = a.attrelid
+          WHERE c.relname IN ('medicaid_era_review', 'medicaid_era_review_history')
+            AND a.attnum > 0 AND NOT a.attisdropped
+            AND (
+              has_column_privilege('chartwarden_platform_login', c.oid, a.attnum, 'INSERT')
+              OR has_column_privilege('chartwarden_platform_login', c.oid, a.attnum, 'UPDATE')
+              OR has_column_privilege('chartwarden_platform_login', c.oid, a.attnum, 'REFERENCES')
+            )
+        ) AS can_write
+      `);
+      if (medicaidEraColumnWritePrivileges.rows[0]?.can_write) {
+        throw new Error(
+          "chartwarden_platform_login must not hold column-level writes on Medicaid ERA review tables",
+        );
+      }
       // Slice 7 (7S, migration 1484): the support tables are written by COLUMN. A session is closed (the sweep, a manual close, an
       // operator's Resolve) by two columns, a grant is revoked (Resolve) by three; nothing else on either row is ever rewritten from
       // the platform side, so a carrier that could (expires_at, actor_membership_id, scope) would hold unused authority over what a
@@ -558,15 +793,6 @@ async function main(): Promise<void> {
       }
 
       // ── the login role (BYPASSRLS is an attribute — it lives HERE, not on the carrier) ───────
-      await run(`DO $$ BEGIN
-        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'chartwarden_platform_login') THEN
-          CREATE ROLE chartwarden_platform_login LOGIN IN ROLE chartwarden_platform;
-        END IF;
-      END $$;`);
-      await run(
-        `ALTER ROLE chartwarden_platform_login LOGIN BYPASSRLS PASSWORD ${quoteLiteral(platformPassword)};`,
-      );
-      await run("GRANT chartwarden_platform TO chartwarden_platform_login;");
       console.log(
         "✓ chartwarden_platform_login provisioned (carrier chartwarden_platform + BYPASSRLS)",
       );

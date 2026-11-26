@@ -18,6 +18,10 @@ import { pageLimit, pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import {
+  MAX_ASSEMBLY_SERVICE_SPAN_DAYS,
+  MEDICAID_SERVICE_SPAN_TOO_LONG,
+} from "../claim-range-guards";
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
@@ -50,6 +54,25 @@ export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
  */
 export function parseQuery<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   return check(schema, Value.Convert(schema, raw ?? {}));
+}
+
+/**
+ * Cross-field check for a dated record body: `effectiveTo`, when present, must not precede `effectiveFrom`
+ * (ISO dates compare as strings). Without it the database CHECK rejects the row and the caller sees a 500.
+ */
+export function assertEffectiveRange(body: {
+  readonly effectiveFrom: string;
+  readonly effectiveTo?: string | undefined;
+}): void {
+  if (body.effectiveTo !== undefined && body.effectiveTo < body.effectiveFrom) {
+    throw new ValidationError("request validation failed", [
+      {
+        field: "effectiveTo",
+        code: "INVALID",
+        message: "effectiveTo must not be earlier than effectiveFrom",
+      },
+    ]);
+  }
 }
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
@@ -120,8 +143,15 @@ const StateCode = Type.String({ minLength: 2, maxLength: 2, pattern: "^[A-Z]{2}$
 
 const RouteReadinessDto = Type.Object({
   serviceState: StateCode,
-  programKind: lit(["managed_care", "unresolved"] as const),
-  programAssignmentVerified: Type.Literal(false),
+  programKind: lit([
+    "ffs_open_card",
+    "managed_care",
+    "other_managed_care",
+    "unresolved",
+    "ambiguous",
+    "unsupported",
+  ] as const),
+  programAssignmentVerified: Type.Boolean(),
   requestedChannel: Type.Union([lit(["cco_clearinghouse"] as const), Type.Null()]),
   localPreparationAvailable: Type.Literal(true),
   transportConfigured: Type.Boolean(),
@@ -141,13 +171,20 @@ const RouteReadinessDto = Type.Object({
 
 // ── request bodies (§4.2) ───────────────────────────────────────────────────────────────────────────────
 
+/**
+ * The preview and assembly price one object per calendar day, so the service window is capped at
+ * MAX_ASSEMBLY_SERVICE_SPAN_DAYS days (inclusive); the service refuses a longer window with
+ * VALIDATION_FAILED / MEDICAID_SERVICE_SPAN_TOO_LONG before any day expansion.
+ */
+const SERVICE_SPAN_NOTE = `The service window (serviceFrom through serviceTo, inclusive) must not exceed ${MAX_ASSEMBLY_SERVICE_SPAN_DAYS} days; a longer window is refused with VALIDATION_FAILED (detail code ${MEDICAID_SERVICE_SPAN_TOO_LONG}).`;
+
 /** POST /api/v1/medicaid-claims — assemble a draft over a patient + service range (§2.1). */
 const AssembleClaimFields = {
   patientId: uuid(),
   admissionId: uuid(),
   providerEntityId: uuid(),
-  serviceFrom: isoDate(),
-  serviceTo: isoDate(),
+  serviceFrom: Type.String({ format: "date", description: SERVICE_SPAN_NOTE }),
+  serviceTo: Type.String({ format: "date", description: SERVICE_SPAN_NOTE }),
 };
 
 export const AssembleClaimBody = Type.Union([
@@ -175,15 +212,113 @@ export const AssemblyPreviewBody = Type.Object(
     patientId: uuid(),
     admissionId: uuid(),
     providerEntityId: uuid(),
-    serviceFrom: isoDate(),
-    serviceTo: isoDate(),
+    serviceFrom: Type.String({ format: "date", description: SERVICE_SPAN_NOTE }),
+    serviceTo: Type.String({ format: "date", description: SERVICE_SPAN_NOTE }),
   },
   { additionalProperties: false },
 );
+
+/** POST /api/v1/medicaid-chc-pricing-preparations — server-resolved local CHC pricing only. */
+export const ChcPricingPreparationBody = Type.Object(
+  {
+    patientId: uuid(),
+    admissionId: uuid(),
+    providerEntityId: uuid(),
+    serviceDate: isoDate(),
+  },
+  { additionalProperties: false },
+);
+const ChcPricingVerification = Type.Union([
+  Type.Object({
+    status: Type.Literal("current"),
+    preparationId: uuid(),
+    version: Type.Integer({ minimum: 1 }),
+    fingerprint: Type.String({ pattern: "^[0-9a-f]{64}$" }),
+  }),
+  Type.Object({
+    status: lit(["stale", "unresolved", "ambiguous", "unsupported"] as const),
+    reasonCode: Type.String({ minLength: 1 }),
+  }),
+]);
+export const ChcPricingPreparationResponse = Type.Object({
+  id: uuid(),
+  preparationId: uuid(),
+  version: Type.Integer({ minimum: 1 }),
+  serviceDate: isoDate(),
+  observedMinutes: nullableInt(),
+  qualifiedMinutes: nullableInt(),
+  reimbursementHours: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+  rateCentsPerHour: Type.Union([cents(), Type.Null()]),
+  estimatedReimbursementCents: Type.Union([cents(), Type.Null()]),
+  billedChargeCents: Type.Union([cents(), Type.Null()]),
+  institutionalUnits: Type.Literal("unqualified"),
+  institutionalFormatQualified: Type.Literal(false),
+  verification: ChcPricingVerification,
+});
 const AssemblyPreviewCoverage = Type.Object({
   status: lit(["uniform", "none", "changes", "ambiguous", "unavailable"] as const),
   coverageKind: nullableStr(),
   rank: Type.Union([Type.Integer(), Type.Null()]),
+});
+const AssemblyPreviewPricingStatus = lit([
+  "fully_resolved",
+  "partially_resolved",
+  "unresolved",
+  "ambiguous",
+  "unsupported",
+  "unavailable",
+] as const);
+const AssemblyPreviewPricingSegment = Type.Object({
+  serviceFrom: isoDate(),
+  serviceTo: isoDate(),
+  serviceCategory: Type.Union([
+    lit(["RHC", "CHC", "IRC", "GIP", "IN_HOME_RESPITE"] as const),
+    Type.Null(),
+  ]),
+  serviceLocationKind: Type.Union([lit(["home", "facility"] as const), Type.Null()]),
+  status: lit(["resolved", "partial", "unresolved", "ambiguous", "unsupported"] as const),
+  rateStatus: lit(["qualified", "missing", "ambiguous", "unverified", "unsupported"] as const),
+  unitBasis: Type.Union([lit(["per_day", "per_hour"] as const), Type.Null()]),
+  rateCents: Type.Union([cents(), Type.Null()]),
+  rateLocalityCode: nullableStr(),
+  rateEffectiveFrom: Type.Union([isoDate(), Type.Null()]),
+  rateEffectiveTo: Type.Union([isoDate(), Type.Null()]),
+  rateSourceKind: nullableStr(),
+  rateEvidenceVersion: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+  methodologyVersion: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+  pricingMethod: Type.Union([
+    lit(["per_day", "per_hour", "fixed_contract_unit"] as const),
+    Type.Null(),
+  ]),
+  quantityConversionMethod: Type.Union([
+    lit(["daily_units", "hourly_prorated_minutes", "hourly_each_hour_or_part"] as const),
+    Type.Null(),
+  ]),
+  minimumDurationMethod: Type.Union([
+    lit(["not_applicable", "not_required", "minimum_minutes"] as const),
+    Type.Null(),
+  ]),
+  minimumClinicalMinutes: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+  roundingBoundary: Type.Union([
+    lit(["not_applicable", "service_day", "segment"] as const),
+    Type.Null(),
+  ]),
+  chargeCeilingMethod: Type.Union([
+    lit(["none", "lower_of_rate_and_usual_charge", "contract_maximum"] as const),
+    Type.Null(),
+  ]),
+  chargeCeilings: Type.Array(
+    Type.Object({
+      method: lit(["lower_of_rate_and_usual_charge", "contract_maximum"] as const),
+      amountCents: cents(),
+      boundary: lit(["service_day", "segment"] as const),
+    }),
+  ),
+  quantityStatus: lit(["verified", "missing", "unverified"] as const),
+  baseReimbursementCents: Type.Union([cents(), Type.Null()]),
+  reimbursementEstimateCents: Type.Union([cents(), Type.Null()]),
+  actualBilledChargeCents: Type.Union([cents(), Type.Null()]),
+  reasonCodes: Type.Array(Type.String()),
 });
 export const AssemblyPreviewResponse = Type.Object({
   primaryCoverage: AssemblyPreviewCoverage,
@@ -239,6 +374,94 @@ export const AssemblyPreviewResponse = Type.Object({
     "unconfirmed",
     "unresolved",
   ] as const),
+  programResponsibility: Type.Object({
+    status: lit([
+      "verified",
+      "missing",
+      "pending",
+      "rejected",
+      "expired",
+      "revoked",
+      "ambiguous",
+      "changes",
+      "unsupported",
+      "unavailable",
+    ] as const),
+    programKind: Type.Union([
+      lit([
+        "ffs_open_card",
+        "managed_care",
+        "other_managed_care",
+        "unsupported",
+        "unresolved",
+        "ambiguous",
+      ] as const),
+      Type.Null(),
+    ]),
+    canonicalPayerId: Type.Union([uuid(), Type.Null()]),
+    canonicalPayerName: nullableStr(),
+    reasonCode: Type.String(),
+  }),
+  payerAuthorizationEvidence: Type.Object({
+    clinicalDocuments: lit(["missing", "unverified", "available"] as const),
+    notification: lit(["missing", "unverified", "prepared", "sent", "acknowledged"] as const),
+    authorization: lit([
+      "missing",
+      "unverified",
+      "pending",
+      "approved",
+      "denied",
+      "expired",
+      "revoked",
+      "ambiguous",
+    ] as const),
+    policyQualification: Type.Literal("unqualified"),
+    reasonCodes: Type.Array(Type.String()),
+  }),
+  enrollmentReadiness: Type.Array(
+    Type.Object({
+      kind: Type.String(),
+      status: lit([
+        "not_applicable",
+        "missing",
+        "pending",
+        "verified",
+        "expired",
+        "revoked",
+        "ambiguous",
+        "unavailable",
+      ] as const),
+      reasonCode: Type.String(),
+      vendorPayerId: nullableStr(),
+    }),
+  ),
+  selectedClearinghouse: Type.Object({
+    status: lit(["selected", "missing", "unavailable"] as const),
+    vendor: nullableStr(),
+    configurationStatus: nullableStr(),
+  }),
+  tradingPartnerCredential: Type.Object({
+    status: lit([
+      "configured",
+      "missing",
+      "expired",
+      "future",
+      "partial",
+      "ambiguous",
+      "unavailable",
+    ] as const),
+    reasonCode: Type.String(),
+  }),
+  pricing: Type.Object({
+    status: AssemblyPreviewPricingStatus,
+    assessedAt: isoInstant(),
+    coversRequestedPeriod: Type.Boolean(),
+    requiredInputs: Type.Array(Type.String()),
+    segments: Type.Array(AssemblyPreviewPricingSegment),
+    reimbursementEstimateTotalCents: Type.Union([cents(), Type.Null()]),
+    actualBilledChargeTotalCents: Type.Union([cents(), Type.Null()]),
+    submissionAvailable: Type.Literal(false),
+  }),
   electronicSubmissionAvailable: Type.Literal(false),
   isAdvisorySnapshot: Type.Literal(true),
 });
@@ -368,6 +591,124 @@ export const UpsertCredentialBody = Type.Object(
   { additionalProperties: false },
 );
 
+const EvidenceReference = Type.String({
+  minLength: 6,
+  maxLength: 200,
+  pattern: "^(doc|registry|approval|ticket):[A-Za-z0-9._/-]{1,190}$",
+});
+export const RecordProgramAssignmentBody = Type.Object(
+  {
+    patientId: uuid(),
+    patientPayerId: uuid(),
+    admissionId: uuid(),
+    providerEntityId: uuid(),
+    serviceState: StateCode,
+    programKind: lit([
+      "ffs_open_card",
+      "managed_care",
+      "other_managed_care",
+      "unsupported",
+      "unresolved",
+    ] as const),
+    canonicalPayerId: Type.Optional(uuid()),
+    effectiveFrom: isoDate(),
+    effectiveTo: Type.Optional(isoDate()),
+    sourceKind: lit(["manual_candidate", "payer_document", "state_response", "imported"] as const),
+    evidenceReference: Type.Optional(EvidenceReference),
+  },
+  { additionalProperties: false },
+);
+export const RecordEnrollmentEvidenceBody = Type.Object(
+  {
+    providerEntityId: uuid(),
+    serviceState: StateCode,
+    programKind: Type.Optional(
+      lit(["ffs_open_card", "managed_care", "other_managed_care"] as const),
+    ),
+    canonicalPayerId: Type.Optional(uuid()),
+    clearinghouse: Type.Optional(lit(["stedi", "claimmd", "other"] as const)),
+    vendorAccountRef: Type.Optional(
+      Type.String({ minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9._:-]+$" }),
+    ),
+    sourceEnvironment: Type.Optional(lit(["test", "production"] as const)),
+    evidenceFreshUntil: Type.Optional(Type.String({ format: "date" })),
+    vendorPayerId: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
+    transactionType: Type.Optional(lit(["837I", "835"] as const)),
+    evidenceKind: lit([
+      "state_medicaid_provider_enrollment",
+      "mco_participation",
+      "837i_enrollment",
+      "835_era_enrollment",
+      "clearinghouse_payer_route",
+      "institutional_format_qualification",
+      "payer_transport_certification",
+      "production_activation_approval",
+    ] as const),
+    effectiveFrom: isoDate(),
+    effectiveTo: Type.Optional(isoDate()),
+  },
+  { additionalProperties: false },
+);
+export const VerifyProgramAssignmentBody = Type.Object(
+  {
+    expectedVersion: Type.Integer({ minimum: 1 }),
+    verificationSource: lit([
+      "state_portal",
+      "payer_written_confirmation",
+      "executed_contract",
+    ] as const),
+    evidenceReference: EvidenceReference,
+    providerEntityId: uuid(),
+    patientId: uuid(),
+  },
+  { additionalProperties: false },
+);
+export const VerifyEnrollmentEvidenceBody = Type.Object(
+  {
+    expectedVersion: Type.Integer({ minimum: 1 }),
+    verificationSource: lit([
+      "state_portal",
+      "payer_written_confirmation",
+      "clearinghouse_written_confirmation",
+      "executed_contract",
+      "clearinghouse_sandbox",
+      "internal_approval",
+    ] as const),
+    evidenceReference: EvidenceReference,
+    providerEntityId: uuid(),
+  },
+  { additionalProperties: false },
+);
+export const RevokeProgramAssignmentBody = Type.Object(
+  {
+    expectedVersion: Type.Integer({ minimum: 1 }),
+    reasonCode: lit(["source_corrected", "payer_withdrawal", "coverage_changed", "other"] as const),
+    providerEntityId: uuid(),
+    patientId: uuid(),
+  },
+  { additionalProperties: false },
+);
+export const RevokeEnrollmentEvidenceBody = Type.Object(
+  {
+    expectedVersion: Type.Integer({ minimum: 1 }),
+    reasonCode: lit(["source_corrected", "payer_withdrawal", "coverage_changed", "other"] as const),
+    providerEntityId: uuid(),
+  },
+  { additionalProperties: false },
+);
+export const RecordPayerReadinessResponse = Type.Object({
+  id: uuid(),
+  status: Type.Literal("pending"),
+});
+export const VerifyPayerReadinessResponse = Type.Object({
+  status: Type.Literal("verified"),
+  version: Type.Integer(),
+});
+export const RevokePayerReadinessResponse = Type.Object({
+  status: Type.Literal("revoked"),
+  version: Type.Integer(),
+});
+
 /** POST /api/v1/admin/platform-medicaid-rules — platform-floor rule registration (platform admin only). */
 export const RegisterPlatformRuleBody = Type.Object(
   {
@@ -455,6 +796,19 @@ export const ClaimDto = Type.Object({
   serviceFrom: isoDate(),
   serviceTo: isoDate(),
   mcoId: Type.Union([uuid(), Type.Null()]),
+  medicaidProgramKind: Type.Union([
+    lit([
+      "ffs_open_card",
+      "managed_care",
+      "other_managed_care",
+      "unsupported",
+      "unresolved",
+      "ambiguous",
+    ] as const),
+    Type.Null(),
+  ]),
+  canonicalPayerId: Type.Union([uuid(), Type.Null()]),
+  programResolutionSnapshot: Type.Union([Type.Unknown(), Type.Null()]),
   medicareClaimId: Type.Union([uuid(), Type.Null()]),
   rbArrangementId: Type.Union([uuid(), Type.Null()]),
   medicaidClaimControlNumber: Type.String(),
@@ -479,6 +833,7 @@ export const ClaimLineDto = Type.Object({
   medicaidClaimId: uuid(),
   lineNumber: Type.Integer(),
   serviceDate: isoDate(),
+  serviceDateTo: Type.Union([isoDate(), Type.Null()]),
   revenueCode: Type.String(),
   qCode: Type.String(),
   levelOfCare: lit(CLAIM_LINE_LOC),

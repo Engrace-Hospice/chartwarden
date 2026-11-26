@@ -20,7 +20,12 @@ const SYSTEM_USER_ID = "";
 
 export interface AdmissionLocPeriod {
   readonly id: string;
+  readonly version: number;
+  readonly updatedAt: Date;
   readonly levelOfCare: (typeof LOC.$inferSelect)["levelOfCare"];
+  readonly status: (typeof LOC.$inferSelect)["status"];
+  readonly reason: string | null;
+  readonly assignedBy: string | null;
   readonly effectiveAt: Date;
   readonly endedAt: Date | null;
   readonly facilityId: string | null;
@@ -37,6 +42,9 @@ export interface AdmissionLocPeriodsReader {
   ): Promise<{
     patientId: string;
     providerEntityId: string | null;
+    version: number;
+    locationId: string | null;
+    serviceAddressState: string | null;
     dischargedAt: Date | null;
     status: (typeof ADM.$inferSelect)["status"];
     stayEndFacts: {
@@ -60,6 +68,9 @@ export interface AdmissionLocPeriodsReader {
   ): Promise<{
     patientId: string;
     providerEntityId: string | null;
+    version: number;
+    locationId: string | null;
+    serviceAddressState: string | null;
     dischargedAt: Date | null;
     status: (typeof ADM.$inferSelect)["status"];
     stayEndFacts: {
@@ -93,6 +104,9 @@ export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPerio
         .select({
           patientId: ADM.patientId,
           providerEntityId: ADM.providerEntityId,
+          version: ADM.version,
+          locationId: ADM.locationId,
+          serviceAddressState: ADM.serviceAddressState,
           dischargedAt: ADM.dischargedAt,
           status: ADM.status,
         })
@@ -128,6 +142,9 @@ export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPerio
         .select({
           patientId: ADM.patientId,
           providerEntityId: ADM.providerEntityId,
+          version: ADM.version,
+          locationId: ADM.locationId,
+          serviceAddressState: ADM.serviceAddressState,
           dischargedAt: ADM.dischargedAt,
           status: ADM.status,
         })
@@ -162,7 +179,12 @@ export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPerio
       return tx
         .select({
           id: LOC.id,
+          version: LOC.version,
+          updatedAt: LOC.updatedAt,
           levelOfCare: LOC.levelOfCare,
+          status: LOC.status,
+          reason: LOC.reason,
+          assignedBy: LOC.assignedBy,
           effectiveAt: LOC.effectiveAt,
           endedAt: LOC.endedAt,
           facilityId: LOC.facilityId,
@@ -183,7 +205,12 @@ export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPerio
         (tx as unknown as DbClient)
           .select({
             id: LOC.id,
+            version: LOC.version,
+            updatedAt: LOC.updatedAt,
             levelOfCare: LOC.levelOfCare,
+            status: LOC.status,
+            reason: LOC.reason,
+            assignedBy: LOC.assignedBy,
             effectiveAt: LOC.effectiveAt,
             endedAt: LOC.endedAt,
             facilityId: LOC.facilityId,

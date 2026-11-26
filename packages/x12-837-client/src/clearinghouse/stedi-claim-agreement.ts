@@ -62,7 +62,7 @@ export function compareStediClaimJsonToX12(json: StediClaimJson, raw: string): s
   const nm1 = (q: string): Segment => segments.find((s) => s[0] === "NM1" && s[1] === q) ?? [];
   expect("billingProvider.npi", nm1("85")[9] === json.billing.npi);
   expect("attendingPhysician.npi", nm1("71")[9] === json.attending.npi);
-  expect("subscriber.mbi", nm1("IL")[9] === json.subscriber.memberId);
+  expect("subscriber.memberId", nm1("IL")[9] === json.subscriber.memberId);
   expect("payer.payerId", nm1("PR")[9] === json.tradingPartnerServiceId);
   expect(
     "billingProvider.taxId",
@@ -74,6 +74,7 @@ export function compareStediClaimJsonToX12(json: StediClaimJson, raw: string): s
   expect("claim.facilityType", clm[5]?.split(comp)[0] === info.placeOfServiceCode);
   expect("claim.controlNumber", clm[1] === info.patientControlNumber);
   expect("claim.frequency", clm[5]?.split(comp)[2] === info.claimFrequencyCode);
+  expect("claim.claimFilingCode", first("SBR")[9] === info.claimFilingCode);
   const [from, through] = (dtp("434")[3] ?? "").split("-");
   expect("claim.statementFromDate", from === info.claimDateInformation.statementBeginDate);
   expect("claim.statementThroughDate", through === info.claimDateInformation.statementEndDate);
@@ -147,10 +148,14 @@ export function compareStediClaimJsonToX12(json: StediClaimJson, raw: string): s
             charge: cents(s[3]),
             units: s[5],
             noncovered: s[7] === undefined ? 0 : cents(s[7]),
-            date:
-              segments[i + 1]?.[0] === "DTP" && segments[i + 1]?.[1] === "472"
-                ? segments[i + 1]?.[3]
-                : undefined,
+            unitBasis: s[4],
+            serviceDates: (() => {
+              const rawDate =
+                segments[i + 1]?.[0] === "DTP" && segments[i + 1]?.[1] === "472"
+                  ? (segments[i + 1]?.[3] ?? "").split("-")
+                  : [];
+              return rawDate.length === 1 ? [rawDate[0], rawDate[0]] : rawDate;
+            })(),
           },
         ]
       : [],
@@ -165,7 +170,8 @@ export function compareStediClaimJsonToX12(json: StediClaimJson, raw: string): s
     charge: cents(l.institutionalService.lineItemChargeAmount),
     units: l.institutionalService.serviceUnitCount,
     noncovered: cents(l.institutionalService.nonCoveredChargeAmount ?? "0"),
-    date: l.serviceDate,
+    unitBasis: l.institutionalService.measurementUnit,
+    serviceDates: [l.serviceDate, l.serviceDateEnd ?? l.serviceDate],
   }));
   expect("claim.lines", same(rawLines, jsonLines));
   const total = cents(info.claimChargeAmount);

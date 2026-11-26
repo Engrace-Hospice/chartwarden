@@ -10,6 +10,7 @@ export {
   buildM24MedicaidCoverageResolver,
 } from "./write-service-drizzle";
 
+import type { ChcPricingPreparationService } from "../pricing/chc-pricing-preparation";
 import type { M24ReadService } from "./read-service";
 import type { M24WriteService } from "./write-service";
 
@@ -17,4 +18,5 @@ import type { M24WriteService } from "./write-service";
 export interface M24RouteServices {
   readonly readService: M24ReadService;
   readonly writeService: M24WriteService;
+  readonly chcPricingPreparationService?: ChcPricingPreparationService;
 }

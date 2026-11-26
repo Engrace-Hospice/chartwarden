@@ -2,10 +2,10 @@
  * M40 Master Data Management — RLS cross-tenant denial: the LIVE Postgres proof (§3.6 / 0019).
  *
  * M40 is a DELIBERATE MIX of platform master data and org-scoped tenant records, and that mix is the
- * whole point of this suite. Of the eleven manifest-owned tables only FOUR are org-scoped and carry a
+ * whole point of this suite. Of the manifest-owned tables only FOUR are org-scoped and carry a
  * tenant `app.org_id` RLS policy — the other seven are canonical/global directory data (public read,
  * `USING (true)`) or platform-ops surfaces (chartwarden_admin only, no tenant policy at all). A suite that
- * swept all eleven would assert cross-tenant *denial* against tables that are supposed to be *shared*,
+ * swept the canonical tables would assert cross-tenant *denial* against tables that are supposed to be *shared*,
  * and pass for the wrong reason. So COVERED is exactly the four org-scoped tables; every excluded table
  * is listed below with the reason it is NOT tenant-isolated.
  *
@@ -18,7 +18,7 @@
  *   • merge_request       — PLATFORM-OPS surface, chartwarden_admin only. No chartwarden_app grant at all.
  *   • nppes_sync_log      — PLATFORM-OPERATIONAL log, chartwarden_admin only. No chartwarden_app grant.
  *   • nppes_sync_coordination — PLATFORM-OPERATIONAL singleton (INTEGER PK), chartwarden_admin only. No chartwarden_app grant.
- * None of the eleven are partitioned, so there is no partition-leaf caveat here.
+ * None are partitioned, so there is no partition-leaf caveat here.
  *
  * The four COVERED tables are where a tenant's PRIVATE data lives: the overlay carries a tenant's own
  * do-not-refer flags / commercial contract terms for a physician; mdm_baa_record is the tenant's HIPAA
@@ -203,6 +203,121 @@ describe.skipIf(!DB_URL)(
       );
       expect(rows).toHaveLength(1);
       expect(rows[0].rolbypassrls).toBe(false);
+    });
+
+    // ── mdm_medicaid_payer_program_classification (1541): CANONICAL reference data. Every tenant reads it, only
+    // mdm_canonical_writer inserts, rows are append-only, RLS is enabled AND forced. Each refusal below is made
+    // reachable ONLY by the layer it names: the row satisfies every CHECK (a "verified" row with its source
+    // reference, time and reviewer), so a CHECK, a bad foreign key or a typo cannot be what refuses it.
+    const CLASSIFICATION = "mdm_medicaid_payer_program_classification";
+    const CLASSIFICATION_PAYER = "44444444-4444-4444-4444-444444444440";
+    const CLASSIFICATION_SEED = "55555555-5555-5555-5555-555555555540";
+    const VALID_VERIFIED_CLASSIFICATION = `INSERT INTO ${CLASSIFICATION}
+      (canonical_payer_id,state_code,classification,effective_from,verification_status,source_kind,
+       source_reference,verified_at,verified_by)
+      VALUES ($1,'OR','oregon_ffs','2026-01-01','verified','state_registry',
+              'registry:synthetic-oregon-ffs',now(),'synthetic-reviewer')`;
+
+    async function ensureClassificationSeed(): Promise<void> {
+      await db.query(
+        `INSERT INTO payer (id,kind,state_code,payer_id,name)
+         VALUES ($1,'medicaid','OR','SYNTHETIC-MEDICAID','Synthetic payer') ON CONFLICT (id) DO NOTHING`,
+        [CLASSIFICATION_PAYER],
+      );
+      await db.query(
+        `INSERT INTO ${CLASSIFICATION}
+         (id,canonical_payer_id,state_code,classification,effective_from,verification_status,source_kind)
+         VALUES ($1,$2,'OR','oregon_ffs','2026-01-01','unverified','state_registry')
+         ON CONFLICT (id) DO NOTHING`,
+        [CLASSIFICATION_SEED, CLASSIFICATION_PAYER],
+      );
+    }
+
+    async function asCanonicalWriter<T>(fn: () => Promise<T>): Promise<T> {
+      await db.query("SET ROLE mdm_canonical_writer");
+      try {
+        return await fn();
+      } finally {
+        await db.query("RESET ROLE");
+      }
+    }
+
+    it("canonical Medicaid program classifications are readable by every tenant", async () => {
+      await ensureClassificationSeed();
+      for (const org of [ORG_A, ORG_B]) {
+        const read = await withOrg(org, () =>
+          db.query(`SELECT classification,verification_status FROM ${CLASSIFICATION} WHERE id=$1`, [
+            CLASSIFICATION_SEED,
+          ]),
+        );
+        expect(read.rows).toEqual([
+          { classification: "oregon_ffs", verification_status: "unverified" },
+        ]);
+      }
+    });
+
+    it("a fully valid classification insert is refused for chartwarden_app by the missing INSERT grant", async () => {
+      await ensureClassificationSeed();
+      await expect(
+        withOrg(ORG_A, () => db.query(VALID_VERIFIED_CLASSIFICATION, [CLASSIFICATION_PAYER])),
+      ).rejects.toThrow(/permission denied for table mdm_medicaid_payer_program_classification/);
+    });
+
+    it("with INSERT granted anyway, the policies alone still refuse chartwarden_app (no INSERT policy for it)", async () => {
+      await ensureClassificationSeed();
+      await db.query(`GRANT INSERT ON ${CLASSIFICATION} TO chartwarden_app`);
+      try {
+        await expect(
+          withOrg(ORG_A, () => db.query(VALID_VERIFIED_CLASSIFICATION, [CLASSIFICATION_PAYER])),
+        ).rejects.toThrow(/new row violates row-level security policy/);
+      } finally {
+        await db.query(`REVOKE INSERT ON ${CLASSIFICATION} FROM chartwarden_app`);
+      }
+    });
+
+    it("mdm_canonical_writer can insert that same row (the control: only the role differs)", async () => {
+      await ensureClassificationSeed();
+      const inserted = await asCanonicalWriter(() =>
+        db.query(VALID_VERIFIED_CLASSIFICATION, [CLASSIFICATION_PAYER]),
+      );
+      expect(inserted.rowCount).toBe(1);
+      const seenByApp = await withOrg(ORG_B, () =>
+        db.query(
+          `SELECT count(*)::int AS n FROM ${CLASSIFICATION} WHERE verification_status='verified' AND canonical_payer_id=$1`,
+          [CLASSIFICATION_PAYER],
+        ),
+      );
+      expect(seenByApp.rows[0].n).toBeGreaterThanOrEqual(1);
+    });
+
+    it("classifications are append-only: no UPDATE or DELETE grant for the writer, and the trigger refuses everyone", async () => {
+      await ensureClassificationSeed();
+      for (const statement of [
+        `UPDATE ${CLASSIFICATION} SET effective_to='2026-12-31' WHERE id=$1`,
+        `DELETE FROM ${CLASSIFICATION} WHERE id=$1`,
+      ]) {
+        await expect(
+          asCanonicalWriter(() => db.query(statement, [CLASSIFICATION_SEED])),
+        ).rejects.toThrow(/permission denied for table/);
+        // A superuser holds every grant and skips RLS: only the trigger can answer.
+        await expect(db.query(statement, [CLASSIFICATION_SEED])).rejects.toThrow(/append-only/);
+      }
+    });
+
+    it("the classification table has RLS enabled and FORCEd, with exactly a tenant read policy and a writer policy", async () => {
+      const flags = await db.query(
+        "SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE oid = $1::regclass",
+        [CLASSIFICATION],
+      );
+      expect(flags.rows[0]).toEqual({ relrowsecurity: true, relforcerowsecurity: true });
+      const policies = await db.query<{ cmd: string; roles: string }>(
+        "SELECT cmd, roles::text AS roles FROM pg_policies WHERE schemaname='public' AND tablename=$1 ORDER BY cmd",
+        [CLASSIFICATION],
+      );
+      expect(policies.rows).toEqual([
+        { cmd: "ALL", roles: "{mdm_canonical_writer}" },
+        { cmd: "SELECT", roles: "{chartwarden_app}" },
+      ]);
     });
 
     it("every M40 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {

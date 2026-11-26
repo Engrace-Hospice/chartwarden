@@ -14,6 +14,9 @@ export function m24RouteClasses(isVoidClaim?: IsVoidClaim): readonly RouteClassR
   return [
     { cls: "new_work", method: "POST", path: "/api/v1/medicaid-claims" },
     { cls: "open", method: "POST", path: "/api/v1/medicaid-claims/assembly-preview" },
+    // A preparation is stored billing work for a patient (never a claim), so it needs the add-on like a new claim.
+    { cls: "new_work", method: "POST", path: "/api/v1/medicaid-chc-pricing-preparations" },
+    { cls: "open", method: "GET", path: "/api/v1/medicaid-chc-pricing-preparations/*" },
     {
       cls: "new_work",
       method: "POST",
@@ -33,6 +36,9 @@ export function m24RouteClasses(isVoidClaim?: IsVoidClaim): readonly RouteClassR
     { cls: "open", method: "*", path: "/api/v1/rb-arrangements/*" },
     { cls: "open", method: "*", path: "/api/v1/rb-days/*" },
     { cls: "open", method: "*", path: "/api/v1/state-medicaid-trading-partner-credentials/*" },
+    // Payer-readiness evidence is configuration, not new claims work (ADR-0110 D5).
+    { cls: "open", method: "*", path: "/api/v1/medicaid-program-assignments/*" },
+    { cls: "open", method: "*", path: "/api/v1/medicaid-enrollment-evidence/*" },
     { cls: "open", method: "*", path: "/api/v1/admin/platform-medicaid-rules/*" },
     { cls: "open", method: "*", path: "/api/v1/admin/state-rate-schedule-load/*" },
   ];

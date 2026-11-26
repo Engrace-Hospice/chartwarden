@@ -1,12 +1,12 @@
 {
-  "documentedSpecs": 120,
+  "documentedSpecs": 121,
   "byCategory": {
     "admin": 16,
     "core": 11,
     "clinical": 42,
     "platform": 5,
     "portal": 11,
-    "revenue": 18,
+    "revenue": 19,
     "compliance": 11,
     "staffing": 3,
     "mobile": 1,
@@ -2050,6 +2050,22 @@
       "moduleId": 25,
       "id": "remittance.claimmd-era-review",
       "path": "/remittance/claimmd-era-review",
+      "permission": "remittance.read"
+    },
+    {
+      "app": "web",
+      "module": "25-remittance",
+      "moduleId": 25,
+      "id": "remittance.medicaid-era-reviews",
+      "path": "/remittance/medicaid-era-reviews",
+      "permission": "remittance.read"
+    },
+    {
+      "app": "web",
+      "module": "25-remittance",
+      "moduleId": 25,
+      "id": "remittance.medicaid-era-review",
+      "path": "/remittance/medicaid-era-reviews/:id",
       "permission": "remittance.read"
     },
     {

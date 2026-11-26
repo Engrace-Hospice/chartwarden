@@ -52,6 +52,24 @@ export interface CanonicalPayerFields extends CanonicalBaseFields {
   readonly x12PayerId: string | null;
   /** The payer program (medicare, medicaid, medicare_advantage, commercial, other); consumers branch on it. */
   readonly kind: PayerKind;
+  /** Canonical state scope for state Medicaid plans; null for national or non-state payer records. */
+  readonly stateCode: string | null;
+}
+
+export interface MedicaidPayerProgramClassification {
+  readonly id: string;
+  readonly canonicalPayerId: string;
+  readonly stateCode: string;
+  readonly classification: "oregon_ffs" | "medicaid_cco" | "other_managed_care" | "unsupported";
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+  readonly verificationStatus: "unverified" | "verified" | "rejected" | "revoked" | "superseded";
+  readonly sourceKind: string;
+  readonly sourceReference: string | null;
+  readonly supersedesId: string | null;
+  readonly verifiedAt: string | null;
+  readonly verifiedBy: string | null;
+  readonly recordedAt: string;
 }
 
 /** Per-kind canonical payload map. Phase 1 materializes physician/facility/payer concretely; the
@@ -155,6 +173,15 @@ export interface MdmEntityProvider {
   resolvePharmacy(orgId: string, id: string): Promise<MdmResolved<"pharmacy"> | null>;
   resolveReferralSource(orgId: string, id: string): Promise<MdmResolved<"referral_source"> | null>;
   resolvePayer(orgId: string, id: string): Promise<MdmResolved<"payer"> | null>;
+  /** Source-backed, effective-dated classification records. Empty means unqualified, never FFS. Returns every row
+   *  for the (payer, state), not only those overlapping the window: superseders outside it still end-date rows. */
+  medicaidPayerProgramClassifications(
+    orgId: string,
+    canonicalPayerId: string,
+    stateCode: string,
+    serviceFrom: string,
+    serviceTo: string,
+  ): Promise<readonly MedicaidPayerProgramClassification[]>;
   resolveDmeVendor(orgId: string, id: string): Promise<MdmResolved<"dme_vendor"> | null>;
   resolveFuneralHome(orgId: string, id: string): Promise<MdmResolved<"funeral_home"> | null>;
 

@@ -648,6 +648,8 @@ import {
   AssembleClaimBody as M24AssembleClaimBody,
   AssemblyPreviewBody as M24AssemblyPreviewBody,
   AssemblyPreviewResponse as M24AssemblyPreviewResponse,
+  ChcPricingPreparationBody as M24ChcPricingPreparationBody,
+  ChcPricingPreparationResponse as M24ChcPricingPreparationResponse,
   ClaimDto as M24ClaimDto,
   ClaimLineListResponse as M24ClaimLineListResponse,
   ClaimListQuery as M24ClaimListQuery,
@@ -668,10 +670,16 @@ import {
   RbArrangementListResponse as M24RbArrangementListResponse,
   RbDayListQuery as M24RbDayListQuery,
   RbDayListResponse as M24RbDayListResponse,
+  RecordEnrollmentEvidenceBody as M24RecordEnrollmentEvidenceBody,
+  RecordPayerReadinessResponse as M24RecordPayerReadinessResponse,
+  RecordProgramAssignmentBody as M24RecordProgramAssignmentBody,
   RefreshEligibilityBody as M24RefreshEligibilityBody,
   RefreshEligibilityResponse as M24RefreshEligibilityResponse,
   RegisterPlatformRuleBody as M24RegisterPlatformRuleBody,
   ReplaceClaimBody as M24ReplaceClaimBody,
+  RevokeEnrollmentEvidenceBody as M24RevokeEnrollmentEvidenceBody,
+  RevokePayerReadinessResponse as M24RevokePayerReadinessResponse,
+  RevokeProgramAssignmentBody as M24RevokeProgramAssignmentBody,
   RuleConfigListResponse as M24RuleConfigListResponse,
   SubmissionListResponse as M24SubmissionListResponse,
   SubmitClaimBody as M24SubmitClaimBody,
@@ -687,6 +695,9 @@ import {
   ValidationRunListResponse as M24ValidationRunListResponse,
   ValidationWorklistDto as M24ValidationWorklistDto,
   ValidationWorklistQuery as M24ValidationWorklistQuery,
+  VerifyEnrollmentEvidenceBody as M24VerifyEnrollmentEvidenceBody,
+  VerifyPayerReadinessResponse as M24VerifyPayerReadinessResponse,
+  VerifyProgramAssignmentBody as M24VerifyProgramAssignmentBody,
   VoidClaimBody as M24VoidClaimBody,
 } from "../../apps/backend/src/modules/24-billing-medicaid/routes/m24-typebox";
 import {
@@ -777,6 +788,16 @@ import {
   TierDetailRequestSchema as M25TierDetailRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/later-tier.routes";
 import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
+import {
+  MedicaidEraDispositionResultSchema as M25MedicaidEraDispositionResultSchema,
+  MedicaidEraDispositionSchema as M25MedicaidEraDispositionSchema,
+  MedicaidEraEvaluateResultSchema as M25MedicaidEraEvaluateResultSchema,
+  MedicaidEraNoteSchema as M25MedicaidEraNoteSchema,
+  MedicaidEraReviewDetailSchema as M25MedicaidEraReviewDetailSchema,
+  MedicaidEraReviewHistorySchema as M25MedicaidEraReviewHistorySchema,
+  MedicaidEraReviewPageSchema as M25MedicaidEraReviewPageSchema,
+  MedicaidEraReviewQuerySchema as M25MedicaidEraReviewQuerySchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/medicaid-era-review.schemas";
 import {
   MedicalReviewReportQuerySchema as M25MedicalReviewReportQuerySchema,
   MedicalReviewReportSchema as M25MedicalReviewReportSchema,
@@ -4476,6 +4497,17 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     body: M24AssemblyPreviewBody,
     response: M24AssemblyPreviewResponse,
   },
+  "POST /api/v1/medicaid-chc-pricing-preparations": {
+    summary:
+      "Prepare and persist source-verified local CHC hourly pricing; institutional units remain unqualified",
+    body: M24ChcPricingPreparationBody,
+    response: M24ChcPricingPreparationResponse,
+  },
+  "GET /api/v1/medicaid-chc-pricing-preparations/:id": {
+    summary:
+      "Read and source-revalidate a local CHC pricing preparation; this does not create an institutional claim",
+    response: M24ChcPricingPreparationResponse,
+  },
   "GET /api/v1/medicaid-claims/:id": {
     summary: "Single Medicaid claim — state, TOB, control number, COB + R&B linkage (§4.1)",
     response: M24ClaimDto,
@@ -4641,6 +4673,40 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "POST /api/v1/state-medicaid-trading-partner-credentials/:id/test": {
     summary: "Run the adapter's sandbox connectivity test and record the outcome (§4.4)",
     response: M24TestCredentialResponse,
+  },
+  "POST /api/v1/medicaid-program-assignments": {
+    summary:
+      "Record a candidate patient Medicaid program assignment; new records remain pending until independently verified",
+    body: M24RecordProgramAssignmentBody,
+    response: M24RecordPayerReadinessResponse,
+  },
+  "POST /api/v1/medicaid-program-assignments/:id/verify": {
+    summary:
+      "Independently verify a program assignment against M40 payer identity and secured external evidence",
+    body: M24VerifyProgramAssignmentBody,
+    response: M24VerifyPayerReadinessResponse,
+  },
+  "POST /api/v1/medicaid-program-assignments/:id/revoke": {
+    summary: "Revoke verified Medicaid program assignment evidence with a reason and version check",
+    body: M24RevokeProgramAssignmentBody,
+    response: M24RevokePayerReadinessResponse,
+  },
+  "POST /api/v1/medicaid-enrollment-evidence": {
+    summary:
+      "Record a provider enrollment, payer participation, transaction enrollment, or route qualification candidate as pending",
+    body: M24RecordEnrollmentEvidenceBody,
+    response: M24RecordPayerReadinessResponse,
+  },
+  "POST /api/v1/medicaid-enrollment-evidence/:id/verify": {
+    summary:
+      "Independently verify provider enrollment evidence with source and secured evidence reference",
+    body: M24VerifyEnrollmentEvidenceBody,
+    response: M24VerifyPayerReadinessResponse,
+  },
+  "POST /api/v1/medicaid-enrollment-evidence/:id/revoke": {
+    summary: "Revoke verified enrollment evidence with a reason and version check",
+    body: M24RevokeEnrollmentEvidenceBody,
+    response: M24RevokePayerReadinessResponse,
   },
   "POST /api/v1/admin/platform-medicaid-rules": {
     summary: "Register a platform-floor Medicaid validation rule — platform admin only (§11)",
@@ -5059,6 +5125,45 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M32ActivatePromptTemplateBody,
   },
   // --- D11 drift + backend health (R31-R32) ---
+});
+
+// M25 Medicaid ERA — separate nonposting review API; no Claim.MD posting operations are exposed here.
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/remittance/medicaid-era-reviews": {
+    summary: "Tenant- and provider-scoped nonposting Medicaid ERA review worklist",
+    query: M25MedicaidEraReviewQuerySchema,
+    response: M25MedicaidEraReviewPageSchema,
+  },
+  "GET /api/v1/remittance/medicaid-era-reviews/:id": {
+    summary: "Authorized PHI-minimal detail for a nonposting Medicaid ERA review",
+    response: M25MedicaidEraReviewDetailSchema,
+  },
+  "GET /api/v1/remittance/medicaid-era-reviews/:id/history": {
+    summary: "Append-only investigation history for a Medicaid ERA review",
+    response: M25MedicaidEraReviewHistorySchema,
+  },
+  "POST /api/v1/remittance/medicaid-era-artifacts/:artifactId/evaluate": {
+    summary: "Re-evaluate a scoped staged Medicaid ERA without posting or claim transitions",
+    headers: { "Idempotency-Key": { required: true } },
+    response: M25MedicaidEraEvaluateResultSchema,
+  },
+  "POST /api/v1/remittance/medicaid-era-reviews/:id/reassess": {
+    summary: "Reassess an evaluator-qualified Medicaid ERA review using its server-resolved source",
+    headers: { "Idempotency-Key": { required: true } },
+    response: M25MedicaidEraEvaluateResultSchema,
+  },
+  "POST /api/v1/remittance/medicaid-era-reviews/:id/disposition": {
+    summary: "Record a versioned nonposting Medicaid ERA investigation disposition",
+    headers: { "Idempotency-Key": { required: true } },
+    body: M25MedicaidEraDispositionSchema,
+    response: M25MedicaidEraDispositionResultSchema,
+  },
+  "POST /api/v1/remittance/medicaid-era-reviews/:id/notes": {
+    summary: "Append a coded, PHI-minimal note to a Medicaid ERA investigation",
+    headers: { "Idempotency-Key": { required: true } },
+    body: M25MedicaidEraNoteSchema,
+    response: M25MedicaidEraDispositionResultSchema,
+  },
 });
 
 // ── M6 Admission, Election & Certification (§4.2). All 46 routes published NO request/response contract

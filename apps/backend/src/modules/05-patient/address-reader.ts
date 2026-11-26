@@ -13,6 +13,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { PatientAddressReader } from "@chartwarden/types";
 import { and, asc, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
+import { assertTxScopedToOrg } from "../../bootstrap/onboarding-credential-port";
 
 export function buildPatientAddressReader(db: DbClient): PatientAddressReader {
   const ADDRESS = schema.patientAddresses;
@@ -124,6 +125,7 @@ export function buildPatientAddressReader(db: DbClient): PatientAddressReader {
       return withOrgContext(db, { organizationId, userId: "system" }, async (tx) => {
         const rows = await tx
           .select({
+            addressId: ADDRESS.id,
             kind: ADDRESS.kind,
             facilityId: ADDRESS.facilityId,
             effectiveFrom: ADDRESS.effectiveFrom,
@@ -141,12 +143,46 @@ export function buildPatientAddressReader(db: DbClient): PatientAddressReader {
           )
           .orderBy(asc(ADDRESS.effectiveFrom), asc(ADDRESS.createdAt));
         return rows.map((r) => ({
+          addressId: r.addressId,
           kind: r.kind,
           facilityId: r.facilityId,
           effectiveFrom: r.effectiveFrom,
           effectiveTo: r.effectiveTo ?? null,
         }));
       });
+    },
+    async residencesBetweenInTransaction(transaction, organizationId, patientId, from, to) {
+      const tx = transaction as DbClient;
+      await assertTxScopedToOrg(tx, organizationId);
+      const rows = await tx
+        .select({
+          addressId: ADDRESS.id,
+          kind: ADDRESS.kind,
+          facilityId: ADDRESS.facilityId,
+          effectiveFrom: ADDRESS.effectiveFrom,
+          effectiveTo: ADDRESS.effectiveTo,
+        })
+        .from(ADDRESS)
+        .where(
+          and(
+            eq(ADDRESS.organizationId, organizationId),
+            eq(ADDRESS.patientId, patientId),
+            eq(ADDRESS.isPrimary, true),
+            lte(ADDRESS.effectiveFrom, to),
+            or(isNull(ADDRESS.effectiveTo), gte(ADDRESS.effectiveTo, from)),
+          ),
+        )
+        .orderBy(asc(ADDRESS.effectiveFrom), asc(ADDRESS.createdAt))
+        // Address history may be closed while a claim is being assembled. Keep the effective facts stable
+        // until the claim and its snapshot commit; no street-level fields are selected.
+        .for("share");
+      return rows.map((r) => ({
+        addressId: r.addressId,
+        kind: r.kind,
+        facilityId: r.facilityId,
+        effectiveFrom: r.effectiveFrom,
+        effectiveTo: r.effectiveTo ?? null,
+      }));
     },
     async serviceAddressCoordinate(organizationId, patientId, patientAddressId) {
       // GAP-054 — the EVV geofence baseline. Org + patient are both explicit predicates (a second wall on top

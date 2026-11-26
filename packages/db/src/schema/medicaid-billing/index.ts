@@ -1,8 +1,8 @@
-// @chartwarden/db — M24 Billing — Medicaid schema barrel (§3.3, 14 owned tables). Re-exports the shared enums
+// @chartwarden/db — M24 Billing — Medicaid schema barrel (§3.3). Re-exports the shared enums
 // plus every table module; the central ../index.ts re-exports this barrel.
 //
 // Tenancy (ADR-0010 / ARCH-011, §3.3): Medicaid billing is per-CCN (ProviderEntity). The tenancy spine
-// resolves at the PE-scoped root claim and the subtree inherits it. All 14 tables carry organization_id
+// resolves at the PE-scoped root claim and the subtree inherits it. Tenant-owned tables carry organization_id
 // NOT NULL → the canonical app.org_id RLS predicate applies directly (single org-only policy, ADR-0010 D3;
 // provider-entity narrowing is M3 ABAC, NOT a second permissive RLS policy). location_id is nullable
 // throughout (claims are PE-scoped, not Location-scoped).
@@ -23,7 +23,7 @@
 // shared enums (11)
 export * from "./enums";
 
-// 14 owned tables (§3.3)
+// Owned tables (§3.3)
 export * from "./claim"; // medicaid_claim, medicaid_claim_line, medicaid_claim_line_encounter
 export * from "./claim-history"; // medicaid_claim_state_history
 export * from "./submission"; // medicaid_submission, medicaid_acknowledgment
@@ -33,3 +33,7 @@ export * from "./room-and-board"; // rb_arrangement, rb_day
 export * from "./trading-partner"; // state_medicaid_trading_partner_credential
 export * from "./state-plan-code"; // medicaid_state_plan_code (platform-shared, WX-PR-011)
 export * from "./state-rate-schedule"; // medicaid_state_rate_schedule (platform-shared, WX-PR-011 line-assembly)
+export * from "./payer-readiness"; // medicaid_program_assignment + medicaid_enrollment_evidence
+export * from "./authorization-evidence"; // append-only payer notification / authorization evidence
+export * from "./payer-rate-policy"; // tenant/provider-scoped payer rate source evidence
+export * from "./hospice-pricing"; // verified hospice evidence, immutable claim-line pricing snapshots and local CHC preparations

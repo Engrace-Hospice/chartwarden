@@ -75,6 +75,10 @@ export {
   type ClaimMdEraRecoveryRequest,
 } from "./ingest/claimmd-era-recovery";
 export { registerClaimMdEraReviewRoutes } from "./routes/claimmd-era-review.routes";
+export { registerMedicaidEraReviewRoutes } from "./routes/medicaid-era-review.routes";
+export { buildDrizzleMedicaidEraReviewReaders } from "./ingest/medicaid-era-review-readers";
+export { buildDrizzleMedicaidEraReviewWorkflow } from "./ingest/medicaid-era-review-service";
+export { bindConfiguredRemoteEvaluatorWrites } from "./ingest/isolated-evaluator-command";
 export {
   BillingOperationsInvestigationService,
   type BillingInvestigationPorts,

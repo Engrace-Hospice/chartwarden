@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkStediEdits } from "../clearinghouse/stedi-edit-rules";
 import { X12BuildError } from "../x12/writer";
-import { Claim837iBuildError, build837iClaim } from "./build-837i-claim";
+import { Claim837iBuildError, type Claim837iInput, build837iClaim } from "./build-837i-claim";
 import { CLAIM_INPUT, REPLACEMENT_INPUT, VOID_INPUT } from "./claim-fixture-input";
 
 const fixture = (name: string): string =>
@@ -109,6 +109,10 @@ describe("build837iClaim — fail closed, field names only", () => {
     [claimWith({ lines: [{ ...line, chargeCents: 0 }] }), "claim.lines"],
     [claimWith({ lines: [{ ...line, chargeCents: 1.5 }] }), "claim.lines"],
     [claimWith({ lines: [{ ...line, units: 0 }] }), "claim.lines"],
+    [claimWith({ lines: [{ ...line, unitBasis: "XX" }] }), "claim.lines.unitBasis"],
+    // 005010X223A2 SV204 allows only DA and UN: hours and minutes are not 837I unit bases.
+    [claimWith({ lines: [{ ...line, unitBasis: "HR" }] }), "claim.lines.unitBasis"],
+    [claimWith({ lines: [{ ...line, unitBasis: "MJ" }] }), "claim.lines.unitBasis"],
     [claimWith({ lines: [{ ...line, revenueCode: "65" }] }), "claim.lines"],
     [claimWith({ lines: [{ ...line, hcpcs: "q5001" }] }), "claim.lines"],
     [claimWith({ lines: [{ ...line, modifiers: ["P*"] }] }), "claim.lines"],
@@ -130,6 +134,18 @@ describe("build837iClaim — fail closed, field names only", () => {
     [
       { ...CLAIM_INPUT, subscriber: { ...CLAIM_INPUT.subscriber, mbi: "SECRET" } },
       "subscriber.mbi",
+    ],
+    // SBR09 must be a filing indicator the builder was designed for: Medicare Part A or Medicaid unless commercial.
+    [{ ...CLAIM_INPUT, claimFilingIndicator: "ZZ" }, "claimFilingIndicator"],
+    [{ ...CLAIM_INPUT, claimFilingIndicator: "CI" }, "claimFilingIndicator"],
+    [{ ...CLAIM_INPUT, claimFilingIndicator: "MB" }, "claimFilingIndicator"],
+    // Two member identifiers that disagree: refuse rather than let one silently win.
+    [
+      {
+        ...CLAIM_INPUT,
+        subscriber: { ...CLAIM_INPUT.subscriber, memberId: "2EG4TE5MK74" },
+      },
+      "subscriber.memberId",
     ],
   ])("refuses %#", (input, field) => bad(input, field));
 
@@ -172,6 +188,19 @@ describe("build837iClaim — fail closed, field names only", () => {
         }) as never,
       ),
     ).not.toThrow();
+  });
+
+  it("needs a subscriber identifier at compile time, and still refuses one that slips through at run time", () => {
+    const { address, birthDate, sex, firstName, lastName } = CLAIM_INPUT.subscriber;
+    const person = { lastName, firstName, address, birthDate, sex };
+    // @ts-expect-error a subscriber needs `memberId` or `mbi`; with neither it must not compile
+    const noIdentifier: Claim837iInput["subscriber"] = person;
+    bad({ ...CLAIM_INPUT, subscriber: noIdentifier }, "subscriber.mbi");
+  });
+
+  it("accepts the deprecated mbi alias beside an identical memberId, whatever its case or padding", () => {
+    const subscriber = { ...CLAIM_INPUT.subscriber, memberId: " 1eg4te5mk73 " };
+    expect(build837iClaim({ ...CLAIM_INPUT, subscriber })).toBe(build837iClaim(CLAIM_INPUT));
   });
 
   it("emits DTP*096 before the statement dates (Loop 2300 order)", () => {

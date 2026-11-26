@@ -185,12 +185,16 @@ export interface TransactionSet {
   readonly body: readonly (readonly string[])[];
 }
 
+/** ST02 / SE02: the interchange control number padded to 4 digits. A 999 echoes this in AK202, never the CLM01. */
+export const transactionSetControlNumber = (interchangeControlNumber: number): string =>
+  String(interchangeControlNumber).padStart(4, "0");
+
 /** Wrap a body in ISA/GS/ST … SE/GE/IEA (one ST-SE per GS-GE per ISA-IEA). */
 export function wrapTransaction(env: PreparedEnvelope, tx: TransactionSet): string {
   const { ccyymmdd, hhmm } = env.stamp;
   const icn = String(env.controlNumber);
   const isa13 = icn.padStart(9, "0");
-  const st02 = icn.padStart(4, "0");
+  const st02 = transactionSetControlNumber(env.controlNumber);
   const segments: (readonly string[])[] = [
     [
       "ISA",

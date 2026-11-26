@@ -74,6 +74,57 @@ export interface AssemblyPreviewArrangement {
   status: "candidate" | "blocked" | "unresolved";
   reasonCode: string | null;
 }
+export interface AssemblyPreviewPricing {
+  status:
+    | "fully_resolved"
+    | "partially_resolved"
+    | "unresolved"
+    | "ambiguous"
+    | "unsupported"
+    | "unavailable";
+  assessedAt: string;
+  coversRequestedPeriod: boolean;
+  requiredInputs: readonly string[];
+  segments: readonly {
+    serviceFrom: string;
+    serviceTo: string;
+    serviceCategory: "RHC" | "CHC" | "IRC" | "GIP" | "IN_HOME_RESPITE" | null;
+    serviceLocationKind: "home" | "facility" | null;
+    status: "resolved" | "partial" | "unresolved" | "ambiguous" | "unsupported";
+    rateStatus: "qualified" | "missing" | "ambiguous" | "unverified" | "unsupported";
+    unitBasis: "per_day" | "per_hour" | null;
+    rateCents: number | null;
+    rateLocalityCode: string | null;
+    rateEffectiveFrom: string | null;
+    rateEffectiveTo: string | null;
+    rateSourceKind: string | null;
+    rateEvidenceVersion: number | null;
+    methodologyVersion: number | null;
+    pricingMethod: "per_day" | "per_hour" | "fixed_contract_unit" | null;
+    quantityConversionMethod:
+      | "daily_units"
+      | "hourly_prorated_minutes"
+      | "hourly_each_hour_or_part"
+      | null;
+    minimumDurationMethod: "not_applicable" | "not_required" | "minimum_minutes" | null;
+    minimumClinicalMinutes: number | null;
+    roundingBoundary: "not_applicable" | "service_day" | "segment" | null;
+    chargeCeilingMethod: "none" | "lower_of_rate_and_usual_charge" | "contract_maximum" | null;
+    chargeCeilings: readonly {
+      method: "lower_of_rate_and_usual_charge" | "contract_maximum";
+      amountCents: number;
+      boundary: "service_day" | "segment";
+    }[];
+    quantityStatus: "verified" | "missing" | "unverified";
+    baseReimbursementCents: number | null;
+    reimbursementEstimateCents: number | null;
+    actualBilledChargeCents: number | null;
+    reasonCodes: readonly string[];
+  }[];
+  reimbursementEstimateTotalCents: number | null;
+  actualBilledChargeTotalCents: number | null;
+  submissionAvailable: false;
+}
 export interface AssemblyPreviewView {
   primaryCoverage: AssemblyPreviewCoverage;
   medicaidCoverage: AssemblyPreviewCoverage;
@@ -100,6 +151,76 @@ export interface AssemblyPreviewView {
     remittanceAdviceRecorded: boolean | null;
   };
   stateBillingPolicy: "not_applicable_to_primary_medicaid" | "unconfirmed" | "unresolved";
+  programResponsibility: {
+    status:
+      | "verified"
+      | "missing"
+      | "pending"
+      | "rejected"
+      | "expired"
+      | "revoked"
+      | "ambiguous"
+      | "changes"
+      | "unsupported"
+      | "unavailable";
+    programKind:
+      | "ffs_open_card"
+      | "managed_care"
+      | "other_managed_care"
+      | "unsupported"
+      | "unresolved"
+      | "ambiguous"
+      | null;
+    canonicalPayerId: string | null;
+    canonicalPayerName: string | null;
+    reasonCode: string;
+  };
+  payerAuthorizationEvidence: {
+    clinicalDocuments: "missing" | "unverified" | "available";
+    notification: "missing" | "unverified" | "prepared" | "sent" | "acknowledged";
+    authorization:
+      | "missing"
+      | "unverified"
+      | "pending"
+      | "approved"
+      | "denied"
+      | "expired"
+      | "revoked"
+      | "ambiguous";
+    policyQualification: "unqualified";
+    reasonCodes: readonly string[];
+  };
+  enrollmentReadiness: ReadonlyArray<{
+    kind: string;
+    status:
+      | "not_applicable"
+      | "missing"
+      | "pending"
+      | "verified"
+      | "expired"
+      | "revoked"
+      | "ambiguous"
+      | "unavailable";
+    reasonCode: string;
+    vendorPayerId?: string | null;
+  }>;
+  selectedClearinghouse: {
+    status: "selected" | "missing" | "unavailable";
+    vendor: string | null;
+    configurationStatus: string | null;
+  };
+  tradingPartnerCredential: {
+    status:
+      | "configured"
+      | "missing"
+      | "expired"
+      | "future"
+      | "partial"
+      | "ambiguous"
+      | "unavailable";
+    reasonCode: string;
+  };
+  pricing: AssemblyPreviewPricing;
   electronicSubmissionAvailable: false;
   isAdvisorySnapshot: true;
 }
@@ -193,6 +314,60 @@ export interface LoadRateScheduleInput {
   serviceState: string;
   effectiveYear: number;
 }
+export interface RecordProgramAssignmentInput {
+  patientId: string;
+  patientPayerId: string;
+  admissionId: string;
+  providerEntityId: string;
+  serviceState: string;
+  programKind:
+    | "ffs_open_card"
+    | "managed_care"
+    | "other_managed_care"
+    | "unsupported"
+    | "unresolved";
+  canonicalPayerId?: string;
+  effectiveFrom: string;
+  effectiveTo?: string;
+  sourceKind: "manual_candidate" | "payer_document" | "state_response" | "imported";
+  evidenceReference?: string;
+}
+export interface RecordEnrollmentEvidenceInput {
+  providerEntityId: string;
+  serviceState: string;
+  programKind?: "ffs_open_card" | "managed_care" | "other_managed_care";
+  canonicalPayerId?: string;
+  clearinghouse?: "stedi" | "claimmd" | "other";
+  vendorAccountRef?: string;
+  vendorPayerId?: string;
+  sourceEnvironment?: "test" | "production";
+  transactionType?: "837I" | "835";
+  evidenceKind:
+    | "state_medicaid_provider_enrollment"
+    | "mco_participation"
+    | "837i_enrollment"
+    | "835_era_enrollment"
+    | "clearinghouse_payer_route"
+    | "institutional_format_qualification"
+    | "payer_transport_certification"
+    | "production_activation_approval";
+  effectiveFrom: string;
+  effectiveTo?: string;
+  evidenceFreshUntil?: string;
+}
+export interface VerifyPayerReadinessRecordInput {
+  expectedVersion: number;
+  verificationSource: string;
+  evidenceReference: string;
+  providerEntityId: string;
+  patientId?: string;
+}
+export interface RevokePayerReadinessRecordInput {
+  expectedVersion: number;
+  reasonCode: "source_corrected" | "payer_withdrawal" | "coverage_changed" | "other";
+  providerEntityId: string;
+  patientId?: string;
+}
 
 export interface M24WriteService {
   /** Optional on legacy/test bindings; production Drizzle binding provides the read-only preview. */
@@ -261,4 +436,32 @@ export interface M24WriteService {
   ): Promise<{ ok: boolean; errorMessage?: string }>;
   registerPlatformRule(actor: M24Actor, input: RegisterPlatformRuleInput): Promise<void>;
   loadRateSchedule(actor: M24Actor, input: LoadRateScheduleInput): Promise<{ queued: boolean }>;
+  recordProgramAssignment(
+    actor: M24Actor,
+    input: RecordProgramAssignmentInput,
+  ): Promise<{ id: string; status: "pending" }>;
+  recordEnrollmentEvidence(
+    actor: M24Actor,
+    input: RecordEnrollmentEvidenceInput,
+  ): Promise<{ id: string; status: "pending" }>;
+  verifyProgramAssignment(
+    actor: M24Actor,
+    id: string,
+    input: VerifyPayerReadinessRecordInput,
+  ): Promise<{ status: "verified"; version: number }>;
+  verifyEnrollmentEvidence(
+    actor: M24Actor,
+    id: string,
+    input: VerifyPayerReadinessRecordInput,
+  ): Promise<{ status: "verified"; version: number }>;
+  revokeProgramAssignment(
+    actor: M24Actor,
+    id: string,
+    input: RevokePayerReadinessRecordInput,
+  ): Promise<{ status: "revoked"; version: number }>;
+  revokeEnrollmentEvidence(
+    actor: M24Actor,
+    id: string,
+    input: RevokePayerReadinessRecordInput,
+  ): Promise<{ status: "revoked"; version: number }>;
 }

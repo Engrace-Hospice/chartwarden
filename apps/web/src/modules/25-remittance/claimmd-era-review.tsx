@@ -7,13 +7,16 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
+  useAttemptKey,
 } from "@chartwarden/ui";
 import type { paths } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX, RefObject } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { BillingTabs } from "../../shell/billing-tabs";
 import { useSession } from "../../shell/session";
+import { reasonExplanation } from "./medicaid-era-presentation";
+import "./medicaid-era-reviews.css";
 import { formatDay, humanize, money, toneOf } from "./remittance-status";
 
 type ReviewPage =
@@ -41,7 +44,10 @@ const REVIEW_STATE_TONE: Record<string, "neutral" | "progress" | "success" | "wa
 
 export function ClaimMdEraReview(): JSX.Element {
   const client = useApiClient();
+  const attemptKey = useAttemptKey();
   const session = useSession();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState<ReviewSummary[]>([]);
   const [selected, setSelected] = useState<ReviewItem | null>(null);
@@ -69,6 +75,12 @@ export function ClaimMdEraReview(): JSX.Element {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [medicaidEvaluationBusy, setMedicaidEvaluationBusy] = useState(false);
+  const [medicaidEvaluationMessage, setMedicaidEvaluationMessage] = useState<{
+    kind: "success" | "held" | "unavailable";
+    text: string;
+    reviewId?: string;
+  } | null>(null);
   const detailHeading = useRef<HTMLHeadingElement>(null);
 
   const load = useCallback(
@@ -187,6 +199,61 @@ export function ClaimMdEraReview(): JSX.Element {
   const canFinancialReview = session?.permissions?.includes("remittance.financial_review") ?? false;
   const canPostingApprove = session?.permissions?.includes("remittance.posting.approve") ?? false;
   const canPostingExecute = session?.permissions?.includes("remittance.posting.execute") ?? false;
+
+  const evaluateForMedicaid = async (artifactId: string) => {
+    if (!canResolveIdentity || medicaidEvaluationBusy) return;
+    setMedicaidEvaluationBusy(true);
+    setMedicaidEvaluationMessage(null);
+    try {
+      const response = await attemptKey.run(`medicaid-era-evaluate:${artifactId}`, (key) =>
+        client.POST("/api/v1/remittance/medicaid-era-artifacts/{artifactId}/evaluate", {
+          params: { path: { artifactId }, header: { "Idempotency-Key": key } },
+        }),
+      );
+      if (response.error || !response.data) {
+        const status = response.response?.status;
+        setMedicaidEvaluationMessage({
+          kind: "unavailable",
+          text:
+            status === 403
+              ? "You are not permitted to evaluate this source."
+              : status === 409
+                ? "The source changed during evaluation. Reload the staged ERA before retrying."
+                : "Evaluation could not be completed. The request may have reached the service; retry safely or refresh this source.",
+        });
+        return;
+      }
+      const result = response.data;
+      if (result.status === "review_saved") {
+        setMedicaidEvaluationMessage({
+          kind: "success",
+          reviewId: result.reviewId,
+          text: result.replay
+            ? "The existing nonposting Medicaid assessment is current."
+            : "A nonposting Medicaid assessment was saved for investigation.",
+        });
+        if (canFinancialReview)
+          navigate(`/remittance/medicaid-era-reviews/${result.reviewId}`, {
+            state: { from: `${location.pathname}${location.search}` },
+          });
+      } else {
+        setMedicaidEvaluationMessage({
+          kind: result.status,
+          text:
+            result.status === "held"
+              ? `The source was held for review: ${reasonExplanation(result.reasonCode)}`
+              : reasonExplanation(result.reasonCode),
+        });
+      }
+    } catch {
+      setMedicaidEvaluationMessage({
+        kind: "unavailable",
+        text: "Evaluation may have completed. Retry is safe; no payment or claim state is changed by this action.",
+      });
+    } finally {
+      setMedicaidEvaluationBusy(false);
+    }
+  };
 
   const refreshPostingPlan = async (itemId: string) => {
     setPostingBusy(true);
@@ -403,6 +470,27 @@ export function ClaimMdEraReview(): JSX.Element {
           {error ? (
             <div role="alert" style={errorStyle}>
               {error}
+            </div>
+          ) : null}
+          {medicaidEvaluationMessage ? (
+            <div
+              className={`mer-banner mer-banner-${medicaidEvaluationMessage.kind === "success" ? "success" : medicaidEvaluationMessage.kind === "held" ? "warning" : "error"}`}
+              role={medicaidEvaluationMessage.kind === "unavailable" ? "alert" : "status"}
+              style={{ marginBottom: ".75rem" }}
+            >
+              <span>{medicaidEvaluationMessage.text}</span>
+              {medicaidEvaluationMessage.reviewId && canFinancialReview ? (
+                <Link
+                  className="mer-inline-link"
+                  to={`/remittance/medicaid-era-reviews/${medicaidEvaluationMessage.reviewId}`}
+                >
+                  Open investigation
+                </Link>
+              ) : medicaidEvaluationMessage.reviewId ? (
+                <Link className="mer-inline-link" to="/remittance/medicaid-era-reviews">
+                  Open review worklist
+                </Link>
+              ) : null}
             </div>
           ) : null}
           <div style={filterRowStyle}>
@@ -638,6 +726,9 @@ export function ClaimMdEraReview(): JSX.Element {
                   postingError={postingError}
                   canPostingApprove={canPostingApprove}
                   canPostingExecute={canPostingExecute}
+                  canEvaluateForMedicaid={canResolveIdentity}
+                  medicaidEvaluationBusy={medicaidEvaluationBusy}
+                  onEvaluateForMedicaid={() => void evaluateForMedicaid(selected.id)}
                   onRefreshPostingPlan={() => void refreshPostingPlan(selected.id)}
                   onApprovePosting={approvePosting}
                   onExecutePosting={executePosting}
@@ -678,6 +769,9 @@ function ReviewDetail({
   postingError,
   canPostingApprove,
   canPostingExecute,
+  canEvaluateForMedicaid,
+  medicaidEvaluationBusy,
+  onEvaluateForMedicaid,
   onRefreshPostingPlan,
   onApprovePosting,
   onExecutePosting,
@@ -715,6 +809,9 @@ function ReviewDetail({
   postingError: string | null;
   canPostingApprove: boolean;
   canPostingExecute: boolean;
+  canEvaluateForMedicaid: boolean;
+  medicaidEvaluationBusy: boolean;
+  onEvaluateForMedicaid: () => void;
   onRefreshPostingPlan: () => void;
   onApprovePosting: (plan: PostingPlan, reason: string) => Promise<void>;
   onExecutePosting: (plan: PostingPlan, reason: string) => Promise<void>;
@@ -741,6 +838,26 @@ function ReviewDetail({
         </div>
         <StatusPill label={humanize(item.state)} tone={toneOf(REVIEW_STATE_TONE, item.state)} />
       </header>
+      {canEvaluateForMedicaid ? (
+        <section className="mer-source-action" aria-labelledby="medicaid-evaluation-heading">
+          <div>
+            <h3 id="medicaid-evaluation-heading">Separate Medicaid assessment</h3>
+            <p>
+              The server checks the staged source and current payer evidence. This creates a
+              nonposting investigation only.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            tone="secondary"
+            disabled={medicaidEvaluationBusy}
+            onClick={onEvaluateForMedicaid}
+          >
+            <Glyph name="shield-check" size={14} />
+            {medicaidEvaluationBusy ? "Evaluating…" : "Evaluate for Medicaid"}
+          </Button>
+        </section>
+      ) : null}
       <dl style={summaryGridStyle}>
         <Summary label="Reported payment" value={money(item.payment.amount)} />
         <Summary

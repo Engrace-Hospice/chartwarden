@@ -1390,6 +1390,7 @@ import {
   buildM24SubmissionWorkerDeps,
   buildMedicaidOnboardingCredentialPort,
   buildStateChannelHealthProbe,
+  createChcPricingPreparationService,
   createDrizzleMedicaidRedactStore,
   mountM24Routes,
   registerM24AbacPredicates,
@@ -1405,6 +1406,10 @@ import {
 } from "./modules/24-billing-medicaid/index";
 import { m24RouteClasses } from "./modules/24-billing-medicaid/routes/route-classes";
 import { isVoidM24Claim } from "./modules/24-billing-medicaid/void-claim";
+import {
+  createMedicaidEraReviewService,
+  unavailableMedicaidEraReviewReaders,
+} from "./modules/25-remittance/domain/medicaid-era-review-service";
 // M25 (Remittance & Denials) boot surface — the §4.5 outbox catalog, the §4.7 ABAC resolvers
 // (`claim_assigned_to_actor`, `appeal_within_deadline`), and the §4.1 route mount over the Drizzle
 // read/write services. The write service binds the catalog-validating transactional outbox publisher
@@ -1417,6 +1422,7 @@ import {
   M25_PLATFORM_JOB_ID,
   type RemittanceAiPromptRegistryPort,
   type TerminologyLookupPort,
+  bindConfiguredRemoteEvaluatorWrites,
   buildDrizzleAdrReadinessService,
   buildDrizzleAdrService,
   buildDrizzleAuditRequestService,
@@ -1428,6 +1434,7 @@ import {
   buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
+  buildDrizzleMedicaidEraReviewWorkflow,
   buildDrizzlePayerAppealPathService,
   buildDrizzlePayerAppealService,
   buildDrizzlePlaybookService,
@@ -2116,6 +2123,7 @@ import {
   createDbNppesNpiSource,
   createDrizzleMdmEraseStore,
   facilityKindsForIds,
+  facilityKindsForIdsInTransaction,
   facilityPostalCodesForIds,
   getMdmEntityProvider,
   mountMdmRoutes,
@@ -2373,6 +2381,7 @@ export function wireModuleSeams(
     deps.db
       ? {
           store: createDrizzleEncounterReaderStore(deps.db, {
+            foundationSites: buildFoundationSiteReader(),
             ...(deps.outboxPublisher
               ? { outbox: bindCallerModule(deps.outboxPublisher, "m8") }
               : {}),
@@ -2912,12 +2921,16 @@ export function wireModuleSeams(
   // _methodology_unlocked / cap_platform_admin). Pass the DB handle so the Drizzle period/settlement fact
   // resolver binds under RLS; with no db it defaults to the deny-stub (default-deny).
   registerM26AbacPredicates({ db: deps.db });
-  // M24 — the six §4.8 ABAC resolvers (provider_entity_medicaid_billing_scope /
+  // M24 — the §4.8 ABAC resolvers (provider_entity_medicaid_billing_scope /
   // medicaid_claim_in_billing_manager_caseload / medicaid_override_role_eligible /
   // regulatory_required_rule_protected_medicaid / rb_arrangement_visible_in_scope /
-  // state_trading_partner_credential_admin). Pass the DB handle so the Drizzle fact resolver binds under RLS;
+  // state_trading_partner_credential_admin / medicaid_chc_pricing_preparation_in_scope). Pass the DB handle so
+  // the Drizzle fact resolver binds under RLS;
   // with no db it defaults to the deny-stub (default-deny).
-  registerM24AbacPredicates({ db: deps.db });
+  registerM24AbacPredicates({
+    db: deps.db,
+    isInCaseload: (input) => getSeam("CaseloadProvider").isInCaseload(input),
+  });
   // M38 — the one §4.4 ABAC resolver (`terminology_admin_platform_ops`), the platform-only conjunct on
   // the `/api/v1/admin/terminology/*` surface. Role-only (the `platform_ops` M3 RBAC role on a staff
   // session), so no DB handle: there is no owner row to load — a canonical terminology load has no
@@ -5603,16 +5616,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // posture as `m24LocPeriodReader`, but NON_ORG_SCOPED so no org context. Batched by id so one claim assembly issues at most one query here.
   const m24FacilityKindReader = dbHandle
     ? {
-        async kindsFor(facilityIds: readonly string[]) {
-          const map = new Map<string, PlaceOfServiceFacilityKind>();
-          if (facilityIds.length === 0) return map;
-          const rows = await dbHandle.db
-            .select({ id: schema.facilities.id, kind: schema.facilities.kind })
-            .from(schema.facilities)
-            .where(inArray(schema.facilities.id, [...facilityIds]));
-          for (const r of rows) map.set(r.id, r.kind);
-          return map;
-        },
+        kindsFor: (facilityIds: readonly string[]) => facilityKindsForIds(dbHandle.db, facilityIds),
+        kindsForInTransaction: (transaction: unknown, facilityIds: readonly string[]) =>
+          facilityKindsForIdsInTransaction(transaction, facilityIds),
       }
     : undefined;
   // M24 → M40 (GAP-040) — the LIVE `MdmEntityProvider` seam for the R&B arrangement's NF-name snapshot.
@@ -5623,6 +5629,38 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const m24FacilityNameResolver = {
     async resolveFacility(orgId: string, id: string) {
       return getMdmEntityProvider().resolveFacility(orgId, id);
+    },
+  };
+  // M24 → M40: merge-aware canonical payer identity. A payer UUID supplied by an imported program
+  // assignment is not accepted at assembly unless M40 resolves it as an active Medicaid payer for
+  // the admission's state.
+  const m24CanonicalPayerReader = {
+    async resolvePayer(organizationId: string, id: string) {
+      const resolved = await getMdmEntityProvider().resolvePayer(organizationId, id);
+      return resolved
+        ? {
+            id: resolved.canonical.id,
+            displayName: resolved.canonical.displayName,
+            kind: resolved.canonical.kind,
+            stateCode: resolved.canonical.stateCode,
+            status: resolved.status,
+          }
+        : null;
+    },
+    async medicaidProgramClassifications(
+      organizationId: string,
+      canonicalPayerId: string,
+      serviceState: string,
+      serviceFrom: string,
+      serviceTo: string,
+    ) {
+      return getMdmEntityProvider().medicaidPayerProgramClassifications(
+        organizationId,
+        canonicalPayerId,
+        serviceState,
+        serviceFrom,
+        serviceTo,
+      );
     },
   };
   // M24 → M5 (place-of-service follow-up) — the LIVE `PatientAddressReader` seam (registered by M5 at
@@ -5643,6 +5681,28 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       };
       return reader.residenceAt(organizationId, patientId, asOfDate);
     },
+    async residencesBetweenInTransaction(
+      transaction: unknown,
+      organizationId: string,
+      patientId: string,
+      from: string,
+      to: string,
+    ) {
+      const reader = getSeam("PatientAddressReader") as PatientAddressReader;
+      if (!reader.residencesBetweenInTransaction) {
+        throw new DegradedError(
+          "m24-residence-reader",
+          "PatientAddressReader.residencesBetweenInTransaction is unavailable",
+        );
+      }
+      return reader.residencesBetweenInTransaction(
+        transaction,
+        organizationId,
+        patientId,
+        from,
+        to,
+      );
+    },
   };
   // M24 → M8 (WX-PR-011 line-assembly follow-up) — the LIVE `SignedEncountersReader` seam (registered by
   // M8 at boot), narrowed to the encounter-window shape claim assembly needs. Resolved lazily per call
@@ -5654,7 +5714,24 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           organizationId: string,
           patientId: string,
           since: string,
-        ): Promise<ReadonlyArray<{ encounterId: string; serviceDate: string }>>;
+        ): Promise<
+          ReadonlyArray<{
+            encounterId: string;
+            providerEntityId?: string | null;
+            patientId: string;
+            admissionId: string;
+            encounterType: string;
+            discipline: string;
+            serviceDate: string;
+            signedAt: string;
+            status: string;
+            evvBracketState: string;
+            startedAt?: string | null;
+            endedAt?: string | null;
+            timeSource?: "evv" | "clinician" | null;
+            sourceVersion?: number;
+          }>
+        >;
       };
       const digests = await reader.signedEncountersForPatientSince(
         organizationId,
@@ -5666,7 +5743,43 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         .map((d) => ({
           encounterId: d.encounterId,
           serviceDate: d.serviceDate,
+          organizationId,
+          providerEntityId: d.providerEntityId ?? null,
+          patientId: d.patientId,
+          admissionId: d.admissionId,
+          encounterType: d.encounterType,
+          discipline: d.discipline,
+          signedAt: d.signedAt,
+          status: d.status,
+          evvBracketState: d.evvBracketState,
+          startedAt: d.startedAt ?? null,
+          endedAt: d.endedAt ?? null,
+          timeSource: d.timeSource ?? null,
+          sourceVersion: d.sourceVersion,
         }));
+    },
+    async chcClinicalIntervalsInTransaction(
+      transaction: unknown,
+      input: {
+        organizationId: string;
+        providerEntityId: string;
+        patientId: string;
+        admissionId: string;
+        serviceDate: string;
+      },
+    ) {
+      const reader = getSeam("SignedEncountersReader") as {
+        chcClinicalIntervalsInTransaction?: NonNullable<
+          import("@chartwarden/types").SignedEncountersReader["chcClinicalIntervalsInTransaction"]
+        >;
+      };
+      if (!reader.chcClinicalIntervalsInTransaction) {
+        throw new DegradedError(
+          "m8-encounters",
+          "SignedEncountersReader.chcClinicalIntervalsInTransaction is unavailable",
+        );
+      }
+      return reader.chcClinicalIntervalsInTransaction(transaction, input);
     },
   };
   const m30OutboxPublisher = bindCallerModule(txOutboxPublisher, "m30");
@@ -8604,6 +8717,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           withClaimsBillingGate(app, M25_ROUTE_CLASSES, () =>
             mountM25Routes(app, {
               readService: buildDrizzleM25ReadService(dbHandle.db, m25Terminology),
+              medicaidEraReviewService: bindConfiguredRemoteEvaluatorWrites(
+                buildDrizzleMedicaidEraReviewWorkflow(
+                  dbHandle.db,
+                  createMedicaidEraReviewService(unavailableMedicaidEraReviewReaders),
+                ),
+                process.env,
+              ),
               ...(claimMdEraReviewKeyRing
                 ? {
                     claimMdEraReviewService: buildDrizzleClaimMdEraReviewService(
@@ -8818,6 +8938,22 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // M24 (Billing — Medicaid) — mount the §4.1 route plugins over the Drizzle READ + WRITE services;
           // the §4.11 `m24.*` transactional outbox publisher binds here (events persist on the mutation's tx).
           // ADR-0110 — the claims-billing add-on gate on M24's new-work routes (route-classes.ts).
+          const m24TenantClearinghouseRouteReader = buildDrizzleTenantClearinghouseRouteService({
+            db: dbHandle.db,
+            service: tenantClearinghouseService,
+            audit: buildClearinghouseAuditPort(),
+          });
+          const m24ChcPricingPreparationService =
+            m24LocPeriodReader && m24CoverageResolver
+              ? createChcPricingPreparationService({
+                  db: dbHandle.db,
+                  coverage: m24CoverageResolver,
+                  admissions: m24LocPeriodReader,
+                  encounters: m24SignedEncounters,
+                  residences: m24ResidenceReader,
+                  canonicalPayer: m24CanonicalPayerReader,
+                })
+              : undefined;
           withClaimsBillingGate(
             app,
             m24RouteClasses((org, id) => isVoidM24Claim(dbHandle.db, org, id)),
@@ -8846,7 +8982,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   m24LocPeriodReader,
                   m24AdapterRegistry,
                   () => getSeam("ClaimReader") as ClaimReader,
+                  m24CanonicalPayerReader,
+                  {
+                    async selectedTenantRoute(organizationId) {
+                      const view = await m24TenantClearinghouseRouteReader.get({
+                        organizationId,
+                        userId: "",
+                        roles: [],
+                      });
+                      return { source: view.source, vendor: view.vendor, status: view.status };
+                    },
+                  },
                 ),
+                chcPricingPreparationService: m24ChcPricingPreparationService,
               }),
           );
           // M3's location-scoped staff read as M15's locally-declared roster port (M15 imports no authorization code).
@@ -11993,6 +12141,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       db: dbHandle.db,
       coverages: getSeam("PatientCoverageReader"),
       admissions: m24LocPeriodReader,
+      canonicalPayerReader: m24CanonicalPayerReader,
+      patientAddresses: getSeam("PatientAddressReader") as PatientAddressReader,
+      facilityKindReader: m24FacilityKindReader,
+      chcPricingPreparations:
+        m24LocPeriodReader && m24CoverageResolver
+          ? createChcPricingPreparationService({
+              db: dbHandle.db,
+              coverage: m24CoverageResolver,
+              admissions: m24LocPeriodReader,
+              encounters: m24SignedEncounters,
+              residences: m24ResidenceReader,
+              canonicalPayer: m24CanonicalPayerReader,
+            })
+          : undefined,
       outbox: m24OutboxPublisher,
     });
     app.addHook("onClose", async () => {

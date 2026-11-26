@@ -43,3 +43,4 @@ export * from "./claimmd-era"; // Claim.MD central capture/resolution/delivery +
 export * from "./claimmd-era-match"; // Append-only tenant match/review evidence (BIL-3.2; nonposting)
 export * from "./claimmd-era-financial-review"; // Append-only nonposting financial-review dispositions (BIL-3.3)
 export * from "./claimmd-era-posting"; // Immutable plans and append-only approval/execution history (BIL-3.4)
+export * from "./medicaid-era-review"; // Medicaid ERA nonposting review and history (L6B)

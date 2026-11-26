@@ -59,7 +59,18 @@ export type NoticeDocument =
       readonly terminationDate: string;
     };
 
-export interface Notice837iInput extends Parties837i {
+/**
+ * A Medicare-only notice: the shared party loops minus the payer overrides (`claimFilingIndicator`, `commercial`) and
+ * with the subscriber identified by `mbi` alone, as on {@link TransferNotice837iInput}.
+ */
+export interface Notice837iInput
+  extends Omit<Parties837i, "subscriber" | "claimFilingIndicator" | "commercial"> {
+  readonly subscriber: X12PersonName & {
+    readonly mbi: string;
+    readonly address: X12Address;
+    readonly birthDate: string;
+    readonly sex: "M" | "F";
+  };
   readonly envelope: X12Envelope;
   readonly notice: NoticeDocument;
   /** ICD-10-CM, with or without the dot. */
@@ -97,6 +108,13 @@ function buildNotice(input: Notice837iInput): string {
   const through =
     notice.kind === "NOTR" ? d8(notice.terminationDate, "notice.terminationDate") : admission;
   if (through < admission) throw new Notice837iBuildError("notice.terminationDate");
+
+  // Untyped input: a notice is always Medicare-primary (SBR09 MA), never a Medicaid or commercial claim.
+  const parties: Parties837i = input;
+  if (parties.claimFilingIndicator !== undefined) {
+    throw new Notice837iBuildError("claimFilingIndicator");
+  }
+  if (parties.commercial !== undefined) throw new Notice837iBuildError("commercial");
 
   const dx = input.principalDiagnosis.replace(".", "").trim().toUpperCase();
   if (!matches(/^[A-Z][0-9][0-9A-Z]{1,5}$/, dx))

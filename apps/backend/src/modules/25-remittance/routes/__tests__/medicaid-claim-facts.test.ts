@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { medicaidClaimFactsPort } from "../medicaid-claim-facts";
+import { medicaidClaimFactsPort, medicaidEraEnrollmentEvidence } from "../medicaid-claim-facts";
 
 const ORG = "org-1";
 const ok = {
@@ -32,5 +32,39 @@ describe("medicaidClaimFactsPort", () => {
     await expect(medicaidClaimFactsPort(ORG, view).byId({}, "c1")).rejects.toThrow("seam denied");
     const line = JSON.parse(String(warn.mock.calls[0]?.[0])) as Record<string, string>;
     expect(line).toMatchObject({ level: "warn", organizationId: ORG, claimId: "c1" });
+  });
+});
+
+describe("medicaid ERA enrollment seam", () => {
+  it("reads account evidence only for the server-selected organization and provider entity", async () => {
+    const view = vi.fn(async (organizationId: string, providerEntityId: string) => [
+      {
+        organizationId,
+        providerEntityId,
+        vendor: "claimmd" as const,
+        accountReference: "synthetic-test-account",
+        environment: "test" as const,
+        canonicalPayerId: "payer-id",
+        programId: "classification-id",
+        evidenceId: "synthetic-enrollment-evidence-id",
+        evidenceVersion: 1,
+        payerIdentifier: "synthetic-payer-id",
+        billingNpi: "1234567893",
+        billingTin: null,
+        effectiveFrom: "2026-01-01",
+        effectiveTo: "2026-12-31",
+        evidenceReference: "approval:synthetic-era-enrollment",
+        verifiedAt: "2026-01-01T00:00:00.000Z",
+        classificationRecordedAt: "2026-01-01T00:00:00.000Z",
+        sourceEvidenceFingerprint: "synthetic-source-evidence-fingerprint",
+        evidenceFreshUntil: "2026-12-31T00:00:00.000Z",
+      },
+    ]);
+    await expect(
+      medicaidEraEnrollmentEvidence("org-1", "provider-1", () => ({ eraEnrollmentEvidence: view })),
+    ).resolves.toMatchObject([
+      { organizationId: "org-1", providerEntityId: "provider-1", environment: "test" },
+    ]);
+    expect(view).toHaveBeenCalledWith("org-1", "provider-1");
   });
 });
