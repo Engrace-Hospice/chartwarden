@@ -2541,23 +2541,16 @@ controls:
       machine check); an injected empty key is refused. Production refuses to boot without a valid secret; a non-production process with
       no valid secret (absent, under 32 characters after the trim, or a reserved-host placeholder) uses a process-local random key (one
       warning is logged); records written by another process or before a restart are then IDEMPOTENCY_KEY_STALE (409), never replayed or
-      re-run. Across a deploy a record stored under the earlier plain SHA-256 (the one origin/main's middleware wrote, over the
-      organization, user, key and body only, with no method, route, path parameters, query string or If-Match) still matches the same
-      request by that legacy hash (computed, never written, for the 24 h TTL), so a retry of a pre-deploy request replays rather than
-      re-executes, while another body or another user stays a 409; this legacy arm is weaker than the keyed one: the plain fingerprint
-      binds no actor kind, method, route, path parameters, query string or If-Match, so for the 24 h window a pre-deploy row replays for a
-      same-user, same-key, same-body request whatever route, query or actor kind it names (origin/main's own behaviour); the wider scope
-      and the actor-kind separation apply only to rows written after the deploy; the legacy arm is chosen from the STORED record having
-      no "h1:" prefix, never from anything the request says. Removal: the arm and legacyIdempotencyHash go once every environment has
-      passed one idempotency TTL (24 h) after the keyed fingerprint deployed there; 2026-12-15 is the calendar proxy for that (chosen with about five weeks of margin, to be moved if the stack deploys after early December), enforced by
-      a test that fails after it while the arm still exists (LEGACY_ARM_REMOVE_AFTER), and this row is partial, with review_by on the same
-      date, until then. The arm recognises only origin/main's plain hash: a row an intermediate release wrote (the tenant-clearinghouse
-      release writes a different plain SHA-256, over the JSON scope of organization, user, actor kind, method, route, path parameters,
-      query string and If-Match) is not recognised, so if that release deploys first, a retry of its row within the TTL answers 409
-      IDEMPOTENCY_CONFLICT (safe: never a replay, never a re-run); no further weak arm is added. A record written before the deploy keeps its plain, unkeyed SHA-256
-      fingerprint in idempotency_key until the hourly idempotency.cleanup sweep removes it after its 24 h TTL (about 25 h; longer for an
-      organization with more than 50 000 expired rows, which drain over successive runs), because it is never rewritten, so for that
-      window a reader of the table can still test guesses against it. The idempotency.cleanup sweeper purges expired rows in every
+      re-run. Only that keyed fingerprint matches a stored record: the plain SHA-256 the middleware wrote before the keyed hash (over the
+      organization, user, key and body only) is no longer recognised. The legacy arm that matched it for one 24 h TTL after the keyed
+      fingerprint deployed, legacyIdempotencyHash and the removal-date constant are gone (the shared module exports none of them, pinned by
+      a test), so a stored record without the "h1:" prefix, whether that plain hash or a different one an intermediate release wrote
+      (the tenant-clearinghouse release wrote a plain SHA-256 over the JSON scope), answers every request 409 IDEMPOTENCY_CONFLICT,
+      never a replay and never a re-run. A record written before the keyed fingerprint deployed kept its plain, unkeyed SHA-256
+      fingerprint in idempotency_key until the hourly idempotency.cleanup sweep removed it after its 24 h TTL (about 25 h; longer for an
+      organization with more than 50 000 expired rows, which drain over successive runs), because it is never rewritten; an environment
+      that has run the keyed fingerprint for that long holds none (an operator checks that no request_hash lacks the "h1:" prefix before
+      this removal deploys there; not a machine check). The idempotency.cleanup sweeper purges expired rows in every
       organization status (created, active, suspended and closed). origin/main swept active organizations only, so expired rows of the
       other statuses (plain-SHA-256 fingerprints and cached response bodies, which can be PHI-bearing) were never deleted; the sweep
       selects by expires_at alone, so its first runs after deploy also remove those, bounding their retention. No remediation script or
@@ -2576,7 +2569,7 @@ controls:
       cached response body.
     hipaa: ["164.312(a)(2)(iv)", "164.312(c)(1)"]
     soc2: ["CC6.1", "CC6.7"]
-    status: partial
+    status: implemented
     evidence:
       - script: test:gap007:idempotency-claim:live
       - script: test:f073:idempotency-bodiless:live
@@ -2588,10 +2581,6 @@ controls:
       - file: apps/backend/__tests__/idempotency-keyed-fingerprint.test.ts
       - file: apps/backend/__tests__/idempotency-scope.test.ts
       - file: packages/shared/__tests__/idempotency.test.ts
-    gap:
-      reason: The legacy plain-SHA-256 arm (weaker than the keyed fingerprint, see the text) must be removed, with legacyIdempotencyHash, once every environment has passed one idempotency TTL (24 h) after the keyed fingerprint deployed there. The row is partial until then because the checker enforces review_by only on partial and gap rows; 2026-12-15 is the calendar proxy for the trigger (chosen with about five weeks of margin; move it if the stack deploys after early December), and a test in packages/shared fails after it while the arm exists, so the arm cannot be forgotten (move the date, with this review_by, if the deploy slips).
-      owner: platform
-      review_by: 2026-12-15
 
   - id: CW-BA-01
     title: Business associate agreements tracked for every vendor that touches PHI
