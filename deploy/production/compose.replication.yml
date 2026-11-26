@@ -1,0 +1,159 @@
+# Streaming replication to a STANDBY on ANOTHER host (CW-CP-01; DR/BCP 5.1 and 6.1). An OVERLAY stacked AFTER
+# compose.backup.yml (it needs its pg-socket volume, its image and its archiving flags):
+#
+#   docker compose --env-file .env.production -f compose.yml -f compose.backup.yml -f compose.replication.yml pull postgres
+#   docker compose --env-file .env.production -f compose.yml -f compose.backup.yml -f compose.replication.yml up -d postgres
+#   docker compose --env-file .env.production -f compose.yml -f compose.backup.yml -f compose.replication.yml run --rm replication-provision
+#   (then bring the standby up, and only once it streams:)
+#   docker compose --env-file .env.production -f compose.yml -f compose.backup.yml -f compose.replication.yml up -d replication-monitor
+#
+# Enabling it recreates `postgres` once (same volume, same data) with TLS on, so do it in a maintenance window, and
+# every later `up` of postgres must name all three files: a compose.backup.yml-only `up` recreates it WITHOUT TLS, the
+# published port and the slot bound (the slot, and the WAL it holds, would then grow unbounded: drop it first,
+# `SELECT pg_drop_replication_slot('cw_standby')`). The standby side is db-replication/compose.standby.yml;
+# the operator order, the certificates and the first witnessed failover rehearsal are in deploy/production/README.md
+# ("Database standby") and DR/BCP 5.1 / 6.1; the off-site backup it restores from is issue #878's checklist.
+#
+# What changes on the primary:
+#   - `command` REPLACES compose.yml's and compose.backup.yml's list, so this file restates both (max_locks_per_transaction
+#     and the archiving flags); scripts/__tests__/replication-compose.test.ts fails when either is dropped, and when a
+#     setting a hot standby must not undercut (max_locks_per_transaction, max_wal_senders) differs from the standby's.
+#   - TLS on, with a server certificate and the CA that signed the standby's client certificate. The standby has NO
+#     password: pg_hba (added by db-replication/provision-primary.sh, not edited by hand) has `hostssl replication
+#     cw_replicator <REPLICATION_STANDBY_CIDR> cert`, `host replication ... reject` and `host all cw_replicator ... reject`.
+#   - ONE replication slot (cw_standby). A stalled standby makes the primary keep WAL for it; max_slot_wal_keep_size
+#     bounds that (the slot is then invalidated, `replication.slot_lost`, and the standby is rebuilt from the backup)
+#     and stays below BACKUP_PG_WAL_ALERT_BYTES (8 GiB), so a stuck standby can never fill the disk before it pages.
+#   - the published port: `${REPLICATION_PUBLISH_ADDR}:5432`. It publishes the WHOLE listener, so every role's password
+#     login is reachable on it too (the cluster's own `host all all all scram-sha-256` rule stays below the replication
+#     block). Bind it to a PRIVATE address only the standby can reach (a VPN or provider-private network); if it must be a
+#     public one, a provider-level firewall restricted to the standby's address is the control. A host `ufw` does NOT filter
+#     Docker-published ports (they are forwarded, not input); DOCKER-USER rules do, and the operator must prove the
+#     restriction (README, "Database standby", step 2). The cert rule, pinned to the standby's address, is the second lock.
+# The monitor (replication-monitor) pages through OPS_ALERT_WEBHOOK_URL: no streaming standby, replay lag (>= 60 s SEV-3,
+# 5 min SEV-2, 30 min SEV-1), a lost or missing slot, and WAL held back by a stalled standby.
+x-replication-common: &replication-common
+  CHARTWARDEN_DB_NAME: ${CHARTWARDEN_DB_NAME:-chartwarden}
+  REPLICATION_ROLE: cw_replicator
+  REPLICATION_SLOT: cw_standby
+
+x-replication-hardening: &replication-hardening
+  user: postgres
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  read_only: true
+  tmpfs:
+    - /tmp
+
+services:
+  postgres:
+    ports:
+      - "${REPLICATION_PUBLISH_ADDR:?set in .env.production (the host address the standby connects to, not 0.0.0.0)}:5432:5432"
+    secrets:
+      - replication_server_cert
+      - replication_server_key
+      - replication_ca
+    command:
+      - postgres
+      - -c
+      - max_locks_per_transaction=4096
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=pgbackrest --stanza=chartwarden archive-push %p
+      - -c
+      - archive_timeout=60
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=4
+      - -c
+      - max_replication_slots=2
+      - -c
+      - wal_keep_size=1GB
+      - -c
+      - max_slot_wal_keep_size=${REPLICATION_MAX_SLOT_WAL_KEEP:-4GB}
+      - -c
+      - wal_sender_timeout=60s
+      - -c
+      - log_replication_commands=on
+      - -c
+      - ssl=on
+      - -c
+      - ssl_min_protocol_version=TLSv1.3
+      - -c
+      - ssl_cert_file=/run/secrets/replication_server_cert
+      - -c
+      - ssl_key_file=/run/secrets/replication_server_key
+      - -c
+      - ssl_ca_file=/run/secrets/replication_ca
+
+  # Idempotent: the replication role, the slot and the pg_hba block. The data volume is mounted read-write because
+  # pg_hba.conf lives in PGDATA; nothing else in it is touched.
+  replication-provision:
+    image: "${CHARTWARDEN_BACKUP_IMAGE:?set-digest-pinned-GHCR-reference}"
+    mem_limit: 128m
+    cpus: 0.5
+    restart: "no"
+    <<: *replication-hardening
+    command: ["bash", "/usr/local/share/cw-replication/provision-primary.sh"]
+    # It reaches Postgres through the socket volume only.
+    network_mode: none
+    environment:
+      <<: *replication-common
+      REPLICATION_STANDBY_CIDR: ${REPLICATION_STANDBY_CIDR:?set in .env.production (the standby host address as a /32; a /128 for IPv6)}
+      # Only so the provisioner can refuse a wildcard (0.0.0.0, ::): the port carries every role's password login too.
+      REPLICATION_PUBLISH_ADDR: ${REPLICATION_PUBLISH_ADDR:?set in .env.production (a PRIVATE address of this host)}
+    volumes:
+      - ./db-replication:/usr/local/share/cw-replication:ro
+      - pg-socket:/var/run/postgresql
+      - postgres-data:/var/lib/postgresql
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  replication-monitor:
+    image: "${CHARTWARDEN_BACKUP_IMAGE:?set-digest-pinned-GHCR-reference}"
+    mem_limit: 128m
+    cpus: 0.5
+    restart: unless-stopped
+    <<: *replication-hardening
+    command: ["bash", "/usr/local/share/cw-replication/replication-monitor.sh", "run"]
+    environment:
+      <<: *replication-common
+      # Mandatory and https-only, like the backup sidecar's: the monitor refuses to start without it.
+      OPS_ALERT_WEBHOOK_URL: ${OPS_ALERT_WEBHOOK_URL:?set in .env.production (https://, a lost standby pages through it)}
+      # State (the absence clock, the alert repeat window) lives on a volume, so a restart does not reset the severity ladder.
+      REPLICATION_STATE_DIR: /var/lib/cw-backup
+      # Optional dead-man's switch (an https URL pinged after every completed pass): a dead monitor sends nothing itself.
+      REPLICATION_HEARTBEAT_URL: ${REPLICATION_HEARTBEAT_URL:-}
+      REPLICATION_CHECK_INTERVAL_S: ${REPLICATION_CHECK_INTERVAL_S:-60}
+      REPLICATION_ALERT_REPEAT_S: ${REPLICATION_ALERT_REPEAT_S:-900}
+      REPLICATION_LAG_ALERT_BYTES: ${REPLICATION_LAG_ALERT_BYTES:-268435456}
+      REPLICATION_SLOT_RETAINED_ALERT_BYTES: ${REPLICATION_SLOT_RETAINED_ALERT_BYTES:-2147483648}
+    volumes:
+      - ./db-replication:/usr/local/share/cw-replication:ro
+      - pg-socket:/var/run/postgresql
+      - replication-state:/var/lib/cw-backup
+    healthcheck:
+      test: ["CMD", "bash", "/usr/local/share/cw-replication/replication-monitor.sh", "healthcheck"]
+      interval: 2m
+      timeout: 10s
+      start_period: 5m
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+# Files under ./secrets/ (mode 0400, owner uid 999 = the image's postgres): db-replication/make-certs.sh writes them
+# under these names. The CA KEY never reaches a host.
+secrets:
+  replication_server_cert:
+    file: ./secrets/replication_server_cert
+  replication_server_key:
+    file: ./secrets/replication_server_key
+  replication_ca:
+    file: ./secrets/replication_ca
+
+volumes:
+  replication-state:
+    name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_replication-state

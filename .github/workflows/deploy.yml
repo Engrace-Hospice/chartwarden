@@ -518,5 +518,14 @@ jobs:
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/backup/mc/"
           scp -P "$port" deploy/production/backup/offsite-policies/*.json \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/backup/offsite-policies/"
+          # CW-CP-01 — the opt-in streaming-replication overlay and the scripts its one-shot and monitor bind-mount;
+          # nothing runs until an operator enables it (deploy/production/README.md, "Database standby"). The standby
+          # host's own files (db-replication/compose.standby.yml, standby-bootstrap.sh) are copied there by hand.
+          ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p $DEPLOY_DIR/db-replication"
+          scp -P "$port" deploy/production/compose.replication.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
+          # make-certs.sh is not shipped: it makes the CA key, which never reaches a production host.
+          scp -P "$port" deploy/production/db-replication/provision-primary.sh \
+            deploy/production/db-replication/replication-monitor.sh \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/db-replication/"
           ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" \
             "chmod 700 $DEPLOY_DIR/deploy.sh $DEPLOY_DIR/smoke.sh $DEPLOY_DIR/preflight.sh && $DEPLOY_DIR/deploy.sh '$BACKEND_IMAGE' '$WEB_IMAGE' '$DOCLING_IMAGE'"

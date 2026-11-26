@@ -391,9 +391,77 @@ The off-site bucket must have Object Lock with a COMPLIANCE default retention of
 it), a lifecycle longer than the lock, and three keys with the policies in `backup/offsite-policies/` (WAL-only key
 in `postgres`, backup key in the sidecar, read-only key for restores). `OPS_ALERT_WEBHOOK_URL` (https) is mandatory.
 `deploy.sh` never recreates `postgres`, so releases keep archiving on. Recreating `postgres` with `compose.yml` alone
-turns archiving off; the next snapshot then fails and pages. Restore into an isolated target with
+turns archiving off; the next snapshot then fails and pages. (Once the standby overlay below is enabled, recreate it with
+all three compose files: the two-file form would drop TLS, the published port and the slot bound.) Restore into an isolated target with
 `BACKUP_ENV_FILE=... ./backup/restore.sh latest`, then run the verifier it prints. Prove changes to `backup/` with
 `bun run backup:coordinated-drill` (private containers; writes `audit/restore-drill/<date>-coordinated-backup-drill.md`).
+
+The monthly drills and the "no production restore recorded" alarm are `.github/workflows/restore-drill.yml`
+(`bun run backup:replication-drill`, `bun run backup:coordinated-drill`, `bun run backup:drill-overdue`); the record an
+operator writes after the first witnessed restore starts from `audit/restore-drill/TEMPLATE-production-restore.{md,json}`.
+The operator checklist for the off-site bucket, the keys and that first restore is issue #878 and is not repeated here.
+
+## Database standby (`compose.replication.yml`, `db-replication/`, CW-CP-01)
+
+A hot standby on ANOTHER host, streaming over TLS from the primary and able to catch up from the off-site WAL archive
+(DR/BCP §5.1.1 has the design, what the drill proves and what it does not; §6.1 is the failover decision). **Nothing runs
+until an operator does the steps below; no standby exists today.** It needs the backup overlay first (it reuses its image,
+its pg-socket volume and its archiving flags), so finish "Backups and restore" and issue #878 before this.
+
+1. **Certificates**, on a machine you trust (not either host): `bash db-replication/make-certs.sh ./certs <the name or IP the
+   standby will dial>`. It writes the CA, the primary's server certificate and the standby's client certificate (CN
+   `cw_replicator`; there is NO replication password). The CA key is written OUTSIDE that directory, to the sibling
+   `./certs.ca/replication_ca.key`, so copying `./certs` to a host cannot carry it: escrow it offline and delete it from the
+   machine; it never goes to a host. Leaf certificates last 365 days: renew before they lapse (an expired one shows up as
+   `replication.standby_absent`).
+2. **Primary host**: put `replication_server_cert`, `replication_server_key`, `replication_ca` in `./secrets/` (0400, owner
+   999; the key must be owned by uid 999 with mode 0400, or Postgres refuses to start with it); set
+   `REPLICATION_PUBLISH_ADDR` and `REPLICATION_STANDBY_CIDR` (the standby host's address as a `/32`) in `.env.production`.
+   `OPS_ALERT_WEBHOOK_URL` is already mandatory. **The published port is the whole PostgreSQL listener**, so every role's
+   password login is reachable on it, not only replication. Bind `REPLICATION_PUBLISH_ADDR` to a PRIVATE address only the
+   standby can reach (a VPN such as WireGuard, or a provider-private network). If it must be a public address, restrict 5432
+   to the standby's address at the PROVIDER's firewall. The host `ufw` does NOT filter Docker-published ports (they are
+   forwarded, not input); `DOCKER-USER` chain rules do, and whoever writes them must prove them as below. Either way, before
+   step 4: from a machine that is not the standby, `nc -zv -w 5 <REPLICATION_PUBLISH_ADDR> 5432` must FAIL. Compose only
+   requires the variable to be non-empty, and the provisioner (step 4) refuses the wildcards `0.0.0.0` and `::` before it
+   changes anything, but that is after `up -d postgres` published the port: read it yourself first. A public address with
+   no provider firewall in front of it is exactly the exposure above, and nothing in the repository can see that.
+3. **Before enabling**, (a) compare the cluster's access rules with what the provisioner will add on top of them:
+   `dc exec -u postgres postgres psql -c "SELECT line_number, type, database, user_name, address, auth_method FROM pg_hba_file_rules"`;
+   the provisioner puts a block at the TOP of `pg_hba.conf` (`hostssl replication cw_replicator <the /32> cert`, then two
+   rejects) and touches nothing else, but read the rest once. (b) Prove the TLS files can be read by the postgres user, or the
+   recreate below crash-loops the live database: `docker run --rm --user 999:999 -v "$PWD/secrets:/s:ro" --entrypoint sh
+   "$CHARTWARDEN_BACKUP_IMAGE" -c 'for f in replication_server_cert replication_server_key replication_ca; do test -r /s/$f || echo "unreadable: $f"; done; test "$(stat -c %u:%a /s/replication_server_key)" = 999:400 || echo "replication_server_key must be 999:0400"'`
+   prints nothing.
+4. **Enable, in a maintenance window** (it recreates `postgres` once, with TLS on). Every later `up` of postgres must name all
+   three files: `dcr() { docker compose --env-file .env.production -f compose.yml -f compose.backup.yml -f compose.replication.yml "$@"; }`,
+   then `dcr pull postgres && dcr up -d postgres && dcr run --rm replication-provision`. If `postgres` does not become
+   healthy, `dc up -d postgres` (the two-file form) puts the previous flags back; nothing in the data changed. After step 4
+   use `dcr` instead of `dc` for postgres (`dc up -d postgres` would recreate it without TLS, the port and the slot bound;
+   drop the slot first: `SELECT pg_drop_replication_slot('cw_standby')`).
+   `scripts/__tests__/replication-compose.test.ts` fails when the overlay stops carrying the backup overlay's archiving flags.
+5. **Standby host** (first, a PRECONDITION, not a step: the standby holds a FULL COPY of the PHI database plus the off-site
+   cipher passphrase and the read-only off-site key. Its hosting provider needs a signed BAA, the data volume must be
+   encrypted at rest, and both must be on record, in the same places the production host's are tracked (the compliance
+   register rows CW-BA-01 and CW-AC-05 name the hosts and today do not name this one). Reading the standby is PHI access by
+   an operator: it has no application audit trail, so it is logged only as connections (`log_connections`) and needs a ticket.)
+   Copy `db-replication/compose.standby.yml` to `/opt/chartwarden-standby/compose.yml` (renamed: a bare `docker compose`
+   finds only `compose.yml`, and every standby command in this README and the runbook is bare) and `standby-bootstrap.sh`
+   beside it, then the secrets named in the compose header (including the READ-ONLY restore key's secret) and a `.env`, then `docker compose up -d`.
+   The bootstrap restores the latest base backup from the off-site repository, so the primary does no copy work (at
+   production size that can take longer than the monitor's 30 minutes, which is why the monitor starts after it); `docker
+   compose ps` shows `standby` `healthy` once it streams. It has no published port.
+6. **Monitor, verify, rehearse**: only once the standby streams, `dcr up -d replication-monitor` (started earlier it pages
+   `replication.standby_absent` through the whole bootstrap). `dcr exec replication-monitor bash
+   /usr/local/share/cw-replication/replication-monitor.sh check` exits 0 with no alert; stop the standby for a few minutes and
+   confirm `replication.standby_absent` arrives (that is the first time the alert reaches a human: the repository proves the
+   monitor's output, not your webhook receiver). Set `REPLICATION_HEARTBEAT_URL` (an https dead-man's switch, pinged after
+   every completed pass) so a dead monitor is noticed too. Record the first failover rehearsal (DR/BCP §8.3) next to the first
+   witnessed restore under `audit/restore-drill/`. There is no revocation list: to retire a client certificate, replace the
+   CA (`make-certs.sh` into a fresh directory), re-issue and redeploy both hosts.
+
+Prove changes to any of these files with `bun run backup:replication-drill` (private containers; it starts the overlay's real
+`postgres` command and the standby's real command, and writes `audit/restore-drill/<date>-replication-drill.md`).
 
 ## OWNER DECISION: production now enables the Oregon Medicaid gateway (GAP-146)
 

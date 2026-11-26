@@ -35,6 +35,10 @@ import yaml from "js-yaml";
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const COMPOSE_PATH = "deploy/production/compose.yml";
 const BACKUP_COMPOSE_PATH = "deploy/production/compose.backup.yml";
+const REPLICATION_COMPOSE_PATHS = [
+  "deploy/production/compose.replication.yml",
+  "deploy/production/db-replication/compose.standby.yml",
+] as const;
 const ENV_EXAMPLE_PATH = "deploy/production/.env.production.example";
 const BACKUP_DOCKERFILE_PATH = "deploy/production/backup/Dockerfile";
 const POSTGRES_DOCKERFILE_PATH = "deploy/production/postgres/Dockerfile";
@@ -366,6 +370,31 @@ export function checkBackupOverlayImage(doc: ComposeDoc): string[] {
   return failures;
 }
 
+const BACKUP_IMAGE_REQUIRED = "${CHARTWARDEN_BACKUP_IMAGE:?set-digest-pinned-GHCR-reference}";
+
+/**
+ * CW-CP-01: the streaming-replication overlay and the standby project add services next to compose.yml's. Each one that
+ * declares an image runs the signed backup image (or a digest-pinned literal) and is resource-bounded, like #855/#856 demand
+ * of compose.yml. A service without `image` overrides one compose.yml already defines (postgres) and inherits both.
+ */
+export function checkReplicationServices(doc: ComposeDoc, path: string): string[] {
+  const failures: string[] = [];
+  const services = Object.entries(doc.services ?? {});
+  if (services.length === 0) return [`${path}: declares no services`];
+  for (const [name, svc] of services) {
+    if (svc.image === undefined) continue;
+    const pinned = typeof svc.image === "string" && PINNED_IMAGE.test(svc.image);
+    if (svc.image !== BACKUP_IMAGE_REQUIRED && !pinned) {
+      failures.push(
+        `${path}: ${name}.image must be the required CHARTWARDEN_BACKUP_IMAGE interpolation or repo:tag@sha256:<64 hex>`,
+      );
+    }
+    if (svc.mem_limit === undefined) failures.push(`${path}: ${name}: missing mem_limit (#856)`);
+    if (svc.cpus === undefined) failures.push(`${path}: ${name}: missing cpus (#856)`);
+  }
+  return failures;
+}
+
 export function loadCompose(path = join(REPO_ROOT, COMPOSE_PATH)): ComposeDoc {
   // `!reset` (compose-specific tag) is not in the default schema: treat it as a plain empty value.
   // `!reset` loads as the RESET marker so `extends` resolution (checkRustTopology) can honour it.
@@ -384,6 +413,9 @@ if (import.meta.main) {
     ...checkRustEnvExample(read(ENV_EXAMPLE_PATH)),
     ...checkBackupImageChain(compose, read(BACKUP_DOCKERFILE_PATH), read(POSTGRES_DOCKERFILE_PATH)),
     ...checkBackupOverlayImage(loadCompose(join(REPO_ROOT, BACKUP_COMPOSE_PATH))),
+    ...REPLICATION_COMPOSE_PATHS.flatMap((p) =>
+      checkReplicationServices(loadCompose(join(REPO_ROOT, p)), p),
+    ),
   ];
   if (failures.length > 0) {
     console.error(`arch:compose-policy FAILED (${COMPOSE_PATH}):`);

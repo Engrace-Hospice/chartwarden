@@ -814,6 +814,8 @@ deploy directory with the overlay: `docker compose --env-file .env.production -f
 | Monthly (first Saturday) | isolated restore + verify (DR/BCP §4.8.6): `backup/restore.sh latest`, `backup:verify-restore`, record under `audit/restore-drill/<date>-production-restore.md`, `restore.sh destroy` | verifier exit 0; restore wall time inside the 1 h RTO target |
 | Quarterly | the monthly drill restoring from the OFF-SITE copy only, on a host other than production, with the escrowed keys (not the host's `./secrets/` files or its environment file) | as monthly, and the keys open the backup |
 | Every change to `deploy/production/backup/` | `bun run backup:coordinated-drill` on a workstation (private containers) | the new `audit/restore-drill/<date>-coordinated-backup-drill.md` reads PASS |
+| Monthly (3rd, automated) | `.github/workflows/restore-drill.yml` job `drill`: `bun run backup:replication-drill` (and `backup:coordinated-drill` when the repository variable `RESTORE_DRILL_COORDINATED` is `true`) on private containers | job green; the evidence artifact (md + json) is attached; a failure posts `backup.scheduled_drill_failed` |
+| Weekly (Monday, automated) | the same workflow's job `overdue`: `bun run backup:drill-overdue` | green; red or `backup.restore_drill_overdue` means no witnessed production restore is recorded in `audit/restore-drill/` for 35 days (or the newest one failed): do the monthly restore above and commit the record from `TEMPLATE-production-restore.{md,json}`. Red until the first one is committed |
 
 **Alerts** (mandatory https `OPS_ALERT_WEBHOOK_URL`; the sidecar will not start without it).
 `backup.wal_archive_failing` / `backup.pg_wal_large` mean WAL is piling up in `pg_wal`: fix the off-site path or the WAL
@@ -821,7 +823,38 @@ key before the database disk fills (the database keeps running meanwhile). `back
 read `dc logs --since 1h backup`. `wal-archive-check` failing means WAL is not reaching a repository; Postgres keeps
 the segments in `pg_wal` meanwhile, so watch disk. `backup.stale` with no `snapshot_failed` before it means the loop
 hangs or died: `dc restart backup`. The common cause after maintenance is `postgres` recreated WITHOUT the overlay
-(archiving off): recreate it with `dc up -d postgres`.
+(archiving off): recreate it with `dc up -d postgres` (with the standby overlay enabled, with all three files: `dcr up -d postgres`,
+below, or it comes back without TLS, the published port and the slot bound).
+
+**Database standby alerts** (only once an operator has enabled `compose.replication.yml` and provisioned a standby host:
+`deploy/production/README.md`, "Database standby"; DR/BCP §5.1.1; no standby exists today). The `replication-monitor`
+service posts to the same `OPS_ALERT_WEBHOOK_URL`; each kind repeats at most every 15 minutes and names a severity (SEV-3 from
+60 s, SEV-2 from 5 min, SEV-1 from 30 min). `dcr` = `docker compose --env-file .env.production -f compose.yml -f compose.backup.yml -f compose.replication.yml`.
+- `replication.standby_absent`: no WAL sender streams from the slot. On the standby host `docker compose ps` and
+  `docker compose logs --since 30m standby`; a rejected connection is in the primary's log (`dcr logs --since 30m postgres`, look for
+  `certificate authentication failed` or `pg_hba.conf rejects`), an expired client certificate included. Past 30 minutes treat the
+  standby as down (SEV-1): the primary keeps running, but it has no failover copy.
+- `replication.lag_high`: the standby streams but replays late (seconds, or bytes behind). A busy bulk write is normal for a
+  minute; a lag that grows means the standby's disk or CPU, or a paused replay: `docker compose exec standby psql -U postgres -c "SELECT pg_is_wal_replay_paused()"`.
+- `replication.slot_wal_retained`: the slot is holding more WAL than the limit on the primary. It is bounded by
+  `max_slot_wal_keep_size` (4 GB) and stays below the `backup.pg_wal_large` alert (8 GiB); fix the standby before the bound is hit.
+- `replication.slot_wal_at_risk` / `replication.slot_lost`: the bound was reached (the slot is `unreserved`, then `lost`): the
+  standby can no longer catch up from the primary. Rebuild it: stop `standby`, remove its data volume, drop and re-create the
+  slot (`SELECT pg_drop_replication_slot('cw_standby')`, then `dcr run --rm replication-provision`), `docker compose up -d`
+  on the standby host (DR/BCP §6.1.2).
+- `replication.slot_missing`: `replication-provision` has not run (or the slot was dropped): run it. `replication.monitor_blind`:
+  the monitor cannot query the primary; check `dcr ps postgres` first.
+
+**Reading the standby is PHI access.** `docker compose exec standby psql -U postgres` on the standby host reads a full copy
+of the patient database with no application audit trail. Do it only for a recorded reason (a ticket naming who and why); the
+standby logs each connection and disconnection (`log_connections`, `log_disconnections`) and nothing else. The monitor itself
+is watched only by its container healthcheck and, if `REPLICATION_HEARTBEAT_URL` is set, an external dead-man's switch: a monitor
+that is down sends nothing.
+
+**Restore-drill alarm.** `backup.restore_drill_overdue` and a red `overdue` job (`.github/workflows/restore-drill.yml`) mean
+the monthly witnessed production restore is missing from `audit/restore-drill/`, or the newest record failed. It is not a
+flake: perform the restore (issue #878, section 4, is the operator checklist), commit
+`<date>-production-restore.{md,json}` from the templates, and the next Monday run turns green.
 
 **Keys and lock.** The off-site bucket MUST use Object Lock in COMPLIANCE mode with versioning, and three keys
 with the policies in `deploy/production/backup/offsite-policies/` (WAL-only for the `postgres` container, backup for

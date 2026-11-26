@@ -8,7 +8,9 @@
 # Enabling it recreates `postgres` once (same volume, same data) with WAL archiving on. deploy.sh never recreates
 # postgres (it only touches api/worker/web/docling-worker/clamav and one-shots), so a release keeps archiving on. A
 # later `docker compose -f compose.yml up -d postgres` WITHOUT this overlay would turn archiving off: the next snapshot
-# then fails `pgbackrest check` and pages through OPS_ALERT_WEBHOOK_URL. Full procedure: deploy/production/README.md
+# then fails `pgbackrest check` and pages through OPS_ALERT_WEBHOOK_URL. (With compose.replication.yml enabled, a later `up`
+# of postgres must name that overlay too, or postgres returns without TLS, its published port and the replication slot bound.)
+# Full procedure: deploy/production/README.md
 # ("Backups and restore") and CHARTWARDEN_DR_BCP_v0.1.md §4.8.
 #
 # Least privilege. Two different off-site keys:
