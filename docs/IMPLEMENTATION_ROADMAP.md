@@ -24,35 +24,38 @@ in `CHARTWARDEN_ARCHITECTURE_v0_11.md`.)
 
 `PHASE_1_PLAN.md` schedules Phase 1 into dependency-ordered waves; each wave is decomposed into
 **DoD-aligned, gate-bound tasks** an Archon workflow executes (see [`ARCHON_SETUP.md`](./ARCHON_SETUP.md)).
-Each task closes on a specific fitness gate; cross-module access is seam/outbox only. To **run** them,
-follow [`plans/ARCHON_RUN_TRACKER.md`](./plans/ARCHON_RUN_TRACKER.md) — the ordered command list + a
-status checklist across all three phases.
+Each task closes on a specific fitness gate; cross-module access is seam/outbox only.
 
-| Wave | Modules | Plan |
-|---|---|---|
-| Slice | M1, M2 | [`plans/M01-M02_VERTICAL_SLICE_PLAN.md`](./plans/M01-M02_VERTICAL_SLICE_PLAN.md) (+ reusable per-module template) |
-| A | M3, M4 | [`plans/WAVE_A_M3-M4_PLAN.md`](./plans/WAVE_A_M3-M4_PLAN.md) |
-| B | M36, M38, M40 | [`plans/WAVE_B_M36-M38-M40_PLAN.md`](./plans/WAVE_B_M36-M38-M40_PLAN.md) |
-| C | M5, M39 | [`plans/WAVE_C_M5-M39_PLAN.md`](./plans/WAVE_C_M5-M39_PLAN.md) |
-| D | M6, M7, M8 | [`plans/WAVE_D_M6-M7-M8_PLAN.md`](./plans/WAVE_D_M6-M7-M8_PLAN.md) |
-| E | M9, M10, M11, M12, M13 | [`plans/WAVE_E_M9-M13_PLAN.md`](./plans/WAVE_E_M9-M13_PLAN.md) |
-| F | M14, M17, M18, M22 | [`plans/WAVE_F_M14-M17-M18-M22_PLAN.md`](./plans/WAVE_F_M14-M17-M18-M22_PLAN.md) |
-| G | M23, M25, M26 | [`plans/WAVE_G_M23-M25-M26_PLAN.md`](./plans/WAVE_G_M23-M25-M26_PLAN.md) |
-| H | M28, M29, M30, M32, M34 | [`plans/WAVE_H_M28-M29-M30-M32-M34_PLAN.md`](./plans/WAVE_H_M28-M29-M30-M32-M34_PLAN.md) |
+> **The per-wave plan files are gone.** The Archon task plans (and the run tracker) that lived under
+> `docs/plans/` were deleted in #603 once their waves were merged; they remain in git history
+> (`git log --diff-filter=D -- docs/plans`). The wave-to-module mapping below is kept as the record of how
+> the phases were scheduled.
+
+| Wave | Modules |
+|---|---|
+| Slice | M1, M2 |
+| A | M3, M4 |
+| B | M36, M38, M40 |
+| C | M5, M39 |
+| D | M6, M7, M8 |
+| E | M9, M10, M11, M12, M13 |
+| F | M14, M17, M18, M22 |
+| G | M23, M25, M26 |
+| H | M28, M29, M30, M32, M34 |
 
 All 29 Phase-1 modules are covered exactly once. Build order across waves is the §20 dependency order;
-within a wave, the plan states the internal parallelism and which forward-seams/deny-stubs it opens or closes.
+within a wave, the plan stated the internal parallelism and which forward-seams/deny-stubs it opened or closed.
 
 ### Phase 2 wave plans
 
 `PHASE_2_PLAN.md` = Part A (5 flag-activation upgrades to Phase-1 modules) + Part B (10 new modules).
 
-| Wave | Modules / upgrades | Plan |
-|---|---|---|
-| Part A | M32 `ai.full`, M8 `hearthnote.layer2`, M14 full IDG, M22 `documents.doclens`, M17 `route_optimization` | [`plans/PHASE_2A_UPGRADES_PLAN.md`](./plans/PHASE_2A_UPGRADES_PLAN.md) |
-| P2-1 | M15, M16, M21, M24 | [`plans/WAVE_P2-1_M15-M16-M21-M24_PLAN.md`](./plans/WAVE_P2-1_M15-M16-M21-M24_PLAN.md) |
-| P2-2 | M19, M20 | [`plans/WAVE_P2-2_M19-M20_PLAN.md`](./plans/WAVE_P2-2_M19-M20_PLAN.md) |
-| P2-3 | M27, M31, M33, M35 | [`plans/WAVE_P2-3_M27-M31-M33-M35_PLAN.md`](./plans/WAVE_P2-3_M27-M31-M33-M35_PLAN.md) |
+| Wave | Modules / upgrades |
+|---|---|
+| Part A | M32 `ai.full`, M8 `hearthnote.layer2`, M14 full IDG, M22 `documents.doclens`, M17 `route_optimization` |
+| P2-1 | M15, M16, M21, M24 |
+| P2-2 | M19, M20 |
+| P2-3 | M27, M31, M33, M35 |
 
 Phase 2 leaves only **M37 (Inpatient Unit)** for Phase 3, plus the Phase-3 flag activations. The
 adapter packages those specs reference (`iqies-client`, `evv-aggregators`, `triage-vendors`,
@@ -65,10 +68,10 @@ for a follow-up ADR.
 
 `PHASE_3_PLAN.md` = 1 new build (M37) + 5 flag-activation upgrades (2 certification-gated).
 
-| Wave | Modules / upgrades | Plan |
-|---|---|---|
-| New build | M37 IPU (26 tables; raw CREATE TABLE → pgTable first) | [`plans/WAVE_P3_M37_IPU_PLAN.md`](./plans/WAVE_P3_M37_IPU_PLAN.md) |
-| Upgrades | M34 `saas.multi_tenant`, M30 `cahps`+`hvldl_hci`, M26 `cap.full_projection`, M28 `fhir.write`†, M12 `dosespot.epcs`† | [`plans/PHASE_3_UPGRADES_PLAN.md`](./plans/PHASE_3_UPGRADES_PLAN.md) |
+| Wave | Modules / upgrades |
+|---|---|
+| New build | M37 IPU (26 tables; raw CREATE TABLE → pgTable first) |
+| Upgrades | M34 `saas.multi_tenant`, M30 `cahps`+`hvldl_hci`, M26 `cap.full_projection`, M28 `fhir.write`†, M12 `dosespot.epcs`† |
 
 † external certification gate (FHIR conformance / DEA EPCS) — flag stays off until certified.
 
