@@ -264,9 +264,12 @@ nothing on this host changes for them.
    `CHARTWARDEN_SMOKE_API_URL=https://api.chartwarden.cloud`. List every other occurrence first:
    `grep -n 'wardenx.chartwarden.cloud' .env.production`. Then `./smoke.sh`, log in, upload and download a document.
 4. After a successful session, swap the three old vhosts for `nginx/chartwarden-legacy-redirects.conf` (308 to the new hosts,
-   uses the old certificate): remove `sites-enabled/wardenx-*`, install that file, `nginx -t && systemctl reload nginx`,
+   uses the old certificate): first install the TLS policy it includes (`sudo install -m 0644 deploy/production/nginx/chartwarden-tls.conf /etc/nginx/snippets/`,
+   CW-TX-01: the file includes it instead of certbot's options file, so `nginx -t` fails without it), then remove
+   `sites-enabled/wardenx-*`, install that file, `nginx -t && systemctl reload nginx`,
    `curl -sI https://wardenx.chartwarden.cloud/` shows `308` to `app.chartwarden.cloud`. Notify any FHIR/HL7 partner and
-   mobile build that holds the old base URL before this step. Then `certbot renew --dry-run`: the redirect vhosts keep using the
+   mobile build that holds the old base URL before this step, and tell them the TLS 1.2 suite set is now the four documented
+   ECDHE + AEAD suites (a client that offers only AES128-GCM or DHE suites gets a handshake failure instead of the 308). Then `certbot renew --dry-run`: the redirect vhosts keep using the
    legacy lineage `wardenx.chartwarden.cloud` (expires 2027-01-16), whose renewal needs the old names to keep resolving to this
    host and port 80 to answer the ACME challenge (the redirect file's `listen 80` blocks 308 everything, so certbot's
    `--nginx` authenticator injects its challenge location; confirm the dry run passes). If you retire the old DNS names before
@@ -471,7 +474,7 @@ Procedure:
 3. nginx: `bootstrap-vps.sh` installs `nginx/chartwarden-*.conf` to `/etc/nginx/sites-available/` and the
    `chartwarden_phi_safe` log format (the procedure that actually applies is Step D). Add the new hosts as additional `server_name` values (or run
    `FRONTEND_DOMAIN=... BACKEND_DOMAIN=... STORAGE_DOMAIN=... sudo ./bootstrap-vps.sh`, which sed-rewrites the
-   hostnames), `nginx -t && systemctl reload nginx`. The repo files and format are already renamed; if you rename a live vhost,
+   hostnames; it overwrites vhosts certbot edited in place, so never run it on a live host, see `README.md` "TLS policy"), `nginx -t && systemctl reload nginx`. The repo files and format are already renamed; if you rename a live vhost,
    change the file, the `ln -sfn`, the `access_log` path and the format name together, `nginx -T | grep phi_safe`, and keep log rotation (`logrotate`) and any log shipper in sync.
 4. Env: update the variables above in `.env.production` (the `smoke.sh` fallbacks and `.env.production.example` already name the new hosts); `docker compose up -d --force-recreate api worker web`.
 5. Cut over web clients/links; keep the old hosts as 301 redirects for at least 30 days (staff bookmarks,

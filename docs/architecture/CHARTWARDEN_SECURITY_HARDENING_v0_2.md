@@ -512,6 +512,17 @@ Four Accepted ADRs change what this guide describes and were not reflected in it
 
 All non-PFS, non-AEAD suites disabled.
 
+**Enforcement (CW-TX-01).** The Internet → Edge row above is defined for the host nginx by one committed file,
+`deploy/production/nginx/chartwarden-tls.conf` (TLS 1.3 offered, TLS 1.2 as the fallback with exactly the four suites listed above,
+TLS 1.1 and earlier refused, session tickets off). `bun run arch:tls-policy` fails when that file and this list differ, when a committed
+TLS server does not include it, when a committed redirect is not a `308` to https, or when either HSTS emitter (the SPA's nginx, the
+API's `security.ts`) carries less than one year of `max-age` or drops `includeSubDomains`. `bun run test:tls-edge:live` handshakes against a
+real nginx loaded with those files. Neither reaches the *live* edge (the host's certbot nginx, or Pangolin/Traefik): applying the snippet
+there and scanning the host is the operator step in `deploy/production/README.md` ("TLS policy"). The gate asserts what the config does: a
+TLS 1.2 floor with TLS 1.3 offered. Whether TLS 1.2 stays, given that the architecture and system-design documents say "TLS 1.3" and this
+row says "TLS 1.3 mandatory; TLS 1.2 fallback", is an open owner decision (register row CW-TX-01); dropping it means changing the snippet,
+the protocol constant in `scripts/check-tls-policy.ts`, the TLS 1.2 cases of `scripts/__tests__/tls-edge.live.test.ts` and this section.
+
 ### 4.4 Hashing and KDF
 
 - **Passwords:** Argon2id (preferred); bcrypt cost 12 (fallback for older sessions in migration period)

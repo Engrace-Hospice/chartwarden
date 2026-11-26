@@ -60,6 +60,7 @@ One certificate for the base domain **and** `*.<base>` (HTTP-01 cannot issue a w
 - [ ] Traefik's container environment gets `CLOUDFLARE_DNS_API_TOKEN` (from a root-only `0600` env file kept at the edge, not in the compose file or git).
 - [ ] Pangolin `config/config.yml`: `domains.domain1` with `base_domain: "<base>"`, `cert_resolver: "letsencrypt"`, `prefer_wildcard_cert: true`.
 - [ ] Restart Traefik; `docker logs traefik` shows the `*.<base>` order succeeding; `acme.json` is on a persistent volume.
+- [ ] TLS policy (CW-TX-01): Traefik's TLS options carry `minVersion: VersionTLS12` and the four documented suites. The repo cannot check this edge; see `README.md`, "TLS policy", step 4, and scan the host afterwards.
 
 **Option 2: host nginx with certbot (no Pangolin in front).**
 - [ ] `sudo apt install python3-certbot-dns-cloudflare`.
@@ -67,6 +68,7 @@ One certificate for the base domain **and** `*.<base>` (HTTP-01 cannot issue a w
 - [ ] A lineage of its own (the demo already has a certbot lineage for `app.`/`api.`/`storage.`; leave it):
       `sudo certbot certonly --dns-cloudflare --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini --cert-name chartwarden-wildcard -d <base> -d '*.<base>' --deploy-hook 'systemctl reload nginx'`.
 - [ ] Give the tenant vhost its 443 block: `sudo certbot install --nginx --cert-name chartwarden-wildcard -d <base> -d '*.<base>'`; if it finds no matching vhost, add `listen 443 ssl;`, `ssl_certificate .../chartwarden-wildcard/fullchain.pem;` and `ssl_certificate_key .../privkey.pem;` to `chartwarden-tenant.conf` by hand. `sudo certbot renew --dry-run` must pass.
+- [ ] TLS policy (CW-TX-01): in each `listen 443 ssl` server certbot touched, replace `include /etc/letsencrypt/options-ssl-nginx.conf;` with `include /etc/nginx/snippets/chartwarden-tls.conf;` (`README.md`, "TLS policy"), reload, and scan the host.
 
 ### 4. Pangolin resources (skip with Option 2)
 

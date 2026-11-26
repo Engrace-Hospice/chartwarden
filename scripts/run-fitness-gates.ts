@@ -84,6 +84,8 @@ export const GATES = [
   "arch:pdf-templates",
   // #855/#856 - production compose images are digest-pinned and every service is resource-bounded.
   "arch:compose-policy",
+  // CW-TX-01 - the edge TLS policy snippet equals the documented policy, every committed TLS server includes it, redirects are https 308, HSTS is at least a year.
+  "arch:tls-policy",
   "arch:context-attributes",
   "arch:route-reachability",
   "arch:live-suites",

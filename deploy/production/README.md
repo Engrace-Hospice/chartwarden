@@ -66,6 +66,43 @@ Host requirements — the repo cannot enforce these, so check them once per host
 - Verify: `nginx -T | grep -n chartwarden_phi_safe`, then `curl -s "https://<host>/api/health?q=Smith" >/dev/null`
   and confirm the new `/var/log/nginx/chartwarden-*.access.log` line shows `/api/health` with no `?q=Smith`.
 
+### TLS policy (CW-TX-01)
+
+The documented edge policy (SECURITY_HARDENING §4.3) is one committed file, `nginx/chartwarden-tls.conf`, which
+`bootstrap-vps.sh` installs to `/etc/nginx/snippets/`: TLS 1.3 offered, TLS 1.2 as the fallback with only
+`ECDHE-{ECDSA,RSA}-AES256-GCM-SHA384` and `ECDHE-{ECDSA,RSA}-CHACHA20-POLY1305`, TLS 1.1 and earlier refused, session tickets
+off. Two checks keep it honest: `bun run arch:tls-policy` (the file equals the documented list, every committed TLS server
+includes it, committed redirects are `308` to https, both HSTS emitters carry at least a year plus `includeSubDomains`) and
+`bun run test:tls-edge:live` (handshakes against a private nginx loaded with these exact files; CI job "TLS edge live").
+
+What the repo cannot see is the **live** edge. certbot's `--nginx` writes `include /etc/letsencrypt/options-ssl-nginx.conf;`
+into each vhost it touches, and that file (not ours) decides what the host negotiates. Operator steps, once per host:
+
+1. Install the snippet only (do **not** re-run `bootstrap-vps.sh` on a live host, and never copy a repo vhost over the live
+   one: certbot edited it in place): `sudo install -m 0644 deploy/production/nginx/chartwarden-tls.conf /etc/nginx/snippets/`.
+2. In every live `server` that has `listen 443 ssl`, replace the line `include /etc/letsencrypt/options-ssl-nginx.conf;` with
+   `include /etc/nginx/snippets/chartwarden-tls.conf;` (nginx rejects a second `ssl_protocols` in one block, so it is a
+   replacement, not an addition). `ssl_dhparam` is no longer needed: no suite uses finite-field DH.
+   `sudo nginx -t && sudo systemctl reload nginx`. Afterwards `grep -rn options-ssl-nginx.conf /etc/nginx/` must print nothing: a
+   later `certbot --nginx` run on a new vhost can write that include again, and a vhost made by hand follows certbot's policy until
+   it is changed.
+3. Scan the hostnames you operate, from your own workstation, and keep the output with the change record: for example
+   `testssl.sh --protocols --server-defaults --headers https://app.chartwarden.cloud`. Expect TLS 1.2 and 1.3 offered, SSLv3, TLS 1.0 and
+   1.1 not offered, only the four suites under TLS 1.2, and `Strict-Transport-Security` present. Nothing in CI scans a real host.
+4. Behind Pangolin (Traefik) the terminator is not nginx, so the snippet does not apply there. The equivalent Traefik TLS option is
+   `minVersion: VersionTLS12` plus `cipherSuites` set to the four Go names (`TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384`,
+   `TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384`, `TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256`,
+   `TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256`). That key layout is from Traefik's documentation and is **not verified against the
+   Pangolin version in production**: confirm it with the scan in step 3.
+
+The plain `listen 80` vhosts in this directory proxy behind a terminator and carry no redirect: the http-to-https redirect for
+them is whatever certbot (`--redirect`) or Pangolin adds at the edge, also checked by the scan. The only redirects committed
+here are the legacy-host `308`s in `nginx/chartwarden-legacy-redirects.conf`. HSTS comes from the application tier, not from
+these vhosts: the SPA's nginx (`web-security-headers.conf`, `max-age=63072000; includeSubDomains`, no `preload` on purpose) and
+the API (`security.ts`, `max-age=31536000; includeSubDomains; preload`). The storage vhost (`storage.chartwarden.cloud`, presigned
+URLs) emits no HSTS, and `includeSubDomains` on the `app.` host does not cover that sibling name; adding the header there is a hand
+edit of the live vhost and an open item in the register row CW-TX-01.
+
 The workflow uploads `deploy.sh`, `smoke.sh` and `compose.yml` for every release, pulls the SHA-pinned
 images, renders the object store's scoped identities, runs strict schema-only migrations and runtime-role
 provisioning, recreates `api`, `worker` and `web`, then runs `smoke.sh`. If any step fails, it restores
