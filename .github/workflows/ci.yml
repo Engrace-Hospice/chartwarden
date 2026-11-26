@@ -1216,6 +1216,12 @@ jobs:
               name: "M22 internal documents",
               scripts: "test:m22:internal-documents:live",
             }
+          # CW-DS-01 — a certificate erase records an append-only `object_destruction_tombstone` per object it destroys, BEFORE
+          # destroying it (a held or Part 2 document gets none); roles proven as chartwarden_app and chartwarden_destruction.
+          - {
+              name: "M22 object destruction tombstones",
+              scripts: "test:m22:object-destruction:live",
+            }
           # F-235 (#248) — the DocLens → M5 demographics chart writeback (F-231 decisions A1 + B): review
           # completion decrypts server-side, writes provenance and `m22.extraction.commit_requested`; the
           # real dispatcher delivers to M5 (contact rows + reply) and back to M22 (provenance stamp +

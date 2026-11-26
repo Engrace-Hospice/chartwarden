@@ -34,6 +34,11 @@ services:
       # CW-AC-05 — 1: the replica must hold every object encrypted (its KMS is configured, replica/compose.yml); the copy
       # sets the default on each bucket it writes and fails an object the replica does not report encrypted.
       TARGET_S3_REQUIRE_SSE: ${OBJECT_COPY_TARGET_REQUIRE_SSE:-0}
+      # CW-DS-01 — the destruction tombstone list (NDJSON from scripts/storage/object-tombstones.ts), re-read on every run: the
+      # objects a certificate destroyed are never copied and are destroyed on the replica outside the mass-delete guard. Empty =
+      # none (the guard alone). The file must be mounted into the container (docs/runbooks/object-destruction-copies.md); a
+      # named file that cannot be read stops the run and pages.
+      OBJECT_COPY_TOMBSTONES_FILE: ${OBJECT_COPY_TOMBSTONES_FILE:-}
       OPS_ALERT_WEBHOOK_URL: ${OPS_ALERT_WEBHOOK_URL:?set in .env.production (https://, copy failures page through it)}
       OBJECT_COPY_INTERVAL_S: ${OBJECT_COPY_INTERVAL_S:-3600}
       OBJECT_COPY_HEARTBEAT_FILE: /tmp/object-copy-last-success

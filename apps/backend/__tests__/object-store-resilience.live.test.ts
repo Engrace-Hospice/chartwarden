@@ -13,6 +13,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { connect } from "node:net";
 import type { OrgId, SignedUrlDescriptor } from "@chartwarden/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { exportText, parseTombstones } from "../../../scripts/lib/object-tombstones";
 import { copyObjectStore, listKeys } from "../../../scripts/object-store-copy";
 import { reencryptObjectStore, verifyJournal } from "../../../scripts/storage/reencrypt-objects";
 import { deriveTenantBucket } from "../src/modules/22-documents/lifecycle/storage";
@@ -629,6 +630,130 @@ describe.skipIf(!ENDPOINT)("object-store resilience — LIVE", () => {
         }
       },
       FAULT_TEST_TIMEOUT_MS * 2,
+    );
+  });
+
+  describe("destruction tombstones (CW-DS-01)", () => {
+    const tombstonesFor = (bucket: string, keys: readonly string[]) =>
+      parseTombstones(exportText(keys.map((objectKey) => ({ bucket, objectKey }))));
+    const seed = async (bucket: string, n: number, prefix: string): Promise<string[]> => {
+      const keys = Array.from({ length: n }, (_, i) => `${prefix}/${i}-${randomUUID()}.pdf`);
+      for (const key of keys) await put(bucket, key, bytesOf(`synthetic ${key}`));
+      return keys;
+    };
+    const provision = async (org: OrgId): Promise<string> => {
+      await createS3TenantStorageProvisioner(primaryApp).ensureTenantPrefixes({
+        organizationId: org,
+        prefixes: [],
+      });
+      return deriveTenantBucket(org);
+    };
+
+    it(
+      "applies a large erasure to the copy at once: the mass-delete guard holds it without tombstones and is not involved with them",
+      async () => {
+        const bucketC = await provision(randomUUID() as OrgId);
+        const keys = await seed(bucketC, 30, "documents/large-erasure");
+        expect((await copyObjectStore(primaryAdmin, backupAdmin)).failed).toEqual([]);
+        const erased = keys.slice(0, 15);
+        for (const key of erased) await erase(bucketC, key);
+
+        // without the list: more than max(10, 10%) of the copy's keys, so the guard refuses and the copy keeps all 15
+        const held = await copyObjectStore(primaryAdmin, backupAdmin);
+        expect(held.failed).toContainEqual(
+          expect.objectContaining({
+            bucket: bucketC,
+            reason: expect.stringMatching(/refused to delete 15 of 30/),
+          }),
+        );
+        for (const key of erased) expect(await get(backup, bucketC, key), key).not.toBeNull();
+
+        // with it: the certificate is the authority, so the 15 are destroyed on the copy and nothing is refused
+        const dead = tombstonesFor(bucketC, erased);
+        const applied = await copyObjectStore(primaryAdmin, backupAdmin, { tombstones: dead });
+        expect(applied.failed).toEqual([]);
+        expect(applied.tombstoned).toBe(15);
+        expect(applied.deleted).toBe(0);
+        for (const key of erased) expect(await get(backup, bucketC, key), key).toBeNull();
+        for (const key of keys.slice(15))
+          expect(await get(backup, bucketC, key), key).not.toBeNull();
+        // and the next run has nothing left to do
+        expect(await copyObjectStore(primaryAdmin, backupAdmin, { tombstones: dead })).toMatchObject({
+          copied: 0,
+          deleted: 0,
+          tombstoned: 0,
+          failed: [],
+        });
+      },
+      FAULT_TEST_TIMEOUT_MS,
+    );
+
+    it(
+      "a restore cannot resurrect a destroyed object: without the list it comes back, with it it is neither copied nor kept",
+      async () => {
+        const bucketD = await provision(randomUUID() as OrgId);
+        const [keep, destroyed, alsoKeep] = await seed(bucketD, 3, "documents/restore-tombstone");
+        if (!keep || !destroyed || !alsoKeep) throw new Error("seed");
+        expect((await copyObjectStore(primaryAdmin, backupAdmin)).failed).toEqual([]);
+        // erased on the primary AFTER the copy's last clean run: the copy still holds it (the gap this closes)
+        await erase(bucketD, destroyed);
+        expect(await get(backup, bucketD, destroyed)).not.toBeNull();
+        const dead = tombstonesFor(bucketD, [destroyed]);
+
+        // disaster: the primary lost its objects. A restore WITHOUT the list resurrects the destroyed one.
+        for (const key of [keep, alsoKeep]) await erase(bucketD, key);
+        await copyObjectStore(backupAdmin, primaryAdmin, { deleteMissing: false });
+        expect(
+          await get(store, bucketD, destroyed),
+          "the hole: an untombstoned restore brings it back",
+        ).not.toBeNull();
+
+        // start again from the empty primary and restore WITH the list
+        for (const key of [keep, destroyed, alsoKeep]) await erase(bucketD, key);
+        const restore = await copyObjectStore(backupAdmin, primaryAdmin, {
+          deleteMissing: false,
+          tombstones: dead,
+        });
+        expect(restore.failed).toEqual([]);
+        expect(restore.skippedTombstoned).toBe(1);
+        expect(await get(store, bucketD, destroyed)).toBeNull();
+        for (const key of [keep, alsoKeep])
+          expect(await get(store, bucketD, key), key).not.toBeNull();
+
+        // and an object a hand load already put back is destroyed by the same kind of run
+        await put(bucketD, destroyed, bytesOf("hand loaded"));
+        const swept = await copyObjectStore(backupAdmin, primaryAdmin, {
+          deleteMissing: false,
+          tombstones: dead,
+        });
+        expect(swept.tombstoned).toBe(1);
+        expect(await get(store, bucketD, destroyed)).toBeNull();
+      },
+      FAULT_TEST_TIMEOUT_MS,
+    );
+
+    it(
+      "destroys tombstoned objects on the copy even after the bucket was dropped on the primary",
+      async () => {
+        const bucketE = await provision(randomUUID() as OrgId);
+        const keys = await seed(bucketE, 2, "documents/dropped-bucket");
+        expect((await copyObjectStore(primaryAdmin, backupAdmin)).failed).toEqual([]);
+        for (const key of keys) await erase(bucketE, key);
+        const dropped = await createS3SignedFetch(
+          primaryAdmin,
+          {},
+          "resilience:drop",
+        )({ method: "DELETE", bucket: bucketE, objectKey: null, query: [], payload: null });
+        expect(dropped.ok, `admin drops the emptied bucket: ${dropped.status}`).toBe(true);
+
+        // the source no longer lists the bucket: a plain run leaves the copy's objects, the list destroys them
+        const applied = await copyObjectStore(primaryAdmin, backupAdmin, {
+          tombstones: tombstonesFor(bucketE, keys),
+        });
+        expect(applied.failed).toEqual([]);
+        for (const key of keys) expect(await get(backup, bucketE, key), key).toBeNull();
+      },
+      FAULT_TEST_TIMEOUT_MS,
     );
   });
 });

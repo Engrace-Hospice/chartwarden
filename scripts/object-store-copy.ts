@@ -17,12 +17,19 @@
 // `--adopt-unchecksummed` (a one-off for a source whose objects were never written with a checksum; the MinIO ->
 // SeaweedFS migration that needed it has run and is gone): a source object stored WITHOUT a checksum is copied with
 // the SHA-256 of the bytes read, instead of failing; the target then verifies it.
+// CW-DS-01, destruction tombstones (`--tombstones <file>` / OBJECT_COPY_TOMBSTONES_FILE, NDJSON from
+// scripts/storage/object-tombstones.ts). The list is the authority on what a certificate destroyed, and it is applied on
+// BOTH directions: an object it names is never copied to the target, and one already on the target is destroyed there
+// (all versions), outside the mass-delete guard and also in a `--restore`. So a D12 erase reaches the copy on the next run
+// even when its size would have tripped the guard, and a restore from a copy (or a hand load) cannot resurrect a destroyed
+// document. The file is re-read on every run of the scheduled copy, so a cron that refreshes it keeps the copy current. A
+// file that cannot be read stops the run before any object is touched.
 // Not handled: a bucket dropped on the source keeps its objects on the copy; a created bucket gets no
 // versioning or expiry rule (run the provisioner / backfill after a restore).
 //
 //   SOURCE_S3_ENDPOINT / _ACCESS_KEY / _SECRET_KEY / _REGION   the store read from
 //   TARGET_S3_ENDPOINT / _ACCESS_KEY / _SECRET_KEY / _REGION   the store written to
-//   bun run scripts/object-store-copy.ts [--restore] [--adopt-unchecksummed]
+//   bun run scripts/object-store-copy.ts [--restore] [--adopt-unchecksummed] [--tombstones <file>]
 //                                       # one run: prints a JSON summary; exit 1 if anything failed
 //   bun run scripts/object-store-copy.ts --every <seconds>
 //                                       # the scheduled second copy (compose.object-copy.yml): runs forever; each
@@ -33,7 +40,8 @@
 //
 // ponytail: whole objects are buffered in memory (MAX_OBJECT_BYTES); stream them if documents outgrow that.
 import { createHash } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
+import { NO_TOMBSTONES, type TombstoneIndex, parseTombstones } from "./lib/object-tombstones";
 import {
   type S3ObjectStoreConfig,
   SSE_ALGORITHM,
@@ -59,6 +67,8 @@ export interface CopyOptions {
   readonly allowMassDeleteBuckets?: ReadonlySet<string>;
   /** Copy a source object stored without a checksum with the SHA-256 of its bytes (migration only). */
   readonly adoptUnchecksummed?: boolean;
+  /** CW-DS-01 — objects a destruction certificate destroyed: never copied, and destroyed on the target (also in a restore, outside the guard). */
+  readonly tombstones?: TombstoneIndex;
 }
 
 export interface CopyFailure {
@@ -72,6 +82,10 @@ export interface CopySummary {
   readonly copied: number;
   readonly unchanged: number;
   readonly deleted: number;
+  /** Tombstoned objects found on the target and destroyed there (counted apart from `deleted`, which the guard bounds). */
+  readonly tombstoned: number;
+  /** Tombstoned objects the source still held: left out of the copy. */
+  readonly skippedTombstoned: number;
   readonly failed: readonly CopyFailure[];
 }
 
@@ -301,6 +315,41 @@ interface BucketTally {
   copied: number;
   unchanged: number;
   deleted: number;
+  tombstoned: number;
+  skippedTombstoned: number;
+}
+
+const NO_KEYS: ReadonlySet<string> = new Set();
+
+/** CW-DS-01 — destroy (all versions) every tombstoned key the target holds. Outside the mass-delete guard: a certificate says so. */
+async function destroyTombstoned(
+  bucket: string,
+  dead: ReadonlySet<string>,
+  targetKeys: ReadonlySet<string>,
+  ctx: CopyContext,
+  tally: BucketTally,
+  failed: CopyFailure[],
+): Promise<void> {
+  for (const key of dead) {
+    if (!targetKeys.has(key)) continue;
+    try {
+      await ctx.target.destroyAllVersions({
+        bucket,
+        objectKey: key,
+        organizationId: "",
+        signal: ctx.signal(),
+      });
+      tally.tombstoned++;
+    } catch (error) {
+      // The key names an ERASED patient (documents/<patientId>/...) and this entry reaches stdout and the alert webhook: a stable
+      // hash prefix identifies it to whoever holds the list, without sending the id out.
+      failed.push({
+        bucket,
+        key: `sha256:${createHash("sha256").update(key).digest("hex").slice(0, 16)}`,
+        reason: `tombstone: ${reasonOf(error).split(key).join("<key>")}`, // the adapter's error text names the key too
+      });
+    }
+  }
 }
 
 async function syncBucket(
@@ -309,24 +358,48 @@ async function syncBucket(
   failed: CopyFailure[],
 ): Promise<BucketTally> {
   const { target, sourceFetch, targetFetch, signal, options } = ctx;
-  const tally: BucketTally = { copied: 0, unchanged: 0, deleted: 0 };
+  const tally: BucketTally = {
+    copied: 0,
+    unchanged: 0,
+    deleted: 0,
+    tombstoned: 0,
+    skippedTombstoned: 0,
+  };
+  const dead = options.tombstones?.get(bucket) ?? NO_KEYS;
   // listed a moment ago but gone now: skip it, deleting on the strength of a 404 is not safe
   const sourceKeys = await listKeys(sourceFetch, bucket, signal);
-  if (!sourceKeys) return tally;
+  if (!sourceKeys) {
+    // A bucket the source no longer has still has its tombstoned objects destroyed on the target (a dropped bucket is
+    // otherwise never removed there); nothing else is touched.
+    if (dead.size > 0) {
+      const onTarget = await listKeys(targetFetch, bucket, signal);
+      if (onTarget) await destroyTombstoned(bucket, dead, onTarget, ctx, tally, failed);
+    }
+    return tally;
+  }
   await ensureBucket(targetFetch, bucket, signal, ctx.encryptTarget);
   for (const key of sourceKeys) {
+    if (dead.has(key)) {
+      tally.skippedTombstoned++; // destroyed by a certificate: never copied, whatever the source still holds
+      continue;
+    }
     try {
       tally[await copyObject(ctx, bucket, key)]++;
     } catch (error) {
       failed.push({ bucket, key, reason: reasonOf(error) });
     }
   }
-  if (options.deleteMissing === false) return tally;
+  if (options.deleteMissing === false && dead.size === 0) return tally;
   const targetKeys = (await listKeys(targetFetch, bucket, signal)) ?? new Set<string>();
-  const doomed = [...targetKeys].filter((key) => !sourceKeys.has(key));
+  await destroyTombstoned(bucket, dead, targetKeys, ctx, tally, failed);
+  if (options.deleteMissing === false) return tally;
+  // the tombstoned keys are already gone from the target: they are not part of what the guard counts
+  const liveSourceCount = sourceKeys.size - tally.skippedTombstoned;
+  const liveTargetKeys = new Set([...targetKeys].filter((key) => !dead.has(key)));
+  const doomed = [...liveTargetKeys].filter((key) => !sourceKeys.has(key));
   const refusal = options.allowMassDeleteBuckets?.has(bucket)
     ? null
-    : massDeleteRefusal(sourceKeys.size, targetKeys.size, doomed.length);
+    : massDeleteRefusal(liveSourceCount, liveTargetKeys.size, doomed.length);
   if (refusal) {
     failed.push({ bucket, key: "", reason: refusal });
     return tally;
@@ -369,14 +442,25 @@ export async function copyObjectStore(
     encryptTarget: targetConfig.requireServerSideEncryption === true,
   };
   const failed: CopyFailure[] = [];
-  const total: BucketTally = { copied: 0, unchanged: 0, deleted: 0 };
-  const buckets = await listBuckets(ctx.sourceFetch, signal);
+  const total: BucketTally = {
+    copied: 0,
+    unchanged: 0,
+    deleted: 0,
+    tombstoned: 0,
+    skippedTombstoned: 0,
+  };
+  // A bucket only the tombstone list names (dropped on the source) is still visited, so its destroyed objects go from the target.
+  const buckets = [
+    ...new Set([...(await listBuckets(ctx.sourceFetch, signal)), ...(options.tombstones?.keys() ?? [])]),
+  ];
   for (const bucket of buckets) {
     try {
       const tally = await syncBucket(bucket, ctx, failed);
       total.copied += tally.copied;
       total.unchanged += tally.unchanged;
       total.deleted += tally.deleted;
+      total.tombstoned += tally.tombstoned;
+      total.skippedTombstoned += tally.skippedTombstoned;
     } catch (error) {
       failed.push({ bucket, key: "", reason: reasonOf(error) });
     }
@@ -440,10 +524,24 @@ export function alertBody(summary: CopySummary | null, error: unknown, now: Date
   });
 }
 
-function runOnce(env: Env, argv: readonly string[]): Promise<CopySummary> {
+/**
+ * CW-DS-01 — the tombstone list named by `--tombstones <file>` or OBJECT_COPY_TOMBSTONES_FILE, read fresh on every run. A file
+ * that is named but cannot be read or parsed throws, so the run stops before touching an object (and the schedule pages).
+ */
+export async function loadTombstones(env: Env, argv: readonly string[]): Promise<TombstoneIndex> {
+  const at = argv.indexOf("--tombstones");
+  const path = (at >= 0 ? argv[at + 1] : env.OBJECT_COPY_TOMBSTONES_FILE)?.trim();
+  if (at >= 0 && !path) throw new Error("--tombstones needs a file path");
+  if (!path) return NO_TOMBSTONES;
+  return parseTombstones(await readFile(path, "utf8"));
+}
+
+async function runOnce(env: Env, argv: readonly string[]): Promise<CopySummary> {
+  const tombstones = await loadTombstones(env, argv);
   return copyObjectStore(storeConfigFromEnv("SOURCE", env), storeConfigFromEnv("TARGET", env), {
     deleteMissing: !argv.includes("--restore"),
     adoptUnchecksummed: argv.includes("--adopt-unchecksummed"),
+    tombstones,
     allowMassDeleteBuckets: new Set(
       (env.ALLOW_MASS_DELETE ?? "")
         .split(",")
@@ -486,6 +584,9 @@ if (import.meta.main) {
     const seconds = Number(process.argv[everyAt + 1]);
     if (!Number.isInteger(seconds) || seconds < MIN_INTERVAL_SECONDS)
       throw new Error(`--every needs whole seconds >= ${MIN_INTERVAL_SECONDS}`);
+    // The schedule reads its list from OBJECT_COPY_TOMBSTONES_FILE (re-read each run): a flag here would be dropped silently.
+    if (process.argv.includes("--tombstones"))
+      throw new Error("--every does not take --tombstones: set OBJECT_COPY_TOMBSTONES_FILE instead");
     await schedule(process.env, seconds);
   }
   const summary = await runOnce(process.env, process.argv);

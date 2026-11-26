@@ -14,8 +14,10 @@
 //      (DEK-first, the ordering M36's `messages` eraser uses; M8's `encounter_record` eraser also goes first but shreds its cipher columns, not a DEK);
 //   2. SKIPS any document under an active `document_legal_hold` (and the whole associated intake batch) —
 //      the skip + hold metadata is captured by M4 audit, NOT deleted (spec §8.6 "Legal hold interaction");
-//   3. version-aware deletes the remaining MinIO objects (all object versions + delete markers per
-//      DR-019 / ARCH-085) and row-deletes the document/intake subtree;
+//   3. records an `object_destruction_tombstone` per object it is about to destroy (committed first, CW-DS-01: a
+//      restore from a copy must not bring a destroyed object back), then version-aware deletes the remaining MinIO
+//      objects (all object versions + delete markers per DR-019 / ARCH-085) and row-deletes the document/intake
+//      subtree. A document under an active hold, and a Part 2 one, gets neither a tombstone nor a delete;
 //   4. PRESERVES `document_access_log` rows inside the §164.528 disclosure-accounting retention floor
 //      (ADR-0013) — those are M4-owned accounting evidence, not document content.
 // `compliance_42cfr_part2`-class documents are passed THROUGH to M4's `eraseAuditRows`, which refuses
@@ -26,7 +28,7 @@
 // validateErasers(), so a real eraser stands over its stub (same hook M5/M6/M7/M8/M36 use).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { type DataEraser, DegradedError, type OrgId } from "@chartwarden/types";
+import { ChartWardenError, type DataEraser, DegradedError, type OrgId } from "@chartwarden/types";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 import { deriveTenantBucket } from "../lifecycle/storage";
@@ -227,6 +229,7 @@ export function createDrizzleDocumentEraseStore(
   const VER = schema.documentVersions;
   const TAG = schema.documentTags;
   const HOLD = schema.documentLegalHold;
+  const TOMBSTONE = schema.objectDestructionTombstones;
   const BATCH = schema.intakeUploadBatches;
   const PAGE = schema.classifiedPages;
   const JOB = schema.extractionJobs;
@@ -389,23 +392,52 @@ export function createDrizzleDocumentEraseStore(
         const batchIds = await batchIdsFor(tx, patientId);
         const skippedBatches = new Set(await skippedBatchIdsFor(tx, batchIds, skippedDocIds));
         const deletableBatchIds = batchIds.filter((id) => !skippedBatches.has(id));
-        const objectKeys =
+        const versions =
           docIds.length === 0
             ? []
-            : uniq(
-                (
-                  await tx
-                    .select({ key: VER.objectKey })
-                    .from(VER)
-                    .where(inArray(VER.documentId, docIds))
-                ).map((r) => r.key),
-              );
-        return { docIds, deletableBatchIds, objectKeys };
+            : await tx
+                .select({ documentId: VER.documentId, versionId: VER.id, key: VER.objectKey })
+                .from(VER)
+                .where(inArray(VER.documentId, docIds));
+        const objectKeys = uniq(versions.map((r) => r.key));
+        return { docIds, deletableBatchIds, objectKeys, versions };
       });
+
+      // Phase A2 (CW-DS-01, the tombstone): record that these objects are being destroyed, committed BEFORE the first
+      // one is. A crash anywhere after this leaves the record (a retry re-runs every step; ON CONFLICT makes the insert
+      // idempotent), and every restore path (scripts/object-store-copy.ts --tombstones) can then refuse to bring a
+      // destroyed object back. Only objects of documents this run actually destroys are here: `plan.docIds` already
+      // excludes every document under an active legal hold and every 42 CFR Part 2 document, so a held object gets no
+      // tombstone and is not destroyed. `resolveSkips` ran at the start of the erase, so the hold is read AGAIN here, in
+      // the transaction that writes the tombstone: a hold placed since then stops the erase before anything is recorded
+      // or destroyed (a tombstone is permanent). A hold committed after this transaction, while the objects are being
+      // deleted, is still missed (nothing locks `legal_hold`; see the CW-DS-01 row).
+      const bucket = deriveTenantBucket(organizationId as OrgId);
+      if (plan.versions.length > 0) {
+        await inOrg(organizationId, async (tx) => {
+          if ((await activeHoldOf(tx, plan.docIds)).length > 0)
+            throw new ChartWardenError(
+              "DOCUMENT_HOLD_PLACED",
+              "a legal hold was placed on a document while its erase was running; nothing was destroyed, retry the erase",
+              409,
+            );
+          await tx
+            .insert(TOMBSTONE)
+            .values(
+              plan.versions.map((v) => ({
+                organizationId,
+                bucket,
+                objectKey: v.key,
+                documentId: v.documentId,
+                documentVersionId: v.versionId,
+              })),
+            )
+            .onConflictDoNothing();
+        });
+      }
 
       // Phase B (objects BEFORE rows, D12/DR-019): a refusing port throws here — LOUDLY, with every row
       // (and thus every object key) still in place, so the erase is retryable once the adapter binds.
-      const bucket = deriveTenantBucket(organizationId as OrgId);
       for (const objectKey of plan.objectKeys) {
         await objects.destroyAllVersions({
           bucket,

@@ -68,7 +68,7 @@ describe("scheduled second copy", () => {
     }));
     const body = JSON.parse(
       alertBody(
-        { buckets: 3, copied: 1, unchanged: 2, deleted: 0, failed },
+        { buckets: 3, copied: 1, unchanged: 2, deleted: 0, tombstoned: 0, skippedTombstoned: 0, failed },
         null,
         new Date("2026-11-05T00:00:00Z"),
       ),
