@@ -27,7 +27,6 @@ wins until the spec is re-locked.
 | AI capability catalog (19) | [`ai/capabilities/`](./ai/capabilities/) | [below](#ai-capability-catalog) |
 | Roadmap & phase plans | `docs/*PHASE*` · `IMPLEMENTATION_ROADMAP.md` | [below](#roadmap--phase-plans) |
 | Implementation guides | [`implementation/`](./implementation/) | [below](#implementation-guides) |
-| Execution plans (waves) | [`plans/`](./plans/) | [below](#execution-plans-waves) |
 | Reference sources | [`reference/`](./reference/) | [below](#reference-sources) |
 | API contract & integrator changes | [`api/`](./api/) | [`api/CHANGES.md`](./api/CHANGES.md) |
 | Mobile architecture & cross-repository contracts | [`mobile/`](./mobile/) | [`mobile/README.md`](./mobile/README.md) |
@@ -188,40 +187,6 @@ per-module build truth is the generated matrix (`bun run status:matrix`).
 
 ---
 
-## Execution plans (waves)
-
-Per-wave Archon task plans in [`plans/`](./plans/). These are **authority inputs to the
-deterministic build harness** and are read-only to automation — the `arch:plan-integrity`
-gate fails on any change under `docs/plans/**` (human override: `ALLOW_PLAN_EDITS=1`). Most
-represent **completed, merged** waves and are retained as historical governance records.
-
-| Plan | Wave / scope |
-|---|---|
-| [`M01-M02_VERTICAL_SLICE_PLAN.md`](./plans/M01-M02_VERTICAL_SLICE_PLAN.md) | Phase 1 vertical slice — M1 Foundation + M2 Identity. |
-| [`WAVE_AUTH_BETTER_AUTH_PLAN.md`](./plans/WAVE_AUTH_BETTER_AUTH_PLAN.md) | Better Auth mount + M2 sign-in front door. |
-| [`AUTH_T06_SCHEMA_RECONCILE.md`](./plans/AUTH_T06_SCHEMA_RECONCILE.md) | Better Auth ↔ M1 schema reconciliation. |
-| [`WAVE_A_M3-M4_PLAN.md`](./plans/WAVE_A_M3-M4_PLAN.md) | Wave A — M3 Authorization + M4 Audit. |
-| [`WAVE_B_M36-M38-M40_PLAN.md`](./plans/WAVE_B_M36-M38-M40_PLAN.md) | Wave B — M36 Messaging + M38 Terminology + M40 MDM. |
-| [`WAVE_C_M5-M39_PLAN.md`](./plans/WAVE_C_M5-M39_PLAN.md) | Wave C — M5 Patient + M39 Consent. |
-| [`WAVE_D_M6-M7-M8_PLAN.md`](./plans/WAVE_D_M6-M7-M8_PLAN.md) | Wave D — M6 Admission + M7 Care Plan + M8 Encounters. |
-| [`WAVE_M6_LIVE_WIRE_PLAN.md`](./plans/WAVE_M6_LIVE_WIRE_PLAN.md) | M6 Admission live-wire. |
-| [`WAVE_E_M9-M13_PLAN.md`](./plans/WAVE_E_M9-M13_PLAN.md) | Wave E — clinical depth (M9 · M10 · M11 · M12 · M13). |
-| [`WAVE_F_M14-M17-M18-M22_PLAN.md`](./plans/WAVE_F_M14-M17-M18-M22_PLAN.md) | Wave F — M14 IDG · M17 Scheduling · M18 EVV · M22 Documents. |
-| [`WAVE_G_M23-M25-M26_PLAN.md`](./plans/WAVE_G_M23-M25-M26_PLAN.md) | Wave G — revenue cycle (M23 · M25 · M26). |
-| [`WAVE_H_M28-M29-M30-M32-M34_PLAN.md`](./plans/WAVE_H_M28-M29-M30-M32-M34_PLAN.md) | Wave H — M28 FHIR · M29 Interfaces · M30 HQRP · M32 AI · M34 SaaS. |
-| [`WAVE_P2-1_M15-M16-M21-M24_PLAN.md`](./plans/WAVE_P2-1_M15-M16-M21-M24_PLAN.md) | Wave P2-1 — M15 · M16 · M21 · M24. |
-| [`WAVE_P2-2_M19-M20_PLAN.md`](./plans/WAVE_P2-2_M19-M20_PLAN.md) | Wave P2-2 — M19 On-Call · M20 Field Safety. |
-| [`WAVE_P2-3_M27-M31-M33-M35_PLAN.md`](./plans/WAVE_P2-3_M27-M31-M33-M35_PLAN.md) | Wave P2-3 — M27 · M31 · M33 · M35. |
-| [`WAVE_P3_M37_IPU_PLAN.md`](./plans/WAVE_P3_M37_IPU_PLAN.md) | Phase 3 — M37 Inpatient Unit (IPU). |
-| [`WAVE_ADMIN_CONSOLE_M35_SUBSCRIPTION_PLAN.md`](./plans/WAVE_ADMIN_CONSOLE_M35_SUBSCRIPTION_PLAN.md) | Admin console — M34 shell + M35 §5.2 platform-ops screens. |
-| [`WAVE_FRONTEND_BACKLOG_PLAN.md`](./plans/WAVE_FRONTEND_BACKLOG_PLAN.md) | Frontend backlog (Track A). |
-| [`FRONTEND_INTEGRATION_PLAN.md`](./plans/FRONTEND_INTEGRATION_PLAN.md) | Frontend integration (Foundation + backlog + per-module). |
-| [`PHASE_2A_UPGRADES_PLAN.md`](./plans/PHASE_2A_UPGRADES_PLAN.md) | Phase 2 Part A — flag-activation upgrades. |
-| [`PHASE_3_UPGRADES_PLAN.md`](./plans/PHASE_3_UPGRADES_PLAN.md) | Phase 3 — flag activations. |
-| [`ARCHON_RUN_TRACKER.md`](./plans/ARCHON_RUN_TRACKER.md) | Archon run tracker (execution log). |
-
----
-
 ## Reference sources
 
 | Document | Scope |
@@ -253,5 +218,4 @@ represent **completed, merged** waves and are retained as historical governance 
 ---
 
 *This index is hand-maintained. When adding a document under `docs/`, add a row here in the
-matching section. The design corpus (`design/`) and wave plans (`plans/`) are additionally
-guarded by the `docs:ui` and `arch:plan-integrity` gates respectively.*
+matching section. The design corpus (`design/`) is additionally guarded by the `docs:ui` gate.*
