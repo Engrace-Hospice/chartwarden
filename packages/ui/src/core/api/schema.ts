@@ -83064,6 +83064,20 @@ export interface operations {
                                 baseReimbursementCents: number | null;
                                 reimbursementEstimateCents: number | null;
                                 actualBilledChargeCents: number | null;
+                                electionDayRange?: {
+                                    /** @constant */
+                                    basis: "current_signed_election_calendar_days_v1";
+                                    dayFrom: number;
+                                    dayTo: number;
+                                    rateBucketFrom: number;
+                                    rateBucketTo: number | null;
+                                };
+                                ircEpisodeDayRange?: {
+                                    /** Format: date */
+                                    episodeStartDate: string;
+                                    dayFrom: number;
+                                    dayTo: number;
+                                };
                                 reasonCodes: string[];
                             }[];
                             reimbursementEstimateTotalCents: number | null;

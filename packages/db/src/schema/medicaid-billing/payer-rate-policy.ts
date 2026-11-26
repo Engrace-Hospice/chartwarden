@@ -33,6 +33,7 @@ export const medicaidPayerRatePolicy = pgTable(
     unitBasis: text("unit_basis").notNull(),
     bucketFrom: integer("bucket_from"),
     bucketTo: integer("bucket_to"),
+    electionDayBasis: text("election_day_basis").notNull().default("unqualified"),
     rateCents: integer("rate_cents").notNull(),
     chargeCeilingCents: integer("charge_ceiling_cents"),
     pricingMethod: text("pricing_method").notNull().default("unqualified"),
@@ -123,6 +124,10 @@ export const medicaidPayerRatePolicy = pgTable(
       "medicaid_payer_rate_policy_bucket_valid",
       sql`(bucket_from IS NULL AND bucket_to IS NULL) OR (bucket_from IS NOT NULL AND bucket_from > 0 AND (bucket_to IS NULL OR bucket_to >= bucket_from))`,
     ),
+    electionDayBasisValid: check(
+      "medicaid_payer_rate_policy_election_day_basis_valid",
+      sql`election_day_basis IN ('unqualified', 'current_signed_election_calendar_days_v1')`,
+    ),
     amountValid: check(
       "medicaid_payer_rate_policy_amount_valid",
       sql`rate_cents > 0 AND (charge_ceiling_cents IS NULL OR charge_ceiling_cents > 0)`,
@@ -207,6 +212,7 @@ export const medicaidPayerRatePolicy = pgTable(
       "medicaid_payer_rate_policy_verified_methodology",
       sql`verification_status <> 'verified' OR (
         service_category <> 'IN_HOME_RESPITE' AND
+        (bucket_from IS NULL OR election_day_basis <> 'unqualified') AND
         pricing_method <> 'unqualified' AND quantity_conversion_method <> 'unqualified'
         AND minimum_duration_method <> 'unqualified' AND quality_reporting_applicability <> 'unqualified'
         AND quality_reporting_status <> 'unknown' AND rounding_mode <> 'unqualified'

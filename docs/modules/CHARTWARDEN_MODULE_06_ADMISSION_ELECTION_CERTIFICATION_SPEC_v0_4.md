@@ -620,6 +620,14 @@ M24 reads those facts on its locked transaction and combines them with M8 signed
 a separately verified, explicitly synthetic managed-care method before qualifying minutes for a local
 hourly preparation. This narrow integration is not a payer rule, does not change M6's LOC state machine,
 and does not establish EOCCO/Oregon billing eligibility or institutional units.
+
+**As-built M24 election-history source (L8A.2C3, 2026-11-26):** M6 also owns an append-only,
+provider/admission/election-scoped Medicaid election-history completeness attestation. Its narrow pricing
+reader returns the current signed election anchor, bounded election periods, transfer/revocation/discharge
+facts, source versions and an explicit truncation/completeness disposition. The first M24 use is limited to
+the explicitly qualified synthetic continuous managed-care counting basis; missing external history,
+transfer continuity, reset semantics or contradictory history stays unresolved. This is not a Medicare
+benefit-period carry-over rule and does not assert a real CCO method.
 | `R-RV-01` Revocation effective date cannot precede signed date | DB CHECK + service | `REVOCATION_EFFECTIVE_BEFORE_SIGNED` (422) |
 | `R-XFR-01` Only one transfer per benefit period | `createTransfer` | `TRANSFER_LIMIT_EXCEEDED` (409) |
 | `R-XFR-02` Transfer-in must include the source CCN (validated against NPPES CCN registry via M40) and the carried `period_sequence_at_transfer` | `createAdmission(transferIn=true)` | `TRANSFER_IN_SOURCE_INVALID` (422) |

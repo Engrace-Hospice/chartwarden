@@ -231,6 +231,18 @@ interface AssemblyPreview {
       reimbursementEstimateCents: number | null;
       actualBilledChargeCents: number | null;
       reasonCodes: string[];
+      electionDayRange?: {
+        basis: "current_signed_election_calendar_days_v1";
+        dayFrom: number;
+        dayTo: number;
+        rateBucketFrom: number;
+        rateBucketTo: number | null;
+      };
+      ircEpisodeDayRange?: {
+        episodeStartDate: string;
+        dayFrom: number;
+        dayTo: number;
+      };
     }[];
     reimbursementEstimateTotalCents: number | null;
     actualBilledChargeTotalCents: number | null;
@@ -1116,6 +1128,16 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                           : "Service category unresolved"}
                         {` · ${segment.serviceFrom}${segment.serviceTo === segment.serviceFrom ? "" : ` to ${segment.serviceTo}`}`}
                       </strong>
+                      {segment.electionDayRange ? (
+                        <p style={mutedStyle}>
+                          {`Election days ${segment.electionDayRange.dayFrom}–${segment.electionDayRange.dayTo}; rate bucket ${segment.electionDayRange.rateBucketFrom}–${segment.electionDayRange.rateBucketTo ?? "open"}. The line is split where the verified election-day bucket changes.`}
+                        </p>
+                      ) : null}
+                      {segment.ircEpisodeDayRange ? (
+                        <p style={mutedStyle}>
+                          {`Respite episode began ${segment.ircEpisodeDayRange.episodeStartDate}; this claim segment covers episode days ${segment.ircEpisodeDayRange.dayFrom}–${segment.ircEpisodeDayRange.dayTo}. Local pricing only; institutional format is unqualified.`}
+                        </p>
+                      ) : null}
                       {segment.rateCents !== null ? (
                         <p style={mutedStyle}>
                           {`Rate $${(segment.rateCents / 100).toFixed(2)} ${segment.unitBasis === "per_hour" ? "per hour" : "per day"}${segment.pricingMethod === "fixed_contract_unit" ? " · contract-defined unit" : ""} · ${segment.rateSourceKind ? labelFor(RATE_SOURCE_KIND_LABEL, segment.rateSourceKind) : "Source unavailable"}${segment.rateLocalityCode ? ` · locality ${segment.rateLocalityCode}` : ""} · effective ${segment.rateEffectiveFrom ?? "unknown"}${segment.rateEffectiveTo ? ` through ${segment.rateEffectiveTo}` : " onward"}${segment.methodologyVersion === null ? "" : ` · method v${segment.methodologyVersion}`}`}

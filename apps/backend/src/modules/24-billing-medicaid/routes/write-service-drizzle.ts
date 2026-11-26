@@ -44,6 +44,7 @@ import {
 } from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-port";
+import type { MedicaidElectionHistoryReader } from "../../06-admission/seams/medicaid-election-history";
 import {
   type CurrentLocPeriodForClaim,
   hospiceClaimLineSnapshotIssue,
@@ -60,16 +61,20 @@ import {
 import type { CredentialCipherPort } from "../credential-crypto";
 import { qualifyMedicaidProgramClassification } from "../medicaid-payer-classification";
 import {
+  type RHCPricePlanResult,
   assertSupportedRhcPricingSnapshotPayload,
   databasePricingSnapshotFingerprint,
   lockHospiceBillingEvidenceScope,
   lockMedicaidRatePolicyScope,
   rateRowAsFact,
   readMedicaidHospiceBillingEvidence,
+  readMedicaidIrcBillingEvidence,
+  resolveIrcDailyPricingPlan,
   resolveRhcDailyPricingPlan,
   rethrowUnlessDomainError,
   verifyStoredRhcPricingSnapshots,
 } from "../pricing/rhc-pricing-snapshot";
+import type { IrcPricingEpisodeReader } from "../pricing/rhc-pricing-snapshot";
 import type { M24Actor } from "./actor";
 import {
   ENROLLMENT_REQUIREMENTS,
@@ -931,6 +936,7 @@ function ratePolicyFactFromRow(
     chargeCeilingMethod: row.chargeCeilingMethod as PayerRatePolicyFact["chargeCeilingMethod"],
     chargeCeilingBoundary:
       row.chargeCeilingBoundary as PayerRatePolicyFact["chargeCeilingBoundary"],
+    electionDayBasis: row.electionDayBasis as PayerRatePolicyFact["electionDayBasis"],
     qualityReportingApplicability:
       row.qualityReportingApplicability as PayerRatePolicyFact["qualityReportingApplicability"],
     qualityReportingStatus:
@@ -981,6 +987,57 @@ function serviceLocationKindFromResidenceSpans(
   return covering[0]!.kind === "home" || covering[0]!.kind === "facility"
     ? covering[0]!.kind
     : null;
+}
+
+function pricingPreviewLineContext(facts: Record<string, unknown>): {
+  electionDayRange?: {
+    basis: "current_signed_election_calendar_days_v1";
+    dayFrom: number;
+    dayTo: number;
+    rateBucketFrom: number;
+    rateBucketTo: number | null;
+  };
+  ircEpisodeDayRange?: { episodeStartDate: string; dayFrom: number; dayTo: number };
+} {
+  const electionDay = facts.electionDay;
+  if (electionDay && typeof electionDay === "object") {
+    const value = electionDay as Record<string, unknown>;
+    if (
+      value.basis === "current_signed_election_calendar_days_v1" &&
+      Number.isSafeInteger(value.dayFrom) &&
+      Number.isSafeInteger(value.dayTo) &&
+      Number.isSafeInteger(value.rateBucketFrom) &&
+      (value.rateBucketTo === null || Number.isSafeInteger(value.rateBucketTo))
+    ) {
+      return {
+        electionDayRange: {
+          basis: value.basis,
+          dayFrom: value.dayFrom as number,
+          dayTo: value.dayTo as number,
+          rateBucketFrom: value.rateBucketFrom as number,
+          rateBucketTo: value.rateBucketTo as number | null,
+        },
+      };
+    }
+  }
+  const episode = facts.episode;
+  if (episode && typeof episode === "object") {
+    const value = episode as Record<string, unknown>;
+    if (
+      typeof value.episodeStartLocalDate === "string" &&
+      Number.isSafeInteger(value.consecutiveDayFrom) &&
+      Number.isSafeInteger(value.consecutiveDayTo)
+    ) {
+      return {
+        ircEpisodeDayRange: {
+          episodeStartDate: value.episodeStartLocalDate,
+          dayFrom: value.consecutiveDayFrom as number,
+          dayTo: value.consecutiveDayTo as number,
+        },
+      };
+    }
+  }
+  return {};
 }
 
 function pricingPreviewFromAssessment(
@@ -1106,6 +1163,37 @@ function rhcPricingRequiredInputs(reasonCode: string): readonly string[] {
     "Verified locality, quality-reporting, charge, coding and daily RHC evidence",
     "A qualified payer-specific rate covering every service date",
   ];
+}
+
+function ircPricingRequiredInputs(reasonCode: string): readonly string[] {
+  if (reasonCode.includes("FACILITY") || reasonCode.includes("STAY")) {
+    return [
+      "One current M37 arranged admission and hospital stay linked to this M6 IRC period",
+      "Verified hospital identity and a continuous, supported episode service window",
+      "Verified local IRC billing evidence and payer rate covering every service date",
+    ];
+  }
+  if (reasonCode.includes("EPISODE") || reasonCode.includes("SEQUENCE")) {
+    return [
+      "A current M37 IRC episode with complete day sequence and no unsupported transfer or resumption",
+      "Verified local IRC billing evidence and payer rate covering every service date",
+    ];
+  }
+  return [
+    "Verified M37 IRC episode and remote-stay evidence linked to the M6 inpatient-respite period",
+    "Verified hospital facility identity, local coding evidence and payer rate for every service date",
+  ];
+}
+
+function billingEvidenceReasonCode(result: {
+  readonly status: string;
+  readonly reasonCode?: string;
+}): string {
+  if (result.status === "verified") return "VERIFIED";
+  if (result.status === "segmentation_required") {
+    return "BILLING_EVIDENCE_SEGMENTATION_REQUIRED";
+  }
+  return result.reasonCode ?? "BILLING_EVIDENCE_UNRESOLVED";
 }
 
 function unresolvedPricingPreview(input: {
@@ -1501,6 +1589,8 @@ export function buildDrizzleM24WriteService(
   medicareClaimReader?: () => Pick<ClaimReader, "medicareSecondaryContext">,
   canonicalPayerReader?: CanonicalPayerIdentityReader,
   tenantClearinghouseReader?: TenantClearinghouseReadPort,
+  electionHistoryReader?: MedicaidElectionHistoryReader,
+  ircPricingEpisodeReader?: IrcPricingEpisodeReader,
 ): M24WriteService {
   const C = schema.medicaidClaim;
   const SUB = schema.medicaidSubmission;
@@ -2404,27 +2494,47 @@ export function buildDrizzleM24WriteService(
                   period.levelOfCare === "routine_home_care"
                 );
               });
+            const ircOverlaps = (rawPeriods ?? []).filter((period) => {
+              const from = day(period.effectiveAt);
+              const to = locClaimEnd(period) ?? input.serviceTo;
+              return from <= input.serviceTo && to >= input.serviceFrom;
+            });
+            const ircOnly =
+              ircOverlaps.length === 1 && ircOverlaps[0]!.levelOfCare === "inpatient_respite_care";
+            const supportedDailyOnly = rhcOnly || ircOnly;
             const admissionVersion = previewReads.admissionSnapshot.version;
             if (
               rateProgramKind === "managed_care" &&
-              rhcOnly &&
+              supportedDailyOnly &&
               rawPeriods &&
               admissionVersion !== undefined &&
               programResponsibility.canonicalPayerId
             ) {
               const result = await withOrgContext(db, actor, async (tx) => {
-                // Same order as assembly: the rate and evidence advisory locks come before any M5 row lock
-                // (the residence read takes FOR SHARE on address rows) and before the clock is read, so a
-                // correction that commits while this waits is part of the instant assessed.
-                await lockHospiceBillingEvidenceScope(tx, {
-                  organizationId: actor.organizationId,
-                  providerEntityId: input.providerEntityId,
-                  patientId: input.patientId,
-                  admissionId: input.admissionId,
-                  canonicalPayerId: programResponsibility.canonicalPayerId!,
-                  programKind: "managed_care",
-                  serviceState: recordedEligibility.serviceState!,
-                });
+                // Admission/election rows are read first, then the evidence/rate locks, matching assembly's
+                // admission -> pricing lock order. The clock is read after locks so committed corrections
+                // observed while waiting are part of the assessment instant.
+                const electionHistory = electionHistoryReader
+                  ? await electionHistoryReader.readInTransaction(tx, {
+                      organizationId: actor.organizationId,
+                      providerEntityId: input.providerEntityId,
+                      patientId: input.patientId,
+                      admissionId: input.admissionId,
+                    })
+                  : null;
+                await lockHospiceBillingEvidenceScope(
+                  tx,
+                  {
+                    organizationId: actor.organizationId,
+                    providerEntityId: input.providerEntityId,
+                    patientId: input.patientId,
+                    admissionId: input.admissionId,
+                    canonicalPayerId: programResponsibility.canonicalPayerId!,
+                    programKind: "managed_care",
+                    serviceState: recordedEligibility.serviceState!,
+                  },
+                  ircOnly ? "IRC" : "RHC",
+                );
                 const assessedAt = new Date().toISOString();
                 const scope = {
                   organizationId: actor.organizationId,
@@ -2454,11 +2564,19 @@ export function buildDrizzleM24WriteService(
                   input.serviceFrom,
                   input.serviceTo,
                 );
-                const evidence = await readMedicaidHospiceBillingEvidence(tx, scope);
-                if (evidence.status !== "verified" && evidence.status !== "segmentation_required") {
+                const evidence = ircOnly
+                  ? await readMedicaidIrcBillingEvidence(tx, scope)
+                  : await readMedicaidHospiceBillingEvidence(tx, scope);
+                if (
+                  evidence.status !== "verified" &&
+                  (ircOnly || evidence.status !== "segmentation_required")
+                ) {
                   return {
-                    plan: { status: "unresolved" as const, reasonCode: evidence.reasonCode },
-                    serviceLocationKind,
+                    plan: {
+                      status: "unresolved" as const,
+                      reasonCode: billingEvidenceReasonCode(evidence),
+                    },
+                    serviceLocationKind: ircOnly ? null : serviceLocationKind,
                     assessedAt,
                   };
                 }
@@ -2471,14 +2589,56 @@ export function buildDrizzleM24WriteService(
                   serviceTo: input.serviceTo,
                   assessedAt,
                 });
+                if (ircOnly) {
+                  const locPeriod = ircOverlaps[0]!;
+                  const episode = ircPricingEpisodeReader
+                    ? await ircPricingEpisodeReader.readInTransaction(tx, {
+                        organizationId: actor.organizationId,
+                        providerEntityId: input.providerEntityId,
+                        patientId: input.patientId,
+                        admissionId: input.admissionId,
+                        locPeriodId: locPeriod.id,
+                        serviceFrom: input.serviceFrom,
+                        serviceTo: input.serviceTo,
+                      })
+                    : null;
+                  const facilityKinds = episode
+                    ? await facilityKindsInTransaction(tx, [{ facilityId: episode.facilityId }])
+                    : new Map<string, PlaceOfServiceFacilityKind>();
+                  const plan =
+                    evidence.status === "verified"
+                      ? resolveIrcDailyPricingPlan({
+                          scope,
+                          evidence: evidence.row,
+                          locPeriods: rawPeriods,
+                          rates: rateRows.map(rateRowAsFact),
+                          episode,
+                          facilityKinds,
+                        })
+                      : {
+                          status: "unresolved" as const,
+                          reasonCode: billingEvidenceReasonCode(evidence),
+                        };
+                  return {
+                    plan,
+                    serviceLocationKind: plan.status === "resolved" ? ("facility" as const) : null,
+                    assessedAt,
+                  };
+                }
                 const facilityKinds = await facilityKindsInTransaction(tx, residenceSpans);
                 const plan = resolveRhcDailyPricingPlan({
                   scope,
-                  evidence: evidence.status === "verified" ? evidence.row : evidence.rows,
+                  evidence:
+                    evidence.status === "verified"
+                      ? evidence.row
+                      : evidence.status === "segmentation_required"
+                        ? evidence.rows
+                        : [],
                   locPeriods: rawPeriods,
                   rates: rateRows.map(rateRowAsFact),
                   residenceSpans,
                   facilityKinds,
+                  electionHistory,
                 });
                 return { plan, serviceLocationKind, assessedAt };
               });
@@ -2486,7 +2646,7 @@ export function buildDrizzleM24WriteService(
                 const segments = result.plan.lines.map((line) => ({
                   serviceFrom: line.serviceFrom,
                   serviceTo: line.serviceTo,
-                  serviceCategory: "RHC" as const,
+                  serviceCategory: ircOnly ? ("IRC" as const) : ("RHC" as const),
                   serviceLocationKind: serviceLocationKindFromPricingFacts(line.integrityFacts),
                   status: "resolved" as const,
                   rateStatus: "qualified" as const,
@@ -2525,6 +2685,7 @@ export function buildDrizzleM24WriteService(
                   actualBilledChargeCents: line.chargesCents,
                   reasonCodes: line.appliedCeilings.length > 0 ? ["CONTRACT_CEILING_APPLIED"] : [],
                   chargeCeilings: line.appliedCeilings,
+                  ...pricingPreviewLineContext(line.integrityFacts),
                 }));
                 pricing = {
                   status: "fully_resolved",
@@ -2551,10 +2712,12 @@ export function buildDrizzleM24WriteService(
                   from: input.serviceFrom,
                   to: input.serviceTo,
                   reasonCode: result.plan.reasonCode,
-                  requiredInputs: rhcPricingRequiredInputs(result.plan.reasonCode),
+                  requiredInputs: ircOnly
+                    ? ircPricingRequiredInputs(result.plan.reasonCode)
+                    : rhcPricingRequiredInputs(result.plan.reasonCode),
                   serviceLocationKind: result.serviceLocationKind,
                   status: result.plan.status,
-                  serviceCategory: "RHC",
+                  serviceCategory: ircOnly ? "IRC" : "RHC",
                   assessedAt: result.assessedAt,
                 });
               }
@@ -3291,6 +3454,25 @@ export function buildDrizzleM24WriteService(
               "no supported hospice level-of-care days overlap this claim window",
             );
           }
+          const overlappingLocPeriods = rawPeriods.filter((period) => {
+            const from = day(period.effectiveAt);
+            const to = m6LocClaimEndDate(period.endedAt) ?? day(input.serviceTo);
+            return from <= day(input.serviceTo) && to >= day(input.serviceFrom);
+          });
+          const ircOnly =
+            overlappingLocPeriods.length === 1 &&
+            overlappingLocPeriods[0]!.levelOfCare === "inpatient_respite_care";
+          if (
+            overlappingLocPeriods.some(
+              (period) => period.levelOfCare === "inpatient_respite_care",
+            ) &&
+            (!ircOnly || input.kind !== "hospice_only")
+          ) {
+            throw new DegradedError(
+              "MEDICAID_IRC_MIXED_SERVICE_UNSUPPORTED",
+              "local IRC preparation requires one continuous IRC level of care without another service or Room and Board",
+            );
+          }
           const encounters = signedEncounters
             ? await signedEncounters.encountersInWindow(
                 actor.organizationId,
@@ -3312,15 +3494,27 @@ export function buildDrizzleM24WriteService(
           // Take the rate and evidence locks BEFORE reading the clock: a rate or evidence correction that commits
           // while this waits is then older than assessedAt, so the engine prices its head and the snapshot insert
           // guard (which refuses a row that has a successor) accepts the result.
-          await lockHospiceBillingEvidenceScope(tx, {
-            organizationId: actor.organizationId,
-            providerEntityId: input.providerEntityId,
-            patientId: input.patientId,
-            admissionId: input.admissionId,
-            canonicalPayerId: programResolution.canonicalPayerId,
-            programKind: "managed_care",
-            serviceState,
-          });
+          await lockHospiceBillingEvidenceScope(
+            tx,
+            {
+              organizationId: actor.organizationId,
+              providerEntityId: input.providerEntityId,
+              patientId: input.patientId,
+              admissionId: input.admissionId,
+              canonicalPayerId: programResolution.canonicalPayerId,
+              programKind: "managed_care",
+              serviceState,
+            },
+            ircOnly ? "IRC" : "RHC",
+          );
+          const electionHistory = electionHistoryReader
+            ? await electionHistoryReader.readInTransaction(tx, {
+                organizationId: actor.organizationId,
+                providerEntityId: input.providerEntityId,
+                patientId: input.patientId,
+                admissionId: input.admissionId,
+              })
+            : null;
           const assessedAt = new Date().toISOString();
           const priceScope = {
             organizationId: actor.organizationId,
@@ -3336,25 +3530,21 @@ export function buildDrizzleM24WriteService(
             assessedAt,
             inclusiveEndDate: inclusiveLocEndDate,
           };
-          const evidenceResult = await readMedicaidHospiceBillingEvidence(tx, priceScope);
+          const evidenceResult = ircOnly
+            ? await readMedicaidIrcBillingEvidence(tx, priceScope)
+            : await readMedicaidHospiceBillingEvidence(tx, priceScope);
+          const evidenceReasonCode = billingEvidenceReasonCode(evidenceResult);
           if (
-            evidenceResult.status !== "verified" &&
-            evidenceResult.status !== "segmentation_required"
+            (ircOnly && evidenceResult.status !== "verified") ||
+            (!ircOnly &&
+              evidenceResult.status !== "verified" &&
+              evidenceResult.status !== "segmentation_required")
           ) {
             throw new DegradedError(
               "MEDICAID_BILLING_EVIDENCE_UNRESOLVED",
-              `source-backed locality, quality, charge, and local coding evidence is ${evidenceResult.reasonCode.toLowerCase().replaceAll("_", " ")}`,
+              `source-backed locality, quality, charge, and local coding evidence is ${evidenceReasonCode.toLowerCase().replaceAll("_", " ")}`,
             );
           }
-          const residenceSpans = residenceReader
-            ? await residenceReader.residencesBetweenInTransaction(
-                tx,
-                actor.organizationId,
-                input.patientId,
-                priceScope.serviceFrom,
-                priceScope.serviceTo,
-              )
-            : [];
           const rateRows = await readMedicaidRatePolicyLineage(tx, {
             organizationId: actor.organizationId,
             providerEntityId: input.providerEntityId,
@@ -3364,20 +3554,67 @@ export function buildDrizzleM24WriteService(
             serviceTo: priceScope.serviceTo,
             assessedAt,
           });
-          const facilityKinds = await facilityKindsInTransaction(tx, residenceSpans);
-          const pricingPlan = resolveRhcDailyPricingPlan({
-            scope: priceScope,
-            evidence:
-              evidenceResult.status === "verified" ? evidenceResult.row : evidenceResult.rows,
-            locPeriods: rawPeriods,
-            rates: rateRows.map(rateRowAsFact),
-            residenceSpans,
-            facilityKinds,
-          });
+          let pricingPlan: RHCPricePlanResult;
+          if (ircOnly) {
+            const locPeriod = overlappingLocPeriods[0]!;
+            const episode = ircPricingEpisodeReader
+              ? await ircPricingEpisodeReader.readInTransaction(tx, {
+                  organizationId: actor.organizationId,
+                  providerEntityId: input.providerEntityId,
+                  patientId: input.patientId,
+                  admissionId: input.admissionId,
+                  locPeriodId: locPeriod.id,
+                  serviceFrom: priceScope.serviceFrom,
+                  serviceTo: priceScope.serviceTo,
+                })
+              : null;
+            const facilityKinds = episode
+              ? await facilityKindsInTransaction(tx, [{ facilityId: episode.facilityId }])
+              : new Map<string, PlaceOfServiceFacilityKind>();
+            pricingPlan =
+              evidenceResult.status === "verified"
+                ? resolveIrcDailyPricingPlan({
+                    scope: priceScope,
+                    evidence: evidenceResult.row,
+                    locPeriods: rawPeriods,
+                    rates: rateRows.map(rateRowAsFact),
+                    episode,
+                    facilityKinds,
+                  })
+                : {
+                    status: "unresolved" as const,
+                    reasonCode: billingEvidenceReasonCode(evidenceResult),
+                  };
+          } else {
+            const residenceSpans = residenceReader
+              ? await residenceReader.residencesBetweenInTransaction(
+                  tx,
+                  actor.organizationId,
+                  input.patientId,
+                  priceScope.serviceFrom,
+                  priceScope.serviceTo,
+                )
+              : [];
+            const facilityKinds = await facilityKindsInTransaction(tx, residenceSpans);
+            pricingPlan = resolveRhcDailyPricingPlan({
+              scope: priceScope,
+              evidence:
+                evidenceResult.status === "verified"
+                  ? evidenceResult.row
+                  : evidenceResult.status === "segmentation_required"
+                    ? evidenceResult.rows
+                    : [],
+              locPeriods: rawPeriods,
+              rates: rateRows.map(rateRowAsFact),
+              residenceSpans,
+              facilityKinds,
+              electionHistory,
+            });
+          }
           if (pricingPlan.status !== "resolved") {
             throw new DegradedError(
               "MEDICAID_RATE_POLICY_UNRESOLVED",
-              `the local RHC daily pricing facts are ${pricingPlan.reasonCode.toLowerCase().replaceAll("_", " ")}`,
+              `the local ${ircOnly ? "IRC" : "RHC"} daily pricing facts are ${pricingPlan.reasonCode.toLowerCase().replaceAll("_", " ")}`,
             );
           }
           if (pricingPlan.lines.length === 0) {
@@ -3398,7 +3635,7 @@ export function buildDrizzleM24WriteService(
                 serviceDateTo: new Date(planLine.serviceTo),
                 revenueCode: planLine.revenueCode,
                 qCode: planLine.hcpcsCode,
-                levelOfCare: "RHC",
+                levelOfCare: planLine.integrityFacts.levelOfCare === "IRC" ? "IRC" : "RHC",
                 locPeriodId: planLine.locPeriodId,
                 units: planLine.units,
                 rateAtAssemblyCents: planLine.rateCents,
@@ -3721,15 +3958,29 @@ export function buildDrizzleM24WriteService(
               // Locks before the clock (as in assembly): a rate or evidence correction that commits while
               // this waits is then part of the instant being assessed, so the stored snapshot is checked
               // against the current head, never a superseded one.
-              await lockHospiceBillingEvidenceScope(tx, {
-                organizationId: actor.organizationId,
-                providerEntityId: claim.providerEntityId,
-                patientId: claim.patientId,
-                admissionId: claim.admissionId,
-                canonicalPayerId: claim.canonicalPayerId,
-                programKind: "managed_care",
-                serviceState: claim.serviceState,
-              });
+              await lockHospiceBillingEvidenceScope(
+                tx,
+                {
+                  organizationId: actor.organizationId,
+                  providerEntityId: claim.providerEntityId,
+                  patientId: claim.patientId,
+                  admissionId: claim.admissionId,
+                  canonicalPayerId: claim.canonicalPayerId,
+                  programKind: "managed_care",
+                  serviceState: claim.serviceState,
+                },
+                hospiceLines.length > 0 && hospiceLines.every((line) => line.levelOfCare === "IRC")
+                  ? "IRC"
+                  : "RHC",
+              );
+              const electionHistory = electionHistoryReader
+                ? await electionHistoryReader.readInTransaction(tx, {
+                    organizationId: actor.organizationId,
+                    providerEntityId: claim.providerEntityId,
+                    patientId: claim.patientId,
+                    admissionId: claim.admissionId,
+                  })
+                : null;
               const assessedAt = new Date().toISOString();
               const rateRows = await readMedicaidRatePolicyLineage(tx, {
                 organizationId: actor.organizationId,
@@ -3755,6 +4006,8 @@ export function buildDrizzleM24WriteService(
                 },
                 residenceReader,
                 facilityKindReader,
+                electionHistory,
+                ircEpisodeReader: ircPricingEpisodeReader,
                 assessedAt,
               });
               hospicePricingSnapshotVerified = pricingVerification.pricingSnapshotVerified;

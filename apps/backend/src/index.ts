@@ -594,6 +594,7 @@ import {
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
   createElectionAddendumService,
+  createMedicaidElectionHistoryReader,
   createNomncService,
   createPortalAdmissionSigners,
   createPortalSigningTargetCheck,
@@ -2065,6 +2066,7 @@ import {
   wireM37Tenancy,
 } from "./modules/37-ipu/index";
 import { inpatientFacilityIdsForPeriodsForOrg } from "./modules/37-ipu/seams/inpatient-facilities-for-periods-for-org";
+import { ircPricingEpisodeInTransaction } from "./modules/37-ipu/seams/irc-pricing-episode";
 import { restraintAdmissionSitingForOrg } from "./modules/37-ipu/seams/restraint-admission-siting-for-org";
 import {
   M38_PLATFORM_JOB_ID,
@@ -5612,6 +5614,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     ? { ccnForProviderEntity: buildProviderEntityCcnResolver(dbHandle.db).ccnFor }
     : undefined;
   const m24LocPeriodReader = dbHandle ? createAdmissionLocPeriodsReader(dbHandle.db) : undefined;
+  const m24ElectionHistoryReader = dbHandle ? createMedicaidElectionHistoryReader() : undefined;
+  const m24IrcPricingEpisodeReader = dbHandle
+    ? { readInTransaction: ircPricingEpisodeInTransaction }
+    : undefined;
   // M24 → M40 (place-of-service follow-up) — `facility` is M40-owned/NON_ORG_SCOPED; same escape-valve
   // posture as `m24LocPeriodReader`, but NON_ORG_SCOPED so no org context. Batched by id so one claim assembly issues at most one query here.
   const m24FacilityKindReader = dbHandle
@@ -8993,6 +8999,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                       return { source: view.source, vendor: view.vendor, status: view.status };
                     },
                   },
+                  m24ElectionHistoryReader,
+                  m24IrcPricingEpisodeReader,
                 ),
                 chcPricingPreparationService: m24ChcPricingPreparationService,
               }),
@@ -12142,6 +12150,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       coverages: getSeam("PatientCoverageReader"),
       admissions: m24LocPeriodReader,
       canonicalPayerReader: m24CanonicalPayerReader,
+      electionHistoryReader: m24ElectionHistoryReader,
+      ircEpisodeReader: m24IrcPricingEpisodeReader,
       patientAddresses: getSeam("PatientAddressReader") as PatientAddressReader,
       facilityKindReader: m24FacilityKindReader,
       chcPricingPreparations:

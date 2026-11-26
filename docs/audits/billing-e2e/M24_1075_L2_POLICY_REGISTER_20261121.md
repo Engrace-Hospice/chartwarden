@@ -177,3 +177,21 @@ payer companion guide, provider enrollment, claim acceptance or production route
    OHA quality-reporting status for FFS pricing.
 4. EOCCO institutional companion guide for type of bill, revenue codes, service units, correction/void
    frequency and required supporting values.
+
+### L8A.2C3 election history and IRC continuity — 2026-11-26
+
+- Migration 1558 adds append-only M6 election-history completeness evidence and extends the shared daily
+  pricing snapshot profiles with RHC election-bucket v3 and local IRC v4. Historical snapshot versions
+  remain unchanged; all new local profiles keep institutional-format qualification false.
+- A private PostgreSQL fixture used the actual M6 election reader to resolve election days 58–64 and
+  persisted two RHC lines across the synthetic day-60/61 bucket boundary. Manual and background pricing
+  snapshot rules passed before a superseding incomplete history was added; a subsequent validation held
+  the unchanged historical snapshot as stale.
+- The actual M37/M6/M40 reader and M24 assembly path persisted an IRC local draft for November 1–3 from
+  the continuous synthetic October 30–November 4 episode, preserving episode days 3–5. Manual and
+  background pricing verification passed, while institutional-format qualification failed. The existing
+  five-day ceiling remains conservative; no exception or transfer/reset method is inferred.
+- The focused private assembly suite passed 28 tests and retained four explicit replacement/GIP skips.
+  Synthetic managed-care rates, locality, code and charge facts were confined to the disposable database;
+  no actual OHA/EOCCO rates or patient data were added. F04/F06/F07/F11 remain partially addressed and
+  external payer qualification is still outstanding. Full L7/monorepo qualification remains separate.

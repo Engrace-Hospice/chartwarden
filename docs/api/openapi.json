@@ -211682,6 +211682,67 @@
                                   }
                                 ]
                               },
+                              "electionDayRange": {
+                                "type": "object",
+                                "required": [
+                                  "basis",
+                                  "dayFrom",
+                                  "dayTo",
+                                  "rateBucketFrom",
+                                  "rateBucketTo"
+                                ],
+                                "properties": {
+                                  "basis": {
+                                    "const": "current_signed_election_calendar_days_v1",
+                                    "type": "string"
+                                  },
+                                  "dayFrom": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "dayTo": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "rateBucketFrom": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "rateBucketTo": {
+                                    "anyOf": [
+                                      {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              "ircEpisodeDayRange": {
+                                "type": "object",
+                                "required": [
+                                  "episodeStartDate",
+                                  "dayFrom",
+                                  "dayTo"
+                                ],
+                                "properties": {
+                                  "episodeStartDate": {
+                                    "format": "date",
+                                    "type": "string"
+                                  },
+                                  "dayFrom": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "dayTo": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  }
+                                }
+                              },
                               "reasonCodes": {
                                 "type": "array",
                                 "items": {

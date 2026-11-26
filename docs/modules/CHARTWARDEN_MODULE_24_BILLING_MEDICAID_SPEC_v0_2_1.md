@@ -175,6 +175,24 @@ fixture. Unsupported fractional local persistence and all other advanced hospice
 Manual and background paths call the same current-source verifier and do not rewrite a stale snapshot.
 See the [L8A.2C2 qualification report](../audits/billing-e2e/M24_1075_L8A2C2_CHC_HOURLY_PRICING_QUALIFICATION_20261125.md).
 
+### As-built L8A.2C3 — RHC election buckets and local IRC episode pricing (2026-11-26)
+
+Migration 1558 adds the M6-owned append-only election-history completeness evidence and extends the shared
+immutable daily snapshot profiles with RHC v3 (home RHC with explicit election-day bucket facts) and IRC v4
+(local daily inpatient-respite profile). The RHC resolver uses only complete current signed-election history
+and explicit verified bucket rate rows for the supported synthetic managed-care continuous-election method;
+it refuses unknown prior hospice, transfer, interruption, truncation and unsupported reset histories. The
+M37 transaction reader binds an IRC episode to its actual remote inpatient stay, M6 IRC LOC and M40
+hospital identity; claim windows retain episode-day numbers instead of restarting at the month or claim.
+
+Preview, assembly and manual/background pricing verification share the source-grounded planner/verifier.
+The local claim remains a DRAFT with `local_draft_only` coding; the non-overridable snapshot rule can pass,
+while `medicaid_hospice_institutional_format_qualified` fails. The operator preview identifies election-day
+bucket ranges and IRC episode-day ranges without exposing source identifiers. No historical snapshot or
+financial amount is promoted or rewritten. Transfer/reset election rules, episode resumption, over-limit
+exceptions and actual payer-specific tariffs/coding remain unresolved. See the
+[L8A.2C3 qualification report](../audits/billing-e2e/M24_1075_L8A2C3_ELECTION_HISTORY_AND_IRC_QUALIFICATION_20261126.md).
+
 ## 1. Purpose & Scope
 
 ### 1.1 What This Module Does

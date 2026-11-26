@@ -271,6 +271,7 @@ export * from "./admission/discharge-events";
 export * from "./admission/notice-of-rights-acknowledgments";
 export * from "./admission/compliance-windows";
 export * from "./admission/admission-evidence";
+export * from "./admission/medicaid-election-history-evidence";
 export * from "./admission/election-addenda";
 export * from "./admission/nomnc-expedited";
 

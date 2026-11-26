@@ -555,6 +555,75 @@ describe("the billing context step shows what the server resolved", () => {
     expect(fieldValue("Electronic submission")).toContain("Unavailable");
   });
 
+  it("explains election-bucket segmentation and the IRC episode day range", async () => {
+    previewBody = {
+      ...BLOCKED_ARRANGEMENT_PREVIEW,
+      pricing: {
+        ...BLOCKED_ARRANGEMENT_PREVIEW.pricing,
+        status: "fully_resolved",
+        requiredInputs: [],
+        segments: [
+          {
+            ...BLOCKED_ARRANGEMENT_PREVIEW.pricing.segments[0],
+            serviceFrom: "2026-02-27",
+            serviceTo: "2026-03-01",
+            serviceCategory: "RHC",
+            status: "resolved",
+            rateStatus: "qualified",
+            unitBasis: "per_day",
+            rateCents: 1200,
+            rateSourceKind: "cco_contract",
+            rateEffectiveFrom: "2026-01-01",
+            rateEvidenceVersion: 1,
+            methodologyVersion: 1,
+            quantityStatus: "verified",
+            baseReimbursementCents: 3600,
+            reimbursementEstimateCents: 3600,
+            electionDayRange: {
+              basis: "current_signed_election_calendar_days_v1",
+              dayFrom: 58,
+              dayTo: 60,
+              rateBucketFrom: 1,
+              rateBucketTo: 60,
+            },
+          },
+          {
+            ...BLOCKED_ARRANGEMENT_PREVIEW.pricing.segments[0],
+            serviceFrom: "2026-12-01",
+            serviceTo: "2026-12-03",
+            serviceCategory: "IRC",
+            serviceLocationKind: "facility",
+            status: "resolved",
+            rateStatus: "qualified",
+            unitBasis: "per_day",
+            rateCents: 22000,
+            rateSourceKind: "cco_contract",
+            rateEffectiveFrom: "2026-11-01",
+            rateEvidenceVersion: 1,
+            methodologyVersion: 1,
+            quantityStatus: "verified",
+            baseReimbursementCents: 66000,
+            reimbursementEstimateCents: 66000,
+            ircEpisodeDayRange: {
+              episodeStartDate: "2026-11-29",
+              dayFrom: 3,
+              dayTo: 5,
+            },
+          },
+        ],
+      },
+    };
+    await reachBillingContext("2026-12-03");
+    const pricing = screen.getByRole("region", { name: "Pricing assessment" });
+    expect(pricing).toHaveTextContent(
+      "Election days 58–60; rate bucket 1–60. The line is split where the verified election-day bucket changes.",
+    );
+    expect(pricing).toHaveTextContent(
+      "Respite episode began 2026-11-29; this claim segment covers episode days 3–5. Local pricing only; institutional format is unqualified.",
+    );
+    expect(fieldValue("Electronic submission")).toContain("Unavailable");
+  });
+
   it("does not label a facility span 'Facility-based RHC' when it cannot be priced, and says why", async () => {
     previewBody = {
       ...BLOCKED_ARRANGEMENT_PREVIEW,

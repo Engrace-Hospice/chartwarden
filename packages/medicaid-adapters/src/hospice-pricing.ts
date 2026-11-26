@@ -348,13 +348,22 @@ function electionDayForDay(day: HospicePricingDayInput): number | null {
 
 function inpatientRespiteDayForDay(day: HospicePricingDayInput): number | null {
   const evidence = day.inpatientRespiteDayEvidence;
+  const verifiedAt = evidence ? Date.parse(evidence.verifiedAt) : Number.NaN;
+  const assessedAt = Date.parse(day.payerContext.assessedAt);
   if (
     !evidence ||
     evidence.serviceDate !== day.serviceDate ||
     !evidence.episodeReference.trim() ||
     !Number.isSafeInteger(evidence.consecutiveDayNumber) ||
     evidence.consecutiveDayNumber < 1 ||
-    !effectiveEvidenceValid({ ...evidence, assessedAt: day.payerContext.assessedAt })
+    !evidence.sourceReference.trim() ||
+    // M37's aggregate version is zero-based at initial persistence; zero is a real source version,
+    // unlike the one-based payer-evidence versions accepted by effectiveEvidenceValid above.
+    !Number.isSafeInteger(evidence.version) ||
+    evidence.version < 0 ||
+    !Number.isFinite(verifiedAt) ||
+    !Number.isFinite(assessedAt) ||
+    verifiedAt > assessedAt
   ) {
     return null;
   }
