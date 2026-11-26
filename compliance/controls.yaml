@@ -2545,7 +2545,7 @@ controls:
       organization, user, key and body only) is no longer recognised. The legacy arm that matched it for one 24 h TTL after the keyed
       fingerprint deployed, legacyIdempotencyHash and the removal-date constant are gone (the shared module exports none of them, pinned by
       a test), so a stored record without the "h1:" prefix, whether that plain hash or a different one an intermediate release wrote
-      (the tenant-clearinghouse release wrote a plain SHA-256 over the JSON scope), answers every request 409 IDEMPOTENCY_CONFLICT,
+      (a tenant-clearinghouse release was to write a plain SHA-256 over the JSON scope), answers every request 409 IDEMPOTENCY_CONFLICT,
       never a replay and never a re-run. A record written before the keyed fingerprint deployed kept its plain, unkeyed SHA-256
       fingerprint in idempotency_key until the hourly idempotency.cleanup sweep removed it after its 24 h TTL (about 25 h; longer for an
       organization with more than 50 000 expired rows, which drain over successive runs), because it is never rewritten; an environment
