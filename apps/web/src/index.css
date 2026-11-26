@@ -324,12 +324,6 @@
     color: var(--color-on-surface-variant);
     line-height: 1.45;
   }
-  /* The action footer is sticky, so the task needs a real scroll target below its final control.
-     Without this clearance a refreshed Match step can place "Create new patient" underneath the
-     footer; Playwright and pointer users then cannot activate a button that is visibly present. */
-  .wx-intake-task-content {
-    padding-bottom: calc(var(--space-6) + 3.5rem);
-  }
   .wx-intake-comparison-scroll {
     overflow: hidden;
     border: 1px solid var(--color-outline-variant);
@@ -458,16 +452,29 @@
       padding: 0 var(--space-4) var(--space-4) !important;
     }
   }
-  /* A short landscape viewport cannot fit identity, six-stage progress, task, and a floating
-     footer simultaneously. Keep every action reachable by returning the footer to document flow;
-     taller desktop/tablet layouts retain the persistent sticky action bar. */
-  @media (max-height: 760px) {
-    .wx-intake-page > .wx-sticky-footer {
-      position: static !important;
+  /* Above the stacked breakpoint the task pane scrolls on its own, so the page must be exactly one
+     viewport tall. At `min-height: 100%` plus its own padding and gaps it overflowed `.wx-main`,
+     and the sticky footer then lay over the bottom of the pane's scrollport at scrollTop 0,
+     covering the last control (a refreshed Match step hid "Create new patient"). As a flex column
+     the footer is the last in-flow row and never overlaps. A viewport too short for identity,
+     progress and a usable pane scrolls the whole page instead, with the footer at its end. */
+  @media (min-width: 769px) {
+    .wx-admissions.wx-intake-page {
+      display: flex;
+      flex-direction: column;
+      /* `.wx-main` holds breadcrumbs above the page, so `height: 100%` overflowed by their height;
+         take the remaining space as a flex item instead (beats the inline `minHeight: 100%`). */
+      flex: 1 1 0;
+      min-height: 0 !important;
+      padding-bottom: 0;
     }
-    .wx-intake-page .wx-intake-body,
-    .wx-intake-page .wx-center-workspace {
-      overflow: visible !important;
+    .wx-intake-page > * {
+      flex: none;
+    }
+    .wx-intake-page > .wx-intake-workspace {
+      flex: 1 1 0;
+      /* beats the inline `minHeight: 0` the component sets */
+      min-height: 14rem !important;
     }
   }
   @media (max-width: 480px) {
