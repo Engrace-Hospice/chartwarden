@@ -299,6 +299,20 @@ function money(n: number): string {
   return n.toFixed(2);
 }
 
+const UNRECOGNISED_IDS_SHOWN = 8;
+
+/**
+ * A set that carries a segment the parser does not model (a vendor extension, or TS3/CUR/RDM-style segments whose
+ * amounts nothing reconciles) is refused whole at receive and again at post: money is only ever posted from facts
+ * the parser understood. Ids only; the tokenizer admits only 2-3 character segment ids, so this reason is PHI-free.
+ */
+export function unrecognisedSegmentsReason(parsed: ParsedRemittanceAdvice): string | null {
+  const ids = [...new Set((parsed.unknownSegments ?? []).map((segment) => segment.segmentId))];
+  if (ids.length === 0) return null;
+  const shown = ids.slice(0, UNRECOGNISED_IDS_SHOWN).join(", ");
+  return `the 835 carries segment(s) this parser does not model (${shown}${ids.length > UNRECOGNISED_IDS_SHOWN ? ", ..." : ""}); nothing was posted`;
+}
+
 function moneyCents(n: number): bigint {
   const normalized = money(n);
   const negative = normalized.startsWith("-");
@@ -1548,6 +1562,8 @@ export function buildDrizzleM25IngestService(
           cause: "content",
         };
       }
+      // The first set's unrecognised-segment reason; judged only once every set has passed the identity check (below).
+      let unrecognisedReason: string | null = null;
       for (const [index, st02] of st02s.entries()) {
         const parsed = all
           ? {
@@ -1605,8 +1621,15 @@ export function buildDrizzleM25IngestService(
             reason: identity.reason,
             cause: identity.cause ?? "environment",
           };
+        unrecognisedReason ??= unrecognisedSegmentsReason(parsed.value);
         parsedSets.push({ advice: parsed.value, identityEvidence: identity.evidence });
       }
+      // Judged after the identity check of EVERY set, so a file addressed to another tenant keeps the cursor pinned and
+      // loud (an environment refusal) even when it also carries a segment this parser does not model, wherever in the
+      // file; only a file whose every set is this payee's is refused, and counted toward the quarantine cap, for its
+      // own content. Nothing has been written yet.
+      if (unrecognisedReason)
+        return { outcome: "malformed", reason: unrecognisedReason, cause: "content" };
 
       // The response carries the first set's advice (queued if any set is new, else the existing duplicate);
       // every queued set emits its own `m25.edi.835_received`, so the pipeline never depends on the response.
@@ -1702,6 +1725,13 @@ export function buildDrizzleM25IngestService(
         }
         await markFailed(actor, adviceId, parsed.degraded.reason);
         return { outcome: "failed", adviceId, reason: parsed.degraded.reason };
+      }
+
+      // An advice queued before this refusal existed is re-judged here, so it fails (replayable) instead of posting.
+      const unrecognised = unrecognisedSegmentsReason(parsed.value);
+      if (unrecognised) {
+        await markFailed(actor, adviceId, unrecognised);
+        return { outcome: "failed", adviceId, reason: unrecognised };
       }
 
       const identity = await payeeMismatch(

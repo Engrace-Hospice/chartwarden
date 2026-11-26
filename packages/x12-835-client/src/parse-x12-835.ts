@@ -13,7 +13,9 @@
 //    remain distinct. `productionDate` is a deprecated compatibility alias only;
 //  - BPR02=0 with BPR04 other than NON remains accepted pending the companion guide;
 //  - AMT*I is validated as an amount but is not reconciled against PLB L6 without MAC guide evidence;
-//  - test files (ISA15 != P) are rejected unless `allowTestFiles` is set; only GS01=HP / GS08=005010X221* pass.
+//  - test files (ISA15 != P) are rejected unless `allowTestFiles` is set; only GS01=HP / GS08=005010X221* pass;
+//  - a segment outside KNOWN_835_SEGMENTS is surfaced in `unknownSegments` (never dropped); M25 refuses a set that
+//    carries one. A CAS with a seventh triplet, a CARC or PLB reason that is not a code, and a bad LX01 are refused.
 import { type CentsAdjustment, checkClaimBalance, checkPaymentBalance } from "./balance-835";
 import {
   type Parsed835Interchange,
@@ -77,8 +79,14 @@ const KNOWN_835_SEGMENTS: ReadonlySet<string> = new Set([
   "QTY",
   "LQ",
   "PLB",
+  // LX is the header number (loop 2000): no amount, validated for shape, so it is never reported as unknown.
+  "LX",
   "SE",
 ]);
+/** CAS02 etc. is an X12 ID of 1-5 characters; PLB03-1 an ID of exactly 2. Anything else is not a code, so refuse it. */
+const CARC_SHAPE = /^[A-Za-z0-9]{1,5}$/;
+const PLB_REASON_SHAPE = /^[A-Z0-9]{2}$/;
+const LX_SHAPE = /^\d{1,6}$/;
 
 export interface ParseX12835Options {
   /** Accept interchanges flagged as test (ISA15 = T). Default false: test data must never post as real money. */
@@ -127,6 +135,9 @@ interface AdjDraft extends CentsAdjustment {
 function parseCas(seg: X12Segment): AdjDraft[] {
   const group = elem(seg, 1);
   if (!CAS_GROUPS.has(group)) return fail("CAS01 is not a valid adjustment group code");
+  // A CAS holds six reason triplets at most; a seventh would be dropped silently (and its amount with it).
+  for (let i = 2 + MAX_CAS_TRIPLETS * 3; i < seg.el.length; i++)
+    if (elem(seg, i)) fail("CAS carries more than 6 reason triplets");
   const out: AdjDraft[] = [];
   for (let t = 0; t < MAX_CAS_TRIPLETS; t++) {
     const base = 2 + t * 3;
@@ -136,6 +147,7 @@ function parseCas(seg: X12Segment): AdjDraft[] {
       if (elem(seg, base + 1) || elem(seg, base + 2)) fail("CAS amount without a reason code");
       continue;
     }
+    if (!CARC_SHAPE.test(reason)) fail("CAS reason code is not a 1-5 character alphanumeric code");
     const cents = toCents(elem(seg, base + 1), "CAS amount");
     const qty = elem(seg, base + 2);
     out.push({
@@ -472,6 +484,7 @@ function parsePlb(
     if (!reasonElement || !amount) fail("PLB reason/amount pair is incomplete");
     const [reason, reference] = reasonElement.split(compSep, 2);
     if (!reason) fail("PLB reason is missing");
+    if (!PLB_REASON_SHAPE.test(reason)) fail("PLB reason code is not a 2-character code");
     occurrence += 1;
     const cents = toCents(amount, "PLB amount");
     if (cents === 0) fail("PLB amount cannot be zero");
@@ -567,7 +580,10 @@ function walkBody(body: readonly X12Segment[], compSep: string): Body {
       if (!bpr || !trn) fail("CLP before BPR/TRN");
       claims.push(newClaim(seg));
     } else if (id === "PLB") plb.push(...parsePlb(seg, compSep, segmentIndex + 1));
-    else if (id === "SVC") (current ?? fail("SVC outside a CLP")).lines.push(newLine(seg, compSep));
+    else if (id === "LX") {
+      if (!LX_SHAPE.test(elem(seg, 1))) fail("LX01 header number is not a number of 1-6 digits");
+    } else if (id === "SVC")
+      (current ?? fail("SVC outside a CLP")).lines.push(newLine(seg, compSep));
     else if (id === "N1" && !current) {
       const kind = elem(seg, 1);
       partyKind = kind === "PR" || kind === "PE" ? kind : undefined;
