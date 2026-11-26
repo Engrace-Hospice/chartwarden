@@ -241,6 +241,45 @@ describe("preflight.sh across the infra-rename windows", () => {
     });
   });
 
+  describe("CW-AC-05 server-side encryption key", () => {
+    const KEK = "0123456789abcdef".repeat(4); // 64 hex chars, synthetic
+    it("refuses OBJECT_STORE_REQUIRE_SSE=1 without a key: every upload to an encrypted bucket would fail", () => {
+      const r = run({ env: ["OBJECT_STORE_REQUIRE_SSE=1"] });
+      expect(r.code, r.out).toBe(67);
+      expect(r.out).toMatch(/SEAWEEDFS_SSE_KEK is missing or not hex/);
+    });
+    it("refuses a key that is not 64 hex characters, and never prints the key", () => {
+      const short = run({ env: ["OBJECT_STORE_REQUIRE_SSE=1", `SEAWEEDFS_SSE_KEK=${KEK.slice(2)}`] });
+      expect(short.code, short.out).toBe(67);
+      expect(short.out).toMatch(/exactly 64 hex characters/);
+      expect(short.out).not.toContain(KEK.slice(2));
+      const notHex = run({ env: ["OBJECT_STORE_REQUIRE_SSE=1", `SEAWEEDFS_SSE_KEK=${"zz".repeat(32)}`] });
+      expect(notHex.code, notHex.out).toBe(67);
+    });
+    it("accepts the flag with a well-formed key, silently", () => {
+      const r = run({ env: ["OBJECT_STORE_REQUIRE_SSE=1", `SEAWEEDFS_SSE_KEK=${KEK}`] });
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).not.toMatch(/CW-AC-05/);
+      expect(r.out).not.toContain(KEK);
+    });
+    it("reads the flag like the application does: any case of 'true' needs the key", () => {
+      const r = run({ env: ["OBJECT_STORE_REQUIRE_SSE=tRuE"] });
+      expect(r.code, r.out).toBe(67);
+      expect(r.out).toMatch(/SEAWEEDFS_SSE_KEK is missing or not hex/);
+    });
+    it("a key that is present but malformed is refused even with the flag off (it would corrupt reads)", () => {
+      const r = run({ env: [`SEAWEEDFS_SSE_KEK=${KEK.slice(4)}`] });
+      expect(r.code, r.out).toBe(67);
+      expect(r.out).toMatch(/exactly 64 hex characters/);
+      expect(r.out).not.toContain(KEK.slice(4));
+    });
+    it("deploys without the flag, with a WARNING that documents are stored in the clear", () => {
+      const r = run({ env: [] });
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toMatch(/OBJECT_STORE_REQUIRE_SSE is not set: documents are stored in the clear/);
+    });
+  });
+
   it("refuses when the key says chartwarden but the cluster still holds wardenx (rename not run)", () => {
     const r = run({
       env: ["CHARTWARDEN_VOLUME_PREFIX=wardenx", "CHARTWARDEN_DB_NAME=chartwarden", ...SMOKE],

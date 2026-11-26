@@ -18,6 +18,11 @@
     },
     {
       "Effect": "Allow",
+      "Action": ["s3:GetEncryptionConfiguration", "s3:PutEncryptionConfiguration"],
+      "Resource": ["arn:aws:s3:::tenant-*"]
+    },
+    {
+      "Effect": "Allow",
       "Action": [
         "s3:GetObject",
         "s3:PutObject",

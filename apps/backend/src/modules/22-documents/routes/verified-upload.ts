@@ -57,6 +57,28 @@ export function hasMp4FtypBox(head: Uint8Array): boolean {
   return ascii(4, 8) === "ftyp" && MP4_MAJOR_BRANDS.has(ascii(8, 12));
 }
 
+/**
+ * What `complete` decides about the object a browser PUT straight into the store: does it hold the declared bytes, and (CW-AC-05) did the
+ * store keep it encrypted. A pure function so the refusal is testable without a database.
+ */
+export function uploadObjectVerdict(
+  object: {
+    readonly byteSize: number;
+    readonly mimeType: string;
+    readonly sha256Hex: string;
+    readonly serverSideEncryption?: string | null;
+  },
+  expected: { readonly byteSize: number; readonly mimeType: string; readonly sha256Hex: string },
+  requireEncrypted: boolean,
+): "ok" | "unencrypted" | "mismatch" {
+  if (requireEncrypted && object.serverSideEncryption !== "AES256") return "unencrypted";
+  return object.byteSize === expected.byteSize &&
+    object.mimeType === expected.mimeType &&
+    object.sha256Hex === expected.sha256Hex
+    ? "ok"
+    : "mismatch";
+}
+
 export interface ReferralAccessReader {
   canAccessReferral(input: {
     readonly organizationId: string;
@@ -239,6 +261,11 @@ export function createVerifiedUploadService(deps: {
   readonly scanner?: DocumentContentScanner | null;
   /** Fail closed before document/version creation when the scanner or reader is absent. */
   readonly scanRequired?: boolean;
+  /**
+   * CW-AC-05 — refuse (and destroy) an upload the store reports as not encrypted at rest. The browser PUTs straight to
+   * the store, so the bucket's encryption default is what encrypts it; this catches a bucket that lacks the default.
+   */
+  readonly requireEncrypted?: boolean;
   readonly referralReader?: ReferralAccessReader;
   readonly now?: () => Date;
   readonly randomId?: () => string;
@@ -441,10 +468,17 @@ export function createVerifiedUploadService(deps: {
       });
       if (!object)
         throw new ChartWardenError("UPLOAD_INCOMPLETE", "uploaded object is not available", 409);
-      const integrityMatches =
-        object.byteSize === Number(upload.expectedByteSize) &&
-        object.mimeType === upload.mimeType &&
-        object.sha256Hex === upload.expectedSha256Hex;
+      const verdict = uploadObjectVerdict(
+        object,
+        {
+          byteSize: Number(upload.expectedByteSize),
+          mimeType: upload.mimeType,
+          sha256Hex: upload.expectedSha256Hex,
+        },
+        deps.requireEncrypted === true,
+      );
+      const unencrypted = verdict === "unencrypted";
+      const integrityMatches = verdict === "ok";
       // ADR-0109 D10 (PR 3) — a video must really be an mp4: read its head back and look for the `ftyp` box.
       const videoLooksWrong =
         integrityMatches && upload.mimeType === VIDEO_MP4_MIME
@@ -463,7 +497,9 @@ export function createVerifiedUploadService(deps: {
           "UPLOAD_INTEGRITY_MISMATCH",
           videoLooksWrong
             ? "uploaded object is not an MP4 video"
-            : "uploaded object does not match the declared checksum, size, and MIME type",
+            : unencrypted
+              ? "uploaded object is not encrypted at rest"
+              : "uploaded object does not match the declared checksum, size, and MIME type",
           422,
         );
       }

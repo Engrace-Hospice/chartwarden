@@ -90,6 +90,31 @@ if [ -n "$minio_volumes" ]; then
   echo "preflight WARNING: the retired MinIO volume still exists ($(echo $minio_volumes)) next to the SeaweedFS one: it is a plaintext copy of every document, outside the backups and no longer visible to the stack. Remove it after a successful SeaweedFS backup snapshot (README, 'Object store: removing the retired MinIO data')" >&2
 fi
 
+# CW-AC-05 — server-side encryption of the object store. OBJECT_STORE_REQUIRE_SSE=1 makes every write name SSE-S3 and turns on the
+# bucket default; SeaweedFS then needs its key-encryption key from the environment (SEAWEEDFS_SSE_KEK, 64 hex chars). Without it
+# SeaweedFS 4.52 with no key answers every encrypted write with a 500, so the flag must not come before the key: refuse, and never print it.
+# A key that is present must be well formed whatever the flag says (a mistyped key makes every encrypted object unreadable).
+sse_kek=$(resolve SEAWEEDFS_SSE_KEK)
+if [ -n "$sse_kek" ]; then
+  case "$sse_kek" in
+    *[!0-9a-fA-F]*) fail "SEAWEEDFS_SSE_KEK is not hexadecimal: it must be exactly 64 hex characters (openssl rand -hex 32)" ;;
+  esac
+  [ "${#sse_kek}" -eq 64 ] || fail "SEAWEEDFS_SSE_KEK must be exactly 64 hex characters (32 bytes); it has ${#sse_kek}"
+fi
+# Same reading as the application (/^(1|true)$/i).
+case "$(resolve OBJECT_STORE_REQUIRE_SSE | tr 'A-Z' 'a-z')" in
+  1|true)
+    sse_kek=$(resolve SEAWEEDFS_SSE_KEK)
+    case "$sse_kek" in
+      *[!0-9a-fA-F]*|'') fail "OBJECT_STORE_REQUIRE_SSE is set but SEAWEEDFS_SSE_KEK is missing or not hex: without the store's key every upload to an encrypted bucket would fail with a 500. Set SEAWEEDFS_SSE_KEK to 64 hex characters (openssl rand -hex 32), escrow it offline, deploy, then set the flag (docs/runbooks/object-store-sse-cutover.md)" ;;
+    esac
+    [ "${#sse_kek}" -eq 64 ] || fail "SEAWEEDFS_SSE_KEK must be exactly 64 hex characters (32 bytes); it has ${#sse_kek}"
+    ;;
+  *)
+    echo "preflight WARNING: OBJECT_STORE_REQUIRE_SSE is not set: documents are stored in the clear in the object store (control CW-AC-05). Complete the cutover in docs/runbooks/object-store-sse-cutover.md" >&2
+    ;;
+esac
+
 # 3. Compose project: a differently named project already holds postgres, so 'up' would start a second stack.
 if [ -n "$pg_projects" ] && ! printf '%s\n' "$pg_projects" | grep -qx "$project"; then
   fail "compose project '$project' has no postgres container but these projects do: $(echo $pg_projects). Set CHARTWARDEN_COMPOSE_PROJECT or finish the cutover"

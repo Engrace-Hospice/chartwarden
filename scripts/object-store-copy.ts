@@ -36,8 +36,10 @@ import { createHash } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import {
   type S3ObjectStoreConfig,
+  SSE_ALGORITHM,
   createS3ObjectStore,
   createS3SignedFetch,
+  ensureBucketDefaultEncryption,
 } from "../apps/backend/src/modules/22-documents/seams/s3-object-store";
 
 const COPIED_BUCKET = /^(tenant-|chartwarden-)/;
@@ -84,6 +86,8 @@ interface CopyContext {
   readonly targetFetch: SignedFetch;
   readonly signal: Deadline;
   readonly options: CopyOptions;
+  /** CW-AC-05 — the target must hold every object encrypted (TARGET_S3_REQUIRE_SSE): default on its buckets, SSE on each put. */
+  readonly encryptTarget: boolean;
 }
 
 const xmlText = (block: string, tag: string): string[] =>
@@ -162,7 +166,12 @@ export async function listKeys(
   return keys;
 }
 
-async function ensureBucket(fetchS3: SignedFetch, bucket: string, signal: Deadline): Promise<void> {
+async function ensureBucket(
+  fetchS3: SignedFetch,
+  bucket: string,
+  signal: Deadline,
+  encrypt: boolean,
+): Promise<void> {
   const head = await fetchS3({
     method: "HEAD",
     bucket,
@@ -171,17 +180,20 @@ async function ensureBucket(fetchS3: SignedFetch, bucket: string, signal: Deadli
     payload: null,
     signal: signal(),
   });
-  if (head.ok) return;
-  const put = await fetchS3({
-    method: "PUT",
-    bucket,
-    objectKey: null,
-    query: [],
-    payload: new Uint8Array(),
-    signal: signal(),
-  });
-  if (!put.ok && put.status !== 409)
-    throw new Error(`CreateBucket ${bucket} answered HTTP ${put.status}`);
+  if (!head.ok) {
+    const put = await fetchS3({
+      method: "PUT",
+      bucket,
+      objectKey: null,
+      query: [],
+      payload: new Uint8Array(),
+      signal: signal(),
+    });
+    if (!put.ok && put.status !== 409)
+      throw new Error(`CreateBucket ${bucket} answered HTTP ${put.status}`);
+  }
+  // CW-AC-05 — a copy target that must encrypt gets the default on every bucket it holds, new or old.
+  if (encrypt) await ensureBucketDefaultEncryption(fetchS3, bucket, signal);
 }
 
 const INCOMPLETE_METADATA = /incomplete verified metadata/;
@@ -235,10 +247,13 @@ async function copyObject(
   const existing = await target
     .inspectObject({ bucket, objectKey: key, signal: signal() })
     .catch(() => null);
+  // A copy already on the target in the clear is not "unchanged" when the target must encrypt: it is rewritten.
+  const encryptedEnough = !ctx.encryptTarget || existing?.serverSideEncryption === SSE_ALGORITHM;
   if (
     stored.sha256Hex &&
     existing?.sha256Hex === stored.sha256Hex &&
-    existing.byteSize === byteSize
+    existing.byteSize === byteSize &&
+    encryptedEnough
   )
     return "unchanged";
   const bytes = await source.getObject({
@@ -256,11 +271,14 @@ async function copyObject(
       "source bytes do not match the source's stored checksum; target left untouched",
     );
   // adopted object already copied (no source checksum to compare without the download): skip the rewrite
-  if (existing?.sha256Hex === sha256Hex && existing.byteSize === byteSize) return "unchanged";
+  if (existing?.sha256Hex === sha256Hex && existing.byteSize === byteSize && encryptedEnough)
+    return "unchanged";
   await target.putObject({ bucket, objectKey: key, bytes, mimeType, signal: signal() });
   const written = await target.inspectObject({ bucket, objectKey: key, signal: signal() });
   if (written?.sha256Hex !== sha256Hex || written.byteSize !== byteSize)
     throw new Error("target does not hold the source bytes after the copy");
+  if (ctx.encryptTarget && written.serverSideEncryption !== SSE_ALGORITHM)
+    throw new Error("target holds the copy but does not report it encrypted");
   return "copied";
 }
 
@@ -295,7 +313,7 @@ async function syncBucket(
   // listed a moment ago but gone now: skip it, deleting on the strength of a 404 is not safe
   const sourceKeys = await listKeys(sourceFetch, bucket, signal);
   if (!sourceKeys) return tally;
-  await ensureBucket(targetFetch, bucket, signal);
+  await ensureBucket(targetFetch, bucket, signal, ctx.encryptTarget);
   for (const key of sourceKeys) {
     try {
       tally[await copyObject(ctx, bucket, key)]++;
@@ -348,6 +366,7 @@ export async function copyObjectStore(
     targetFetch: createS3SignedFetch(targetConfig, {}, "object-store-copy:target"),
     signal,
     options,
+    encryptTarget: targetConfig.requireServerSideEncryption === true,
   };
   const failed: CopyFailure[] = [];
   const total: BucketTally = { copied: 0, unchanged: 0, deleted: 0 };
@@ -381,6 +400,8 @@ export function storeConfigFromEnv(
     secretAccessKey: read("SECRET_KEY"),
     region: env[`${prefix}_S3_REGION`]?.trim() || "us-east-1",
     forcePathStyle: true,
+    // CW-AC-05 — TARGET_S3_REQUIRE_SSE=1: the second copy holds every object encrypted or fails the object.
+    requireServerSideEncryption: /^(1|true)$/i.test(env[`${prefix}_S3_REQUIRE_SSE`]?.trim() ?? ""),
   };
 }
 

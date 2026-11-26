@@ -293,8 +293,28 @@ controls:
       - script: test:crypto-labels:backfill:live
       - script: test:m36:body-key-ring:live
       - file: docs/architecture/CHARTWARDEN_SECURITY_HARDENING_v0_2.md
+      # Document objects: server-side encryption (SSE-S3, AES256) in the store. With OBJECT_STORE_REQUIRE_SSE=1 every adapter write names it
+      # and fails when the store does not confirm it, tenant buckets get an encryption default (a presigned PUT lands encrypted; an upload the
+      # store reports unencrypted is refused and removed), the copy tool makes its target encrypt (TARGET_S3_REQUIRE_SSE), and preflight.sh
+      # refuses the flag without a well-formed SEAWEEDFS_SSE_KEK. The conformance suite runs on both stores and reads the store's own volume
+      # files for a marker, with a plaintext control that must be found first; the resilience suite proves the replica encrypts, runs the
+      # re-encryption tool end to end on SeaweedFS (an unversioned bucket is refused, dry run changes nothing, apply is checksum-verified and
+      # read back, keeps the plaintext "null" version, is resumable), then the operator's purge and a vacuum clear the plaintext from the
+      # volume; it also reads SeaweedFS's log for the line that shows the key came from the environment. Offline tests (no DELETE is ever
+      # issued, the intent is journaled before the write, a journal that cannot be written stops the run, the upload guard's verdict,
+      # preflight refusing the flag without a well-formed key) are in the files below. SeaweedFS 4.52 with NO key answers every write to an
+      # encrypted bucket with a 500 (verified), which is why preflight refuses the flag without the key.
+      - script: test:object-store:conformance:live
+      - script: test:object-store:resilience:live
+      - file: scripts/storage/reencrypt-objects.ts
+      - file: scripts/__tests__/reencrypt-objects.test.ts
+      - file: apps/backend/__tests__/document-s3-object-store.test.ts
+      - file: apps/backend/src/modules/22-documents/routes/verified-upload.test.ts
+      - file: scripts/__tests__/preflight-states.test.ts
+      - file: docs/runbooks/object-store-sse-cutover.md
     gap:
-      reason: Document objects (M22) are stored as plaintext in the object store (SeaweedFS; previously MinIO, which had no SSE configured either) and in the planned RustFS second copy; a plaintext copy of every document remains in the retired MinIO volume (`<prefix>_minio-data`) on any host that went through the SeaweedFS cutover and has not removed it, outside the backups and no longer visible to the stack (CW-DS-01); at-rest protection rests on host disk encryption, which no gate checks on either host. Require LUKS or provider volume encryption on both hosts and assert it (preflight), or add server-side encryption.
+      reason: >-
+        Document objects (M22) can be stored encrypted by the object store (SSE-S3, AES256; SeaweedFS's key-encryption key is SEAWEEDFS_SSE_KEK, the RustFS copy's comes from its KMS) but this is OFF until an operator completes docs/runbooks/object-store-sse-cutover.md (key, OBJECT_STORE_REQUIRE_SSE=1, scripts/storage/reencrypt-objects.ts for the objects already stored, then purging the plaintext versions it lists and vacuuming the volume); nothing in the repo shows that cutover has been done on a host, so until it is, production documents are still plaintext at rest. After it, a copy of the volume without the key is ciphertext. What it does not give, and nothing here builds, is a key per tenant: the store has ONE key-encryption key, so M34's tenant DEK shred does not seal documents; the key is held in the environment of the host that runs the store (a host compromise reads it) with no rotation procedure; losing it loses every encrypted object (escrow is a runbook step, not checked), preflight checks its shape but cannot see it replaced or removed after the flag is turned off, it is plain compose environment (readable through docker inspect on the host), and the restore script and coordinated drill restore into a scratch store that does not use it, so they do not prove the key is recoverable. Only the M22 upload completion refuses an object the store reports unencrypted: other presigned writers into a tenant bucket (M36 attachments) rely on the bucket default alone, and the app key can remove that default (AWS ties DeleteBucketEncryption to the Put action) until the next provisioning run restores it. The re-encryption tool and the purge run with the store admin key, outside the application's audit trail. The RustFS second copy (not enabled in production) uses RustFS's local KMS backend, its development tier, with key files beside the data sealed under a master key in the host's environment. A new bucket whose name is not `tenant-*` gets no default from the provisioner (the re-encryption tool's apply step sets it on existing ones; adapter writes name SSE themselves, a direct client write to such a bucket does not). A plaintext copy of every document remains in the retired MinIO volume (`<prefix>_minio-data`) on any host that went through the SeaweedFS cutover and has not removed it, outside the backups and no longer visible to the stack (CW-DS-01). Host disk encryption (LUKS or provider volume encryption) is still not asserted by any gate on either host.
       owner: platform
       review_by: 2027-01-31
 

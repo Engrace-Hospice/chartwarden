@@ -4,6 +4,7 @@ import {
   alertBody,
   assertScheduleEnv,
   massDeleteRefusal,
+  storeConfigFromEnv,
   xmlUnescape,
 } from "../object-store-copy";
 
@@ -19,6 +20,19 @@ describe("object-store copy", () => {
     expect(massDeleteRefusal(899, 1000, 101)).toMatch(/101 of 1000/);
     expect(massDeleteRefusal(5, 5 + MASS_DELETE_FLOOR, MASS_DELETE_FLOOR)).toBeNull();
     expect(massDeleteRefusal(0, 0, 0)).toBeNull();
+  });
+});
+
+describe("second copy encryption (CW-AC-05)", () => {
+  const base = {
+    TARGET_S3_ENDPOINT: "https://replica.example.test",
+    TARGET_S3_ACCESS_KEY: "ak",
+    TARGET_S3_SECRET_KEY: "sk",
+  };
+  it("TARGET_S3_REQUIRE_SSE=1 makes the target encrypt; absent or 0 leaves it as before", () => {
+    expect(storeConfigFromEnv("TARGET", { ...base, TARGET_S3_REQUIRE_SSE: "1" }).requireServerSideEncryption).toBe(true);
+    expect(storeConfigFromEnv("TARGET", { ...base, TARGET_S3_REQUIRE_SSE: "0" }).requireServerSideEncryption).toBe(false);
+    expect(storeConfigFromEnv("TARGET", base).requireServerSideEncryption).toBe(false);
   });
 });
 

@@ -8,7 +8,35 @@ import {
   type InitiateVerifiedUploadInput,
   createVerifiedUploadService,
   scanVerifiedUploadedObject,
+  uploadObjectVerdict,
 } from "./verified-upload";
+
+describe("uploadObjectVerdict (CW-AC-05)", () => {
+  const expected = { byteSize: 10, mimeType: "application/pdf", sha256Hex: "b".repeat(64) };
+  const stored = { ...expected, serverSideEncryption: "AES256" as string | null };
+
+  it("accepts an object with the declared bytes, encrypted or not when encryption is not required", () => {
+    expect(uploadObjectVerdict(stored, expected, true)).toBe("ok");
+    expect(uploadObjectVerdict({ ...stored, serverSideEncryption: null }, expected, false)).toBe("ok");
+    expect(uploadObjectVerdict({ ...expected }, expected, false)).toBe("ok"); // a store that reports nothing
+  });
+
+  it("refuses an object the store reports as not encrypted when encryption is required", () => {
+    expect(uploadObjectVerdict({ ...stored, serverSideEncryption: null }, expected, true)).toBe("unencrypted");
+    expect(uploadObjectVerdict({ ...expected }, expected, true)).toBe("unencrypted");
+    expect(uploadObjectVerdict({ ...stored, serverSideEncryption: "aws:kms" }, expected, true)).toBe("unencrypted");
+  });
+
+  it("an unencrypted object is refused as such even when its bytes also differ", () => {
+    expect(uploadObjectVerdict({ ...stored, serverSideEncryption: null, byteSize: 11 }, expected, true)).toBe("unencrypted");
+  });
+
+  it("still refuses a size, type or checksum that does not match", () => {
+    expect(uploadObjectVerdict({ ...stored, byteSize: 11 }, expected, true)).toBe("mismatch");
+    expect(uploadObjectVerdict({ ...stored, mimeType: "image/png" }, expected, true)).toBe("mismatch");
+    expect(uploadObjectVerdict({ ...stored, sha256Hex: "c".repeat(64) }, expected, true)).toBe("mismatch");
+  });
+});
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const USER = "22222222-2222-4222-8222-222222222222";

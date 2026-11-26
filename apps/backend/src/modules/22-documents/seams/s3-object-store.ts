@@ -51,7 +51,19 @@ export interface S3ObjectStoreConfig {
   readonly secretAccessKey: string;
   /** Path-style URLs (`endpoint/bucket/key`) when true — the MinIO default. Defaults to TRUE. */
   readonly forcePathStyle?: boolean;
+  /**
+   * CW-AC-05 — server-side encryption (SSE-S3, AES256) at rest. When true every write names it, the store must
+   * confirm it in the response (a store that silently ignores the header fails the write), and tenant buckets get an
+   * AES256 default so writers this adapter does not control (presigned PUTs) land encrypted too. Default false: the
+   * legacy plaintext behaviour, until the operator has put the store's key in place (SeaweedFS 4.52 with no key answers
+   * every write to a bucket with an encryption default, or naming SSE, with a 500) — docs/runbooks/object-store-sse-cutover.md.
+   */
+  readonly requireServerSideEncryption?: boolean;
 }
+
+/** The one algorithm this adapter asks for and accepts (SeaweedFS and RustFS both answer it as SSE-S3). */
+export const SSE_ALGORITHM = "AES256";
+const SSE_HEADER = "x-amz-server-side-encryption";
 
 /** Injectable IO/clock seams so the adapter is deterministic + network-free under test. */
 export interface S3ObjectStoreDeps {
@@ -89,7 +101,61 @@ export function s3ObjectStoreConfigFromEnv(
     secretAccessKey,
     ...(region ? { region } : {}),
     forcePathStyle: true,
+    requireServerSideEncryption: /^(1|true)$/i.test(env.OBJECT_STORE_REQUIRE_SSE?.trim() ?? ""),
   };
+}
+
+const ENCRYPTION_CONFIG_XML =
+  `<ServerSideEncryptionConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Rule><ApplyServerSideEncryptionByDefault>` +
+  `<SSEAlgorithm>${SSE_ALGORITHM}</SSEAlgorithm></ApplyServerSideEncryptionByDefault></Rule></ServerSideEncryptionConfiguration>`;
+const ENCRYPTION_CONFIG_RE = new RegExp(`<SSEAlgorithm>\\s*${SSE_ALGORITHM}\\s*</SSEAlgorithm>`);
+
+/**
+ * CW-AC-05 — idempotently make `bucket` encrypt every object by default (SSE-S3). Reads the bucket's encryption
+ * configuration, writes ours only when it is absent or different, and re-reads to prove it took (a store that
+ * accepts the PUT but does not keep it must not read as provisioned). `signedFetch` is whichever identity the caller
+ * holds: the app key (app-policy.json allows `s3:Get/PutEncryptionConfiguration` on `tenant-*` only) or an operator's
+ * (the re-encryption tool and the second copy, which also cover `chartwarden-*`). Returns true when it wrote.
+ */
+export async function ensureBucketDefaultEncryption(
+  signedFetch: ReturnType<typeof createS3SignedFetch>,
+  bucket: string,
+  signal?: () => AbortSignal,
+): Promise<boolean> {
+  const read = async (): Promise<boolean> => {
+    const res = await signedFetch({
+      method: "GET",
+      bucket,
+      objectKey: null,
+      query: [["encryption", ""]],
+      payload: null,
+      ...(signal ? { signal: signal() } : {}),
+    });
+    const text = await res.text();
+    // "no default yet" is ServerSideEncryptionConfigurationNotFoundError: HTTP 404 on SeaweedFS, 400 on RustFS.
+    if (!res.ok && /ServerSideEncryptionConfigurationNotFoundError/.test(text)) return false;
+    if (res.status === 404) return false;
+    if (!res.ok) throw new Error(`m22 s3 object store: 'getEncryption' failed with HTTP ${res.status} for bucket ${bucket}`);
+    return ENCRYPTION_CONFIG_RE.test(text);
+  };
+  if (await read()) return false;
+  const body = new TextEncoder().encode(ENCRYPTION_CONFIG_XML);
+  const put = await signedFetch({
+    method: "PUT",
+    bucket,
+    objectKey: null,
+    query: [["encryption", ""]],
+    payload: body,
+    ...(signal ? { signal: signal() } : {}),
+    extraHeaders: {
+      "content-md5": createHash("md5").update(body).digest("base64"),
+      "content-type": "application/xml",
+    },
+  });
+  if (!put.ok) throw new Error(`m22 s3 object store: 'putEncryption' failed with HTTP ${put.status} for bucket ${bucket}`);
+  if (!(await read()))
+    throw new Error(`m22 s3 object store: bucket ${bucket} did not keep its default encryption`);
+  return true;
 }
 
 // ── SigV4 constants ─────────────────────────────────────────────────────────────────────────────
@@ -408,6 +474,7 @@ export function createS3ObjectStore(
 ): ObjectStorePort & ObjectReaderPort {
   const region = config.region?.trim() || DEFAULT_REGION;
   const now = deps.now ?? ((): Date => new Date());
+  const requireSse = config.requireServerSideEncryption === true;
   const signedFetch = createS3SignedFetch(config, deps, "createS3ObjectStore");
 
   const presignEndpointUrl = parseS3Endpoint(
@@ -440,14 +507,23 @@ export function createS3ObjectStore(
         query: [],
         payload: bytes,
         ...(signal ? { signal } : {}),
-        extraHeaders: mimeType
-          ? {
-              "content-type": mimeType,
-              "x-amz-checksum-sha256": Buffer.from(sha256Hex, "hex").toString("base64"),
-            }
-          : { "content-type": "application/octet-stream" },
+        extraHeaders: {
+          ...(mimeType
+            ? {
+                "content-type": mimeType,
+                "x-amz-checksum-sha256": Buffer.from(sha256Hex, "hex").toString("base64"),
+              }
+            : { "content-type": "application/octet-stream" }),
+          ...(requireSse ? { [SSE_HEADER]: SSE_ALGORITHM } : {}),
+        },
       });
       if (!res.ok) throw opError("putObject", res.status, bucket, objectKey);
+      // A store that ignored the request wrote the bytes in the clear: fail the write (the caller treats it as failed
+      // and removes what it wrote) rather than report an object this deployment promised to keep encrypted.
+      if (requireSse && res.headers.get(SSE_HEADER) !== SSE_ALGORITHM)
+        throw new Error(
+          `m22 s3 object store: 'putObject' stored ${bucket}/${objectKey} without server-side encryption`,
+        );
       return { sha256Hex };
     },
 
@@ -585,6 +661,7 @@ export function createS3ObjectStore(
         byteSize: size,
         mimeType,
         sha256Hex: Buffer.from(checksum, "base64").toString("hex"),
+        serverSideEncryption: res.headers.get(SSE_HEADER),
       };
     },
 
@@ -734,7 +811,16 @@ export function createS3TenantStorageProvisioner(
         query: [],
         payload: null,
       });
-      if (head.ok) return { bucket, created: false, prefixesEnsured: [...prefixes] };
+      // CW-AC-05 — every run (not only a creation) re-applies the encryption default, so a bucket that predates it, or
+      // whose default was removed, is brought back by the next backfill.
+      const encrypt = async (): Promise<void> => {
+        if (config.requireServerSideEncryption === true)
+          await ensureBucketDefaultEncryption(signedFetch, bucket);
+      };
+      if (head.ok) {
+        await encrypt();
+        return { bucket, created: false, prefixesEnsured: [...prefixes] };
+      }
       if (head.status !== 404) throw opError("bucketExists", head.status, bucket);
 
       const created = await signedFetch({
@@ -746,6 +832,7 @@ export function createS3TenantStorageProvisioner(
       });
       if (!created.ok && created.status !== 409)
         throw opError("createBucket", created.status, bucket);
+      await encrypt();
       return { bucket, created: created.ok, prefixesEnsured: [...prefixes] };
     },
 
