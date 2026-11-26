@@ -181,6 +181,8 @@ export interface GoLiveAttestation {
 /** The tenant's governing BAA as go-live judges it: its state, its executed document, and who wrote it (NULL = before the columns). */
 export interface GoverningBaa {
   readonly baaStatus: string;
+  /** The day the BAA took effect (null/absent: none recorded). Go-live judges that the term covers today (CW-AC-14). */
+  readonly effectiveOn?: string | null;
   readonly expiresOn: string | null;
   readonly documentId: string | null;
   /** The document is a signed BAA filed for this tenant (M22's check, judged by the store). Always judged: never absent. */

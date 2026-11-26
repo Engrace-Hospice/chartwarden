@@ -97,6 +97,11 @@ export const BILLING_CAP_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   // transaction (`m23.tenant_clearinghouse.baa_revoked` -> M23's consumer), that its clearinghouse is out of service, what is held and how
   // many responses may still be owed. The audience is whoever can act on it: billing, compliance and the org admins.
   rule("m23.tenant_clearinghouse.baa_revoked", "critical", BILLING_AND_COMPLIANCE),
+  // CW-AC-17: the BAA the tenant recorded states an end date. Warned ahead of it (within 90 days, once a day) and, once it has passed,
+  // told that the clearinghouse is held until the renewed BAA is recorded and a platform operator verifies it. Raised by the resolver's
+  // BAA-end callback (tenant-clearinghouse/baa-expiry-notice.ts); ids, the end date and a day count only.
+  rule("m23.tenant_clearinghouse.baa_expiring", "warn", BILLING_AND_COMPLIANCE),
+  rule("m23.tenant_clearinghouse.baa_expired", "critical", BILLING_AND_COMPLIANCE),
   // The same tenant's acknowledgment (999 / 277CA) and 835 pulls skip a revoked config, so responses for claims already sent may sit at
   // the vendor with no other signal: told once per organization per day while any may still be owed.
   rule("m23.clearinghouse.revoked_responses_pending", "warn", BILLING_AND_COMPLIANCE),

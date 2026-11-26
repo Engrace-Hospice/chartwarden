@@ -41,6 +41,9 @@ const VIEW = tenantView(STEPS);
 const verifiedBaa = (verified: { at: string } | null) => ({
   heldBy: "tenant" as const,
   effectiveDate: "2026-10-01",
+  expiresOn: null,
+  expired: false,
+  expiresInDays: null,
   documentRef: "Claim.MD BAA, signed copy",
   recordedAt: "2026-11-02T00:00:00.000Z",
   verified,
@@ -306,6 +309,117 @@ describe("recording the vendor BAA", () => {
     expect(idempotencyKeyOf(call)).toBeTruthy();
     expect(ifMatchOf(call)).toBe(String(CLAIMMD_DRAFT.version));
     await waitFor(() => expect(props.onChanged).toHaveBeenCalledTimes(1));
+  });
+
+  it("leaves the end date out of the body when it was typed and then cleared (CW-AC-17: never an empty string)", async () => {
+    const stub = client(CLAIMMD_DRAFT, { POST: { [BAA_PATH]: () => ok(CLAIMMD_DRAFT) } });
+    mount(stub);
+    await screen.findByRole("form", { name: "Record the vendor BAA" });
+    fireEvent.change(screen.getByLabelText("Effective date"), { target: { value: "2026-10-01" } });
+    fireEvent.change(screen.getByLabelText("Last day in force (optional)"), {
+      target: { value: "2999-12-31" },
+    });
+    fireEvent.change(screen.getByLabelText("Last day in force (optional)"), {
+      target: { value: "" },
+    });
+    fireEvent.change(screen.getByLabelText("Where the signed BAA is kept"), {
+      target: { value: "Claim.MD BAA, signed copy" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Record BAA" }));
+    await waitFor(() => expect(stub.POST).toHaveBeenCalledTimes(1));
+    const body = ((stub.POST.mock.calls[0] as unknown[])[1] as { body: object }).body;
+    expect(Object.keys(body)).not.toContain("expiresOn");
+  });
+
+  it("refuses an end date that is not after the effective date, and clears that error when the effective date is edited", async () => {
+    const stub = client(CLAIMMD_DRAFT, { POST: { [BAA_PATH]: () => ok(CLAIMMD_DRAFT) } });
+    mount(stub);
+    await screen.findByRole("form", { name: "Record the vendor BAA" });
+    const today = new Date().toLocaleDateString("en-CA"); // the member's own calendar day, YYYY-MM-DD
+    fireEvent.change(screen.getByLabelText("Effective date"), { target: { value: today } });
+    fireEvent.change(screen.getByLabelText("Last day in force (optional)"), {
+      target: { value: today },
+    });
+    fireEvent.change(screen.getByLabelText("Where the signed BAA is kept"), {
+      target: { value: "Claim.MD BAA, signed copy" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Record BAA" }));
+    expect(await screen.findByText("The end date must be after the effective date.")).toBeTruthy();
+    expect(stub.POST).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Effective date"), { target: { value: "2026-10-01" } });
+    expect(screen.queryByText("The end date must be after the effective date.")).toBeNull();
+  });
+
+  it("sends the last day in force when one is stated (CW-AC-17)", async () => {
+    const stub = client(CLAIMMD_DRAFT, { POST: { [BAA_PATH]: () => ok(CLAIMMD_DRAFT) } });
+    mount(stub);
+    await screen.findByRole("form", { name: "Record the vendor BAA" });
+    fireEvent.change(screen.getByLabelText("Effective date"), { target: { value: "2026-10-01" } });
+    fireEvent.change(screen.getByLabelText("Last day in force (optional)"), {
+      target: { value: "2999-12-31" },
+    });
+    fireEvent.change(screen.getByLabelText("Where the signed BAA is kept"), {
+      target: { value: "Claim.MD BAA, signed copy" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Record BAA" }));
+    await waitFor(() => expect(stub.POST).toHaveBeenCalledTimes(1));
+    expect(((stub.POST.mock.calls[0] as unknown[])[1] as { body: unknown }).body).toEqual({
+      heldBy: "tenant",
+      effectiveDate: "2026-10-01",
+      expiresOn: "2999-12-31",
+      documentRef: "Claim.MD BAA, signed copy",
+    });
+  });
+
+  it("refuses an end date that has passed, or is not after the effective date, before sending", async () => {
+    const stub = client(CLAIMMD_DRAFT, { POST: { [BAA_PATH]: () => ok(CLAIMMD_DRAFT) } });
+    mount(stub);
+    await screen.findByRole("form", { name: "Record the vendor BAA" });
+    fireEvent.change(screen.getByLabelText("Effective date"), { target: { value: "2026-10-01" } });
+    fireEvent.change(screen.getByLabelText("Where the signed BAA is kept"), {
+      target: { value: "Claim.MD BAA, signed copy" },
+    });
+    fireEvent.change(screen.getByLabelText("Last day in force (optional)"), {
+      target: { value: "2020-01-01" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Record BAA" }));
+    expect(
+      await screen.findByText("The end date has passed: a BAA that has ended covers nothing."),
+    ).toBeTruthy();
+    expect(stub.POST).not.toHaveBeenCalled();
+  });
+
+  it("tells the tenant when the recorded BAA ends within 90 days, and when it has ended", async () => {
+    const ending = {
+      ...CLAIMMD_DRAFT,
+      status: "verified" as const,
+      baa: {
+        ...verifiedBaa({ at: "2026-11-03T00:00:00.000Z" }),
+        expiresOn: "2026-12-20",
+        expiresInDays: 24,
+      },
+    };
+    mount(client(ending));
+    expect(await screen.findByText(/This BAA ends 2026-12-20 \(24 days left\)/)).toBeTruthy();
+    cleanup();
+
+    const ended = {
+      ...ending,
+      baa: { ...ending.baa, expiresOn: "2026-11-20", expired: true, expiresInDays: null },
+    };
+    mount(client(ended));
+    expect(
+      await screen.findByText(
+        /This BAA ended on 2026-11-20\. Your clearinghouse is out of service/,
+      ),
+    ).toBeTruthy();
+    cleanup();
+
+    // far out, or no end date stated: nothing to say
+    mount(client({ ...ending, baa: { ...ending.baa, expiresInDays: 200 } }));
+    await screen.findByText(/effective 2026-10-01, ends 2026-12-20/);
+    expect(screen.queryByText(/This BAA ends/)).toBeNull();
   });
 
   it("refuses a missing date, a future date and a too short reference before sending", async () => {

@@ -119,7 +119,9 @@ function SummaryCard({ view }: { view: ClearinghouseView }): JSX.Element | null 
             {baa.documentRef}
             <span className="wx-row-sub">
               {" "}
-              effective {baa.effectiveDate}, recorded {new Date(baa.recordedAt).toLocaleString()}
+              effective {baa.effectiveDate}
+              {baa.expiresOn ? `, ends ${baa.expiresOn}${baa.expired ? " (ended)" : ""}` : ""},
+              recorded {new Date(baa.recordedAt).toLocaleString()}
             </span>
           </dd>
           {baa.previousRevocation ? (

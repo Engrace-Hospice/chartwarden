@@ -749,6 +749,18 @@ describe("pullRemittances with a clearinghouse per organization (ADR-0053 amendm
     expect(reported).toEqual([ORG]); // a draft config is not reported: nothing was ever owed
   });
 
+  it("says so for an organization whose recorded BAA ENDED too (CW-AC-17): the same report, still a skip", async () => {
+    const reported: string[] = [];
+    const idle = new InMemoryClearinghouse();
+    const { deps } = perOrg(
+      { [ORG]: { transport: idle, vendor: null, unboundReason: "baa_expired" } },
+      async (organizationId) => void reported.push(organizationId),
+    );
+
+    await expect(pullRemittances(deps, ORG)).resolves.toMatchObject({ queued: 0, failures: [] });
+    expect(reported).toEqual([ORG]);
+  });
+
   it("a failing report never stops the pull or fails the tick", async () => {
     const { deps } = perOrg(
       {

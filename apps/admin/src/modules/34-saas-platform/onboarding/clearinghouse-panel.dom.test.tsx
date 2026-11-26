@@ -58,6 +58,9 @@ const CLAIMMD: ClearinghouseView = {
 const BAA = {
   heldBy: "tenant" as const,
   effectiveDate: "2026-01-15",
+  expiresOn: null,
+  expired: false,
+  expiresInDays: null,
   documentRef: "Claim.MD BAA, contract folder 7",
   recordedAt: RECORDED_AT,
   verified: null,
@@ -721,6 +724,29 @@ describe("ClearinghousePanel: verifying the vendor BAA (pinned to the record rea
     expect(
       screen.getByText(/An operator verified the vendor BAA/).closest("li")?.textContent,
     ).toMatch(/Met/);
+  });
+
+  it("closes the prompt and reloads when the BAA ended while it was open (409 CLEARINGHOUSE_BAA_EXPIRED, CW-AC-17)", async () => {
+    let reads = 0;
+    const ended = { ...BAA, expiresOn: "2026-11-20", expired: true, expiresInDays: null };
+    mount(
+      { ...CLAIMMD, baa: BAA },
+      {
+        GET: {
+          [CH]: () => {
+            reads += 1;
+            return ok({ ...CLAIMMD, baa: reads === 1 ? BAA : ended });
+          },
+          [SUBSCRIPTION]: () => ok({ contract: null }),
+        },
+        POST: { [BAA_VERIFY]: () => refused(409, "CLEARINGHOUSE_BAA_EXPIRED", "ended") },
+      },
+    );
+    await openBaa();
+    confirm("Read the signed agreement, ticket CHG-8001", "Verify BAA");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByRole("button", { name: "Verify the vendor BAA" })).toBeNull();
+    expect(await screen.findByText(/ends 2026-11-20 \(ended\)/)).toBeTruthy();
   });
 
   it("offers nothing to verify while the tenant has not recorded a BAA, and says it is the tenant's to record", async () => {

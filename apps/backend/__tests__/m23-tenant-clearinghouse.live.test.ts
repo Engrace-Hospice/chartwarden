@@ -42,7 +42,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
-import { type DbClient, createDbClient } from "@chartwarden/db";
+import { type DbClient, createDbClient, schema } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
 import {
   getRequestContext,
@@ -85,6 +85,7 @@ import { buildExternalNoticeOnboardingPort } from "../src/modules/23-billing-med
 import { priorElectionClosureForOrg } from "../src/modules/23-billing-medicare/services/prior-election-closure";
 import {
   M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID,
+  baaInForceSql,
   checkHeldCredentials,
   createDrizzleConfigStore,
 } from "../src/modules/23-billing-medicare/tenant-clearinghouse/config-store";
@@ -173,7 +174,10 @@ const REV_ORG_N = "c7400000-0000-4000-8000-000000000074"; // revoked, then recor
 const REV_ORG_O = "c7500000-0000-4000-8000-000000000075"; // revoked; A -> B -> C and A -> B -> outside (the exception is not one-shot)
 const REV_ORG_P = "c7600000-0000-4000-8000-000000000076"; // sealed before migration 1434 (a credential, no fingerprint): the revoke needs no KEK
 const REV_ORG_Q = "c7700000-0000-4000-8000-000000000077"; // its credential is held by another organization: the revoke needs no reservation
+/** BAA end date (migration 1569, CW-AC-17): a live tenant whose recorded BAA states an end date, seeded like the revoke orgs. */
+const END_ORG = "c7800000-0000-4000-8000-000000000078";
 const REVOKE_ORGS = [
+  [END_ORG, "end-a"],
   [REV_ORG_K, "rev-k"],
   [REV_ORG_L, "rev-l"],
   [REV_ORG_M, "rev-m"],
@@ -3683,6 +3687,160 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       expect(await rowOf(REV_ORG_Q)).toMatchObject({
         baa_revoked_reason_code: "vendor_terminated",
       });
+    });
+  });
+
+  describe("BAA end date: a recorded BAA that ends fails closed (migration 1569, CW-AC-17)", () => {
+    const SLUG = "end-a";
+    /** A calendar day `n` days from now (UTC; the margins below are days, so the Eastern day never changes the answer). */
+    const dayFromNow = (n: number): string =>
+      new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+    type View = {
+      status: string;
+      baa: {
+        expiresOn: string | null;
+        expired: boolean;
+        expiresInDays: number | null;
+        verified: unknown;
+        recordedAt: string;
+      } | null;
+    };
+    const keyOf = `fake-claimmd-key-${SLUG}#end-1`;
+    const tenantView = async (): Promise<View> =>
+      (await tenantCall("GET", END_ORG, "")).json() as View;
+    const rowOf = async () =>
+      (
+        await q<{ status: string; baa_expires_on: string | null; baa_verified_at: Date | null }>(
+          `SELECT status, baa_expires_on::text, baa_verified_at FROM tenant_clearinghouse_config WHERE organization_id=$1`,
+          [END_ORG],
+        )
+      )[0];
+    const runtime = () =>
+      createTenantClearinghouseRuntime({
+        db: tenantPool.db,
+        cipher,
+        attempts: new InMemoryAttemptStore(),
+        platformBinding: { vendor: "in_memory", transport: createInMemoryHarness().transport },
+        fallbackOrgIds: new Set(),
+        isOrganizationLive: async () => true,
+      });
+    /** `baaInForceSql` run on the REAL app role under the organization's own scope (the Claim.MD inbox's gate). */
+    const inForce = async (org: string): Promise<number> =>
+      (
+        await withOrgContext(tenantPool.db, { organizationId: org, userId: "" }, async (tx) =>
+          (tx as unknown as DbClient)
+            .select({ id: schema.tenantClearinghouseConfig.id })
+            .from(schema.tenantClearinghouseConfig)
+            .where(baaInForceSql),
+        )
+      ).length;
+    /** The operator verifies the record the tenant last recorded; the tenant activates it. */
+    async function verifyAndActivate(pin: string) {
+      const verified = await platformCall(
+        "POST",
+        SLUG,
+        "/baa/verify",
+        { reason: REASON },
+        { "if-match": `"${pin}"` },
+      );
+      expect(verified.statusCode, verified.body).toBe(200);
+      const activated = await tenantCall("POST", END_ORG, "/activate", {});
+      expect(activated.statusCode, activated.body).toBe(200);
+    }
+
+    it("records the end date as the app role, serves the account while it is ahead, and a changed date is a changed record", async () => {
+      const created = await tenantCall("PUT", END_ORG, "", {
+        vendor: "claimmd",
+        mode: "production",
+        secret: keyOf,
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      expect((await tenantPinnedCall(END_ORG, "/verify", {})).statusCode).toBe(200);
+
+      // an end date already past is refused before anything is written; so is one not after the effective date
+      for (const expiresOn of [dayFromNow(-3), BAA.effectiveDate]) {
+        const refused = await tenantPinnedCall(END_ORG, "/baa", { ...BAA, expiresOn });
+        expect(refused.statusCode, expiresOn).toBe(422);
+      }
+      expect((await rowOf())?.baa_expires_on).toBeNull();
+
+      const ends = dayFromNow(30);
+      const recorded = await tenantPinnedCall(END_ORG, "/baa", { ...BAA, expiresOn: ends });
+      expect(recorded.statusCode, recorded.body).toBe(200);
+      const view = recorded.json() as View;
+      expect(view.baa).toMatchObject({ expiresOn: ends, expired: false });
+      expect(view.baa?.expiresInDays).toBeGreaterThanOrEqual(29);
+      expect(view.baa?.expiresInDays).toBeLessThanOrEqual(31);
+      // the column grant (migration 1569) let chartwarden_app write it
+      expect((await rowOf())?.baa_expires_on).toBe(ends);
+
+      await verifyAndActivate(view.baa?.recordedAt as string);
+      expect(await claimsBillingVerdict(END_ORG, {})).toEqual({ allow: true });
+      expect((await runtime().binding.forOrg?.(END_ORG))?.vendor).toBe("claimmd");
+      expect(await inForce(END_ORG)).toBe(1);
+
+      // the very same record again changes nothing; a renewed end date voids the verification and takes the live config to verified
+      const same = await tenantPinnedCall(END_ORG, "/baa", { ...BAA, expiresOn: ends });
+      expect((same.json() as View).status).toBe("active");
+      const renewed = await tenantPinnedCall(END_ORG, "/baa", {
+        ...BAA,
+        expiresOn: dayFromNow(400),
+      });
+      expect(renewed.statusCode, renewed.body).toBe(200);
+      expect(renewed.json()).toMatchObject({ status: "verified", baa: { verified: null } });
+      expect(await rowOf()).toMatchObject({ status: "verified", baa_verified_at: null });
+      await verifyAndActivate((renewed.json() as View).baa?.recordedAt as string);
+    });
+
+    it("fails closed the day after the last day in force: resolver, claims gate and inbox gate hold it; verify is refused; a renewed record restores it", async () => {
+      expect((await runtime().binding.forOrg?.(END_ORG))?.vendor).toBe("claimmd");
+      expect(await claimsBillingVerdict(END_ORG, {})).toEqual({ allow: true });
+
+      // time passes: the end date is now days behind the real clock (written on the admin connection: the service refuses to record a past one)
+      await q(
+        "UPDATE tenant_clearinghouse_config SET baa_expires_on = $2::date WHERE organization_id=$1",
+        [END_ORG, dayFromNow(-3)],
+      );
+
+      const held = await runtime().binding.forOrg?.(END_ORG);
+      expect(held?.vendor).toBeNull();
+      expect(held?.unboundReason).toBe("baa_expired");
+      expect(await runtime().usageFor(END_ORG)).toBeNull();
+      expect(await claimsBillingVerdict(END_ORG, {})).toEqual({
+        allow: false,
+        reason: "clearinghouse_baa_expired",
+      });
+      expect(await inForce(END_ORG)).toBe(0);
+      // the bystander: a live tenant with no end date is untouched, and under its own scope sees nothing of this one
+      expect(await inForce(REV_ORG_L)).toBe(1);
+      expect(await claimsBillingVerdict(REV_ORG_L, {})).toEqual({ allow: true });
+
+      // the tenant sees it, the operator cannot verify an ended record, and activation is refused too
+      const view = await tenantView();
+      expect(view.baa).toMatchObject({ expired: true, expiresInDays: null });
+      const pin = view.baa?.recordedAt as string;
+      const verify = await platformCall(
+        "POST",
+        SLUG,
+        "/baa/verify",
+        { reason: REASON },
+        { "if-match": `"${pin}"` },
+      );
+      expect(verify.statusCode, verify.body).toBe(409);
+      expect(errorCode(verify)).toBe("CLEARINGHOUSE_BAA_EXPIRED");
+
+      // the renewal: the tenant records the new term, the operator verifies it, the tenant activates it
+      const renewed = await tenantPinnedCall(END_ORG, "/baa", {
+        ...BAA,
+        effectiveDate: "2026-02-01",
+        expiresOn: dayFromNow(365),
+        documentRef: "Claim.MD BAA renewal, contract folder 9",
+      });
+      expect(renewed.statusCode, renewed.body).toBe(200);
+      await verifyAndActivate((renewed.json() as View).baa?.recordedAt as string);
+      expect((await runtime().binding.forOrg?.(END_ORG))?.vendor).toBe("claimmd");
+      expect(await claimsBillingVerdict(END_ORG, {})).toEqual({ allow: true });
+      expect(await inForce(END_ORG)).toBe(1);
     });
   });
 });

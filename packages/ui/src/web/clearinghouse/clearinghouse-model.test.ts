@@ -12,6 +12,9 @@ import {
 const BAA = {
   heldBy: "tenant" as const,
   effectiveDate: "2026-01-15",
+  expiresOn: null,
+  expired: false,
+  expiresInDays: null,
   documentRef: "Claim.MD BAA, contract folder 7",
   recordedAt: "2026-11-02T10:00:00.000Z",
   verified: null,
@@ -188,6 +191,27 @@ describe("clearinghouseActions", () => {
       clearinghouseActions(view({ baa: { ...BAA, verified: { at: "2026-11-03T10:00:00.000Z" } } }))
         .canVerifyBaa,
     ).toBe(false);
+  });
+
+  it("treats an ended BAA as not verified: no fact ok, nothing to verify, and the note says the tenant records the renewed BAA (CW-AC-17)", () => {
+    const ended = view({
+      status: "verified",
+      baa: {
+        ...BAA,
+        verified: { at: "2026-11-03T10:00:00.000Z" },
+        expiresOn: "2026-11-20",
+        expired: true,
+        expiresInDays: null,
+      },
+    });
+    expect(stateOf(clearinghouseFacts(ended), "baa-verified")).toBe("pending");
+    expect(clearinghouseFacts(ended).find((f) => f.key === "baa-verified")?.detail).toMatch(
+      /Ended 2026-11-20/,
+    );
+    const actions = clearinghouseActions(ended);
+    expect(actions.canVerifyBaa).toBe(false);
+    expect(actions.canRevokeBaa).toBe(true);
+    expect(actions.tenantActivationNote).toMatch(/BAA has ended/);
   });
 
   it("never offers an operator activation: it says the tenant's own billing administrator activates, and what is missing before that", async () => {

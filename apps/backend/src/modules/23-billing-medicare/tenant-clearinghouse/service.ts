@@ -54,6 +54,7 @@ import {
   type BaaRevokeReasonCode,
   type BaaView,
   type RecordBaaInput,
+  baaEnded,
   baaMatchesPin,
   baaViewOf,
   isPreviouslyRevokedDocument,
@@ -140,6 +141,16 @@ const baaRevoked = (consequence: string): ChartWardenError =>
   conflict(
     "CLEARINGHOUSE_BAA_REVOKED",
     `the vendor BAA was revoked by a platform operator, so ${consequence}; the tenant records a new BAA, which a platform operator then verifies`,
+  );
+
+/**
+ * The one refusal for a BAA that ran past its last day in force (CW-AC-17): it can be neither verified nor activated. Only a new record
+ * (the tenant's, with its renewed term) clears it, and the operator then verifies that record.
+ */
+const baaExpired = (expiresOn: string | null, consequence: string): ChartWardenError =>
+  conflict(
+    "CLEARINGHOUSE_BAA_EXPIRED",
+    `the recorded vendor BAA ended on ${expiresOn ?? "its stated end date"}, so ${consequence}; the tenant records the renewed BAA, which a platform operator then verifies`,
   );
 
 const isTransmitting = (vendor: string): vendor is TransmittingClearinghouseVendor =>
@@ -270,7 +281,7 @@ export function createTenantClearinghouseService(
             }
           : null,
       baaRequired: isTransmitting(row.vendor),
-      baa: baaViewOf(row, operator),
+      baa: baaViewOf(row, operator, medicareReceiptDay(now())),
       activatedAt: iso(row.activatedAt),
       version: row.version,
       updatedAt: row.updatedAt.toISOString(),
@@ -738,6 +749,7 @@ export function createTenantClearinghouseService(
         // the vendor the record is for: the table keeps a live config on a BAA for ITS vendor (requireVendorAccount: not `outside`)
         baaVendor: row.vendor,
         baaEffectiveDate: record.effectiveDate,
+        baaExpiresOn: record.expiresOn,
         baaDocumentRef: record.documentRef,
         baaRecordedAt: nextRowTimestamp(row),
         baaRecordedByMembershipId: actor.membershipId,
@@ -775,6 +787,8 @@ export function createTenantClearinghouseService(
       }
       // A revoked record is not verified again: the tenant records a new BAA (a new agreement) and the operator verifies that.
       if (row.baaRevokedAt) throw baaRevoked("it cannot be verified again");
+      if (baaEnded(row.baaExpiresOn, medicareReceiptDay(now())))
+        throw baaExpired(row.baaExpiresOn, "it cannot be verified");
       if (!baaMatchesPin(row, expected)) {
         throw conflict(
           "CLEARINGHOUSE_BAA_CHANGED",
@@ -982,6 +996,8 @@ export function createTenantClearinghouseService(
       if (row.status === "active") return viewOf(row, organizationId, isOperator(actor)); // idempotent; `outside` is always here
       // Before the other refusals: a revoked BAA is the larger blocker, and a draft config needs a new BAA as well as a fresh check.
       if (row.baaRevokedAt) throw baaRevoked("the clearinghouse cannot be activated");
+      if (baaEnded(row.baaExpiresOn, medicareReceiptDay(now())))
+        throw baaExpired(row.baaExpiresOn, "the clearinghouse cannot be activated");
       if (row.status !== "verified") {
         throw conflict(
           "CLEARINGHOUSE_NOT_VERIFIED",

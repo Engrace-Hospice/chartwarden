@@ -39,6 +39,11 @@ export interface TenantClearinghouseChoice {
    * claims-billing gate then says so (`clearinghouse_baa_revoked`) instead of "not active yet". Absent = false.
    */
   readonly baaRevoked?: boolean;
+  /**
+   * True when the recorded vendor BAA ran past its last day in force (CW-AC-17): an active config is then out of service, and the
+   * gate says so (`clearinghouse_baa_expired`). Absent = false. Revoked wins when both hold.
+   */
+  readonly baaExpired?: boolean;
 }
 
 /** The "nothing chosen" answer. */

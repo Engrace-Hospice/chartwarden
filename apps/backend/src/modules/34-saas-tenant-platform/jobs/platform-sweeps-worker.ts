@@ -31,7 +31,7 @@ import {
 } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, desc, eq, inArray, isNull, lte } from "drizzle-orm";
-import { pickGoverningBaa } from "../routes/platform/activation-guards";
+import { baaTermCoversToday, pickGoverningBaa } from "../routes/platform/activation-guards";
 import { governingBaaDocumentFiled } from "../routes/platform/baa-guards";
 import {
   ONBOARDING_WRITABLE_STATUSES,
@@ -232,7 +232,11 @@ async function gatherOnboardingContext(
     xeroConnected: await read(readers.xeroConnected),
     gustoConnected: await read(readers.gustoConnected),
     complianceOfficerAssigned: Boolean(account?.officer),
-    baaExecuted: latestBaa?.baaStatus === "executed" && baaLinkHolds,
+    // executed, its document verifies AND its term covers today (an agreement not yet in force, or ended, advances nothing)
+    baaExecuted:
+      latestBaa?.baaStatus === "executed" &&
+      baaLinkHolds &&
+      baaTermCoversToday(latestBaa, new Date()),
     allCanonicalTasksDoneOrSkipped: canonical.every((t) => settled.has(t.key)),
   };
 }

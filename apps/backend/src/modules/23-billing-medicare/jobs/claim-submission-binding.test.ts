@@ -77,6 +77,21 @@ describe("claim submission routing binding", () => {
     ).resolves.toBe(false);
   });
 
+  it("refuses a send once the recorded BAA has ended, and not before (an expiry never moves the status off active)", async () => {
+    const eastern = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" });
+    const dayOffset = (days: number): string =>
+      eastern.format(new Date(Date.now() + days * 86_400_000));
+    const bind = (baaExpiresOn: string | null) =>
+      claimSubmissionBindingMatches(
+        txFor([{ ...config, baaExpiresOn }]) as never,
+        submission,
+        transport,
+      );
+    await expect(bind(null)).resolves.toBe(true); // no end date stated: never ended
+    await expect(bind(dayOffset(0))).resolves.toBe(true); // the last day is still in force
+    await expect(bind(dayOffset(-2))).resolves.toBe(false); // ended
+  });
+
   it("accepts a platform fallback only while no tenant configuration row exists", async () => {
     const fallback = {
       ...submission,

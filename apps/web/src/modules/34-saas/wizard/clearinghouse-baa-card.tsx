@@ -31,11 +31,15 @@ const PATH = "/api/v1/tenant/clearinghouse/baa";
 const CARD = "baa";
 const REF_MIN = 3;
 const REF_MAX = 200;
+/** The server warns the tenant and platform operations inside this window (BAA_EXPIRY_WARN_DAYS in the backend). */
+const BAA_WARN_DAYS = 90;
 /** The fields this card renders: a refusal naming only others is not "beside its input" and shows as a notice. */
-const FIELDS: ReadonlySet<string> = new Set(["effectiveDate", "documentRef"]);
+const FIELDS: ReadonlySet<string> = new Set(["effectiveDate", "expiresOn", "documentRef"]);
 
 interface BaaForm {
   readonly effectiveDate: string;
+  /** The last day the BAA is in force; empty when it states no end date. */
+  readonly expiresOn: string;
   readonly documentRef: string;
 }
 interface BaaDraft {
@@ -55,6 +59,12 @@ function validateBaa(form: BaaForm, today: string = todayLocal()): BaaErrors {
   if (form.effectiveDate === "") errors.effectiveDate = "Enter the date the BAA took effect.";
   else if (form.effectiveDate > today)
     errors.effectiveDate = "The effective date cannot be in the future.";
+  if (form.expiresOn !== "") {
+    if (form.expiresOn < today)
+      errors.expiresOn = "The end date has passed: a BAA that has ended covers nothing.";
+    else if (form.effectiveDate !== "" && form.expiresOn <= form.effectiveDate)
+      errors.expiresOn = "The end date must be after the effective date.";
+  }
   const length = collapse(form.documentRef).length;
   if (length < REF_MIN || length > REF_MAX)
     errors.documentRef = `Say where the signed BAA is kept (${REF_MIN} to ${REF_MAX} characters).`;
@@ -81,7 +91,13 @@ export function BaaCard({
   const recorded = view.baa;
   // First BAA: the form is open. A recorded BAA is shown, and a different one is recorded only on request (it voids the verification).
   const [replacing, setReplacing] = useState(restored !== undefined);
-  const [form, setForm] = useState<BaaForm>(restored ?? { effectiveDate: "", documentRef: "" });
+  // spread over the defaults: a draft stashed before the end-date field existed has no `expiresOn`, and the input must stay controlled
+  const [form, setForm] = useState<BaaForm>({
+    effectiveDate: "",
+    expiresOn: "",
+    documentRef: "",
+    ...restored,
+  });
   const [errors, setErrors] = useState<BaaErrors>({});
   const open = recorded === null || replacing;
   const locked = ctx.lockedFor(CARD);
@@ -100,6 +116,8 @@ export function BaaCard({
     const body = {
       heldBy: "tenant" as const,
       effectiveDate: form.effectiveDate,
+      // sent only when stated: a BAA with no end date is open-ended
+      ...(form.expiresOn === "" ? {} : { expiresOn: form.expiresOn }),
       documentRef: collapse(form.documentRef),
     };
     const outcome = await write.run(
@@ -133,7 +151,12 @@ export function BaaCard({
     errors[field] ?? serverErrors.errors[field];
   const edit = (next: BaaForm, field: keyof BaaForm): void => {
     setForm(next);
-    setErrors((e) => ({ ...e, [field]: undefined }));
+    // the end date's order error is about the effective date too: editing either clears it
+    setErrors((e) => ({
+      ...e,
+      [field]: undefined,
+      ...(field === "effectiveDate" ? { expiresOn: undefined } : {}),
+    }));
     serverErrors.touch(field);
   };
 
@@ -154,15 +177,33 @@ export function BaaCard({
               setReplacing(true);
             }}
           >
-            Record a different BAA
+            {recorded.expired ? "Record the renewed BAA" : "Record a different BAA"}
           </Button>
         ) : null}
       </div>
       {recorded !== null && !replacing ? (
         <p className="wx-row-sub">
-          {recorded.documentRef}, effective {recorded.effectiveDate}. ChartWarden verifies the BAA
+          {recorded.documentRef}, effective {recorded.effectiveDate}
+          {recorded.expiresOn ? `, ends ${recorded.expiresOn}` : ""}. ChartWarden verifies the BAA
           you record; the clearinghouse can be activated once it has.
         </p>
+      ) : null}
+      {recorded !== null && !replacing && recorded.expired ? (
+        <output className="wx-row-sub">
+          This BAA ended on {recorded.expiresOn}. Your clearinghouse is out of service until you
+          record the renewed BAA and ChartWarden verifies it.
+        </output>
+      ) : null}
+      {recorded !== null &&
+      !replacing &&
+      !recorded.expired &&
+      recorded.expiresInDays !== null &&
+      recorded.expiresInDays <= BAA_WARN_DAYS ? (
+        <output className="wx-row-sub">
+          This BAA ends {recorded.expiresOn} ({recorded.expiresInDays} day
+          {recorded.expiresInDays === 1 ? "" : "s"} left). Record the renewed BAA before then, or
+          claims, notices and acknowledgments stop.
+        </output>
       ) : null}
       {write.failure && !open ? <BillingFailureNotice failure={write.failure} /> : null}
       {open ? (
@@ -193,6 +234,16 @@ export function BaaCard({
               value={form.effectiveDate}
               onChange={(e) => edit({ ...form, effectiveDate: e.target.value }, "effectiveDate")}
               error={fieldError("effectiveDate")}
+            />
+            <TextField
+              label="Last day in force (optional)"
+              hint="Leave empty when the BAA states no end date."
+              type="date"
+              min={todayLocal()}
+              disabled={locked}
+              value={form.expiresOn}
+              onChange={(e) => edit({ ...form, expiresOn: e.target.value }, "expiresOn")}
+              error={fieldError("expiresOn")}
             />
             <TextField
               label="Where the signed BAA is kept"

@@ -1348,6 +1348,7 @@ import {
 import { buildClearinghouseAttemptResolutionService } from "./modules/23-billing-medicare/services/clearinghouse-attempt-resolution-service";
 import { buildExternalNoticeOnboardingPort } from "./modules/23-billing-medicare/services/external-notice-onboarding-port";
 import { resolveInpatientCapDifferential } from "./modules/23-billing-medicare/services/inpatient-cap-differential";
+import { createBaaExpiryNotifier } from "./modules/23-billing-medicare/tenant-clearinghouse/baa-expiry-notice";
 import { platformFallbackFromEnv } from "./modules/23-billing-medicare/tenant-clearinghouse/choice";
 import {
   M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID,
@@ -4440,6 +4441,37 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         // rollout switch is not evidence. Boot cannot see which organizations are live on Claim.MD (the config table has no
         // platform-carrier grant), so say it once per org, the first time its account is bound in this process.
         onTenantAccountBound: warnOnceWhenNoticesCannotSend,
+        // CW-AC-17: a tenant-held BAA's end date. Warned ahead of it (the M36 alert to the tenant plus a platform-ops notice through
+        // the ops sink: a log line and OPS_ALERT_WEBHOOK_URL), held after it (the resolver answers UNBOUND_BAA_EXPIRED). Ids, a
+        // date and a day count only. The emitter seam is read per call: it is bound later in boot.
+        onBaaEnding: createBaaExpiryNotifier({
+          opsNotice: buildPlatformOpsNoticeSink({
+            webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
+            log: (m) => app.log.warn(m),
+          }),
+          alerts: {
+            dispatch: async ({ alertCode, severity, organizationId, payload }) => {
+              const emitter = getSeam("AlertEmitter") as {
+                emit(
+                  orgId: string,
+                  input: {
+                    eventType: string;
+                    payload: Record<string, unknown>;
+                    severity: string;
+                    correlationId: string;
+                  },
+                ): Promise<unknown>;
+              };
+              await emitter.emit(organizationId, {
+                eventType: alertCode,
+                payload,
+                severity,
+                correlationId: cronAlertCorrelationId("m23-baa-expiry", alertCode, payload),
+              });
+            },
+          },
+          log: (e) => app.log.warn({ ...e }, "tenant clearinghouse BAA expiry notice"),
+        }),
       })
     : null;
   const clearinghouseBinding = tenantClearinghouse?.binding ?? platformClearinghouseBinding;

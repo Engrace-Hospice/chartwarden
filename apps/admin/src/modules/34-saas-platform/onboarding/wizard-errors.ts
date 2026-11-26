@@ -57,6 +57,8 @@ export const WIZARD_ERROR_COPY: OpsErrorCopy = {
     "This record points to a document that was revoked before. Review that history and explicitly acknowledge it before verifying.",
   CLEARINGHOUSE_BAA_REVOKED:
     "This vendor BAA is revoked. The tenant must record a new agreement before it can be verified or activated.",
+  CLEARINGHOUSE_BAA_EXPIRED:
+    "This vendor BAA has ended. The tenant must record the renewed agreement before it can be verified or activated. The step has been reloaded.",
   CLEARINGHOUSE_BAA_CHANGED:
     "The tenant changed its BAA record while you were looking at it. It has been reloaded; review the current record and try again.",
   CLEARINGHOUSE_BAA_NOT_RECORDED:
@@ -90,6 +92,7 @@ const VIEW_MOVED_CODES: ReadonlySet<string> = new Set([
   "GO_LIVE_ATTESTATION_STALE",
   "GO_LIVE_ATTESTATION_EXPIRED",
   "ACTIVATION_GUARDS_FAILED",
+  "CLEARINGHOUSE_BAA_EXPIRED",
 ]);
 export const viewHasMoved = (failure: Pick<OpsFailure, "code">): boolean =>
   failure.code !== null && VIEW_MOVED_CODES.has(failure.code);
@@ -97,7 +100,8 @@ export const viewHasMoved = (failure: Pick<OpsFailure, "code">): boolean =>
 /** The activation guards the go-live approval re-judges, in the operator's words. */
 export const GUARD_COPY: Readonly<Record<string, string>> = {
   canonicalTasksComplete: "Every required step is done or skipped",
-  baaExecuted: "The latest BAA is executed, with the signed agreement filed for this tenant",
+  baaExecuted:
+    "The latest BAA is executed, with the signed agreement filed for this tenant and its term in force today",
   baaExpiryClearsNinetyDays: "The executed BAA has more than 90 days left",
 };
 

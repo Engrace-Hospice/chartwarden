@@ -80,6 +80,7 @@ export function createInMemoryConfigStore(now: () => Date = () => new Date()): I
         activatedByMembershipId: null,
         baaVendor: null,
         baaEffectiveDate: null,
+        baaExpiresOn: null,
         baaDocumentRef: null,
         baaRecordedAt: null,
         baaRecordedByMembershipId: null,

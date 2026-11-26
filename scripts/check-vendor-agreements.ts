@@ -31,9 +31,21 @@
  * vendor (a hosting or backup provider is not in §2, so `evidence:` is the reviewer's trail, not a detector);
  * or that PHI stops flowing to a vendor whose row is `pending`. Those stay in the CW-BA-01 gap.
  *
- * EXTENDING IT (CW-AC-14, CW-AC-17: validity and expiry). Do not start a second register. `effectiveOn` and
- * `expiresOn` are already reserved on `agreement` and validated for shape and order in {@link validityViolations};
- * add the rule that judges them against `today` there, and any further column to {@link Agreement}.
+ * VALIDITY AND EXPIRY (CW-AC-14, CW-AC-17). A `signed` row is judged as valid, not only as filed:
+ *   7. it carries `effectiveOn`, and that date is not in the future (an agreement that is not in force yet does not
+ *      cover today's flow);
+ *   8. `expiresOn`, when present, is not past: an agreement that ended is not a signed one, so the gate FAILS CLOSED
+ *      on the day after it (renew it and record the new term, or flip the row back to `pending`). A signed row with no
+ *      `expiresOn` is open-ended: the owner states no end date, the review date is its only clock;
+ *   9. `covers` lists what the executed agreement covers (closed set {@link COVERAGE}) and must include `phi` for a
+ *      vendor that receives PHI and everything the row's own `requires` names (Anthropic needs its zero-data-retention
+ *      addendum: the BAA alone does not cover the use). A person states what it covers; the gate only refuses a
+ *      signed row whose stated coverage is short of the use.
+ * Ahead of the end date, {@link vendorAgreementWarnings} names every signed row that expires within
+ * {@link EXPIRY_WARN_DAYS} days; the gate prints it and still passes. The tenant-held agreements and the platform's tenant BAA
+ * register have their own end-date rules in the database (CW-AC-17: the tenant clearinghouse BAA; CW-AC-14: M34).
+ *
+ * Do not start a second register: a further column goes to {@link Agreement} and the closed schema below.
  *
  * Run:   bun run scripts/check-vendor-agreements.ts
  * CI:    exits 1 on any violation (arch:fitness stage).
@@ -48,6 +60,10 @@ export const INVENTORY_DOC = "docs/architecture/CHARTWARDEN_INTEGRATIONS_v0_1.md
 export const PHI_CLASSES = ["receives", "adjacent", "none"] as const;
 export const AGREEMENT_KINDS = ["baa", "trading-partner", "none"] as const;
 export const AGREEMENT_STATUSES = ["pending", "signed", "tenant-held", "not-required"] as const;
+/** What an executed agreement can be stated to cover. `phi` is the BAA itself; the rest are addenda a row may require. */
+export const COVERAGE = ["phi", "zero-data-retention"] as const;
+/** A signed agreement ending within this many days is named by {@link vendorAgreementWarnings} (the M34 go-live guard's window). */
+export const EXPIRY_WARN_DAYS = 90;
 
 const MIN_SCOPE_CHARS = 30;
 /** Past this a field is prose, not metadata: the file never holds contract text. */
@@ -77,12 +93,20 @@ const CONTACT_PATTERNS: readonly RegExp[] = [
   /\+\d[\d\s().-]{7,}\d/,
 ];
 /** Fields that only a signed row may carry. */
-const SIGNED_ONLY_FIELDS = ["signedOn", "documentRef", "confirmedBy", "confirmedOn"] as const;
+const SIGNED_ONLY_FIELDS = [
+  "signedOn",
+  "documentRef",
+  "confirmedBy",
+  "confirmedOn",
+  "effectiveOn",
+  "expiresOn",
+  "covers",
+] as const;
 /**
  * The controls that record a tenant's OWN vendor agreement per tenant in the database, and the §2 inventory rows
  * each covers. A `tenant-held` row may name only these controls and claim only these rows: an id that merely
  * exists in controls.yaml would otherwise stand in for a recorded agreement and skip the `signed` proof. A later
- * control that records tenants' agreements (CW-AC-14, CW-AC-17: #1144, #1143) adds itself here, deliberately.
+ * control that records tenants' own agreements adds itself here, deliberately.
  */
 export const TENANT_HELD_CONTROLS: Readonly<Record<string, readonly number[]>> = {
   "CW-AC-17": [35],
@@ -96,6 +120,7 @@ const ROW_KEYS = [
   "inventory",
   "scope",
   "evidence",
+  "requires",
   "note",
   "agreement",
 ] as const;
@@ -109,6 +134,7 @@ const AGREEMENT_KEYS = [
   "trackedBy",
   "effectiveOn",
   "expiresOn",
+  "covers",
 ] as const;
 
 type DateLike = string | Date;
@@ -122,9 +148,12 @@ export interface Agreement {
   readonly confirmedOn?: DateLike | undefined;
   /** tenant-held only: ids of the controls in compliance/controls.yaml that record the tenant's own agreement. */
   readonly trackedBy?: readonly string[] | undefined;
-  /** Reserved for CW-AC-14 / CW-AC-17 (validity and expiry); shape and order are checked today. */
+  /** Signed rows: the day the agreement took effect (required, not in the future). */
   readonly effectiveOn?: DateLike | undefined;
+  /** Signed rows: the last day it is in force. Absent = open-ended. Past = the gate fails (an ended agreement is not signed). */
   readonly expiresOn?: DateLike | undefined;
+  /** Signed rows: what the executed agreement covers, from {@link COVERAGE}; must meet the row's use. */
+  readonly covers?: readonly string[] | undefined;
 }
 
 export interface VendorRow {
@@ -136,6 +165,8 @@ export interface VendorRow {
   readonly scope?: string | undefined;
   /** Repo files that show where the PHI flow or the hosting is declared. */
   readonly evidence?: readonly string[] | undefined;
+  /** Coverage beyond `phi` this vendor's use needs from its agreement (for example `zero-data-retention`). */
+  readonly requires?: readonly string[] | undefined;
   readonly note?: string | undefined;
   readonly agreement?: Agreement | undefined;
 }
@@ -347,10 +378,10 @@ function tenantHeldViolations(
 }
 
 /**
- * `effectiveOn` / `expiresOn`: shape and order only. CW-AC-14 and CW-AC-17 add the rule that judges them
- * against today (an expired agreement is not a signed one) HERE, not in a second register.
+ * `effectiveOn` / `expiresOn`: shape and order for any row that carries them, and for a SIGNED row the window against
+ * `today`: in force (effective, not past its end). A row that is not signed must carry neither (`signedViolations`).
  */
-export function validityViolations(r: VendorRow, label: string): string[] {
+export function validityViolations(r: VendorRow, label: string, today: Date): string[] {
   const a = r.agreement;
   if (!a) return [];
   const v: string[] = [];
@@ -361,7 +392,75 @@ export function validityViolations(r: VendorRow, label: string): string[] {
   const expires = isoDate(a.expiresOn);
   if (effective !== undefined && expires !== undefined && expires <= effective)
     v.push(`${label}: agreement.expiresOn ${expires} is not after effectiveOn ${effective}`);
+  if (a.status !== "signed") return v;
+  if (a.effectiveOn === undefined)
+    v.push(
+      `${label}: signed needs agreement.effectiveOn (YYYY-MM-DD): the day the agreement took effect`,
+    );
+  else if (effective !== undefined && daysFrom(today, effective) > 0)
+    v.push(
+      `${label}: agreement.effectiveOn ${effective} is in the future: not in force yet, so it does not cover today's flow`,
+    );
+  if (expires !== undefined && daysFrom(today, expires) < 0)
+    v.push(
+      `${label}: agreement expired on ${expires} (${-daysFrom(today, expires)} day(s) ago): an ended agreement is not a signed one; renew it and record the new term, or flip the row back to pending`,
+    );
   return v;
+}
+
+/**
+ * `covers` / `requires`: what the executed agreement covers against what the vendor's use needs. A vendor that receives PHI
+ * needs `phi`; a row may require more (`requires`). A row that is not signed carries no `covers` (`signedViolations`).
+ */
+function coverageViolations(r: VendorRow, label: string): string[] {
+  const a = r.agreement;
+  if (!a) return [];
+  const v: string[] = [];
+  const known = (c: unknown): boolean =>
+    typeof c === "string" && (COVERAGE as readonly string[]).includes(c);
+  for (const [field, list] of [
+    ["requires", r.requires],
+    ["agreement.covers", a.covers],
+  ] as const)
+    for (const c of list ?? [])
+      if (!known(c))
+        v.push(`${label}: ${field} \`${String(c)}\` is not one of ${COVERAGE.join(", ")}`);
+  if (a.status !== "signed") return v;
+  const covers = new Set(a.covers ?? []);
+  if (covers.size === 0)
+    v.push(
+      `${label}: signed needs agreement.covers (what the executed agreement covers: ${COVERAGE.join(", ")})`,
+    );
+  const needed = new Set([...(r.phi === "receives" ? ["phi"] : []), ...(r.requires ?? [])]);
+  for (const n of needed)
+    if (covers.size > 0 && !covers.has(n))
+      v.push(
+        `${label}: the agreement does not cover \`${n}\`, which this vendor's use needs: a signed row must cover its use (confirm the addendum is executed, or leave the row pending)`,
+      );
+  return v;
+}
+
+/**
+ * PURE: the signed rows whose agreement ends within {@link EXPIRY_WARN_DAYS} days (today included), soonest first. A warning
+ * is not a violation: the gate prints it and passes, and fails the day after the end date (`validityViolations`).
+ */
+export function vendorAgreementWarnings(
+  register: VendorRegister | undefined,
+  today: Date,
+): string[] {
+  const due = (register?.vendors ?? []).flatMap((r) => {
+    const expires = r?.agreement?.status === "signed" ? isoDate(r.agreement.expiresOn) : undefined;
+    const days = expires === undefined ? Number.NaN : daysFrom(today, expires);
+    return days >= 0 && days <= EXPIRY_WARN_DAYS
+      ? [{ id: r.id ?? "(row)", expires: expires as string, days }]
+      : [];
+  });
+  return due
+    .sort((x, y) => x.days - y.days)
+    .map(
+      (d) =>
+        `${d.id}: the agreement ends ${d.expires} (${d.days === 0 ? "today" : `in ${d.days} day(s)`}): renew it and record the new term before the gate fails closed`,
+    );
 }
 
 /** `inventory:` claims against the §2 table. */
@@ -438,7 +537,8 @@ export function checkVendorAgreements(i: CheckInputs): string[] {
         ...exposureViolations(r, label, i.fileExists),
         ...signedViolations(r, label, i.today),
         ...tenantHeldViolations(r, label, i.controlIds),
-        ...validityViolations(r, label),
+        ...validityViolations(r, label, i.today),
+        ...coverageViolations(r, label),
         ...claimViolations(r, label, inventory),
       );
     } catch (e) {
@@ -550,6 +650,7 @@ function main(): void {
   }
   const rows = register?.vendors ?? [];
   const count = (s: string): number => rows.filter((r) => r.agreement?.status === s).length;
+  for (const w of vendorAgreementWarnings(register, new Date())) console.warn(`WARN ${w}`);
   console.log(
     `OK check-vendor-agreements: ${rows.length} vendor rows (${count("signed")} signed, ${count("pending")} pending, ${count("tenant-held")} tenant-held, ${count("not-required")} not required); every BAA-required integration in the inventory has a row`,
   );

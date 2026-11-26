@@ -193,8 +193,11 @@ export async function pullRemittances(
   try {
     const resolved = await bindingOf(deps, organizationId);
     binding = resolved.binding;
-    // A revoked BAA is not a silent skip: the vendor may still hold responses for claims already sent, so say so (best effort).
-    if (binding === null && resolved.unboundReason === "baa_revoked") {
+    // A revoked or expired BAA is not a silent skip: the vendor may still hold responses for claims already sent, so say so (best effort).
+    if (
+      binding === null &&
+      (resolved.unboundReason === "baa_revoked" || resolved.unboundReason === "baa_expired")
+    ) {
       try {
         await deps.onRevokedSkipped?.(organizationId);
       } catch {

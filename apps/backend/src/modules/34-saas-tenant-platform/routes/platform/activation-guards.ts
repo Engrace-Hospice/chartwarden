@@ -25,6 +25,19 @@ export function pickGoverningBaa<T extends BaaRow>(rows: readonly T[]): T | unde
   return newestDated ?? rows[0];
 }
 
+/**
+ * The BAA's term covers `today` (UTC day): its effective date has arrived and its last day has not passed (CW-AC-14, CW-AC-17). A null
+ * date never blocks: an executed row written before the dates were recorded has none. `executed` over a term that does not cover today
+ * is not an executed BAA for go-live: an agreement that is not in force yet, or that ended, covers nothing.
+ */
+export function baaTermCoversToday(
+  baa: { readonly effectiveOn?: string | null; readonly expiresOn: string | null },
+  today: Date,
+): boolean {
+  const day = today.toISOString().slice(0, 10);
+  return (!baa.effectiveOn || baa.effectiveOn <= day) && (!baa.expiresOn || baa.expiresOn >= day);
+}
+
 export interface ActivationGuardInput {
   readonly canonicalTemplateKeys: readonly string[];
   readonly tasks: readonly { readonly templateKey: string; readonly status: string }[];
@@ -32,6 +45,8 @@ export interface ActivationGuardInput {
   readonly latestBaa:
     | {
         readonly baaStatus: string;
+        /** The day the BAA took effect; null/absent = none recorded. An executed BAA not yet in effect is not executed for go-live. */
+        readonly effectiveOn?: string | null;
         readonly expiresOn: string | null;
         /**
          * Whether the BAA's `documentId` is a signed BAA filed for this tenant (M22's check): `false` means the status rests on a link that
@@ -61,7 +76,9 @@ export function evaluateActivationGuards(input: ActivationGuardInput): Activatio
       .map((t) => t.templateKey),
   );
   const baaExecuted =
-    input.latestBaa?.baaStatus === "executed" && input.latestBaa.documentFiled === true;
+    input.latestBaa?.baaStatus === "executed" &&
+    input.latestBaa.documentFiled === true &&
+    baaTermCoversToday(input.latestBaa, input.today);
   const expiresOn = input.latestBaa?.expiresOn ?? null;
   return {
     // No canonical templates at all means an unseeded catalog, not "nothing to do": never complete vacuously.

@@ -3,6 +3,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import type { AccountResponsePage } from "@chartwarden/x12-837-client";
 import { and, desc, eq, inArray, isNotNull, isNull, notExists } from "drizzle-orm";
+import { baaInForceSql } from "../tenant-clearinghouse/config-store";
 import type { TenantClaimMdAccountFact } from "./account-identity";
 import {
   type createTenantClaimMdInboxCipher,
@@ -152,6 +153,8 @@ export function createTenantClaimMdResponseRepository(input: {
           eq(C.status, "active"),
           isNotNull(C.baaVerifiedAt),
           isNull(C.baaRevokedAt),
+          // an ended recorded BAA (CW-AC-17) is out of service like a revoked one: no capture under it
+          baaInForceSql,
         ),
       )
       .for("share")

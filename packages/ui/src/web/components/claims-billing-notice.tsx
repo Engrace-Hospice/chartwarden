@@ -17,6 +17,7 @@ export type ClaimsBillingDenyReason =
   | "clearinghouse_outside"
   | "clearinghouse_not_active"
   | "clearinghouse_baa_revoked"
+  | "clearinghouse_baa_expired"
   | "never_purchased"
   | "lapsed"
   | "subscription_suspended"
@@ -42,6 +43,8 @@ const REASON_TEXT: Record<ClaimsBillingDenyReason, string> = {
   clearinghouse_not_active: "Your organization's clearinghouse is set up but not active yet.",
   clearinghouse_baa_revoked:
     "Your organization's clearinghouse is out of service: its vendor BAA was revoked. Record a new BAA or choose another clearinghouse.",
+  clearinghouse_baa_expired:
+    "Your organization's clearinghouse is out of service: its recorded vendor BAA has ended. Record the renewed BAA; a platform operator then verifies it.",
   never_purchased: "Your organization does not have the claims-billing add-on.",
   lapsed: "Your organization's claims-billing add-on has ended.",
   subscription_suspended: "Your subscription is suspended.",

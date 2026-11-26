@@ -263,6 +263,8 @@ const REFUSAL_WORDING: Record<ClaimsBillingDenyReason, string> = {
   clearinghouse_not_active: "this organization's clearinghouse is set up but not active yet",
   clearinghouse_baa_revoked:
     "this organization's clearinghouse is out of service because its vendor BAA was revoked",
+  clearinghouse_baa_expired:
+    "this organization's clearinghouse is out of service because its recorded vendor BAA has ended",
   never_purchased: "this organization has not purchased the claims-billing add-on",
   lapsed: "this organization's claims-billing add-on has ended",
   subscription_suspended: "this organization's subscription is suspended",
