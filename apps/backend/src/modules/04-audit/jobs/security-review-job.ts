@@ -5,7 +5,7 @@
 //   · PLATFORM LANE — once: reviews the org-less authentication events (failed sign-ins, lockouts, successful sign-ins) that
 //     no tenant context can read, under an audited `withPlatformContext` (job id `m4.security_review`, reading
 //     `organization_id IS NULL` rows only, through the platform login's column grant);
-//   · ORG LANE — for every active organization: reviews that organization's events under its own `withOrgContext`
+//   · ORG LANE — for every active or suspended organization: reviews that organization's events under its own `withOrgContext`
 //     (`systemOrgContext`: a null system actor, never an ambient request actor), so RLS scopes every read.
 // Each run evaluates the rules in `@chartwarden/audit` (`SECURITY_RULES`), raises every NEW finding through the alert sink
 // (the existing ops alert path: a log line plus `OPS_ALERT_WEBHOOK_URL`), and appends the review record to the audit trail
@@ -13,7 +13,7 @@
 //
 // FAIL LOUD. An alert that could not be delivered leaves the run `delivery_failed` (its cursor does not move, so the next run
 // retries) and this job THROWS after the record is committed, so BullMQ fails the job and the DLQ alert fires; it never reports
-// green over an undelivered alert. One scope's failure never skips the others (`runAuditFanout` re-raises them together).
+// green over an undelivered alert. One scope's failure never skips the others (the tick collects them and fails once, naming them).
 //
 // ADDING A DETECTION is one entry in `SECURITY_RULES` (packages/audit/src/review/rules.ts); nothing here names a rule.
 import {
@@ -32,7 +32,6 @@ import {
   withOrgContext,
   withPlatformContext,
 } from "@chartwarden/tenancy";
-import { runAuditFanout } from "./audit-job-ops";
 
 /** The platform job id the org-less lane enters `withPlatformContext` under (registered at boot, like the other M4 jobs). */
 export const M4_SECURITY_REVIEW_PLATFORM_JOB_ID = "m4.security_review";
@@ -94,40 +93,55 @@ export function runSecurityReviewForPlatform(
   );
 }
 
-/** A run that left an alert undelivered is committed, then reported as a failure of the job. */
-function assertDelivered(label: string, { run }: SecurityReviewResult): void {
-  if (run.status === "ok") return;
+/**
+ * A run that left an alert undelivered is committed, then reported as a failure of the job. A run that was `skipped` (another run
+ * of the scope held its lock) did nothing and is not a failure: that other run is the one that reviews it.
+ */
+function assertDelivered(label: string, result: SecurityReviewResult): void {
+  if (result.skipped || result.run.status === "ok") return;
   throw new Error(
-    `M4_SECURITY_REVIEW: ${label} left ${run.failed} alert(s) undelivered and ${run.deferred} deferred; the next run retries`,
+    `M4_SECURITY_REVIEW: ${label} left ${result.run.failed} alert(s) undelivered and ${result.run.deferred} deferred; the next run retries`,
   );
 }
 
-/** One scheduled tick: the platform lane, then every active organization. Failures are collected, never short-circuit. */
+/** Scopes named in a failure message (ids and a lane name only), capped so a mass failure stays one readable line. */
+const MAX_LABELS_IN_MESSAGE = 5;
+
+/**
+ * One scheduled tick: the platform lane, then every reviewed organization. A scope's failure never skips the next; they are
+ * collected and the job fails once, naming the scopes (the DLQ line carries only this message).
+ */
 export async function runSecurityReviewTick(
   deps: SecurityReviewDeps,
 ): Promise<{ readonly orgs: number }> {
-  const failures: unknown[] = [];
+  const failures: { readonly label: string; readonly error: unknown }[] = [];
+  const attempt = async (
+    label: string,
+    run: () => Promise<SecurityReviewResult>,
+  ): Promise<void> => {
+    try {
+      assertDelivered(label, await run());
+    } catch (error) {
+      failures.push({ label, error });
+    }
+  };
+  await attempt("platform lane", () => runSecurityReviewForPlatform(deps));
+  let orgs: readonly { readonly organizationId: string }[] = [];
   try {
-    assertDelivered("platform lane", await runSecurityReviewForPlatform(deps));
+    orgs = await deps.listOrgs();
   } catch (error) {
-    failures.push(error);
+    failures.push({ label: "organization list", error });
   }
-  let orgs = 0;
-  try {
-    ({ orgs } = await runAuditFanout(
-      deps.listOrgs,
-      async (organizationId) =>
-        assertDelivered(
-          `org ${organizationId}`,
-          await runSecurityReviewForOrg(deps, organizationId),
-        ),
-      "security_review",
-    ));
-  } catch (error) {
-    failures.push(error);
+  for (const { organizationId } of orgs) {
+    await attempt(`org ${organizationId}`, () => runSecurityReviewForOrg(deps, organizationId));
   }
   if (failures.length > 0) {
-    throw new AggregateError(failures, `M4_SECURITY_REVIEW: ${failures.length} scope failure(s)`);
+    const named = failures.slice(0, MAX_LABELS_IN_MESSAGE).map((f) => f.label);
+    const more = failures.length > named.length ? `, +${failures.length - named.length} more` : "";
+    throw new AggregateError(
+      failures.map((f) => f.error),
+      `M4_SECURITY_REVIEW: ${failures.length} scope failure(s): ${named.join(", ")}${more}`,
+    );
   }
-  return { orgs };
+  return { orgs: orgs.length };
 }

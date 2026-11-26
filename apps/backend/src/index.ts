@@ -11074,16 +11074,29 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       // lane, `withOrgContext`). New findings go to the existing ops alert path (a log line + OPS_ALERT_WEBHOOK_URL, the
       // same destination as the DLQ and platform-ops notices); the review record is appended to the audit trail. With no
       // webhook configured an alert is logged and recorded `no_destination`, never silently dropped.
+      // A suspended tenant is still reviewed (its sign-ins and exports still happen); a closed one has nothing left to review.
+      const m4SecurityReviewOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M4_SECURITY_REVIEW_PLATFORM_JOB_ID,
+        reason: "CW-MON-01 security review org fan-out",
+        statuses: ["active", "suspended"],
+      });
       const m4SecurityReview = {
         db: dbHandle.db,
         platformDb: platformDbHandle.db,
         auditBypass: m34PlatformBypassAuditor,
-        listOrgs: () => m4AuditOrgs.listActiveOrgs(),
+        listOrgs: () => m4SecurityReviewOrgs.listActiveOrgs(),
         sink: buildSecurityAlertSink({
           webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
           log: (message: string) => app.log.warn(message),
         }),
       };
+      if (!process.env.OPS_ALERT_WEBHOOK_URL) {
+        app.log.warn(
+          "M4 security review: OPS_ALERT_WEBHOOK_URL is not set. Alerts are logged and recorded `no_destination`; nobody is told (docs/runbooks/security-alert-review.md section 2).",
+        );
+      }
       const m4Workers = registerAuditOpsWorkers({
         connection: queueConnection,
         ops: m4Ops,

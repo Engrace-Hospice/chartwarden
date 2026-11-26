@@ -12,6 +12,7 @@ import {
   type BurstRule,
   type DistinctRule,
   MAX_SAMPLE_EVENT_IDS,
+  REVIEW_NOTICE_RULES,
   type ReviewEvent,
   SECURITY_RULES,
   type SecurityRule,
@@ -116,7 +117,8 @@ describe("the rule catalog", () => {
       "utf8",
     );
     const anchors = [...runbook.matchAll(/<a id="([^"]+)"><\/a>/g)].map((m) => m[1]);
-    expect(anchors.sort()).toEqual(SECURITY_RULES.map((r) => r.id).sort());
+    const noticeIds = Object.values(REVIEW_NOTICE_RULES).map((r) => r.id); // the review's own alerts have sections too
+    expect(anchors.sort()).toEqual([...SECURITY_RULES.map((r) => r.id), ...noticeIds].sort());
   });
 
   it("looks back over the widest window and prefilters on every signal event type", () => {
@@ -272,6 +274,14 @@ describe("findings", () => {
     const started = performance.now();
     expect(evaluate(rule, flood)).toEqual([]);
     expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it("never treats an unparseable address (\"unknown\") as a network: thirty failures from it are not one subject", () => {
+    const rule = SECURITY_RULES.find((r) => r.id === "auth.brute_force_by_network") as BurstRule;
+    const unparseable = Array.from({ length: rule.threshold * 2 }, (_, i) =>
+      event("m2.auth.login_failed", i * 1000, { ipPrefix: "unknown" }),
+    );
+    expect(evaluate(rule, unparseable)).toEqual([]);
   });
 
   it("caps the sample of event ids while still counting the whole burst", () => {

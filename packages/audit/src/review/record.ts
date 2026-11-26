@@ -1,7 +1,8 @@
 // @chartwarden/audit — the durable review log of the security review (CW-MON-01): what the review wrote down.
 //
-// The review's evidence is the audit trail itself, in two event types, so it is append-only, sealed by the hash chain with
-// everything else, and kept on the 7-year compliance schedule (HIPAA §164.316(b)(2)):
+// The review's evidence is the audit trail itself, in two event types, so it is append-only and kept on the 7-year compliance
+// schedule (HIPAA §164.316(b)(2)). An organization's rows are sealed by the audit hash chain when it is enabled for them; the
+// org-less platform-lane rows are NOT in any seal (the chain is per organization):
 //   · `m4.security_review.completed`   — one row per scope per run: the window reviewed, how much was scanned, how many
 //                                        findings, how many alerts went where. This is the "we reviewed the log" record, and
 //                                        its `windowTo` is also the cursor the next run resumes from (see `readReviewCursor`).
@@ -47,8 +48,14 @@ export interface ReviewRunRecord {
   readonly delivered: number;
   readonly failed: number;
   readonly noDestination: number;
-  /** New findings past the per-run alert cap: not raised yet, so the run is `delivery_failed` and the next one raises them. */
+  /** New findings that were due but not attempted (the destination failed, or the delivery time budget ran out): the run is `delivery_failed` and the next one raises them. */
   readonly deferred: number;
+  /** New findings past the per-run alert cap, rolled into one `review.alert_flood` alert instead of being raised one by one. */
+  readonly suppressed: number;
+  /** The look-back read hit its row cap, so a burst that straddled the cursor may have been missed (a `review.incomplete_scan` alert says so). */
+  readonly overlapTruncated: boolean;
+  /** More bulk-access buckets crossed the threshold than the aggregate returns. */
+  readonly bulkTruncated: boolean;
 }
 
 async function write(

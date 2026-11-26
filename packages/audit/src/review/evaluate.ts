@@ -64,7 +64,10 @@ export interface SecurityFinding {
 }
 
 export const MAX_SAMPLE_EVENT_IDS = 5;
-/** How much of a credential hash an alert may carry: enough to correlate with the trail, too little to reverse. */
+/**
+ * How much of a credential hash an alert may carry: enough to correlate with the trail. The hash is an unsalted SHA-256 of the email
+ * address, so a reader who can guess the address can still confirm it: the alert's destination is workforce-confidential.
+ */
 export const ACCOUNT_HASH_REF_CHARS = 12;
 
 export interface FindingScope {
@@ -79,7 +82,8 @@ function subjectOf(event: ReviewEvent, kind: SubjectKind): string | null {
     case "actor":
       return event.contextUserId ?? event.actorUserId;
     case "ip_prefix":
-      return event.ipPrefix;
+      // "unknown" is what the auth bridge writes for an address it could not parse: not a network, so never a subject.
+      return event.ipPrefix === "unknown" ? null : event.ipPrefix;
     case "account_hash":
       return event.accountHash;
   }
@@ -246,6 +250,63 @@ export function bulkAccessFindings(
         anchor: h.bucketStart,
       }),
     );
+}
+
+/** An alert this scope already raised and delivered (or had no destination for): the review's memory, read back from the audit trail. */
+export interface RaisedAlertRef {
+  readonly fingerprint: string;
+  readonly ruleId: string;
+  readonly subjectKind: string;
+  readonly subjectRef: string;
+  /** ms since epoch of the raised alert's window end. */
+  readonly windowToMs: number;
+}
+
+/**
+ * True when an alert for the same (rule, subject) already covered a window that ended within `cooldownMs` before this finding
+ * began, so a sustained pattern is not raised again every run. `always` findings are one per event and are never held back.
+ */
+export function isWithinCooldown(
+  finding: SecurityFinding,
+  raised: readonly RaisedAlertRef[],
+  cooldownMs: number,
+  isAlways: (ruleId: string) => boolean,
+): boolean {
+  if (isAlways(finding.ruleId)) return false;
+  const startsAt = ms(finding.windowFrom);
+  return raised.some(
+    (r) =>
+      r.ruleId === finding.ruleId &&
+      r.subjectKind === finding.subject.kind &&
+      r.subjectRef === finding.subject.ref &&
+      startsAt - r.windowToMs <= cooldownMs &&
+      startsAt >= r.windowToMs - cooldownMs,
+  );
+}
+
+/**
+ * A finding about the review itself (see `REVIEW_NOTICE_RULES`): it names no event, so its subject is the run (`ref` is the
+ * codes of what went wrong) and its fingerprint is per run.
+ */
+export function noticeFinding(
+  rule: { readonly id: string; readonly title: string; readonly severity: SecuritySeverity; readonly controls: readonly string[] },
+  scope: FindingScope,
+  fields: { readonly count: number; readonly ref: string; readonly windowFrom: string; readonly windowTo: string },
+): SecurityFinding {
+  return {
+    ruleId: rule.id,
+    title: rule.title,
+    severity: rule.severity,
+    lane: scope.organizationId === null ? "platform" : "org",
+    controls: rule.controls,
+    organizationId: scope.organizationId,
+    subject: { kind: "event", ref: fields.ref },
+    count: fields.count,
+    windowFrom: fields.windowFrom,
+    windowTo: fields.windowTo,
+    sampleEventIds: [],
+    fingerprint: fingerprintOf(scope, rule.id, fields.ref, fields.windowTo),
+  };
 }
 
 export const SECURITY_ALERT_RUNBOOK = "docs/runbooks/security-alert-review.md";

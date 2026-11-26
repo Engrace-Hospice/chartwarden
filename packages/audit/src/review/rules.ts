@@ -239,13 +239,15 @@ export const SECURITY_RULES: readonly SecurityRule[] = [
     windowMs: 15 * MINUTE_MS,
   },
   {
+    // The tenant-offboarding shred (`data.destruction_certified`, M34) is NOT here: it is written against an organization that is
+    // being closed, which the org lane (active and suspended organizations) does not review.
     id: "destructive.data_destruction_approved",
-    title: "A data-destruction certificate was approved or certified",
+    title: "A data-destruction certificate was approved",
     kind: "always",
     lane: "org",
     severity: "critical",
     controls: ["CW-MON-01"],
-    eventTypes: ["m4.destruction_certificate.approved", "data.destruction_certified"],
+    eventTypes: ["m4.destruction_certificate.approved"],
   },
   {
     id: "integrity.audit_chain_mismatch",
@@ -257,6 +259,32 @@ export const SECURITY_RULES: readonly SecurityRule[] = [
     eventTypes: ["audit.integrity_mismatch"],
   },
 ];
+
+/**
+ * After an alert for (rule, subject), a later finding for the same pair that starts within this long of that alert's window is
+ * held back: a sustained attack alerts about once an hour per subject, not once per run. (`always` rules are one alert per event
+ * and are not subject to it.)
+ */
+export const ALERT_COOLDOWN_MS = 60 * MINUTE_MS;
+
+/**
+ * Findings about the REVIEW ITSELF rather than about an event, so they are not in `SECURITY_RULES` (nothing evaluates them over
+ * events): the run raises them when it could not do its job completely. Each has a runbook anchor like any rule.
+ */
+export const REVIEW_NOTICE_RULES = {
+  alertFlood: {
+    id: "review.alert_flood",
+    title: "More new findings than one run raises: the rest were not raised one by one",
+    severity: "critical",
+    controls: ["CW-MON-01"],
+  },
+  incompleteScan: {
+    id: "review.incomplete_scan",
+    title: "The review could not read everything it should have (a read cap was hit, or it resumed after a long gap)",
+    severity: "warn",
+    controls: ["CW-MON-01"],
+  },
+} as const;
 
 /** The rules of one lane. */
 export const rulesForLane = <R extends SecurityRule>(

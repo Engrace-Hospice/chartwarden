@@ -514,7 +514,7 @@ async function main(): Promise<void> {
       for (const t of PLATFORM_READ_TABLES) {
         await run(`GRANT SELECT ON "${t}" TO chartwarden_platform;`);
       }
-      // CW-MON-01 (migration 1558) — the security review's platform lane reads the org-less authentication events. COLUMN
+      // CW-MON-01 (migration 1561) — the security review's platform lane reads the org-less authentication events. COLUMN
       // grant, the six columns the review selects: never `before`, `after`, `source_ip`, `user_agent` or the request/trace ids.
       await run(
         'GRANT SELECT ("id", "created_at", "organization_id", "actor_user_id", "event_type", "context") ON "audit_event" TO chartwarden_platform;',

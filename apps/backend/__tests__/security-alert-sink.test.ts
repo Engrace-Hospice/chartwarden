@@ -73,11 +73,39 @@ describe("buildSecurityAlertSink", () => {
   it("reports failed, and does not throw, when the request itself fails or times out", async () => {
     const log = vi.fn();
     const fetchImpl = vi.fn(async () => {
-      throw new Error("connect ECONNREFUSED");
+      throw Object.assign(new Error("connect failed"), { code: "ECONNREFUSED" });
     }) as unknown as typeof fetch;
     const sink = buildSecurityAlertSink({ webhookUrl: URL_TEST, fetchImpl, log });
     await expect(sink(alert)).resolves.toBe("failed");
-    expect(log).toHaveBeenCalledWith(expect.stringContaining("ECONNREFUSED"));
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("Error ECONNREFUSED"));
+  });
+
+  it("never writes the webhook URL (it often carries a secret) into a log line, even when the error message embeds it", async () => {
+    const secretUrl = "https://alerts.example.test/hook/synthetic-secret-token-123";
+    const log = vi.fn();
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError(`Failed to parse URL from ${secretUrl}`);
+    }) as unknown as typeof fetch;
+    await buildSecurityAlertSink({ webhookUrl: secretUrl, fetchImpl, log })(alert);
+    for (const [line] of log.mock.calls) {
+      expect(line).not.toContain("synthetic-secret-token-123");
+      expect(line).not.toContain(secretUrl);
+    }
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("TypeError"));
+  });
+
+  it("refuses redirects (a 307/308 would replay the body elsewhere) and releases the response body", async () => {
+    const cancel = vi.fn(async () => undefined);
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: { cancel },
+    })) as unknown as typeof fetch;
+    await buildSecurityAlertSink({ webhookUrl: URL_TEST, fetchImpl, log: vi.fn() })(alert);
+    const init = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[1] as RequestInit;
+    expect(init.redirect).toBe("error");
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 
   it("puts ids and codes only in the log line and the webhook body", async () => {

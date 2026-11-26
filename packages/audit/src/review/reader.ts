@@ -5,14 +5,14 @@
 // TWO SCOPES, ONE SET OF QUERIES. The org scope runs on a `withOrgContext` transaction (the NOBYPASSRLS `chartwarden_app`
 // role: RLS scopes the read, and the explicit `organization_id = …` predicate says the same thing again). The platform scope
 // (`organizationId: null`) runs on the audited `withPlatformContext` transaction of the platform login, which carries
-// BYPASSRLS and a COLUMN grant on `audit_event` (migration 1558 / scripts/db/provision-runtime-roles.ts), so the explicit
+// BYPASSRLS and a COLUMN grant on `audit_event` (migration 1561 / scripts/db/provision-runtime-roles.ts), so the explicit
 // `organization_id IS NULL` predicate is what keeps it to the org-less authentication rows.
 //
 // MINIMAL COLUMNS. Only what the rules need is selected, and from `context` only three scalar keys: `userId`, `ipPrefix`
 // and `emailHash` (a hash). No `before`, `after`, free text or any other context key is ever read, so nothing the denylist
 // would scrub can reach an alert.
 import { type SQL, sql } from "drizzle-orm";
-import type { BulkAccessHit, ReviewEvent } from "./evaluate";
+import type { BulkAccessHit, RaisedAlertRef, ReviewEvent } from "./evaluate";
 
 /** The one thing the reader needs of a transaction: raw SQL in, rows out (a Drizzle tx satisfies it). */
 export interface ReviewSqlExecutor {
@@ -36,7 +36,9 @@ export const TERMINAL_DELIVERY_STATUSES: readonly AlertDeliveryStatus[] = [
 
 /** UTC ISO-8601 with milliseconds — what a JS Date round-trips. */
 const ISO_UTC_MS = `YYYY-MM-DD"T"HH24:MI:SS.MS"Z"`;
-const isoOf = (column: string): SQL =>
+/** The only expressions ever spliced raw into SQL: literals of this union, never a caller's string. */
+type IsoColumn = "created_at" | "min(created_at)" | "max(created_at)";
+const isoOf = (column: IsoColumn): SQL =>
   sql`to_char(${sql.raw(column)} AT TIME ZONE 'UTC', ${sql.raw(`'${ISO_UTC_MS}'`)})`;
 
 const scopeIs = (scope: ReviewScope): SQL =>
@@ -121,8 +123,14 @@ interface BulkRow extends Record<string, unknown> {
   sample_ids: string[];
 }
 
-/** Bounds the aggregate: more distinct (actor, bucket) hits than this in one run is itself the finding. */
+/** Bounds the aggregate. More hits than this in one run is reported (`truncated`) and the run raises a notice for it. */
 const BULK_HIT_LIMIT = 200;
+
+export interface BulkAccessRead {
+  readonly hits: readonly BulkAccessHit[];
+  /** More buckets crossed the threshold than the cap: the later ones were not returned. */
+  readonly truncated: boolean;
+}
 
 /**
  * Read-audit events (`<kind>.viewed` / `<kind>.disclosed`) are the bulk of the trail, so the per-actor count of DISTINCT
@@ -137,7 +145,7 @@ export async function readBulkAccessHits(
     readonly bucketMs: number;
     readonly threshold: number;
   },
-): Promise<readonly BulkAccessHit[]> {
+): Promise<BulkAccessRead> {
   const bucketSeconds = Math.max(1, Math.floor(query.bucketMs / 1000));
   const result = await db.execute<BulkRow>(sql`
     SELECT actor_user_id::text AS actor,
@@ -156,16 +164,19 @@ export async function readBulkAccessHits(
      GROUP BY 1, 2
     HAVING count(DISTINCT (resource_kind, resource_id)) >= ${query.threshold}
      ORDER BY 2, 1
-     LIMIT ${BULK_HIT_LIMIT}
+     LIMIT ${BULK_HIT_LIMIT + 1}
   `);
-  return result.rows.map((r) => ({
-    actorUserId: r.actor,
-    bucketStart: r.bucket_start,
-    distinctRecords: r.distinct_records,
-    firstAt: r.first_at,
-    lastAt: r.last_at,
-    sampleEventIds: r.sample_ids,
-  }));
+  return {
+    truncated: result.rows.length > BULK_HIT_LIMIT,
+    hits: result.rows.slice(0, BULK_HIT_LIMIT).map((r) => ({
+      actorUserId: r.actor,
+      bucketStart: r.bucket_start,
+      distinctRecords: r.distinct_records,
+      firstAt: r.first_at,
+      lastAt: r.last_at,
+      sampleEventIds: r.sample_ids,
+    })),
+  };
 }
 
 /** Where the previous review of this scope got to: the `windowTo` of its newest run that finished clean (`status: ok`), or null on the first run. */
@@ -188,19 +199,64 @@ export async function readReviewCursor(
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-/** Fingerprints of alerts raised since `since` that reached a terminal delivery status (delivered, or no destination configured). */
-export async function readRaisedFingerprints(
+interface RaisedRow extends Record<string, unknown> {
+  fingerprint: string | null;
+  rule_id: string | null;
+  subject_kind: string | null;
+  subject_ref: string | null;
+  window_to: string | null;
+}
+
+/**
+ * The alerts raised since `since` that reached a terminal delivery status (delivered, or no destination configured): the review's
+ * memory. A `failed` one is deliberately absent, so it is raised again. Used for the exact-repeat check (fingerprint) and the
+ * cooldown (rule + subject + window end).
+ */
+export async function readRaisedAlerts(
   db: ReviewSqlExecutor,
   scope: ReviewScope,
   since: Date,
-): Promise<ReadonlySet<string>> {
-  const result = await db.execute<{ fingerprint: string } & Record<string, unknown>>(sql`
-    SELECT DISTINCT context->>'fingerprint' AS fingerprint
+): Promise<readonly RaisedAlertRef[]> {
+  const result = await db.execute<RaisedRow>(sql`
+    SELECT context->>'fingerprint' AS fingerprint,
+           context->>'ruleId' AS rule_id,
+           context->'subject'->>'kind' AS subject_kind,
+           context->'subject'->>'ref' AS subject_ref,
+           context->>'windowTo' AS window_to
       FROM audit_event
      WHERE ${scopeIs(scope)}
        AND event_type = ${SECURITY_ALERT_RAISED_EVENT}
        AND created_at >= ${since.toISOString()}::timestamptz
        AND context->>'delivery' IN (${inList(TERMINAL_DELIVERY_STATUSES)})
   `);
-  return new Set(result.rows.map((r) => r.fingerprint).filter((f) => typeof f === "string"));
+  return result.rows.flatMap((r) => {
+    const windowToMs = Date.parse(r.window_to ?? "");
+    return r.fingerprint && r.rule_id && r.subject_kind && r.subject_ref && !Number.isNaN(windowToMs)
+      ? [
+          {
+            fingerprint: r.fingerprint,
+            ruleId: r.rule_id,
+            subjectKind: r.subject_kind,
+            subjectRef: r.subject_ref,
+            windowToMs,
+          },
+        ]
+      : [];
+  });
+}
+
+/**
+ * One review of one scope at a time. A transaction-scoped advisory lock keyed on the scope: a second run (a tick that outlasted its
+ * 15 minutes, a second worker replica, a stalled-job re-run) finds it taken and skips, instead of reading the same cursor and
+ * delivering every alert twice. It is released when the run's transaction ends, so a crashed run never holds it.
+ */
+export async function tryAcquireReviewLock(
+  db: ReviewSqlExecutor,
+  scope: ReviewScope,
+): Promise<boolean> {
+  const key = `m4.security_review:${scope.organizationId ?? "platform"}`;
+  const result = await db.execute<{ locked: boolean } & Record<string, unknown>>(
+    sql`SELECT pg_try_advisory_xact_lock(hashtextextended(${key}, 0)) AS locked`,
+  );
+  return result.rows[0]?.locked === true;
 }

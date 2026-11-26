@@ -12,7 +12,18 @@
 // event ids, a subject reference (a user id, a /24 prefix or a truncated credential hash) and the runbook anchor.
 import type { AlertDeliveryStatus, SecurityAlert, SecurityAlertSink } from "@chartwarden/audit";
 import { WEBHOOK_TIMEOUT_MS } from "./platform-ops-notices";
-import { safeErrorMessage } from "./redact-database-error";
+
+/**
+ * What a failed POST may say in a log line: the error type and its code (`TimeoutError`, `TypeError ECONNREFUSED`), never its
+ * message. A malformed-URL error embeds the URL, and a webhook URL commonly carries a secret.
+ */
+function describeFailure(err: unknown): string {
+  const name = err instanceof Error ? err.name : "error";
+  const code =
+    (err as { cause?: { code?: unknown } } | null)?.cause?.code ??
+    (err as { code?: unknown } | null)?.code;
+  return typeof code === "string" ? `${name} ${code}` : name;
+}
 
 /** The log line for one alert: ids and codes, greppable. */
 export function formatSecurityAlert(alert: SecurityAlert): string {
@@ -45,7 +56,11 @@ export function buildSecurityAlertSink(opts?: {
           occurredAt: now().toISOString(),
         }),
         signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
+        // A 307/308 would replay the body (org, user and event ids) at wherever it points: an operator's URL is the destination.
+        redirect: "error",
       });
+      // The body is never read; releasing it frees the connection.
+      await response.body?.cancel().catch(() => undefined);
       if (response.ok) return "delivered";
       log(
         `⚠️  security alert webhook refused (HTTP ${response.status}) for ${alert.ruleId} fp=${alert.fingerprint}`,
@@ -53,7 +68,7 @@ export function buildSecurityAlertSink(opts?: {
       return "failed";
     } catch (err) {
       log(
-        `⚠️  security alert webhook delivery failed for ${alert.ruleId} fp=${alert.fingerprint}: ${safeErrorMessage(err, { bare: true })}`,
+        `⚠️  security alert webhook delivery failed for ${alert.ruleId} fp=${alert.fingerprint}: ${describeFailure(err)}`,
       );
       return "failed";
     }

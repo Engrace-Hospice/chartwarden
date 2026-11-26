@@ -39,9 +39,12 @@ const ORG_B = "00000000-0000-4000-8000-0000000004b1";
 
 const result = (status: "ok" | "delivery_failed" = "ok"): SecurityReviewResult =>
   ({
+    skipped: false,
     run: { status, failed: status === "ok" ? 0 : 1, deferred: 0 },
     raised: [],
   }) as unknown as SecurityReviewResult;
+/** A run that found another run of its scope holding the lock. */
+const skippedRun = { skipped: true, run: null, raised: [] } as unknown as SecurityReviewResult;
 
 const deps = (over: Partial<SecurityReviewDeps> = {}): SecurityReviewDeps => ({
   db: {} as never,
@@ -100,11 +103,36 @@ describe("runSecurityReviewTick", () => {
     runSecurityReview.mockResolvedValueOnce(result());
     const error = await runSecurityReviewTick(deps()).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(AggregateError);
-    const orgFailures = (error as AggregateError).errors[0] as AggregateError; // the org fan-out's own aggregate
-    expect(String(orgFailures.errors[0])).toMatch(
+    expect(String((error as AggregateError).errors[0])).toMatch(
       new RegExp(`org ${ORG_A} left 1 alert\\(s\\) undelivered`),
     );
+    // the DLQ line carries only the message, so it names the scope (ids only)
+    expect((error as AggregateError).message).toBe(
+      `M4_SECURITY_REVIEW: 1 scope failure(s): org ${ORG_A}`,
+    );
     expect(scopes()).toEqual([null, ORG_A, ORG_B]); // B was still reviewed
+  });
+
+  it("is not a failure when a scope was skipped because another run of it held the lock", async () => {
+    runSecurityReview.mockResolvedValueOnce(skippedRun); // platform
+    runSecurityReview.mockResolvedValueOnce(result()); // A
+    runSecurityReview.mockResolvedValueOnce(skippedRun); // B
+    await expect(runSecurityReviewTick(deps())).resolves.toEqual({ orgs: 2 });
+  });
+
+  it("names at most five failed scopes and counts the rest", async () => {
+    const orgs = Array.from({ length: 7 }, (_, i) => ({
+      organizationId: `00000000-0000-4000-8000-00000000050${i}`,
+    }));
+    runSecurityReview.mockRejectedValue(new Error("pool down"));
+    const error = await runSecurityReviewTick(deps({ listOrgs: async () => orgs })).catch(
+      (e: unknown) => e,
+    );
+    const message = (error as AggregateError).message;
+    expect(message).toContain(
+      "8 scope failure(s): platform lane, org 00000000-0000-4000-8000-000000000500",
+    );
+    expect(message).toContain(", +3 more");
   });
 
   it("still runs the platform lane, and fails, when the organization list cannot be read", async () => {

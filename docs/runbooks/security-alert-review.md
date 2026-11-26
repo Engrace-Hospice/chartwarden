@@ -8,18 +8,32 @@ do for each alert. Control: `compliance/controls.yaml` CW-MON-01 (HIPAA §164.30
 
 ## 1. What runs
 
-- **Queue `audit.security_review`, every 15 minutes**, in the API worker set (the M4 audit workers). It needs the platform database
-  login (`DATABASE_PLATFORM_URL`); without it the boot log says `M4 audit workers disabled` and **nothing is reviewed**.
+- **Queue `audit.security_review`, every 15 minutes**, in the worker process (the M4 audit workers; an API-only replica does not
+  run them). It needs the platform database login (`DATABASE_PLATFORM_URL`); without it the boot log says
+  `M4 audit workers disabled` and **nothing is reviewed**. One run per scope at a time (a database advisory lock): a second replica
+  or an overlapping tick skips that scope.
 - **Two lanes per run.**
   - *Platform lane* (once): the sign-in events written before an organization is known (`m2.auth.login_failed`,
     `m2.auth.account_locked`, `m2.auth.login_succeeded`). They are org-less rows no tenant context can read, so they are read under an
     audited platform context (job id `m4.security_review`; every entry is a `platform.bypass_invoked` audit row).
-  - *Org lane* (every active organization): that organization's own events, under its own tenant context.
+  - *Org lane* (every active or suspended organization): that organization's own events, under its own tenant context. A closed
+    organization is not reviewed, and neither is the tenant-offboarding shred event (written against an organization being closed).
 - **Each run** reads what happened since the last clean review, evaluates the rules (`SECURITY_RULES`), raises every **new** finding
-  once (a fingerprint of rule + subject + trigger event stops a repeat), and appends the review record.
-- **A run that could not deliver an alert** is recorded `delivery_failed`, does not move the cursor, and fails the BullMQ job (so the
-  DLQ alert fires too). The next run tries the same alerts again. A worker that was down resumes where it stopped, up to one day back
-  (the cap is recorded as `catchUpCapped`, not hidden).
+  once, and appends the review record. "Once" means: not the exact finding already raised (a fingerprint of rule + subject + trigger
+  event), and, for a pattern rather than a single event, not the same rule and subject again within **one hour** of an alert for it.
+  A sustained attack therefore alerts about once an hour per subject, not once per run.
+- **Bounded.** At most 50 individual alerts per run; any further new findings become **one** `review.alert_flood` alert (counted in
+  the run's `suppressed`), so an attacker who can mint findings cannot page-storm the destination or pin the cursor. Delivery is one
+  alert at a time, most severe first, and stops at the first failed delivery or after 30 seconds.
+- **A run that could not deliver an alert** (a failed delivery, or the stop above) is recorded `delivery_failed`, does not move the
+  cursor, and fails the BullMQ job. The next run tries the rest again; what was delivered is not repeated. The job failure raises the
+  DLQ notice, **which uses the same webhook**: when the destination itself is down, what remains is the failed-job log and the audit
+  record, so watch for failed jobs as well as for alerts. A worker that was down resumes where it stopped, up to one day back; a
+  longer gap is recorded as `catchUpCapped` **and** raised as a `review.incomplete_scan` alert, not hidden.
+- Delivery happens inside the run's database transaction (the scope's lock has to span it). If anything after a delivery fails, the
+  transaction rolls back and the next run sends that alert again: delivery is **at least once**, and `correlationId` is the alert's
+  fingerprint so a receiver can drop a repeat.
+- **The first run of a scope reviews the previous 24 hours**, so enabling it can raise a burst of alerts for events already in the log.
 
 ## 2. Configuration
 
@@ -28,12 +42,14 @@ Nothing here is applied by the code change; an operator sets it.
 | Setting | What it does |
 |---|---|
 | `OPS_ALERT_WEBHOOK_URL` | The destination, **the same variable the DLQ and platform-ops notices use** (https). Each alert is one `POST` of `{ kind: "security_alert", summary, details, correlationId, occurredAt }`. A `2xx` is *delivered*; any other status or a 5 s timeout is *failed* and retried by the next run. |
-| *(unset)* | The alert is still logged (`🔒 security alert [...]`) and recorded with `delivery: no_destination`, the run is `ok`. **That is not monitoring**: no human is told. Production must set the webhook. |
-| `DATABASE_PLATFORM_URL` | Required (see above). The platform carrier needs `SELECT` on six `audit_event` columns (`id, created_at, organization_id, actor_user_id, event_type, context`): migration 1558 grants it where the carrier exists, and `bun run db:provision-roles` re-grants it. Check: `SELECT has_column_privilege('chartwarden_platform', 'audit_event', 'event_type', 'SELECT');` |
+| *(unset)* | The alert is still logged (`🔒 security alert [...]`) and recorded with `delivery: no_destination`, the run is `ok`, and the boot log warns once. **That is not monitoring**: no human is told, and those alerts are never re-sent once a webhook is set. Production must set the webhook. |
+| `DATABASE_PLATFORM_URL` | Required (see above). The platform carrier needs `SELECT` on six `audit_event` columns (`id, created_at, organization_id, actor_user_id, event_type, context`): migration 1561 grants it where the carrier exists, and `bun run db:provision-roles` re-grants it. Check: `SELECT has_column_privilege('chartwarden_platform', 'audit_event', 'event_type', 'SELECT');` **Know what this grants:** the platform login is BYPASSRLS, so the grant lets it read those columns of *every* tenant's audit rows, `context` included, and `context` can hold ids and short free text the denylist does not catch (a break-glass or destruction `reason`, a collaborator's `patientId`). Only the review's own `organization_id IS NULL` predicate (proved by the live suite) keeps it to org-less rows. Narrowing it to a SECURITY DEFINER reader is the follow-up. |
 
 `details` is the alert and nothing else: rule id, severity, counts, ISO window, event ids, a subject *reference* (a user id, a /24
 network prefix, or the first 12 characters of a credential hash), the organization id, and the runbook anchor. No name, note, patient or
-free text. Open the sample event ids in the audit log for the rest.
+free text. Open the sample event ids in the audit log for the rest. (The 12 characters of a credential hash are the start of an
+unsalted SHA-256 of the email address: they let a reader correlate with the trail, but a reader who can guess the address can confirm
+it. Treat the destination as workforce-confidential, like the audit log.)
 
 **Open decisions (owner: security officer; not made by the code):**
 
@@ -47,11 +63,13 @@ free text. Open the sample event ids in the audit log for the rest.
 
 ## 3. Reading the review log
 
-Two audit event types (retained 7 years, sealed by the hash chain with everything else):
+Two audit event types (retained 7 years). An organization's rows are sealed by the audit hash chain when it is enabled for that
+organization; the **org-less platform-lane rows are in no seal** (the chain is per organization), so that lane's evidence is the
+append-only table and the database's own controls, not a tamper-evident chain:
 
 - `m4.security_review.completed`: one per scope per run. `context`: `status` (`ok` / `delivery_failed`), `lane`, `windowFrom`,
-  `windowTo`, `eventsScanned`, `findings`, `newAlerts`, `delivered`, `failed`, `noDestination`, `deferred`, `scanTruncated`,
-  `catchUpCapped`, `rulesVersion`. Its `windowTo` is the next run's cursor.
+  `windowTo`, `eventsScanned`, `findings`, `newAlerts`, `delivered`, `failed`, `noDestination`, `deferred`, `suppressed`,
+  `scanTruncated`, `overlapTruncated`, `bulkTruncated`, `catchUpCapped`, `rulesVersion`. Its `windowTo` is the next run's cursor.
 - `m4.security_review.alert_raised`: one per alert. `context`: `ruleId`, `subject`, `count`, `windowFrom`, `windowTo`,
   `sampleEventIds`, `fingerprint`, `delivery` (`delivered` / `failed` / `no_destination`).
 
@@ -64,16 +82,20 @@ SELECT date_trunc('day', created_at) AS day, context->>'lane' AS lane,
        count(*) FILTER (WHERE context->>'status' = 'ok')              AS ok_runs,
        count(*) FILTER (WHERE context->>'status' <> 'ok')             AS failed_runs,
        count(*) FILTER (WHERE (context->>'catchUpCapped')::boolean)   AS catch_up_capped,
-       count(*) FILTER (WHERE (context->>'scanTruncated')::boolean)   AS truncated,
-       sum((context->>'newAlerts')::int)                              AS alerts
+       count(*) FILTER (WHERE (context->>'overlapTruncated')::boolean
+                           OR (context->>'bulkTruncated')::boolean)   AS read_cap_hit,
+       sum((context->>'newAlerts')::int)                              AS alerts,
+       sum((context->>'noDestination')::int)                          AS no_destination,
+       sum((context->>'suppressed')::int)                             AS suppressed
   FROM audit_event
  WHERE event_type = 'm4.security_review.completed' AND created_at > now() - interval '7 days'
  GROUP BY 1, 2 ORDER BY 1, 2;
 ```
 
 **Weekly review (the HIPAA "regular review" evidence).** Once a week the named reviewer: (a) confirms each lane shows about 96 `ok` runs
-a day and explains any `failed_runs`, `catch_up_capped` or `truncated`; (b) opens every `alert_raised` of the week and confirms a
-disposition exists; (c) records that they did it. Step (c) is a human record: the code does not hold it.
+a day and explains any `failed_runs`, `catch_up_capped` or `read_cap_hit`; (b) checks `no_destination` is zero in production (anything
+else means alerts went nowhere) and looks at `suppressed`; (c) opens every `alert_raised` of the week and confirms a disposition
+exists; (d) records that they did it. Step (d) is a human record: the code does not hold it.
 
 ## 4. Responding by rule
 
@@ -148,13 +170,31 @@ reinstate (`m2.membership.reinstated`) while you investigate.
 
 <a id="destructive.data_destruction_approved"></a>
 ### destructive.data_destruction_approved (critical)
-A destruction certificate was approved or certified. Destruction is irreversible: confirm the retention class and that no legal hold
-applies (CW-DS-01) before the executor runs, while there is still time to hold the certificate.
+A destruction certificate was approved. Destruction is irreversible: confirm the retention class and that no legal hold
+applies (CW-DS-01) before the executor runs, while there is still time to hold the certificate. (The tenant-offboarding shred is not
+reviewed here: it is recorded against an organization that is being closed.)
 
 <a id="integrity.audit_chain_mismatch"></a>
 ### integrity.audit_chain_mismatch (critical)
 The sealed audit hash chain no longer verifies: the log was altered out of band. This is a security incident (CW-IR-01). Preserve the
 database and open the integrity run (`audit_integrity_run`) named in the M36 alert.
+
+### Alerts about the review itself
+
+<a id="review.alert_flood"></a>
+#### review.alert_flood (critical)
+More new findings than one run raises (50): the first 50 were raised one by one, and this alert stands for the rest (`count`). Something
+is producing findings in volume, most likely an attack on the sign-in endpoint (many networks failing at once) or a mass change by one
+administrator. The unraised findings are not lost: the events are in the audit log for the window shown, and the run's `suppressed`
+counts them. Open the window in the audit log and triage by event type and subject, and consider blocking at the edge.
+
+<a id="review.incomplete_scan"></a>
+#### review.incomplete_scan (warn)
+The review could not read everything it should have. `subject.ref` lists why: `overlap_truncated` (the look-back read hit its row cap,
+so a burst that straddled the previous run may have been missed), `bulk_truncated` (more bulk-access buckets crossed the threshold than
+the aggregate returns), `catch_up_capped` (the worker was down more than a day, and the older part of the gap was not reviewed),
+`cursor_stepped` (the read cap was filled by rows stamped in one millisecond, so the cursor stepped past the rest of them). Review the
+window in the audit log by hand for what the rule would have caught.
 
 ## 5. Adding a detection (how other controls reuse this)
 
@@ -178,4 +218,11 @@ from its own definition, and every rule id needs an anchor in this file. The con
 - Cross-tenant access attempts return 404 by design and leave no audit event, so there is nothing to alert on.
 - Only exports that write an audit event are seen by `export.request_burst`; bulk reads are covered by `access.bulk_record_access`.
 - Review runs every 15 minutes: an alert reaches the destination within one run of the event, not instantly.
+- The sign-in rules count the network prefix the auth bridge records (a /24 or /48). An address it cannot parse is recorded as
+  `unknown` and is ignored by the rules; an IPv4-mapped IPv6 address (`::ffff:a.b.c.d`) is recorded as one shared prefix, which would
+  pool every such client, so the backend is expected to see plain IPv4 addresses (it listens on `0.0.0.0`). Fixing `ipPrefixOf` for
+  mapped addresses is a one-line follow-up in the auth package.
+- Reads are row-capped (20,000 new rows and 5,000 look-back rows per scope per run, and one shared cap across the rule event types),
+  so a flood of one event type can crowd out another within a run. The caps are recorded and raised (`review.incomplete_scan`), not silent.
+- Suspended organizations are reviewed; closed ones, and the tenant-offboarding shred event, are not.
 - Dispositions and the weekly review are human records outside the code (section 2, decision 4).

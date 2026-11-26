@@ -2255,8 +2255,8 @@ controls:
       - file: apps/backend/src/bootstrap/security-alert-sink.ts
       - file: apps/backend/__tests__/security-review-job.test.ts
       - file: apps/backend/__tests__/security-alert-sink.test.ts
-      # The platform carrier reads six audit_event columns for the org-less lane (migration 1558, re-granted by the provisioner).
-      - file: packages/db/migrations/1558_m4_security_review_platform_audit_read.sql
+      # The platform carrier reads six audit_event columns for the org-less lane (migration 1561, re-granted by the provisioner).
+      - file: packages/db/migrations/1561_m4_security_review_platform_audit_read.sql
       - file: docs/runbooks/security-alert-review.md
       - file: docs/compliance/AISOC_INTEGRATION.md
     gap:
@@ -2268,10 +2268,17 @@ controls:
         proxy (one user from three /24 prefixes within an hour), not a distance check, because the trail holds no geolocation; cross-tenant
         access attempts return 404 and leave no audit event, so they cannot alert; mass export covers only exports that write an audit
         event (m4.audit_export.requested) plus bulk reads (100 distinct records in a fixed 15-minute bucket, so a burst split across a
-        bucket edge counts half); m3.authz.denied is sampled, so its counts are a floor. Host, edge and Postgres (pgaudit) logs are not
-        reviewed (docs/compliance/AISOC_INTEGRATION.md). The platform login now holds SELECT on six audit_event columns across tenants (it
-        is BYPASSRLS, so only the review's own organization_id IS NULL predicate, proved by the live suite, keeps it to org-less rows).
-        Break-glass already pages the tenant's compliance officer in-app (GAP-010); this review is the second line, to the ops path.
+        bucket edge counts half); m3.authz.denied is sampled, so its counts are a floor. Reads are row-capped and share one cap across a
+        run's event types (a cap that is hit is recorded and raised as review.incomplete_scan, not silent); a pattern alerts about once an
+        hour per subject, and more than 50 new findings in one run become one review.alert_flood alert. Only active and suspended
+        organizations are reviewed, so the tenant-offboarding shred event (data.destruction_certified) is not. Delivery is at least once
+        (it happens inside the run's transaction, so a failure after a send re-sends it). Host, edge and Postgres (pgaudit) logs are not
+        reviewed (docs/compliance/AISOC_INTEGRATION.md). The platform login now holds SELECT on six audit_event columns across tenants,
+        context included (it is BYPASSRLS, so only the review's own organization_id IS NULL predicate, proved by the live suite, keeps it
+        to org-less rows), and a tenant row's context can hold short free text the denylist does not catch (a break-glass or destruction
+        reason, a collaborator's patientId); narrowing it to a SECURITY DEFINER reader is the follow-up. The org-less platform-lane review
+        records are in no hash-chain seal (the chain is per organization). Break-glass already pages the tenant's compliance officer
+        in-app (GAP-010); this review is the second line, to the ops path.
         CW-AC-47..52 and CW-AC-54 wait on this alerting: each adds one entry to SECURITY_RULES for its own audit event and drops its
         "no alert" line (runbook section 5).
       owner: security-officer

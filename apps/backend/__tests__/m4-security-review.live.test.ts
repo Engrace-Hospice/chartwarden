@@ -18,7 +18,12 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { type SecurityAlert, type SecurityAlertSink, auditPlatformEvent } from "@chartwarden/audit";
+import {
+  type SecurityAlert,
+  type SecurityAlertSink,
+  type SecurityReviewResult,
+  auditPlatformEvent,
+} from "@chartwarden/audit";
 import { createDbClient } from "@chartwarden/db";
 import {
   type PlatformBypassAuditor,
@@ -94,6 +99,12 @@ describe.skipIf(!DB_URL)("M4 security review of the audit trail — LIVE Postgre
         return "delivered";
       },
     };
+  };
+  /** The result of a review that actually ran (a skipped one is a test failure here). */
+  const ran = (result: SecurityReviewResult): Extract<SecurityReviewResult, { skipped: false }> => {
+    if (result.skipped)
+      throw new Error("the review was skipped: another run held the scope's lock");
+    return result;
   };
   const failing: SecurityAlertSink = async () => "failed";
   const noDestination: SecurityAlertSink = async () => "no_destination";
@@ -171,7 +182,7 @@ describe.skipIf(!DB_URL)("M4 security review of the audit trail — LIVE Postgre
       .sort()) {
       await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
     }
-    // The platform carrier + login: migration 1558 grants the carrier its columns only where the carrier already exists,
+    // The platform carrier + login: migration 1561 grants the carrier its columns only where the carrier already exists,
     // so provisioning AFTER the migrations is exactly what a fresh database goes through (and re-grants on every run).
     const provisioned = spawnSync("bun", ["run", "scripts/db/provision-runtime-roles.ts"], {
       cwd: join(__dirname, "../../.."),
@@ -226,7 +237,7 @@ describe.skipIf(!DB_URL)("M4 security review of the audit trail — LIVE Postgre
       });
     }
     const { alerts, sink } = collect();
-    const { run, raised } = await runSecurityReviewForOrg(deps(sink), ORG_A);
+    const { run, raised } = ran(await runSecurityReviewForOrg(deps(sink), ORG_A));
 
     expect(alerts.map((a) => a.ruleId).sort()).toEqual([
       "access.authorization_denial_burst",
@@ -295,7 +306,7 @@ describe.skipIf(!DB_URL)("M4 security review of the audit trail — LIVE Postgre
   it("raises nothing twice, and the next run resumes from the last clean window", async () => {
     const first = (await reviewRows(ORG_A, COMPLETED))[0]?.context.windowTo as string;
     const { alerts, sink } = collect();
-    const { run } = await runSecurityReviewForOrg(deps(sink), ORG_A);
+    const { run } = ran(await runSecurityReviewForOrg(deps(sink), ORG_A));
     expect(alerts).toEqual([]);
     expect(run).toMatchObject({ status: "ok", newAlerts: 0, windowFrom: first });
     expect(await reviewRows(ORG_A, COMPLETED)).toHaveLength(2);
@@ -306,14 +317,14 @@ describe.skipIf(!DB_URL)("M4 security review of the audit trail — LIVE Postgre
     await seed({ organizationId: ORG_A, actorUserId: USER_1, eventType: BREAK_GLASS, at: ago(0) });
     const lastOk = (await reviewRows(ORG_A, COMPLETED)).at(-1)?.context.windowTo as string;
 
-    const failedRun = await runSecurityReviewForOrg(deps(failing), ORG_A);
+    const failedRun = ran(await runSecurityReviewForOrg(deps(failing), ORG_A));
     expect(failedRun.run).toMatchObject({ status: "delivery_failed", failed: 1, delivered: 0 });
     const rows = await reviewRows(ORG_A, RAISED);
     expect(rows.at(-1)?.context.delivery).toBe("failed");
     expect((await reviewRows(ORG_A, COMPLETED)).at(-1)).toMatchObject({ severity: "warn" });
 
     const { alerts, sink } = collect();
-    const retry = await runSecurityReviewForOrg(deps(sink), ORG_A);
+    const retry = ran(await runSecurityReviewForOrg(deps(sink), ORG_A));
     expect(retry.run.windowFrom).toBe(lastOk); // the failed run did not move the cursor
     expect(alerts.map((a) => a.ruleId)).toEqual(["access.break_glass_invoked"]);
     expect(retry.run).toMatchObject({ status: "ok", delivered: 1 });
@@ -325,13 +336,33 @@ describe.skipIf(!DB_URL)("M4 security review of the audit trail — LIVE Postgre
 
   it("with no destination configured an alert is recorded `no_destination` (terminal and visible), not dropped", async () => {
     await seed({ organizationId: ORG_A, actorUserId: USER_1, eventType: BREAK_GLASS, at: ago(0) });
-    const { run, raised } = await runSecurityReviewForOrg(deps(noDestination), ORG_A);
+    const { run, raised } = ran(await runSecurityReviewForOrg(deps(noDestination), ORG_A));
     expect(raised.map((r) => r.delivery)).toEqual(["no_destination"]);
     expect(run).toMatchObject({ status: "ok", noDestination: 1, delivered: 0 });
     expect((await reviewRows(ORG_A, RAISED)).at(-1)?.context.delivery).toBe("no_destination");
     const again = collect();
     await runSecurityReviewForOrg(deps(again.sink), ORG_A);
     expect(again.alerts).toEqual([]);
+  });
+
+  it("one run per scope at a time: a run that finds the scope's lock taken is skipped, reads nothing and writes no record", async () => {
+    const before = (await reviewRows(ORG_A, COMPLETED)).length;
+    await admin.query("BEGIN");
+    try {
+      // another run of org A (a second replica, an overlapping tick) holds the transaction-scoped advisory lock
+      await admin.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        `m4.security_review:${ORG_A}`,
+      ]);
+      const { alerts, sink } = collect();
+      const result = await runSecurityReviewForOrg(deps(sink), ORG_A);
+      expect(result).toEqual({ skipped: true, run: null, raised: [] });
+      expect(alerts).toEqual([]);
+    } finally {
+      await admin.query("ROLLBACK");
+    }
+    expect((await reviewRows(ORG_A, COMPLETED)).length).toBe(before);
+    // released with the other run's transaction: the scope is reviewed again
+    expect(ran(await runSecurityReviewForOrg(deps(collect().sink), ORG_A)).run.status).toBe("ok");
   });
 
   it("flags bulk record access from the SQL aggregate: 120 distinct records fire, 99 do not", async () => {
@@ -388,7 +419,7 @@ describe.skipIf(!DB_URL)("M4 security review of the audit trail — LIVE Postgre
       });
     }
     const { alerts, sink } = collect();
-    const { run } = await runSecurityReviewForPlatform(deps(sink));
+    const { run } = ran(await runSecurityReviewForPlatform(deps(sink)));
     expect(alerts.map((a) => a.ruleId).sort()).toEqual([
       "auth.brute_force_by_network",
       "auth.rapid_origin_change",
@@ -431,6 +462,27 @@ describe.skipIf(!DB_URL)("M4 security review of the audit trail — LIVE Postgre
     await expect(
       platform.db.execute(sql`SELECT event_type, context FROM audit_event LIMIT 1`),
     ).resolves.toBeDefined();
+  });
+
+  it("holds a sustained attack to one alert: an earlier window of the same pattern inside the cooldown raises nothing, another network still does", async () => {
+    // Thirty minutes ago: before the alert the platform lane raised for 192.0.2.0/24 (a different window, a new fingerprint),
+    // and inside the one-hour cooldown. The same shape from 198.51.101.0/24 has no earlier alert.
+    for (const prefix of ["192.0.2.0/24", "198.51.101.0/24"]) {
+      for (let i = 0; i < 15; i += 1) {
+        await seed({
+          organizationId: null,
+          eventType: "m2.auth.login_failed",
+          at: ago(30 - i * 0.3),
+          context: { ipPrefix: prefix, emailHash: `c${i}${prefix.length}`.padEnd(32, "0") },
+        });
+      }
+    }
+    const { alerts, sink } = collect();
+    const { run } = ran(await runSecurityReviewForPlatform(deps(sink)));
+    expect(alerts.map((a) => `${a.ruleId}:${a.subject.ref}`)).toEqual([
+      "auth.brute_force_by_network:198.51.101.0/24",
+    ]);
+    expect(run.findings).toBeGreaterThanOrEqual(3); // both new windows and the one already raised were seen
   });
 
   it("tenant isolation: org B's review sees only org B, and org A's review rows are invisible to B", async () => {
