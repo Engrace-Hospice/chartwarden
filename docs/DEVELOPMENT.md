@@ -279,18 +279,25 @@ scripts/     fitness gates + the scaffold generator; __fixtures__ (gate red-proo
 `scripts/__fixtures__/` and asserts it goes **red**, then asserts **green** at the repo root. If
 you weaken a gate, a fixture test fails — that's the regression net.
 
-## Enforcement model (free / private repo — no GitHub branch protection)
+## Enforcement model (CW-CM-01, CW-SEC-01)
 
-GitHub branch protection + rulesets require a paid plan on private repos, so `main` is protected by
-three free layers instead:
+GitHub branch protection and rulesets need a paid plan on a private repo (the org is on `free`), so today `main` is
+protected by layers that are NOT server-enforced, and the server-side one is committed but not applied:
 
-1. **CI on every PR** — `.github/workflows/ci.yml` runs `build-and-verify` (install → `tsc -b` →
-   `arch:fitness` → `vitest`) on each PR. The green/red status is visible before you merge.
-2. **Local pre-push hook** — `.githooks/pre-push` blocks a **direct push to `main`** unless the full
-   fitness suite passes. Activate once: `bun run setup:hooks` (auto-runs via the `prepare` script on
-   `bun install`). Emergency bypass: `git push --no-verify` or `SKIP_FITNESS=1 git push`.
-3. **PR discipline** — always merge via a PR after CI is green (see `plans/ARCHON_RUN_TRACKER.md`).
+1. **PR gate on every PR into `main`** — `.github/workflows/pr-gate.yml`: `Secret and PHI scan` (gitleaks on the tree
+   and on the PR's commits, plus `harness:phi-scan`) and `Compliance gates` (`arch:compliance`,
+   `arch:branch-protection`, `arch:merge-artifacts`). Cheap, no matrix, no path filter. `ci.yml` itself still runs on a
+   PR only for `fix/admission` (#870, an owner decision); run it on demand with `gh workflow run ci.yml --ref <branch>`.
+2. **Local hooks** — `.githooks/pre-commit` scans the staged diff and **refuses the commit** if `bun` or `gitleaks` is
+   missing; `.githooks/pre-push` blocks a **direct push to `main`** unless the fitness suite passes. `bun install`
+   installs them through `prepare` and fails loudly if it cannot; `bun run arch:hooks-installed` (in `arch:fitness`,
+   skipped under CI) fails when a clone has not. Emergency bypass is a human decision: `--no-verify`,
+   `SKIP_FITNESS=1 git push`.
+3. **The `main` ruleset** — `.github/rulesets/main.json` (PR required, code-owner review, the two PR-gate checks
+   required, no force-push, no deletion). **Not applied**: needs the paid plan and the owner. Procedure, verification
+   and rollback: [`runbooks/main-branch-protection.md`](./runbooks/main-branch-protection.md);
+   `bun run arch:branch-protection` keeps the committed definition honest and `bun run ops:verify-branch-protection`
+   proves GitHub enforces it.
 
-This isn't server-enforced (a paid plan would add that), but it catches the realistic failure modes:
-broken code reaching `main` by direct push, and red PRs (CI flags them). If you later upgrade, enable a
-ruleset requiring the `build-and-verify` check — the command is in the run tracker's notes.
+Until step 3 is applied, merge only through a PR whose `PR gate` checks are green; nothing stops a direct push but the
+pre-push hook, which a human can skip.

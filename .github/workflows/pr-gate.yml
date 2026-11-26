@@ -1,0 +1,79 @@
+name: PR gate
+
+# CW-SEC-01 / CW-CM-01 (compliance/controls.yaml, #870): `ci.yml` runs on a pull request only for
+# `fix/admission`, so a PR into `main` got no scan at all; the pre-commit hook is opt-in per clone and the
+# `verify` job in deploy.yml runs after the merge (and is waived). This workflow is the server-side copy of
+# the secret/PHI scan and of the cheap register gates that a PR into `main` always gets.
+#
+# It is the thing `.github/rulesets/main.json` makes REQUIRED: the two job `name:`s below are the ruleset's
+# status-check contexts, and `arch:branch-protection` fails when they drift apart. Until that ruleset is
+# applied (docs/runbooks/main-branch-protection.md) the checks report but block nothing.
+#
+# Cost: two jobs, no matrix, no `bun install` (the scanners use Bun built-ins; an empty node_modules also
+# keeps gitleaks off third-party test keys). No `paths:` filter on purpose: a required check that does not
+# report on a docs-only PR blocks that PR. `pull_request`, never `pull_request_target`: the PR's own code
+# runs here with a read-only token and no secrets. A PR that edits THIS file runs its edited copy, so
+# CODEOWNERS owns `.github/workflows/` and the ruleset requires code-owner review.
+
+on:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: pr-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  secret-and-phi-scan:
+    name: Secret and PHI scan
+    runs-on: [self-hosted, Linux, X64, ci]
+    # Same pinned binary and checksum as `secret-and-phi-scan` in ci.yml (a test keeps them equal).
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      # Full history: the commit-range scan below must see a secret that was added and then removed
+      # inside this PR, which a scan of the final tree cannot.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      - name: PHI-shaped identifier + credential scan (harness:phi-scan)
+        run: bun run harness:phi-scan --all
+      - name: Install gitleaks (pinned)
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/gitleaks" && mkdir -p "$dir"
+          curl -fsSL --retry 3 --max-time 120 -o "$dir/gl.tgz" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $dir/gl.tgz" | sha256sum -c -
+          tar -xzf "$dir/gl.tgz" -C "$dir" gitleaks
+          echo "$dir" >> "$GITHUB_PATH"
+      - name: Secret scan of the tree (gitleaks)
+        run: gitleaks dir . --config .gitleaks.toml --redact --no-banner
+      - name: Secret scan of the commits in this PR (gitleaks)
+        run: gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts="${BASE_SHA}..${HEAD_SHA}"
+
+  compliance-gates:
+    name: Compliance gates
+    runs-on: [self-hosted, Linux, X64, ci]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      - name: Compliance register and agent harness
+        run: bun run arch:compliance
+      - name: Committed main ruleset and its required checks
+        run: bun run arch:branch-protection
+      - name: No committed conflict markers
+        run: bun run arch:merge-artifacts

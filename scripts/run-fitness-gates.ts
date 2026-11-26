@@ -38,6 +38,11 @@ export const GATES = [
   // Same "is the repo in a shape worth checking" family: every HIPAA/SOC 2 claim in
   // compliance/controls.yaml still resolves to real evidence, and the agent harness is still wired.
   "arch:compliance",
+  // CW-CM-01 - the committed `main` ruleset still demands review, code-owner review and the scan, and its required
+  // checks report on PRs; CODEOWNERS owns what that review protects. Offline: it cannot prove the ruleset is applied.
+  "arch:branch-protection",
+  // CW-SEC-01 - the pre-commit scan is active in THIS clone (core.hooksPath). Skipped under CI and outside a git work tree.
+  "arch:hooks-installed",
   "arch:parity",
   // Before `arch:boundaries`: that gate resolves import boundaries THROUGH the .cjs mirror, so a mirror
   // that disagrees with the manifest makes its verdict meaningless. Better to say the mirror is wrong

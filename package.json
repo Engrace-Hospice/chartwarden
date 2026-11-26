@@ -12,8 +12,8 @@
     "packages/*"
   ],
   "scripts": {
-    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
-    "setup:hooks": "git config core.hooksPath .githooks && echo 'core.hooksPath -> .githooks'",
+    "prepare": "bun run scripts/check-hooks-installed.ts --install",
+    "setup:hooks": "bun run scripts/check-hooks-installed.ts --install",
     "db:up": "docker compose up -d postgres redis rustfs",
     "db:down": "docker compose stop postgres redis rustfs",
     "db:migrate": "bun run scripts/db/migrate.ts",
@@ -501,6 +501,9 @@
     "arch:vuln-allowlist": "bun run scripts/check-vuln-allowlist.ts",
     "arch:docling-lock": "bun run scripts/check-docling-lock.ts",
     "arch:compliance": "bun run scripts/check-compliance-controls.ts",
+    "arch:branch-protection": "bun run scripts/check-branch-protection.ts",
+    "arch:hooks-installed": "bun run scripts/check-hooks-installed.ts",
+    "ops:verify-branch-protection": "bun run scripts/verify-branch-protection.ts",
     "harness:phi-scan": "bun run scripts/harness/phi-scan.ts",
     "harness:ledger:verify": "bun run scripts/harness/ledger-verify.ts",
     "arch:manifest-mirror": "bun run scripts/check-manifest-mirror.ts",
