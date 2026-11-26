@@ -41,9 +41,30 @@ describe("covers", () => {
       ),
     ).toBe(true);
     expect(covers({ a: 1 }, { a: 2 })).toBe(false);
+    expect(covers({ a: "x" }, { a: "y" })).toBe(false);
     expect(covers({}, { a: 1 })).toBe(false);
     expect(covers({ l: [] }, { l: [{ c: "x" }] })).toBe(false);
     expect(covers(null, { a: 1 })).toBe(false);
+  });
+});
+
+describe("covers: a live ruleset hardened beyond the committed one still verifies", () => {
+  it("accepts a larger number and a stricter boolean, never a smaller number or a weaker boolean", () => {
+    expect(covers({ n: 2 }, { n: 1 })).toBe(true);
+    expect(covers({ n: 0 }, { n: 1 })).toBe(false);
+    expect(covers({ n: "2" }, { n: 1 })).toBe(false);
+    expect(covers({ b: true }, { b: false })).toBe(true);
+    expect(covers({ b: true }, { b: true })).toBe(true);
+    expect(covers({ b: false }, { b: true })).toBe(false);
+    expect(covers({}, { b: false })).toBe(false);
+  });
+
+  it("lets two approvals and strict status checks pass against the committed definition", () => {
+    const live = liveCopy((l) => {
+      ruleOf(l, "pull_request").parameters.required_approving_review_count = 2;
+      ruleOf(l, "required_status_checks").parameters.strict_required_status_checks_policy = true;
+    });
+    expect(liveRulesetProblems(committed(), live)).toEqual([]);
   });
 });
 

@@ -291,7 +291,7 @@ protected by layers that are NOT server-enforced, and the server-side one is com
 2. **Local hooks** — `.githooks/pre-commit` scans the staged diff and **refuses the commit** if `bun` or `gitleaks` is
    missing; `.githooks/pre-push` blocks a **direct push to `main`** unless the fitness suite passes. `bun install`
    installs them through `prepare` and fails loudly if it cannot; `bun run arch:hooks-installed` (in `arch:fitness`,
-   skipped under CI) fails when a clone has not. Emergency bypass is a human decision: `--no-verify`,
+   skipped only on GitHub Actions, not by a bare `CI`) fails when a clone has not. Emergency bypass is a human decision: `--no-verify`,
    `SKIP_FITNESS=1 git push`.
 3. **The `main` ruleset** — `.github/rulesets/main.json` (PR required, code-owner review, the two PR-gate checks
    required, no force-push, no deletion). **Not applied**: needs the paid plan and the owner. Procedure, verification

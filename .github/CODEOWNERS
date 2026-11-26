@@ -27,6 +27,12 @@
 /deploy/production/        @fabwebdev
 /scripts/db/migrate.ts     @fabwebdev
 /scripts/check-branch-protection.ts @fabwebdev
+/scripts/verify-branch-protection.ts @fabwebdev
 /scripts/check-hooks-installed.ts   @fabwebdev
 /scripts/check-release-gate.ts      @fabwebdev
+/scripts/check-merge-artifacts.ts   @fabwebdev
 /scripts/run-fitness-gates.ts       @fabwebdev
+# Every PR-gate check runs as `bun run <script>`, and the script bodies are in package.json; gitleaks reads
+# .gitleaksignore from the scanned tree, so a PR that adds one silences its own finding.
+/package.json              @fabwebdev
+/.gitleaksignore           @fabwebdev

@@ -10,17 +10,20 @@
  *   bun run arch:hooks-installed                      check: fails when the hooks are not active here
  *   bun run scripts/check-hooks-installed.ts --install  what `prepare` runs: set core.hooksPath, fail loudly
  *
- * CHECK MODE is skipped under CI (the `CI` variable GitHub Actions sets), where the server-side `Secret and
- * PHI scan` job in pr-gate.yml is the control, and where there is no commit to protect. It is also skipped
- * when this is not a git work tree (a Docker build context, a source tarball): there is nothing to scan.
- * Anyone can still `git commit --no-verify` or set CI=1: this closes the SILENT gap, not a deliberate one
- * (the register row says so; only the required PR check, once applied, stops that).
+ * CHECK MODE is skipped on GitHub Actions (`GITHUB_ACTIONS=true`), where the server-side `Secret and PHI scan`
+ * job in pr-gate.yml is the control and there is no commit to protect. A bare `CI` variable does NOT skip it:
+ * agent sessions set `CI` and are exactly where commits are made. It is also skipped when the directory has no
+ * `.git` (a Docker build context, a source tarball): there is nothing to scan. A `.git` that git cannot read
+ * (dubious ownership, a corrupt repo) is a FAILURE, never a skip. Anyone can still `git commit --no-verify` or
+ * set GITHUB_ACTIONS=true: this closes the SILENT gap, not a deliberate one (the register row says so; only the
+ * required PR check, once applied, stops that).
  *
- * INSTALL MODE fails only when git is there and `git config` fails; with no git it skips quietly, so an
- * image build that runs `bun install` keeps working.
+ * INSTALL MODE is idempotent (it writes only when the value is not already `.githooks`, so a read-only or locked
+ * `.git/config` cannot fail a `bun install` that has nothing to change) and fails when a needed write fails. With
+ * no `.git` it skips quietly, so an image build that runs `bun install` keeps working.
  */
 import { spawnSync } from "node:child_process";
-import { constants, accessSync, statSync } from "node:fs";
+import { constants, accessSync, existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 export const HOOKS_DIR = ".githooks";
@@ -68,9 +71,21 @@ function git(root: string, args: readonly string[]): GitResult {
   return { status: r.status, out: (r.stdout ?? "").trim(), failedToRun: r.error !== undefined };
 }
 
-function insideWorkTree(root: string): boolean {
-  const r = git(root, ["rev-parse", "--is-inside-work-tree"]);
-  return !r.failedToRun && r.status === 0 && r.out === "true";
+/** No `.git` (a directory, or the file a linked worktree has) means nothing to protect; anything else must be readable. */
+const hasGitMetadata = (root: string): boolean => existsSync(join(root, ".git"));
+
+interface HooksPathRead {
+  readonly hooksPath: string | undefined;
+  /** Set when git could not answer at all (exit other than 0 = set, 1 = unset): never read as "unset". */
+  readonly error: string | undefined;
+}
+
+function readHooksPath(root: string): HooksPathRead {
+  const r = git(root, ["config", "--get", "core.hooksPath"]);
+  if (r.failedToRun) return { hooksPath: undefined, error: "git could not be run" };
+  if (r.status === 0) return { hooksPath: r.out, error: undefined };
+  if (r.status === 1) return { hooksPath: undefined, error: undefined };
+  return { hooksPath: undefined, error: `git could not read its configuration (exit ${r.status})` };
 }
 
 function readHookFile(root: string, name: string): HookFile {
@@ -90,8 +105,13 @@ function readHookFile(root: string, name: string): HookFile {
 }
 
 function install(root: string): number {
-  if (!insideWorkTree(root)) {
-    console.log("hooks: not a git work tree (or no git): nothing to install");
+  if (!hasGitMetadata(root)) {
+    console.log("hooks: no .git here (an image build, a tarball): nothing to install");
+    return 0;
+  }
+  const current = readHooksPath(root).hooksPath;
+  if (current !== undefined && resolve(root, current) === resolve(root, HOOKS_DIR)) {
+    console.log(`hooks: core.hooksPath already -> ${HOOKS_DIR}`);
     return 0;
   }
   const set = git(root, ["config", "core.hooksPath", HOOKS_DIR]);
@@ -106,22 +126,25 @@ function install(root: string): number {
 }
 
 function check(root: string): number {
-  if (process.env.CI) {
+  if (process.env.GITHUB_ACTIONS === "true") {
     console.log(
-      "SKIP check-hooks-installed: CI (the pr-gate `Secret and PHI scan` job is the control)",
+      "SKIP check-hooks-installed: GitHub Actions (the pr-gate `Secret and PHI scan` job is the control)",
     );
     return 0;
   }
-  if (!insideWorkTree(root)) {
-    console.log("SKIP check-hooks-installed: not a git work tree");
+  if (!hasGitMetadata(root)) {
+    console.log("SKIP check-hooks-installed: no .git here");
     return 0;
   }
-  const configured = git(root, ["config", "--get", "core.hooksPath"]);
-  const problems = hooksProblems({
-    hooksPath: configured.status === 0 ? configured.out : undefined,
-    root,
-    hookFiles: REQUIRED_HOOKS.map((name) => readHookFile(root, name)),
-  });
+  const configured = readHooksPath(root);
+  const problems = [
+    ...(configured.error === undefined ? [] : [configured.error]),
+    ...hooksProblems({
+      hooksPath: configured.hooksPath,
+      root,
+      hookFiles: REQUIRED_HOOKS.map((name) => readHookFile(root, name)),
+    }),
+  ];
   if (problems.length === 0) {
     console.log(
       "OK check-hooks-installed: core.hooksPath -> .githooks and the hooks are executable",

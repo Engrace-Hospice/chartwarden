@@ -25,12 +25,18 @@ const isObject = (v: unknown): v is Json =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 const asArray = (v: unknown): readonly unknown[] => (Array.isArray(v) ? v : []);
 
-/** `have` satisfies `want`: every key of an object, every element of an array (any order), equal scalars. */
+/**
+ * `have` satisfies `want`: every key of an object, every element of an array (any order), a number at least as
+ * large, a boolean at least as strict (a committed `false` accepts `true`: the live setting is the stricter), equal
+ * strings. This is what lets a ruleset hardened later (two approvals, strict status checks) still verify.
+ */
 export function covers(have: unknown, want: unknown): boolean {
   if (Array.isArray(want))
     return Array.isArray(have) && want.every((w) => have.some((h) => covers(h, w)));
   if (isObject(want))
     return isObject(have) && Object.entries(want).every(([k, w]) => covers(have[k], w));
+  if (typeof want === "number") return typeof have === "number" && have >= want;
+  if (typeof want === "boolean") return want ? have === true : typeof have === "boolean";
   return have === want;
 }
 
@@ -120,8 +126,16 @@ function liveProblems(committed: Json, repo: string, rulesetOnly: boolean): stri
     );
   }
   if (!rulesetOnly) {
-    const env = gh(["api", `repos/${repo}/environments/production`]) as Json;
-    problems.push(...environmentProblems(env));
+    try {
+      problems.push(
+        ...environmentProblems(gh(["api", `repos/${repo}/environments/production`]) as Json),
+      );
+    } catch (e) {
+      // A missing environment must not discard the ruleset findings already collected.
+      problems.push(
+        `the \`production\` Environment could not be read: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
   }
   return problems;
 }

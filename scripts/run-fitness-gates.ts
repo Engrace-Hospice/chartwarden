@@ -41,7 +41,7 @@ export const GATES = [
   // CW-CM-01 - the committed `main` ruleset still demands review, code-owner review and the scan, and its required
   // checks report on PRs; CODEOWNERS owns what that review protects. Offline: it cannot prove the ruleset is applied.
   "arch:branch-protection",
-  // CW-SEC-01 - the pre-commit scan is active in THIS clone (core.hooksPath). Skipped under CI and outside a git work tree.
+  // CW-SEC-01 - the pre-commit scan is active in THIS clone (core.hooksPath). Skipped on GitHub Actions and where there is no .git; a bare CI variable does not skip it.
   "arch:hooks-installed",
   "arch:parity",
   // Before `arch:boundaries`: that gate resolves import boundaries THROUGH the .cjs mirror, so a mirror

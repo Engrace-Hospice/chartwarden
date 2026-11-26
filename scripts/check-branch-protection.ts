@@ -30,7 +30,7 @@ export const RULESET_PATH = ".github/rulesets/main.json";
 /** The GitHub Actions app: pinning it stops another app (or a status API call) from reporting the check. */
 export const GITHUB_ACTIONS_APP_ID = 15368;
 /** Required checks that must stay required. The scan is CW-SEC-01's server-side half. */
-export const MUST_BE_REQUIRED = ["Secret and PHI scan"] as const;
+export const MUST_BE_REQUIRED = ["Secret and PHI scan", "Compliance gates"] as const;
 /** Paths, beyond the harness list the compliance gate pins, whose review decides what reaches production. */
 export const CHANGE_MANAGEMENT_CODEOWNED = [
   "/CLAUDE.md",
@@ -40,9 +40,16 @@ export const CHANGE_MANAGEMENT_CODEOWNED = [
   "/deploy/production/",
   "/scripts/db/migrate.ts",
   "/scripts/check-branch-protection.ts",
+  "/scripts/verify-branch-protection.ts",
   "/scripts/check-hooks-installed.ts",
   "/scripts/check-release-gate.ts",
+  "/scripts/check-merge-artifacts.ts",
   "/scripts/run-fitness-gates.ts",
+  // Every PR-gate check runs as `bun run <script>`, and the script bodies live here: a PR that turns
+  // `arch:compliance` into `true` would pass the required check without touching an owned path.
+  "/package.json",
+  // gitleaks reads it from the scanned tree: a PR that adds one silences its own finding.
+  "/.gitleaksignore",
 ] as const;
 
 type Json = Record<string, unknown>;
@@ -141,7 +148,10 @@ function triggers(doc: unknown): Json {
   return isObject(on) ? on : {};
 }
 
-/** True when a pull request into `main` always starts this workflow (no path filter, `main` not excluded). */
+/** The activity types a pull_request trigger needs so a check reports on open, on every push and on reopen. */
+const REQUIRED_PR_TYPES = ["opened", "synchronize", "reopened"] as const;
+
+/** True when a pull request into `main` always starts this workflow (no path or type filter, `main` not excluded). */
 function runsOnEveryPullRequestToMain(doc: unknown): boolean {
   const t = triggers(doc);
   if (!("pull_request" in t)) return false;
@@ -149,7 +159,21 @@ function runsOnEveryPullRequestToMain(doc: unknown): boolean {
   if ("paths" in pr || "paths-ignore" in pr) return false;
   if ("branches" in pr && !asArray(pr.branches).includes("main")) return false;
   if ("branches-ignore" in pr && asArray(pr["branches-ignore"]).includes("main")) return false;
+  if ("types" in pr && !REQUIRED_PR_TYPES.every((type) => asArray(pr.types).includes(type)))
+    return false;
   return true;
+}
+
+/**
+ * A job whose result a required check can trust: it always runs (no `if`, no `needs` on a job that may be
+ * skipped, no matrix that renames it), is not a reusable-workflow call (its context would be `caller / callee`),
+ * cannot fail without failing the check (`continue-on-error`) and has a literal name.
+ */
+function isTrustworthyJob(job: unknown): job is Json {
+  if (!isObject(job)) return false;
+  if ("if" in job || "uses" in job || "needs" in job || "strategy" in job) return false;
+  if (job["continue-on-error"] !== undefined && job["continue-on-error"] !== false) return false;
+  return !(typeof job.name === "string" && job.name.includes("${{"));
 }
 
 /** Each required context must be the unconditional, non-reusable job of a workflow that runs on every PR into main. */
@@ -162,7 +186,7 @@ export function requiredCheckProblems(
     if (!runsOnEveryPullRequestToMain(doc)) continue;
     const jobs = isObject(doc) && isObject(doc.jobs) ? doc.jobs : {};
     for (const [id, job] of Object.entries(jobs)) {
-      if (!isObject(job) || "if" in job || "uses" in job) continue;
+      if (!isTrustworthyJob(job)) continue;
       reporting.add(typeof job.name === "string" ? job.name : id);
     }
   }

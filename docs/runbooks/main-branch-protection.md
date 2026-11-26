@@ -28,6 +28,8 @@ Nothing here has been run.
    `pull_request`: it can merge a PR without the approval, but cannot push to `main`, force-push or delete it; each
    use is in the audit log). Once a second code owner exists, delete that `bypass_actors` entry and re-apply (step 7),
    and the review becomes independent. `arch:branch-protection` rejects a bypass actor with mode `always`.
+   **A bypass skips every rule in the ruleset, the required scan check included**: while the entry exists the admin can
+   merge past a red `Secret and PHI scan`, so with it the scan is required for everyone else but not non-bypassable.
 3. **#870 (full CI on PRs).** The ruleset requires only the two cheap `pr-gate.yml` checks. Running `ci.yml`'s matrix
    on PRs into `main` is a separate, metered-minutes decision; if it is made, add that workflow's job names as required
    checks in `main.json` (same `integration_id`), merge, then re-apply (step 7).
@@ -123,8 +125,10 @@ force-push or deletion rules, pins no GitHub Actions app, or names a check no PR
 
 In `compliance/controls.yaml`:
 
-- **CW-SEC-01** → `status: implemented` and drop `gap` (the gap was this ruleset plus an enforced hook install; the
-  hook install is enforced in the repo). Keep the evidence list.
+- **CW-SEC-01** → `status: implemented` and drop `gap` only once the ruleset is applied AND the admin bypass entry is
+  gone (a second code owner exists): the gap was a required, non-bypassable scan plus an enforced hook install, and
+  the hook install is enforced in the repo. While the bypass entry stays, keep it `partial` and say in the `reason`
+  that the ruleset is applied and the sole admin can merge past a red scan. Keep the evidence list.
 - **CW-CM-01** stays `partial`: edit its `reason` to delete the sentence that says `main` has no branch protection
   and the `production` Environment has no required reviewers. The classifier-heuristic, Rust-image, Postgres-image and
   backup-image items are separate and remain until their own evidence exists.
@@ -142,7 +146,14 @@ pin `CHARTWARDEN_BACKUP_IMAGE` to that digest on the host, and keep the output a
 - A PR that edits `pr-gate.yml` runs its own edited copy. The ruleset pins the check to the GitHub Actions app and
   requires code-owner review of `.github/workflows/`, but with one owner and the admin bypass, that review is the
   owner reviewing their own change. A second code owner is what makes it independent.
-- `git commit --no-verify`, or `CI=1` for `arch:hooks-installed`, still skip the local scan on purpose. The required
+- `git commit --no-verify`, or `GITHUB_ACTIONS=true` for `arch:hooks-installed`, still skip the local scan on purpose. The required
   `Secret and PHI scan` check is what stops a commit made that way from reaching `main`, once step 3 is done.
 - `.gitleaks.toml` disables `generic-api-key` (documented there); the scan is gitleaks' default rules plus
   `harness:phi-scan`, not a proof that no secret is present.
+- Server-side, `harness:phi-scan` reads only the final tree of the PR, not each commit: an SSN-shaped value added in
+  one commit and removed in the next passes the PR gate and stays in history (gitleaks has no SSN rule; the local
+  pre-commit scan does see each commit). Scanning the added lines of `BASE..HEAD` is a follow-up.
+- The PR gate runs the PR's own scripts on the shared self-hosted `ci` runner. The checkouts do not persist their
+  token, but a separate, ephemeral runner label for PR jobs is the owner's call (same exposure as `pr-image-gate.yml`).
+- CODEOWNERS is last-match-wins: a later, broader pattern added by a PR could override an owner line; review the
+  CODEOWNERS diff as carefully as the paths it names.

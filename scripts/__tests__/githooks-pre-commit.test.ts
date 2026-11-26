@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { scrubbedGitEnv } from "./helpers/scrubbed-env";
 
 const repoRoot = join(__dirname, "../..");
 const hook = join(repoRoot, ".githooks/pre-commit");
@@ -54,7 +55,7 @@ describe(".githooks/pre-commit", () => {
     expect(r.code).toBe(0);
     expect(r.calls).toContain("bun run scripts/harness/phi-scan.ts --staged");
     expect(r.calls).toContain(
-      "gitleaks git --pre-commit --staged --redact --no-banner --config .gitleaks.toml",
+      "gitleaks git --pre-commit --staged --redact --no-banner --ignore-gitleaks-allow --config .gitleaks.toml",
     );
   });
 
@@ -110,14 +111,17 @@ describe.skipIf(gitleaksPath === "")(".githooks/pre-commit with the real gitleak
     // The PHI scan is not under test here, so `bun` is a stub that succeeds.
     writeFileSync(join(bin, "bun"), "#!/bin/sh\nexit 0\n");
     chmodSync(join(bin, "bun"), 0o755);
-    spawnSync("git", ["init", "-q"], { cwd: dir });
+    // Scrubbed environment for every git call: this suite runs under .githooks/pre-push, where git exports GIT_DIR and
+    // GIT_INDEX_FILE, and an inherited one would aim `git init` and `git add` at the REAL repository.
+    const gitEnv = scrubbedGitEnv(dir);
+    spawnSync("git", ["init", "-q"], { cwd: dir, env: gitEnv });
     copyFileSync(join(repoRoot, ".gitleaks.toml"), join(dir, ".gitleaks.toml"));
     writeFileSync(join(dir, "config.txt"), content);
-    spawnSync("git", ["add", "config.txt"], { cwd: dir });
+    spawnSync("git", ["add", "config.txt"], { cwd: dir, env: gitEnv });
     return spawnSync("/bin/bash", [hook], {
       cwd: dir,
       encoding: "utf8",
-      env: { PATH: `${bin}:${dirname(gitleaksPath)}:/usr/bin:/bin`, HOME: dir },
+      env: { ...gitEnv, PATH: `${bin}:${dirname(gitleaksPath)}:/usr/bin:/bin` },
     }).status;
   }
 
@@ -127,6 +131,10 @@ describe.skipIf(gitleaksPath === "")(".githooks/pre-commit with the real gitleak
 
   it("blocks a commit that stages a credential-shaped string", () => {
     expect(commitAttempt(`token = ${syntheticToken}\n`)).toBe(1);
+  });
+
+  it("ignores an inline gitleaks:allow comment, so a change cannot silence its own finding", () => {
+    expect(commitAttempt(`token = ${syntheticToken} # gitleaks:allow\n`)).toBe(1);
   });
 
   it("allows a commit of ordinary text", () => {

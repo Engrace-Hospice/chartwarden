@@ -130,6 +130,9 @@
   fresh clone, `bun install --ignore-scripts` or a failed install had no scan and said nothing. `prepare` and
   `setup:hooks` now run the script with `--install` (fails when git is present and `git config` fails, skips
   quietly with no git so an image build still works), the check fails when the path or an execute bit is wrong,
-  and the hook refuses the commit when a scanner is missing. Skipped under `CI` and outside a git work tree
-  (`.dockerignore` drops `.git`). The deliberate bypasses (`--no-verify`, `CI=1`) remain; only the required
+  and the hook refuses the commit when a scanner is missing. Skipped on GitHub Actions only (a bare `CI` does not skip it: agent sessions set `CI`
+  and are where commits are made) and where there is no `.git` (`.dockerignore` drops it); a `.git` git cannot read
+  (dubious ownership, corruption) FAILS instead of reading as "not a work tree". `--install` writes only when the
+  value differs, so a read-only config cannot fail a `bun install` that has nothing to change. The deliberate
+  bypasses (`--no-verify`, `GITHUB_ACTIONS=true`) remain; only the required
   `Secret and PHI scan` check in `.github/workflows/pr-gate.yml`, once the ruleset is applied, covers those.

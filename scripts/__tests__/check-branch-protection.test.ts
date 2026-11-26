@@ -86,6 +86,18 @@ describe("the committed main ruleset", () => {
     ]);
   });
 
+  it("fails when either PR-gate check stops being required", () => {
+    const params = (d: Json): Json => rule(d, "required_status_checks").parameters;
+    for (const context of ["Secret and PHI scan", "Compliance gates"])
+      expect(
+        weakened((d) => {
+          params(d).required_status_checks = params(d).required_status_checks.filter(
+            (c: Json) => c.context !== context,
+          );
+        }).problems,
+      ).toEqual([`\`${context}\` is not a required status check`]);
+  });
+
   it("fails when the scan stops being required, or a check is not pinned to GitHub Actions", () => {
     const params = (d: Json): Json => rule(d, "required_status_checks").parameters;
     expect(
@@ -153,6 +165,29 @@ describe("required checks must report on a pull request into main", () => {
     expect(missing(withJob("workflow_dispatch"))).toHaveLength(1);
   });
 
+  it("rejects a job that can report green without running its steps", () => {
+    for (const job of [
+      { needs: "other" },
+      { strategy: { matrix: { os: ["a"] } } },
+      { "continue-on-error": true },
+      { name: "Secret and PHI scan ${{ matrix.os }}" },
+    ])
+      expect(missing(withJob("pull_request", job)), JSON.stringify(job)).toHaveLength(1);
+    expect(missing(withJob("pull_request", { "continue-on-error": false }))).toEqual([]);
+  });
+
+  it("rejects a pull_request trigger whose activity types skip open, push or reopen", () => {
+    expect(missing(withJob({ pull_request: { types: ["labeled"] } }))).toHaveLength(1);
+    expect(missing(withJob({ pull_request: { types: ["opened", "synchronize"] } }))).toHaveLength(
+      1,
+    );
+    expect(
+      missing(
+        withJob({ pull_request: { types: ["opened", "synchronize", "reopened", "labeled"] } }),
+      ),
+    ).toEqual([]);
+  });
+
   it("rejects a job that can be skipped or is a reusable-workflow call", () => {
     expect(missing(withJob("pull_request", { if: "github.actor != 'x'" }))).toHaveLength(1);
     expect(missing(withJob("pull_request", { uses: "./.github/workflows/ci.yml" }))).toHaveLength(
@@ -202,6 +237,25 @@ describe("pr-gate.yml", () => {
       /gitleaks git \. --config \.gitleaks\.toml .*--log-opts="\$\{BASE_SHA\}\.\.\$\{HEAD_SHA\}"/,
     );
     expect(prGate).toMatch(/fetch-depth: 0/);
+  });
+
+  it("cannot be silenced by the PR it scans: no ignore file, no inline allow", () => {
+    expect(prGate).toMatch(/if \[ -e \.gitleaksignore \]/);
+    const invocations = prGate.split("\n").filter((l) => /^\s+run: gitleaks (dir|git) /.test(l));
+    expect(invocations).toHaveLength(2);
+    for (const l of invocations) expect(l).toContain("--ignore-gitleaks-allow");
+    expect(read(".github/CODEOWNERS")).toMatch(/^\/\.gitleaksignore\s+@\S+/m);
+    expect(read(".githooks/pre-commit")).toContain("--ignore-gitleaks-allow");
+  });
+
+  it("pins every action to a commit and leaves no token behind for the PR's scripts", () => {
+    const uses = [...prGate.matchAll(/^\s+(?:- )?uses: (\S+)/gm)].map((m) => m[1] as string);
+    expect(uses.length).toBeGreaterThanOrEqual(4);
+    for (const u of uses) expect(u, u).toMatch(/@[0-9a-f]{40}$/);
+    const checkouts = prGate.split("actions/checkout@").slice(1);
+    expect(checkouts).toHaveLength(2);
+    for (const c of checkouts)
+      expect(c.split("- name:")[0]).toContain("persist-credentials: false");
   });
 
   it("runs on pull_request, never pull_request_target, with a read-only token", () => {

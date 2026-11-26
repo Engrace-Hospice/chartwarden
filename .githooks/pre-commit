@@ -5,6 +5,8 @@
 # Activate once:  bun run setup:hooks   (`bun install` does it through `prepare`; `bun run arch:hooks-installed` checks it)
 # Emergency bypass is a HUMAN decision: git commit --no-verify (the agent harness refuses it).
 #
+# `gitleaks:allow` comments are ignored (--ignore-gitleaks-allow): an inline allow in a PR must not silence the scan.
+#
 # FAILS CLOSED: a scanner that is not installed refuses the commit. This hook used to print "skipped" and
 # let the commit through, which made the scan optional for anyone without the tool (CW-SEC-01). The
 # server-side copy is the `Secret and PHI scan` job in .github/workflows/pr-gate.yml.
@@ -24,4 +26,4 @@ if [ "$missing" -ne 0 ]; then
 fi
 
 bun run scripts/harness/phi-scan.ts --staged
-gitleaks git --pre-commit --staged --redact --no-banner --config .gitleaks.toml
+gitleaks git --pre-commit --staged --redact --no-banner --ignore-gitleaks-allow --config .gitleaks.toml
