@@ -513,6 +513,24 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m11.order.critical_lab_resolved",
+    moduleOwner: "m11",
+    description:
+      "#1136 — a prescriber resolved a quarantined (no-order) critical lab result: matched it to an order, or reviewed it with no action. Published in the resolution's own transaction; M4 captures the append-only resolution row at the database layer (write-audit trigger).",
+    // IDS and the decision only — never the free-text reason (it lives in the append-only row and is scrubbed from audit).
+    payloadSchema: Type.Object({
+      criticalLabResultId: id,
+      organizationId: id,
+      observationId: id,
+      patientId: id,
+      resolution: Type.Union([Type.Literal("matched_to_order"), Type.Literal("reviewed_no_action")]),
+      matchedOrderId: Type.Optional(id),
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m4"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m11.order.results_overdue",
     moduleOwner: "m11",
     description:

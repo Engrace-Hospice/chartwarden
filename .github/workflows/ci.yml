@@ -407,6 +407,11 @@ jobs:
             }
           # #909 - clinician review of a returned lab (append-only, amendment re-opens, 24 h unreviewed alert).
           - { name: "M11 lab result review", scripts: "test:m11:lab-result-review:live" }
+          # #1136 (CW-CS-01) - resolving a quarantined (no-order) critical lab result: audited, append-only, never re-opened.
+          - {
+              name: "M11 critical lab resolution",
+              scripts: "test:m11:critical-lab-resolution:live",
+            }
           # F-152 (#248) — the §2.8 D17 medication-reconciliation worksheet, opened from all four M6
           # trigger events.
           - { name: "M13 reconciliation triggers", scripts: "test:m13:reconciliation-triggers:live" }

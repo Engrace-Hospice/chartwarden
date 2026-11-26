@@ -44,6 +44,8 @@ export interface OrderEraseCounts {
   readonly resultReviews: number;
   /** #908/#910 — `critical_lab_result` rows deleted for the patient (the critical-result ledger / quarantine queue). */
   readonly criticalLabResults: number;
+  /** #1136 — `critical_lab_result_resolution` rows deleted (the append-only closing record of a quarantined result). */
+  readonly criticalLabResolutions: number;
   /** `standing_order` templates deleted for the patient. */
   readonly standingOrders: number;
   /** Whole `order_record` partitions DETACHed + DROPped (the partition-drop path, §3.4 / D12). */
@@ -106,6 +108,7 @@ export async function eraseOrderRecord(
     counts.recoveryRequests +
     counts.resultReviews +
     counts.criticalLabResults +
+    counts.criticalLabResolutions +
     counts.standingOrders;
   return { erased, counts };
 }
@@ -131,6 +134,7 @@ export function createInMemoryOrderEraseStore(seed: InMemoryOrderEraseSeed = {})
     recoveryRequests: 0,
     resultReviews: 0,
     criticalLabResults: 0,
+    criticalLabResolutions: 0,
     standingOrders: 0,
     partitionsDropped: 0,
   };
@@ -177,6 +181,7 @@ export function createDrizzleOrderEraseStore(db: DbClient): OrderEraseStore {
   const SO = schema.standingOrders;
   const REVIEW = schema.orderResultReviews;
   const CLR = schema.criticalLabResults;
+  const CLR_RESOLUTION = schema.criticalLabResultResolutions;
 
   /** The patient's erasable order ids (`created_at < boundary`) — the child cascade is keyed on these. */
   const orderIdsFor = async (tx: Tx, patientId: string, boundary: Date): Promise<string[]> =>
@@ -278,6 +283,26 @@ export function createDrizzleOrderEraseStore(db: DbClient): OrderEraseStore {
                   .where(inArray(REVIEW.orderRecordId, orderIds))
                   .returning({ id: REVIEW.id }),
               );
+        // #1136 -- the append-only resolution of each ledger row about to go (its trigger admits a DELETE only from the
+        // destruction role). FIRST: the resolution's FK to the ledger row is ON DELETE restrict. A ledger row younger than
+        // the boundary keeps its resolution (it is not deleted below either).
+        const criticalLabResolutions = await del(() =>
+          tx
+            .delete(CLR_RESOLUTION)
+            .where(
+              and(
+                eq(CLR_RESOLUTION.patientId, patientId),
+                inArray(
+                  CLR_RESOLUTION.criticalLabResultId,
+                  tx
+                    .select({ id: CLR.id })
+                    .from(CLR)
+                    .where(and(eq(CLR.patientId, patientId), lt(CLR.createdAt, boundary))),
+                ),
+              ),
+            )
+            .returning({ id: CLR_RESOLUTION.id }),
+        );
         // #908/#910 -- the patient's critical-result ledger (ON DELETE restrict on the patient FK: left behind it would
         // block the patient's own destruction). Keyed on the patient, so quarantined no-order rows are reached too.
         const criticalLabResults = await del(() =>
@@ -314,6 +339,7 @@ export function createDrizzleOrderEraseStore(db: DbClient): OrderEraseStore {
           recoveryRequests,
           resultReviews,
           criticalLabResults,
+          criticalLabResolutions,
           standingOrders,
           partitionsDropped: 0,
         };

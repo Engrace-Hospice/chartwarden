@@ -588,6 +588,7 @@ exports.MODULES = [
       "order_recovery_request",
       "order_result_review",
       "critical_lab_result",
+      "critical_lab_result_resolution",
     ],
   },
   {

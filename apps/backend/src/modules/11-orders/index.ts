@@ -6,6 +6,7 @@ import { registerOrderAbacPredicates as _registerM11Abac } from "./abac-predicat
 import { type OrderWriteOutboxPort, createDbOrderBackend } from "./orders-route-service-db";
 import type { RecoveryControls } from "./orm-request/orm-recovery-dual-control";
 import type { OrmRequestedPorts } from "./orm-request/orm-requested";
+import { registerCriticalLabRoutes as _registerCriticalLabRoutes } from "./routes/critical-lab-routes";
 import { registerOrderRoutes as _registerM11Routes } from "./routes/orders-routes";
 
 export { buildM11OrmRequestedPorts } from "./orm-request/ports";
@@ -97,6 +98,9 @@ export function mountOrderRoutes(
   const backend = createDbOrderBackend(db, outbox, orm, recovery);
   _registerM11Abac({ resolver: backend });
   _registerM11Routes(app, { service: backend });
+  // #1136 — the quarantined critical-lab queue + resolve. Mounted only with a real outbox: a resolution must publish
+  // `m11.order.critical_lab_resolved` in its own transaction, and the no-op fallback above would drop it silently.
+  if (outbox) _registerCriticalLabRoutes(app, { db, outbox });
 }
 
 // M11-T05 lands the two §2.8 D14 / §4.3 owned seams (OrderSignatureProvider — the polymorphic clinical-
@@ -267,6 +271,24 @@ export {
   createCriticalLabLookup,
   sweepQuarantinedCriticalLabs,
 } from "./critical-lab-result";
+// #1136 (CW-CS-01) -- resolve a quarantined (no-order) critical lab result: append-only, audited, event-emitting.
+export {
+  CRITICAL_LAB_RESOLVED_EVENT,
+  type CriticalLabResolutionDeps,
+  type CriticalLabResolutionKind,
+  type CriticalLabResolutionView,
+  type CriticalLabResultDetail,
+  type CriticalLabResultView,
+  type QuarantinedCriticalPage,
+  type ResolveCriticalLabInput,
+  getCriticalLabResult,
+  listOpenQuarantinedCriticalLabs,
+  resolveCriticalLabResult,
+} from "./critical-lab-resolution";
+export {
+  type CriticalLabRouteDeps,
+  registerCriticalLabRoutes,
+} from "./routes/critical-lab-routes";
 export {
   M11_CRITICAL_LAB_ESCALATION_PLATFORM_JOB_ID,
   registerM11CriticalLabEscalationWorker,

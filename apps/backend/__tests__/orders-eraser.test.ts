@@ -79,6 +79,7 @@ describe("M11-T08 — order_record eraser (§7.7, D12, D7/D8)", () => {
           recoveryRequests: 0,
           resultReviews: 0,
           criticalLabResults: 0,
+          criticalLabResolutions: 0,
           standingOrders: 0,
           partitionsDropped: 0,
         };
