@@ -1008,6 +1008,109 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     await expect(asApp("DELETE FROM portal_signature_request WHERE id=$1")).rejects.toBeDefined();
     expect((await reqRow(id)).signed_typed_name).toBe("Pat Example");
   });
+
+  /** Rows as a tenant request sees them: the NOBYPASSRLS app role inside one org's `app.org_id` context. */
+  async function readAsApp(org: string, sqlText: string, params: unknown[]) {
+    const c = await handle.pool.connect();
+    try {
+      await c.query("BEGIN");
+      await c.query("SELECT set_config('app.org_id', $1, true)", [org]);
+      const res = await c.query(sqlText, params);
+      await c.query("COMMIT");
+      return res.rows;
+    } catch (e) {
+      await c.query("ROLLBACK");
+      throw e;
+    } finally {
+      c.release();
+    }
+  }
+
+  it("a replayed Idempotency-Key with a tampered body is a 409 and the signature is untouched", async () => {
+    const id = await seedRequest(ORG_A, patientA, NPP);
+    const key = `k-tamper-${randomUUID()}`;
+    const first = await sign(self, id, { signedTypedName: "Pat Example" }, { "idempotency-key": key });
+    expect(first.statusCode, first.body).toBe(200);
+    const signed = await reqRow(id);
+    const consentsBefore = await consentCount(patientA, NPP);
+
+    const forged = await sign(
+      self,
+      id,
+      { signedTypedName: "Mallory Forger" },
+      { "idempotency-key": key },
+    );
+    expect(forged.statusCode, forged.body).toBe(409);
+    expect(forged.json().error.code).toBe("IDEMPOTENCY_CONFLICT");
+    expect(forged.body).not.toContain("Mallory Forger");
+    expect(await reqRow(id)).toEqual(signed);
+    expect(await consentCount(patientA, NPP)).toBe(consentsBefore);
+  });
+
+  it("signing a signed request again under a fresh key and another name rewrites nothing", async () => {
+    const id = await seedRequest(ORG_A, patientA, NPP);
+    expect((await sign(self, id, { signedTypedName: "Pat Example" })).statusCode).toBe(200);
+    const signed = await reqRow(id);
+    const consentsBefore = await consentCount(patientA, NPP);
+
+    const again = await sign(self, id, { signedTypedName: "Mallory Forger" });
+    expect(again.statusCode, again.body).toBe(200);
+    expect(again.json()).toMatchObject({ alreadySigned: true, request: { id, status: "signed" } });
+    expect(await reqRow(id)).toEqual(signed);
+    expect((await reqRow(id)).signed_typed_name).toBe("Pat Example");
+    expect(await consentCount(patientA, NPP)).toBe(consentsBefore);
+  });
+
+  it("another login, or another tenant, cannot ride the signer's Idempotency-Key", async () => {
+    const id = await seedRequest(ORG_A, patientA, NPP);
+    const key = `k-ride-${randomUUID()}`;
+    expect(
+      (await sign(self, id, { signedTypedName: "Pat Example" }, { "idempotency-key": key }))
+        .statusCode,
+    ).toBe(200);
+    const signed = await reqRow(id);
+
+    // Same org, other patient's login, same key and same body: the fingerprint binds the user, so no cached answer is replayed to them.
+    const rider = await sign(
+      otherPatient,
+      id,
+      { signedTypedName: "Pat Example" },
+      { "idempotency-key": key },
+    );
+    expect(rider.statusCode, rider.body).toBe(409);
+    expect(rider.json().error.code).toBe("IDEMPOTENCY_CONFLICT");
+    expect(rider.body).not.toContain('"alreadySigned"');
+
+    // Other tenant: the key is claimed per organization, so this is a fresh attempt that cannot see the request at all.
+    const foreign = await sign(
+      orgBActor,
+      id,
+      { signedTypedName: "Pat Example" },
+      { "idempotency-key": key },
+    );
+    expect(foreign.statusCode, foreign.body).toBe(404);
+    expect(foreign.body).not.toContain('"alreadySigned"');
+    expect(await reqRow(id)).toEqual(signed);
+  });
+
+  it("the sign is audited to the signing login, and that audit trail is invisible to another tenant", async () => {
+    const id = await seedRequest(ORG_A, patientA, NPP);
+    expect((await sign(self, id, { signedTypedName: "Pat Example" })).statusCode).toBe(200);
+    const consentId = (await reqRow(id)).target_ref as string;
+    const trail = `SELECT resource_kind, actor_user_id, before::text AS b, after::text AS a FROM audit_event
+        WHERE resource_id = ANY($1::uuid[]) AND resource_kind IN ('portal_signature_request','consent_record')`;
+
+    const own = await readAsApp(ORG_A, trail, [[id, consentId]]);
+    for (const kind of ["portal_signature_request", "consent_record"]) {
+      const rows = own.filter((r) => r.resource_kind === kind);
+      expect(rows.length, kind).toBeGreaterThanOrEqual(1);
+      // The legal act is attributed to the portal login, and the typed name never reaches an audit image.
+      expect(rows.map((r) => r.actor_user_id), kind).toContain(self.userId);
+      for (const r of rows) expect(`${r.b}${r.a}`, kind).not.toContain("Pat Example");
+    }
+    // Tenant B, as the app role, sees none of it.
+    expect(await readAsApp(ORG_B, trail, [[id, consentId]])).toEqual([]);
+  });
   /** A real admission (referral → qualify → accept) for a pre-seeded fixture patient; optionally with a staff-drafted election statement. */
   async function realAdmission(key: keyof typeof m06Fixtures, withElection: boolean) {
     const { patientId, actor } = m06Fixtures[key];
