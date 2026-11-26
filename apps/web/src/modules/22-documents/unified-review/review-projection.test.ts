@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Candidate, Workspace } from "../doclens-api";
+import { projectExceptionSummary } from "./review-exception-tasks";
 import { projectReviewExceptions } from "./review-exceptions";
 import { projectReviewGroups, projectUnifiedReview } from "./review-projection";
 
@@ -175,9 +176,72 @@ describe("unified review projection", () => {
     expect(after.decidedCount).toBe(1);
     expect(before.candidateIds).toEqual(after.candidateIds);
   });
+
+  it("retains wrong-patient candidate IDs but excludes them from patient facts and progress", () => {
+    const included = candidate("patient.phoneMobile", "503-555-0177", { page: 1 });
+    const excluded = candidate("patient.phoneMobile", "503-555-0199", { page: 2 });
+    const base = workspace([included, excluded]);
+    const ws: Workspace = {
+      ...base,
+      documents: base.documents.map((document) =>
+        document.pageFrom === excluded.page
+          ? { ...document, identity: { ...document.identity, resolution: "other_patient" } }
+          : document,
+      ),
+    };
+
+    const projection = projectUnifiedReview(ws);
+
+    expect(projection.candidateIds).toEqual([included.id, excluded.id].sort());
+    expect(projection.excludedCandidateIds).toEqual([excluded.id]);
+    expect(projection.groups.flatMap((group) => group.candidateIds)).toEqual([included.id]);
+    expect(projection.candidateCount).toBe(1);
+  });
 });
 
 describe("unified review exceptions", () => {
+  it("consolidates several reasons for one candidate into one traceable task", () => {
+    const item = candidate("medications[0].name", "Morphine 5 mg", {
+      confidence: 0.61,
+      riskLevel: "high",
+      vision: { status: "disagreed", observedValue: "Morphine 10 mg" },
+    });
+    const ws = workspace([item]);
+    const raw = projectReviewExceptions(ws, projectReviewGroups(ws));
+    const summary = projectExceptionSummary(raw);
+    const task = summary.categories
+      .flatMap((category) => category.tasks)
+      .find((entry) => entry.candidateId === item.id);
+
+    expect(task?.reasons.map((reason) => reason.kind)).toEqual(
+      expect.arrayContaining(["vision-disagreement", "high-risk", "low-confidence"]),
+    );
+    expect(task?.reasons).toHaveLength(3);
+    expect(summary.underlyingExceptionCount).toBe(raw.length);
+  });
+
+  it("reports category, actionable, and blocked counts without dropping exceptions", () => {
+    const visible = candidate("patient.phoneMobile", "503-555-0177");
+    const withheld = candidate("medications[0].name", null, {
+      redacted: true,
+      sudDetected: true,
+    });
+    const ws = workspace([visible, withheld]);
+    const raw = projectReviewExceptions(ws, projectReviewGroups(ws), {
+      sourceUnavailablePages: new Set([visible.page]),
+    });
+    const summary = projectExceptionSummary(raw);
+
+    expect(summary.categories.map((category) => category.label)).toEqual(
+      expect.arrayContaining(["Part 2 / SUD safeguards", "Other review requirements"]),
+    );
+    expect(summary.actionableTaskCount).toBeGreaterThan(0);
+    expect(summary.blockedTaskCount).toBeGreaterThan(0);
+    expect(summary.categories.reduce((count, category) => count + category.exceptionCount, 0)).toBe(
+      raw.length,
+    );
+  });
+
   it("projects wrong-patient exclusion, unresolved SUD, vision, redaction, and source failure", () => {
     const vision = candidate("diagnoses[0].description", "Heart failure", {
       vision: { status: "disagreed", observedValue: "Renal failure" },
@@ -210,14 +274,9 @@ describe("unified review exceptions", () => {
     });
 
     expect(exceptions.map((item) => item.kind)).toEqual(
-      expect.arrayContaining([
-        "source-unavailable",
-        "wrong-patient",
-        "sud-unresolved",
-        "vision-disagreement",
-        "redacted",
-      ]),
+      expect.arrayContaining(["source-unavailable", "wrong-patient", "sud-unresolved", "redacted"]),
     );
+    expect(exceptions.map((item) => item.kind)).not.toContain("vision-disagreement");
   });
 
   it("projects unresolved identity and review ownership changes", () => {

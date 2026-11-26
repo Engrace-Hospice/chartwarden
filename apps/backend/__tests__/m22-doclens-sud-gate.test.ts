@@ -9,6 +9,7 @@
 import {
   createInMemoryEffectivePermissionStore,
   createPredicateRegistry,
+  expandSuperadminRoles,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAbacRegistry,
@@ -18,11 +19,16 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
-import type {
-  ReviewWorkspace,
-  ReviewWorkspaceService,
+import {
+  type ReviewWorkspace,
+  type ReviewWorkspaceService,
+  assertBatchStillFiledUnder,
+  batchProvenFiledPatientOnly,
 } from "../src/modules/22-documents/extraction/review-workspace";
-import { registerDocLensReviewWorkspaceRoutes } from "../src/modules/22-documents/extraction/review-workspace-routes";
+import {
+  type WardenLensPlatformSupportAccess,
+  registerDocLensReviewWorkspaceRoutes,
+} from "../src/modules/22-documents/extraction/review-workspace-routes";
 import {
   type SudContentAccess,
   type SudStatus,
@@ -34,6 +40,8 @@ import {
 const ORG = "org_a";
 const BATCH = "b0000000-0000-4000-8000-0000000000aa";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
+const SUPPORT_SESSION = "22222222-2222-4222-8222-222222222222";
+const PLATFORM_ORG = "33333333-3333-4333-8333-333333333333";
 
 function workspaceFixture(sudStatus: ReviewWorkspace["sud"]["status"]): ReviewWorkspace {
   return {
@@ -111,7 +119,12 @@ function workspaceFixture(sudStatus: ReviewWorkspace["sud"]["status"]): ReviewWo
   };
 }
 
-const access = (o: { eligible: boolean; consent: boolean }): SudContentAccess => ({
+const access = (o: {
+  eligible: boolean;
+  consent: boolean;
+  administratorOverride?: boolean;
+}): SudContentAccess => ({
+  administratorOverride: async () => o.administratorOverride === true,
   reviewerEligible: async () => o.eligible,
   consentPresent: async () => o.consent,
 });
@@ -195,6 +208,44 @@ describe("GAP-067 — pure SUD content gate", () => {
     expect(seen).toEqual([PATIENT]);
   });
 
+  it("admits an explicit tenant-administrator override before licence or consent probes", async () => {
+    const probes: string[] = [];
+    const allowed = await resolveSudContentAccess(
+      {
+        administratorOverride: async () => {
+          probes.push("administrator");
+          return true;
+        },
+        reviewerEligible: async () => {
+          probes.push("licence");
+          return false;
+        },
+        consentPresent: async () => {
+          probes.push("consent");
+          return false;
+        },
+      },
+      { sudStatus: "confirmed", patientId: PATIENT },
+    );
+    expect(allowed).toBe(true);
+    expect(probes).toEqual(["administrator"]);
+  });
+
+  it("fails closed when the administrator-override probe throws", async () => {
+    expect(
+      await resolveSudContentAccess(
+        {
+          administratorOverride: async () => {
+            throw new Error("role resolution failed");
+          },
+          reviewerEligible: async () => false,
+          consentPresent: async () => true,
+        },
+        { sudStatus: "confirmed", patientId: PATIENT },
+      ),
+    ).toBe(false);
+  });
+
   // The behaviour matrix (status x licensed-eligible x consent). `true` = Part 2 content readable.
   const MATRIX: ReadonlyArray<readonly [SudStatus, boolean, boolean, boolean]> = [
     // status, eligible, consent, readable
@@ -256,6 +307,8 @@ describe("GAP-067 — pure SUD content gate", () => {
 interface Persona {
   readonly licensed: boolean;
   readonly consent: boolean;
+  readonly roles?: readonly string[];
+  readonly actorKind?: "user" | "ai" | "system";
 }
 
 function headerAuth(request: FastifyRequest): void {
@@ -263,8 +316,9 @@ function headerAuth(request: FastifyRequest): void {
   if (typeof user !== "string" || user.length === 0) return;
   request.context.userId = user;
   request.context.attributes.membershipId = user;
+  request.context.attributes.actorKind = PERSONAS[user]?.actorKind ?? "user";
   request.context.organizationId = ORG;
-  request.context.roles = ["rn"];
+  request.context.roles = PERSONAS[user]?.roles ? [...PERSONAS[user]!.roles!] : ["rn"];
 }
 
 const PERSONAS: Record<string, Persona> = {
@@ -272,10 +326,59 @@ const PERSONAS: Record<string, Persona> = {
   rn_no_consent: { licensed: true, consent: false },
   aide_consent: { licensed: false, consent: true },
   rn_seam_down: { licensed: true, consent: true },
+  tenant_administrator: { licensed: false, consent: false, roles: ["administrator"] },
+  tenant_org_admin: { licensed: false, consent: false, roles: ["org_admin"] },
+  platform_superadmin: {
+    licensed: false,
+    consent: false,
+    roles: expandSuperadminRoles(["superadmin"]),
+  },
+  platform_operator: { licensed: false, consent: false, roles: ["platform_ops"] },
+  ai_administrator: {
+    licensed: false,
+    consent: false,
+    roles: ["administrator"],
+    actorKind: "ai",
+  },
+  ai_superadmin: {
+    licensed: false,
+    consent: false,
+    roles: expandSuperadminRoles(["superadmin"]),
+    actorKind: "ai",
+  },
+  system_administrator: {
+    licensed: false,
+    consent: false,
+    roles: ["administrator"],
+    actorKind: "system",
+  },
 };
 
-function makeServer(sudStatus: ReviewWorkspace["sud"]["status"] = "detected") {
-  const calls = { consentPatients: [] as string[], renders: 0 };
+function makeServer(
+  sudStatus: ReviewWorkspace["sud"]["status"] = "detected",
+  opts: {
+    supportAllowed?: boolean;
+    workspaceFails?: boolean;
+    renderFails?: boolean;
+    supportScope?: "organization_scoped" | "patient_scoped";
+  } = {},
+) {
+  const calls = {
+    contentScopes: [] as Array<
+      | { readonly patientContentOnly: boolean; readonly expectedPatientId: string | null }
+      | undefined
+    >,
+    consentPatients: [] as string[],
+    /** The patient a response asked the read audit to name (`readAuditPatientId`). */
+    auditedPatients: [] as unknown[],
+    renders: 0,
+    supportResolutions: [] as string[],
+    supportAudits: [] as Array<{
+      patientId: string | null;
+      resourceKind: string;
+      pageNumber?: number;
+    }>,
+  };
   const store = createInMemoryEffectivePermissionStore(
     Object.keys(PERSONAS).map((userId) => ({
       orgId: ORG,
@@ -298,7 +401,18 @@ function makeServer(sudStatus: ReviewWorkspace["sud"]["status"] = "detected") {
   registerAbacRegistry(reg);
 
   const service = {
-    async getWorkspace(_org: string, _id: string, _membership: string, access?: SudContentAccess) {
+    async getBatchPatientId() {
+      return PATIENT;
+    },
+    async getWorkspace(
+      _org: string,
+      _id: string,
+      _membership: string,
+      access?: SudContentAccess,
+      scope?: { readonly patientContentOnly: boolean; readonly expectedPatientId: string | null },
+    ) {
+      calls.contentScopes.push(scope);
+      if (opts.workspaceFails) throw new Error("synthetic workspace failure");
       const ws = workspaceFixture(sudStatus);
       const allowed = await resolveSudContentAccess(access, {
         sudStatus,
@@ -312,24 +426,47 @@ function makeServer(sudStatus: ReviewWorkspace["sud"]["status"] = "detected") {
       _page: number,
       _correlationId: string,
       access?: SudContentAccess,
+      scope?: { readonly patientContentOnly: boolean; readonly expectedPatientId: string | null },
     ) {
+      calls.contentScopes.push(scope);
+      if (opts.renderFails) throw new Error("synthetic render failure");
       assertSudPageReadable(
         sudStatus,
         await resolveSudContentAccess(access, { sudStatus, patientId: PATIENT }),
       );
       calls.renders += 1;
-      return { png: new Uint8Array([1]), pageWidth: 1, pageHeight: 1 };
+      return { png: new Uint8Array([1]), pageWidth: 1, pageHeight: 1, patientId: PATIENT };
     },
   } as unknown as ReviewWorkspaceService;
 
+  const platformSupportAccess: WardenLensPlatformSupportAccess = {
+    async runAuthorizedRead(input, resolvePatient, read) {
+      calls.supportResolutions.push(input.supportSessionId);
+      if (opts.supportAllowed === false) throw new Error("support session denied");
+      const patientId = await resolvePatient(ORG);
+      const result = await read(ORG, patientId, opts.supportScope ?? "organization_scoped");
+      calls.supportAudits.push({
+        patientId,
+        resourceKind: input.resourceKind,
+        ...(input.pageNumber === undefined ? {} : { pageNumber: input.pageNumber }),
+      });
+      return result;
+    },
+  };
+
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerDocLensReviewWorkspaceRoutes(app, service);
+  app.addHook("onSend", async (request) => {
+    calls.auditedPatients.push(request.context.attributes.readAuditPatientId);
+  });
+  registerDocLensReviewWorkspaceRoutes(app, service, platformSupportAccess);
   return { app, calls };
 }
 
 const as = (user: string) => ({ "x-test-user": user });
 const workspaceUrl = `/api/v1/intake/uploads/${BATCH}/workspace`;
 const imageUrl = `/api/v1/intake/uploads/${BATCH}/pages/1/image`;
+const platformWorkspaceUrl = `/api/v1/platform/organizations/${PLATFORM_ORG}/intake/uploads/${BATCH}/workspace?supportSessionId=${SUPPORT_SESSION}`;
+const platformImageUrl = `/api/v1/platform/organizations/${PLATFORM_ORG}/intake/uploads/${BATCH}/pages/1/image?supportSessionId=${SUPPORT_SESSION}`;
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -352,6 +489,13 @@ describe("GAP-067 — DocLens review routes compose the Part 2 need-to-know chec
     expect(body.candidates[1].value).toBe("Methadone 20 mg");
     // The predicate is asked about the BATCH's patient (server-derived), not a client-supplied one.
     expect(calls.consentPatients).toEqual([PATIENT]);
+  });
+
+  it("a tenant page-image read asks the read audit to name the patient the packet is filed under", async () => {
+    const { app, calls } = makeServer("confirmed");
+    const res = await app.inject({ method: "GET", url: imageUrl, headers: as("rn_ok") });
+    expect(res.statusCode).toBe(200);
+    expect(calls.auditedPatients).toEqual([PATIENT]);
   });
 
   it("a licensed reviewer with NO consent sees a PENDING detection (adjudicating it is internal use)", async () => {
@@ -393,6 +537,231 @@ describe("GAP-067 — DocLens review routes compose the Part 2 need-to-know chec
     const res = await app.inject({ method: "GET", url: workspaceUrl, headers: as("aide_consent") });
     expect(res.statusCode).toBe(200);
     expect(res.json().candidates[1].value).toBeNull();
+  });
+
+  it.each(["tenant_administrator", "tenant_org_admin"])(
+    "%s reads a confirmed batch and its page without a clinical licence or patient consent",
+    async (user) => {
+      const { app, calls } = makeServer("confirmed");
+      const workspace = await app.inject({ method: "GET", url: workspaceUrl, headers: as(user) });
+      expect(workspace.statusCode).toBe(200);
+      expect(workspace.json().sud.contentRedacted).toBe(false);
+      expect(workspace.json().candidates[1].value).toBe("Methadone 20 mg");
+      expect(calls.consentPatients).toEqual([]);
+
+      const page = await app.inject({ method: "GET", url: imageUrl, headers: as(user) });
+      expect(page.statusCode).toBe(200);
+      expect(calls.renders).toBe(1);
+    },
+  );
+
+  it.each(["platform_superadmin", "platform_operator", "ai_administrator", "ai_superadmin"])(
+    "%s cannot use the tenant-administrator Part 2 bypass",
+    async (user) => {
+      const { app, calls } = makeServer("confirmed");
+      const workspace = await app.inject({ method: "GET", url: workspaceUrl, headers: as(user) });
+      expect(workspace.statusCode).toBe(200);
+      expect(workspace.json().sud.contentRedacted).toBe(true);
+
+      const page = await app.inject({ method: "GET", url: imageUrl, headers: as(user) });
+      expect(page.statusCode).toBe(403);
+      expect(calls.renders).toBe(0);
+    },
+  );
+
+  it("a human superadmin uses only the dedicated support-session path for workspace and image reads", async () => {
+    const { app, calls } = makeServer("confirmed");
+    const workspace = await app.inject({
+      method: "GET",
+      url: platformWorkspaceUrl,
+      headers: as("platform_superadmin"),
+    });
+    expect(workspace.statusCode).toBe(200);
+    expect(workspace.headers["cache-control"]).toBe("no-store");
+    expect(workspace.json().sud.contentRedacted).toBe(false);
+    expect(workspace.json().candidates[1].value).toBe("Methadone 20 mg");
+
+    const page = await app.inject({
+      method: "GET",
+      url: platformImageUrl,
+      headers: as("platform_superadmin"),
+    });
+    expect(page.statusCode).toBe(200);
+    expect(page.headers["cache-control"]).toBe("no-store");
+    expect(calls.supportResolutions).toEqual([SUPPORT_SESSION, SUPPORT_SESSION]);
+    expect(calls.supportAudits).toEqual([
+      { patientId: PATIENT, resourceKind: "intake_review_workspace" },
+      { patientId: PATIENT, resourceKind: "intake_page_image", pageNumber: 1 },
+    ]);
+  });
+
+  it.each([
+    ["patient_scoped", true],
+    ["organization_scoped", false],
+  ] as const)(
+    "a %s support session asks the service for patient-only content: %s",
+    async (supportScope, patientContentOnly) => {
+      const { app, calls } = makeServer("confirmed", { supportScope });
+      for (const url of [platformWorkspaceUrl, platformImageUrl]) {
+        const response = await app.inject({
+          method: "GET",
+          url,
+          headers: as("platform_superadmin"),
+        });
+        expect(response.statusCode).toBe(200);
+      }
+      expect(calls.contentScopes).toEqual([
+        { patientContentOnly, expectedPatientId: PATIENT },
+        { patientContentOnly, expectedPatientId: PATIENT },
+      ]);
+    },
+  );
+
+  it("a support read stays valid only while the batch is filed under the authorized patient", () => {
+    const scope = { patientContentOnly: false, expectedPatientId: PATIENT };
+    expect(() => assertBatchStillFiledUnder(scope, PATIENT)).not.toThrow();
+    expect(() => assertBatchStillFiledUnder(scope, "another-patient")).toThrow(/re-filed/);
+    expect(() => assertBatchStillFiledUnder(scope, null)).toThrow(/re-filed/);
+    expect(() => assertBatchStillFiledUnder(undefined, "anything")).not.toThrow();
+  });
+
+  it("the tenant administrator routes never ask for patient-only content", async () => {
+    const { app, calls } = makeServer("confirmed");
+    for (const url of [workspaceUrl, imageUrl]) {
+      const response = await app.inject({
+        method: "GET",
+        url,
+        headers: as("tenant_administrator"),
+      });
+      expect(response.statusCode).toBe(200);
+    }
+    expect(calls.contentScopes).toEqual([undefined, undefined]);
+  });
+
+  describe("a patient-scoped grant reads a batch only when the filed patient is proven", () => {
+    const page = (
+      identityStatus: string | null,
+      identityResolution: string | null = null,
+      extra: {
+        duplicateOfPage?: number | null;
+        pageRangeStart?: number;
+        pageRangeEnd?: number;
+      } = {},
+    ) => ({
+      identityStatus,
+      identityResolution,
+      duplicateOfPage: extra.duplicateOfPage ?? null,
+      pageRangeStart: extra.pageRangeStart ?? 1,
+      pageRangeEnd: extra.pageRangeEnd ?? 2,
+    });
+    const batch = { identityStatus: "match", recordsRequestConflictKind: null as string | null };
+
+    it.each([
+      ["no classified document yet", batch, []],
+      ["no identity check yet", { ...batch, identityStatus: null }, [page("match")]],
+      ["no identity target", { ...batch, identityStatus: "no_target" }, [page(null)]],
+      ["an unverified batch", { ...batch, identityStatus: "unverified" }, [page("unverified")]],
+      ["a possible match", { ...batch, identityStatus: "possible" }, [page("possible")]],
+      ["a mismatch", { ...batch, identityStatus: "mismatch" }, [page("mismatch")]],
+      ["another patient's document", batch, [page("match"), page("match", "other_patient")]],
+      ["an unresolved mismatch page", batch, [page("match"), page("mismatch")]],
+      ["an unverified page", batch, [page("unverified")]],
+      ["a page with no identity check", batch, [page(null)]],
+      [
+        "a re-sent copy no reviewer has confirmed (the duplicate mark is a fuzzy text match, not identity)",
+        batch,
+        [
+          page("match"),
+          page(null, null, { duplicateOfPage: 1, pageRangeStart: 3, pageRangeEnd: 3 }),
+        ],
+      ],
+      [
+        "a records-request code naming another patient",
+        { ...batch, recordsRequestConflictKind: "code_names_another_patient" },
+        [page("match")],
+      ],
+    ] as const)("refuses %s", (_name, b, pages) => {
+      expect(batchProvenFiledPatientOnly(b, pages)).toBe(false);
+    });
+
+    it("refuses an image page that no classified document covers", () => {
+      const pages = [page("match", null, { pageRangeStart: 1, pageRangeEnd: 2 })];
+      expect(batchProvenFiledPatientOnly(batch, pages, 2)).toBe(true);
+      expect(batchProvenFiledPatientOnly(batch, pages, 3)).toBe(false);
+    });
+
+    it.each([
+      [
+        "matching documents",
+        batch,
+        [page("match"), page("match", null, { pageRangeStart: 3, pageRangeEnd: 3 })],
+      ],
+      [
+        "a reviewer-confirmed mismatch",
+        batch,
+        [page("match"), page("mismatch", "same_patient", { pageRangeStart: 3, pageRangeEnd: 3 })],
+      ],
+      [
+        "a re-sent copy a reviewer confirmed as the filed patient's",
+        batch,
+        [
+          page("match"),
+          page(null, "same_patient", { duplicateOfPage: 1, pageRangeStart: 3, pageRangeEnd: 3 }),
+        ],
+      ],
+    ] as const)("allows %s", (_name, b, pages) => {
+      expect(batchProvenFiledPatientOnly(b, pages)).toBe(true);
+    });
+  });
+
+  it.each([
+    ["workspace", platformWorkspaceUrl, { workspaceFails: true }],
+    ["page image", platformImageUrl, { renderFails: true }],
+  ] as const)(
+    "does not record a successful support %s read when preparation fails",
+    async (_kind, url, opts) => {
+      const { app, calls } = makeServer("confirmed", opts);
+      const response = await app.inject({
+        method: "GET",
+        url,
+        headers: as("platform_superadmin"),
+      });
+      expect(response.statusCode).toBe(500);
+      expect(calls.supportAudits).toEqual([]);
+    },
+  );
+
+  it.each(["tenant_administrator", "tenant_org_admin", "platform_operator", "ai_superadmin"])(
+    "%s cannot enter the dedicated superadmin support-session path",
+    async (user) => {
+      const { app, calls } = makeServer("confirmed");
+      const response = await app.inject({
+        method: "GET",
+        url: platformWorkspaceUrl,
+        headers: as(user),
+      });
+      expect(response.statusCode).toBe(403);
+      expect(calls.supportResolutions).toEqual([]);
+      expect(calls.supportAudits).toEqual([]);
+    },
+  );
+
+  it("a system principal carrying an administrator key is denied the PHI read routes", async () => {
+    const { app, calls } = makeServer("confirmed");
+    const workspace = await app.inject({
+      method: "GET",
+      url: workspaceUrl,
+      headers: as("system_administrator"),
+    });
+    expect(workspace.statusCode).toBe(403);
+
+    const page = await app.inject({
+      method: "GET",
+      url: imageUrl,
+      headers: as("system_administrator"),
+    });
+    expect(page.statusCode).toBe(403);
+    expect(calls.renders).toBe(0);
   });
 
   it("fails closed (redacts a confirmed batch) when the consent seam throws", async () => {

@@ -1,12 +1,12 @@
 {
   "totals": {
-    "routes": 2156,
-    "enriched": 2156,
+    "routes": 2158,
+    "enriched": 2158,
     "deficit": 0,
     "mutating": 1239,
     "mutatingNoBody": 1,
-    "gets": 863,
-    "getsNoResponse": 9
+    "gets": 865,
+    "getsNoResponse": 10
   },
   "modules": [
     {
@@ -211,13 +211,13 @@
     },
     {
       "module": "22-documents",
-      "routes": 58,
-      "enriched": 58,
+      "routes": 60,
+      "enriched": 60,
       "deficit": 0,
       "mutating": 31,
       "mutatingNoBody": 0,
-      "gets": 25,
-      "getsNoResponse": 2
+      "gets": 27,
+      "getsNoResponse": 3
     },
     {
       "module": "23-billing-medicare",

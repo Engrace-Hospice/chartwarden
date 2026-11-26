@@ -1803,6 +1803,7 @@ import {
   createOnboardingWizard,
   createSupportGrantOperationsOver,
   createSupportSessionPorts,
+  createWardenLensSupportAccess,
   describeM34SweepSchedules,
   enableM34JobCapability,
   getTenantKeyProvider,
@@ -6972,6 +6973,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             },
             // F-236 — `POST /intake/uploads/:id/extraction/run` enqueues; the worker process runs it.
             queueConnection ? createDocLensIntakeEnqueue(queueConnection) : undefined,
+            platformDbHandle
+              ? createWardenLensSupportAccess({
+                  platformDb: platformDbHandle.db,
+                  auditBypass: m34PlatformBypassAuditor,
+                  platformJobId: M34_PLATFORM_JOB_ID,
+                })
+              : undefined,
           );
           mountTerminologyRoutes(app, dbHandle.db, featureFlagReader, {
             ...(m38Producer ? { jobs: m38Producer } : {}),

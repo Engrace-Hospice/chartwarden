@@ -7721,6 +7721,7 @@ import {
 import {
   IdentityReviewRequest as M22IdentityReviewRequest,
   IdentityReviewResponseSchema as M22IdentityReviewResponseSchema,
+  PlatformSupportQuery as M22PlatformSupportQuery,
   RelinkRequest as M22RelinkRequest,
   RelinkResponseSchema as M22RelinkResponseSchema,
   ReviewQueueQuerySchema as M22ReviewQueueQuerySchema,
@@ -7744,6 +7745,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/intake/uploads/:id/pages/:page/image": {
     summary: "WardenLens: one source page as PNG (the review overlay's coordinate space x2)",
+  },
+  "GET /api/v1/platform/organizations/:organizationId/intake/uploads/:id/workspace": {
+    summary:
+      "WardenLens platform support: read one tenant batch through an active tenant-consented support session",
+    query: M22PlatformSupportQuery,
+    response: M22ReviewWorkspaceResponseSchema,
+  },
+  "GET /api/v1/platform/organizations/:organizationId/intake/uploads/:id/pages/:page/image": {
+    summary:
+      "WardenLens platform support: read one tenant source page through an active tenant-consented support session",
+    query: M22PlatformSupportQuery,
   },
   "POST /api/v1/intake/uploads/:id/sud-review": {
     summary:

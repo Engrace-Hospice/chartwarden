@@ -48,7 +48,7 @@ The image tag was an existing local `wardenx-api:latest`; the test mounted the c
 
 ## Review findings
 
-Fresh code and security reviews found no confirmed High/Critical issue in the L6C2 changes. They retained two bounded Medium observations: (1) the upstream-evidence inspection-to-commit window can produce a stale but nonposting snapshot; (2) qualification evidence must be reported with the actual conditional container mode, migrations, and runtime mounts. The report now records that mode and its limitations. The first issue is documented in ADR-0115 and requires re-evaluation before future downstream use.
+Fresh code and security reviews found no confirmed High/Critical issue in the L6C2 changes. They retained two bounded Medium observations: (1) the upstream-evidence inspection-to-commit window can produce a stale but nonposting snapshot; (2) qualification evidence must be reported with the actual conditional container mode, migrations, and runtime mounts. The report now records that mode and its limitations. The first issue is documented in ADR-0116 and requires re-evaluation before future downstream use.
 
 ## External and deployment limits
 

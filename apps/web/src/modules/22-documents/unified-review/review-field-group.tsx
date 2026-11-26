@@ -1,25 +1,16 @@
 import { Glyph, StatusPill } from "@chartwarden/ui";
 import type { JSX } from "react";
-import { Link } from "react-router-dom";
 import { decisionLabel, docTypeLabel, pct } from "../doclens-model";
 import type { ReviewFieldGroupProjection } from "./review-projection";
 
-function detailPath(batchId: string, candidateId: string, returnTo: string | null): string {
-  const query = new URLSearchParams({ mode: "detailed", from: "unified", candidate: candidateId });
-  if (returnTo) query.set("returnTo", returnTo);
-  return `/intake/${encodeURIComponent(batchId)}/review?${query.toString()}`;
-}
-
 export function ReviewFieldGroup({
-  batchId,
   group,
-  returnTo,
   onSelectSource,
+  onReviewDecision,
 }: {
-  batchId: string;
   group: ReviewFieldGroupProjection;
-  returnTo: string | null;
   onSelectSource: (candidateId: string) => void;
+  onReviewDecision: (candidateId: string) => void;
 }): JSX.Element {
   const status = group.conflict
     ? { label: `${group.distinctValueCount} conflicting values`, tone: "warning" as const }
@@ -79,12 +70,13 @@ export function ReviewFieldGroup({
               >
                 <Glyph name="eye" size={15} /> Preview source
               </button>
-              <Link
+              <button
+                type="button"
                 className="wx-btn-secondary wx-btn-sm"
-                to={detailPath(batchId, candidate.id, returnTo)}
+                onClick={() => onReviewDecision(candidate.id)}
               >
                 Review decision <Glyph name="arrow-right" size={15} />
-              </Link>
+              </button>
             </div>
           </li>
         ))}

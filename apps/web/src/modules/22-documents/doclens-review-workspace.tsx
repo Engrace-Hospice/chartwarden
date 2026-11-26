@@ -1735,7 +1735,7 @@ function SudPanel({
   );
 }
 
-function CompleteDialog({
+export function CompleteDialog({
   ws,
   onClose,
   onComplete,
@@ -1930,14 +1930,18 @@ function CompleteDialog({
                 type="button"
                 className="wx-btn-primary"
                 disabled={!attested || pending}
-                onClick={() => {
+                onClick={async () => {
                   setPending(true);
                   setError(null);
-                  void onComplete().then((r) => {
-                    setPending(false);
+                  try {
+                    const r = await onComplete();
                     if (r.ok) setResult(r.value);
                     else setError(r.message);
-                  });
+                  } catch {
+                    setError("The review could not be completed. Try again.");
+                  } finally {
+                    setPending(false);
+                  }
                 }}
               >
                 {pending ? "Completing…" : "Complete review"}
