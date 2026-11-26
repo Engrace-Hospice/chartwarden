@@ -3,16 +3,30 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { safeIntakeReturnTo } from "../../../shell/intake-return";
+import { recallLastReviewTask } from "../../../shell/last-review-task";
 import type { PlatformSupportAccess, Workspace } from "../doclens-api";
 import { completeReview, releaseReview, startReview } from "../doclens-api";
 import { batchStatusLabel, identityNeedsAnswer, sourceLabel } from "../doclens-model";
 import { CompleteDialog, DocLensReviewWorkspace } from "../doclens-review-workspace";
 import { ReviewExceptionPanel } from "./review-exception-panel";
-import { type ReviewExceptionTask, projectExceptionSummary } from "./review-exception-tasks";
+import {
+  type ReviewExceptionTask,
+  type ReviewTaskTarget,
+  type SafeguardFocus,
+  type SafeguardSelection,
+  candidateTaskId,
+  exceptionTaskTarget,
+  openTaskIds,
+  projectExceptionSummary,
+  safeguardTaskId,
+  targetTaskId,
+} from "./review-exception-tasks";
 import { exceptionCountsBySection, projectReviewExceptions } from "./review-exceptions";
 import { ReviewFieldGroup } from "./review-field-group";
+import { rememberOpenedTask, restoreTaskTarget } from "./review-last-task";
 import {
   candidateIsOtherPatient,
+  candidateIsSelectable,
   projectReviewGroups,
   projectUnifiedReview,
 } from "./review-projection";
@@ -21,6 +35,21 @@ import { ReviewSectionList } from "./review-section-list";
 import { type ReviewSectionId, sectionForField } from "./review-sections";
 import { ReviewSourcePanel } from "./review-source-panel";
 import "./unified-review.css";
+import "./unified-review-exceptions.css";
+
+/** Keeps the open candidate while it is still selectable, else the first one worth opening. */
+function nextSelectedCandidateId(
+  data: Workspace,
+  current: string | null,
+  preferUndecided: boolean,
+): string | null {
+  const selectable = data.candidates.filter((candidate) => candidateIsSelectable(data, candidate));
+  if (current && selectable.some((candidate) => candidate.id === current)) return current;
+  const undecided = preferUndecided
+    ? selectable.find((candidate) => candidate.decision === null)
+    : undefined;
+  return (undecided ?? selectable[0])?.id ?? null;
+}
 
 export function UnifiedReviewWorkspace(): JSX.Element {
   const [searchParams] = useSearchParams();
@@ -61,13 +90,17 @@ function UnifiedReviewSummary(): JSX.Element {
   const [selectedSectionId, setSelectedSectionId] =
     useState<ReviewSectionId>("identity-demographics");
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
-  const [selectedSafeguardPage, setSelectedSafeguardPage] = useState<number | null>(null);
+  const [safeguardSelection, setSafeguardSelection] = useState<SafeguardSelection | null>(null);
+  // True while the open task is the one restored on load: its priorities row is made visible, once, since
+  // the reviewer did not just click it. Any choice they make afterwards leaves the categories as they are.
+  const [restoredSelection, setRestoredSelection] = useState(false);
   const [nextCandidateId, setNextCandidateId] = useState<string | null>(null);
   const [sourceUnavailablePages, setSourceUnavailablePages] = useState<ReadonlySet<number>>(
     new Set(),
   );
   const taskFocusRef = useRef<HTMLElement | null>(null);
   const refreshGenerationRef = useRef(0);
+  const restoredBatchRef = useRef<string | null>(null);
   const focusTask = useCallback((): void => {
     const task = taskFocusRef.current;
     if (!task) return;
@@ -89,10 +122,47 @@ function UnifiedReviewSummary(): JSX.Element {
   const clearSupportWorkspace = useCallback((): void => {
     setWorkspace(null);
     setCompleteOpen(false);
-    setSelectedSafeguardPage(null);
+    setSafeguardSelection(null);
     setNextCandidateId(null);
     setSourceUnavailablePages(new Set());
   }, []);
+
+  // The task remembered for this batch is offered once per batch per mount, on its first load; later
+  // refreshes keep whatever the reviewer has open.
+  const takeRestoredTarget = useCallback(
+    (data: Workspace): ReviewTaskTarget | null => {
+      if (restoredBatchRef.current === batchId) return null;
+      restoredBatchRef.current = batchId;
+      const saved = recallLastReviewTask(batchId);
+      return saved ? restoreTaskTarget(saved, data) : null;
+    },
+    [batchId],
+  );
+
+  // A restored candidate is chosen by the candidate selector; a restored safeguard block opens the
+  // safeguard panel instead and leaves no candidate selected.
+  const applyLoadedSelection = useCallback(
+    (data: Workspace, preferUndecided: boolean): void => {
+      const restored = takeRestoredTarget(data);
+      if (restored) setRestoredSelection(true);
+      if (restored?.kind === "safeguard") {
+        setSelectedCandidateId(null);
+        setSelectedSectionId("documents-safeguards");
+        // Marked, but not scrolled to or focused: nobody asked for it on this load.
+        setSafeguardSelection({
+          page: restored.page,
+          focus: restored.focus,
+          taskId: targetTaskId(restored),
+          reveal: false,
+        });
+        return;
+      }
+      setSelectedCandidateId((current) =>
+        restored ? restored.candidateId : nextSelectedCandidateId(data, current, preferUndecided),
+      );
+    },
+    [takeRestoredTarget],
+  );
 
   const refresh = useCallback(async (): Promise<Workspace | null> => {
     if (!batchId) return null;
@@ -130,23 +200,7 @@ function UnifiedReviewSummary(): JSX.Element {
       setWorkspace(data);
       setLoadError(null);
       setRefreshRequired(false);
-      setSelectedCandidateId((current) => {
-        if (
-          current &&
-          data.candidates.some(
-            (candidate) =>
-              candidate.id === current &&
-              !candidate.redacted &&
-              !candidateIsOtherPatient(data, candidate),
-          )
-        )
-          return current;
-        return (
-          data.candidates.find(
-            (candidate) => !candidate.redacted && !candidateIsOtherPatient(data, candidate),
-          )?.id ?? null
-        );
-      });
+      applyLoadedSelection(data, false);
       return data;
     }
     const response = await client
@@ -165,32 +219,16 @@ function UnifiedReviewSummary(): JSX.Element {
     setWorkspace(data);
     setLoadError(null);
     setRefreshRequired(false);
-    setSelectedCandidateId((current) => {
-      if (
-        current &&
-        data.candidates.some(
-          (candidate) =>
-            candidate.id === current &&
-            !candidate.redacted &&
-            !candidateIsOtherPatient(data, candidate),
-        )
-      )
-        return current;
-      return (
-        data.candidates.find(
-          (candidate) =>
-            candidate.decision === null &&
-            !candidate.redacted &&
-            !candidateIsOtherPatient(data, candidate),
-        )?.id ??
-        data.candidates.find(
-          (candidate) => !candidate.redacted && !candidateIsOtherPatient(data, candidate),
-        )?.id ??
-        null
-      );
-    });
+    applyLoadedSelection(data, true);
     return data;
-  }, [batchId, clearSupportWorkspace, client, incompleteSupportContext, supportAccess]);
+  }, [
+    applyLoadedSelection,
+    batchId,
+    clearSupportWorkspace,
+    client,
+    incompleteSupportContext,
+    supportAccess,
+  ]);
 
   useEffect(() => {
     void refresh();
@@ -229,6 +267,14 @@ function UnifiedReviewSummary(): JSX.Element {
     workspace?.candidates.find((candidate) => candidate.id === selectedCandidateId) ?? null;
   const nextCandidate =
     workspace?.candidates.find((candidate) => candidate.id === nextCandidateId) ?? null;
+  const openTasks = useMemo(
+    () =>
+      openTaskIds(exceptionSummary, groups, {
+        candidateId: selectedCandidateId,
+        safeguardTaskId: safeguardSelection?.taskId ?? null,
+      }),
+    [exceptionSummary, groups, selectedCandidateId, safeguardSelection],
+  );
 
   const onAvailabilityChange = useCallback((page: number, unavailable: boolean): void => {
     setSourceUnavailablePages((current) => {
@@ -245,24 +291,49 @@ function UnifiedReviewSummary(): JSX.Element {
       if (!workspace || !candidate || candidateIsOtherPatient(workspace, candidate)) return;
       const group = groups.find((item) => item.candidateIds.includes(candidateId));
       if (group) setSelectedSectionId(group.sectionId);
-      setSelectedSafeguardPage(null);
+      setSafeguardSelection(null);
       setSelectedCandidateId(candidateId);
       setNextCandidateId(null);
+      setRestoredSelection(false);
+      // A withheld candidate is never offered again on reload, so it must not replace a restorable task.
+      rememberOpenedTask(
+        batchId,
+        candidateIsSelectable(workspace, candidate) ? candidateTaskId(candidateId) : null,
+      );
       focusTask();
     },
-    [focusTask, groups, workspace],
+    [batchId, focusTask, groups, workspace],
   );
 
+  // The task kind decides where a task leads; a candidate id it happens to carry never does.
   const selectException = (task: ReviewExceptionTask): void => {
     setSelectedSectionId(task.sectionId);
-    if (task.candidateId && !task.reasons.some((reason) => reason.kind === "identity-unresolved")) {
-      selectCandidate(task.candidateId);
+    const target = exceptionTaskTarget(task);
+    if (target.kind === "candidate") {
+      selectCandidate(target.candidateId);
       return;
     }
     setSelectedCandidateId(null);
-    setSelectedSafeguardPage(task.page);
+    // A fresh object even for the same block, so choosing it again scrolls and focuses it again.
+    setSafeguardSelection({
+      page: target.page,
+      focus: target.focus,
+      taskId: task.id,
+      reveal: true,
+    });
     setNextCandidateId(null);
+    setRestoredSelection(false);
+    rememberOpenedTask(batchId, targetTaskId(target));
     focusTask();
+  };
+
+  // The reviewer chose a block's source inside the safeguard panel: the one selection follows, so the
+  // marked block, the marked row and the remembered task never disagree.
+  const focusSafeguardBlock = (focus: SafeguardFocus, page: number): void => {
+    const taskId = safeguardTaskId(focus);
+    setSafeguardSelection({ page, focus, taskId, reveal: false });
+    setRestoredSelection(false);
+    rememberOpenedTask(batchId, taskId);
   };
 
   const onDecisionSaved = (latest: Workspace, candidateId: string): void => {
@@ -516,7 +587,8 @@ function UnifiedReviewSummary(): JSX.Element {
               setSelectedSectionId(sectionId);
               if (sectionId === "documents-safeguards") {
                 setSelectedCandidateId(null);
-                setSelectedSafeguardPage(null);
+                setSafeguardSelection(null);
+                rememberOpenedTask(batchId, null);
               }
             }}
           />
@@ -569,7 +641,11 @@ function UnifiedReviewSummary(): JSX.Element {
               workspace={workspace}
               candidate={selectedCandidate}
               returnTo={returnTo}
-              onClose={() => setSelectedCandidateId(null)}
+              onClose={() => {
+                setSelectedCandidateId(null);
+                setSafeguardSelection(null);
+                rememberOpenedTask(batchId, null);
+              }}
               onAvailabilityChange={onAvailabilityChange}
               refresh={refresh}
               onDecisionSaved={onDecisionSaved}
@@ -577,10 +653,11 @@ function UnifiedReviewSummary(): JSX.Element {
               onNext={() => nextCandidate && selectCandidate(nextCandidate.id)}
               supportAccess={supportAccess}
             />
-          ) : selectedSectionId === "documents-safeguards" || selectedSafeguardPage !== null ? (
+          ) : selectedSectionId === "documents-safeguards" || safeguardSelection !== null ? (
             <ReviewSafeguardPanel
               workspace={workspace}
-              selectedPage={selectedSafeguardPage}
+              selection={safeguardSelection}
+              onFocusBlock={focusSafeguardBlock}
               refresh={refresh}
               supportAccess={supportAccess}
             />
@@ -593,7 +670,12 @@ function UnifiedReviewSummary(): JSX.Element {
           )}
         </section>
 
-        <ReviewExceptionPanel summary={exceptionSummary} onSelect={selectException} />
+        <ReviewExceptionPanel
+          summary={exceptionSummary}
+          selectedTaskIds={openTasks}
+          expandSelected={restoredSelection}
+          onSelect={selectException}
+        />
       </div>
 
       {!supportAccess && completeOpen && workspace.review ? (

@@ -1,0 +1,53 @@
+/* Selected states for the exception list rows and the safeguard blocks they open. */
+.wx-unified-exception-task > button[aria-current="true"] {
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface-lowest));
+  box-shadow: inset 3px 0 var(--color-primary);
+}
+.wx-unified-exception-task > button[aria-current="true"] strong {
+  color: var(--color-primary);
+}
+
+.wx-unified-safeguard-task[aria-current="true"] {
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface-lowest));
+  box-shadow: inset 3px 0 var(--color-primary);
+}
+.wx-unified-safeguard-task[tabindex]:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: -3px;
+}
+fieldset.wx-unified-safeguard-task {
+  min-width: 0;
+  margin: 0;
+}
+
+/*
+ * The safeguard evidence stage stays at the top of the task column while its blocks scroll under it,
+ * so a selected block and the page it is about are on screen together. `overflow: clip` (not
+ * `hidden`) keeps the rounded corners without making the panel a scroll container, which would stop
+ * the stage from sticking. The stage is capped by height so a block always has room below it.
+ */
+.wx-unified-safeguards {
+  overflow: visible;
+}
+@supports (overflow: clip) {
+  .wx-unified-safeguards {
+    overflow: clip;
+  }
+}
+.wx-unified-safeguards > .wx-unified-source-stage {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  /* A fixed height, not a min/max range: the reveal aligns the selected block just below this stage using its height at
+     that moment, and a stage that grows when its page image loads would slide over the block's buttons. */
+  height: min(30rem, 40vh);
+  box-shadow: 0 1px 0 var(--color-card-border);
+}
+@container (max-width: 42rem) {
+  /* Narrow layout: the page scrolls, not the column, so the stage is not pinned. */
+  .wx-unified-safeguards > .wx-unified-source-stage {
+    position: relative;
+    min-height: 20rem;
+    max-height: 30rem;
+  }
+}

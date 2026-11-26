@@ -193,6 +193,7 @@ beforeEach(() => {
   resolveDeferredWorkspaceRead = null;
   decisionRequests.length = 0;
   fetchStub.mockClear();
+  window.sessionStorage.clear();
   vi.stubGlobal("fetch", fetchStub);
 });
 afterEach(() => {

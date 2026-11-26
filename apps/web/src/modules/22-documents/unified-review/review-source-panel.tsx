@@ -1,6 +1,6 @@
 import { Glyph, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
-import type { FormEvent, JSX } from "react";
+import type { CSSProperties, FormEvent, JSX } from "react";
 import { Link } from "react-router-dom";
 import type { Candidate, PlatformSupportAccess, Workspace } from "../doclens-api";
 import { decide, pageImageUrl } from "../doclens-api";
@@ -13,14 +13,55 @@ import {
   fieldLabel,
   pct,
 } from "../doclens-model";
+import {
+  NO_VALUE_LABEL,
+  effectiveObservationValue,
+  visibleValue,
+} from "./review-observation-values";
 
 type ImageState = "loading" | "ready" | "unavailable" | "forbidden";
 type DecisionMode = "edit" | "reject" | null;
+type SourceZoom = "fit" | "actual";
 
 function detailPath(batchId: string, candidateId: string, returnTo: string | null): string {
   const query = new URLSearchParams({ mode: "detailed", from: "unified", candidate: candidateId });
   if (returnTo) query.set("returnTo", returnTo);
   return `/intake/${encodeURIComponent(batchId)}/review?${query.toString()}`;
+}
+
+/** Fit width fills the panel up to the page's natural width; actual size shows it pixel for pixel. */
+function pageWidthStyle(zoom: SourceZoom, naturalWidth: number | null): CSSProperties {
+  if (naturalWidth === null) return {};
+  return zoom === "actual"
+    ? { width: `${naturalWidth}px`, maxWidth: "none" }
+    : { maxWidth: `${naturalWidth}px` };
+}
+
+/** Scrolls only the source viewport (never the window) so the highlighted line sits in its middle. */
+function centerInViewport(viewport: HTMLElement, target: HTMLElement): void {
+  const view = viewport.getBoundingClientRect();
+  const mark = target.getBoundingClientRect();
+  viewport.scrollTo?.({
+    left: viewport.scrollLeft + (mark.left - view.left) - (view.width - mark.width) / 2,
+    top: viewport.scrollTop + (mark.top - view.top) - (view.height - mark.height) / 2,
+  });
+}
+
+function headerValue(candidate: Candidate): string {
+  return candidate.redacted
+    ? "Protected value withheld"
+    : (visibleValue(effectiveObservationValue(candidate)) ?? NO_VALUE_LABEL);
+}
+
+/** The saved state of an observation, shown in the task header so it never reads as pre-edit. */
+function savedDecisionLine(candidate: Candidate): string | null {
+  const { decision } = candidate;
+  if (!decision || candidate.redacted) return null;
+  const extracted =
+    decision.decision === "approve_with_edit" && decision.editedValue !== null
+      ? ` · Extracted: ${visibleValue(candidate.value) ?? NO_VALUE_LABEL}`
+      : "";
+  return `Saved decision: ${decisionLabel(decision.decision)}${extracted}`;
 }
 
 export function ReviewSourcePanel({
@@ -61,7 +102,16 @@ export function ReviewSourcePanel({
   const [message, setMessage] = useState<string | null>(null);
   const [refreshPending, setRefreshPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [changing, setChanging] = useState(false);
+  const [zoom, setZoom] = useState<SourceZoom>("fit");
+  const [naturalWidth, setNaturalWidth] = useState<number | null>(null);
   const sourceGeneration = useRef(0);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
+  const highlightRef = useRef<HTMLSpanElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const confirmationRef = useRef<HTMLInputElement>(null);
+  const focusAfterChange = useRef(false);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: an explicit retry must reset source state.
   useEffect(() => {
@@ -74,21 +124,51 @@ export function ReviewSourcePanel({
     setMessage(null);
     setRefreshPending(false);
     setError(null);
+    setChanging(false);
+    setNaturalWidth(null);
+    // A cached image can fire `load` before this passive effect runs; keep it loaded.
+    const image = imageRef.current;
+    if (!candidate.redacted && image?.complete && image.naturalWidth > 0) {
+      setNaturalWidth(image.naturalWidth);
+      setImageState("ready");
+      onAvailabilityChange(candidate.page, false);
+    }
   }, [candidate.id, candidate.redacted, attempt]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a zoom or size change moves the highlight and must re-centre it.
+  useEffect(() => {
+    if (imageState !== "ready" || !viewportRef.current || !highlightRef.current) return;
+    centerInViewport(viewportRef.current, highlightRef.current);
+  }, [imageState, zoom, naturalWidth]);
+
+  // Choosing "Change decision" unmounts the focused button; hand focus to the next step instead.
+  useEffect(() => {
+    if (!changing || !focusAfterChange.current) return;
+    focusAfterChange.current = false;
+    const target = confirmationRef.current;
+    (target && !target.disabled ? target : panelRef.current)?.focus();
+  }, [changing]);
 
   const review = workspace.review;
   const canOwnDecision = review?.status === "in_progress" && review.isMine;
   const complete = review?.status === "complete" || workspace.batch.status === "writeback_complete";
   const page = workspace.pages.find((item) => item.page === candidate.page) ?? null;
+  // A saved decision stays final until the reviewer explicitly chooses to change it.
+  const locked = candidate.decision !== null && !changing;
+  const decisionsAvailable = Boolean(
+    canOwnDecision && !complete && !candidate.redacted && !supportAccess,
+  );
   const canSubmit = Boolean(
     canOwnDecision &&
       !complete &&
       !candidate.redacted &&
       !refreshPending &&
+      !locked &&
       imageState === "ready" &&
       sourceConfirmed,
   );
   const visionReasonRequired = candidate.vision.status === "disagreed";
+  const savedLine = savedDecisionLine(candidate);
 
   const unavailable = (state: "unavailable" | "forbidden"): void => {
     setImageState(state);
@@ -128,6 +208,8 @@ export function ReviewSourcePanel({
       setError(result.message);
       return;
     }
+    setSourceConfirmed(false);
+    setChanging(false);
     const latest = await refresh();
     setBusy(false);
     setMode(null);
@@ -140,7 +222,7 @@ export function ReviewSourcePanel({
     }
     setMessage(
       decision === "approve"
-        ? `Decision saved: accepted ${candidate.value ?? "extracted value"}`
+        ? `Decision saved: accepted ${visibleValue(candidate.value) ?? "extracted value"}`
         : decision === "approve_with_edit"
           ? `Decision saved: corrected to ${extra.editedValue ?? "edited value"}`
           : "Decision saved: rejected extracted value",
@@ -171,24 +253,22 @@ export function ReviewSourcePanel({
   };
 
   return (
-    <section className="wx-unified-source" aria-label="Review task" tabIndex={-1}>
+    <section ref={panelRef} className="wx-unified-source" aria-label="Review task" tabIndex={-1}>
       <header>
         <div>
           <span className="wx-unified-category">Review task · Page {candidate.page}</span>
           <h2>{fieldLabel(candidate.fieldPath)}</h2>
           <p>
-            {candidate.redacted
-              ? "Protected value withheld"
-              : (candidate.value ?? "No value extracted")}{" "}
-            · {docTypeLabel(candidate.documentType)} · {pct(candidate.confidence)} confidence
+            {`${headerValue(candidate)} · ${docTypeLabel(candidate.documentType)} · ${pct(candidate.confidence)} confidence`}
           </p>
+          {savedLine ? <p>{savedLine}</p> : null}
         </div>
         <button type="button" className="wx-btn-secondary wx-btn-sm" onClick={onClose}>
           <Glyph name="close" size={15} /> Close task
         </button>
       </header>
 
-      <div className="wx-unified-source-stage">
+      <div className="wx-unified-source-viewer">
         {candidate.redacted || imageState === "forbidden" ? (
           <div role="alert" className="wx-unified-source-failure">
             <Glyph name="shield" size={24} />
@@ -210,28 +290,53 @@ export function ReviewSourcePanel({
           </div>
         ) : (
           <>
-            <StatusPill
-              label={imageState === "loading" ? "Loading source" : "Source loaded"}
-              tone={imageState === "loading" ? "progress" : "success"}
-            />
-            <div className="wx-unified-source-page">
-              <img
-                key={`${candidate.id}:${attempt}`}
-                src={pageImageUrl(batchId, candidate.page, supportAccess)}
-                alt={`Page ${candidate.page} of the source document for ${fieldLabel(candidate.fieldPath)}`}
-                onLoad={() => {
-                  setImageState("ready");
-                  onAvailabilityChange(candidate.page, false);
-                }}
-                onError={onImageError}
+            <div className="wx-unified-source-toolbar">
+              <StatusPill
+                label={imageState === "loading" ? "Loading source" : "Source loaded"}
+                tone={imageState === "loading" ? "progress" : "success"}
               />
-              {imageState === "ready" && page ? (
-                <span
-                  className="wx-unified-source-box"
-                  style={bboxPercent(candidate.bbox, page)}
-                  aria-hidden="true"
+              <fieldset className="wx-unified-source-zoom" aria-label="Source zoom">
+                <button
+                  type="button"
+                  className="wx-btn-secondary wx-btn-sm"
+                  aria-pressed={zoom === "fit"}
+                  onClick={() => setZoom("fit")}
+                >
+                  Fit width
+                </button>
+                <button
+                  type="button"
+                  className="wx-btn-secondary wx-btn-sm"
+                  aria-pressed={zoom === "actual"}
+                  onClick={() => setZoom("actual")}
+                >
+                  Actual size
+                </button>
+              </fieldset>
+            </div>
+            <div className="wx-unified-source-viewport" ref={viewportRef}>
+              <div className="wx-unified-source-sheet" style={pageWidthStyle(zoom, naturalWidth)}>
+                <img
+                  ref={imageRef}
+                  key={`${candidate.id}:${attempt}`}
+                  src={pageImageUrl(batchId, candidate.page, supportAccess)}
+                  alt={`Page ${candidate.page} of the source document for ${fieldLabel(candidate.fieldPath)}`}
+                  onLoad={(event) => {
+                    setNaturalWidth(event.currentTarget.naturalWidth || null);
+                    setImageState("ready");
+                    onAvailabilityChange(candidate.page, false);
+                  }}
+                  onError={onImageError}
                 />
-              ) : null}
+                {imageState === "ready" && page ? (
+                  <span
+                    ref={highlightRef}
+                    className="wx-unified-source-box"
+                    style={bboxPercent(candidate.bbox, page)}
+                    aria-hidden="true"
+                  />
+                ) : null}
+              </div>
             </div>
           </>
         )}
@@ -273,9 +378,10 @@ export function ReviewSourcePanel({
           <>
             <label className="wx-doclens-check">
               <input
+                ref={confirmationRef}
                 type="checkbox"
                 checked={sourceConfirmed}
-                disabled={imageState !== "ready" || busy}
+                disabled={imageState !== "ready" || busy || locked}
                 onChange={(event) => setSourceConfirmed(event.target.checked)}
               />
               I compared this with the source
@@ -378,6 +484,25 @@ export function ReviewSourcePanel({
                 </button>
               </div>
             )}
+            {locked ? (
+              <div className="wx-unified-decision-locked">
+                <p className="wx-row-sub">
+                  A decision is recorded for this observation. Choose Change decision to record a
+                  different one.
+                </p>
+                <button
+                  type="button"
+                  className="wx-btn-secondary"
+                  disabled={busy || refreshPending}
+                  onClick={() => {
+                    focusAfterChange.current = true;
+                    setChanging(true);
+                  }}
+                >
+                  Change decision
+                </button>
+              </div>
+            ) : null}
             {candidate.riskLevel === "high" ? (
               <p className="wx-row-sub">
                 High-risk field: the server requires an eligible RN, NP, PA, or physician reviewer.
@@ -394,8 +519,9 @@ export function ReviewSourcePanel({
 
       <footer>
         <p>
-          Opening this preview does not confirm the source. A decision is sent only after the source
-          is visible and the comparison checkbox is selected.
+          {decisionsAvailable
+            ? "Opening this preview does not confirm the source. A decision is sent only after the source is visible and the comparison checkbox is selected."
+            : "Opening this preview does not record a decision."}
         </p>
         {!supportAccess ? (
           <details className="wx-unified-advanced-tools">
