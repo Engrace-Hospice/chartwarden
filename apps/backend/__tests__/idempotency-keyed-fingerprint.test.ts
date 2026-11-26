@@ -3,8 +3,8 @@
  * (a clinic key, a clearinghouse secret). A plain SHA-256 there lets anyone who can read the table test guesses for the secret
  * offline, so the fingerprint is an HMAC under a server key derived from BETTER_AUTH_SECRET: not testable without it.
  *
- * Also proved: a record written BEFORE the deploy (the plain SHA-256 origin/main's middleware wrote, no `h1:` prefix) still
- * replays the same request and still conflicts on another body or another user, so a retry across the deploy is not re-executed; a
+ * Also proved: a record written before the keyed hash (the plain SHA-256 the earlier middleware wrote, no `h1:` prefix) is never
+ * replayed and never re-run: it answers 409 IDEMPOTENCY_CONFLICT whatever the request (CW-SEC-02: the legacy arm is removed); a
  * record under another server key is a clean 409; and production refuses to boot without a real secret.
  */
 import { createHash, createHmac } from "node:crypto";
@@ -25,9 +25,9 @@ const OTHER_USER = "00000000-0000-4000-8000-0000000000bb";
 const SECRET_BODY = { clinicKey: "a-guessable-clinic-key-1234" };
 
 /**
- * origin/main's request fingerprint, copied from before the keyed hash (packages/shared computeIdempotencyHash): the plain SHA-256 of
- * JSON({organizationId, key, body}). Its middleware called it with the scope `${orgId}|${userId}` as the organizationId argument, so a
- * row written before this deploy binds org, user, key and body, and NOTHING else (no method, route, params, query string, If-Match).
+ * The request fingerprint from before the keyed hash, kept here only to seed a pre-keyed record: the plain SHA-256 of
+ * JSON({organizationId, key, body}). The earlier middleware called it with the scope `${orgId}|${userId}` as the organizationId
+ * argument. No source module computes it any more.
  */
 const mainsComputeIdempotencyHash = (organizationId: string, key: string, body: unknown): string =>
   createHash("sha256")
@@ -117,27 +117,28 @@ describe("the Idempotency-Key fingerprint is keyed", () => {
     expect(runs).toBe(1);
   });
 
-  describe("a record origin/main wrote before the keyed hash (plain SHA-256, no `h1:` prefix)", () => {
-    /** Seeds what main's middleware stored for a completed request, then builds the app over it. */
-    async function seedMainsRecord(user: string = USER) {
+  describe("a record written before the keyed hash (plain SHA-256, no `h1:` prefix)", () => {
+    /** Seeds what the earlier middleware stored for a completed request, then builds the app over it. */
+    async function seedPlainRecord(user: string = USER) {
       const inner = createInMemoryIdempotencyStore();
-      const legacy = mainsMiddlewareHash(ORG, user, "k-1", SECRET_BODY);
-      expect(legacy).toMatch(/^[0-9a-f]{64}$/);
-      await inner.putPending(ORG, "k-1", legacy);
+      const plain = mainsMiddlewareHash(ORG, user, "k-1", SECRET_BODY);
+      expect(plain).toMatch(/^[0-9a-f]{64}$/);
+      await inner.putPending(ORG, "k-1", plain);
       await inner.complete(ORG, "k-1", { status: "201", body: { run: "before-the-deploy" } });
       await build(inner);
     }
 
-    it("replays the same request (same org, user, key and body): the handler never runs", async () => {
-      await seedMainsRecord();
-      const replay = await post(SECRET_BODY);
-      expect(replay.statusCode).toBe(201);
-      expect(replay.json()).toEqual({ run: "before-the-deploy" });
+    it("is never replayed, even for the identical request (same org, user, key and body): 409 IDEMPOTENCY_CONFLICT and the handler never runs", async () => {
+      await seedPlainRecord();
+      const retry = await post(SECRET_BODY);
+      expect(retry.statusCode).toBe(409);
+      expect(retry.json().error?.code).toBe("IDEMPOTENCY_CONFLICT");
+      expect(retry.json()).not.toEqual({ run: "before-the-deploy" });
       expect(runs).toBe(0);
     });
 
-    it("conflicts on another body, and on another USER (the user is part of what main hashed)", async () => {
-      await seedMainsRecord();
+    it("conflicts on another body and on another USER too", async () => {
+      await seedPlainRecord();
       const otherBody = await post({ clinicKey: "a-different-clinic-key-5678" });
       expect(otherBody.statusCode).toBe(409);
       expect(otherBody.json().error?.code).toBe("IDEMPOTENCY_CONFLICT");
@@ -147,8 +148,7 @@ describe("the Idempotency-Key fingerprint is keyed", () => {
       expect(runs).toBe(0);
     });
 
-    it("a keyed record never falls back to the plain hash: the same body and user under another actor kind is a conflict (defensive: the prefix check itself is pinned in packages/shared)", async () => {
-      // a keyed record never falls back to the plain hash: same user and body under a changed scope is a conflict
+    it("a keyed record never falls back to a plain hash: the same body and user under another actor kind is a conflict", async () => {
       const records = recordingStore();
       await build(records.store);
       await post(SECRET_BODY);

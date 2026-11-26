@@ -229,13 +229,13 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
       expect(handlerRuns).toBe(2);
     });
 
-    /** origin/main's request fingerprint (before the keyed hash), as its middleware called it: scope `${orgId}|${userId}` (this app's context has no user). */
+    /** The request fingerprint from before the keyed hash, as the earlier middleware called it: scope `${orgId}|${userId}` (this app's context has no user). */
     const mainsHash = (key: string, body: unknown): string =>
       createHash("sha256")
         .update(JSON.stringify({ organizationId: `${ORG_A}|`, key, body }))
         .digest("hex");
 
-    it("a row written by origin/main's middleware (plain SHA-256) REPLAYS on the Postgres store; another body is a 409; the handler never runs", async () => {
+    it("a row written before the keyed hash (plain SHA-256) is a 409 on the Postgres store, never a replay: the handler never runs and the row is left alone", async () => {
       handlerRuns = 0;
       expect(await store.putPending(ORG_A, "pre-deploy", mainsHash("pre-deploy", { a: 1 }))).toBe(
         true,
@@ -245,9 +245,9 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
         body: { run: "before-the-deploy" },
       });
 
-      const replay = await post("/open", "pre-deploy");
-      expect(replay.statusCode).toBe(201);
-      expect(replay.json()).toEqual({ run: "before-the-deploy" });
+      const sameRequest = await post("/open", "pre-deploy");
+      expect(sameRequest.statusCode).toBe(409);
+      expect(sameRequest.json().error?.code).toBe("IDEMPOTENCY_CONFLICT");
       const otherBody = await app.inject({
         method: "POST",
         url: "/open",
@@ -256,7 +256,7 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
       });
       expect(otherBody.statusCode).toBe(409);
       expect(handlerRuns).toBe(0);
-      // the legacy row is neither rewritten nor deleted by a replay
+      // the plain row is neither rewritten nor deleted by the refusal; the idempotency.cleanup sweep removes it at its TTL
       const [row] = await rowFor(ORG_A, "pre-deploy");
       expect(row).toMatchObject({
         state: "complete",

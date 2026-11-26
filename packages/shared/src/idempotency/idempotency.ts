@@ -8,7 +8,7 @@
 // (IdempotencyStore): packages/shared is a leaf and never imports @chartwarden/db or reads the environment — the real
 // Valkey/Postgres store and the server key are supplied by the M1 backend bootstrap (M1-T10), where the HTTP
 // middleware that wraps this helper is wired too.
-import { createHash, createHmac } from "node:crypto";
+import { createHmac } from "node:crypto";
 import {
   ChartWardenError,
   ERROR_CODES,
@@ -16,7 +16,7 @@ import {
   IdempotencyKeyStaleError,
 } from "@chartwarden/types";
 
-/** Marks a keyed fingerprint. A stored value without it is the pre-HMAC plain SHA-256 (see {@link idempotencyHashMatches}). */
+/** Marks a keyed fingerprint. A stored value without it matches no request: the pre-HMAC plain SHA-256 is no longer recognised. */
 export const IDEMPOTENCY_HASH_PREFIX = "h1:";
 
 /** Stable, canonical-enough serialization: undefined bodies normalize to null so the hash is deterministic. */
@@ -53,48 +53,13 @@ export function computeIdempotencyHash(
 
 /**
  * Was the STORED fingerprint written under a different server key than the one computing `requestHash` (a rotated `BETTER_AUTH_SECRET`)?
- * Only two well-formed keyed values with different key ids say so; a legacy (plain SHA-256) or malformed record never does, so the
+ * Only two well-formed keyed values with different key ids say so; a plain (pre-HMAC SHA-256) or malformed record never does, so the
  * caller keeps reporting those as an ordinary conflict.
  */
 export function idempotencyKeyIsStale(stored: string, requestHash: string): boolean {
   const storedId = KEYED_HASH.exec(stored)?.[1];
   const currentId = KEYED_HASH.exec(requestHash)?.[1];
   return storedId !== undefined && currentId !== undefined && storedId !== currentId;
-}
-
-/**
- * The date (UTC, inclusive) by which the legacy plain-SHA-256 arm must be gone. The real trigger is "one idempotency TTL after the keyed
- * fingerprint is deployed everywhere"; this is the calendar proxy for it, picked with about five weeks of margin after 2026-11-09 (the date
- * is a judgement, not a fact about any deploy). If the keyed fingerprint ships later than a TTL before it (later than early December), move
- * the date in the same change that moves the deploy, and the compliance row's `review_by` (CW-SEC-02) with it.
- */
-export const LEGACY_ARM_REMOVE_AFTER = "2026-12-15";
-
-/**
- * The fingerprint this module stored BEFORE it was keyed: plain SHA-256 hex. Only ever COMPUTED, to recognise a record written
- * before the deploy that introduced the keyed hash (records live 24 h), so a client's retry of an in-flight or completed request
- * still replays instead of being re-executed. It is never written. REMOVAL: remove this function, the legacy arm that uses it and
- * {@link LEGACY_ARM_REMOVE_AFTER} once every environment has passed one TTL (24 h) after the keyed fingerprint deployed there; a test
- * fails after that date while this function still exists, so the arm cannot be forgotten.
- */
-export function legacyIdempotencyHash(organizationId: string, key: string, body: unknown): string {
-  return createHash("sha256")
-    .update(canonicalRequest(organizationId, key, body))
-    .digest("hex");
-}
-
-/**
- * Does a STORED fingerprint belong to this request? A keyed (`h1:`) record matches only the same keyed value, so a record written
- * under another server key (a rotated secret) is a clean mismatch (409), never a replay. A record without the prefix is the legacy
- * form and matches when the legacy hash of the same request does; `legacy` is lazy so the plain hash is not computed otherwise.
- */
-export function idempotencyHashMatches(
-  stored: string,
-  requestHash: string,
-  legacy: () => string,
-): boolean {
-  if (stored === requestHash) return true;
-  return !stored.startsWith(IDEMPOTENCY_HASH_PREFIX) && stored === legacy();
 }
 
 /** The cached outcome of a completed idempotent mutation. */
@@ -188,15 +153,11 @@ export class IdempotencyKeyStuckError extends ChartWardenError {
 
 /**
  * Replay a stored record: its response when complete; a conflict or stale-key error on a mismatched fingerprint; stuck or in
- * flight otherwise. Legacy plain hashes remain replayable during the bounded migration arm.
+ * flight otherwise. The fingerprint must equal the keyed one exactly: a record under another server key is a clean mismatch (409),
+ * and so is a pre-HMAC plain SHA-256 (CW-SEC-02: that arm is gone), never a replay and never a re-run.
  */
-function replay(
-  record: IdempotencyRecord,
-  key: string,
-  requestHash: string,
-  legacyHash: () => string,
-): IdempotentResponse {
-  if (!idempotencyHashMatches(record.requestHash, requestHash, legacyHash)) {
+function replay(record: IdempotencyRecord, key: string, requestHash: string): IdempotentResponse {
+  if (record.requestHash !== requestHash) {
     throw idempotencyKeyIsStale(record.requestHash, requestHash)
       ? new IdempotencyKeyStaleError()
       : new IdempotencyConflictError();
@@ -222,13 +183,12 @@ export async function claimIdempotencyKey(
   organizationId: string,
   key: string,
   requestHash: string,
-  legacyHash: () => string,
 ): Promise<IdempotentResponse | null> {
   const existing = await store.load(organizationId, key);
-  if (existing) return replay(existing, key, requestHash, legacyHash);
+  if (existing) return replay(existing, key, requestHash);
   if (await store.putPending(organizationId, key, requestHash)) return null;
   const winner = await store.load(organizationId, key);
-  if (winner) return replay(winner, key, requestHash, legacyHash);
+  if (winner) return replay(winner, key, requestHash);
   throw new IdempotencyInFlightError(key);
 }
 
@@ -248,9 +208,7 @@ export async function runIdempotent(
   hmacKey: string | Uint8Array,
 ): Promise<IdempotentResponse> {
   const requestHash = computeIdempotencyHash(organizationId, key, body, hmacKey);
-  const cached = await claimIdempotencyKey(store, organizationId, key, requestHash, () =>
-    legacyIdempotencyHash(organizationId, key, body),
-  );
+  const cached = await claimIdempotencyKey(store, organizationId, key, requestHash);
   if (cached) return cached;
   const response = await handler();
   await store.complete(organizationId, key, response);
