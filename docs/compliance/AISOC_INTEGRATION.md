@@ -1,8 +1,10 @@
 # AiSOC alongside ChartWarden — integration plan
 
-Status: **plan**. This document closes nothing until the work below lands. It is the evidence pointer
-for control **CW-MON-01** (`compliance/controls.yaml`), which stays `gap` until detections and alert
-routing are proven.
+Status: **plan, and optional since the in-app review landed.** CW-MON-01 is now closed in part by ChartWarden's own
+scheduled review of the audit trail ([`docs/runbooks/security-alert-review.md`](../runbooks/security-alert-review.md):
+detection rules over the audit events, alerts on the existing ops path, a durable review log). AiSOC is no longer on the
+critical path; it stays a candidate for what that review does not do (geolocated impossible travel, correlation into incidents,
+host and edge logs, Postgres `pgaudit` rules). Phases 1–3 below are the original plan for those, not the control's evidence.
 
 ## What AiSOC is, and isn't, for us
 
@@ -18,7 +20,8 @@ ECC or with `scripts/harness/`:
 | Build time (what reaches main) | `arch:fitness`, CI, pre-commit/pre-push | Tenancy, audit, ABAC, scanners, signed images |
 | **Run time (what happens in production)** | **AiSOC** | Reviewing audit and auth events, detections, incidents (HIPAA §164.308(a)(1)(ii)(D), (a)(5)(ii)(C); SOC 2 CC7.2–CC7.3) |
 
-That runtime row is the gap ChartWarden has today. M4 records audit events, but nothing reviews them.
+That runtime row was the gap: M4 recorded audit events and nothing reviewed them. ChartWarden's own scheduled review now covers the
+core of it (see the status above); this table describes where AiSOC would add to it.
 
 ## Ground rules (HIPAA)
 

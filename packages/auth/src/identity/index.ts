@@ -42,8 +42,14 @@ export {
   createDbPasskeyCredentialStore,
 } from "./webauthn-verifier";
 export {
+  MFA_ENFORCEMENT_ENV,
+  MFA_ENFORCEMENT_RELAXED_VALUE,
+  MFA_RELAXATION_REASON_ENV,
+  MFA_RELAXATION_REASON_MAX_LENGTH,
+  MFA_RELAXATION_REASON_MIN_LENGTH,
   PASSKEY_REQUIRED_ROLE_KEYS,
   evaluateMfa,
+  mfaRelaxationReason,
   mfaRequirementFor,
   mfaSatisfied,
   resolveMfaEnforcement,
@@ -56,6 +62,7 @@ export {
   AUTH_AUDIT_EVENTS,
   buildAuthAuditEvent,
   buildPasswordResetEvent,
+  ipPrefixOf,
   type AuthAuditActor,
   type AuthAuditEvent,
   type AuthAuditEventType,

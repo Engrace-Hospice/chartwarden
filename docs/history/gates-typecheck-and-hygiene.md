@@ -1,6 +1,6 @@
-# Fitness gates: test typecheck, manifest mirror, merge artifacts, live-suite coverage
+# Fitness gates: test typecheck, manifest mirror, merge artifacts, live-suite coverage, branch protection, hook install, vendor agreements
 
-> Rationale for `check-test-typecheck-coverage`, `check-manifest-mirror`, `check-merge-artifacts`, `check-live-suite-coverage`. Moved verbatim from the repo-root `CLAUDE.md`; point-in-time narrative — generated reports under `audit/` are authoritative. Index: [`README.md`](./README.md).
+> Rationale for `check-test-typecheck-coverage`, `check-manifest-mirror`, `check-merge-artifacts`, `check-live-suite-coverage`, `check-branch-protection`, `check-hooks-installed`, `check-vendor-agreements`. Moved verbatim from the repo-root `CLAUDE.md`; point-in-time narrative — generated reports under `audit/` are authoritative. Index: [`README.md`](./README.md).
 
 - `scripts/check-test-typecheck-coverage.ts` — **test-tree typecheck coverage gate** (F-098,
   `bun run arch:test-typecheck`, in `arch:fitness`; `bun run typecheck` now runs `tsc -b` PLUS
@@ -107,3 +107,47 @@
   Valkey service because four of them gate on `CHARTWARDEN_TEST_REDIS_URL` too and would otherwise have
   reported SKIPPED. Exclusions on either side are **named** — `DEFERRED` and `NOT_A_SUITE_FILE` —
   never a file or script that quietly fails to be found.
+
+- `scripts/check-branch-protection.ts` — **`main` ruleset definition gate** (CW-CM-01 / CW-SEC-01,
+  `bun run arch:branch-protection`, in `arch:fitness`). `main` deploys on every push, and the control that
+  keeps an unreviewed or unscanned change off it is a GitHub ruleset: a repository SETTING, so nothing in the
+  tree proved it existed or what it said (the register said "main has no branch protection" and the
+  organization is on the free plan, so applying it stays a paid-plan, owner decision). The gate checks the
+  committed definition `.github/rulesets/main.json` offline and with no credentials: active on
+  `refs/heads/main`, deletion and force-push blocked, a pull request with code-owner review and stale approvals
+  dismissed, the `Secret and PHI scan` check required and every check pinned to the GitHub Actions app (another
+  app cannot report it), no bypass actor in `always` mode. It also requires every required check to be the
+  UNCONDITIONAL job (no `if:`, not a reusable-workflow call) of a workflow that a pull request into `main`
+  always starts (no `paths:` filter): a required check nothing reports blocks every merge, and a skipped one
+  counts as passing. CODEOWNERS must own the harness list the compliance gate pins plus the deploy path and the
+  gates themselves. It cannot prove the ruleset is APPLIED; `bun run ops:verify-branch-protection` compares the
+  live ruleset, the rules GitHub reports for `main` and the `production` Environment's reviewers with the
+  committed file, by hand (`docs/runbooks/main-branch-protection.md`). The sole code owner cannot approve their own
+  PR, so the committed definition lets the admin role bypass by pull request only.
+- `scripts/check-hooks-installed.ts` — **hook install gate** (CW-SEC-01, `bun run arch:hooks-installed`, in
+  `arch:fitness`). `.githooks/pre-commit` runs only where `core.hooksPath` points at it, which is per clone, and
+  `prepare` ended in `|| true` while the hook itself printed "skipped" for a missing `bun` or `gitleaks`: a
+  fresh clone, `bun install --ignore-scripts` or a failed install had no scan and said nothing. `prepare` and
+  `setup:hooks` now run the script with `--install` (fails when git is present and `git config` fails, skips
+  quietly with no git so an image build still works), the check fails when the path or an execute bit is wrong,
+  and the hook refuses the commit when a scanner is missing. Skipped on GitHub Actions only (a bare `CI` does not skip it: agent sessions set `CI`
+  and are where commits are made) and where there is no `.git` (`.dockerignore` drops it); a `.git` git cannot read
+  (dubious ownership, corruption) FAILS instead of reading as "not a work tree". `--install` writes only when the
+  value differs, so a read-only config cannot fail a `bun install` that has nothing to change. The deliberate
+  bypasses (`--no-verify`, `GITHUB_ACTIONS=true`) remain; only the required
+  `Secret and PHI scan` check in `.github/workflows/pr-gate.yml`, once the ruleset is applied, covers those.
+- `scripts/check-vendor-agreements.ts` — **vendor-agreement register gate** (CW-BA-01, `bun run arch:vendor-agreements`,
+  in `arch:fitness`). BAA status lived only as prose (the §5 table of the integrations document, AI Governance §9, the
+  Claim.MD transport contract), so nothing could say that an integration needing a BAA had a row, or that a row reading
+  "signed" had a date. `compliance/vendor-agreements.yaml` is the register, METADATA ONLY: vendor, PHI exposure, scope,
+  status, evidence files and, once signed, the date, an opaque document reference and the confirming role (the gate
+  refuses contract text by length, any email, URL or phone number, and any key outside its closed schema). It
+  cross-checks the §2 table of `docs/architecture/CHARTWARDEN_INTEGRATIONS_v0_1.md`, read by its header: every row
+  whose `BAA req'd` cell is not "No", "N/A" or "via ..." (or also says "yes") must be claimed by a vendor row's
+  `inventory:` list, and an unreadable or ambiguous table fails closed. A `tenant-held` row may name only the
+  controls listed in `TENANT_HELD_CONTROLS` and claim only the rows they record. An agent never sets `signed` (a
+  person confirms the executed agreement): `pending` is the honest first state of every row. What it cannot prove stays
+  in the CW-BA-01 gap: that a document exists or says what the row claims, that a hosting or backup provider missing from
+  §2 is listed (the `evidence:` files are the reviewer's trail, not a detector), and that PHI stops flowing to a vendor
+  whose row is pending. `effectiveOn` and `expiresOn` are reserved for CW-AC-14 and CW-AC-17: they add the expiry rule
+  to `validityViolations` in this gate, not a second register.

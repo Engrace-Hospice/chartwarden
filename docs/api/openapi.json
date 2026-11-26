@@ -272934,6 +272934,470 @@
         }
       }
     },
+    "/api/v1/orders/critical-lab-results": {
+      "get": {
+        "operationId": "getApiV1OrdersCriticallabresults",
+        "tags": [
+          "11-orders"
+        ],
+        "summary": "Open quarantined critical-lab queue (#1136) - critical (HH/LL) results bound to NO order and not yet resolved, soonest response deadline first, cursor-paginated, narrowed to the caller's caseload (orders.read)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "observationId",
+                          "patientId",
+                          "loincCode",
+                          "criticalFlag",
+                          "disposition",
+                          "receivedAt",
+                          "respondBy",
+                          "escalatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "observationId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "loincCode": {
+                            "type": "string"
+                          },
+                          "criticalFlag": {
+                            "anyOf": [
+                              {
+                                "const": "HH",
+                                "type": "string"
+                              },
+                              {
+                                "const": "LL",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "disposition": {
+                            "anyOf": [
+                              {
+                                "const": "paged",
+                                "type": "string"
+                              },
+                              {
+                                "const": "quarantined_no_order",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "receivedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "respondBy": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "escalatedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/orders/critical-lab-results/{id}": {
+      "get": {
+        "operationId": "getApiV1OrdersCriticallabresultsById",
+        "tags": [
+          "11-orders"
+        ],
+        "summary": "One critical-lab ledger row and its resolution, if any (#1136; read-audited by id) - 404 for an unknown, cross-tenant or off-caseload result",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "observationId",
+                    "patientId",
+                    "loincCode",
+                    "criticalFlag",
+                    "disposition",
+                    "receivedAt",
+                    "respondBy",
+                    "escalatedAt",
+                    "resolution"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "observationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "loincCode": {
+                      "type": "string"
+                    },
+                    "criticalFlag": {
+                      "anyOf": [
+                        {
+                          "const": "HH",
+                          "type": "string"
+                        },
+                        {
+                          "const": "LL",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "disposition": {
+                      "anyOf": [
+                        {
+                          "const": "paged",
+                          "type": "string"
+                        },
+                        {
+                          "const": "quarantined_no_order",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "receivedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "respondBy": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "escalatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "resolution": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "criticalLabResultId",
+                            "resolution",
+                            "matchedOrderId",
+                            "reason",
+                            "resolverMembershipId",
+                            "resolverDiscipline",
+                            "resolvedAt"
+                          ],
+                          "properties": {
+                            "id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "criticalLabResultId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "resolution": {
+                              "anyOf": [
+                                {
+                                  "const": "matched_to_order",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "reviewed_no_action",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "matchedOrderId": {
+                              "anyOf": [
+                                {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "resolverMembershipId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "resolverDiscipline": {
+                              "type": "string"
+                            },
+                            "resolvedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/orders/critical-lab-results/{id}/resolve": {
+      "post": {
+        "operationId": "postApiV1OrdersCriticallabresultsByIdResolve",
+        "tags": [
+          "11-orders"
+        ],
+        "summary": "Resolve a quarantined critical-lab result (#1136) - matched to a lab order of the same patient, or reviewed with no action; a reason is required; append-only (a cleared result cannot be re-opened). 403 for a non-prescriber, 404 off-caseload, 409 when not quarantined or already resolved, 422 for a bad matched order (orders.complete)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "criticalLabResultId",
+                    "resolution",
+                    "matchedOrderId",
+                    "reason",
+                    "resolverMembershipId",
+                    "resolverDiscipline",
+                    "resolvedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "criticalLabResultId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "resolution": {
+                      "anyOf": [
+                        {
+                          "const": "matched_to_order",
+                          "type": "string"
+                        },
+                        {
+                          "const": "reviewed_no_action",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "matchedOrderId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "resolverMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "resolverDiscipline": {
+                      "type": "string"
+                    },
+                    "resolvedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resolution",
+                  "reason"
+                ],
+                "properties": {
+                  "resolution": {
+                    "anyOf": [
+                      {
+                        "const": "matched_to_order",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reviewed_no_action",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "matchedOrderId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 10,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/orders/held-transmissions": {
       "get": {
         "operationId": "getApiV1OrdersHeldtransmissions",

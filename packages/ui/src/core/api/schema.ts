@@ -21208,6 +21208,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/critical-lab-results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Open quarantined critical-lab queue (#1136) - critical (HH/LL) results bound to NO order and not yet resolved, soonest response deadline first, cursor-paginated, narrowed to the caller's caseload (orders.read) */
+        get: operations["getApiV1OrdersCriticallabresults"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/critical-lab-results/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One critical-lab ledger row and its resolution, if any (#1136; read-audited by id) - 404 for an unknown, cross-tenant or off-caseload result */
+        get: operations["getApiV1OrdersCriticallabresultsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/critical-lab-results/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve a quarantined critical-lab result (#1136) - matched to a lab order of the same patient, or reviewed with no action; a reason is required; append-only (a cleared result cannot be re-opened). 403 for a non-prescriber, 404 off-caseload, 409 when not quarantined or already resolved, 422 for a bad matched order (orders.complete) */
+        post: operations["postApiV1OrdersCriticallabresultsByIdResolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/held-transmissions": {
         parameters: {
             query?: never;
@@ -97643,6 +97694,146 @@ export interface operations {
                             completedAt: string | null;
                             createdAt: string;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OrdersCriticallabresults: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            observationId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            loincCode: string;
+                            criticalFlag: "HH" | "LL";
+                            disposition: "paged" | "quarantined_no_order";
+                            /** Format: date-time */
+                            receivedAt: string;
+                            respondBy: string | null;
+                            escalatedAt: string | null;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OrdersCriticallabresultsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        observationId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        loincCode: string;
+                        criticalFlag: "HH" | "LL";
+                        disposition: "paged" | "quarantined_no_order";
+                        /** Format: date-time */
+                        receivedAt: string;
+                        respondBy: string | null;
+                        escalatedAt: string | null;
+                        resolution: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            criticalLabResultId: string;
+                            resolution: "matched_to_order" | "reviewed_no_action";
+                            matchedOrderId: string | null;
+                            reason: string;
+                            /** Format: uuid */
+                            resolverMembershipId: string;
+                            resolverDiscipline: string;
+                            /** Format: date-time */
+                            resolvedAt: string;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrdersCriticallabresultsByIdResolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    resolution: "matched_to_order" | "reviewed_no_action";
+                    /** Format: uuid */
+                    matchedOrderId?: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        criticalLabResultId: string;
+                        resolution: "matched_to_order" | "reviewed_no_action";
+                        matchedOrderId: string | null;
+                        reason: string;
+                        /** Format: uuid */
+                        resolverMembershipId: string;
+                        resolverDiscipline: string;
+                        /** Format: date-time */
+                        resolvedAt: string;
                     };
                 };
             };

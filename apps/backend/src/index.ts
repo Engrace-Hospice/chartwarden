@@ -260,6 +260,7 @@ import {
   runParitySweep,
   scheduleDailyUtc,
 } from "./bootstrap/rust-bridge/index";
+import { buildSecurityAlertSink } from "./bootstrap/security-alert-sink";
 import { siteDisplayForOrg } from "./bootstrap/site-display-for-org";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store";
@@ -274,7 +275,9 @@ import {
 import {
   createDbActiveMembershipLister,
   createMfaEnrolmentGate,
+  createMfaRefusalAuditor,
 } from "./modules/02-identity/mfa-enrolment-gate";
+import { recordMfaRelaxation } from "./modules/02-identity/mfa-relaxation";
 import {
   createDbMfaEnrollmentReader,
   createDbSessionProofReader,
@@ -492,6 +495,7 @@ import {
   registerAuditOpsWorkers,
   scheduleAuditOpsJobs,
 } from "./modules/04-audit/jobs/audit-ops-workers";
+import { M4_SECURITY_REVIEW_PLATFORM_JOB_ID } from "./modules/04-audit/jobs/security-review-job";
 import {
   activeLegalHoldScopeForOrg,
   activeLegalHoldScopeInTransaction,
@@ -4100,6 +4104,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   if (platformDbHandle) registerPlatformJob(M17_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M3_CLOSE_ENGAGEMENTS_PLATFORM_JOB_ID); // GAP-011 — authz.close_engagements fan-out
   if (platformDbHandle) registerPlatformJob(M4_AUDIT_JOBS_PLATFORM_JOB_ID); // GAP-014 — M4 audit jobs' active-org fan-out
+  if (platformDbHandle) registerPlatformJob(M4_SECURITY_REVIEW_PLATFORM_JOB_ID); // CW-MON-01 — the org-less authentication lane of the security review
   if (platformDbHandle) registerPlatformJob(M18_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M15_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M5_GEOCODE_COVERAGE_JOB_ID);
@@ -5880,11 +5885,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const authAuditErrorLogger = (err: unknown, event: { eventType: string }) =>
     app.log.error({ err, eventType: event.eventType }, "auth audit write failed");
   // GAP-003/GAP-005 — the server-side MFA matrix (M2 §2.3): roles from M3's org-explicit reader (M2 may not read
-  // M3's tables), factors from M2's enrolment reader. OPT-IN via
-  // `CHARTWARDEN_MFA_ENFORCEMENT=true` (the web app has no enrolment UI yet - see resolveMfaEnforcement).
+  // M3's tables), factors from M2's enrolment reader. ENFORCED BY DEFAULT (CW-AC-45): only the exact
+  // `CHARTWARDEN_MFA_ENFORCEMENT=false` relaxes it (production also needs a reason: collectEnvProblems), and a relaxed
+  // boot writes `m2.auth.mfa_enforcement_relaxed` once the server exists (the relaxation block after `buildServer`).
+  const mfaEnforced = resolveMfaEnforcement(process.env);
   const mfaGate = dbHandle
     ? createMfaEnrolmentGate({
-        enforced: resolveMfaEnforcement(process.env),
+        enforced: mfaEnforced,
         factors: createDbMfaEnrollmentReader(dbHandle.db),
         sessionProvedFactor: createDbSessionProofReader(dbHandle.db),
         roleKeysForMembership: async ({ organizationId, membershipId }) =>
@@ -5894,6 +5901,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         activeMembershipsOf: createDbActiveMembershipLister(dbHandle.db),
       })
     : undefined;
+  // CW-AC-45 - ONE sampler for both refusals: the authenticate hook (an org-bound held session) and `select-organization`
+  // (the usual first refusal of a password-only admin). A refused session leaves `m2.auth.mfa_enrolment_refused`, sampled
+  // per session, requirement and reason. `app` is created below; the error logger only reads it when a write fails.
+  const mfaRefusalAudit =
+    mfaGate && authAuditSink
+      ? createMfaRefusalAuditor({
+          sink: authAuditSink,
+          onError: (err) => app.log.error({ err }, "recording the MFA enrolment refusal failed"),
+        })
+      : undefined;
   // ADR-0049 / ADR-0088 — per-tenant subdomains. Unset TENANT_BASE_DOMAIN is single-host mode (the demo, dev):
   // no guard. Set, the host → organization lookup needs the database, so a missing handle is a boot error rather
   // than a guard that silently never runs.
@@ -5951,6 +5968,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               mfaEnrolment: {
                 check: ({ userId, sessionId, roleKeys }) =>
                   mfaGate.forRoles({ userId, sessionId, roleKeys }),
+                ...(mfaRefusalAudit ? { onRefused: mfaRefusalAudit } : {}),
               },
             }
           : {}),
@@ -6552,7 +6570,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 retentionClass: "compliance",
                 context: { userId: input.userId },
               }),
-            ...(mfaGate ? { mfaGate } : {}),
+            ...(mfaGate
+              ? {
+                  mfaGate: {
+                    forMembership: (input) => mfaGate.forMembership(input),
+                    ...(mfaRefusalAudit ? { onRefused: mfaRefusalAudit } : {}),
+                  },
+                }
+              : {}),
             // `select-organization` admits a `created` organization whose tenant is still onboarding (its first admin).
             onboardingTenants: createOnboardingTenantReader(dbHandle.db),
             // `GET /auth/context` tells the shell whether the organization is still being onboarded: the authenticate hook's own
@@ -9701,6 +9726,18 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         destructionDb: destructionDbHandle?.db,
       }),
   });
+  // CW-AC-45 - a boot that runs with the second-factor matrix relaxed says so loudly and leaves one critical audit row;
+  // production refuses to serve a relaxation it could not record (the reason itself is required by collectEnvProblems).
+  // Only the roles that serve sessions say it: a worker has no session to relax, so it neither warns nor writes a row.
+  if (dbHandle && (role === "all" || role === "api")) {
+    const platformDb = dbHandle.db;
+    await recordMfaRelaxation({
+      enforced: mfaEnforced,
+      env: process.env,
+      audit: (event) => auditPlatformEvent(platformDb, event),
+      log: app.log,
+    });
+  }
   // ADR-0110 D6 — bind the gate's mode + logger now that the seams are validated. The billing routes only mount on a
   // database boot, so that is where a shadow/enforce mode needs the real entitlement reader (refuse to boot otherwise).
   configureClaimsBillingGate({
@@ -11074,10 +11111,40 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           : {}),
         log: (message: string, detail: Record<string, unknown>) => app.log.error(detail, message),
       };
+      // CW-MON-01 — the scheduled review of the audit trail (`audit.security_review`, every 15 min): detection rules over
+      // the org-less authentication events (platform lane, audited platform context) and every active org's events (org
+      // lane, `withOrgContext`). New findings go to the existing ops alert path (a log line + OPS_ALERT_WEBHOOK_URL, the
+      // same destination as the DLQ and platform-ops notices); the review record is appended to the audit trail. With no
+      // webhook configured an alert is logged and recorded `no_destination`, never silently dropped.
+      // A suspended tenant is still reviewed (its sign-ins and exports still happen); a closed one has nothing left to review.
+      const m4SecurityReviewOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M4_SECURITY_REVIEW_PLATFORM_JOB_ID,
+        reason: "CW-MON-01 security review org fan-out",
+        statuses: ["active", "suspended"],
+      });
+      const m4SecurityReview = {
+        db: dbHandle.db,
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        listOrgs: () => m4SecurityReviewOrgs.listActiveOrgs(),
+        log: (message: string) => app.log.warn(message),
+        sink: buildSecurityAlertSink({
+          webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
+          log: (message: string) => app.log.warn(message),
+        }),
+      };
+      if (!process.env.OPS_ALERT_WEBHOOK_URL) {
+        app.log.warn(
+          "M4 security review: OPS_ALERT_WEBHOOK_URL is not set. Alerts are logged and recorded `no_destination`; nobody is told (docs/runbooks/security-alert-review.md section 2).",
+        );
+      }
       const m4Workers = registerAuditOpsWorkers({
         connection: queueConnection,
         ops: m4Ops,
         integrity: m4Integrity,
+        securityReview: m4SecurityReview,
       });
       attachDlqAlertsToAll(m4Workers, "m4");
       app.addHook("onClose", () => Promise.all(m4Workers.map((w) => w.close())));
@@ -11085,13 +11152,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         exports: m34DsarObjectStore !== null,
         destruction: destructionDbHandle !== undefined,
         integrity: true,
+        securityReview: true,
       })
         .then((queues) => {
           app.addHook("onClose", () => Promise.all(queues.map((q) => q.close())));
         })
         .catch((err) => app.log.error(err, "M4 audit job schedule registration failed"));
       app.log.info(
-        `M4 audit workers constructed: retention_scan, seal_partition, integrity_sample${m34DsarObjectStore ? ", build_export" : ""}${destructionDbHandle ? ", execute_destruction" : ""}`,
+        `M4 audit workers constructed: retention_scan, seal_partition, integrity_sample, security_review${m34DsarObjectStore ? ", build_export" : ""}${destructionDbHandle ? ", execute_destruction" : ""}`,
       );
     } else {
       app.log.warn(

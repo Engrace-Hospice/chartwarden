@@ -59,7 +59,6 @@ import {
   type IdempotentResponse,
   claimIdempotencyKey,
   computeIdempotencyHash,
-  legacyIdempotencyHash,
 } from "@chartwarden/shared";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { reservedPlaceholderProblem } from "../env";
@@ -223,22 +222,11 @@ export function applyIdempotency(
     ]);
     const requestHash = computeIdempotencyHash(scope, key, request.body ?? null, hmacKey);
     // The shared claim (`@chartwarden/shared` claimIdempotencyKey, the core of runIdempotent) decides: a cached
-    // response replays (a record stored before the keyed hash still matches the same request, so a retry across the deploy
-    // replays), a different body is 409 IDEMPOTENCY_CONFLICT, a record under another server key (a rotated secret) is
+    // response replays, a different body is 409 IDEMPOTENCY_CONFLICT, a record under another server key (a rotated secret) is
     // 409 IDEMPOTENCY_KEY_STALE, a duplicate still in flight is 409 IDEMPOTENCY_IN_FLIGHT, and an abandoned old claim is
-    // 409 IDEMPOTENCY_KEY_STUCK.
-    // The legacy arm is chosen from the STORED record (no `h1:` prefix), never from anything the request says. What it matches is
-    // what origin/main's middleware wrote: the plain SHA-256 of `${orgId}|${userId}` (as the scope), key and body, and nothing
-    // else (no method, route, params, query string or If-Match). Good enough for the 24 h a pre-deploy row lives: a retry of a
-    // pre-deploy request replays, another body or another user is a 409, and nothing is ever re-run. It recognises ONLY origin/main's
-    // plain hash: a row an intermediate release wrote (the clearinghouse branch's plain SHA-256 over the JSON scope) is a different
-    // value, so a retry of such a row answers 409 IDEMPOTENCY_CONFLICT (safe: never a replay, never a re-run) and no further weak arm is added.
-    // REMOVAL: remove this arm, `legacyIdempotencyHash` and `LEGACY_ARM_REMOVE_AFTER` once every environment has passed one TTL after deploy;
-    // a test in packages/shared fails after that constant's date while the arm still exists.
-    const legacyScope = `${orgId}|${request.context?.userId ?? ""}`;
-    const cached = await claimIdempotencyKey(store, orgId, key, requestHash, () =>
-      legacyIdempotencyHash(legacyScope, key, request.body ?? null),
-    );
+    // 409 IDEMPOTENCY_KEY_STUCK. Only the keyed `h1:` fingerprint matches: a record the pre-HMAC middleware wrote (plain SHA-256,
+    // no prefix) is never replayed and never re-run, it answers 409 IDEMPOTENCY_CONFLICT until its 24 h TTL ends (CW-SEC-02).
+    const cached = await claimIdempotencyKey(store, orgId, key, requestHash);
     if (cached) return reply.code(Number(cached.status) || 200).send(cached.body);
     // Only what commits AFTER the claim is the write the key guards (authentication may touch a session row before it).
     const tracker = commitTrackers.get(request);

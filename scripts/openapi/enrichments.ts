@@ -2367,6 +2367,13 @@ import {
   ValidationQuerySchema as M10ValidationQuerySchema,
 } from "../../apps/backend/src/modules/10-hope/routes/hope-typebox";
 import {
+  CriticalLabQueueQuerySchema as M11CriticalLabQueueQuerySchema,
+  CriticalLabQueueResponseSchema as M11CriticalLabQueueResponseSchema,
+  CriticalLabResolutionResponseSchema as M11CriticalLabResolutionResponseSchema,
+  CriticalLabResultDetailResponseSchema as M11CriticalLabResultDetailResponseSchema,
+  ResolveCriticalLabRequest as M11ResolveCriticalLabRequest,
+} from "../../apps/backend/src/modules/11-orders/routes/critical-lab-typebox";
+import {
   HeldTransmissionsQuerySchema as M11HeldTransmissionsQuerySchema,
   HeldTransmissionsResponseSchema as M11HeldTransmissionsResponseSchema,
 } from "../../apps/backend/src/modules/11-orders/routes/held-transmissions-typebox";
@@ -6582,6 +6589,23 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Record the clinician's review of a lab order's current returned result (append-only; idempotent) - 403 for a non-prescriber, 409 when no result has been returned or the viewed observation is no longer current",
     body: M11ReviewResultsRequest,
     response: M11ResultReviewResponseSchema,
+  },
+  "GET /api/v1/orders/critical-lab-results": {
+    summary:
+      "Open quarantined critical-lab queue (#1136) - critical (HH/LL) results bound to NO order and not yet resolved, soonest response deadline first, cursor-paginated, narrowed to the caller's caseload (orders.read)",
+    query: M11CriticalLabQueueQuerySchema,
+    response: M11CriticalLabQueueResponseSchema,
+  },
+  "GET /api/v1/orders/critical-lab-results/:id": {
+    summary:
+      "One critical-lab ledger row and its resolution, if any (#1136; read-audited by id) - 404 for an unknown, cross-tenant or off-caseload result",
+    response: M11CriticalLabResultDetailResponseSchema,
+  },
+  "POST /api/v1/orders/critical-lab-results/:id/resolve": {
+    summary:
+      "Resolve a quarantined critical-lab result (#1136) - matched to a lab order of the same patient, or reviewed with no action; a reason is required; append-only (a cleared result cannot be re-opened). 403 for a non-prescriber, 404 off-caseload, 409 when not quarantined or already resolved, 422 for a bad matched order (orders.complete)",
+    body: M11ResolveCriticalLabRequest,
+    response: M11CriticalLabResolutionResponseSchema,
   },
   "POST /api/v1/orders/:id/resend-transmission": {
     summary:

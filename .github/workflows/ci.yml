@@ -407,6 +407,11 @@ jobs:
             }
           # #909 - clinician review of a returned lab (append-only, amendment re-opens, 24 h unreviewed alert).
           - { name: "M11 lab result review", scripts: "test:m11:lab-result-review:live" }
+          # #1136 (CW-CS-01) - resolving a quarantined (no-order) critical lab result: audited, append-only, never re-opened.
+          - {
+              name: "M11 critical lab resolution",
+              scripts: "test:m11:critical-lab-resolution:live",
+            }
           # F-152 (#248) — the §2.8 D17 medication-reconciliation worksheet, opened from all four M6
           # trigger events.
           - { name: "M13 reconciliation triggers", scripts: "test:m13:reconciliation-triggers:live" }
@@ -817,6 +822,10 @@ jobs:
           # verification - a row altered/inserted/deleted out of band, or a broken seal link, is DETECTED, the
           # run fails closed with an alert, and org B's chain is unaffected.
           - { name: "M4 audit hash-chain integrity sample", scripts: "test:m4:audit-integrity:live" }
+          # CW-MON-01: the scheduled review of the audit trail. Events in, alert out, a review record written, as the real
+          # NOBYPASSRLS chartwarden_app (org lane) and the BYPASSRLS platform login (org-less sign-in events); a failed delivery
+          # is recorded and retried, bulk access is aggregated in SQL, and a tenant's events never reach another tenant's review.
+          - { name: "M4 security review of the audit trail", scripts: "test:m4:security-review:live" }
           - { name: "M3 proposed-role attach (F-097)", scripts: "test:m3:role-attach:live" }
           # AC-03: the §4.3.2/D9 step-up tighten-only invariant. `trg_tenant_step_up_tighten_only`
           # was asserted by name in a code comment and existed in no migration, and nothing had ever
@@ -989,6 +998,9 @@ jobs:
           - { name: "M31 portal invitee sign-in", scripts: "test:m31:portal-signin:live" }
           - { name: "M2 funeral / collaborator link redemption", scripts: "test:m2:link-redemption:live" }
           - { name: "M2 auth audit trail + MFA matrix", scripts: "test:m2:auth-hardening:live" }
+          # CW-AC-55 - the two tenant Part 2 intake reads behind the enforced second factor (org_admin passkey, administrator
+          # second factor), the administrator override closed to clinicians, break-glass and auditor sessions, read audit landing.
+          - { name: "M22 Part 2 reads behind the enforced second factor", scripts: "test:m22:part2-admin-factor:live" }
           - { name: "M3 role-template materialization", scripts: "test:m3:role-templates:live" }
           - { name: "M4 legal-hold supremacy at destruction", scripts: "test:m4:legal-hold-supremacy:live" }
           # GAP-008 - a legal hold is an append-only overlay, not a retention_class flip (ADR-0043): materialiser, DELETE guard,
@@ -1879,6 +1891,9 @@ jobs:
       # https origins, and prove nothing more about these workflows. The production-configuration boot
       # is a different question and has its own job (`outbox-boot`).
       NODE_ENV: development
+      # The server-side MFA matrix is enforced by default (CW-AC-45); these specs sign in password-only as seeded staff, so the
+      # dev stack relaxes it explicitly. The enforced path is proven live by `m2-auth-hardening` and `m22-part2-admin-factor`.
+      CHARTWARDEN_MFA_ENFORCEMENT: "false"
       PORT: "3000"
       E2E_BASE_URL: http://localhost:5173
       # MEASURED, not assumed. Without this the run is RED: a serial Playwright pass plus the seed

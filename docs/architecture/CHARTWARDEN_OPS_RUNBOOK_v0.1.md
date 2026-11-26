@@ -2313,7 +2313,7 @@ DATABASE_ADMIN_URL=<owner connection> bun run db:platform-role revoke \
   `platform_billing_admin`, `platform_support_t2`, `platform_sales`, `platform_ops`,
   `platform_security_owner`, `ai_safety_owner`, `superadmin` ([ADR-0112](../adr/ADR-0112-superadmin-platform-role.md):
   one role that reads as `administrator`, `org_admin` and every platform role; grant it to at most two named
-  people, only in the ChartWarden platform org, and only once `CHARTWARDEN_MFA_ENFORCEMENT=true`; the CLI and a
+  people, only in the ChartWarden platform org, and only while the second-factor matrix is enforced (the code default; not relaxed by `CHARTWARDEN_MFA_ENFORCEMENT=false`); the CLI and a
   `membership_role` trigger (which also fires in a `replica` session) both refuse an organization that has a
   `tenant_account`, and a second trigger refuses giving the platform org one while it holds the binding). Any
   other key is refused before the database is touched.

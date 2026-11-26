@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 2143,
-    "coveredRoutes": 2143,
-    "directRoutesReferenced": 1938
+    "routes": 2146,
+    "coveredRoutes": 2146,
+    "directRoutesReferenced": 1941
   },
   "modules": [
     {
@@ -37,6 +37,7 @@
         "apps/backend/__tests__/m2-platform-user-deactivate.test.ts",
         "apps/backend/__tests__/m2-screen-unlock.live.test.ts",
         "apps/backend/__tests__/m2-tax-id-cipher.live.test.ts",
+        "apps/backend/__tests__/m22-part2-admin-factor.live.test.ts",
         "apps/backend/__tests__/m25-835-ingestion.live.test.ts",
         "apps/backend/__tests__/m31-portal-signin.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts",
@@ -70,6 +71,7 @@
         "apps/backend/__tests__/m2-auditor-enrolment.live.test.ts",
         "apps/backend/__tests__/m2-auditor-redemption.live.test.ts",
         "apps/backend/__tests__/m2-auth-hardening.live.test.ts",
+        "apps/backend/__tests__/m22-part2-admin-factor.live.test.ts",
         "apps/backend/__tests__/m23-dde-queue-hardening.live.test.ts",
         "apps/backend/__tests__/m36-global-search-query.test.ts",
         "apps/backend/__tests__/m36-retention-governance.live.test.ts",
@@ -106,6 +108,7 @@
         "apps/backend/__tests__/m10-s04-hope-override.live.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
         "apps/backend/__tests__/m2-link-redemption.live.test.ts",
+        "apps/backend/__tests__/m22-part2-admin-factor.live.test.ts",
         "apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
         "apps/backend/__tests__/m36-phase3-gate.live.test.ts",
         "apps/backend/__tests__/m36-tenant-idor.live.test.ts",
@@ -178,6 +181,7 @@
         "apps/backend/__tests__/f238-problem-proposal-routes.test.ts",
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
         "apps/backend/__tests__/gap-050-visit-start-self-attest.test.ts",
+        "apps/backend/__tests__/m11-critical-lab-resolution.live.test.ts",
         "apps/backend/__tests__/m15-aide-supervision-roster.live.test.ts",
         "apps/backend/__tests__/m36-oncall-directory.test.ts",
         "apps/backend/__tests__/m36-role-send.live.test.ts",
@@ -265,9 +269,10 @@
     },
     {
       "module": "11-orders",
-      "routes": 35,
+      "routes": 38,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/m11-critical-lab-resolution.live.test.ts",
         "apps/backend/__tests__/m36-medication-question-no-order-route.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/orders-caseload-scope.test.ts",
@@ -278,7 +283,7 @@
         "apps/backend/__tests__/s11-adversarial-stages.live.test.ts",
         "apps/backend/__tests__/stuck-recovery.test.ts"
       ],
-      "directRoutesReferenced": 31
+      "directRoutesReferenced": 34
     },
     {
       "module": "12-dosespot",
@@ -438,6 +443,7 @@
         "apps/backend/__tests__/m22-doclens-sud-gate.test.ts",
         "apps/backend/__tests__/m22-internal-documents.live.test.ts",
         "apps/backend/__tests__/m22-internal-documents.test.ts",
+        "apps/backend/__tests__/m22-part2-admin-factor.live.test.ts",
         "apps/backend/__tests__/m25-audit-response.live.test.ts",
         "apps/backend/__tests__/m25-beneficiary-representative.live.test.ts",
         "apps/backend/__tests__/m25-later-tiers.live.test.ts",

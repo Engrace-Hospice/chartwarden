@@ -126,7 +126,8 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   backstop on the declared actor, not authentication). The row's write-audit record carries the confirmed NPI (public provider data) like
   any column of the table. The demo seed has Dr. Harris confirm his own link.
 - Fixed here too: the shared Idempotency-Key middleware stored a plain SHA-256 of every request (a credential in the body was testable
-  from the table); it is now an HMAC under a key derived from `BETTER_AUTH_SECRET` (CW-SEC-02), with the legacy form honoured for one TTL.
+  from the table); it is now an HMAC under a key derived from `BETTER_AUTH_SECRET` (CW-SEC-02). The legacy plain form was honoured for one TTL and
+  has since been removed: a pre-HMAC record now answers 409 `IDEMPOTENCY_CONFLICT`, never a replay and never a re-run.
 - Open, not fixed here: `verify` lets a tenant administrator probe candidate clinic keys against the vendor (ADR-0111 open items).
 
 ## Operational notes

@@ -652,6 +652,28 @@ const FORBIDDEN_IN_PRODUCTION: readonly { readonly key: string; readonly problem
 ];
 
 /**
+ * CW-AC-45 - the server-side MFA matrix is enforced unless `CHARTWARDEN_MFA_ENFORCEMENT` is exactly `false`
+ * (`resolveMfaEnforcement` in `@chartwarden/auth`; this bootstrap file may not import it, so the literals are
+ * mirrored here and `env-validation.test.ts` pins them to the source). Relaxing it in production without a recorded
+ * reason is refused at boot: a silent opt-out of the privileged-factor control is the thing this refuses.
+ */
+export const MFA_ENFORCEMENT_ENV = "CHARTWARDEN_MFA_ENFORCEMENT";
+export const MFA_RELAXATION_REASON_ENV = "CHARTWARDEN_MFA_RELAXATION_REASON";
+export const MFA_RELAXATION_REASON_MIN_LENGTH = 12;
+
+function mfaRelaxationProblems(env: EnvLike): EnvProblem[] {
+  if (env[MFA_ENFORCEMENT_ENV] !== "false") return [];
+  const reason = env[MFA_RELAXATION_REASON_ENV]?.trim() ?? "";
+  if (reason.length >= MFA_RELAXATION_REASON_MIN_LENGTH) return [];
+  return [
+    {
+      key: MFA_RELAXATION_REASON_ENV,
+      problem: `is required (at least ${MFA_RELAXATION_REASON_MIN_LENGTH} characters: the change ticket and why) when ${MFA_ENFORCEMENT_ENV}=false relaxes the second-factor matrix in production; the boot audits the relaxation as m2.auth.mfa_enforcement_relaxed`,
+    },
+  ];
+}
+
+/**
  * Collect every unmet production requirement (empty array = OK). Pure, so the rules are unit-testable
  * without mutating the process environment. Returns [] for any non-production `NODE_ENV`.
  */
@@ -661,6 +683,7 @@ export function collectEnvProblems(env: EnvLike): EnvProblem[] {
   for (const { key, problem } of FORBIDDEN_IN_PRODUCTION) {
     if (env[key]?.trim()) problems.push({ key, problem });
   }
+  problems.push(...mfaRelaxationProblems(env));
   for (const key of INTEGRATION_SWITCHES) {
     const value = env[key]?.trim().toLowerCase();
     if (value && value !== "true" && value !== "false") {

@@ -1,5 +1,8 @@
 import {
+  type AuthAuditEvent,
+  MFA_RELAXATION_REASON_MAX_LENGTH,
   evaluateMfa,
+  mfaRelaxationReason,
   mfaRequirementFor,
   registerIdentityAuth,
   resolveMfaEnforcement,
@@ -13,7 +16,11 @@ import {
 import Fastify, { type FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 import { createSessionAuthenticate } from "../src/bootstrap/index";
-import { createMfaEnrolmentGate } from "../src/modules/02-identity/mfa-enrolment-gate";
+import {
+  MFA_REFUSAL_AUDIT_WINDOW_MS,
+  createMfaEnrolmentGate,
+  createMfaRefusalAuditor,
+} from "../src/modules/02-identity/mfa-enrolment-gate";
 // apps/backend/__tests__/mfa-enrolment-matrix.test.ts — GAP-003 / GAP-005: the server-side MFA matrix (M2 §2.3).
 //
 // Unit-level proof of the three enforcement points over stub ports (the live lane, m2-auth-hardening.live,
@@ -49,18 +56,27 @@ describe("the MFA matrix (pure)", () => {
       expect(sessionClassRequiresMfa(c)).toBe(false);
   });
 
-  it("is opt-in: a production deploy never locks staff out before the enrolment UI exists", () => {
-    expect(resolveMfaEnforcement({ NODE_ENV: "production" })).toBe(false);
-    expect(resolveMfaEnforcement({ NODE_ENV: "development" })).toBe(false);
+  it("is enforced by default in every environment (CW-AC-45): a deployment that says nothing enforces it", () => {
+    for (const NODE_ENV of ["production", "development", "test", undefined])
+      expect(resolveMfaEnforcement({ NODE_ENV })).toBe(true);
+    expect(resolveMfaEnforcement({})).toBe(true);
+  });
+
+  it("only the exact value `false` relaxes it; a typo, a capital or a number leaves it enforced", () => {
+    expect(resolveMfaEnforcement({ CHARTWARDEN_MFA_ENFORCEMENT: "false" })).toBe(false);
+    for (const value of ["true", "True", "FALSE", "False", "0", "off", "no", "", " false", "false "])
+      expect(resolveMfaEnforcement({ CHARTWARDEN_MFA_ENFORCEMENT: value })).toBe(true);
+  });
+
+  it("records a trimmed, capped relaxation reason, or null when none is given", () => {
+    expect(mfaRelaxationReason({})).toBeNull();
+    expect(mfaRelaxationReason({ CHARTWARDEN_MFA_RELAXATION_REASON: "   " })).toBeNull();
     expect(
-      resolveMfaEnforcement({ NODE_ENV: "production", CHARTWARDEN_MFA_ENFORCEMENT: "false" }),
-    ).toBe(false);
+      mfaRelaxationReason({ CHARTWARDEN_MFA_RELAXATION_REASON: "  CHG-1 re-enrol passkeys  " }),
+    ).toBe("CHG-1 re-enrol passkeys");
     expect(
-      resolveMfaEnforcement({ NODE_ENV: "production", CHARTWARDEN_MFA_ENFORCEMENT: "true" }),
-    ).toBe(true);
-    expect(resolveMfaEnforcement({ NODE_ENV: "test", CHARTWARDEN_MFA_ENFORCEMENT: "true" })).toBe(
-      true,
-    );
+      mfaRelaxationReason({ CHARTWARDEN_MFA_RELAXATION_REASON: "x".repeat(500) })?.length,
+    ).toBe(MFA_RELAXATION_REASON_MAX_LENGTH);
   });
 });
 
@@ -233,6 +249,156 @@ describe("the authenticate-stage hold (GAP-003)", () => {
     const req = requestAt("/api/v1/patients");
     await hookFor({ ...ACTOR, sessionClass: "funeral_home" }, false)(req);
     expect(req.context.organizationId).toBe("org1");
+  });
+
+  describe("the refusal callback (CW-AC-45)", () => {
+    const refusedRequest = (url: string, routeTemplate: string) =>
+      ({
+        ...requestAt(url),
+        routeOptions: { url: routeTemplate },
+        ip: "203.0.113.77",
+      }) as unknown as FastifyRequest;
+    const hookWithCallback = (onRefused: (input: Record<string, unknown>) => unknown) =>
+      createSessionAuthenticate({
+        organizationStage: liveOrganizationStage,
+        noteClosureGate: liveNoteClosureGate,
+        getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
+        getResolver: () => resolver({ ...ACTOR, roles: ["org_admin"] }),
+        mfaEnrolment: {
+          check: async () => ({ satisfied: false, requirement: "passkey", reason: "not_enrolled" }),
+          onRefused: onRefused as never,
+        },
+      });
+
+    it("reports a refused route with ids, the route TEMPLATE and an ip prefix, never the raw url or address", async () => {
+      const seen: Record<string, unknown>[] = [];
+      const hook = hookWithCallback((input) => void seen.push(input));
+      await expect(
+        hook(refusedRequest("/api/v1/intake/uploads/0b1d5c9e-0000-4000-8000-000000000001/workspace", "/api/v1/intake/uploads/:id/workspace")),
+      ).rejects.toMatchObject({ code: "MFA_ENROLMENT_REQUIRED" });
+      await Promise.resolve();
+      expect(seen).toEqual([
+        {
+          userId: "u1",
+          sessionId: "s1",
+          organizationId: "org1",
+          requirement: "passkey",
+          reason: "not_enrolled",
+          method: "GET",
+          routeTemplate: "/api/v1/intake/uploads/:id/workspace",
+          ipPrefix: "203.0.113.0/24",
+        },
+      ]);
+      expect(JSON.stringify(seen)).not.toContain("0b1d5c9e");
+      expect(JSON.stringify(seen)).not.toContain("203.0.113.77");
+    });
+
+    it("does not report the enrolment routes it lets through", async () => {
+      const seen: unknown[] = [];
+      const hook = hookWithCallback((input) => void seen.push(input));
+      await hook(refusedRequest("/api/auth/passkey/generate-register-options", "/api/auth/*"));
+      await Promise.resolve();
+      expect(seen).toEqual([]);
+    });
+
+    it("a callback that throws or rejects never changes the refusal", async () => {
+      for (const failing of [
+        () => {
+          throw new Error("sink down");
+        },
+        () => Promise.reject(new Error("sink down")),
+      ]) {
+        await expect(
+          hookWithCallback(failing)(refusedRequest("/api/v1/patients", "/api/v1/patients")),
+        ).rejects.toMatchObject({ code: "MFA_ENROLMENT_REQUIRED", statusCode: 403 });
+      }
+    });
+  });
+});
+
+describe("the refusal auditor (CW-AC-45)", () => {
+  const refusal = {
+    userId: "u1",
+    sessionId: "s1",
+    organizationId: "org1",
+    requirement: "passkey",
+    reason: "not_enrolled",
+    method: "GET",
+    routeTemplate: "/api/v1/patients",
+    ipPrefix: "203.0.113.0/24",
+  };
+  const build = () => {
+    const written: AuthAuditEvent[] = [];
+    const errors: unknown[] = [];
+    let clock = 1_000;
+    let failNext = false;
+    const record = createMfaRefusalAuditor({
+      sink: async (event) => {
+        if (failNext) {
+          failNext = false;
+          throw new Error("audit write failed");
+        }
+        written.push(event);
+      },
+      onError: (err) => errors.push(err),
+      now: () => clock,
+    });
+    return {
+      record,
+      written,
+      errors,
+      advance: (ms: number) => {
+        clock += ms;
+      },
+      failNextWrite: () => {
+        failNext = true;
+      },
+    };
+  };
+
+  it("writes one org-scoped m2.auth.mfa_enrolment_refused row with ids and enums only", async () => {
+    const { record, written } = build();
+    await record(refusal);
+    expect(written).toEqual([
+      {
+        eventType: "m2.auth.mfa_enrolment_refused",
+        outcome: "failure",
+        severity: "warn",
+        userId: "u1",
+        sessionId: "s1",
+        organizationId: "org1",
+        ipPrefix: "203.0.113.0/24",
+        context: {
+          requirement: "passkey",
+          reason: "not_enrolled",
+          method: "GET",
+          routeTemplate: "/api/v1/patients",
+        },
+      },
+    ]);
+  });
+
+  it("samples: a held session retrying routes writes once per window, a new session or reason writes again", async () => {
+    const { record, written, advance } = build();
+    await record(refusal);
+    await record({ ...refusal, routeTemplate: "/api/v1/other" });
+    expect(written).toHaveLength(1);
+    await record({ ...refusal, sessionId: "s2" });
+    await record({ ...refusal, reason: "not_verified" });
+    expect(written).toHaveLength(3);
+    advance(MFA_REFUSAL_AUDIT_WINDOW_MS);
+    await record(refusal);
+    expect(written).toHaveLength(4);
+  });
+
+  it("reports a failed write and lets the next refusal try again", async () => {
+    const { record, written, errors, failNextWrite } = build();
+    failNextWrite();
+    await record(refusal);
+    expect(errors).toHaveLength(1);
+    expect(written).toHaveLength(0);
+    await record(refusal);
+    expect(written).toHaveLength(1);
   });
 });
 
