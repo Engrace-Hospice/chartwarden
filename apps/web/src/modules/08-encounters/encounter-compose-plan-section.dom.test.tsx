@@ -862,17 +862,46 @@ describe("Plan and Next Visit section", () => {
     });
   });
 
-  it("fills the next visit's day and discipline from the scheduled visit when asked", async () => {
+  it("fills the organization's service day and the discipline when only one discipline makes the scheduled visit", async () => {
     const user = userEvent.setup();
-    visits = [visitRow("v1", 3)];
+    // A service day that is not the device's day of the start time, as near midnight when the organization and the browser differ.
+    const orgDay = inDays(43).slice(0, 10);
+    visits = [{ ...visitRow("v1", 3, "aide_poc"), serviceDate: orgDay }];
     mountCompose();
     await openPlan(user);
 
     await user.click(await screen.findByRole("button", { name: "Use the next scheduled visit" }));
 
-    expect((screen.getByLabelText("Next visit by") as HTMLSelectElement).value).toBe("rn");
-    expect((screen.getByLabelText("Next visit date") as HTMLInputElement).value).toMatch(
-      /^\d{4}-\d{2}-\d{2}$/,
+    expect((screen.getByLabelText("Next visit by") as HTMLSelectElement).value).toBe("chha");
+    expect((screen.getByLabelText("Next visit date") as HTMLInputElement).value).toBe(orgDay);
+  });
+
+  it("keeps the discipline the clinician already chose when the purpose may be made by an RN or an LPN", async () => {
+    const user = userEvent.setup();
+    visits = [visitRow("v1", 3, "routine_visit")];
+    mountCompose();
+    await openPlan(user);
+    await user.selectOptions(screen.getByLabelText("Next visit by"), "lpn");
+
+    await user.click(await screen.findByRole("button", { name: "Use the next scheduled visit" }));
+
+    expect((screen.getByLabelText("Next visit by") as HTMLSelectElement).value).toBe("lpn");
+    expect((screen.getByLabelText("Next visit date") as HTMLInputElement).value).toBe(
+      inDays(3).slice(0, 10),
+    );
+  });
+
+  it("fills the day but leaves 'Next visit by' unstated when the purpose may be made by an RN or an LPN", async () => {
+    const user = userEvent.setup();
+    visits = [visitRow("v1", 3, "routine_visit")];
+    mountCompose();
+    await openPlan(user);
+
+    await user.click(await screen.findByRole("button", { name: "Use the next scheduled visit" }));
+
+    expect((screen.getByLabelText("Next visit by") as HTMLSelectElement).value).toBe("");
+    expect((screen.getByLabelText("Next visit date") as HTMLInputElement).value).toBe(
+      inDays(3).slice(0, 10),
     );
   });
 

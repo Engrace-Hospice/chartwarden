@@ -22,6 +22,8 @@ export interface UpcomingVisit {
   readonly status: string;
   readonly visitPurpose: string;
   readonly scheduledStartedAt: string;
+  /** The visit's day in the organization's time zone, as the server works it out (not the device's day of `scheduledStartedAt`). */
+  readonly serviceDate: string;
 }
 
 export interface VisitCadence {
@@ -93,11 +95,25 @@ const PURPOSE_DISCIPLINE: Readonly<Record<string, string>> = {
 };
 
 /**
- * The discipline a scheduled visit of `purpose` is usually with, named the way the plan entry's "Next visit by" choice names it
- * (`md_np` for the physician or NP), or "" for a purpose outside the table.
+ * The purposes packages/scheduling `VISIT_PURPOSE_DISCIPLINES` accepts more than one "Next visit by" discipline for (RN and LPN; RN, MD or
+ * NP; RN, NP or LPN). The schedule names the purpose and the assigned clinician's membership, not that clinician's discipline, so for these
+ * the discipline of the visit is not known and is left unstated (MD and NP are one choice, `md_np`).
+ */
+const SEVERAL_DISCIPLINES: ReadonlySet<string> = new Set([
+  "routine_visit",
+  "prn",
+  "pronouncement",
+  "huv1",
+  "huv2",
+  "sfv",
+]);
+
+/**
+ * The discipline a scheduled visit of `purpose` is with, named the way the plan entry's "Next visit by" choice names it (`md_np` for the
+ * physician or NP), or "" when the purpose does not settle it: one outside the table, or one several disciplines may make.
  */
 export function visitByOf(purpose: string): string {
-  if (!Object.hasOwn(PURPOSE_DISCIPLINE, purpose)) return "";
+  if (!Object.hasOwn(PURPOSE_DISCIPLINE, purpose) || SEVERAL_DISCIPLINES.has(purpose)) return "";
   const discipline = PURPOSE_DISCIPLINE[purpose] as string;
   return discipline === "md" ? "md_np" : discipline;
 }

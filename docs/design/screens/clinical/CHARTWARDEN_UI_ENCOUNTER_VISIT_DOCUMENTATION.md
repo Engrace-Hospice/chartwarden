@@ -97,7 +97,12 @@ its clinical wording was signed off by Lora, RN on 2026-11-25 (section 3 of
   fields into the free text below as fixed sentences, each field's words exactly as typed, under what the
   clinician already wrote; adding the same lines twice adds nothing, and focus moves to the first field. **Discard entries** empties every field;
   **Clear** empties only the five free-text boxes and keeps the discipline and the date. **Use the next
-  scheduled visit** fills the day and the discipline from the earliest upcoming visit.
+  scheduled visit** fills the day (the organization's service day for that visit, not the device's) and
+  the discipline from the earliest upcoming visit, but names the discipline only when one discipline
+  makes that visit purpose (a hospice aide, a social worker, a chaplain, a volunteer, a physician or NP for a
+  face-to-face, an RN for an admission, discharge, recertification or level-of-care-change visit).
+  For a routine, PRN, pronouncement or HUV/SFV visit the schedule gives the purpose and the assigned
+  clinician's membership, not their discipline, so "Next visit by" is left as the clinician had it.
 
 Not built: the aide's 14-day supervisory visit due date (M15's aide-supervision roster needs the discipline
 plan id), a prospective last-days-of-life visit expectation (the SIA calculator is retrospective billing,
