@@ -1056,7 +1056,10 @@ controls:
       - script: test:m23:tenant-clearinghouse:live
       - script: test:m23:noe-draft:live
       - script: test:m23:notr-draft:live
+      - script: test:m23:transfer-notice:live
       - ci: "M23 tenant clearinghouse"
+      - ci: "M23 transfer notice"
+      - file: apps/backend/__tests__/m23-transfer-notice.live.test.ts
       - file: apps/backend/__tests__/m23-transfer-notice-outside.test.ts
       - file: apps/backend/__tests__/m23-notice-external-filing.test.ts
       - file: apps/backend/__tests__/m23-notice-external-filing-withdraw.test.ts
@@ -1065,7 +1068,18 @@ controls:
       - file: packages/db/migrations/1422_m34_tenant_notice_filing_permission.sql
       - file: apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-routes.ts
     gap:
-      reason: The refusal of a transfer notice for an outside tenant is proven only by the non-live m23-transfer-notice-outside.test.ts (the transfer-notice live suite does not cover it). A recorded filing is the tenant's own claim about the filed date; nothing reads back from CMS that the notice was accepted, and recording it takes the notice out of the window watch's scan, so a false or mistaken record is caught only by the late-record alert or a platform operator's withdrawal (tenant_notice_filing.withdraw_platform is a separate permission key held by the one platform_ops role). A recorded NOTR also clears the prior-election gate on the tenant's word alone.
+      reason: >-
+        The refusal of a transfer notice for an outside tenant is proven live at the service: m23-transfer-notice.live, over real
+        Postgres as the NOBYPASSRLS app role, reads the choice from the real tenant_clearinghouse_config row through
+        createTenantClearinghouseReader with the same billsOutside expression index.ts binds (the non-live
+        m23-transfer-notice-outside.test.ts uses a stub port). An outside tenant's submit-ready notice is refused 409
+        CLAIMS_FILE_WITH_YOUR_BILLER with no submission row, no outbox event, no queued job and its state and version unchanged;
+        another tenant with no choice recorded is not held back; deleting the row lets the same notice queue (nothing is cached
+        or latched); a choice that cannot be read is a typed 503 that touches nothing. What stays unproven is the route and the
+        composition root: the suite rebuilds the expression instead of booting the API, so a root wiring change (a service
+        built without the port) would not fail it, and it builds the reader with no platform-env fallback (production adds one,
+        which cannot name outside).
+        A recorded filing is the tenant's own claim about the filed date; nothing reads back from CMS that the notice was accepted, and recording it takes the notice out of the window watch's scan, so a false or mistaken record is caught only by the late-record alert or a platform operator's withdrawal (tenant_notice_filing.withdraw_platform is a separate permission key held by the one platform_ops role). A recorded NOTR also clears the prior-election gate on the tenant's word alone.
       owner: engineering
       review_by: 2027-01-31
 
