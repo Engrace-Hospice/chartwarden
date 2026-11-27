@@ -100,6 +100,9 @@ export const GATES = [
   "arch:org-indexes",
   "arch:audit-denylist-sync",
   "arch:audit-exceptions",
+  // CW-VM-01 - offline half of the SAST ratchet: pins, a reason on every baselined finding, and a sast.yml that is cheap and
+  // unreachable from release/deploy. The scan itself (`sast:scan`, docker + network) runs in sast.yml, not here.
+  "arch:sast",
   "docs:ui",
   "openapi:check",
   "arch:openapi-provenance",

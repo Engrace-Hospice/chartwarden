@@ -2462,7 +2462,7 @@ controls:
       - script: arch:vuln-allowlist
 
   - id: CW-VM-01
-    title: Vulnerability management — dependency advisories gated, SBOM per release image
+    title: Vulnerability management — dependency advisories gated, SBOM per release image, SAST ratchet (not yet required or evidenced)
     hipaa: ["164.308(a)(1)(ii)(B)"]
     soc2: ["CC7.1", "CC9.2"]
     status: partial
@@ -2471,8 +2471,15 @@ controls:
       - script: arch:audit-exceptions
       - ci: "syft "
       - file: .github/workflows/backup-image.yml
+      - script: arch:sast
+      - script: sast:scan
+      - file: .github/workflows/sast.yml
+      - file: compliance/sast/config.json
+      - file: compliance/sast/baseline.json
+      - file: scripts/check-sast.ts
+      - file: scripts/__tests__/check-sast.test.ts
     gap:
-      reason: No static analysis (SAST) runs on the TypeScript source. Add pinned Semgrep rule packs with a findings ratchet before the first SOC 2 observation window. backup-image.yml defines a weekly rebuild and scan of the pinned pgBackRest/mc toolchain in one non-matrix job; capture the first successful scheduled run before treating that operational evidence as established.
+      reason: SAST is wired but not yet evidenced or enforced. A digest-pinned Semgrep scans apps/, packages/, scripts/ and e2e/ with pinned security rule packs (compliance/sast/config.json) and is compared to compliance/sast/baseline.json, where every accepted finding carries a reason and a new or a fixed finding fails, and every JS/TS source file under the scan roots, other than the excluded test, fixture, dist and .d.ts paths (code placed there is not scanned), must actually be scanned (Semgrep skips vendor/ by default and files over 1 MB, so the scan names the missed files in a second pass and fails on any that stay out unless the config lists them with a reason) (scripts/check-sast.ts; arch:sast checks the pins, the reasons and the workflow topology offline inside arch:fitness; .github/workflows/sast.yml runs the scan weekly and on manual dispatch only, with no pull_request trigger (arch:sast refuses one) because the job would run a PR's own scanner on the shared self-hosted runner, which has docker access, while the ruleset (CW-CM-01) is not applied, so the PR trigger returns on an ephemeral runner label once it is, and the workflow is unreachable from verify/release/deploy). Remaining - (1) no run of sast.yml has been captured yet, so the owner dispatches it once from main after merge and the first scheduled or dispatched run is captured before the scan is treated as established (the Linux runner path is untested); (2) PR scanning is off until the ruleset is applied and the job moves to an ephemeral runner label, and sast.yml is not a required check, so the scan blocks nothing and a new finding is caught only by the weekly run (arch:sast, the offline half, still runs on every PR inside arch:fitness), and a PR that edits the scanner, the config or the baseline is held only by code-owner review (CW-CM-01), which takes effect once the ruleset is applied; (3) 134 findings sit in 128 baseline entries, 13 of them a real hardening gap (AES-GCM decrypt without authTagLength at PHI-cipher sites that do not enforce the tag length) with the fix deferred to its own reviewed change; (4) Semgrep only partly parses 31 files (listed in the config, and a new one fails the scan), so code in their unparsed regions is not scanned, and one taint rule (unsafe-formatstring) is switched off in the config because its results were not reproducible between scans, so taint-rule results may vary and need watching on the first CI runs (one of four local runs, made while a workspace typecheck ran, lost a single finding the other three report, cause not isolated; that run fails closed as stale, and a Semgrep timeout, out-of-memory or crash error now fails the scan instead of passing it); (5) the rules are Semgrep community security packs for JS/TS (the Semgrep Rules License allows internal use, which the owner has decided is fine for this use), not a ChartWarden-tuned set, and the open-source engine has no cross-file taint analysis; a finding is keyed by its matched text, so a baseline reason that rests on what feeds that line is not re-checked when a caller changes, and code under the excluded test, fixture and dist paths is not scanned although nothing forbids production code importing it. backup-image.yml defines a weekly rebuild and scan of the pinned pgBackRest/mc toolchain in one non-matrix job; capture the first successful scheduled run before treating that operational evidence as established.
       owner: engineering
       review_by: 2027-01-31
 
