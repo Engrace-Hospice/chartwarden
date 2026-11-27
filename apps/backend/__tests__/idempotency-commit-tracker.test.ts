@@ -623,13 +623,13 @@ describe("idempotency release needs proof that nothing committed", () => {
           const inner = createInMemoryIdempotencyStore();
           return {
             ...inner,
-            release: async (orgId, key, requestHash) => {
+            release: async (orgId, key, claimId, requestHash) => {
               const client = (await fakePool.connect()) as FakeClient;
               await client.query("begin");
               await client.query("delete from idempotency_key where key = 'k'");
               await client.query("commit");
               releaseDeletes += 1;
-              return inner.release(orgId, key, requestHash);
+              return inner.release(orgId, key, claimId, requestHash);
             },
           };
         },

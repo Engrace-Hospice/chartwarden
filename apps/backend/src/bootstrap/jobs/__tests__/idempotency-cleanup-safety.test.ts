@@ -11,6 +11,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it, vi } from "vitest";
 
 const deletes: Array<{ sql: string; params: unknown[] }> = [];
+const selects: Array<{ sql: string; params: unknown[] }> = [];
 const FINGERPRINT = "h1:0123abcd:credential-derived-fingerprint-9f8e7d";
 
 vi.mock("@chartwarden/tenancy", () => ({
@@ -34,7 +35,13 @@ vi.mock("@chartwarden/tenancy", () => ({
     }
     const tx = {
       select: () => ({
-        from: () => ({ where: () => ({ limit: async () => [{ id: "row-1" }, { id: "row-2" }] }) }),
+        from: () => ({
+          where: (condition: Parameters<PgDialect["sqlToQuery"]>[0]) => {
+            const q = new PgDialect().sqlToQuery(condition);
+            selects.push({ sql: q.sql, params: q.params });
+            return { limit: async () => [{ id: "row-1" }, { id: "row-2" }] };
+          },
+        }),
       }),
       delete: () => ({
         where: (condition: Parameters<PgDialect["sqlToQuery"]>[0]) => {
@@ -50,28 +57,27 @@ vi.mock("@chartwarden/tenancy", () => ({
 
 import { runIdempotencyCleanup } from "../idempotency-cleanup";
 
-const NOW = new Date("2026-10-06T12:00:00.000Z");
 const deps = (orgs: string[]) => ({
   db: {} as never,
   activeOrgs: { listActiveOrgs: async () => orgs.map((organizationId) => ({ organizationId })) },
-  now: () => NOW,
 });
 
 describe("idempotency.cleanup never deletes a live claim", () => {
   it("the DELETE is by id AND still-expired AND this org, not by id alone", async () => {
     deletes.length = 0;
+    selects.length = 0;
     await runIdempotencyCleanup(deps(["org-a"]));
     expect(deletes).toHaveLength(1);
+    expect(selects).toHaveLength(1);
+    const selected = selects[0] as { sql: string; params: unknown[] };
+    expect(selected.sql).toMatch(/"expires_at" <= now\(\)/i);
+    expect(selected.params.every((param) => !(param instanceof Date))).toBe(true);
     const { sql, params } = deletes[0] as { sql: string; params: unknown[] };
     expect(sql).toMatch(/"id" in/i);
-    expect(sql).toMatch(/"expires_at" <=/i);
+    expect(sql).toMatch(/"expires_at" <= now\(\)/i);
     expect(sql).toMatch(/"organization_id" =/i);
     expect(params).toContain("org-a");
-    expect(
-      params.some(
-        (p) => p instanceof Date || (typeof p === "string" && p.startsWith("2026-10-06")),
-      ),
-    ).toBe(true);
+    expect(params.every((param) => !(param instanceof Date))).toBe(true);
   });
 });
 

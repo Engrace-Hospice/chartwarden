@@ -2258,10 +2258,14 @@ controls:
       - script: test:gap007:idempotency-claim:live
       - script: test:f073:idempotency-bodiless:live
       - script: test:m36:idempotent-send:live
+      - script: test:idempotency:cleanup:live
       - ci: "Unit + integration suite (bun run test)"
       - file: packages/db/src/commit-tracker.ts
       - file: apps/backend/src/bootstrap/plugins/idempotency.ts
       - file: apps/backend/src/bootstrap/plugins/idempotency-store-db.ts
+      - file: apps/backend/src/bootstrap/jobs/idempotency-cleanup.ts
+      - file: apps/backend/src/bootstrap/jobs/__tests__/idempotency-cleanup-safety.test.ts
+      - file: apps/backend/__tests__/idempotency-cleanup.live.test.ts
       - file: packages/shared/src/idempotency/idempotency.ts
       - file: packages/db/__tests__/commit-tracker.test.ts
       - file: apps/backend/__tests__/idempotency-commit-tracker.test.ts
@@ -2288,7 +2292,8 @@ controls:
         expired-pending-claim race: while the first handler waited at a barrier, a second request reclaimed its pending
         row, both handlers ran, and two business rows committed. After the store fix, the second request receives
         IDEMPOTENCY_IN_FLIGHT and the barrier test observes one handler run and one business row; live direct-SQL
-        assertions prove expired pending retention and stale-generation fencing. The M29 NPPES manual trigger was a
+        assertions prove expired pending retention and stale-generation fencing. Completed-response expiry and cleanup
+        use PostgreSQL now(), so host clock skew cannot shorten the replay-retention window. The M29 NPPES manual trigger was a
         demonstrated direct queue caller: the queue could accept work while its acknowledgement was lost, after which a
         retryable response could release the key. It now requires Idempotency-Key before enqueue; an accepted enqueue with
         a lost acknowledgement remains pending, the same-key retry cannot enqueue again, and STUCK is not cached with the

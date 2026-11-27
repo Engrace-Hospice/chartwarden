@@ -19,7 +19,7 @@ import {
   withOrgContext,
 } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { and, eq, inArray, lte } from "drizzle-orm";
+import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import { buildActiveOrgEnumerator } from "../active-org-enumerator";
 import { safeErrorMessage } from "../redact-database-error";
 
@@ -49,7 +49,6 @@ export interface IdempotencyCleanupDeps {
   readonly activeOrgs: {
     listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
   };
-  readonly now?: () => Date;
 }
 
 /** The org enumeration the sweeper is bound to: the platform pool, the cleanup's own job id, and every org status. */
@@ -73,8 +72,7 @@ export function wireIdempotencyCleanupTenancy(): void {
 
 async function purgeOrg(
   deps: IdempotencyCleanupDeps,
-  organizationId: string,
-  now: Date,
+  organizationId: string
 ): Promise<number> {
   const T = schema.idempotencyKeys;
   let total = 0;
@@ -84,7 +82,7 @@ async function purgeOrg(
       const expired = (await t
         .select({ id: T.id })
         .from(T)
-        .where(and(eq(T.state, "complete"), lte(T.expiresAt, now)))
+        .where(and(eq(T.state, "complete"), lte(T.expiresAt, sql`now()`)))
         .limit(IDEMPOTENCY_PURGE_BATCH)) as Array<{ id: string }>;
       if (expired.length === 0) return 0;
       // Still expired AND this org: a row reclaimed since the SELECT is a live claim and survives. `returning` counts what was
@@ -99,7 +97,7 @@ async function purgeOrg(
             ),
             eq(T.organizationId, organizationId),
             eq(T.state, "complete"),
-            lte(T.expiresAt, now),
+            lte(T.expiresAt, sql`now()`),
           ),
         )
         .returning({ id: T.id });
@@ -113,13 +111,12 @@ async function purgeOrg(
 
 /** One purge pass over every org; a failing org does not stop the others, the pass then rejects. */
 export async function runIdempotencyCleanup(deps: IdempotencyCleanupDeps): Promise<number> {
-  const now = (deps.now ?? (() => new Date()))();
   const orgs = await deps.activeOrgs.listActiveOrgs();
   let total = 0;
   const failures: string[] = [];
   for (const { organizationId } of orgs) {
     try {
-      total += await purgeOrg(deps, organizationId, now);
+      total += await purgeOrg(deps, organizationId);
     } catch (err) {
       // safeErrorMessage, never err.message: a database error's message carries the query's bound parameters
       failures.push(`${organizationId}: ${safeErrorMessage(err, { bare: true })}`);
@@ -143,7 +140,6 @@ export function registerIdempotencyCleanupWorker(
     readonly db: DbClient;
     readonly platformDb: DbClient | undefined;
     readonly auditBypass: PlatformBypassAuditor<DbClient>;
-    readonly now?: () => Date;
   },
 ): Worker {
   const cleanup: IdempotencyCleanupDeps = {
@@ -152,7 +148,6 @@ export function registerIdempotencyCleanupWorker(
       platformDb: deps.platformDb,
       auditBypass: deps.auditBypass,
     }),
-    ...(deps.now ? { now: deps.now } : {}),
   };
   return new Worker(IDEMPOTENCY_CLEANUP_QUEUE, async () => runIdempotencyCleanup(cleanup), {
     connection,
