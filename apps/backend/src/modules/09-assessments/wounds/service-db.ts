@@ -21,6 +21,11 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { type EncounterDraftReader, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
+  type WoundPatientReader,
+  assertPatientExists,
+  seamWoundPatientReader,
+} from "./patient-exists";
+import {
   type WoundObservationRecord,
   observationValuesOf,
   toObservationDtos,
@@ -49,6 +54,8 @@ export interface DbWoundServiceOptions {
   readonly now?: () => Date;
   /** M8's visit facts; defaults to the `EncounterDraftReader` seam (fail-closed deny-stub until M8 registers it). */
   readonly visits?: EncounterDraftReader;
+  /** M5's patient existence; defaults to the `PatientReader` seam (fail-closed deny-stub until M5 registers it). */
+  readonly patients?: WoundPatientReader;
 }
 
 export function createDbWoundService(
@@ -57,6 +64,7 @@ export function createDbWoundService(
 ): WoundRouteService {
   const now = options.now ?? (() => new Date());
   const visits = options.visits ?? seamEncounterDraftReader;
+  const patients = options.patients ?? seamWoundPatientReader;
   const inOrg = <T>(
     organizationId: string,
     userId: string,
@@ -298,6 +306,8 @@ export function createDbWoundService(
     },
 
     async createWound(actor, patientId, input): Promise<WoundView> {
+      // Before the transaction opens (the seam has its own tenant context): a patient that is not one of this organisation's is a 404 (CW-AC-54).
+      await assertPatientExists(patients, { organizationId: actor.organizationId, patientId });
       return inOrg(actor.organizationId, actor.userId, async (tx) => {
         assertValidWound(input, await todayForOrganization(tx, actor.organizationId));
         const [row] = await tx

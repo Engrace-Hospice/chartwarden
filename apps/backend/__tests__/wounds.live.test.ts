@@ -28,6 +28,10 @@ import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import {
+  createDrizzlePatientReaderStore,
+  createPatientReader,
+} from "../src/modules/05-patient/index";
 import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/abac-predicates";
 import { createDrizzleEncounterDraftReader } from "../src/modules/08-encounters/encounter-draft-reader";
 import {
@@ -36,6 +40,7 @@ import {
   createWoundProvider,
   eraseWoundSubtree,
   registerWoundRoutes,
+  woundPatientReaderOver,
 } from "../src/modules/09-assessments/index";
 import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
 
@@ -47,6 +52,11 @@ const USER_A = "33333333-3333-3333-3333-333333333331";
 const USER_B = "33333333-3333-3333-3333-333333333332";
 const PATIENT_1 = "44444444-4444-4444-4444-444444444441";
 const PATIENT_2 = "44444444-4444-4444-4444-444444444442";
+const PATIENT_DESTROYED = "44444444-4444-4444-4444-4444444444d1"; // the patient eraser step's subject, and a bystander of the same organisation
+const PATIENT_BYSTANDER = "44444444-4444-4444-4444-4444444444b1";
+const PATIENT_B = "44444444-4444-4444-4444-4444444444e1"; // ORG_B's patient
+const PATIENT_MERGED = "44444444-4444-4444-4444-4444444444a5"; // merged into PATIENT_1
+const GHOST_PATIENT = "44444444-4444-4444-4444-4444444444ff"; // a well-formed uuid that names no patient anywhere
 const ENCOUNTER_1 = "55555555-5555-5555-5555-555555555551";
 const ENCOUNTER_2 = "55555555-5555-5555-5555-555555555552";
 const PG_CHECK_VIOLATION = "23514";
@@ -202,6 +212,19 @@ describe.skipIf(!DB_URL)("M9 longitudinal wounds — LIVE Postgres", () => {
     membershipA = await membership(ORG_A, USER_A);
     membershipB = await membership(ORG_B, USER_B);
     membershipA2 = await membership(ORG_A, USER_B);
+    // The patients the wounds below are registered for (CW-AC-54: a wound needs a patient of its own organisation), and one of the other tenant.
+    for (const [id, org, mrn] of [
+      [PATIENT_1, ORG_A, "WND-A1"],
+      [PATIENT_2, ORG_A, "WND-A2"],
+      [PATIENT_DESTROYED, ORG_A, "WND-A3"],
+      [PATIENT_BYSTANDER, ORG_A, "WND-A4"],
+      [PATIENT_B, ORG_B, "WND-B1"],
+    ] as const) {
+      await admin.query(
+        "INSERT INTO patient (id, organization_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth, status) VALUES ($1,$2,$3,'Test','Patient','1950-01-01','F','active')",
+        [id, org, mrn],
+      );
+    }
     // The visits the seam-bound observations below are tied to: the clinician's own open notes (M8's real reader answers for them).
     await insertEncounter(ENCOUNTER_1, PATIENT_2, membershipA);
     await insertEncounter(ENCOUNTER_2, PATIENT_2, membershipA);
@@ -215,6 +238,10 @@ describe.skipIf(!DB_URL)("M9 longitudinal wounds — LIVE Postgres", () => {
       now: () => new Date("2026-11-19T15:00:00.000Z"),
       // The REAL M8 reader over the app role, as the composition root registers it: every visit-tied write below is checked against `encounter`.
       visits: createDrizzleEncounterDraftReader(handle.db),
+      // The REAL M5 reader over the app role, as the composition root registers it: a wound is registered only for a patient `patient` holds for the org.
+      patients: woundPatientReaderOver(
+        createPatientReader(createDrizzlePatientReaderStore(handle.db)),
+      ),
     });
   }, 240_000);
 
@@ -753,6 +780,103 @@ describe.skipIf(!DB_URL)("M9 longitudinal wounds — LIVE Postgres", () => {
         Number((await admin.query("SELECT count(*)::int AS n FROM wound_observation")).rows[0].n),
       ).toBe(before);
     });
+
+    // CW-AC-54: `wound.patient_id` has no foreign key and the route authorises on assessment.author + the caseload predicate alone, so the
+    // service is what ties a wound to a patient that exists in the caller's own organisation (M5's PatientReader seam, the real reader here).
+    describe("a wound is registered only for a patient of the caller's own organisation", () => {
+      const WOUND = { siteCode: "heel", laterality: "left", etiology: "surgical" } as const;
+      const woundCountFor = async (...patientIds: string[]): Promise<number> =>
+        Number(
+          (
+            await admin.query(
+              "SELECT count(*)::int AS n FROM wound WHERE patient_id = ANY($1::uuid[])",
+              [patientIds],
+            )
+          ).rows[0].n,
+        );
+
+      it("refuses a uuid that names no patient and another tenant's patient with the same 404, and stores nothing", async () => {
+        const before = await woundCountFor(GHOST_PATIENT, PATIENT_B, PATIENT_1);
+        await expect(svc.createWound(actorA(), GHOST_PATIENT, WOUND)).rejects.toMatchObject({
+          statusCode: 404,
+          code: "NOT_FOUND",
+        });
+        // ORG_B's patient, asked for by ORG_A: RLS hides the row, so it answers exactly like the absent one
+        await expect(svc.createWound(actorA(), PATIENT_B, WOUND)).rejects.toMatchObject({
+          statusCode: 404,
+          code: "NOT_FOUND",
+        });
+        // and the other way round: ORG_A's patient is nothing to ORG_B
+        await expect(svc.createWound(actorB(), PATIENT_1, WOUND)).rejects.toMatchObject({
+          statusCode: 404,
+          code: "NOT_FOUND",
+        });
+        expect(await woundCountFor(GHOST_PATIENT, PATIENT_B, PATIENT_1)).toBe(before);
+      });
+
+      it("registers a wound for each organisation's own patient (the control for the refusals)", async () => {
+        const mine = await svc.createWound(actorA(), PATIENT_1, WOUND);
+        const theirs = await svc.createWound(actorB(), PATIENT_B, WOUND);
+        const stored = await admin.query(
+          "SELECT id::text, organization_id::text AS org, patient_id::text AS patient FROM wound WHERE id = ANY($1::uuid[]) ORDER BY organization_id",
+          [[mine.id, theirs.id]],
+        );
+        expect(stored.rows).toEqual([
+          { id: mine.id, org: ORG_A, patient: PATIENT_1 },
+          { id: theirs.id, org: ORG_B, patient: PATIENT_B },
+        ]);
+      });
+
+      it("registers a wound for an existing patient asked for under an uppercase id (the route's uuid format is case-insensitive): not a false 404, stored in lowercase", async () => {
+        expect(PATIENT_B.toUpperCase()).not.toBe(PATIENT_B); // an id with hex letters, so the case really differs
+        const wound = await svc.createWound(actorB(), PATIENT_B.toUpperCase(), WOUND);
+        const stored = await admin.query(
+          "SELECT patient_id::text AS patient FROM wound WHERE id = $1",
+          [wound.id],
+        );
+        expect(stored.rows).toEqual([{ patient: PATIENT_B }]);
+      });
+
+      it("refuses a patient merged into another (M5 answers with the survivor): no wound is filed under the retired id", async () => {
+        await admin.query(
+          "INSERT INTO patient (id, organization_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth, status, merged_into_id) VALUES ($1,$2,'WND-A5','Test','Merged','1950-01-01','F','merged',$3)",
+          [PATIENT_MERGED, ORG_A, PATIENT_1],
+        );
+        await expect(svc.createWound(actorA(), PATIENT_MERGED, WOUND)).rejects.toMatchObject({
+          statusCode: 404,
+        });
+        expect(await woundCountFor(PATIENT_MERGED)).toBe(0);
+        // the survivor itself is a patient like any other
+        await expect(svc.createWound(actorA(), PATIENT_1, WOUND)).resolves.toMatchObject({
+          patientId: PATIENT_1,
+        });
+      });
+
+      it("an unbound PatientReader refuses the write with a server error (never the 404 of an absent patient, never a pass) and stores nothing", async () => {
+        const unwired = createDbWoundService(handle.db, {
+          now: () => new Date("2026-11-19T15:00:00.000Z"),
+        });
+        const before = await woundCountFor(PATIENT_1);
+        // an existing patient, so only the unbound seam can refuse: a server error (never the 404 of an absent patient, never a pass)
+        const failure = await unwired.createWound(actorA(), PATIENT_1, WOUND).then(
+          () => null,
+          (error: unknown) => error,
+        );
+        expect(failure).toBeInstanceOf(Error);
+        expect(failure).not.toMatchObject({ statusCode: 404 });
+        expect(await woundCountFor(PATIENT_1)).toBe(before);
+      });
+
+      it("the refused patients' ids are not echoed beyond what the caller sent, and nothing about the other tenant leaks", async () => {
+        const refusal = await svc.createWound(actorA(), PATIENT_B, WOUND).then(
+          () => null,
+          (error: unknown) => error as Error,
+        );
+        expect(refusal).not.toBeNull();
+        expect(JSON.stringify(refusal?.message)).not.toContain("WND-B1");
+        expect(JSON.stringify(refusal?.message)).not.toContain(ORG_B);
+      });
+    });
   });
 
   // ── the seam the visit note reads ──────────────────────────────────────────────────────────────────────────────
@@ -1053,13 +1177,13 @@ describe.skipIf(!DB_URL)("M9 longitudinal wounds — LIVE Postgres", () => {
     });
 
     it("never sees another organisation's note", async () => {
-      const wound = await svc.createWound(actorB(), PATIENT_1, {
+      const wound = await svc.createWound(actorB(), PATIENT_B, {
         siteCode: "heel",
         laterality: "left",
         etiology: "pressure_injury",
       });
       await expect(
-        svc.recordObservation(actorB(), PATIENT_1, wound.id, { sourceEncounterId: OPEN }),
+        svc.recordObservation(actorB(), PATIENT_B, wound.id, { sourceEncounterId: OPEN }),
       ).rejects.toMatchObject({ statusCode: 404 });
     });
 
@@ -1124,8 +1248,8 @@ describe.skipIf(!DB_URL)("M9 longitudinal wounds — LIVE Postgres", () => {
   describe("patient eraser step", () => {
     it("deletes one patient's observations (both ends of a correction) and wounds, and nobody else's", async () => {
       // Arrange: a destroy-me patient and a bystander, in the same organisation
-      const destroyed = "44444444-4444-4444-4444-4444444444d1";
-      const bystander = "44444444-4444-4444-4444-4444444444b1";
+      const destroyed = PATIENT_DESTROYED;
+      const bystander = PATIENT_BYSTANDER;
       const wound = await svc.createWound(actorA(), destroyed, {
         siteCode: "elbow",
         laterality: "right",

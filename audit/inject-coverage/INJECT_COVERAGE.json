@@ -128,7 +128,8 @@
         "apps/backend/__tests__/m8-visit-note-drafting-lpn-aide.live.test.ts",
         "apps/backend/__tests__/m8-visit-note-drafting-md-np-idg.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts",
-        "apps/backend/__tests__/s11-adversarial-stages.live.test.ts"
+        "apps/backend/__tests__/s11-adversarial-stages.live.test.ts",
+        "apps/backend/__tests__/wounds.live.test.ts"
       ],
       "directRoutesReferenced": 49
     },

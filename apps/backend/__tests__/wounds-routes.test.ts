@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/abac-predicates";
 import {
+  type WoundPatientReader,
   createInMemoryWoundService,
   registerWoundRoutes,
 } from "../src/modules/09-assessments/index";
@@ -68,11 +69,14 @@ function makeServer(
     visits?: Readonly<Record<string, EncounterDraftFacts>>;
     /** A scripted reader instead (it wins over `visits`): to change the answer between two calls. */
     reader?: EncounterDraftReader;
+    /** M5's patient existence (default: every patient exists; the memory store has no patient table). */
+    patients?: WoundPatientReader;
   } = {},
 ) {
   const known = options.visits ?? { [ENCOUNTER]: OPEN_VISIT };
   const backend = createInMemoryWoundService({
     now: () => NOW,
+    ...(options.patients ? { patients: options.patients } : {}),
     visits: options.reader ?? { draftOf: async ({ encounterId }) => known[encounterId] ?? null },
   });
   registerEffectivePermissionResolver(
@@ -230,6 +234,14 @@ describe("wound routes: create and read", () => {
       onsetOn: null,
     });
     expect(res.json()).not.toHaveProperty("organizationId");
+  });
+
+  it("answers 404 in the standard envelope for a patient the organisation does not have, and stores nothing (CW-AC-54)", async () => {
+    const { app, backend } = makeServer({ patients: { exists: async () => false } });
+    const res = await create(app);
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe("NOT_FOUND");
+    expect(backend.wounds()).toEqual([]);
   });
 
   it("defaults acquired to unknown", async () => {
