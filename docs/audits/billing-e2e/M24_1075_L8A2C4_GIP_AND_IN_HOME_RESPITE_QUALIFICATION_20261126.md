@@ -105,7 +105,7 @@ were corrected and the affected checks rerun before publication.
 | Migration, tenancy and ownership checks | Migration numbering/compatibility, tenancy, table ownership and route reachability passed. The table-ownership result confirms no cross-module persistence access in the changed paths. |
 | Documentation and request contracts | Module docs, compliance controls and request-body contract checks passed. |
 | PHI and patch integrity | Scoped PHI scan: 42 changed files clean. `git diff --check` passed. |
-| Secret scan | Local `gitleaks` is unavailable (`command -v gitleaks` returned no executable); no secret-scan pass is claimed. |
+| Secret scan | Repository pre-commit ran Gitleaks 8.30.1 against the staged diff: 0 commits scanned, 222,839 bytes scanned, no leaks found. The executable came from the local qualification cache. |
 | Full backend TypeScript, full monorepo tests/architecture fitness, dependency-cruiser and release qualification | Deferred to the separate integrated qualification. The stopped web project build is explicitly incomplete; the previous backend-wide resource limitation and L7 aggregate/release gap are not represented as passing. |
 
 The M24 live suite exercises draft-only GIP persistence, independent charge/reimbursement amounts,
@@ -127,3 +127,10 @@ Medicaid electronic submission remains disabled. No payer/vendor request, live E
 ledger mutation, financial outbox event, production/shared migration, deployment, credential change,
 secondary Room & Board route, merge or force-push occurred. No real patient data was used. The
 qualification database and fixture values were synthetic and disposable.
+
+## Publication
+
+Implementation commit `63535c01514a77aef68b7eb46ffa93ef7b5e426b` is on
+`audit/m24-1075-oregon-eocco-readiness-r2`. Draft PR
+[#1189](https://github.com/Engrace-Hospice/chartwarden/pull/1189) targets `main`; issue #1075 remains
+open. The PR's Compliance gates and Secret and PHI scan jobs were pending at report publication.
