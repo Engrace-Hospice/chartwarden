@@ -25,13 +25,14 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { parseTombstones } from "../../../scripts/lib/object-tombstones";
+import { purgeOrgTombstones } from "../../../scripts/db/lib/purge-org-tombstones";
+import { isObjectKeyShape, parseTombstones } from "../../../scripts/lib/object-tombstones";
 import { exportTombstones } from "../../../scripts/storage/object-tombstones";
 import {
   createDrizzleDocumentEraseStore,
   eraseDocumentRecord,
 } from "../src/modules/22-documents/erasers/document-eraser";
-import { deriveTenantBucket } from "../src/modules/22-documents/lifecycle/storage";
+import { deriveObjectKey, deriveTenantBucket } from "../src/modules/22-documents/lifecycle/storage";
 import { createInMemoryObjectStore } from "../src/modules/22-documents/seams/store";
 import type { ObjectStorePort } from "../src/modules/22-documents/seams/store";
 import {
@@ -51,6 +52,10 @@ const PATIENT_OTHER = "aaaaaaaa-aaaa-4aaa-8aaa-0000000d51a2";
 const PATIENT_B = "bbbbbbbb-bbbb-4bbb-8bbb-0000000d51b1";
 const PATIENT_HELD = "aaaaaaaa-aaaa-4aaa-8aaa-0000000d51a3";
 const PATIENT_ROLES = "aaaaaaaa-aaaa-4aaa-8aaa-0000000d51a4"; // the roles tests seed their own patient, so the eraser tests below never destroy their documents
+const PATIENT_KEPT = "aaaaaaaa-aaaa-4aaa-8aaa-0000000d51a5"; // held and Part 2 documents the database must refuse to tombstone
+const PATIENT_BIG = "aaaaaaaa-aaaa-4aaa-8aaa-0000000d51a6"; // one document with more versions than one INSERT can bind
+const PATIENT_ODD = "aaaaaaaa-aaaa-4aaa-8aaa-0000000d51a7"; // a document whose key the store would not write today
+const ORG_C = "44444444-4444-4444-8444-4444000d5104"; // the seed-teardown test's organization
 const DESTROYER_LOGIN = "ds01_destroyer";
 const DESTROYER_PASSWORD = "ds01_destroyer_pw";
 const BUCKET_A = deriveTenantBucket(ORG_A as never);
@@ -506,6 +511,366 @@ describe.skipIf(!DB_URL)("M22 object destruction tombstones (CW-DS-01) - LIVE Po
       await expect(exportTombstones(appHandle.db as DbClient)).rejects.toThrow(
         /subject to row security/,
       );
+    });
+  });
+
+  describe("what the database itself refuses (CW-DS-01 hardening)", () => {
+    const insertTombstone = (key: string, conflict = ""): string =>
+      `INSERT INTO object_destruction_tombstone (organization_id, bucket, object_key) VALUES ('${ORG_A}', '${BUCKET_A}', '${key}') ${conflict}`;
+    const asDestroyer = <T>(org: string, fn: (tx: DbClient) => Promise<T>) =>
+      withOrgContext(destroyer.db, { organizationId: org, userId: "" }, (tx) => fn(tx as DbClient));
+
+    it("refuses a tombstone for a document under an active hold, one with status legal_hold, and a 42 CFR Part 2 document: any role, also under the replica role", async () => {
+      const heldKey = keyOf(PATIENT_KEPT, "kept-hold");
+      const statusKey = keyOf(PATIENT_KEPT, "kept-status");
+      const part2Key = keyOf(PATIENT_KEPT, "kept-part2");
+      await seedDocument(ORG_A, PATIENT_KEPT, [heldKey], { hold: true });
+      const statusDoc = await seedDocument(ORG_A, PATIENT_KEPT, [statusKey]);
+      await admin.query("UPDATE document SET status = 'legal_hold' WHERE id = $1", [statusDoc]);
+      await seedDocument(ORG_A, PATIENT_KEPT, [part2Key], {
+        retentionClass: "compliance_42cfr_part2",
+      });
+      const kept = [heldKey, statusKey, part2Key];
+
+      for (const key of kept) {
+        await expect(admin.query(insertTombstone(key)), key).rejects.toMatchObject({
+          code: "23514",
+        });
+        // the eraser's own insert is ON CONFLICT DO NOTHING: a BEFORE trigger still sees the row
+        await expect(
+          admin.query(insertTombstone(key, "ON CONFLICT DO NOTHING")),
+          `${key} (ON CONFLICT)`,
+        ).rejects.toMatchObject({ code: "23514" });
+        expect(
+          await sqlstateOf(() =>
+            asDestroyer(ORG_A, (tx) => tx.execute(sql.raw(insertTombstone(key)))),
+          ),
+          `${key} (destruction role)`,
+        ).toBe("23514");
+      }
+      await admin.query("SET session_replication_role = replica");
+      try {
+        for (const key of kept)
+          await expect(admin.query(insertTombstone(key)), `replica: ${key}`).rejects.toMatchObject({
+            code: "23514",
+          });
+      } finally {
+        await admin.query("SET session_replication_role = DEFAULT");
+      }
+      const recorded = await tombstoneKeys(ORG_A);
+      for (const key of kept) expect(recorded).not.toContain(key);
+    });
+
+    it("also refuses a tombstone planted under the replica role for a key no version records (the version check is ENABLE ALWAYS too)", async () => {
+      await admin.query("SET session_replication_role = replica");
+      try {
+        await expect(
+          admin.query(insertTombstone(keyOf(PATIENT_KEPT, "no-such-version"))),
+        ).rejects.toMatchObject({ code: "23514" });
+      } finally {
+        await admin.query("SET session_replication_role = DEFAULT");
+      }
+    });
+
+    it("refuses TRUNCATE for the table owner and a superuser, also under the replica role, and leaves the rows", async () => {
+      const before = (await tombstoneKeys(ORG_A)).length;
+      expect(before).toBeGreaterThan(0);
+      await expect(admin.query("TRUNCATE object_destruction_tombstone")).rejects.toMatchObject({
+        code: "23514",
+      });
+      await admin.query("SET session_replication_role = replica");
+      try {
+        await expect(admin.query("TRUNCATE object_destruction_tombstone")).rejects.toMatchObject({
+          code: "23514",
+        });
+      } finally {
+        await admin.query("SET session_replication_role = DEFAULT");
+      }
+      expect((await tombstoneKeys(ORG_A)).length).toBe(before);
+    });
+
+    it("refuses TRUNCATE of a table that reaches it by CASCADE (the foreign key to organization), and rolls back", async () => {
+      // a transaction that is always rolled back: were the guard to miss, nothing may be left truncated
+      await admin.query("BEGIN");
+      try {
+        await expect(admin.query("TRUNCATE organization CASCADE")).rejects.toMatchObject({
+          code: "23514",
+        });
+      } finally {
+        await admin.query("ROLLBACK");
+      }
+      expect((await tombstoneKeys(ORG_A)).length).toBeGreaterThan(0);
+    });
+
+    it("refuses a tombstone whose key is not a form the document store writes, and agrees with isObjectKeyShape on every sample", async () => {
+      // what the store's own key builders produce (lifecycle/storage.ts; the upload routes build `uploads/<id>/<aggregate>-<12 chars>`)
+      const produced = [
+        deriveObjectKey({
+          kind: "rendered",
+          aggregateType: "other",
+          documentId: randomUUID(),
+          patientId: PATIENT_KEPT,
+          batchId: null,
+          shortVersionId: "a1b2c3d4e5f6",
+        }),
+        deriveObjectKey({
+          kind: "rendered",
+          aggregateType: "other",
+          documentId: randomUUID(),
+          patientId: null,
+          batchId: null,
+          shortVersionId: "a1b2c3d4e5f6",
+        }),
+        deriveObjectKey({
+          kind: "intake",
+          aggregateType: "other",
+          documentId: randomUUID(),
+          patientId: null,
+          batchId: randomUUID(),
+          shortVersionId: "a1b2c3d4e5f6",
+        }),
+        `uploads/${randomUUID()}/other-${randomUUID().slice(0, 12)}`,
+      ];
+      for (const key of produced) {
+        expect(isObjectKeyShape(key), key).toBe(true);
+        expect(
+          (
+            await admin.query(
+              "SELECT (length($1) <= 512 AND $1 ~ '^(documents|intake|uploads)(/[A-Za-z0-9][A-Za-z0-9._-]*){2,6}$') AS ok",
+              [key],
+            )
+          ).rows[0].ok,
+          key,
+        ).toBe(true);
+      }
+      const samples = [
+        `documents/${PATIENT_KEPT}/other/${randomUUID()}/other-a1b2c3d4e5f6.pdf`,
+        `intake/${randomUUID()}/intake-a1b2c3d4e5f6.pdf`,
+        `uploads/${randomUUID()}/other-a1b2c3d4e5f6`,
+        "documents/unbound/other/x1/y.pdf",
+        "documents/p1/a.pdf",
+        "",
+        "a",
+        "documents",
+        "documents/p1",
+        "/documents/p1/a.pdf",
+        "documents//a.pdf",
+        "documents/../x/y.pdf",
+        "documents/./p1/a.pdf",
+        "documents/p1/a%2Fb.pdf",
+        "documents/p1/a b.pdf",
+        "documents/p1/é.pdf",
+        "backups/p1/a.pdf",
+        "Documents/p1/a.pdf",
+        "documents/-p1/a.pdf",
+        "documents/a/b/c/d/e/f/g/h.pdf",
+        `documents/${"a".repeat(600)}/b.pdf`,
+      ];
+      for (const key of samples) {
+        const accepted = (
+          await admin.query(
+            "SELECT (length($1) <= 512 AND $1 ~ '^(documents|intake|uploads)(/[A-Za-z0-9][A-Za-z0-9._-]*){2,6}$') AS ok",
+            [key],
+          )
+        ).rows[0].ok as boolean;
+        expect(accepted, `SQL form vs isObjectKeyShape for ${JSON.stringify(key)}`).toBe(
+          isObjectKeyShape(key),
+        );
+      }
+      // a trailing newline: `$` must not accept it in either language
+      expect(isObjectKeyShape("documents/p1/a.pdf\n")).toBe(false);
+      expect(
+        (
+          await admin.query(
+            "SELECT ('documents/p1/a.pdf' || chr(10)) ~ '^(documents|intake|uploads)(/[A-Za-z0-9][A-Za-z0-9._-]*){2,6}$' AS ok",
+          )
+        ).rows[0].ok,
+      ).toBe(false);
+      // and the trigger refuses an insert the document-version check alone would allow (the version exists, the form is odd)
+      const odd = "legacy-upload/odd-name.bin";
+      await seedDocument(ORG_A, PATIENT_KEPT, [odd]);
+      await expect(admin.query(insertTombstone(odd)), odd).rejects.toMatchObject({ code: "23514" });
+      expect(await tombstoneKeys(ORG_A)).not.toContain(odd);
+    });
+
+    it("the migration's pre-check refuses to apply over an existing tombstone with such a key, naming a count and no key", async () => {
+      const migration = readFileSync(
+        join(MIGRATIONS_DIR, "1583_m22_object_destruction_tombstone_guards.sql"),
+        "utf8",
+      );
+      const precheck = /DO \$\$[\s\S]*?END \$\$;/.exec(migration)?.[0];
+      expect(precheck, "the pre-check block").toBeTruthy();
+      const odd = "legacy-upload/odd-name.bin"; // seeded by the previous test; its version still exists, so a tombstone can name it
+      await admin.query("BEGIN"); // always rolled back: the bad row must not outlive this test
+      try {
+        // a row written before the guards existed: the key-form trigger is switched off for this transaction only
+        await admin.query(
+          "ALTER TABLE object_destruction_tombstone DISABLE TRIGGER trg_object_destruction_tombstone_key_form",
+        );
+        await admin.query(insertTombstone(odd));
+        const failure = await admin.query(precheck as string).then(
+          () => null,
+          (error: unknown) => error as Error & { code?: string },
+        );
+        expect(failure?.code).toBe("23514");
+        expect(failure?.message).toMatch(/1 existing tombstone\(s\) have an object key/);
+        expect(failure?.message).not.toContain(odd);
+      } finally {
+        await admin.query("ROLLBACK");
+      }
+      // with no such row the same block passes (notices only)
+      await expect(admin.query(precheck as string)).resolves.toBeTruthy();
+    });
+
+    it("has exactly its six triggers (five guards and the audit trigger), all ENABLE ALWAYS, and no role holds TRUNCATE", async () => {
+      const triggers = (
+        await admin.query(
+          `SELECT tgname, tgenabled FROM pg_trigger
+            WHERE tgrelid = 'object_destruction_tombstone'::regclass AND NOT tgisinternal`,
+        )
+      ).rows as { tgname: string; tgenabled: string }[];
+      expect(triggers.map((t) => t.tgname).sort()).toEqual([
+        "trg_audit_object_destruction_tombstone",
+        "trg_object_destruction_tombstone_append_only",
+        "trg_object_destruction_tombstone_key_form",
+        "trg_object_destruction_tombstone_names_a_version",
+        "trg_object_destruction_tombstone_no_truncate",
+        "trg_object_destruction_tombstone_not_preserved",
+      ]);
+      for (const t of triggers) expect(t.tgenabled, t.tgname).toBe("A");
+      const truncateHolders = (
+        await admin.query(
+          `SELECT grantee FROM information_schema.role_table_grants
+            WHERE table_name = 'object_destruction_tombstone' AND privilege_type = 'TRUNCATE'
+              AND grantee IN ('PUBLIC', 'chartwarden_app', 'chartwarden_destruction')`,
+        )
+      ).rows;
+      expect(truncateHolders).toEqual([]);
+    });
+  });
+
+  describe("an erase past the single-statement bind limit", () => {
+    it("records a tombstone for every one of more than 13,107 versions of one patient, destroys the objects, and a retry changes nothing", async () => {
+      const versions = 13_200; // 5 bound values each: 66,000 > 65,535, so one INSERT could not carry it
+      const documentId = (
+        await admin.query(
+          `INSERT INTO document (organization_id, patient_id, retention_class, source_kind, aggregate_type, title, created_by_membership_id)
+           VALUES ($1,$2,'clinical_record','user_upload','other','Synthetic big doc',$3) RETURNING id`,
+          [ORG_A, PATIENT_BIG, MEMBER],
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        `INSERT INTO document_version (organization_id, document_id, version_number, object_key, mime_type, byte_size, sha256_hex, uploaded_by_kind)
+         SELECT $1::uuid, $2::uuid, g, 'documents/' || $3::text || '/other/' || $2::text || '/v' || g || '.pdf',
+                'application/pdf', 10, $4::text, 'system_render'
+           FROM generate_series(1, $5::int) AS g`,
+        [ORG_A, documentId, PATIENT_BIG, "a".repeat(64), versions],
+      );
+      const keys = (
+        await admin.query("SELECT object_key FROM document_version WHERE document_id = $1", [
+          documentId,
+        ])
+      ).rows.map((r) => r.object_key as string);
+      expect(keys.length).toBe(versions);
+      const bytes = new TextEncoder().encode("synthetic");
+      for (const key of keys) memory.objects.set(objectPath(BUCKET_A, key), bytes);
+      const tombstonesOf = async (): Promise<number> =>
+        (
+          await admin.query(
+            "SELECT count(*)::int AS n FROM object_destruction_tombstone WHERE document_id = $1",
+            [documentId],
+          )
+        ).rows[0].n as number;
+
+      await erase(ORG_A, PATIENT_BIG);
+
+      expect(await tombstonesOf()).toBe(versions);
+      expect(keys.filter((key) => present(BUCKET_A, key))).toEqual([]);
+      expect(await docExists(documentId)).toBe(false);
+      await erase(ORG_A, PATIENT_BIG); // a second run
+      expect(await tombstonesOf()).toBe(versions);
+    }, 300_000);
+  });
+
+  describe("the dev seed's teardown of an organization that has tombstones", () => {
+    it("removes that organization's tombstones only, leaves the append-only trigger ENABLE ALWAYS, and lets the organization be deleted", async () => {
+      const bucketC = deriveTenantBucket(ORG_C as never);
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'ds01-c','C','C')",
+        [ORG_C],
+      );
+      const key = keyOf(PATIENT_B, "seed-teardown");
+      await seedDocument(ORG_C, PATIENT_B, [key]);
+      await admin.query(
+        "INSERT INTO object_destruction_tombstone (organization_id, bucket, object_key) VALUES ($1,$2,$3)",
+        [ORG_C, bucketC, key],
+      );
+      const otherOrgBefore = (await tombstoneKeys(ORG_A)).length;
+      expect(otherOrgBefore).toBeGreaterThan(0);
+      // append-only: it cannot be deleted by hand, even by the superuser the seed runs as
+      await expect(
+        admin.query("DELETE FROM object_destruction_tombstone WHERE organization_id = $1", [ORG_C]),
+      ).rejects.toMatchObject({ code: "23514" });
+
+      // outside a transaction the helper refuses (the DISABLE would be visible to every other session) and touches nothing
+      await expect(purgeOrgTombstones(admin, ORG_C)).rejects.toMatchObject({ code: "25P01" });
+      expect(await tombstoneKeys(ORG_C)).toEqual([key]);
+      await admin.query("BEGIN");
+      try {
+        expect(await purgeOrgTombstones(admin, ORG_C)).toBe(1);
+        await admin.query("COMMIT");
+      } catch (error) {
+        await admin.query("ROLLBACK");
+        throw error;
+      }
+
+      expect(await tombstoneKeys(ORG_C)).toEqual([]);
+      expect((await tombstoneKeys(ORG_A)).length).toBe(otherOrgBefore);
+      const trigger = (
+        await admin.query(
+          "SELECT tgenabled FROM pg_trigger WHERE tgname = 'trg_object_destruction_tombstone_append_only'",
+        )
+      ).rows[0];
+      expect(trigger?.tgenabled).toBe("A");
+      await expect(
+        admin.query("DELETE FROM object_destruction_tombstone WHERE organization_id = $1", [ORG_A]),
+      ).rejects.toMatchObject({ code: "23514" });
+      expect(await purgeOrgTombstones(admin, ORG_C)).toBe(0); // nothing left: no savepoint, no ALTER, so also fine outside a transaction
+
+      // the seed's own order from here: the org-owned rows (under the replica role, as the seed runs), then the organization
+      await admin.query("SET session_replication_role = replica");
+      try {
+        await admin.query("DELETE FROM document_version WHERE organization_id = $1", [ORG_C]);
+        await admin.query("DELETE FROM document WHERE organization_id = $1", [ORG_C]);
+        await admin
+          .query("DELETE FROM audit_event WHERE organization_id = $1", [ORG_C])
+          .catch(() => {});
+        await admin.query("DELETE FROM organization WHERE id = $1", [ORG_C]);
+      } finally {
+        await admin.query("SET session_replication_role = DEFAULT");
+      }
+      expect(
+        (await admin.query("SELECT 1 FROM organization WHERE id = $1", [ORG_C])).rowCount,
+      ).toBe(0);
+    });
+  });
+
+  describe("an erase of a document whose key is not a form the store writes", () => {
+    it("fails before anything is recorded or destroyed, so no tombstone is ever unexportable", async () => {
+      const odd = "legacy-upload/erased-odd-name.bin";
+      const documentId = await seedDocument(ORG_A, PATIENT_ODD, [odd]);
+      const failure = await erase(ORG_A, PATIENT_ODD).then(
+        () => null,
+        (error: unknown) => error as Error & { code?: string },
+      );
+      expect(failure).not.toBeNull();
+      expect(failure?.code).toBe("DOCUMENT_TOMBSTONE_REFUSED");
+      // the driver's own error text would carry every bound value; the refusal that replaces it carries none (a key holds a patient id)
+      expect(failure?.message).not.toContain(odd);
+      expect(failure?.message).not.toContain(PATIENT_ODD);
+      expect(present(BUCKET_A, odd)).toBe(true); // the object is still there
+      expect(await docExists(documentId)).toBe(true); // and so are the rows
+      expect(await tombstoneKeys(ORG_A)).not.toContain(odd);
     });
   });
 });

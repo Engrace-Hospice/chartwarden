@@ -33,8 +33,17 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "../seams/store";
+import { TOMBSTONE_INSERT_CHUNK, inChunks } from "./tombstone-chunks";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+
+/** SQLSTATE of a check violation, which the tombstone table's guard triggers raise. */
+const CHECK_VIOLATION = "23514";
+/** The SQLSTATE of a driver error (drizzle wraps the driver's, so look at the cause too). */
+const sqlStateOf = (error: unknown): string | undefined => {
+  const e = error as { code?: string; cause?: { code?: string } };
+  return e.code ?? e.cause?.code;
+};
 
 /** The per-table counts a documents-record destruction removed (recorded on the destruction cert). */
 export interface DocumentEraseCounts {
@@ -421,18 +430,33 @@ export function createDrizzleDocumentEraseStore(
               "a legal hold was placed on a document while its erase was running; nothing was destroyed, retry the erase",
               409,
             );
-          await tx
-            .insert(TOMBSTONE)
-            .values(
-              plan.versions.map((v) => ({
-                organizationId,
-                bucket,
-                objectKey: v.key,
-                documentId: v.documentId,
-                documentVersionId: v.versionId,
-              })),
-            )
-            .onConflictDoNothing();
+          // one INSERT per chunk, all in this transaction: a single statement binds 5 values per row and Postgres allows 65,535
+          for (const versions of inChunks(plan.versions, TOMBSTONE_INSERT_CHUNK))
+            try {
+              await tx
+                .insert(TOMBSTONE)
+                .values(
+                  versions.map((v) => ({
+                    organizationId,
+                    bucket,
+                    objectKey: v.key,
+                    documentId: v.documentId,
+                    documentVersionId: v.versionId,
+                  })),
+                )
+                .onConflictDoNothing();
+            } catch (error) {
+              // A guard trigger of the table refused a row (a key that is not a form the store writes, a held or Part 2 document). The
+              // driver's error text carries every bound value, object keys included, and a key holds a patient's opaque id: a fixed
+              // refusal replaces it, and nothing was destroyed (this runs before the first object is).
+              if (sqlStateOf(error) === CHECK_VIOLATION)
+                throw new ChartWardenError(
+                  "DOCUMENT_TOMBSTONE_REFUSED",
+                  "a destruction tombstone could not be recorded (an object key is not a form the document store writes, or its document is held); nothing was destroyed",
+                  409,
+                );
+              throw error;
+            }
         });
       }
 
