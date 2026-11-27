@@ -64,7 +64,7 @@ import {
   tenantBaaDocumentUploader,
 } from "../src/modules/22-documents/onboarding-baa-document-port";
 import {
-  buildDrizzleOrgMacJurisdictionReader,
+  buildDrizzleOrgMacCredentialReader,
   buildMacFeedConfiguredReader,
 } from "../src/modules/23-billing-medicare/jobs/mac-jurisdictions";
 import { buildMacSecretCipherFromEnv } from "../src/modules/23-billing-medicare/routes/secret-cipher";
@@ -321,7 +321,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
   const facts = () => ({
     orgSeed: buildOrgSeedFactsReader(app.db),
     orgAdminCount: buildOrgAdminCountReader(app.db),
-    macFeedConfigured: buildMacFeedConfiguredReader(buildDrizzleOrgMacJurisdictionReader(app.db)),
+    macFeedConfigured: buildMacFeedConfiguredReader(buildDrizzleOrgMacCredentialReader(app.db)),
     baaDocumentFiled: isTenantBaaDocumentFiled,
   });
   const advancer = (
@@ -4351,8 +4351,8 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       await admin.query(
         `INSERT INTO provider_entity (id, organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
          VALUES ($1,$2,'999701','Hotel Hospice','1234567893','sealed-elsewhere','1231'),
-                ($3,$2,'999702','Hotel Hospice Two','1234567893','sealed-elsewhere','1231'),
-                ($4,$2,'999703','Hotel Hospice Three','1234567893','sealed-elsewhere','1231')`,
+                ($3,$2,'999702','Hotel Hospice Two','1234567901','sealed-elsewhere','1231'),
+                ($4,$2,'999703','Hotel Hospice Three','1234567919','sealed-elsewhere','1231')`,
         [PE_H, ORG_H, PE_REFUSED, PE_ROLLBACK],
       );
     }, 60_000);
@@ -4529,7 +4529,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       expect(after).toBe(before);
     });
 
-    it.each(["active", "suspended", "closing"] as const)(
+    it.each(["active", "suspended", "offboarding_initiated"] as const)(
       "the pre-write guard permits %s-tenant maintenance without voiding an attestation",
       async (status) => {
         await admin.query("UPDATE tenant_account SET status='onboarding' WHERE id=$1", [T_I]);

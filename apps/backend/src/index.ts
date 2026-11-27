@@ -1259,6 +1259,7 @@ import {
   buildDrizzleMedicareNoticeRoutePort,
   buildDrizzleMedicareProviderRoutingService,
   buildDrizzleNpiVerificationService,
+  buildDrizzleOrgMacCredentialReader,
   buildDrizzleOrgMacJurisdictionReader,
   buildDrizzlePlatformAdminService,
   buildDrizzleRateTableService,
@@ -3266,7 +3267,7 @@ function buildM34OnboardingFacts(db: DbClient) {
   return {
     orgSeed: buildOrgSeedFactsReader(db),
     orgAdminCount: buildOrgAdminCountReader(db),
-    macFeedConfigured: buildMacFeedConfiguredReader(buildDrizzleOrgMacJurisdictionReader(db)),
+    macFeedConfigured: buildMacFeedConfiguredReader(buildDrizzleOrgMacCredentialReader(db)),
     // Wizard step 7: the org's clearinghouse choice is settled (`outside`, or a vendor in `active` status). M23 owns it; the
     // seam resolves lazily so registration order never matters.
     clearinghouseSettled: async (orgId: string) => {

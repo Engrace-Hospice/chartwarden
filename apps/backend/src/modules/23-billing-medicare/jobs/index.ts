@@ -116,6 +116,7 @@ export {
 export {
   type MacJurisdictionOrgSource,
   type OrgMacJurisdictionReader,
+  buildDrizzleOrgMacCredentialReader,
   buildDrizzleOrgMacJurisdictionReader,
   buildMacFeedConfiguredReader,
   buildMacJurisdictionLister,

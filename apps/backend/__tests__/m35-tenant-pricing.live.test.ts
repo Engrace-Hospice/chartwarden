@@ -185,14 +185,17 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
     }
   }
 
-  /** Poll until `count` platform sessions are queued on M35's transaction advisory lock. */
+  /**
+   * Poll until `count` platform sessions are queued behind a row lock on the tenant's subscription: what every mode writer
+   * (`lockSubscriptionAndReloadHistory`) serializes on.
+   */
   async function waitForPricingLockWaiters(count: number, timeoutMs = 15_000): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const rows = await q<{ n: number }>(
         `SELECT count(*)::int AS n FROM pg_stat_activity
           WHERE datname = current_database() AND pid <> pg_backend_pid()
-            AND wait_event_type = 'Lock' AND query ILIKE '%pg_advisory_xact_lock%'`,
+            AND wait_event_type = 'Lock' AND query ILIKE '%"subscription"%for update%'`,
       );
       if ((rows[0]?.n ?? 0) >= count) return;
       if (Date.now() > deadline)
@@ -1351,7 +1354,9 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         const queued: Promise<PlatformContractView>[] = [];
         await holder.query("BEGIN");
         try {
-          await holder.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 35))", [ORG_A]);
+          await holder.query("SELECT id FROM subscription WHERE organization_id = $1 FOR UPDATE", [
+            ORG_A,
+          ]);
           const first = contractsAt("2026-10-22T10:00:00Z").setBillingServiceMode(
             operator,
             "pricing-a",

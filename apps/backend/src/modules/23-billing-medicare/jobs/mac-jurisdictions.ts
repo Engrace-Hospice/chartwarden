@@ -59,8 +59,26 @@ export function buildDrizzleOrgMacJurisdictionReader(db: DbClient): OrgMacJurisd
 }
 
 /**
+ * The Drizzle reader for the onboarding `mac_configured` fact: `SELECT DISTINCT mac_jurisdiction` from the org's MAC
+ * SUBMITTER CREDENTIALS. Not the routing table above: the step is "MAC credentials recorded" (template `mac_configured`) and
+ * the wizard's own data entry writes `mac_submitter_credential`, while a routing row is a separate act that credentials do
+ * not create. Reading the routing table settled the step on a routing row with no credential and left an operator-entered
+ * credential unsettled.
+ */
+export function buildDrizzleOrgMacCredentialReader(db: DbClient): OrgMacJurisdictionReader {
+  return (organizationId) =>
+    withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const rows = await tx
+        .selectDistinct({ macJurisdiction: schema.macSubmitterCredential.macJurisdiction })
+        .from(schema.macSubmitterCredential);
+      return rows.map((r) => r.macJurisdiction);
+    });
+}
+
+/**
  * The onboarding `mac_configured` fact (M34's sweep reads it through the composition root, never the table): the org
- * has at least one MAC submitter credential, i.e. at least one configured MAC jurisdiction.
+ * has at least one MAC submitter credential, i.e. at least one configured MAC jurisdiction. Feed it
+ * `buildDrizzleOrgMacCredentialReader`, never the routing-table reader.
  */
 export function buildMacFeedConfiguredReader(
   readOrg: OrgMacJurisdictionReader,

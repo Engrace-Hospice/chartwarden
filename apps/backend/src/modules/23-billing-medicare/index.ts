@@ -222,6 +222,7 @@ export {
   buildM23ValidationRunner,
   buildM23WorkQueueEnqueuePort,
   buildNoticeWindowPort,
+  buildDrizzleOrgMacCredentialReader,
   buildDrizzleOrgMacJurisdictionReader,
   buildMacFeedConfiguredReader,
   buildClaimPayerRouteStatus,
