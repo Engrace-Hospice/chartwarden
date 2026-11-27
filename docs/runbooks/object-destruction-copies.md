@@ -153,6 +153,10 @@ The RustFS replica removes an object's files when it is deleted.
   nothing deletes there). A destruction does not reach it, and neither does a tenant's key destruction. Its only remedy
   is the list on a hand load (section 2), and the lock lapsing.
 - **Database backups taken before a destruction** still hold the rows; their retention is the limit (DR/BCP §4.1).
+- **Purged bereavement mailing batch files (CW-BR-10) have no tombstone.** The daily `m16-mailing-file-purge` job (execution is disabled in code today; it is a dry run) will destroy those PDFs (a name-and-address
+  list each) but writes no `object_destruction_tombstone` (that table's `basis` admits only `patient_erasure` and only the destruction role inserts), so
+  a second-copy sync or a restore with the list can bring one back. A full database-and-object restore brings the document row back `active` and the next
+  purge run destroys it again; an objects-only restore does not. See `docs/runbooks/m16-mailing-file-purge.md`.
 
 ## Verifying a destruction (checklist)
 

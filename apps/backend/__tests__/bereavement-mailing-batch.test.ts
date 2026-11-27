@@ -12,6 +12,7 @@ import { renderPdfForTemplate } from "../src/modules/22-documents/render-pdf";
 import { buildBereavementMailingBatchDoc } from "../src/modules/22-documents/render-pdf/bereavement-mailing-batch-doc";
 import {
   type OrgDocumentFacts,
+  REFUSING_ORG_DOCUMENT_ACCESS_PORT,
   createOrgDocumentAccessProvider,
 } from "../src/modules/22-documents/seams/org-document-access";
 import {
@@ -181,6 +182,7 @@ describe("OrgDocumentAccessProvider", () => {
     const presigned: unknown[] = [];
     const provider = createOrgDocumentAccessProvider({
       port: {
+        ...REFUSING_ORG_DOCUMENT_ACCESS_PORT,
         loadDocument: async () => facts,
         activeMembershipId: async ({ organizationId, userId }) =>
           organizationId === ORG ? (MEMBERSHIPS[userId] ?? null) : null,

@@ -63,6 +63,7 @@ import {
   M16_QUEUES,
   M16_QUEUE_PARAMS,
 } from "./index";
+import { type MailingFilePurgeDeps, runMailingFilePurgeCron } from "./mailing-file-purge";
 import {
   type MailingBatchRenderer,
   registerM16MailingGenerateWorker,
@@ -104,6 +105,12 @@ export interface M16WorkerDeps {
   readonly mailingEnqueue?: MailingGenerateEnqueuePort;
   /** ADR-0109 D10 — the batch renderer hand-off (defaults to the registry's `DocumentRenderer`; tests inject one). */
   readonly render?: MailingBatchRenderer;
+  /** CW-BR-10 — M4's active legal-hold read for the mailing-file purge. Unbound => the purge refuses to run. */
+  readonly legalHolds?: MailingFilePurgeDeps["legalHolds"];
+  /** CW-BR-10 — M22's org-document seam for the purge (defaults to the registry's `OrgDocumentAccessProvider`; tests inject one). */
+  readonly orgDocuments?: MailingFilePurgeDeps["orgDocuments"];
+  /** CW-BR-10 — the purge's switch and bounds: a DRY RUN unless `execute` is true; the per-org cap; lengthened retention. */
+  readonly mailingFilePurge?: MailingFilePurgeDeps["mailingFilePurge"];
   now?: () => Date;
 }
 
@@ -130,6 +137,9 @@ export function buildM16WorkerDeps(deps: {
   cipher?: BereavementCipher;
   mailingEnqueue?: MailingGenerateEnqueuePort;
   render?: MailingBatchRenderer;
+  legalHolds?: MailingFilePurgeDeps["legalHolds"];
+  orgDocuments?: MailingFilePurgeDeps["orgDocuments"];
+  mailingFilePurge?: MailingFilePurgeDeps["mailingFilePurge"];
 }): M16WorkerDeps {
   return {
     connection: deps.connection,
@@ -140,6 +150,9 @@ export function buildM16WorkerDeps(deps: {
     ...(deps.cipher ? { cipher: deps.cipher } : {}),
     ...(deps.mailingEnqueue ? { mailingEnqueue: deps.mailingEnqueue } : {}),
     ...(deps.render ? { render: deps.render } : {}),
+    ...(deps.legalHolds ? { legalHolds: deps.legalHolds } : {}),
+    ...(deps.orgDocuments ? { orgDocuments: deps.orgDocuments } : {}),
+    ...(deps.mailingFilePurge ? { mailingFilePurge: deps.mailingFilePurge } : {}),
     now: () => new Date(),
   };
 }
@@ -830,6 +843,8 @@ export function registerM16CronWorkers(deps: M16WorkerDeps): Worker[] {
     // ADR-0109 D10 — the mailing sweep (cron) and the render worker (one job per claimed run).
     make(M16_QUEUES.mailingSweep, M16_QUEUE_PARAMS.mailingSweep, runMailingSweepCron),
     registerM16MailingGenerateWorker(deps),
+    // CW-BR-10 — the daily retention purge of the rendered mailing batch files (a DRY RUN until the deployment switch is on).
+    make(M16_QUEUES.mailingFilePurge, M16_QUEUE_PARAMS.mailingFilePurge, runMailingFilePurgeCron),
   ];
 }
 
@@ -841,6 +856,7 @@ export async function scheduleM16Jobs(connection: ConnectionOptions): Promise<Qu
     ["missDeadline"],
     ["unreachableDetector"],
     ["mailingSweep"],
+    ["mailingFilePurge"],
   ] as const;
   const queues: Queue[] = [];
   for (const [key] of entries) {

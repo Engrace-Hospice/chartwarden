@@ -14,13 +14,14 @@ import {
   type DocumentAggregateType,
   type DocumentId,
   type DocumentVersionId,
+  type IsoInstant,
   ORG_LIBRARY_DOCUMENT_AGGREGATE_TYPES,
   type OrgDocumentAccessProvider,
   type OrgDocumentDenialReason,
   type OrgId,
   SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES,
 } from "@chartwarden/types";
-import { planSignedUrl } from "../lifecycle/storage";
+import { deriveTenantBucket, planSignedUrl } from "../lifecycle/storage";
 import type { StaffMintAccessLogPort } from "../routes/signed-url-service";
 import type { PortalAccessLogPort } from "./readers-store";
 import type { ObjectStorePort } from "./store";
@@ -40,6 +41,16 @@ export interface OrgDocumentFacts {
   readonly byteSize: number | null;
 }
 
+/** CW-BR-10 — what the destroy needs to know about one document: its type, owner, state, hold and EVERY version's object key. */
+export interface OrgDocumentDestroyTarget {
+  readonly aggregateType: string;
+  readonly patientId: string | null;
+  readonly status: string;
+  /** An unreleased M22 hold row, status `legal_hold`, or Part 2 class. */
+  readonly held: boolean;
+  readonly objectKeys: readonly string[];
+}
+
 /** The data port the provider composes over (Drizzle under the caller's request context in prod; a Map in tests). */
 export interface OrgDocumentAccessPort {
   loadDocument(args: {
@@ -51,15 +62,42 @@ export interface OrgDocumentAccessPort {
     readonly organizationId: OrgId;
     readonly userId: string;
   }): Promise<string | null>;
+  /** CW-BR-10 — at most `limit` org-level, not-yet-destroyed documents of one type created before the cutoff, oldest first. */
+  listPurgeCandidates(args: {
+    readonly organizationId: OrgId;
+    readonly aggregateType: DocumentAggregateType;
+    readonly createdBefore: Date;
+    readonly limit: number;
+  }): Promise<
+    readonly { readonly documentId: string; readonly createdAt: Date; readonly held: boolean }[]
+  >;
+  /** CW-BR-10 — the facts the destroy decides on; null when the document is not visible. */
+  loadDestroyTarget(args: {
+    readonly organizationId: OrgId;
+    readonly documentId: string;
+  }): Promise<OrgDocumentDestroyTarget | null>;
+  /**
+   * CW-BR-10 — after the objects are gone: status `destroyed_tombstone`, no active version, every version's in-row cipher shredded, in ONE transaction.
+   * False when the row is no longer `active`/`superseded` or a hold landed since the check (nothing is changed then).
+   */
+  markDestroyed(args: {
+    readonly organizationId: OrgId;
+    readonly documentId: string;
+  }): Promise<boolean>;
 }
 
 export interface OrgDocumentAccessDeps {
   readonly port: OrgDocumentAccessPort;
-  readonly objects: Pick<ObjectStorePort, "presign">;
+  /** `presign` serves the mints; `destroyAllVersions` serves the retention destroy (CW-BR-10). Absent => a destroy refuses by throwing, before anything is touched. */
+  readonly objects: Pick<ObjectStorePort, "presign"> &
+    Partial<Pick<ObjectStorePort, "destroyAllVersions">>;
   readonly accessLog: StaffMintAccessLogPort;
   /** ADR-0109 D10 (PR 3) — the portal ledger the library mint writes through. Unbound => every portal mint throws (no un-logged URL). */
   readonly portalAccessLog?: PortalAccessLogPort;
 }
+
+/** CW-BR-10 — the most one object key's version-aware delete may take before it is aborted (list plus deletes of a few versions). */
+const ORG_DOCUMENT_DESTROY_TIMEOUT_MS = 60_000;
 
 /** Every type the staff door may hand out: the seam-only internal types plus the org-level library types. */
 const STAFF_DOOR_TYPES: ReadonlySet<string> = new Set<string>([
@@ -105,6 +143,15 @@ export const REFUSING_ORG_DOCUMENT_ACCESS_PORT: OrgDocumentAccessPort = {
   },
   async activeMembershipId() {
     return null;
+  },
+  async listPurgeCandidates() {
+    return [];
+  },
+  async loadDestroyTarget() {
+    return null;
+  },
+  async markDestroyed() {
+    return false;
   },
 };
 
@@ -225,6 +272,72 @@ export function createOrgDocumentAccessProvider(
         expiresAt,
         documentVersionId: facts.activeVersionId as DocumentVersionId,
       };
+    },
+
+    async listOrgDocumentsForPurge(args) {
+      // Only a seam-only type (M16's mailing batch) is ever listed: never a library item, a patient's document or another module's.
+      if (!SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES.has(args.aggregateType)) {
+        return { denied: true, reason: "wrong_type" };
+      }
+      const limit = Math.max(1, Math.floor(args.limit));
+      const rows = await deps.port.listPurgeCandidates({
+        organizationId: args.organizationId,
+        aggregateType: args.aggregateType,
+        createdBefore: new Date(args.createdBefore),
+        limit: limit + 1, // one more than asked: its presence is what says "truncated"
+      });
+      return {
+        documents: rows.slice(0, limit).map((r) => ({
+          documentId: r.documentId as DocumentId,
+          createdAt: r.createdAt.toISOString() as IsoInstant,
+          held: r.held,
+        })),
+        truncated: rows.length > limit,
+      };
+    },
+
+    async destroyOrgDocument(args) {
+      const target = await deps.port.loadDestroyTarget({
+        organizationId: args.organizationId,
+        documentId: args.documentId,
+      });
+      if (target === null) return { refused: true, reason: "not_found" };
+      if (
+        !SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES.has(target.aggregateType as DocumentAggregateType) ||
+        !args.allowedAggregateTypes.some((t) => t === target.aggregateType)
+      ) {
+        return { refused: true, reason: "wrong_type" };
+      }
+      if (target.patientId !== null) return { refused: true, reason: "not_org_level" };
+      if (target.status === "destroyed_tombstone") {
+        return { refused: true, reason: "already_destroyed" };
+      }
+      if (target.held || target.status === "legal_hold") return { refused: true, reason: "held" };
+
+      // OBJECTS BEFORE ROWS (the eraser's order): a failed delete throws with the rows, and so the keys, still in place; the next run retries.
+      // No object store bound for deletes => refuse loudly before anything is touched (never "destroy" the row of an object that is still there).
+      const destroyAllVersions = deps.objects.destroyAllVersions;
+      if (destroyAllVersions === undefined) {
+        throw new Error("org-document destroy refused: no object store is bound for deletes");
+      }
+      const bucket = deriveTenantBucket(args.organizationId);
+      for (const objectKey of target.objectKeys) {
+        // Bounded: the caller may hold M4's per-org hold lock across this call, so a hung store must time out (the file then counts as failed and the lock goes).
+        await destroyAllVersions.call(deps.objects, {
+          bucket,
+          objectKey,
+          organizationId: args.organizationId,
+          signal: AbortSignal.timeout(ORG_DOCUMENT_DESTROY_TIMEOUT_MS),
+        });
+      }
+      const marked = await deps.port.markDestroyed({
+        organizationId: args.organizationId,
+        documentId: args.documentId,
+      });
+      // False = a hold (or another writer) got in after the check: the objects are gone, the row stays as it was. Its own answer, so the caller alarms.
+      return marked
+        ? { destroyed: true, objectVersionsDestroyed: target.objectKeys.length }
+        : { refused: true, reason: "held_after_destroy" };
     },
   };
 }

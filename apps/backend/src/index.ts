@@ -940,12 +940,14 @@ import {
   createBereavementCipher,
   createDrizzleBereavementEraseStore,
   createDrizzleBereavementSeamStore,
+  MAILING_FILE_PURGE_EXECUTE_SUPPORTED,
   createM16AlertPort,
   denyStubBereavementAbacResolver,
   mountM16Routes,
   registerBereavementAbacPredicates,
   registerBereavementErasers,
   registerBereavementSeams,
+  resolvePurgeMode,
   registerM16CronWorkers,
   scheduleM16Jobs,
   wireM16Tenancy,
@@ -13486,9 +13488,57 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           getTenantKeyProvider().dekForOrgVersion(orgId, version),
       }),
       mailingEnqueue: m16MailingEnqueue.port,
+      // CW-BR-10 — the retention purge of the rendered mailing batch files (a name-and-address list each). It reads M4's active legal-hold scope through this
+      // port (unbound, the purge refuses to run) and is a DRY RUN. EXECUTION IS DISABLED IN CODE (MAILING_FILE_PURGE_EXECUTE_SUPPORTED = false): setting
+      // M16_MAILING_FILE_PURGE_EXECUTE=true destroys nothing (a boot warning and an ids-and-counts log line say so) until the retention class and the
+      // ARCHITECTURE §24.2 certificate model are decided and a follow-up implements them. `executionSupported` is a TEST-ONLY dependency: never set it here.
+      // A plan larger than the per-org cap is refused whole and alarms through the DLQ path below (`attachDlqAlertsToAll`) once execution exists.
+      legalHolds: {
+        activeScopeForOrg: async (organizationId) => {
+          const scope = await activeLegalHoldScopeForOrg(dbHandle.db, organizationId);
+          return { orgWide: scope.orgWide, patientIds: scope.patientIds };
+        },
+      },
+      mailingFilePurge: {
+        execute: process.env.M16_MAILING_FILE_PURGE_EXECUTE === "true",
+        ...(Number.parseInt(process.env.M16_MAILING_FILE_PURGE_MAX_PER_RUN ?? "", 10) > 0
+          ? {
+              maxFilesPerOrgRun: Number.parseInt(
+                process.env.M16_MAILING_FILE_PURGE_MAX_PER_RUN as string,
+                10,
+              ),
+            }
+          : {}),
+        // Lengthen how long a MAILED (or abandoned `ready`) batch file is kept; the planner clamps it up to the class floor (396 days), never below.
+        ...(Number.parseInt(process.env.M16_MAILING_FILE_RETENTION_DAYS ?? "", 10) > 0
+          ? {
+              retention: {
+                mailedDays: Number.parseInt(
+                  process.env.M16_MAILING_FILE_RETENTION_DAYS as string,
+                  10,
+                ),
+                abandonedReadyDays: Number.parseInt(
+                  process.env.M16_MAILING_FILE_RETENTION_DAYS as string,
+                  10,
+                ),
+              },
+            }
+          : {}),
+      },
     });
     const m16Workers = registerM16CronWorkers(m16WorkerDeps);
     attachDlqAlertsToAll(m16Workers, "m16");
+    const m16PurgeMode = resolvePurgeMode(m16WorkerDeps.mailingFilePurge);
+    app.log.info(
+      { mode: m16PurgeMode.mode },
+      "M16 mailing-file purge (m16-mailing-file-purge, daily 04:30 UTC) constructed",
+    );
+    if (m16PurgeMode.executeDisabledInCode) {
+      app.log.warn(
+        { executeSupported: MAILING_FILE_PURGE_EXECUTE_SUPPORTED },
+        "M16_MAILING_FILE_PURGE_EXECUTE=true is IGNORED: mailing-file purge execution is disabled in code until the retention class and the ARCHITECTURE §24.2 certificate model are decided and implemented (CW-BR-10); every pass stays a dry run",
+      );
+    }
     app.addHook("onClose", async () => {
       await Promise.all(m16Workers.map((w) => w.close()));
     });
