@@ -17,12 +17,25 @@
 // `--adopt-unchecksummed` (a one-off for a source whose objects were never written with a checksum; the MinIO ->
 // SeaweedFS migration that needed it has run and is gone): a source object stored WITHOUT a checksum is copied with
 // the SHA-256 of the bytes read, instead of failing; the target then verifies it.
+// CW-DS-01, destruction tombstones (`--tombstones <file>` / OBJECT_COPY_TOMBSTONES_FILE, NDJSON from
+// scripts/storage/object-tombstones.ts). The list is the authority on what a certificate destroyed, and it is applied on
+// BOTH directions: an object it names is never copied to the target, and one already on the target is destroyed there
+// (all versions), outside the mass-delete guard and also in a `--restore`. So a D12 erase reaches the copy on the next run
+// even when its size would have tripped the guard, and a restore from a copy (or a hand load) cannot resurrect a destroyed
+// document. The file is re-read on every run of the scheduled copy, so a cron that refreshes it keeps the copy current. A
+// file that cannot be read stops the run before any object is touched. The destruction itself is a DRY RUN unless
+// `--apply-tombstones` (OBJECT_COPY_TOMBSTONES_APPLY=1 for the schedule) says otherwise, and one run destroys at most
+// `--max-deletions N` objects (OBJECT_COPY_TOMBSTONES_MAX_DELETIONS, default DEFAULT_MAX_TOMBSTONE_DELETIONS): a plan above
+// the limit is refused whole (nothing destroyed, the run fails and pages) until the operator raises it on purpose. The counts
+// are printed to stderr before anything is destroyed. (The forward copy's own delete-missing, bounded by the mass-delete
+// guard above, is a separate path and is unchanged.)
 // Not handled: a bucket dropped on the source keeps its objects on the copy; a created bucket gets no
 // versioning or expiry rule (run the provisioner / backfill after a restore).
 //
 //   SOURCE_S3_ENDPOINT / _ACCESS_KEY / _SECRET_KEY / _REGION   the store read from
 //   TARGET_S3_ENDPOINT / _ACCESS_KEY / _SECRET_KEY / _REGION   the store written to
-//   bun run scripts/object-store-copy.ts [--restore] [--adopt-unchecksummed]
+//   bun run scripts/object-store-copy.ts [--restore] [--adopt-unchecksummed] [--tombstones <file>
+//                                        [--apply-tombstones] [--max-deletions <n>]]
 //                                       # one run: prints a JSON summary; exit 1 if anything failed
 //   bun run scripts/object-store-copy.ts --every <seconds>
 //                                       # the scheduled second copy (compose.object-copy.yml): runs forever; each
@@ -33,14 +46,21 @@
 //
 // ponytail: whole objects are buffered in memory (MAX_OBJECT_BYTES); stream them if documents outgrow that.
 import { createHash } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import {
   type S3ObjectStoreConfig,
+  type S3ObjectStoreDeps,
   SSE_ALGORITHM,
   createS3ObjectStore,
   createS3SignedFetch,
   ensureBucketDefaultEncryption,
 } from "../apps/backend/src/modules/22-documents/seams/s3-object-store";
+import {
+  NO_TOMBSTONES,
+  type TombstoneIndex,
+  parseTombstones,
+  tombstoneCount,
+} from "./lib/object-tombstones";
 
 const COPIED_BUCKET = /^(tenant-|chartwarden-)/;
 export const MAX_OBJECT_BYTES = 512 * 1024 * 1024;
@@ -50,6 +70,22 @@ export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 /** Deletions up to this count per bucket are always allowed; above it, at most MASS_DELETE_RATIO of the target. */
 export const MASS_DELETE_FLOOR = 10;
 const MASS_DELETE_RATIO = 0.1;
+/** CW-DS-01 — most objects one run may destroy on the strength of the tombstone list (a bigger plan is refused whole). */
+export const DEFAULT_MAX_TOMBSTONE_DELETIONS = 100;
+
+/** CW-DS-01 — what the run did with the list: `dry-run` counts and reports, `apply` destroys, `refused` is `apply` over the limit. */
+export type TombstoneMode = "off" | "dry-run" | "apply" | "refused";
+
+/** The plan made before anything is destroyed. Counts only: the keys name erased patients. */
+export interface TombstonePlan {
+  readonly mode: TombstoneMode;
+  /** Objects the list names (on any store). */
+  readonly listed: number;
+  readonly buckets: number;
+  /** Listed objects the target holds: what an apply destroys. */
+  readonly onTarget: number;
+  readonly limit: number;
+}
 
 export interface CopyOptions {
   readonly requestTimeoutMs?: number;
@@ -59,6 +95,14 @@ export interface CopyOptions {
   readonly allowMassDeleteBuckets?: ReadonlySet<string>;
   /** Copy a source object stored without a checksum with the SHA-256 of its bytes (migration only). */
   readonly adoptUnchecksummed?: boolean;
+  /** CW-DS-01 — objects a destruction certificate destroyed: never copied, and destroyed on the target (also in a restore, outside the guard). */
+  readonly tombstones?: TombstoneIndex;
+  /** CW-DS-01 — destroy what the list names on the target. Anything but `true` is a dry run: counted, reported, not destroyed. */
+  readonly applyTombstones?: boolean;
+  /** CW-DS-01 — a plan that would destroy more than this many objects is refused whole (default DEFAULT_MAX_TOMBSTONE_DELETIONS). */
+  readonly maxTombstoneDeletions?: number;
+  /** Called once with the plan, after the target was counted and before anything is destroyed. */
+  readonly onTombstonePlan?: (plan: TombstonePlan) => void;
 }
 
 export interface CopyFailure {
@@ -72,6 +116,13 @@ export interface CopySummary {
   readonly copied: number;
   readonly unchanged: number;
   readonly deleted: number;
+  /** Tombstoned objects found on the target and destroyed there (counted apart from `deleted`, which the guard bounds). */
+  readonly tombstoned: number;
+  /** Tombstoned objects the source still held: left out of the copy. */
+  readonly skippedTombstoned: number;
+  /** CW-DS-01 — what the run did with the tombstone list, and how many listed objects the target held (what an apply destroys). */
+  readonly tombstoneMode: TombstoneMode;
+  readonly tombstonesOnTarget: number;
   readonly failed: readonly CopyFailure[];
 }
 
@@ -88,6 +139,8 @@ interface CopyContext {
   readonly options: CopyOptions;
   /** CW-AC-05 — the target must hold every object encrypted (TARGET_S3_REQUIRE_SSE): default on its buckets, SSE on each put. */
   readonly encryptTarget: boolean;
+  /** CW-DS-01 — per bucket, the listed keys this run destroys on the target: empty unless the plan is an accepted apply. */
+  readonly destroyOnTarget: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 const xmlText = (block: string, tag: string): string[] =>
@@ -301,6 +354,96 @@ interface BucketTally {
   copied: number;
   unchanged: number;
   deleted: number;
+  tombstoned: number;
+  skippedTombstoned: number;
+}
+
+const NO_KEYS: ReadonlySet<string> = new Set();
+
+/**
+ * A tombstoned key names an ERASED patient (documents/<patientId>/...) and a failure entry reaches stdout and the alert webhook:
+ * a stable hash prefix identifies it to whoever holds the list, without sending the id out.
+ */
+const keyLabel = (key: string): string =>
+  `sha256:${createHash("sha256").update(key).digest("hex").slice(0, 16)}`;
+/** The adapter's error text names the key too. */
+const withoutKey = (text: string, key: string): string => text.split(key).join("<key>");
+
+/** CW-DS-01 — destroy (all versions) the planned tombstoned keys. Outside the mass-delete guard (a certificate says so), inside the run's cap. */
+async function destroyTombstoned(
+  bucket: string,
+  planned: ReadonlySet<string>,
+  ctx: CopyContext,
+  tally: BucketTally,
+  failed: CopyFailure[],
+): Promise<void> {
+  for (const key of planned) {
+    try {
+      await ctx.target.destroyAllVersions({
+        bucket,
+        objectKey: key,
+        organizationId: "",
+        signal: ctx.signal(),
+      });
+      tally.tombstoned++;
+    } catch (error) {
+      // The key names an ERASED patient (documents/<patientId>/...) and this entry reaches stdout and the alert webhook: a stable
+      // hash prefix identifies it to whoever holds the list, without sending the id out.
+      failed.push({
+        bucket,
+        key: keyLabel(key),
+        reason: `tombstone: ${withoutKey(reasonOf(error), key)}`,
+      });
+    }
+  }
+}
+
+/**
+ * CW-DS-01 — count what the list would destroy on the target, then decide: dry run (the default) destroys nothing; an apply
+ * within the limit destroys exactly the counted keys; an apply above it is refused whole (a failure, so the run exits 1 and the
+ * schedule pages). A bucket whose listing fails is reported and left out of the plan, never guessed.
+ */
+async function planTombstones(
+  ctx: Omit<CopyContext, "destroyOnTarget">,
+  failed: CopyFailure[],
+): Promise<{ report: TombstonePlan; destroy: ReadonlyMap<string, ReadonlySet<string>> }> {
+  const { tombstones, applyTombstones, maxTombstoneDeletions } = ctx.options;
+  const limit = maxTombstoneDeletions ?? DEFAULT_MAX_TOMBSTONE_DELETIONS;
+  // NaN would make `onTarget > limit` false and lift the cap without a word: the CLI parser is not the only way in
+  if (!Number.isSafeInteger(limit) || limit < 1)
+    throw new Error(`maxTombstoneDeletions must be a whole number >= 1 (got ${limit})`);
+  const index = tombstones ?? NO_TOMBSTONES;
+  const found = new Map<string, ReadonlySet<string>>();
+  let onTarget = 0;
+  for (const [bucket, dead] of index) {
+    try {
+      const held = await listKeys(ctx.targetFetch, bucket, ctx.signal);
+      const keys = held ? new Set([...dead].filter((key) => held.has(key))) : NO_KEYS;
+      if (keys.size > 0) found.set(bucket, keys);
+      onTarget += keys.size;
+    } catch (error) {
+      failed.push({ bucket, key: "", reason: `tombstone plan: ${reasonOf(error)}` });
+    }
+  }
+  const listed = tombstoneCount(index);
+  const mode: TombstoneMode =
+    listed === 0
+      ? "off"
+      : applyTombstones !== true
+        ? "dry-run"
+        : onTarget > limit
+          ? "refused"
+          : "apply";
+  if (mode === "refused")
+    failed.push({
+      bucket: "",
+      key: "",
+      reason: `refused to destroy ${onTarget} tombstoned object(s) (limit ${limit}; nothing was destroyed on the list's strength; raise it deliberately with --max-deletions or OBJECT_COPY_TOMBSTONES_MAX_DELETIONS)`,
+    });
+  return {
+    report: { mode, listed, buckets: index.size, onTarget, limit },
+    destroy: mode === "apply" ? found : new Map(),
+  };
 }
 
 async function syncBucket(
@@ -309,24 +452,46 @@ async function syncBucket(
   failed: CopyFailure[],
 ): Promise<BucketTally> {
   const { target, sourceFetch, targetFetch, signal, options } = ctx;
-  const tally: BucketTally = { copied: 0, unchanged: 0, deleted: 0 };
+  const tally: BucketTally = {
+    copied: 0,
+    unchanged: 0,
+    deleted: 0,
+    tombstoned: 0,
+    skippedTombstoned: 0,
+  };
+  const dead = options.tombstones?.get(bucket) ?? NO_KEYS;
+  const planned = ctx.destroyOnTarget.get(bucket) ?? NO_KEYS;
   // listed a moment ago but gone now: skip it, deleting on the strength of a 404 is not safe
   const sourceKeys = await listKeys(sourceFetch, bucket, signal);
-  if (!sourceKeys) return tally;
+  if (!sourceKeys) {
+    // A bucket the source no longer has still has its tombstoned objects destroyed on the target (a dropped bucket is
+    // otherwise never removed there); nothing else is touched.
+    await destroyTombstoned(bucket, planned, ctx, tally, failed);
+    return tally;
+  }
   await ensureBucket(targetFetch, bucket, signal, ctx.encryptTarget);
   for (const key of sourceKeys) {
+    if (dead.has(key)) {
+      tally.skippedTombstoned++; // destroyed by a certificate: never copied, whatever the source still holds
+      continue;
+    }
     try {
       tally[await copyObject(ctx, bucket, key)]++;
     } catch (error) {
       failed.push({ bucket, key, reason: reasonOf(error) });
     }
   }
+  await destroyTombstoned(bucket, planned, ctx, tally, failed);
   if (options.deleteMissing === false) return tally;
+  // the keys destroyed above are not part of what the guard counts; in a dry run or a refused plan nothing was, so the forward
+  // copy treats a tombstoned key like any other (deleted under the guard when the source lost it)
   const targetKeys = (await listKeys(targetFetch, bucket, signal)) ?? new Set<string>();
-  const doomed = [...targetKeys].filter((key) => !sourceKeys.has(key));
+  const liveSourceCount = sourceKeys.size - tally.skippedTombstoned;
+  const liveTargetKeys = new Set([...targetKeys].filter((key) => !planned.has(key)));
+  const doomed = [...liveTargetKeys].filter((key) => !sourceKeys.has(key));
   const refusal = options.allowMassDeleteBuckets?.has(bucket)
     ? null
-    : massDeleteRefusal(sourceKeys.size, targetKeys.size, doomed.length);
+    : massDeleteRefusal(liveSourceCount, liveTargetKeys.size, doomed.length);
   if (refusal) {
     failed.push({ bucket, key: "", reason: refusal });
     return tally;
@@ -341,7 +506,13 @@ async function syncBucket(
       });
       tally.deleted++;
     } catch (error) {
-      failed.push({ bucket, key, reason: `delete: ${reasonOf(error)}` });
+      // A tombstoned key names an erased patient: it never reaches stdout or the alert webhook, even here (a dry run or a refused
+      // plan leaves a listed key to this path when the source lost it).
+      failed.push(
+        dead.has(key)
+          ? { bucket, key: keyLabel(key), reason: `delete: ${withoutKey(reasonOf(error), key)}` }
+          : { bucket, key, reason: `delete: ${reasonOf(error)}` },
+      );
     }
   }
   return tally;
@@ -356,32 +527,57 @@ export async function copyObjectStore(
   sourceConfig: S3ObjectStoreConfig,
   targetConfig: S3ObjectStoreConfig,
   options: CopyOptions = {},
+  deps: S3ObjectStoreDeps = {},
 ): Promise<CopySummary> {
   const timeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   const signal: Deadline = () => AbortSignal.timeout(timeoutMs);
-  const ctx: CopyContext = {
-    source: createS3ObjectStore(sourceConfig),
-    target: createS3ObjectStore(targetConfig),
-    sourceFetch: createS3SignedFetch(sourceConfig, {}, "object-store-copy:source"),
-    targetFetch: createS3SignedFetch(targetConfig, {}, "object-store-copy:target"),
+  const base: Omit<CopyContext, "destroyOnTarget"> = {
+    source: createS3ObjectStore(sourceConfig, deps),
+    target: createS3ObjectStore(targetConfig, deps),
+    sourceFetch: createS3SignedFetch(sourceConfig, deps, "object-store-copy:source"),
+    targetFetch: createS3SignedFetch(targetConfig, deps, "object-store-copy:target"),
     signal,
     options,
     encryptTarget: targetConfig.requireServerSideEncryption === true,
   };
   const failed: CopyFailure[] = [];
-  const total: BucketTally = { copied: 0, unchanged: 0, deleted: 0 };
-  const buckets = await listBuckets(ctx.sourceFetch, signal);
+  // Counted before anything is copied or destroyed: a refused plan fails the run up front, a dry run only reports.
+  const plan = await planTombstones(base, failed);
+  options.onTombstonePlan?.(plan.report);
+  const ctx: CopyContext = { ...base, destroyOnTarget: plan.destroy };
+  const total: BucketTally = {
+    copied: 0,
+    unchanged: 0,
+    deleted: 0,
+    tombstoned: 0,
+    skippedTombstoned: 0,
+  };
+  // A bucket only the tombstone list names (dropped on the source) is still visited, so its destroyed objects go from the target.
+  const buckets = [
+    ...new Set([
+      ...(await listBuckets(ctx.sourceFetch, signal)),
+      ...(options.tombstones?.keys() ?? []),
+    ]),
+  ];
   for (const bucket of buckets) {
     try {
       const tally = await syncBucket(bucket, ctx, failed);
       total.copied += tally.copied;
       total.unchanged += tally.unchanged;
       total.deleted += tally.deleted;
+      total.tombstoned += tally.tombstoned;
+      total.skippedTombstoned += tally.skippedTombstoned;
     } catch (error) {
       failed.push({ bucket, key: "", reason: reasonOf(error) });
     }
   }
-  return { buckets: buckets.length, ...total, failed };
+  return {
+    buckets: buckets.length,
+    ...total,
+    tombstoneMode: plan.report.mode,
+    tombstonesOnTarget: plan.report.onTarget,
+    failed,
+  };
 }
 
 /** `<PREFIX>_S3_*` -> adapter config; throws naming the missing variable. */
@@ -440,10 +636,135 @@ export function alertBody(summary: CopySummary | null, error: unknown, now: Date
   });
 }
 
-function runOnce(env: Env, argv: readonly string[]): Promise<CopySummary> {
+/**
+ * CW-DS-01 — a CLEAN scheduled run whose list still named objects the replica held and was not applied: nothing failed, so no
+ * `object_copy.failed`, but the copy holds destroyed documents until OBJECT_COPY_TOMBSTONES_APPLY=1. Counts only. (The count is
+ * taken at the start of the run: the forward copy's own delete-missing may already have removed some of them by its end.)
+ */
+export function tombstonesPendingBody(summary: CopySummary, now: Date): string {
+  return JSON.stringify({
+    kind: "object_copy.tombstones_pending",
+    summary: `second copy: the tombstone list names ${summary.tombstonesOnTarget} object(s) the replica held at the start of the run and OBJECT_COPY_TOMBSTONES_APPLY is not 1, so nothing was destroyed on the list's strength`,
+    details: {
+      tombstoneMode: summary.tombstoneMode,
+      tombstonesOnTarget: summary.tombstonesOnTarget,
+      deleted: summary.deleted,
+      skippedTombstoned: summary.skippedTombstoned,
+    },
+    occurredAt: now.toISOString(),
+  });
+}
+
+/**
+ * CW-DS-01 — the tombstone list named by `--tombstones <file>` or OBJECT_COPY_TOMBSTONES_FILE, read fresh on every run. A file
+ * that is named but cannot be read or parsed throws, so the run stops before touching an object (and the schedule pages).
+ */
+export async function loadTombstones(env: Env, argv: readonly string[]): Promise<TombstoneIndex> {
+  const at = argv.indexOf("--tombstones");
+  const path = (at >= 0 ? argv[at + 1] : env.OBJECT_COPY_TOMBSTONES_FILE)?.trim();
+  if (at >= 0 && !path) throw new Error("--tombstones needs a file path");
+  if (!path) return NO_TOMBSTONES;
+  return parseTombstones(await readFile(path, "utf8"));
+}
+
+const WHOLE_NUMBER = /^[1-9]\d*$/;
+const TOMBSTONE_FLAGS = ["--tombstones", "--apply-tombstones", "--max-deletions"] as const;
+
+/** `--flag=value` is not understood and would be dropped silently (a restore that loads no list resurrects destroyed documents). */
+export function assertNoEqualsForms(argv: readonly string[]): void {
+  for (const arg of argv)
+    for (const flag of TOMBSTONE_FLAGS)
+      if (arg.startsWith(`${flag}=`))
+        throw new Error(
+          `${flag}= is not understood: pass the flag and its value as separate arguments`,
+        );
+}
+
+/**
+ * CW-DS-01 — how a run applies the list: a dry run unless `--apply-tombstones` / OBJECT_COPY_TOMBSTONES_APPLY=1, and at most
+ * `--max-deletions <n>` / OBJECT_COPY_TOMBSTONES_MAX_DELETIONS objects per run (the flag wins). Throws on an apply value that is
+ * not 1/0/true/false (a typo must not read as a dry run), on a limit that is not a whole number >= 1, and on either setting
+ * without a list (it would be dropped silently). A one-off run passes `{}` as `env`: only the scheduled copy reads them there.
+ */
+export function tombstoneApplyFromArgs(
+  env: Env,
+  argv: readonly string[],
+  listNamed: boolean,
+): { readonly apply: boolean; readonly maxDeletions: number } {
+  const applyText = env.OBJECT_COPY_TOMBSTONES_APPLY?.trim().toLowerCase() ?? "";
+  if (!["", "0", "1", "true", "false"].includes(applyText))
+    throw new Error(
+      "OBJECT_COPY_TOMBSTONES_APPLY must be 1 or 0 (anything else is refused, not read as a dry run)",
+    );
+  const apply = argv.includes("--apply-tombstones") || applyText === "1" || applyText === "true";
+  const at = argv.indexOf("--max-deletions");
+  const limitText = (at >= 0 ? argv[at + 1] : env.OBJECT_COPY_TOMBSTONES_MAX_DELETIONS)?.trim();
+  if (!listNamed && (apply || at >= 0 || limitText))
+    throw new Error(
+      "--apply-tombstones, --max-deletions, OBJECT_COPY_TOMBSTONES_APPLY and OBJECT_COPY_TOMBSTONES_MAX_DELETIONS need a tombstone list (--tombstones <file> or OBJECT_COPY_TOMBSTONES_FILE)",
+    );
+  if (at >= 0 && !limitText) throw new Error("--max-deletions needs a whole number >= 1");
+  if (!limitText) return { apply, maxDeletions: DEFAULT_MAX_TOMBSTONE_DELETIONS };
+  if (!WHOLE_NUMBER.test(limitText))
+    throw new Error(
+      `${at >= 0 ? "--max-deletions" : "OBJECT_COPY_TOMBSTONES_MAX_DELETIONS"} needs a whole number >= 1 (got "${limitText}")`,
+    );
+  return { apply, maxDeletions: Number(limitText) };
+}
+
+/** The line printed (stderr) after the target was counted and before anything is destroyed. Counts only, never a key. */
+export function describeTombstonePlan(plan: TombstonePlan): string {
+  const head = `tombstones: the list names ${plan.listed} object(s) in ${plan.buckets} bucket(s); the target holds ${plan.onTarget} of them (limit ${plan.limit} per run).`;
+  switch (plan.mode) {
+    case "off":
+      return `${head} Nothing to do.`;
+    case "dry-run":
+      return `${head} DRY RUN: nothing is destroyed on the strength of the list; re-run with --apply-tombstones (OBJECT_COPY_TOMBSTONES_APPLY=1) to destroy them.`;
+    case "apply":
+      return `${head} APPLYING: destroying ${plan.onTarget} object(s), every version.`;
+    case "refused":
+      return `${head} REFUSED: ${plan.onTarget} is over the limit ${plan.limit}; nothing is destroyed. Raise it deliberately with --max-deletions <n> (OBJECT_COPY_TOMBSTONES_MAX_DELETIONS) once you have checked the list.`;
+  }
+}
+
+/**
+ * CW-DS-01 — the apply/limit settings of one run. The scheduled copy takes them from the environment only; a one-off run takes
+ * them from its flags only, so an OBJECT_COPY_TOMBSTONES_APPLY=1 a container inherited from .env.production can never turn the
+ * dry run an operator typed into a destruction.
+ */
+export function resolveTombstoneSettings(
+  env: Env,
+  argv: readonly string[],
+  scheduled: boolean,
+): { readonly apply: boolean; readonly maxDeletions: number } {
+  const named = argv.includes("--tombstones") || Boolean(env.OBJECT_COPY_TOMBSTONES_FILE?.trim());
+  return tombstoneApplyFromArgs(scheduled ? env : {}, argv, named);
+}
+
+async function runOnce(env: Env, argv: readonly string[], scheduled = false): Promise<CopySummary> {
+  assertNoEqualsForms(argv);
+  const tombstones = await loadTombstones(env, argv);
+  if (
+    !scheduled &&
+    (env.OBJECT_COPY_TOMBSTONES_APPLY?.trim() || env.OBJECT_COPY_TOMBSTONES_MAX_DELETIONS?.trim())
+  )
+    process.stderr.write(
+      "note: OBJECT_COPY_TOMBSTONES_APPLY and OBJECT_COPY_TOMBSTONES_MAX_DELETIONS are for the scheduled copy only; this run takes --apply-tombstones and --max-deletions from its flags (default: dry run, limit 100)\n",
+    );
+  if (argv.includes("--restore") && tombstoneCount(tombstones) === 0)
+    process.stderr.write(
+      "warning: --restore without a tombstone list: objects destroyed since this copy was taken come back. Pass --tombstones <file> (docs/runbooks/object-destruction-copies.md)\n",
+    );
+  const { apply, maxDeletions } = resolveTombstoneSettings(env, argv, scheduled);
   return copyObjectStore(storeConfigFromEnv("SOURCE", env), storeConfigFromEnv("TARGET", env), {
     deleteMissing: !argv.includes("--restore"),
     adoptUnchecksummed: argv.includes("--adopt-unchecksummed"),
+    tombstones,
+    applyTombstones: apply,
+    maxTombstoneDeletions: maxDeletions,
+    onTombstonePlan: (plan) => {
+      if (plan.mode !== "off") process.stderr.write(`${describeTombstonePlan(plan)}\n`);
+    },
     allowMassDeleteBuckets: new Set(
       (env.ALLOW_MASS_DELETE ?? "")
         .split(",")
@@ -461,23 +782,30 @@ async function schedule(env: Env, intervalSeconds: number): Promise<never> {
     let summary: CopySummary | null = null;
     let error: unknown = null;
     try {
-      summary = await runOnce(env, []);
+      summary = await runOnce(env, [], true);
     } catch (e) {
       error = e;
     }
     process.stdout.write(`${JSON.stringify(summary ?? { error: reasonOf(error) })}\n`);
     if (summary !== null && summary.failed.length === 0) {
       await writeFile(heartbeat, new Date().toISOString());
+      // a clean copy is not a copy without destroyed documents: say so while the list is not being applied
+      if (summary.tombstoneMode === "dry-run" && summary.tombstonesOnTarget > 0)
+        await postAlert(env, tombstonesPendingBody(summary, new Date()));
     } else {
-      await fetch(env.OPS_ALERT_WEBHOOK_URL ?? "", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: alertBody(summary, error, new Date()),
-        signal: AbortSignal.timeout(ALERT_TIMEOUT_MS),
-      }).catch((e) => process.stderr.write(`alert webhook delivery failed: ${reasonOf(e)}\n`));
+      await postAlert(env, alertBody(summary, error, new Date()));
     }
     await new Promise((resolve) => setTimeout(resolve, intervalSeconds * 1000));
   }
+}
+
+async function postAlert(env: Env, body: string): Promise<void> {
+  await fetch(env.OPS_ALERT_WEBHOOK_URL ?? "", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body,
+    signal: AbortSignal.timeout(ALERT_TIMEOUT_MS),
+  }).catch((e) => process.stderr.write(`alert webhook delivery failed: ${reasonOf(e)}\n`));
 }
 
 if (import.meta.main) {
@@ -486,6 +814,13 @@ if (import.meta.main) {
     const seconds = Number(process.argv[everyAt + 1]);
     if (!Number.isInteger(seconds) || seconds < MIN_INTERVAL_SECONDS)
       throw new Error(`--every needs whole seconds >= ${MIN_INTERVAL_SECONDS}`);
+    // The schedule reads its list from OBJECT_COPY_TOMBSTONES_FILE (re-read each run): a flag here would be dropped silently.
+    assertNoEqualsForms(process.argv);
+    for (const flag of TOMBSTONE_FLAGS)
+      if (process.argv.includes(flag))
+        throw new Error(
+          `--every does not take ${flag}: the schedule reads OBJECT_COPY_TOMBSTONES_FILE, OBJECT_COPY_TOMBSTONES_APPLY and OBJECT_COPY_TOMBSTONES_MAX_DELETIONS from its environment`,
+        );
     await schedule(process.env, seconds);
   }
   const summary = await runOnce(process.env, process.argv);

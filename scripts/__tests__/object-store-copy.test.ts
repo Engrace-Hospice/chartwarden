@@ -30,8 +30,14 @@ describe("second copy encryption (CW-AC-05)", () => {
     TARGET_S3_SECRET_KEY: "sk",
   };
   it("TARGET_S3_REQUIRE_SSE=1 makes the target encrypt; absent or 0 leaves it as before", () => {
-    expect(storeConfigFromEnv("TARGET", { ...base, TARGET_S3_REQUIRE_SSE: "1" }).requireServerSideEncryption).toBe(true);
-    expect(storeConfigFromEnv("TARGET", { ...base, TARGET_S3_REQUIRE_SSE: "0" }).requireServerSideEncryption).toBe(false);
+    expect(
+      storeConfigFromEnv("TARGET", { ...base, TARGET_S3_REQUIRE_SSE: "1" })
+        .requireServerSideEncryption,
+    ).toBe(true);
+    expect(
+      storeConfigFromEnv("TARGET", { ...base, TARGET_S3_REQUIRE_SSE: "0" })
+        .requireServerSideEncryption,
+    ).toBe(false);
     expect(storeConfigFromEnv("TARGET", base).requireServerSideEncryption).toBe(false);
   });
 });
@@ -68,7 +74,17 @@ describe("scheduled second copy", () => {
     }));
     const body = JSON.parse(
       alertBody(
-        { buckets: 3, copied: 1, unchanged: 2, deleted: 0, failed },
+        {
+          buckets: 3,
+          copied: 1,
+          unchanged: 2,
+          deleted: 0,
+          tombstoned: 0,
+          skippedTombstoned: 0,
+          tombstoneMode: "off",
+          tombstonesOnTarget: 0,
+          failed,
+        },
         null,
         new Date("2026-11-05T00:00:00Z"),
       ),

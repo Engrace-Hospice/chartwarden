@@ -118,3 +118,5 @@ graphify-out/cache/
 /image/
 /jar.txt
 /rita.jar
+# CW-DS-01 — the exported tombstone list (docs/runbooks/object-destruction-copies.md): its object keys carry patient ids
+/deploy/production/tombstones/

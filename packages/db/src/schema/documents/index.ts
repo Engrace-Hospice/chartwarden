@@ -8,6 +8,7 @@ export * from "./document-version";
 export * from "./document-tag";
 export * from "./document-access-log";
 export * from "./document-legal-hold";
+export * from "./object-destruction-tombstone";
 export * from "./form-template";
 export * from "./form-template-version";
 export * from "./tenant-template-overlay";
