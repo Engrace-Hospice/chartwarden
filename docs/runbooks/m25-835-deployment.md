@@ -1,5 +1,20 @@
 # M25 835 group-identity migration deployment
 
+## CW-AC-10 privilege correction (migration 1567)
+
+Migration `1567_m23_claimmd_capture_stage_access_revoke.sql` is classified `contract` because it removes
+`claimmd_capture`'s SELECT privilege and permissive read policy on `claimmd_era_m25_stage`. It does not change the
+tenant application's org-scoped stage grants or central Claim.MD response-stream/inbox grants. The live M23 suite
+qualifies the old privilege, applies the revocation against an existing runtime role, reruns provisioning, and proves
+that platform capture still reads its response stream while it cannot read stage rows.
+
+The normal deployment migration step holds before any DDL while migration 1567 is pending, because `deploy.sh` uses
+`--hold-contract`. After maintainer review, an operator must apply the checked migration using the held deploy's
+immutable release image and the Docker migrate procedure described below, verify the migration ledger and effective
+role privileges, then rerun the held deploy. Central response capture does not query the stage table, so this privilege
+cut has no application writer dependency or separate capture drain. This note does not authorize production migration
+application or capture activation.
+
 Migration `1508_m25_835_group_identity_dates.sql` changes the unique conflict target used by 835 intake and Claim.MD staging. An old API or worker writer still issuing the former three-column `ON CONFLICT` target will fail with PostgreSQL `42P10` after the migration. Migration 1508 is contract-classified, so the normal deploy rollback must halt for an operator decision. Do not restart an old application image against the migrated schema.
 
 This procedure is for a reviewed release containing both migration 1508 and the matching M25 writer. No deployment is authorized by this document.

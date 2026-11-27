@@ -390,7 +390,13 @@ controls:
     evidence:
       - script: arch:tenancy
       - script: arch:tables
+      - script: test:m23:claimmd-webhook:live
+      - script: test:m23:claimmd-response-inbox:live
+      - script: test:rls:live:m25
+      - script: test:m25:835-ingestion:live
       - file: packages/db/migrations/1354_m23_claimmd_ack_application.sql
+      - file: packages/db/migrations/1547_m25_isolated_medicaid_era_evaluator.sql
+      - file: packages/db/migrations/1567_m23_claimmd_capture_stage_access_revoke.sql
       - file: apps/backend/src/modules/23-billing-medicare/claimmd-ack/service.ts
       - file: apps/backend/src/modules/23-billing-medicare/claimmd-ack/service.test.ts
       - file: apps/backend/src/modules/23-billing-medicare/claimmd-capture/config.ts
@@ -401,7 +407,30 @@ controls:
       - file: scripts/db/provision-runtime-roles.ts
       - file: apps/backend/__tests__/m23-claimmd-webhook.live.test.ts
     gap:
-      reason: The platform carrier reaches the central Claim.MD tables through MEMBERSHIP of the NOLOGIN `claimmd_capture` role (migrations 1350/1356 when the carrier already exists, and the runtime-role provisioner, which repeats the grant so migrate-then-provision on a fresh database leaves it in place; m23-claimmd-webhook.live asserts the membership, its idempotence and that the carrier is still not chartwarden_admin). That membership is wider than an enumerated column grant list in one respect that stays open — `claimmd_capture` holds table-wide SELECT on claimmd_era_m25_stage (GRANT SELECT plus the USING (true) policy claimmd_era_m25_stage_capture_read, migration 1356), including its sealed protected_details_cipher, so every member reads every tenant's stage rows, and no live test proves the platform-role boundary beyond that membership. The dispatcher is disabled by default and source-level ownership checks exist, but private PostgreSQL NOBYPASSRLS and platform-role transaction tests, synthetic account response certification, and BIL-1.1 capture runtime wiring are still required before activation. A tenant's own Claim.MD account is polled by the legacy provider poller, which main judged unable to label Claim.MD's normalized events as X12; M23 records those acknowledgments as ack_999 / ack_277ca and M41 records them as unknown_legacy (owner decision 2026-11-08). The database blocks reuse of a credential, not of a vendor account. Where a vendor issues several keys for one account (Stedi may; not confirmed against its documentation), a second organization could connect that account with a different key.
+      reason: >-
+        The latest main baseline was reproduced on a private PostgreSQL 18 database using the provisioned runtime roles. The
+        `chartwarden_platform_login` inherited `claimmd_capture`, had effective SELECT on every `claimmd_era_m25_stage` column,
+        and read a synthetic row's `protected_details_cipher`; after `SET ROLE claimmd_capture`, it could read that row as well.
+        Migration 1567 revokes all of the capture role's table- and column-level SELECT grants and removes its permissive stage-read policy. Central
+        response capture retains its grants on the response stream and inbox and does not read M25 stages. The runtime-role
+        provisioner continues to grant the capture membership needed for those response tables but does not restore stage access.
+        The M23 and M25 live PostgreSQL suites prove the platform boundary, the application role's tenant scope, the bounded
+        source-reader function, and the response/capture paths against real logins.
+
+        Protected-stage access for M25 non-posting review remains with the separate `chartwarden_m25_evaluator` role,
+        whose NOLOGIN carrier is NOBYPASSRLS and whose SELECT policy filters rows by `app.org_id`. Migration 1547 removes
+        its membership from the platform and application roles; its isolated login is provisioned separately. Migration
+        1567 leaves this authorized tenant-scoped reader unchanged.
+
+        Vendor-account uniqueness remains unproven: ChartWarden reserves a credential for one organization and preserves
+        server-owned account references in submission evidence, but an API key fingerprint cannot establish the vendor's
+        underlying account identity. Before any production activation involving tenant-held credentials, Claim.MD and Stedi
+        must answer: “Can multiple distinct API keys authenticate to the same underlying account? What authenticated,
+        immutable account identifier or account-scoped credential guarantee can ChartWarden verify for each key?” This change
+        makes no vendor-side account or credential changes. The shared
+        platform account remains intentionally shared, the dispatcher remains disabled by default, and no production
+        activation is authorized by this remediation; CW-AC-10 therefore remains partial pending vendor-side qualification
+        and the separately required activation evidence.
       owner: platform
       review_by: 2027-01-31
 

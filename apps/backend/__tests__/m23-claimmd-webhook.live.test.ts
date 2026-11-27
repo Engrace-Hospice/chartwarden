@@ -103,6 +103,7 @@ const delivery = (events: unknown[]) =>
 describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
   let admin: Client;
   let platform: ReturnType<typeof createDbClient>;
+  let platformLogin: Client;
   let tenant: Client;
   let runner: ClaimMdPlatformRunner;
   let npiAdmin: NpiVerificationService;
@@ -164,6 +165,10 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
     platform = createDbClient({
       connectionString: urlAs("chartwarden_platform_login", PLATFORM_PASSWORD),
     });
+    platformLogin = new Client({
+      connectionString: urlAs("chartwarden_platform_login", PLATFORM_PASSWORD),
+    });
+    await platformLogin.connect();
     tenant = new Client({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
@@ -270,13 +275,197 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
   afterAll(async () => {
     await app?.close();
     await tenant?.end();
+    await platformLogin?.end().catch(() => undefined);
     await platform?.close();
     await admin?.end();
   });
 
-  it("provisioning after migrating (a fresh database) makes the platform carrier a member of claimmd_capture, idempotently", async () => {
-    // Migrations 1350/1356 grant the membership only when chartwarden_platform already exists, and only the provisioner
-    // creates it, so this file's order (migrate, then provision) is the one that used to leave it out.
+  it("CW-AC-10: removes legacy platform ERA-stage access while preserving central response capture", async () => {
+    const stageId = "00000000-0000-4000-8000-0000000326a1";
+    const ciphertext = "synthetic-protected-era-ciphertext";
+    const platformRole = await platformLogin.query<{ current_user: string; session_user: string }>(
+      "SELECT current_user, session_user",
+    );
+    expect(platformRole.rows[0]).toEqual({
+      current_user: "chartwarden_platform_login",
+      session_user: "chartwarden_platform_login",
+    });
+
+    // Migrate-then-provision on a fresh database must not recreate the old table grant.
+    const freshState = await admin.query<{ select: boolean; protected: boolean }>(
+      `SELECT has_table_privilege('chartwarden_platform_login','claimmd_era_m25_stage','SELECT') AS stage_select,
+              has_column_privilege('chartwarden_platform_login','claimmd_era_m25_stage','protected_details_cipher','SELECT') AS protected`,
+    );
+    expect(freshState.rows[0]).toEqual({ stage_select: false, protected: false });
+    await expect(
+      platformLogin.query(
+        "SELECT protected_details_cipher FROM claimmd_era_m25_stage WHERE id=$1",
+        [stageId],
+      ),
+    ).rejects.toThrow(/permission denied/);
+
+    await admin.query(
+      `INSERT INTO claimmd_era_m25_stage
+         (id,organization_id,provider_entity_id,source_inbox_id,account_reference,usage,era_id,file_index,
+          interchange_control_number,transaction_set_control_number,original_835_digest,source_evidence,state,
+          protected_details_cipher,protected_details_key_id)
+       VALUES ($1,$2,$3,gen_random_uuid(),'synthetic-1145-account','test','9999001',0,'999900001','0001',
+          repeat('c',64),'{"codes":["SYNTHETIC_TEST_FIXTURE"]}'::jsonb,'staged',$4,'synthetic-key')`,
+      [stageId, ORG_A, peA, ciphertext],
+    );
+
+    // Recreate the exact pre-1567 privilege state on this disposable database to exercise an upgrade.
+    await admin.query(
+      "GRANT SELECT ON claimmd_era_m25_stage TO claimmd_capture; CREATE POLICY claimmd_era_m25_stage_capture_read ON claimmd_era_m25_stage FOR SELECT TO claimmd_capture USING (true)",
+    );
+    const legacyState = await admin.query<{ protected: boolean; policy: boolean }>(
+      `SELECT has_column_privilege('chartwarden_platform_login','claimmd_era_m25_stage','protected_details_cipher','SELECT') AS protected,
+              EXISTS(SELECT 1 FROM pg_policies WHERE tablename='claimmd_era_m25_stage'
+                AND policyname='claimmd_era_m25_stage_capture_read' AND qual='true') AS policy`,
+    );
+    expect(legacyState.rows[0]).toEqual({ protected: true, policy: true });
+    const legacyRead = await platformLogin.query<{ protected_details_cipher: string }>(
+      "SELECT protected_details_cipher FROM claimmd_era_m25_stage WHERE id=$1",
+      [stageId],
+    );
+    expect(legacyRead.rows).toEqual([{ protected_details_cipher: ciphertext }]);
+    await platformLogin.query("SET ROLE claimmd_capture");
+    try {
+      const assumedLegacyRead = await platformLogin.query<{ protected_details_cipher: string }>(
+        "SELECT protected_details_cipher FROM claimmd_era_m25_stage WHERE id=$1",
+        [stageId],
+      );
+      expect(assumedLegacyRead.rows).toEqual([{ protected_details_cipher: ciphertext }]);
+    } finally {
+      await platformLogin.query("RESET ROLE");
+    }
+
+    // A column-only grant can survive REVOKE SELECT ON TABLE, so qualify that edge explicitly too.
+    await admin.query(
+      "REVOKE SELECT ON claimmd_era_m25_stage FROM claimmd_capture; GRANT SELECT (protected_details_cipher) ON claimmd_era_m25_stage TO claimmd_capture",
+    );
+    const columnOnlyState = await admin.query<{
+      table_select: boolean;
+      protected_select: boolean;
+    }>(
+      `SELECT has_table_privilege('chartwarden_platform_login','claimmd_era_m25_stage','SELECT') AS table_select,
+              has_column_privilege('chartwarden_platform_login','claimmd_era_m25_stage','protected_details_cipher','SELECT') AS protected_select`,
+    );
+    expect(columnOnlyState.rows[0]).toEqual({ table_select: false, protected_select: true });
+    const columnOnlyRead = await platformLogin.query<{ protected_details_cipher: string }>(
+      "SELECT protected_details_cipher FROM claimmd_era_m25_stage LIMIT 1",
+    );
+    expect(columnOnlyRead.rows).toContainEqual({ protected_details_cipher: ciphertext });
+
+    // The application reader is still tenant-scoped by its real NOBYPASSRLS runtime role.
+    await tenant.query("SELECT set_config('app.org_id','',false)");
+    expect(
+      (
+        await tenant.query(
+          "SELECT protected_details_cipher FROM claimmd_era_m25_stage WHERE id=$1",
+          [stageId],
+        )
+      ).rows,
+    ).toHaveLength(0);
+    await tenant.query("SELECT set_config('app.org_id',$1,false)", [ORG_A]);
+    expect(
+      (
+        await tenant.query<{ protected_details_cipher: string }>(
+          "SELECT protected_details_cipher FROM claimmd_era_m25_stage WHERE id=$1",
+          [stageId],
+        )
+      ).rows,
+    ).toEqual([{ protected_details_cipher: ciphertext }]);
+    await tenant.query("SELECT set_config('app.org_id',$1,false)", [ORG_B]);
+    expect(
+      (
+        await tenant.query(
+          "SELECT protected_details_cipher FROM claimmd_era_m25_stage WHERE id=$1",
+          [stageId],
+        )
+      ).rows,
+    ).toHaveLength(0);
+    await tenant.query("SELECT set_config('app.org_id','',false)");
+    await expect(tenant.query("SET ROLE claimmd_capture")).rejects.toThrow(/permission denied/);
+
+    await admin.query(
+      readFileSync(
+        join(MIGRATIONS_DIR, "1567_m23_claimmd_capture_stage_access_revoke.sql"),
+        "utf8",
+      ),
+    );
+    provision(); // An upgrade followed by provisioning must keep the revocation in force.
+    await platform.close().catch(() => undefined);
+    platform = createDbClient({
+      connectionString: urlAs("chartwarden_platform_login", PLATFORM_PASSWORD),
+    });
+    await platformLogin.end().catch(() => undefined);
+    platformLogin = new Client({
+      connectionString: urlAs("chartwarden_platform_login", PLATFORM_PASSWORD),
+    });
+    await platformLogin.connect();
+
+    const fixedState = await admin.query<{
+      capture_select: boolean;
+      capture_column_select: boolean;
+      carrier_select: boolean;
+      platform_select: boolean;
+      protected: boolean;
+      policy_present: boolean;
+    }>(
+      `SELECT has_table_privilege('claimmd_capture','claimmd_era_m25_stage','SELECT') AS capture_select,
+              EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid='claimmd_era_m25_stage'::regclass
+                AND a.attnum>0 AND NOT a.attisdropped
+                AND has_column_privilege('claimmd_capture',a.attrelid,a.attnum,'SELECT')) AS capture_column_select,
+              has_table_privilege('chartwarden_platform','claimmd_era_m25_stage','SELECT') AS carrier_select,
+              has_table_privilege('chartwarden_platform_login','claimmd_era_m25_stage','SELECT') AS platform_select,
+              has_column_privilege('chartwarden_platform_login','claimmd_era_m25_stage','protected_details_cipher','SELECT') AS protected,
+              EXISTS(SELECT 1 FROM pg_policies WHERE tablename='claimmd_era_m25_stage'
+                AND policyname='claimmd_era_m25_stage_capture_read') AS policy_present`,
+    );
+    expect(fixedState.rows[0]).toEqual({
+      capture_select: false,
+      capture_column_select: false,
+      carrier_select: false,
+      platform_select: false,
+      protected: false,
+      policy_present: false,
+    });
+    await expect(
+      platformLogin.query(
+        "SELECT protected_details_cipher FROM claimmd_era_m25_stage WHERE id=$1",
+        [stageId],
+      ),
+    ).rejects.toThrow(/permission denied/);
+    await platformLogin.query("SET ROLE claimmd_capture");
+    try {
+      await expect(
+        platformLogin.query(
+          "SELECT protected_details_cipher FROM claimmd_era_m25_stage WHERE id=$1",
+          [stageId],
+        ),
+      ).rejects.toThrow(/permission denied/);
+      await expect(
+        platformLogin.query("SELECT count(*) FROM claimmd_response_stream"),
+      ).resolves.toBeDefined();
+    } finally {
+      await platformLogin.query("RESET ROLE");
+    }
+    for (const role of [
+      "chartwarden_m25_era_source",
+      "chartwarden_m25_era_source_resolver",
+      "chartwarden_m25_evaluator",
+    ]) {
+      await expect(platformLogin.query(`SET ROLE ${role}`)).rejects.toThrow(/permission denied/);
+    }
+    const tenantState = await admin.query<{ superuser: boolean; bypass_rls: boolean }>(
+      `SELECT rolsuper AS superuser,rolbypassrls AS bypass_rls FROM pg_roles WHERE rolname='chartwarden_app'`,
+    );
+    expect(tenantState.rows[0]).toEqual({ superuser: false, bypass_rls: false });
+  });
+
+  it("provisioning after migrating keeps central capture membership without restoring stage reads", async () => {
+    // Migrations 1350/1356 grant membership when the carrier exists; provisioning also covers migrate-then-provision.
     const has = async (role: string, ofRole: string, privilege: "MEMBER" | "USAGE") =>
       (
         await admin.query<{ ok: boolean }>("SELECT pg_has_role($1, $2, $3) AS ok", [
@@ -287,20 +476,14 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
       ).rows[0]?.ok;
     expect(await has("chartwarden_platform", "claimmd_capture", "MEMBER")).toBe(true);
     expect(await has("chartwarden_platform_login", "claimmd_capture", "USAGE")).toBe(true);
-    provision(); // a re-provision is a no-op, not an error
-    expect(await has("chartwarden_platform", "claimmd_capture", "MEMBER")).toBe(true);
     // membership of the one NOLOGIN capture role only: the carrier is still not the admin role
     expect(await has("chartwarden_platform", "chartwarden_admin", "MEMBER")).toBe(false);
-    // and it is effective: the platform login reads the central ERA-staging table (as itself, not as the superuser)
-    await admin.query("BEGIN");
-    try {
-      await admin.query("SET LOCAL ROLE chartwarden_platform_login");
-      await expect(
-        admin.query("SELECT count(*) FROM claimmd_era_m25_stage"),
-      ).resolves.toBeDefined();
-    } finally {
-      await admin.query("ROLLBACK");
-    }
+    await expect(
+      platformLogin.query("SELECT count(*) FROM claimmd_response_stream"),
+    ).resolves.toBeDefined();
+    await expect(platformLogin.query("SELECT count(*) FROM claimmd_era_m25_stage")).rejects.toThrow(
+      /permission denied/,
+    );
   });
 
   it("answers 503 and stores nothing while unconfigured", async () => {
