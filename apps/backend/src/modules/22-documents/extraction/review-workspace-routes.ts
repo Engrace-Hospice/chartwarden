@@ -1,6 +1,6 @@
 import {
   type GuardRequest,
-  isReservedPlatformRoleKey,
+  carriesPlatformAuthority,
   requireAbac,
   requirePermission,
   requireRole,
@@ -349,11 +349,12 @@ function sudContentAccessOf(request: FastifyRequest): SudContentAccess {
     administratorOverride: async () => {
       const roles = request.context.roles;
       const tenantAdministrator = roles.includes("administrator") || roles.includes("org_admin");
-      const carriesPlatformAuthority = roles.some(isReservedPlatformRoleKey);
+      // A request from outside the platform console's allowlist has its platform roles stripped (CW-AC-22): this check, which DENIES
+      // on platform authority, must still see that the caller carried it, or the strip would admit it here.
       return (
         request.context.attributes.actorKind === "user" &&
         tenantAdministrator &&
-        !carriesPlatformAuthority
+        !carriesPlatformAuthority(request.context)
       );
     },
     reviewerEligible: async () => {

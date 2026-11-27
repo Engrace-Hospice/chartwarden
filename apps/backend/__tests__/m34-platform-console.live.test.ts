@@ -35,6 +35,7 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
+  resolveActorPermissions,
 } from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -49,11 +50,18 @@ import {
 } from "../../../scripts/db/lib/platform-role";
 import { buildServer } from "../src/bootstrap/index";
 import {
+  PLATFORM_AUTHORITY_STRIPPED_EVENT,
   PLATFORM_CONSOLE_REFUSED_EVENT,
   createPlatformConsoleGuard,
   parsePlatformConsolePolicy,
   platformConsoleRefusalAuditor,
 } from "../src/bootstrap/platform-console-allowlist";
+import { registerOrgAdminRoutes } from "../src/modules/02-identity/routes/org-admin-routes";
+import {
+  buildM33AbacPredicates,
+  denyStubReportingAbacResolver,
+} from "../src/modules/33-reporting/abac-predicates";
+import { registerReportingAdminRoutes } from "../src/modules/33-reporting/routes/admin.routes";
 import { buildTenantPlatformAbacPredicates } from "../src/modules/34-saas-tenant-platform/abac-predicates";
 import type { OnboardingWizard } from "../src/modules/34-saas-tenant-platform/onboarding/wizard-service";
 import { registerOnboardingWizardRoutes } from "../src/modules/34-saas-tenant-platform/routes/platform/onboarding-wizard-routes";
@@ -87,6 +95,13 @@ const M_PRICER = "d0000000-0000-4000-8000-000000000004";
 const M_DUAL_HOME = "d0000000-0000-4000-8000-000000000005";
 const M_DUAL_SECOND = "d0000000-0000-4000-8000-000000000006";
 const M_OPS_STALE = "d0000000-0000-4000-8000-000000000007";
+// The shared-prefix routes (CW-AC-22 follow-up): a superadmin, an operator who also holds a tenant-style org_admin, and a plain tenant admin.
+const U_SUPER = "c0000000-0000-4000-8000-000000000008";
+const U_OPS_TENANT = "c0000000-0000-4000-8000-000000000009";
+const U_TENANT_ADMIN = "c0000000-0000-4000-8000-00000000000a";
+const M_SUPER = "d0000000-0000-4000-8000-000000000008";
+const M_OPS_TENANT = "d0000000-0000-4000-8000-000000000009";
+const M_TENANT_ADMIN = "d0000000-0000-4000-8000-00000000000a";
 
 const MEMBERSHIP_OF: Record<string, string> = {
   [U_OPS]: M_OPS,
@@ -95,6 +110,9 @@ const MEMBERSHIP_OF: Record<string, string> = {
   [U_PRICER]: M_PRICER,
   [U_DUAL]: M_DUAL_HOME,
   [U_OPS_STALE]: M_OPS_STALE,
+  [U_SUPER]: M_SUPER,
+  [U_OPS_TENANT]: M_OPS_TENANT,
+  [U_TENANT_ADMIN]: M_TENANT_ADMIN,
 };
 
 // RFC 5737 documentation addresses: synthetic.
@@ -103,6 +121,7 @@ const OPERATOR_NET = "203.0.113.0/24";
 const OPERATOR_IP = "203.0.113.7";
 const OUTSIDER_IP = "198.51.100.50";
 const REFUSED = PLATFORM_CONSOLE_REFUSED_EVENT;
+const STRIPPED = PLATFORM_AUTHORITY_STRIPPED_EVENT;
 
 const MOVED_KEYS = [
   "tenant_baa_document.upload_platform",
@@ -122,6 +141,27 @@ const ABAC_KEYS = [
   "platform_tenant_baa.read_platform",
   "tenant_clearinghouse.read_platform",
 ] as const;
+
+interface OrganizationRow {
+  id: string;
+  slug: string;
+  legal_name: string;
+  display_name: string;
+  status: string;
+  created_at: Date;
+  updated_at: Date;
+}
+const ORG_SELECT =
+  "SELECT id, slug, legal_name, display_name, status::text AS status, created_at, updated_at FROM organization";
+const toOrgView = (r: OrganizationRow) => ({
+  id: r.id,
+  slug: r.slug,
+  legalName: r.legal_name,
+  displayName: r.display_name,
+  status: r.status,
+  createdAt: r.created_at.toISOString(),
+  updatedAt: r.updated_at.toISOString(),
+});
 
 /** What the wizard stub saw: the approve route must reach the service only for the approver. */
 const approvals: { orgSlug: string; membershipId: string }[] = [];
@@ -177,6 +217,18 @@ describe.skipIf(!DB_URL)("CW-AC-22 platform console, LIVE Postgres on the real r
       [REFUSED],
     );
 
+  /** The org store behind `/api/v1/orgs`, over the real `organization` table (read as the superuser: what is judged is the route's guards). */
+  const orgStore = {
+    listOrganizations: async ({ limit, offset }: { limit: number; offset: number }) =>
+      (
+        await q<OrganizationRow>(`${ORG_SELECT} ORDER BY slug LIMIT $1 OFFSET $2`, [limit, offset])
+      ).map(toOrgView),
+    getOrganization: async (id: string) => {
+      const [row] = await q<OrganizationRow>(`${ORG_SELECT} WHERE id = $1`, [id]);
+      return row ? toOrgView(row) : null;
+    },
+  };
+
   /** A server over the real chain with the console guard built from `rawList` (the PLATFORM_CONSOLE_ALLOWED_CIDRS value). */
   async function makeServer(rawList: string | undefined): Promise<FastifyInstance> {
     const enrichment = createDbActorEnrichmentReader(tenantPool.db as never);
@@ -202,6 +254,28 @@ describe.skipIf(!DB_URL)("CW-AC-22 platform console, LIVE Postgres on the real r
       security: { rateLimitEnabled: false },
     });
     registerOnboardingWizardRoutes(app, { wizard: wizardStub });
+    // The two shared-prefix routes the console prefixes cannot refuse (REAL route files, REAL guards and predicates; the store and the
+    // service behind them are stubs, because what is proved is who gets through the guards, not what the store returns).
+    registerOrgAdminRoutes(app, {
+      actors: { resolve: () => null },
+      audit: {} as never,
+      store: orgStore as never,
+      orgWriteScope: (() => {
+        throw new Error("not used by a read");
+      }) as never,
+    });
+    registerReportingAdminRoutes(app, {
+      service: { getReplicaLag: async () => ({ replicaLagSeconds: 0 }) } as never,
+    });
+    // A service that asks "may this user ...?" with only ids (resolveActorPermissions({ organizationId, userId })): the ambient request decides.
+    app.get("/api/v1/ping-secondary-permission-check", async (request) => ({
+      has: (
+        await resolveActorPermissions({
+          organizationId: request.context.organizationId,
+          userId: request.context.userId,
+        })
+      ).has(String((request.query as { key?: string }).key ?? "")),
+    }));
     app.get("/api/v1/ping-outside-the-console", async () => ({ ok: true }));
     await app.ready();
     servers.push(app);
@@ -306,6 +380,12 @@ describe.skipIf(!DB_URL)("CW-AC-22 platform console, LIVE Postgres on the real r
         },
         isInCaseload: async () => false,
       }),
+    )) {
+      reg.register(name, predicate);
+    }
+    // M33's `platform_admin_scope` is the predicate of /api/v1/reporting/admin (deny-stub resolver: this route's predicate reads roles only).
+    for (const [name, predicate] of Object.entries(
+      buildM33AbacPredicates({ resolver: denyStubReportingAbacResolver }),
     )) {
       reg.register(name, predicate);
     }
@@ -816,6 +896,264 @@ describe.skipIf(!DB_URL)("CW-AC-22 platform console, LIVE Postgres on the real r
         `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`,
         [PLATFORM_ORG, membership, created[0]?.id],
       );
+    });
+  });
+
+  // Last on purpose: the earlier blocks count rows per key and per role, and this one adds a superadmin and two roles.
+  describe("platform authority outside the allowlist, on the routes the console prefixes do not cover (/api/v1/orgs, /api/v1/reporting/admin)", () => {
+    const strippedRows = () =>
+      q<{
+        organization_id: string | null;
+        actor_user_id: string | null;
+        actor_kind: string;
+        outcome: string;
+        severity: string;
+        retention_class: string;
+        resource_kind: string;
+        context: Record<string, unknown>;
+      }>(
+        `SELECT organization_id, actor_user_id, actor_kind, outcome, severity, retention_class, resource_kind, context
+           FROM audit_event WHERE event_type = $1 ORDER BY created_at`,
+        [STRIPPED],
+      );
+
+    /** A request that reaches the API through the trusted proxy, as the real operator and from the client address `ip`. */
+    const from = (user: string, ip: string, org = PLATFORM_ORG) => ({
+      remoteAddress: PROXY,
+      headers: { ...asOperator(user), "x-test-org": org, "x-forwarded-for": ip },
+    });
+    const slugs = (res: { json(): unknown }) =>
+      (res.json() as { items: { slug: string }[] }).items.map((i) => i.slug).sort();
+    const holds = async (app: FastifyInstance, user: string, ip: string, key: string) =>
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/v1/ping-secondary-permission-check?key=${key}`,
+          ...from(user, ip),
+        })
+      ).json().has as boolean;
+
+    beforeAll(async () => {
+      for (const [id, email] of [
+        [U_SUPER, "super-live@test.test"],
+        [U_OPS_TENANT, "ops-tenant-live@test.test"],
+        [U_TENANT_ADMIN, "tenant-admin-live@test.test"],
+      ] as const) {
+        await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [id, email]);
+      }
+      for (const [membership, user, org] of [
+        [M_SUPER, U_SUPER, PLATFORM_ORG],
+        [M_OPS_TENANT, U_OPS_TENANT, PLATFORM_ORG],
+        [M_TENANT_ADMIN, U_TENANT_ADMIN, TENANT_ORG],
+      ] as const) {
+        await admin.query(
+          "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,$2,$3,'active')",
+          [membership, user, org],
+        );
+      }
+      // The platform-owned superadmin (its permissions come from the code catalog, never from stored rows).
+      const [superadmin] = await q<{ id: string }>(
+        `INSERT INTO role (organization_id, key, name, category, scope_level, enabled)
+         VALUES (NULL, 'superadmin', 'Superadmin', 'platform_staff'::role_category, 'organization', true)
+         ON CONFLICT (key) WHERE organization_id IS NULL DO UPDATE SET enabled = true RETURNING id`,
+      );
+      await admin.query(
+        "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
+        [PLATFORM_ORG, M_SUPER, superadmin?.id],
+      );
+      // The operator: the real platform_ops grant AND a tenant-style org_admin that holds org.manage and the reporting-admin read.
+      await grant(M_OPS_TENANT, PLATFORM_ORG, "platform_ops");
+      const tenantAdminRole = async (org: string, keys: readonly string[], membership: string) => {
+        const [role] = await q<{ id: string }>(
+          `INSERT INTO role (organization_id, key, name, category, enabled)
+           VALUES ($1, 'org_admin', 'Org admin', 'admin_executive', true) RETURNING id`,
+          [org],
+        );
+        for (const key of keys) {
+          await admin.query(
+            "INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3)",
+            [org, role?.id, key],
+          );
+        }
+        await admin.query(
+          "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
+          [org, membership, role?.id],
+        );
+      };
+      await tenantAdminRole(PLATFORM_ORG, ["org.manage", "report.admin.lag_read"], M_OPS_TENANT);
+      await tenantAdminRole(TENANT_ORG, ["org.manage"], M_TENANT_ADMIN);
+    }, 120_000);
+
+    it("INSIDE the list the operator keeps the cross-tenant powers on both routes, and no strip is recorded", async () => {
+      const app = await makeServer(OPERATOR_NET);
+      const before = (await strippedRows()).length;
+
+      const orgs = await app.inject({
+        method: "GET",
+        url: "/api/v1/orgs",
+        ...from(U_OPS_TENANT, OPERATOR_IP),
+      });
+      expect(orgs.statusCode, orgs.body).toBe(200);
+      expect(slugs(orgs)).toEqual(
+        expect.arrayContaining(["cw-platform", "cw-platform-two", "tenant-live"]),
+      ); // every organization: the platform operator's cross-tenant read
+      const other = await app.inject({
+        method: "GET",
+        url: `/api/v1/orgs/${TENANT_ORG}`,
+        ...from(U_OPS_TENANT, OPERATOR_IP),
+      });
+      expect(other.statusCode, other.body).toBe(200); // another tenant's organization
+      const lag = await app.inject({
+        method: "GET",
+        url: "/api/v1/reporting/admin/lag",
+        ...from(U_OPS_TENANT, OPERATOR_IP),
+      });
+      expect(lag.statusCode, lag.body).toBe(200); // platform_admin_scope admits the platform role
+
+      // The superadmin: the permission AND the role come only from the platform-owned row.
+      for (const url of ["/api/v1/orgs", "/api/v1/reporting/admin/lag"]) {
+        const res = await app.inject({ method: "GET", url, ...from(U_SUPER, OPERATOR_IP) });
+        expect(res.statusCode, `${url}: ${res.body}`).toBe(200);
+      }
+      // A service that asks with ids only still sees the platform key; this also fills the permission cache with the full set.
+      expect(await holds(app, U_OPS, OPERATOR_IP, "support_session.start")).toBe(true);
+
+      expect((await strippedRows()).length).toBe(before);
+    });
+
+    it("OUTSIDE the list the same operator is judged as the tenant user: own organization only, nothing cross-tenant, the platform-scoped read refused", async () => {
+      const app = await makeServer(OPERATOR_NET);
+      const asOps = (url: string) =>
+        app.inject({ method: "GET", url, ...from(U_OPS_TENANT, OUTSIDER_IP) });
+
+      const orgs = await asOps("/api/v1/orgs");
+      expect(orgs.statusCode, orgs.body).toBe(200);
+      expect(slugs(orgs)).toEqual(["cw-platform"]); // the tenant-level answer: its own organization
+      expect((await asOps(`/api/v1/orgs/${TENANT_ORG}`)).statusCode).toBe(403); // not another tenant's
+      expect((await asOps(`/api/v1/orgs/${PLATFORM_ORG}`)).statusCode).toBe(200); // its own
+      // The permission is still held (through the tenant role); what is gone is the platform role the predicate demands.
+      expect((await asOps("/api/v1/reporting/admin/lag")).statusCode).toBe(403);
+
+      // The superadmin held nothing else: once the platform row is withheld, neither the permission nor the role is there.
+      for (const url of ["/api/v1/orgs", "/api/v1/reporting/admin/lag"]) {
+        const res = await app.inject({ method: "GET", url, ...from(U_SUPER, OUTSIDER_IP) });
+        expect(res.statusCode, `${url}: ${res.body}`).toBe(403);
+      }
+
+      // Ids only: the cache holds the full set from the first test, and a stripped request must not be served from it.
+      expect(await holds(app, U_OPS, OUTSIDER_IP, "support_session.start")).toBe(false);
+      // ... and what it computed was not cached: the same operator from the list still holds the key.
+      expect(await holds(app, U_OPS, OPERATOR_IP, "support_session.start")).toBe(true);
+    });
+
+    it("a tenant admin (no platform role) gets the same answer from every address, and leaves no row: tenant access is neither widened nor narrowed", async () => {
+      const app = await makeServer(OPERATOR_NET);
+      const before = (await strippedRows()).length;
+      for (const ip of [OPERATOR_IP, OUTSIDER_IP]) {
+        const res = await app.inject({
+          method: "GET",
+          url: "/api/v1/orgs",
+          ...from(U_TENANT_ADMIN, ip, TENANT_ORG),
+        });
+        expect(res.statusCode, res.body).toBe(200);
+        expect(slugs(res)).toEqual(["tenant-live"]);
+        const foreign = await app.inject({
+          method: "GET",
+          url: `/api/v1/orgs/${PLATFORM_ORG}`,
+          ...from(U_TENANT_ADMIN, ip, TENANT_ORG),
+        });
+        expect(foreign.statusCode).toBe(403);
+      }
+      expect((await strippedRows()).length).toBe(before);
+    });
+
+    it("audits the strip as a platform-scoped row written through the platform writer as chartwarden_app: one per operator and address a minute, ids and role keys only, unreadable from a tenant", async () => {
+      const app = await makeServer(OPERATOR_NET);
+      const before = (await strippedRows()).length;
+      const headers = (user: string) => from(user, OUTSIDER_IP);
+      // Three requests by one operator inside one minute, one by the superadmin: two rows, not four.
+      for (const url of ["/api/v1/orgs", "/api/v1/orgs", "/api/v1/reporting/admin/lag"]) {
+        await app.inject({ method: "GET", url, ...headers(U_OPS_TENANT) });
+      }
+      await app.inject({ method: "GET", url: "/api/v1/orgs", ...headers(U_SUPER) });
+
+      const rows = (await strippedRows()).slice(before);
+      expect(rows).toHaveLength(2);
+      for (const row of rows) {
+        expect(row).toMatchObject({
+          organization_id: null, // a strip has no tenant: the SECURITY DEFINER platform writer
+          actor_user_id: null,
+          actor_kind: "system",
+          outcome: "denied",
+          severity: "warn",
+          retention_class: "compliance",
+          resource_kind: "platform_console",
+        });
+        expect(row.context).toMatchObject({
+          reason: "platform_authority_stripped",
+          sourceIp: OUTSIDER_IP,
+          method: "GET",
+          route: "/api/v1/orgs",
+          organizationId: PLATFORM_ORG,
+        });
+      }
+      const byUser = Object.fromEntries(rows.map((r) => [String(r.context.userId), r.context]));
+      expect(byUser[U_OPS_TENANT]?.strippedRoleKeys).toEqual(["platform_ops"]);
+      expect(byUser[U_SUPER]?.strippedRoleKeys).toEqual(
+        expect.arrayContaining(["superadmin", "platform_ops", "platform_go_live_approver"]),
+      );
+      const flat = JSON.stringify(rows.map((r) => r.context)).toLowerCase();
+      for (const secret of [
+        "authorization",
+        "cookie",
+        "x-step-up",
+        "x-test-user",
+        "support_session",
+      ]) {
+        expect(flat).not.toContain(secret);
+      }
+      const seen = await asTenant<{ n: string }>(
+        TENANT_ORG,
+        `SELECT count(*)::text AS n FROM audit_event WHERE event_type = '${STRIPPED}'`,
+      );
+      expect(seen[0]?.n).toBe("0");
+    });
+
+    it("with the variable unset nothing is stripped (an unconfigured deployment is unchanged)", async () => {
+      const app = await makeServer(undefined);
+      const before = (await strippedRows()).length;
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/orgs",
+        ...from(U_OPS_TENANT, OUTSIDER_IP),
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(slugs(res)).toEqual(
+        expect.arrayContaining(["cw-platform", "cw-platform-two", "tenant-live"]),
+      );
+      expect((await strippedRows()).length).toBe(before);
+    });
+
+    it("fails closed on a list that is set but unusable: the operator is stripped even from the operator's own address", async () => {
+      const app = await makeServer(`${OPERATOR_NET},0.0.0.0/0`);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/orgs",
+        ...from(U_OPS_TENANT, OPERATOR_IP),
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(slugs(res)).toEqual(["cw-platform"]);
+    });
+
+    it("keeps the 403 on a console route from outside the list (the strip is for every other route)", async () => {
+      const app = await makeServer(OPERATOR_NET);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/platform/tenants/tenant-live/onboarding",
+        ...from(U_APPROVER, OUTSIDER_IP),
+      });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.code).toBe("PLATFORM_CONSOLE_ADDRESS_NOT_ALLOWED");
     });
   });
 });

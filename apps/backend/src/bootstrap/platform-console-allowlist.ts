@@ -12,35 +12,48 @@
 // none, `request.ip` is the proxy's own address, so production refuses to boot with one and not the other (env.ts). It is also only as
 // narrow as that list: a trusted range that is wider than the proxy lets any client inside it choose its own address.
 //
-// WHAT IT DOES NOT COVER (stated in compliance/controls.yaml CW-AC-22): the sign-in routes the operator uses on the same hostname, the
-// static console shell, and the platform-authority routes that share a prefix with a tenant surface (`/api/v1/orgs`,
-// `/api/v1/reporting/admin`, the rest of `/api/admin/external-interfaces`) or sit in M32 and M38. A network-level allow (nginx
-// `allow`/`deny` on the vhost, a firewall) is the layer for those; it is the owner's change, not this file's.
+// A ROUTE THAT IS NOT IN THE CONSOLE (`/api/v1/orgs`, `/api/v1/reporting/admin`, the rest of `/api/admin/external-interfaces`, M32, M38,
+// and every tenant route) cannot be refused by prefix: a tenant administrator uses most of them too. From an address outside the list
+// (or when the list is unusable) the request instead LOSES the caller's platform authority before any authorization runs
+// (`stripPlatformAuthority`, @chartwarden/auth): its platform roles come off `request.context.roles` and the permission resolver stops
+// counting their grants, so the route judges the caller as a tenant user with no platform role and answers what a tenant user would get.
+// Every strip is audited. A request that held no platform role (every tenant user) is untouched and leaves no row.
+//
+// WHAT IT DOES NOT COVER (stated in compliance/controls.yaml CW-AC-22): the sign-in routes the operator uses on the same hostname and the
+// static console shell; they hold no platform authority to withhold, and a network-level allow (nginx `allow`/`deny` on the vhost, a
+// firewall) is the layer for them. It is the owner's change, not this file's.
 import { type PlatformAuditExecutor, auditPlatformEvent } from "@chartwarden/audit";
+import { stripPlatformAuthority } from "@chartwarden/auth";
 import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { type PlatformConsolePolicy, isPlatformConsoleRoute } from "./platform-console-policy";
 
 export * from "./platform-console-policy";
 
-/** What a refused request leaves behind: ids and the address, never a header, body or token. */
+/** What a refused or stripped request leaves behind: ids and the address, never a header, body or token. */
 export interface PlatformConsoleRefusal {
-  readonly reason: "address_not_allowed" | "allowlist_unusable";
+  /** `address_not_allowed` / `allowlist_unusable`: a console route refused 403. `platform_authority_stripped`: any other route, served without the caller's platform authority. */
+  readonly reason: "address_not_allowed" | "allowlist_unusable" | "platform_authority_stripped";
   readonly sourceIp: string;
   readonly method: string;
-  /** The matched route template (`/api/v1/platform/tenants/:orgSlug`), never the concrete URL. */
+  /** The matched route template (`/api/v1/platform/tenants/:orgSlug`), never the concrete URL; `unmatched` when no route matched. */
   readonly route: string;
   readonly userId: string | null;
   readonly organizationId: string | null;
   readonly correlationId: string;
   readonly requestId: string;
+  /** For a strip: the platform role keys the caller held (a role key is a catalog name, never a person's data). */
+  readonly strippedRoleKeys?: readonly string[];
 }
 
-/** Records one refusal (production: a platform-scoped audit row). May throw: the request is refused regardless. */
+/** Records one refusal or strip (production: a platform-scoped audit row). May throw: the request is refused (or stripped) regardless. */
 export type PlatformConsoleRefusalSink = (refusal: PlatformConsoleRefusal) => Promise<void>;
 
 /** The audit event a refusal writes: platform-scoped (a refusal has no tenant), severity warn. */
 export const PLATFORM_CONSOLE_REFUSED_EVENT = "m34.platform_console.access_refused";
+
+/** The audit event a strip writes: platform-scoped, severity warn, outcome denied (the platform authority was denied, the request still ran). */
+export const PLATFORM_AUTHORITY_STRIPPED_EVENT = "m34.platform_console.authority_stripped";
 
 const WINDOW_MS = 60_000;
 const ANONYMOUS_ROWS_PER_WINDOW = 60;
@@ -182,7 +195,10 @@ export function platformConsoleRefusalAuditor(
   const write = async (refusal: PlatformConsoleRefusal, admission: Admission): Promise<void> => {
     if (!db) throw new Error("no database to audit the refusal into");
     const pending = auditPlatformEvent(db, {
-      eventType: PLATFORM_CONSOLE_REFUSED_EVENT,
+      eventType:
+        refusal.reason === "platform_authority_stripped"
+          ? PLATFORM_AUTHORITY_STRIPPED_EVENT
+          : PLATFORM_CONSOLE_REFUSED_EVENT,
       resourceKind: "platform_console",
       outcome: "denied",
       severity: "warn",
@@ -196,6 +212,7 @@ export function platformConsoleRefusalAuditor(
         userId: refusal.userId,
         organizationId: refusal.organizationId,
         requestId: refusal.requestId,
+        ...(refusal.strippedRoleKeys ? { strippedRoleKeys: refusal.strippedRoleKeys } : {}),
         ...(admission.suppressed > 0 ? { suppressedSincePreviousRow: admission.suppressed } : {}),
       },
     });
@@ -240,7 +257,14 @@ export interface PlatformConsoleGuardDeps {
 
 /**
  * The `onRequest` guard. Returns null for an open policy (no hook is added, so an unconfigured deployment behaves as before).
- * Register it AFTER `authenticate` and the rate limiter: the audit row then names the signed-in operator when there is one.
+ * Register it AFTER `authenticate` and the rate limiter: the audit row then names the signed-in operator when there is one, and
+ * `request.context.roles` is the roles the authenticate hook resolved (the strip works on them). Authorization runs in the route's
+ * preHandlers, after every `onRequest` hook, so a strip made here is in place before any guard reads the roles.
+ *
+ * From an address the list admits: nothing happens, on any route. From any other address (or with an unusable list):
+ *   - a console route is refused 403 and audited, as ever;
+ *   - any other route is served with the caller's platform authority withheld, and the strip is audited. The strip is made FIRST and
+ *     the audit write only after it, so a failed or slow audit can never leave the authority in place.
  */
 export function createPlatformConsoleGuard(
   deps: PlatformConsoleGuardDeps,
@@ -249,32 +273,50 @@ export function createPlatformConsoleGuard(
   if (policy.kind === "open") return null;
 
   return async (request) => {
-    const route = request.routeOptions?.url;
-    if (typeof route !== "string" || !isPlatformConsoleRoute(route)) return undefined;
     // `request.ip` is the trusted-proxy-aware address (see the header); `request.context.ip` is the same value.
     const sourceIp = request.ip;
     if (policy.kind === "allowlist" && policy.allows(sourceIp)) return undefined;
 
+    const route = request.routeOptions?.url;
+    const consoleRoute = typeof route === "string" && isPlatformConsoleRoute(route);
     const context = request.context;
-    const refusal: PlatformConsoleRefusal = {
-      reason: policy.kind === "closed" ? "allowlist_unusable" : "address_not_allowed",
+    const entryFor = (reason: PlatformConsoleRefusal["reason"]): PlatformConsoleRefusal => ({
+      reason,
       sourceIp,
       method: request.method,
-      route,
+      route: typeof route === "string" ? route : "unmatched",
       userId: context?.userId || null,
       organizationId: context?.organizationId || null,
       correlationId: context?.correlationId ?? String(request.id),
       requestId: String(request.id),
+    });
+    // A failed audit write must not open the door, and must not stay silent: the refusal (or the strip) stands, the failure is logged.
+    const record = async (entry: PlatformConsoleRefusal, failure: string): Promise<void> => {
+      try {
+        await onRefused(entry);
+      } catch (err) {
+        request.log.error(
+          { err: err instanceof Error ? err.message : String(err), route: entry.route, sourceIp },
+          failure,
+        );
+      }
     };
-    try {
-      await onRefused(refusal);
-    } catch (err) {
-      // A failed audit write must not open the door, and must not stay silent: the refusal stands, the failure is logged.
-      request.log.error(
-        { err: err instanceof Error ? err.message : String(err), route, sourceIp },
-        "platform console refusal could not be audited",
-      );
+
+    if (!consoleRoute) {
+      const held = context ? stripPlatformAuthority(context) : [];
+      if (held.length > 0) {
+        await record(
+          { ...entryFor("platform_authority_stripped"), strippedRoleKeys: held },
+          "platform authority strip could not be audited",
+        );
+      }
+      return undefined;
     }
+
+    await record(
+      entryFor(policy.kind === "closed" ? "allowlist_unusable" : "address_not_allowed"),
+      "platform console refusal could not be audited",
+    );
     throw new ChartWardenError(
       "PLATFORM_CONSOLE_ADDRESS_NOT_ALLOWED",
       "the platform console is not available from this address",

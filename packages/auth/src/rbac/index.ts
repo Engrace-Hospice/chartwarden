@@ -45,6 +45,13 @@ export {
   createDbPermissionHolderReader,
   registerDbEffectivePermissionResolver,
 } from "./drizzle-store";
+// CW-AC-22 — platform authority withheld from a request that came from outside the console allowlist.
+export {
+  PLATFORM_AUTHORITY_STRIPPED_ATTRIBUTE,
+  carriesPlatformAuthority,
+  platformAuthorityStrippedFor,
+  stripPlatformAuthority,
+} from "./platform-authority-strip";
 // M31 / M2 — permissions held by SESSION CLASS (portal, funeral-home), not by membership.
 export {
   SESSION_CLASS_PERMISSIONS,

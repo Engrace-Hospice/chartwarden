@@ -20,13 +20,14 @@
 //     The cache TTL is capped by the soonest upcoming expiry so caching cannot serve a grant
 //     past its window.
 import type { HttpRequestContext } from "@chartwarden/types";
-import { SUPERADMIN_ROLE_KEY } from "../roles/platform-reserved";
+import { SUPERADMIN_ROLE_KEY, isReservedPlatformRoleKey } from "../roles/platform-reserved";
 import {
   type Clock,
   type EffectivePermissionCache,
   createInMemoryEffectivePermissionCache,
   effectivePermissionCacheKey,
 } from "./cache";
+import { platformAuthorityStrippedFor } from "./platform-authority-strip";
 import {
   type EffectivePermissionResolver,
   resetEffectivePermissionResolver,
@@ -127,10 +128,16 @@ export function createEffectivePermissionResolver(
 
   const resolver: EffectivePermissionResolver = async (context: HttpRequestContext) => {
     const key = effectivePermissionCacheKey(context.organizationId, context.userId);
-    const cached = cache.get(key);
+    // CW-AC-22: a request whose platform authority was withheld (it came from outside the console allowlist) is answered WITHOUT the
+    // platform roles' grants, from the store and not from the cache (which holds the full set), and what it computes is never cached.
+    const stripped = platformAuthorityStrippedFor(context);
+    const cached = stripped ? undefined : cache.get(key);
     if (cached) return cached;
 
-    const grants = await store.loadGrants(context.organizationId, context.userId);
+    const allGrants = await store.loadGrants(context.organizationId, context.userId);
+    const grants = stripped
+      ? allGrants.filter((grant) => !isReservedPlatformRoleKey(grant.roleKey))
+      : allGrants;
     const nowMs = clock();
     const { permissions, soonestExpiryMs } = resolveEffectivePermissions(grants, nowMs);
 
@@ -142,7 +149,10 @@ export function createEffectivePermissionResolver(
     // revokes the role runs in another process that cannot invalidate this replica's entry, so a
     // cached set would outlive the revoke (and survive a fresh sign-in) for up to the TTL. At most
     // two people hold it; one extra grant read per request is the price of an immediate revoke.
-    if (!grants.some((g) => g.roleKey === SUPERADMIN_ROLE_KEY)) cache.set(key, permissions, ttlMs);
+    // A stripped answer is a view of this one request, not the actor's permission set: caching it would hand the next
+    // (unstripped) request, from the operator's own network, a set without its platform keys.
+    if (!stripped && !allGrants.some((g) => g.roleKey === SUPERADMIN_ROLE_KEY))
+      cache.set(key, permissions, ttlMs);
     return permissions;
   };
 

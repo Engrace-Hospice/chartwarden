@@ -7,7 +7,7 @@ merge to `main` deploys and, from that moment, `platform_ops` can no longer do f
 
 | Change | What it does | Where |
 | --- | --- | --- |
-| Address allowlist | `PLATFORM_CONSOLE_ALLOWED_CIDRS` (unset = no gate). Set: a console request from another address is refused `403 PLATFORM_CONSOLE_ADDRESS_NOT_ALLOWED` and audited. A list that is set but unusable refuses every console request. | `apps/backend/src/bootstrap/platform-console-allowlist.ts`, `platform-console-policy.ts` |
+| Address allowlist | `PLATFORM_CONSOLE_ALLOWED_CIDRS` (unset = no gate). Set: a console request from another address is refused `403 PLATFORM_CONSOLE_ADDRESS_NOT_ALLOWED` and audited; any other route requested from another address is served **without the caller's platform roles and permissions** (audited as `m34.platform_console.authority_stripped`). A list that is set but unusable refuses every console request and strips everywhere. | `apps/backend/src/bootstrap/platform-console-allowlist.ts`, `platform-console-policy.ts`, `packages/auth/src/rbac/platform-authority-strip.ts` |
 | Role split | `platform_ops` keeps data entry, support sessions and user lifecycle. Three roles of their own take the BAA upload and register write (`platform_baa_steward`), go-live approval (`platform_go_live_approver`) and tenant pricing (`platform_pricing_operator`). The approver may not share an account with another onboarding role (the grant CLI and a database trigger both refuse it). | `packages/auth/src/roles/templates.ts`, migration `1559_m34_platform_ops_role_split.sql` (expand: no hold, no outage window) |
 
 ## What the allowlist covers
@@ -18,9 +18,17 @@ and the operator-only families `/api/v1/admin/{mdm,system,platform-medicaid-rule
 `/api/v1/admin/billing/npi-verifications` and `/api/admin/external-interfaces/nppes/sync-runs`. The list is `PLATFORM_CONSOLE_ROUTE_PREFIXES`; a family
 goes in only when no tenant surface (apps/web, apps/portal) calls it.
 
-**Not covered** (a network-level allow is the layer for these, and it is the owner's change): the sign-in routes an operator uses on the same
-hostname; the static console shell; and platform-authority routes that share a prefix with a tenant surface (`/api/v1/orgs` create / read / edit,
-`/api/v1/reporting/admin/*`, the rest of `/api/admin/external-interfaces`) or sit in M32 AI safety and M38 terminology admin.
+**Every other route** (`/api/v1/orgs`, `/api/v1/reporting/admin/*`, the rest of `/api/admin/external-interfaces`, M32 AI safety, M38 terminology admin, and every tenant
+route) cannot be refused by prefix, because tenant administrators use most of them. From an address outside the list, such a request instead **loses the caller's platform authority before
+any authorization runs**: every reserved platform role (`platform_*`, `ai_safety_owner`, `superadmin`, and with it the `administrator` / `org_admin` a superadmin was expanded into, and the
+`platform_alert_audience` binding) is taken off the request, and the permission resolver stops counting those roles' grants for it (it also skips its cache for that request, so a warm cache cannot
+give them back). The route then judges the caller as the tenant user it would otherwise be: `/api/v1/orgs` lists the caller's own organization only, `/api/v1/reporting/admin/*` and the other
+platform-only routes answer 403, and a user with no platform role is untouched and leaves no row. Each strip is audited (see Monitoring). An operator working from an unlisted address therefore
+also stops receiving their tenant alert inbox (`platform_alert_audience`) until they are back on a listed one. When the variable is unset nothing is stripped.
+
+**Not covered** (a network-level allow is the layer for these, and it is the owner's change): the sign-in and credential routes (`/api/auth/*`) an operator uses on the same hostname and the static console shell. None holds
+platform authority to withhold, so this is exposure of the page and the sign-in and factor forms, not of a platform power; an address is not authentication, and MFA and step-up still apply. The Socket.IO realtime channel attaches to the HTTP server below Fastify's hooks and
+is not touched either; it serves the caller's own channels by membership and reads no platform role.
 
 The address is Fastify's `request.ip`: the socket peer, with `X-Forwarded-For` honoured only through hops in `TRUSTED_PROXY_CIDRS`. No header is
 read for the decision. **The allowlist is only as good as `TRUSTED_PROXY_CIDRS`**: with the proxy missing from it, every request looks like it
@@ -143,6 +151,16 @@ needs the proxy hop itself, not a provider's whole network.
       ```
 
       `context.sourceIp` must be the unlisted address you used. If it shows the proxy's address, `TRUSTED_PROXY_CIDRS` is wrong: unset the variable (below), fix it, repeat.
+   5. **A route outside the console, from an unlisted address:** as an operator who also holds a tenant role, `GET /api/v1/orgs` answers only that tenant's own organization (from a listed address it answers every
+      organization), and `GET /api/v1/reporting/admin/lag` answers `403`. Then read the strip:
+
+      ```sql
+      SELECT created_at, correlation_id, retention_class, context
+        FROM audit_event WHERE event_type = 'm34.platform_console.authority_stripped'
+       ORDER BY created_at DESC LIMIT 10;
+      ```
+
+      `context.sourceIp` is the unlisted address, `context.strippedRoleKeys` the platform roles the operator held, `context.route` the first route the strip was made on in that minute.
 6. **Clean up (when every operator is on the new roles).** Take the four now-inert keys off the platform-owned `platform_ops` row, so the console stops showing buttons that answer 403. This is a
    `contract` change for the previous release, which is why it is a separate step and not part of the migration:
 
@@ -157,8 +175,8 @@ needs the proxy hop itself, not a provider's whole network.
    (`SELECT set_config('app.correlation_id', 'CHG-<n>', true), set_config('app.org_id', '<platform org id>', true)`), so the M4 trigger rows carry them. It deletes up to four rows
    (fewer if a key was never on the row): check the reported count before `COMMIT`.
    A fresh `db:platform-role grant platform_ops` already grants the new template, so only a database that predates this release needs the step.
-7. **Optional second layer (owner's change, not made here):** an `allow`/`deny` list on the platform nginx vhost closes what the application list does not cover (sign-in, the console shell,
-   `/api/v1/orgs`). The repo vhost is edited in place on the host per `deploy/production/README.md`; never overwrite the live vhost.
+7. **Optional second layer (owner's change, not made here):** an `allow`/`deny` list on the platform nginx vhost closes what the application list does not cover (the sign-in routes and the
+   console shell). The repo vhost is edited in place on the host per `deploy/production/README.md`; never overwrite the live vhost.
 
 ## If operators are locked out
 
@@ -183,6 +201,16 @@ A refusal that carries a session writes a platform-scoped `audit_event` (`m34.pl
 reason a minute (a further refusal inside the minute adds to `suppressedSincePreviousRow` on that key's next row), at most 10 a minute per user and 300 in all. The row's
 `actor_user_id` and `source_ip` columns are empty (it is written by the system actor through the platform writer): the address, method, matched route template and the operator's user and
 organization ids are in `context`, so review it with the `context` fields (ops runbook 16.4). A refusal naming a known operator is usually a changed office or VPN address.
+
+A **strip** (a platform operator's request to any other route from an unlisted address) writes `m34.platform_console.authority_stripped` the same way (platform-scoped, severity `warn`, outcome
+`denied`, compliance retention, no tenant) through the same throttle: one row per user, source address and reason a minute, with the repeats counted in `suppressedSincePreviousRow` on that key's next
+row, so a strip is never one undeletable row per request. `context` carries the address, method, matched route template (`unmatched` for a path that matches no route), the operator's user and
+organization ids and `strippedRoleKeys` (role-catalog names, never a person's data). The strip itself is made before the row is written, so a failed or slow audit write is logged and never leaves the
+authority in place. The audit is lossy under load by design (it shares the refusals' 10 rows a minute per user and 300 a minute in all, and the repeat count lives in the API process): a stolen session rotating more
+than ten addresses a minute leaves no row past the tenth, and the stripped caller holds tenant authority only, with the routes it uses audited on their own. A strip naming a known operator is
+usually a changed office or VPN address (a list that is valid but wrong demotes operators on every route, so step 5.5 above is not optional); one naming nobody you know is the signal this
+control exists for. A caller with no platform role
+(every tenant user) is never stripped and leaves no row.
 
 An **anonymous** refusal (a scan or probe; the routes are public) is held to one row per source address and reason a minute and 60 a minute in all, under the operational retention class (one year).
 The counts live in the API process and are lost on a restart; past a limit a refusal leaves no row of its own, and the first one a window turns away logs one process warning

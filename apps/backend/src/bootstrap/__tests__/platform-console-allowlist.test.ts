@@ -1,9 +1,11 @@
 // CW-AC-22 - the platform console's address allowlist. The address is Fastify's trusted-proxy-aware `request.ip`, never a header the
 // caller writes; a set-but-unusable list refuses every console request; a refused request is audited; a failed audit never opens it.
+import { PLATFORM_AUTHORITY_STRIPPED_ATTRIBUTE } from "@chartwarden/auth";
 import Fastify, { type FastifyInstance } from "fastify";
 import { describe, expect, it, vi } from "vitest";
 import { collectEnvProblems } from "../env";
 import {
+  PLATFORM_AUTHORITY_STRIPPED_EVENT,
   PLATFORM_CONSOLE_REFUSED_EVENT,
   PLATFORM_CONSOLE_ROUTE_PREFIXES,
   type PlatformConsoleRefusal,
@@ -190,6 +192,8 @@ describe("isPlatformConsoleRoute", () => {
 interface Harness {
   readonly app: FastifyInstance;
   readonly refusals: PlatformConsoleRefusal[];
+  /** What `/api/v1/orgs`'s preHandler saw of the request context, one entry per request that reached it. */
+  readonly seen: { readonly roles: string[]; readonly stripped: boolean }[];
 }
 
 async function harness(options: {
@@ -198,15 +202,20 @@ async function harness(options: {
   readonly onRefused?: (refusal: PlatformConsoleRefusal) => Promise<void>;
 }): Promise<Harness> {
   const refusals: PlatformConsoleRefusal[] = [];
+  const seen: Harness["seen"] = [];
   const app = Fastify({ trustProxy: options.trustProxy });
   app.addHook("onRequest", async (request) => {
+    // The roles the authenticate hook would have resolved: `x-test-roles` stands for them (a test stub, never read by the guard).
+    const roles = String(request.headers["x-test-roles"] ?? "")
+      .split(",")
+      .filter((role) => role.length > 0);
     request.context = {
       correlationId: "corr-1",
-      userId: "",
-      organizationId: "",
+      userId: roles.length > 0 ? "u-1" : "",
+      organizationId: roles.length > 0 ? "o-1" : "",
       providerEntityIds: [],
       locationIds: [],
-      roles: [],
+      roles,
       attributes: {},
       ip: request.ip,
       userAgent: "",
@@ -228,8 +237,21 @@ async function harness(options: {
   app.get("/api/admin/plans", async () => ({ ok: true }));
   app.get("/api/admin/external-interfaces/feeds", async () => ({ ok: true }));
   app.get("/api/v1/patients", async () => ({ ok: true }));
+  // A shared-prefix route: it reports what its authorization would see, read in a preHandler (where the real guards run).
+  app.get(
+    "/api/v1/orgs",
+    {
+      preHandler: async (request) => {
+        seen.push({
+          roles: [...request.context.roles],
+          stripped: request.context.attributes[PLATFORM_AUTHORITY_STRIPPED_ATTRIBUTE] === true,
+        });
+      },
+    },
+    async () => ({ ok: true }),
+  );
   await app.ready();
-  return { app, refusals };
+  return { app, refusals, seen };
 }
 
 const CONSOLE_URL = "/api/v1/platform/tenants/sunrise";
@@ -361,6 +383,150 @@ describe("createPlatformConsoleGuard", () => {
     expect(res.statusCode).toBe(403);
     expect(onRefused).toHaveBeenCalledTimes(1);
   });
+
+  describe("platform authority outside the allowlist (the routes the console prefixes do not cover)", () => {
+    const OPERATOR_ROLES = "platform_ops,org_admin";
+    const asRoles = (roles: string, remoteAddress: string) => ({
+      url: "/api/v1/orgs",
+      remoteAddress,
+      headers: { "x-test-roles": roles },
+    });
+
+    it("leaves a caller inside the list exactly as it was, and writes no row", async () => {
+      const { app, refusals, seen } = await harness({ raw: OPERATOR_NET, trustProxy: false });
+      const res = await app.inject(asRoles(OPERATOR_ROLES, OPERATOR));
+      expect(res.statusCode).toBe(200);
+      expect(seen).toEqual([{ roles: ["platform_ops", "org_admin"], stripped: false }]);
+      expect(refusals).toEqual([]);
+    });
+
+    it("takes the platform roles off a caller outside the list BEFORE the route's own guards run, keeps its tenant roles, and audits the strip", async () => {
+      const { app, refusals, seen } = await harness({ raw: OPERATOR_NET, trustProxy: false });
+      const res = await app.inject(asRoles(OPERATOR_ROLES, OUTSIDER));
+      expect(res.statusCode).toBe(200); // served: the route answers the tenant user the caller would otherwise be
+      expect(seen).toEqual([{ roles: ["org_admin"], stripped: true }]);
+      expect(refusals).toHaveLength(1);
+      expect(refusals[0]).toMatchObject({
+        reason: "platform_authority_stripped",
+        sourceIp: OUTSIDER,
+        method: "GET",
+        route: "/api/v1/orgs",
+        userId: "u-1",
+        organizationId: "o-1",
+        strippedRoleKeys: ["platform_ops"],
+      });
+    });
+
+    it("strips every reserved platform key, the audience binding and ai_safety_owner included", async () => {
+      const { app, refusals, seen } = await harness({ raw: OPERATOR_NET, trustProxy: false });
+      await app.inject(
+        asRoles(
+          "platform_alert_audience,platform_go_live_approver,ai_safety_owner,compliance_officer",
+          OUTSIDER,
+        ),
+      );
+      expect(seen[0]?.roles).toEqual(["compliance_officer"]);
+      expect(refusals[0]?.strippedRoleKeys).toEqual([
+        "platform_alert_audience",
+        "platform_go_live_approver",
+        "ai_safety_owner",
+      ]);
+    });
+
+    it("a superadmin loses the administrator and org_admin it was expanded into, and nothing else is invented", async () => {
+      const { app, seen } = await harness({ raw: OPERATOR_NET, trustProxy: false });
+      await app.inject(
+        asRoles("superadmin,administrator,org_admin,platform_ops,compliance_officer", OUTSIDER),
+      );
+      expect(seen[0]?.roles).toEqual(["compliance_officer"]);
+    });
+
+    it("leaves a tenant user outside the list untouched and writes no row (every clinician is outside the list)", async () => {
+      const { app, refusals, seen } = await harness({ raw: OPERATOR_NET, trustProxy: false });
+      const res = await app.inject(asRoles("org_admin,registered_nurse", OUTSIDER));
+      expect(res.statusCode).toBe(200);
+      expect(seen).toEqual([{ roles: ["org_admin", "registered_nurse"], stripped: false }]);
+      expect(refusals).toEqual([]);
+      await app.inject({ url: "/api/v1/orgs", remoteAddress: OUTSIDER }); // anonymous
+      expect(refusals).toEqual([]);
+    });
+
+    it("uses the trusted-proxy-aware address: a forged X-Forwarded-For does not keep the platform roles", async () => {
+      const { app, seen } = await harness({ raw: OPERATOR_NET, trustProxy: [PROXY] });
+      await app.inject({
+        ...asRoles(OPERATOR_ROLES, PROXY),
+        headers: {
+          "x-test-roles": OPERATOR_ROLES,
+          "x-forwarded-for": `${OPERATOR}, ${OUTSIDER}`, // the proxy appended the real peer on the right
+        },
+      });
+      await app.inject({
+        ...asRoles(OPERATOR_ROLES, OUTSIDER), // a direct peer that is not the proxy writes the header itself
+        headers: { "x-test-roles": OPERATOR_ROLES, "x-forwarded-for": OPERATOR },
+      });
+      expect(seen.map((s) => s.stripped)).toEqual([true, true]);
+      const inside = await app.inject({
+        ...asRoles(OPERATOR_ROLES, PROXY),
+        headers: { "x-test-roles": OPERATOR_ROLES, "x-forwarded-for": OPERATOR },
+      });
+      expect(inside.statusCode).toBe(200);
+      expect(seen.at(-1)).toEqual({ roles: ["platform_ops", "org_admin"], stripped: false });
+    });
+
+    it("strips on a list that is set but unusable too (nobody is inside it), and still refuses the console", async () => {
+      const { app, refusals, seen } = await harness({
+        raw: `${OPERATOR_NET},0.0.0.0/0`,
+        trustProxy: false,
+      });
+      await app.inject(asRoles(OPERATOR_ROLES, OPERATOR));
+      expect(seen).toEqual([{ roles: ["org_admin"], stripped: true }]);
+      const console403 = await app.inject({
+        url: CONSOLE_URL,
+        remoteAddress: OPERATOR,
+        headers: { "x-test-roles": OPERATOR_ROLES },
+      });
+      expect(console403.statusCode).toBe(403);
+      expect(refusals.map((r) => r.reason)).toEqual([
+        "platform_authority_stripped",
+        "allowlist_unusable",
+      ]);
+    });
+
+    it("still refuses a console route outside the list with the 403 (the strip is for every other route)", async () => {
+      const { app, refusals, seen } = await harness({ raw: OPERATOR_NET, trustProxy: false });
+      const res = await app.inject({
+        url: CONSOLE_URL,
+        remoteAddress: OUTSIDER,
+        headers: { "x-test-roles": OPERATOR_ROLES },
+      });
+      expect(res.statusCode).toBe(403);
+      expect(seen).toEqual([]);
+      expect(refusals.map((r) => r.reason)).toEqual(["address_not_allowed"]);
+    });
+
+    it("a failed audit write does not keep the authority: the strip is made before the row is written", async () => {
+      const onRefused = vi.fn().mockRejectedValue(new Error("audit store down"));
+      const { app, seen } = await harness({ raw: OPERATOR_NET, trustProxy: false, onRefused });
+      const res = await app.inject(asRoles(OPERATOR_ROLES, OUTSIDER));
+      expect(res.statusCode).toBe(200);
+      expect(onRefused).toHaveBeenCalledTimes(1);
+      expect(seen).toEqual([{ roles: ["org_admin"], stripped: true }]);
+    });
+
+    it("strips on an unmatched path too (there is no handler, but no hook after it may see the platform roles); the row says unmatched", async () => {
+      const { app, refusals } = await harness({ raw: OPERATOR_NET, trustProxy: false });
+      const res = await app.inject({
+        url: "/no/such/route",
+        remoteAddress: OUTSIDER,
+        headers: { "x-test-roles": OPERATOR_ROLES },
+      });
+      expect(res.statusCode).toBe(404);
+      expect(refusals[0]).toMatchObject({
+        reason: "platform_authority_stripped",
+        route: "unmatched",
+      });
+    });
+  });
 });
 
 describe("platformConsoleRefusalAuditor", () => {
@@ -391,6 +557,37 @@ describe("platformConsoleRefusalAuditor", () => {
     ]) {
       expect(flat).toContain(fact);
     }
+  });
+
+  it("writes a strip under its own event type, naming the role keys, and holds it to the same one-row-a-minute volume rule", async () => {
+    const execute = vi.fn().mockResolvedValue(undefined);
+    let clock = 3_000_000;
+    const audit = platformConsoleRefusalAuditor({ execute }, { now: () => clock });
+    const strip: PlatformConsoleRefusal = {
+      ...refusal,
+      reason: "platform_authority_stripped",
+      route: "/api/v1/orgs",
+      strippedRoleKeys: ["platform_ops"],
+    };
+    for (let i = 0; i < 3; i++) await audit(strip);
+    expect(execute).toHaveBeenCalledTimes(1);
+    const flat = JSON.stringify(execute.mock.calls[0]?.[0]);
+    for (const fact of [
+      PLATFORM_AUTHORITY_STRIPPED_EVENT,
+      "platform_console",
+      "denied",
+      "compliance",
+      "platform_authority_stripped",
+      "platform_ops",
+      "/api/v1/orgs",
+      OUTSIDER,
+    ]) {
+      expect(flat).toContain(fact);
+    }
+    expect(flat).not.toContain(PLATFORM_CONSOLE_REFUSED_EVENT);
+    clock += 61_000;
+    await audit(strip);
+    expect(JSON.stringify(execute.mock.calls[1]?.[0])).toMatch(/suppressedSincePreviousRow\\*"*:2/);
   });
 
   it("throws without a database so the guard can log it (the refusal still stands)", async () => {

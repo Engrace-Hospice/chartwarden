@@ -5,6 +5,7 @@ import {
   isSystemLocked,
   isSystemManagedRoleKey,
   isTenantRoleReserved,
+  platformAuthorityStrippedFor,
   platformPermissionKeysIn,
   requirePermission,
   requireSession,
@@ -458,7 +459,10 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
       });
       // CW-RUST-M02 P1 — optional Bun→Rust bridge (off unless RUST_ROUTES names this route). It runs here, after
       // authenticate + requireSession, and only ever returns Bun's answer or a validated Rust body.
-      const bridge = deps.mePermissionsBridge;
+      // A request whose platform authority was withheld (CW-AC-22) is answered by Bun alone: Rust reads the grants itself, with no strip.
+      const bridge = platformAuthorityStrippedFor(request.context)
+        ? undefined
+        : deps.mePermissionsBridge;
       if (!bridge) return bun();
       const fresh = deps.freshPermissions;
       const attrs = request.context.attributes;

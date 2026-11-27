@@ -5,7 +5,9 @@
 // THE ROUTES. Decided on the MATCHED ROUTE PATTERN (`request.routeOptions.url`), not the raw URL, so percent-encoding, doubled slashes and dot
 // segments cannot step around a prefix: an unmatched path has no pattern and is a 404 either way. A family goes in only when no tenant
 // surface (apps/web, apps/portal) calls it: `/api/admin/external-interfaces`, `/api/v1/reporting/admin` and `/api/v1/orgs` are shared with
-// tenant administrators, so they stay out and are named as uncovered in compliance/controls.yaml (CW-AC-22) and the runbook.
+// tenant administrators, so they stay out of this list. They are not left open: from an address outside the allowlist a request to ANY
+// route not in it loses the caller's platform roles and permissions instead (platform-console-allowlist.ts), so a platform operator
+// there is judged as the tenant user they would otherwise be.
 import { BlockList, isIP } from "node:net";
 
 export const PLATFORM_CONSOLE_ALLOWED_CIDRS_ENV = "PLATFORM_CONSOLE_ALLOWED_CIDRS";
