@@ -455,6 +455,9 @@ jobs:
                 "test:m17:read:live test:m17:write:live test:m17:visit-create-abac:live
                 test:m17:membership-credential:live test:m17:oncall-roster:live",
             }
+          # CW-AC-46 follow-up (#1207) — the licence roster's grant and revoke as chartwarden_app: a fresh step-up, no self-grant (403 + audit row +
+          # the CW-MON-01 rule through the real review reader), another member's grant, cross-tenant isolation.
+          - { name: "M17 credential grant guards", scripts: "test:m17:credential-grant:live" }
           # CW-QA-0016 (#860) — oncall_rotation_entry: RLS, overlap, effective roster, concurrency, history.
           - { name: "M17 on-call rotation entry", scripts: "test:m17:oncall-rotation-entry:live" }
           # F-152 (#248) — the D14 EVV-authoritative visit advances + the §7.5 SOS-resolution cancellation.

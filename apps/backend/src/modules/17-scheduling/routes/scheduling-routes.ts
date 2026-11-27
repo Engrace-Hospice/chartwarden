@@ -1,9 +1,11 @@
+import type { AuditContext } from "@chartwarden/audit";
 import {
   type AbacTarget,
   type GuardRequest,
   hasOrgWideScope,
   requireAbac,
   requirePermission,
+  requireStepUp,
   resolveActorPermissions,
 } from "@chartwarden/auth";
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
@@ -27,6 +29,11 @@ import {
 import { ForbiddenError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { getSeam, requestStepUpFresh } from "../../../bootstrap/index";
+import {
+  CREDENTIAL_STEP_UP_KEY,
+  credentialSelfGrantRefusal,
+  isCredentialSelfGrant,
+} from "../credential-grant-guard";
 import { assertAssignedClinician } from "./assigned-clinician";
 import { type CallerAuthority, NO_AUTHORITY } from "./own-vs-any";
 import {
@@ -223,6 +230,25 @@ const PORTAL_GRANT = ABAC_PORTAL_GRANT("portal.visits.read_upcoming");
 const CREDENTIAL_READ = P("membership_credential.read");
 const CREDENTIAL_GRANT = P("membership_credential.grant");
 const CREDENTIAL_REVOKE = P("membership_credential.revoke");
+// A fresh server-verified step-up (session recency, not satisfiable by break-glass), the same operation key for grant and revoke.
+const CREDENTIAL_STEP_UP = requireStepUp(CREDENTIAL_STEP_UP_KEY) as PreHandler;
+
+/** The request's audit context for an explicit M17 audit event: the server-assembled session, never request input. */
+function auditContextOf(request: FastifyRequest): AuditContext {
+  const ctx = request.context;
+  return {
+    organizationId: ctx.organizationId,
+    userId: ctx.userId,
+    actorKind: "user",
+    correlationId: ctx.correlationId,
+    requestId: String(request.id),
+    sourceIp: ctx.ip,
+    userAgent: ctx.userAgent,
+  };
+}
+
+/** The class of a thrown value, for a log line: never its message (a database error's message can carry arbitrary text). */
+const errorClassOf = (error: unknown): string => (error instanceof Error ? error.name : "unknown");
 const ONCALL_ROTATION_READ = P("oncall_rotation.read");
 const ONCALL_ROTATION_MANAGE = P("oncall_rotation.manage");
 
@@ -840,13 +866,32 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     },
   );
 
+  // CW-AC-46 follow-up — the licence roster is what the visit-create gate trusts and the HOPE signer-licence check (CW-AC-46, #1206) reads, so the
+  // grant and the revoke need a fresh server-verified step-up (never a header), and the grant refuses the caller's own membership
+  // (403 CREDENTIAL_SELF_GRANT_REFUSED). Another member holding the permission can record it. The refusal is audited
+  // (`m17.credential.self_grant_refused`, reviewed by CW-MON-01) on its own transaction; a failed audit write is logged and never
+  // replaces the refusal. The credential store refuses a self-grant again as the backstop.
   app.post(
     "/api/v1/memberships/:membershipId/credentials",
-    { preHandler: [CREDENTIAL_GRANT, IDEMPOTENT] },
+    { preHandler: [CREDENTIAL_GRANT, CREDENTIAL_STEP_UP, IDEMPOTENT] },
     async (request, reply) => {
       const { organizationId, userId } = membershipActorOf(request);
       const { membershipId } = parse(MembershipIdParamsSchema, request.params);
       const b = parse(GrantCredentialRequest, request.body);
+      if (isCredentialSelfGrant(userId, membershipId)) {
+        try {
+          await service.recordCredentialSelfGrantRefusal(organizationId, auditContextOf(request), {
+            membershipId,
+            credentialType: b.credentialType,
+          });
+        } catch (auditFailure) {
+          request.log.error(
+            { errorClass: errorClassOf(auditFailure), membershipId },
+            "m17 credential self-grant refusal audit not written",
+          );
+        }
+        throw credentialSelfGrantRefusal();
+      }
       const res = await service.grantCredential(organizationId, userId, {
         membershipId,
         credentialType: b.credentialType,
@@ -908,7 +953,7 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
 
   app.delete(
     "/api/v1/memberships/:membershipId/credentials/:credentialId",
-    { preHandler: [CREDENTIAL_REVOKE, IDEMPOTENT] },
+    { preHandler: [CREDENTIAL_REVOKE, CREDENTIAL_STEP_UP, IDEMPOTENT] },
     async (request, reply) => {
       const { organizationId, userId } = membershipActorOf(request);
       const { credentialId } = parse(MembershipCredentialParamsSchema, request.params);

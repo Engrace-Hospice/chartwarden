@@ -10,6 +10,7 @@
 // Route optimisation stays behind `scheduling.route_optimization` (OFF in Phase 1): `optimizeDay` returns the
 // §7.9 degraded result (visits in scheduled order) unless an OSRM `RoutingProvider` is injected AND the flag is
 // on. The adapter boundary lives in `@chartwarden/routing-client` (the §25.14 mandate).
+import type { AuditContext } from "@chartwarden/audit";
 import type { RoutingProvider } from "@chartwarden/routing-client";
 import {
   type SchedulingDiscipline,
@@ -26,6 +27,7 @@ import type {
 } from "@chartwarden/types";
 import { ChartWardenError, ConflictError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { SchedulingAbacResolver } from "../abac-predicates";
+import { credentialSelfGrantRefusal, isCredentialSelfGrant } from "../credential-grant-guard";
 import type { CredentialDiscipline, CredentialRecord } from "../seams/index";
 import type { CreateOnCallRotationInput, OnCallRotationView } from "../seams/oncall-rotation-store";
 import { computeVisitMetrics } from "../visit-metrics";
@@ -279,7 +281,12 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
   // GAP-093 — the in-memory slice's membership_credential rows (route-smoke-test fixture only; the
   // pre-schedule gate itself still reads `credentialed`, a flat per-membership flag kept in sync below).
   private readonly credentials = new Map<string, CredentialRecord & { organizationId: string }>();
-  private credentialSeq = 0;
+  /** CW-AC-46 follow-up — the refused self-grants the route recorded (the DB backend writes `m17.credential.self_grant_refused`). */
+  readonly credentialSelfGrantRefusals: Array<{
+    readonly organizationId: string;
+    readonly membershipId: string;
+    readonly credentialType: CredentialDiscipline;
+  }> = [];
   // GAP-029 — the in-memory slice's on-call rotation rows (route-smoke-test fixture only).
   private readonly rotation = new Map<string, OnCallRotationView & { organizationId: string }>();
 
@@ -931,8 +938,11 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
       issuingBody?: string | null;
     },
   ): Promise<CredentialRecord> {
+    if (isCredentialSelfGrant(grantedByMembershipId, input.membershipId)) {
+      throw credentialSelfGrantRefusal();
+    }
     const record: CredentialRecord & { organizationId: string } = {
-      id: `cred-${++this.credentialSeq}`,
+      id: this.newId(),
       organizationId: orgId,
       membershipId: input.membershipId,
       credentialType: input.credentialType,
@@ -948,6 +958,14 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     this.credentials.set(record.id, record);
     this.credentialed.add(input.membershipId); // keep the flat gate flag in sync (slice fixture only)
     return record;
+  }
+
+  async recordCredentialSelfGrantRefusal(
+    orgId: string,
+    _audit: AuditContext,
+    facts: { membershipId: string; credentialType: CredentialDiscipline },
+  ): Promise<void> {
+    this.credentialSelfGrantRefusals.push({ organizationId: orgId, ...facts });
   }
 
   async revokeCredential(

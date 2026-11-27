@@ -42,6 +42,7 @@
 //   (6) `upsertAvailability` MERGES per (membership, day_of_week) — chartwarden_app has no DELETE grant on any M17
 //       table, so a weekday dropped from the new set is not pruned (the append-only posture); `time_zone` has
 //       no column, so the write echoes the request tz while reads report UTC (the T01 read TODO).
+import type { AuditContext } from "@chartwarden/audit";
 import {
   type DbClient,
   organizationSettingsReader,
@@ -82,6 +83,7 @@ import { ChartWardenError } from "@chartwarden/types";
 import { type SQL, and, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import type { SchedulingAbacResolver } from "./abac-predicates";
+import { recordCredentialSelfGrantRefusal } from "./credential-grant-guard";
 import {
   countPublishedVisitsInWindow,
   emitDueCaregiverReminders,
@@ -2779,7 +2781,16 @@ export function createDbSchedulingBackend(
         issuingBody?: string | null;
       },
     ): Promise<CredentialRecord> {
+      // CW-AC-46 follow-up — the route refuses and audits a self-grant before it gets here, and the store (the one place the row
+      // is written) refuses it again, so no other caller of the service can record a licence on the grantor's own membership.
       return credentialStore.grant(orgId, { ...input, grantedByMembershipId });
+    },
+    async recordCredentialSelfGrantRefusal(
+      orgId: string,
+      auditContext: AuditContext,
+      facts: { membershipId: string; credentialType: CredentialRecord["credentialType"] },
+    ): Promise<void> {
+      return recordCredentialSelfGrantRefusal(db, auditContext, { organizationId: orgId, ...facts });
     },
     async revokeCredential(
       orgId: string,

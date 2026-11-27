@@ -11,6 +11,7 @@ export { M6_ACTION_CATALOG } from "./m6";
 export { M7_ACTION_CATALOG } from "./m7";
 export { M8_ACTION_CATALOG } from "./m8";
 export { M15_ACTION_CATALOG } from "./m15";
+export { M17_ACTION_CATALOG } from "./m17";
 export { M35_ACTION_CATALOG } from "./m35";
 export { M36_ACTION_CATALOG } from "./m36";
 export { M38_ACTION_CATALOG } from "./m38";

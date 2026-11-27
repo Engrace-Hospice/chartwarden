@@ -12,9 +12,15 @@ import {
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { MembershipLookupField } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
+import { stepUpRedirectFor } from "../../shell/step-up-redirect";
+
+/** The code of the server's refusal to record a licence on the caller's own membership (CW-AC-46 follow-up). */
+const SELF_GRANT_REFUSED_CODE = "CREDENTIAL_SELF_GRANT_REFUSED";
+const errorCodeOf = (error: unknown): string | undefined =>
+  (error as { error?: { code?: string } } | null)?.error?.code;
 
 type Credential = {
   id: string;
@@ -48,6 +54,8 @@ const api = (client: unknown) =>
 
 export function ClinicianCredentials(): JSX.Element {
   const client = useApiClient();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [params] = useSearchParams();
   const session = useSession();
   const permissions = session?.permissions ?? [];
@@ -55,6 +63,11 @@ export function ClinicianCredentials(): JSX.Element {
   const canRevoke = permissions.includes("membership_credential.revoke");
   const [membershipId, setMembershipId] = useState("");
   const [memberLabel, setMemberLabel] = useState("");
+  // The selected clinician lives in state (the lookup does not write the URL), so the step-up return path carries it: the page
+  // remounts on the same clinician. Nothing else is stashed across the ceremony on purpose (no draft, no free text).
+  const returnTo = membershipId
+    ? `${location.pathname}?membership=${encodeURIComponent(membershipId)}`
+    : location.pathname;
   const [rows, setRows] = useState<Credential[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,7 +134,17 @@ export function ClinicianCredentials(): JSX.Element {
         },
       });
       if (res.error) {
-        setFormError("Credential could not be added. Review the details and try again.");
+        // A grant needs a fresh step-up: send the user through the ceremony and back here.
+        const stepUp = stepUpRedirectFor(res.error, returnTo);
+        if (stepUp) {
+          navigate(stepUp);
+          return;
+        }
+        setFormError(
+          errorCodeOf(res.error) === SELF_GRANT_REFUSED_CODE
+            ? "You cannot record a license on your own membership. Ask another administrator to record it."
+            : "Credential could not be added. Review the details and try again.",
+        );
         return;
       }
       setAddOpen(false);
@@ -146,6 +169,11 @@ export function ClinicianCredentials(): JSX.Element {
         },
       );
       if (res.error) {
+        const stepUp = stepUpRedirectFor(res.error, returnTo);
+        if (stepUp) {
+          navigate(stepUp);
+          return;
+        }
         setRevokeError("Credential could not be revoked. Please try again.");
         return;
       }
