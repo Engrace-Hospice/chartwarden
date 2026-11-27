@@ -270,6 +270,23 @@ export function applyIdempotency(
       status: String(reply.statusCode),
       body: parsePayload(payload),
     };
+    // IDEMPOTENCY_KEY_STUCK describes an operation whose outcome is unknown. In particular, an external queue may have
+    // accepted work before its acknowledgement was lost. Do not turn this response into a completed 24-hour record: after
+    // that TTL, a same-key retry could enqueue the work again. Keep the generation pending until an operator reconciles it.
+    const error =
+      typeof response.body === "object" && response.body !== null
+        ? (response.body as { error?: unknown }).error
+        : undefined;
+    const errorCode =
+      typeof error === "object" && error !== null
+        ? (error as { code?: unknown }).code
+        : undefined;
+    if (reply.statusCode === 409 && errorCode === "IDEMPOTENCY_KEY_STUCK") {
+      request.log.warn(
+        "idempotency: an operation has an unknown outcome; its claim stays pending until reconciliation",
+      );
+      return payload;
+    }
     const tracker = commitTrackers.get(request);
     // No tracker to ask means no proof that nothing committed: cache (never release). The same when the ambient tracker is not
     // this request's: the context was lost somewhere after the claim, so the writes of the handler were not seen either. And the

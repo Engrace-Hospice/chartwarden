@@ -11,6 +11,7 @@
  * `gap-007-idempotency-claim.live.test.ts`.
  */
 import { HopeStateError } from "@chartwarden/hope";
+import { IDEMPOTENCY_PENDING_MAX_AGE_MS, IdempotencyKeyStuckError } from "@chartwarden/shared";
 import { ChartWardenError, ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
@@ -203,6 +204,27 @@ describe("applyIdempotency — a retryable failure is not replayed", () => {
     expect(first.statusCode).toBe(409);
     expect(replay.statusCode).toBe(409);
     expect(runs).toBe(1);
+  });
+
+  it("keeps an unknown outcome pending past the completed-response TTL", async () => {
+    let now = 0;
+    const store = createInMemoryIdempotencyStore({ now: () => now });
+    await build(() => {
+      throw new IdempotencyKeyStuckError("key-1");
+    }, store);
+
+    const first = await post();
+    expect(first.statusCode).toBe(409);
+    expect(first.json().error.code).toBe("IDEMPOTENCY_KEY_STUCK");
+    expect(await store.load(ORG, "key-1")).toMatchObject({ state: "pending" });
+
+    // Simulate a retry after both the normal 24-hour completed-response TTL and the pending age threshold.
+    now += 24 * 60 * 60 * 1000 + IDEMPOTENCY_PENDING_MAX_AGE_MS + 1;
+    const retry = await post();
+    expect(retry.statusCode).toBe(409);
+    expect(retry.json().error.code).toBe("IDEMPOTENCY_KEY_STUCK");
+    expect(runs).toBe(1);
+    expect(await store.load(ORG, "key-1")).toMatchObject({ state: "pending" });
   });
 
   it("a 4xx and a 2xx are still cached and replayed", async () => {

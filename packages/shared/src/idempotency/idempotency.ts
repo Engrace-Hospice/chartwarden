@@ -153,10 +153,11 @@ export const IDEMPOTENCY_PENDING_MAX_AGE_MS = 15 * 60 * 1000;
  * with this key and to read the resource to find out. The row is never reclaimed, released or re-run by this path.
  */
 export class IdempotencyKeyStuckError extends ChartWardenError {
-  constructor(readonly key: string) {
+  constructor(readonly key: string, message?: string) {
     super(
       "IDEMPOTENCY_KEY_STUCK",
-      "The first request with this Idempotency-Key did not finish and its outcome is unknown. Do not retry with this key: read the resource to see whether the change was applied, and use a new key only if it was not.",
+      message ??
+        "The first request with this Idempotency-Key did not finish and its outcome is unknown. Do not retry with this key: read the resource to see whether the change was applied, and use a new key only if it was not.",
       ERROR_CODES.IDEMPOTENCY_KEY_STUCK,
     );
     this.name = "IdempotencyKeyStuckError";

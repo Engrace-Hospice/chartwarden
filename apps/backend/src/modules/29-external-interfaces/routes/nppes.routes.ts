@@ -17,7 +17,7 @@ import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
 import { IdempotencyKeyStuckError } from "@chartwarden/shared";
-import { actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
+import { actorOf, requireIdempotencyKey, writeActorOf } from "@chartwarden/shared/route-kit";
 import { ABAC_IN_ORG, ABAC_NPPES_PLATFORM, P, STEP_UP } from "./guards";
 import { NppesSyncRunListQuery, NppesSyncTriggerBody, parse, parseQuery } from "./m29-typebox";
 import { NPPES_NO_PHI } from "./read-audit-configs";
@@ -85,6 +85,7 @@ export function registerNppesRoutes(app: FastifyInstance, deps: NppesRouteDeps):
         P("external_interfaces.nppes.sync_trigger"),
         STEP_UP("external_interfaces.nppes.sync_trigger"),
         ABAC_NPPES_PLATFORM("external_interfaces.nppes.sync_trigger"),
+        requireIdempotencyKey(),
       ],
     },
     async (request, reply) => {
@@ -108,10 +109,15 @@ export function registerNppesRoutes(app: FastifyInstance, deps: NppesRouteDeps):
       } catch (error) {
         // BullMQ may accept the job and lose the reply to this process. No PostgreSQL commit tracker
         // can prove that queue effect absent, so a retryable 5xx would free the key and enqueue a
-        // second NPPES run. Return the existing unknown-outcome response; the idempotency middleware
-        // records it as final and clients are told to inspect the sync-run list before using a new key.
+        // second NPPES run. Return the existing unknown-outcome response; the idempotency middleware keeps the claim pending
+        // until reconciliation, and clients are told that a missing run row does not establish that enqueue failed.
         const key = request.headers["idempotency-key"];
-        if (typeof key === "string" && key.length > 0) throw new IdempotencyKeyStuckError(key);
+        if (typeof key === "string" && key.length > 0) {
+          throw new IdempotencyKeyStuckError(
+            key,
+            "The NPPES queue outcome is unknown. Do not retry with this key. Inspect sync-run history and reconcile queue/worker state; a missing run row does not prove the job was not accepted. Use a new key only after confirming no job can run.",
+          );
+        }
         throw error;
       }
       return reply.code(202).send({
