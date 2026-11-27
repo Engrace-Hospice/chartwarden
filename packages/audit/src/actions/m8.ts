@@ -215,6 +215,14 @@ export const M8_ACTION_CATALOG: ModuleActionCatalog = [
     isPartTwoEligible: false,
   },
   {
+    action: "m8.encounter.closure_refused",
+    moduleOwner: "m8",
+    defaultRetentionClass: "compliance",
+    description: "The visit-note closure gate refused a staff session 403 NOTE_CLOSURE_REQUIRED because its oldest clocked open note was past its block instant (membershipId, method and routeTemplate of the refusal that wrote this event (the template, never the URL; null for the EVV offline-sync batch that carries a check-in; earlier refusals held back in the same minute may have been on other routes), overdueCount, refused = how many refusals of this member this event stands for, which a failed write of an earlier event does not carry forward; severity warn, outcome denied; the resource is the oldest open note; ids, an enum and counts only, no patient and no free text; attributable by user and membership, with no request id or source address). At most ONE event per member per minute per API replica, written best effort on its own transaction outside the request's commit tracker: a failure is logged by error class and never changes the refusal, and the counter chartwarden_note_closure_refusals_total counts the refusals too (ADR-0113 D6; CW-AC-47). Not alerted on: a refusal is the control working. No patient, so never Part 2.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
     action: "m8.encounter.closure_policy_changed",
     moduleOwner: "m8",
     defaultRetentionClass: "compliance",

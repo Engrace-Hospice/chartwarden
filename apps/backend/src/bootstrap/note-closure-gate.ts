@@ -34,7 +34,10 @@
 //      The failure is reported through `onFailure`, at most once per organization per NOTE_CLOSURE_FAILURE_LOG_INTERVAL_MS (with the
 //      count it suppressed), so an outage is one log line per organization, not one stack trace per request.
 //   A REFUSAL (403) is evidence that the control enforces, so it is reported too (`onRefusal`): at most once per organization per
-//   NOTE_CLOSURE_REFUSAL_LOG_INTERVAL_MS, carrying the organization id and the count only (no member, no note, no patient).
+//   NOTE_CLOSURE_REFUSAL_LOG_INTERVAL_MS, carrying the organization id and the count only (no member, no note, no patient). The same
+//   refusal also reaches the audit trail, per member (`onMemberRefusal`, CW-AC-47): at most one event per organization + member per
+//   NOTE_CLOSURE_MEMBER_REFUSAL_AUDIT_INTERVAL_MS, naming the member, the oldest open note and the refused route TEMPLATE, so the trail can say
+//   who was refused and when; best effort (a failure to write it never changes the 403).
 //
 // `assertNotBlocked` is steps 2-4 WITHOUT the allowlist, for a route that is allowlisted only for part of what it does (the EVV
 // offline-sync routes carry check-OUT events a blocked clinician must be able to upload, and check-IN events that start a new visit):
@@ -79,6 +82,14 @@ export const NOTE_CLOSURE_FAILURE_LOG_INTERVAL_MS = 30_000;
 
 /** At most one `onRefusal` call per organization per this long; the refusals in between are counted into the next call's `refused`. */
 export const NOTE_CLOSURE_REFUSAL_LOG_INTERVAL_MS = 30_000;
+
+/**
+ * At most one audit event per organization + member per this long (per replica): the refusal repeats on every request a blocked clinician's app
+ * makes, and the audit trail must be able to say who was refused without growing with the traffic. `refused` on the next event counts the rest.
+ */
+export const NOTE_CLOSURE_MEMBER_REFUSAL_AUDIT_INTERVAL_MS = 60_000;
+/** Upper bound on members tracked for that throttle per replica (the expired ones are purged first; a full map of live ones tracks no new member). */
+export const NOTE_CLOSURE_MEMBER_REFUSAL_MAX_ENTRIES = 10_000;
 
 /** How long one evaluator call, or one policy read, may run before it fails (503, or the stale off / warn policy) and an evaluation frees its single-flight key. */
 export const NOTE_CLOSURE_EVALUATION_TIMEOUT_MS = 5_000;
@@ -145,6 +156,14 @@ export interface NoteClosureGateDeps<Policy extends NoteClosureGatePolicy> {
    * ponytail: a tail of refusals below the interval is reported with the next refusal, not by a timer.
    */
   readonly onRefusal?: (refusal: NoteClosureGateRefusal) => void;
+  /**
+   * CW-AC-47: the audit trail of who was refused. Called, and awaited (bounded by {@link NOTE_CLOSURE_EVALUATION_TIMEOUT_MS}), when a request
+   * was refused 403 NOTE_CLOSURE_REQUIRED, at most once per organization + member per
+   * {@link NOTE_CLOSURE_MEMBER_REFUSAL_AUDIT_INTERVAL_MS}; `refused` counts the refusals of that member since the previous call (this one included).
+   * The sink writes the audit event and reports its own failure: whatever it does, a throw or a timeout never changes the refusal. Ids and
+   * counts only: no note, no patient.
+   */
+  readonly onMemberRefusal?: (refusal: NoteClosureMemberRefusal) => void | Promise<void>;
   /** Injected for tests: the deadline timer around an evaluator call. Defaults to `setTimeout` / `clearTimeout`. */
   readonly timers?: NoteClosureGateTimers;
   /** Injected for tests; defaults to {@link NOTE_CLOSURE_EVALUATION_TIMEOUT_MS}. */
@@ -160,6 +179,28 @@ export interface NoteClosureGateRefusal {
   readonly organizationId: string;
   /** Refusals for this organization since the previous report (at least 1). */
   readonly refused: number;
+}
+
+/** One refused member, for the audit event (CW-AC-47). */
+export interface NoteClosureMemberRefusal {
+  readonly organizationId: string;
+  /** The Better Auth user id: the audit actor. */
+  readonly userId: string;
+  readonly membershipId: string;
+  /** The member's oldest open note that put them past the block instant. */
+  readonly encounterId: string | null;
+  readonly overdueCount: number;
+  /** The refused call: its method and route TEMPLATE (never the URL); both null for the EVV offline-sync batch, which asks the gate itself. */
+  readonly method: string | null;
+  readonly routeTemplate: string | null;
+  /** The refusals of this member this event stands for (at least 1). */
+  readonly refused: number;
+}
+
+/** Where a refusal happened, for the audit event. */
+interface NoteClosureGateRoute {
+  readonly method: string;
+  readonly routeTemplate: string | null;
 }
 
 export interface NoteClosureGateFailure {
@@ -388,6 +429,36 @@ function createRefusalReporter(
   };
 }
 
+/**
+ * Decides, per organization + member, which refusal is the one that gets an audit event: the first, then the next one after the interval, which
+ * stands for every refusal since (`take` answers how many, or null when this one is held back). Bounded: at the bound the expired entries are
+ * purged and, if the map is still full of live ones, a new member is not tracked and gets no event (the log line and the counter still count its
+ * refusals).
+ * ponytail: per-replica in-process map, so a member is audited at most once a minute per replica, not once a minute overall.
+ */
+function createMemberRefusalThrottle(intervalMs: number, maxEntries: number) {
+  const byKey = new Map<string, { readonly reportedAtMs: number; readonly pending: number }>();
+  function purgeExpired(nowMs: number): void {
+    for (const [key, state] of byKey) {
+      if (nowMs - state.reportedAtMs >= intervalMs) byKey.delete(key);
+    }
+  }
+  return {
+    take(key: string, nowMs: number): number | null {
+      const state = byKey.get(key);
+      const pending = (state?.pending ?? 0) + 1;
+      if (state && nowMs - state.reportedAtMs < intervalMs) {
+        byKey.set(key, { reportedAtMs: state.reportedAtMs, pending });
+        return null;
+      }
+      if (byKey.size >= maxEntries) purgeExpired(nowMs);
+      if (byKey.size >= maxEntries && !byKey.has(key)) return null;
+      byKey.set(key, { reportedAtMs: nowMs, pending: 0 });
+      return pending;
+    },
+  };
+}
+
 export function createNoteClosureGate<Policy extends NoteClosureGatePolicy>(
   deps: NoteClosureGateDeps<Policy>,
 ): NoteClosureGate & NoteClosureBlockGuard {
@@ -396,6 +467,10 @@ export function createNoteClosureGate<Policy extends NoteClosureGatePolicy>(
   const knownPolicies = createKnownPolicies<Policy>();
   const reportFailure = createFailureReporter(deps.onFailure, NOTE_CLOSURE_FAILURE_LOG_INTERVAL_MS);
   const reportRefusal = createRefusalReporter(deps.onRefusal, NOTE_CLOSURE_REFUSAL_LOG_INTERVAL_MS);
+  const memberRefusals = createMemberRefusalThrottle(
+    NOTE_CLOSURE_MEMBER_REFUSAL_AUDIT_INTERVAL_MS,
+    NOTE_CLOSURE_MEMBER_REFUSAL_MAX_ENTRIES,
+  );
   const budget = createEvaluationBudget(
     NOTE_CLOSURE_EVALUATION_BUDGET_PER_SECOND,
     NOTE_CLOSURE_BUDGET_MAX_ENTRIES,
@@ -514,7 +589,45 @@ export function createNoteClosureGate<Policy extends NoteClosureGatePolicy>(
     return null;
   }
 
-  async function assertNotBlocked(actor: NoteClosureGateActor): Promise<void> {
+  /**
+   * CW-AC-47: the audit event of a refusal, at most one per organization + member per interval. Awaited (so the evidence is written before
+   * the refusal is answered) but bounded by the evaluation deadline, and a failure of the sink never replaces the 403.
+   */
+  async function auditMemberRefusal(
+    actor: NoteClosureGateActor,
+    evaluation: NoteClosureGateEvaluation,
+    route: NoteClosureGateRoute | null,
+    nowMs: number,
+  ): Promise<void> {
+    if (!deps.onMemberRefusal) return;
+    const refused = memberRefusals.take(`${actor.organizationId}:${actor.membershipId}`, nowMs);
+    if (refused === null) return;
+    try {
+      await withDeadline(
+        Promise.resolve(
+          deps.onMemberRefusal({
+            organizationId: actor.organizationId,
+            userId: actor.userId,
+            membershipId: actor.membershipId,
+            encounterId: evaluation.encounterId,
+            overdueCount: evaluation.overdueCount,
+            method: route?.method ?? null,
+            routeTemplate: route?.routeTemplate ?? null,
+            refused,
+          }),
+        ),
+        () => undefined,
+      );
+    } catch {
+      // The sink reports its own failure (the composition root logs the error class); a throw or a timeout here must never turn the 403
+      // into a 500.
+    }
+  }
+
+  async function assertNotBlockedVia(
+    actor: NoteClosureGateActor,
+    route: NoteClosureGateRoute | null,
+  ): Promise<void> {
     let refusal: NoteClosureGateEvaluation | null;
     try {
       refusal = await refusingEvaluation(actor);
@@ -528,15 +641,21 @@ export function createNoteClosureGate<Policy extends NoteClosureGatePolicy>(
       throw closureUnavailable();
     }
     if (!refusal) return;
-    reportRefusal(actor.organizationId, now().getTime());
+    const nowMs = now().getTime();
+    reportRefusal(actor.organizationId, nowMs);
+    await auditMemberRefusal(actor, refusal, route, nowMs);
     throw closureRequired(refusal);
   }
 
   return {
     async assertMayCall(request) {
       if (noteClosureMayCall(request)) return;
-      await assertNotBlocked(request);
+      await assertNotBlockedVia(request, {
+        method: request.method.toUpperCase(),
+        routeTemplate: request.routeTemplate ?? null,
+      });
     },
-    assertNotBlocked,
+    // The EVV offline-sync batch: the route itself asks, so there is no route template to record.
+    assertNotBlocked: (actor) => assertNotBlockedVia(actor, null),
   };
 }

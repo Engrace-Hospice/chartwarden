@@ -687,6 +687,7 @@ import {
   encounterVisitIdsForOrg,
   evaluateMemberClosure,
   mountEncounterRoutes,
+  recordClosureRefusal,
   registerClosureAlertCatalog,
   registerEncounterAbacPredicates,
   registerEncounterDraftReader,
@@ -4419,6 +4420,18 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             app.log.info({ organizationId, refused }, "note-closure gate refused requests");
             recordNoteClosureRefusals(refused);
           },
+          // CW-AC-47: who was refused, in the audit trail. At most one event per member per minute (the gate throttles it); best effort, the
+          // error class only is logged, and a failure never changes the 403.
+          onMemberRefusal: (refusal) =>
+            recordClosureRefusal(dbHandle.db, refusal, (error) =>
+              app.log.error(
+                {
+                  organizationId: refusal.organizationId,
+                  errorClass: error instanceof Error ? error.constructor.name : typeof error,
+                },
+                "note-closure refusal audit event could not be written",
+              ),
+            ),
         })
       : undefined;
   const tenantClearinghouse = dbHandle

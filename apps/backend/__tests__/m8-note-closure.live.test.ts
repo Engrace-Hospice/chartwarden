@@ -29,14 +29,21 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import type { AuditContext } from "@chartwarden/audit";
+import { type AuditContext, audit as writeAuditForTest } from "@chartwarden/audit";
 import {
   createInMemoryEffectivePermissionStore,
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
-import { type DbClient, createDbClient, organizationTimezone } from "@chartwarden/db";
+import {
+  type DbClient,
+  createCommitTracker,
+  createDbClient,
+  mayHaveCommitted,
+  organizationTimezone,
+  runWithCommitTracker,
+} from "@chartwarden/db";
 import { type AlertEmitter, createAlertPayloadRegistry } from "@chartwarden/messaging";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
@@ -47,13 +54,16 @@ import {
   ValidationError,
 } from "@chartwarden/types";
 import { Value } from "@sinclair/typebox/value";
+import { sql } from "drizzle-orm";
 import type { FastifyRequest } from "fastify";
 import { Client, type Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
   NOTE_CLOSURE_CLEAR_TTL_MS,
+  NOTE_CLOSURE_MEMBER_REFUSAL_AUDIT_INTERVAL_MS,
   type NoteClosureGate,
+  type NoteClosureMemberRefusal,
   createNoteClosureGate,
 } from "../src/bootstrap/note-closure-gate";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
@@ -73,6 +83,7 @@ import {
   grantClosureOverride,
   putClosurePolicy,
   readClosurePolicy,
+  recordClosureRefusal,
   registerClosureRoutes,
   revokeClosureOverride,
   runEncounterAttentionCron,
@@ -364,9 +375,20 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
     );
 
   /** The gate, adapted EXACTLY as `apps/backend/src/index.ts` builds it, with an injectable clock. */
-  function buildGate(clock: { now: Date }, policyCache = createDbClosurePolicyCache(handle.db)) {
+  function buildGate(
+    clock: { now: Date },
+    policyCache = createDbClosurePolicyCache(handle.db),
+    withRefusalAudit = false,
+  ) {
     const failures: unknown[] = [];
     const gate = createNoteClosureGate({
+      // CW-AC-47: exactly as index.ts builds it: the real writer over the app-role pool, a failure reported and never thrown
+      ...(withRefusalAudit
+        ? {
+            onMemberRefusal: (refusal: NoteClosureMemberRefusal) =>
+              recordClosureRefusal(handle.db, refusal, (error) => failures.push(error)),
+          }
+        : {}),
       policyCache,
       evaluate: ({ organizationId, userId, membershipId, now, policy }) =>
         withOrgContext(handle.db, { organizationId, userId }, (tx) =>
@@ -1341,6 +1363,132 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
         }
       });
     }
+
+    it("CW-AC-47: a refusal is tied to its member in the audit trail: one m8.encounter.closure_refused a minute, counting the rest, written as chartwarden_app and invisible to another tenant; an allowlisted call and a clear member write none", async () => {
+      const refused = await seedMember(orgs.A, "refusal-clinician");
+      const oldest = await seedEncounter({
+        org: orgs.A,
+        authorMembershipId: refused.membershipId,
+        clockStartedAt: CLOCK0,
+      });
+      const clear = await seedMember(orgs.A, "refusal-clear-clinician");
+      await setPolicy(ORG_A, "block", { thresholdHours: 24, enforceFrom: null });
+      const clock = { now: at(CLOCK0, 30) }; // six hours past the block instant
+      const { gate, failures } = buildGate(clock, undefined, true);
+      const eventsOf = async (membershipId: string) =>
+        (
+          await admin.query(
+            `SELECT resource_kind, resource_id::text AS resource_id, actor_user_id::text AS actor, outcome, severity, retention_class, context
+               FROM audit_event
+              WHERE organization_id=$1 AND event_type='m8.encounter.closure_refused' AND context->>'membershipId'=$2
+              ORDER BY created_at, id`,
+            [ORG_A, membershipId],
+          )
+        ).rows as {
+          resource_kind: string;
+          resource_id: string;
+          actor: string;
+          outcome: string;
+          severity: string;
+          retention_class: string;
+          context: Record<string, unknown>;
+        }[];
+
+      for (let i = 0; i < 3; i++) {
+        expect(await gateOutcome(gate, ORG_A, refused)).toBe("NOTE_CLOSURE_REQUIRED");
+      }
+      expect(failures).toEqual([]);
+      const firstWindow = await eventsOf(refused.membershipId);
+      expect(firstWindow).toHaveLength(1); // three refusals, one event
+      expect(firstWindow[0]).toMatchObject({
+        resource_kind: "encounter",
+        resource_id: oldest,
+        actor: refused.userId,
+        outcome: "denied",
+        severity: "warn",
+        retention_class: "compliance",
+        context: {
+          membershipId: refused.membershipId,
+          method: "POST",
+          routeTemplate: "/api/v1/encounters/:encounterId/void", // the template, never the URL the caller sent
+          overdueCount: 1,
+          refused: 1,
+        },
+      });
+      expect(JSON.stringify(firstWindow[0])).not.toContain("/x/void");
+
+      // an allowlisted call passes (and writes nothing); a member who is not blocked is never refused or audited
+      expect(await gateOutcome(gate, ORG_A, refused, ALLOWLISTED)).toBe("pass");
+      expect(await gateOutcome(gate, ORG_A, clear)).toBe("pass");
+      expect(await eventsOf(clear.membershipId)).toEqual([]);
+      expect(await eventsOf(refused.membershipId)).toHaveLength(1);
+
+      // a minute on, the next refusal writes the second event, standing for the two held back and itself
+      clock.now = new Date(clock.now.getTime() + NOTE_CLOSURE_MEMBER_REFUSAL_AUDIT_INTERVAL_MS);
+      expect(await gateOutcome(gate, ORG_A, refused)).toBe("NOTE_CLOSURE_REQUIRED");
+      const events = await eventsOf(refused.membershipId);
+      expect(events).toHaveLength(2);
+      expect(events[1]?.context).toMatchObject({ refused: 3 });
+
+      // tenant isolation as the app role: another organization's session reads none of it
+      const seenByB = await inOrg(ORG_B, supervisorB.userId, (tx) =>
+        tx.execute(
+          sql`SELECT count(*)::int AS n FROM audit_event WHERE event_type = 'm8.encounter.closure_refused'`,
+        ),
+      );
+      expect(Number((seenByB.rows[0] as { n: number }).n)).toBe(0);
+    });
+
+    it("CW-AC-47 / CW-AC-36: the refusal's audit write is not owned by the request, so a keyed EVV offline-sync retry is still released (the commit tracker sees no commit)", async () => {
+      const keyed = await seedMember(orgs.A, "refusal-keyed-clinician");
+      await seedEncounter({
+        org: orgs.A,
+        authorMembershipId: keyed.membershipId,
+        clockStartedAt: CLOCK0,
+      });
+      await setPolicy(ORG_A, "block", { thresholdHours: 24, enforceFrom: null });
+      const { gate, failures } = buildGate({ now: at(CLOCK0, 30) }, undefined, true);
+      const refusedEvents = async () =>
+        Number(
+          (
+            await admin.query(
+              `SELECT count(*)::int AS n FROM audit_event
+                WHERE organization_id=$1 AND event_type='m8.encounter.closure_refused' AND context->>'membershipId'=$2`,
+              [ORG_A, keyed.membershipId],
+            )
+          ).rows[0].n,
+        );
+
+      // the EVV offline-sync routes ask the gate from inside their handler, after the Idempotency-Key claim: the same ambient tracker
+      const tracker = createCommitTracker();
+      await runWithCommitTracker(tracker, async () => {
+        await expect(
+          gate.assertNotBlocked({
+            organizationId: ORG_A,
+            userId: keyed.userId,
+            membershipId: keyed.membershipId,
+          }),
+        ).rejects.toMatchObject({ code: "NOTE_CLOSURE_REQUIRED" });
+      });
+      expect(failures).toEqual([]);
+      expect(await refusedEvents()).toBe(1); // the event landed (the EVV path: no route template)
+      expect(mayHaveCommitted(tracker)).toBe(false); // ...and the request does not count it as its own commit
+
+      // negative control: the same kind of write made inside the request's own context IS seen by the tracker
+      const owned = createCommitTracker();
+      await runWithCommitTracker(owned, () =>
+        inOrg(ORG_A, keyed.userId, (tx) =>
+          writeAuditForTest(tx, auditContextOf(ORG_A, keyed.userId), {
+            eventType: "m8.encounter.closure_refused",
+            resourceKind: "encounter",
+            outcome: "denied",
+            severity: "warn",
+            retentionClass: "compliance",
+          }),
+        ),
+      );
+      expect(mayHaveCommitted(owned)).toBe(true);
+    });
 
     it("the enforce_from grace moves only the block instant: block @ clock+34h, alerts stay on the true clock", async () => {
       await setPolicy(ORG_A, "block", { thresholdHours: 24, enforceFrom: at(CLOCK0, 10) });

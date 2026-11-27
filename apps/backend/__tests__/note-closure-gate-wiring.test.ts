@@ -86,6 +86,13 @@ describe("the composition root wires the note-closure gate", () => {
     );
   });
 
+  it("hands the gate the per-member refusal audit sink (CW-AC-47), which writes through recordClosureRefusal and logs a failure by class", () => {
+    expect(index).toMatch(
+      /createNoteClosureGate\(\{[\s\S]{0,3500}?onMemberRefusal:\(refusal\)=>recordClosureRefusal\(dbHandle\.db,refusal,\(error\)=>app\.log\.error\(\{organizationId:refusal\.organizationId,errorClass:/,
+    );
+    expect(index).toContain("recordClosureRefusal,");
+  });
+
   it("hands the SAME cache to the encounter routes, so a policy PUT invalidates what the gate sees", () => {
     expect(index).toContain(
       "mountEncounterRoutes(app,dbHandle.db,m8OutboxPublisher,createHearthnoteCiphers(getTenantKeyProvider()),{...(closurePolicyCache?{policyCache:closurePolicyCache}:{}),",
