@@ -15,6 +15,7 @@
 // the local policy constants.
 
 export * from "./policy";
+export * from "./pairing";
 export * from "./cancellation-reasons";
 export * from "./rrule";
 export * from "./frequency";
