@@ -86,6 +86,12 @@ import {
   clientCorrelationContext,
   hopeAuditActor,
 } from "./hope-signature-audit";
+import { applySignerLicence, auditLicenceRefusals, readSignerLicence } from "./hope-signer-licence";
+import {
+  type SignerLicencePolicy,
+  putSignerLicencePolicy,
+  readSignerLicencePolicy,
+} from "./hope-signer-licence-policy";
 import { createHopeSpecRegistry, logSpecNotInForce } from "./hope-spec-registry";
 import { requireNotCancelled } from "./hope-submission-cancel";
 import {
@@ -152,6 +158,13 @@ import { regenerateSchedulesForAdmission } from "./scheduling/schedule-writer";
 
 const ASSESS = schema.hopeAssessments;
 const SCHED = schema.hopeTimepointSchedules;
+
+/** CW-AC-46 — the policy as the wire carries it (the instant as an ISO string; null for the never-configured default). */
+const signerLicencePolicyView = (policy: SignerLicencePolicy) => ({
+  mode: policy.mode,
+  reason: policy.reason,
+  configuredAt: policy.configuredAt ? policy.configuredAt.toISOString() : null,
+});
 const SFV = schema.symptomFollowUpVisits;
 const SUB = schema.hopeSubmissions;
 const SUBITEM = schema.hopeSubmissionItems;
@@ -1266,6 +1279,28 @@ export function createDbHopeBackend(
       });
     },
 
+    // ── CW-AC-46 — the organization's enforcement mode for the signer-licence check (hope-signer-licence-policy.ts) ───
+    async getSignerLicencePolicy(organizationId) {
+      const policy = await withOrgContext(db, { organizationId, userId: "" }, (tx) =>
+        readSignerLicencePolicy(tx as unknown as DbClient, organizationId),
+      );
+      return signerLicencePolicyView(policy);
+    },
+    // The row, the previous-mode read and the `m10.signature.licence_policy_changed` event commit together (one transaction).
+    async putSignerLicencePolicy(organizationId, args) {
+      const policy = await withOrgContext(db, { organizationId, userId: "" }, (tx) =>
+        putSignerLicencePolicy(tx as unknown as DbClient, {
+          organizationId,
+          membershipId: args.membershipId,
+          actorUserId: args.actorUserId,
+          mode: args.mode,
+          reason: args.reason,
+          request: args.request,
+        }),
+      );
+      return signerLicencePolicyView(policy);
+    },
+
     // ── §4.7 / GAP-018 ABAC resolver — correction + scope predicate facts (fail-closed on absent) ─────
     // The four loaders answer "absent" (null: `hope.scope` and the correction predicate fail closed) for an id that is no
     // uuid, without sending it to a `::uuid` comparison: a 22P02 here would be a 500 out of the authorization step.
@@ -1849,97 +1884,113 @@ export function createDbHopeBackend(
         ? await admissionSiting(organizationId, pre.patientId, pre.admissionId)
         : null;
 
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const t = tx as unknown as DbClient;
-        const { r, specCode, expectedVersion } = await lockDraftForSign(
-          t,
-          organizationId,
-          id,
-          args?.ifVersion,
-        );
-        await assertCorrectionHasSubstantiveChange(t, r);
-        const at = new Date();
-        const z0500b = at.toISOString().slice(0, 10);
-        const review = await readinessService.evaluateCandidateInTx(t, {
-          assessment: r,
-          specVersionCode: specCode,
-          isc: r.isc as "HA" | "HUV" | "HD" | "XX",
-          candidateZ0500B: z0500b,
-        });
-        if (!review.readiness.readyToSign) throw new HopeAssessmentNotReadyToSignError(review);
-        await writeZ0500B(t, r, organizationId, z0500b, at);
-        // The AFTER-UPDATE `trg_hope_schedule_mark_completed` closes the linked open schedule on draft→signed.
-        const signed = firstOrThrow(
-          await t
-            .update(ASSESS)
-            .set({
-              status: "signed",
-              signedAt: at,
-              signedByMembershipId: userId,
-              // D8 (GAP-019) — the PPS/ESAS-r context as of the signature. `null` only when M9 could
-              // not answer at all; a resolved snapshot with a null PPS is still recorded, because
-              // "we looked and there was none" is a different fact from "we never looked".
-              clinicalContextSnapshot: snapshot,
-              j2051MaxSeverity: r.j2051MaxSeverity,
-              j2051TriggerFired: r.j2051TriggerFired,
-              version: r.version + 1,
-              updatedAt: at,
-            })
-            .where(
-              and(
-                eq(ASSESS.id, id),
-                eq(ASSESS.organizationId, organizationId),
-                eq(ASSESS.version, expectedVersion),
-              ),
-            )
-            .returning(),
-          "signTimepoint matched no row",
-        );
-        // R-05: the signature ceremony's own evidence, on the same tx as the signed row (the M4 trigger only
-        // records the row diff, not that the signer attested or which step-up the route demanded).
-        await auditHopeSignature(t, {
-          organizationId,
-          membershipId: userId,
-          eventType: "hope.timepoint_signed",
-          // The ROW's id, not the URL's: the audit resource id and correlation id must be the stored id
-          // however the caller cased or formatted the path parameter, so a lookup by either one finds it.
-          assessmentId: signed.id,
-          rfaKind: r.rfaKind,
-          version: signed.version,
-          stepUpRequiredOperation: HOPE_SIGN_STEP_UP_OPERATION,
-          attestationConfirmed,
-          attestationVersion: args?.attestationVersion,
-          ...args?.request,
-        });
-        await recordSignedTail(
-          t,
-          {
+      // CW-AC-46 — the signer's active licences, through M17's `CredentialReader` seam (which opens its own tenant
+      // context, like the seams above): read as late as it can be, outside the transaction, so the window before the
+      // verdict is only the lock wait. Judged INSIDE the transaction against the locked draft's frozen discipline
+      // (hope-signer-licence.ts). A seam that cannot answer is a retryable 503, nothing signed.
+      const licence = await readSignerLicence(organizationId, userId, new Date());
+      // An ENFORCED licence refusal rolls this transaction back; its `denied` audit event is written on a new one (see the
+      // header of hope-signer-licence.ts), so the transaction is passed in as the promise `auditLicenceRefusals` awaits. In
+      // the organization's SHADOW mode the same finding is written inside this transaction and the signature goes through.
+      const licenceCaller = { organizationId, membershipId: userId, request: args?.request };
+      const licenceResource = { kind: "hope_assessment", id } as const;
+      return auditLicenceRefusals(
+        db,
+        licenceCaller,
+        licenceResource,
+        withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+          const t = tx as unknown as DbClient;
+          const { r, specCode, expectedVersion } = await lockDraftForSign(
+            t,
+            organizationId,
+            id,
+            args?.ifVersion,
+          );
+          await applySignerLicence(t, licenceCaller, licenceResource, licence, r, "timepoint_sign");
+          await assertCorrectionHasSubstantiveChange(t, r);
+          const at = new Date();
+          const z0500b = at.toISOString().slice(0, 10);
+          const review = await readinessService.evaluateCandidateInTx(t, {
+            assessment: r,
+            specVersionCode: specCode,
+            isc: r.isc as "HA" | "HUV" | "HD" | "XX",
+            candidateZ0500B: z0500b,
+          });
+          if (!review.readiness.readyToSign) throw new HopeAssessmentNotReadyToSignError(review);
+          await writeZ0500B(t, r, organizationId, z0500b, at);
+          // The AFTER-UPDATE `trg_hope_schedule_mark_completed` closes the linked open schedule on draft→signed.
+          const signed = firstOrThrow(
+            await t
+              .update(ASSESS)
+              .set({
+                status: "signed",
+                signedAt: at,
+                signedByMembershipId: userId,
+                // D8 (GAP-019) — the PPS/ESAS-r context as of the signature. `null` only when M9 could
+                // not answer at all; a resolved snapshot with a null PPS is still recorded, because
+                // "we looked and there was none" is a different fact from "we never looked".
+                clinicalContextSnapshot: snapshot,
+                j2051MaxSeverity: r.j2051MaxSeverity,
+                j2051TriggerFired: r.j2051TriggerFired,
+                version: r.version + 1,
+                updatedAt: at,
+              })
+              .where(
+                and(
+                  eq(ASSESS.id, id),
+                  eq(ASSESS.organizationId, organizationId),
+                  eq(ASSESS.version, expectedVersion),
+                ),
+              )
+              .returning(),
+            "signTimepoint matched no row",
+          );
+          // R-05: the signature ceremony's own evidence, on the same tx as the signed row (the M4 trigger only
+          // records the row diff, not that the signer attested or which step-up the route demanded).
+          await auditHopeSignature(t, {
             organizationId,
             membershipId: userId,
-            draft: r,
-            signed,
-            at,
-            ppsMissing,
-            snapshotTaken: snapshot !== null,
-            siting,
-            admissionId: pre.admissionId,
-          },
-          emit,
-        );
-        return {
-          assessmentId: signed.id,
-          status: "signed",
-          version: signed.version,
-          signedAt: at.toISOString(),
-          signedByMembershipId: userId,
-          z0500b,
-          validation: {
-            errorCount: review.validation.errorCount,
-            warningCount: review.validation.warningCount,
-            hasBlockingErrors: review.validation.hasBlockingErrors,
-          },
-        };
-      });
+            eventType: "hope.timepoint_signed",
+            // The ROW's id, not the URL's: the audit resource id and correlation id must be the stored id
+            // however the caller cased or formatted the path parameter, so a lookup by either one finds it.
+            assessmentId: signed.id,
+            rfaKind: r.rfaKind,
+            version: signed.version,
+            stepUpRequiredOperation: HOPE_SIGN_STEP_UP_OPERATION,
+            attestationConfirmed,
+            attestationVersion: args?.attestationVersion,
+            ...args?.request,
+          });
+          await recordSignedTail(
+            t,
+            {
+              organizationId,
+              membershipId: userId,
+              draft: r,
+              signed,
+              at,
+              ppsMissing,
+              snapshotTaken: snapshot !== null,
+              siting,
+              admissionId: pre.admissionId,
+            },
+            emit,
+          );
+          return {
+            assessmentId: signed.id,
+            status: "signed",
+            version: signed.version,
+            signedAt: at.toISOString(),
+            signedByMembershipId: userId,
+            z0500b,
+            validation: {
+              errorCount: review.validation.errorCount,
+              warningCount: review.validation.warningCount,
+              hasBlockingErrors: review.validation.hasBlockingErrors,
+            },
+          };
+        }),
+      );
     },
 
     // ── Correct a signed timepoint (§2.4 / D7 — append-only; signing supersedes the original) ─

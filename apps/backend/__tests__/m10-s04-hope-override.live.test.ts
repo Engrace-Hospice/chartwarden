@@ -58,6 +58,7 @@ import {
   createDbHopeBackend,
   registerHopeRoutes,
 } from "../src/modules/10-hope/index";
+import { registerLicencedHopeSigners } from "./_hope-signer-licence";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -331,6 +332,8 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       createAdmissionStatusReader(createDrizzleAdmissionReaderStore(handle.db)),
     );
     registerPatientSeams({ db: handle.db });
+    // CW-AC-46: signing reads the signer's licences (the licence itself: m10-hope-signer-licence.live).
+    registerLicencedHopeSigners();
     const grant = (userId: string, permissionKeys: string[]) => ({
       orgId: ORG,
       userId,

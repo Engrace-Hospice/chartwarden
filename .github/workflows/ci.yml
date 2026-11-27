@@ -325,6 +325,9 @@ jobs:
           - { name: "M10 HOPE S04 override", scripts: "test:m10:s04-override:live" }
           # R-01 + R-05 (HOPE audit) — SFV completion bound to the URL admission; the HOPE signature ceremony (attestation, step-up, AI block, audit).
           - { name: "M10 HOPE SFV/sign binding", scripts: "test:m10:sfv-sign-binding:live" }
+          # CW-AC-46 — the signer's licence (missing / expired / wrong discipline refused and audited, a valid one signs) read through the M17
+          # CredentialReader seam over the real roster as chartwarden_app; amendments, the SFV completion, tenant isolation, the CW-MON-01 rule.
+          - { name: "M10 HOPE signer licence", scripts: "test:m10:signer-licence:live" }
           # HOPE lock hardening (review round g3) — canonical advisory keys, re-judged spec-freeze UPDATE, one-shot submission retry, partition-move retry.
           - { name: "M10 HOPE lock hardening", scripts: "test:m10:g3:live" }
           - { name: "M11 Orders", scripts: "test:m11:read:live test:m11:write:live" }

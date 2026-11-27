@@ -564,6 +564,7 @@ exports.MODULES = [
       "hope_submission_item",
       "hope_submission_result_event",
       "hope_retention_review",
+      "hope_signer_licence_policy",
     ],
   },
   {

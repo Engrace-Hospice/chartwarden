@@ -2342,6 +2342,7 @@ import {
   HopeSfvListResponseSchema as M10HopeSfvListResponseSchema,
   HopeSfvResponseSchema as M10HopeSfvResponseSchema,
   HopeSignResponseSchema as M10HopeSignResponseSchema,
+  HopeSignerLicencePolicyResponseSchema as M10HopeSignerLicencePolicyResponseSchema,
   HopeSubmissionDetailResponseSchema as M10HopeSubmissionDetailResponseSchema,
   HopeSubmissionListResponseSchema as M10HopeSubmissionListResponseSchema,
   HopeSubmissionResponseSchema as M10HopeSubmissionResponseSchema,
@@ -2352,6 +2353,7 @@ import {
   InactivateTimepointSchema as M10InactivateTimepointSchema,
   MarkSubmissionUploadedSchema as M10MarkSubmissionUploadedSchema,
   PatchAnswersSchema as M10PatchAnswersSchema,
+  PutSignerLicencePolicySchema as M10PutSignerLicencePolicySchema,
   RecordSfvSchema as M10RecordSfvSchema,
   RecordTimepointSchema as M10RecordTimepointSchema,
   RegenerateSchedulesSchema as M10RegenerateSchedulesSchema,
@@ -6354,7 +6356,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeAssessmentResponseSchema,
   },
   "POST /api/v1/admissions/:admissionId/hope/sfv": {
-    summary: `Record an SFV completion (RFA-04, inserted signed; RN/NP/LPN/LVN author) — the SFV must belong to the path admission (409 M10_SFV_NO_TRIGGER otherwise); \`attestationConfirmed: true\` required (422 M10_ATTESTATION_REQUIRED); optional \`attestationVersion\` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); \`targetDate\` must be a real calendar date-time with an explicit offset (422); J2053 symptom-follow-up content required and every value CMS-allowed (422 M10_SFV_COMPLETION_INCOMPLETE); the triggering assessment's target date has no HOPE spec to judge the values against (${M10_SPEC_NOT_IN_FORCE_NOTE}); ${M10_ADMISSION_PROJECTION_GAP_NOTE}; admission read failing after the caseload check passed, retry (503 DEGRADED; a failure inside the caseload check answers 404); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); at most 10 requests a minute per user and 100 per organization (429 RATE_LIMITED beyond, Retry-After 60); ${M10_RECORD_BUSY_NOTE}`,
+    summary: `Record an SFV completion (RFA-04, inserted signed; RN/NP/LPN/LVN author) — the SFV must belong to the path admission (409 M10_SFV_NO_TRIGGER otherwise); \`attestationConfirmed: true\` required (422 M10_ATTESTATION_REQUIRED); optional \`attestationVersion\` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); \`targetDate\` must be a real calendar date-time with an explicit offset (422); J2053 symptom-follow-up content required and every value CMS-allowed (422 M10_SFV_COMPLETION_INCOMPLETE); the triggering assessment's target date has no HOPE spec to judge the values against (${M10_SPEC_NOT_IN_FORCE_NOTE}); ${M10_ADMISSION_PROJECTION_GAP_NOTE}; admission read failing after the caseload check passed, retry (503 DEGRADED; a failure inside the caseload check answers 404); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); at most 10 requests a minute per user and 100 per organization (429 RATE_LIMITED beyond, Retry-After 60); the signer must hold an active professional licence on the signing day in the body's author discipline (403 M10_SIGNER_LICENCE_NOT_ACTIVE or M10_SIGNER_LICENCE_WRONG_DISCIPLINE, audited, no override; 503 M10_SIGNER_LICENCE_UNVERIFIABLE when the licence roster cannot be read: retry); ${M10_RECORD_BUSY_NOTE}`,
     body: M10RecordSfvSchema,
     status: 201,
     response: M10HopeAssessmentResponseSchema,
@@ -6365,7 +6367,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeAssessmentResponseSchema,
   },
   "POST /api/v1/hope/assessments/:id/sign": {
-    summary: `Final-validate and sign a draft HOPE assessment — \`attestationConfirmed: true\` required (422 M10_ATTESTATION_REQUIRED); optional \`attestationVersion\` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); ${M10_SPEC_NOT_IN_FORCE_NOTE} for a legacy draft whose spec cannot be frozen; ${M10_RECORD_BUSY_NOTE}`,
+    summary: `Final-validate and sign a draft HOPE assessment — \`attestationConfirmed: true\` required (422 M10_ATTESTATION_REQUIRED); optional \`attestationVersion\` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); the signer must hold an active professional licence on the signing day in the draft's author discipline (403 M10_SIGNER_LICENCE_NOT_ACTIVE or M10_SIGNER_LICENCE_WRONG_DISCIPLINE, audited, no override; 503 M10_SIGNER_LICENCE_UNVERIFIABLE when the licence roster cannot be read: retry); ${M10_SPEC_NOT_IN_FORCE_NOTE} for a legacy draft whose spec cannot be frozen; ${M10_RECORD_BUSY_NOTE}`,
     body: M10SignTimepointSchema,
     response: M10HopeSignResponseSchema,
   },
@@ -6481,6 +6483,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: `Admin: create any missing HOPE schedule windows for an admission (existing rows, in any status, are left untouched, so nothing is recomputed or reopened and a window computed from a wrong date stays as it is); returns the admission's schedule count; AI principals refused (403); a concurrent regenerate of the same admission is waited for at most 5 seconds, then ${M10_RECORD_BUSY_NOTE}; an admission the caller cannot see (absent here, or another organization's) answers 404 from the scope guard before anything is written; an admission that is visible but not sited (no provider entity or location) is ${M10_ADMISSION_PROJECTION_GAP_NOTE}`,
     body: M10RegenerateSchedulesSchema,
     response: M10HopeRegenerateResponseSchema,
+  },
+  "GET /api/v1/hope/admin/signer-licence-policy": {
+    summary:
+      "Platform operator: the organization's enforcement mode for the signer-licence check at HOPE signing (CW-AC-46): enforce (the default for an organization that never set one: configuredAt is null) or shadow, with the reason it runs below enforce; organization-level configuration, no patient data",
+    response: M10HopeSignerLicencePolicyResponseSchema,
+  },
+  "PUT /api/v1/hope/admin/signer-licence-policy": {
+    summary:
+      "Platform operator (permission hope.admin.signer_licence_policy, never a tenant default): set the organization's enforcement mode for the signer-licence check (CW-AC-46). enforce refuses a signer with no active licence in the record's discipline; shadow lets the signature through and records the would-be refusal as an m10.signature.licence_refused audit finding (mode shadow) that the CW-MON-01 burst rule still counts. shadow REQUIRES a plain-text reason of 20-200 characters, screened for SSN- and MBI-shaped values (422); enforce takes none (422). No tenant role holds the permission by default. Fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); the change is audited (m10.signature.licence_policy_changed, the previous and new mode and the reason); idempotent",
+    body: M10PutSignerLicencePolicySchema,
+    response: M10HopeSignerLicencePolicyResponseSchema,
   },
 });
 

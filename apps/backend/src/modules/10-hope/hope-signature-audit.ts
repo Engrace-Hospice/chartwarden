@@ -20,8 +20,10 @@
 //
 // Context is ids and enums only (no PHI). M10's acting id is the MEMBERSHIP id, so it rides in the context; the
 // row's `actor_user_id` is the SESSION user the request context carries (as the read-audit rows fill it), and stays
-// null for a direct service call that has none. The event type is a free string; M10 has no `m10.*` slice in the M4
-// action catalog, and the un-prefixed `hope.*` names follow `hope.late_deadline_override`.
+// null for a direct service call that has none. The event type is a free string: these signature events are not in the M4
+// action catalog (its only M10 entries, `m10.signature.licence_refused` and `m10.signature.licence_policy_changed`, are catalogued because
+// CW-MON-01 rules read them),
+// and the un-prefixed `hope.*` names follow `hope.late_deadline_override`.
 import { createHash } from "node:crypto";
 import { type AuditContext, audit } from "@chartwarden/audit";
 import type { DbClient } from "@chartwarden/db";

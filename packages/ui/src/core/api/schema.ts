@@ -2312,7 +2312,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record an SFV completion (RFA-04, inserted signed; RN/NP/LPN/LVN author) — the SFV must belong to the path admission (409 M10_SFV_NO_TRIGGER otherwise); `attestationConfirmed: true` required (422 M10_ATTESTATION_REQUIRED); optional `attestationVersion` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); `targetDate` must be a real calendar date-time with an explicit offset (422); J2053 symptom-follow-up content required and every value CMS-allowed (422 M10_SFV_COMPLETION_INCOMPLETE); the triggering assessment's target date has no HOPE spec to judge the values against (422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; the idempotency layer replays the 422 for 24 h on the same key, so after an operator loads the spec use a NEW Idempotency-Key)); 422 M10_ADMISSION_PROJECTION_GAP (no admission projection is available from the M6 seam; the idempotency layer replays the 422 for 24 h on the same key, so after an operator repairs the admission use a NEW Idempotency-Key); admission read failing after the caseload check passed, retry (503 DEGRADED; a failure inside the caseload check answers 404); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); at most 10 requests a minute per user and 100 per organization (429 RATE_LIMITED beyond, Retry-After 60); 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
+        /** Record an SFV completion (RFA-04, inserted signed; RN/NP/LPN/LVN author) — the SFV must belong to the path admission (409 M10_SFV_NO_TRIGGER otherwise); `attestationConfirmed: true` required (422 M10_ATTESTATION_REQUIRED); optional `attestationVersion` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); `targetDate` must be a real calendar date-time with an explicit offset (422); J2053 symptom-follow-up content required and every value CMS-allowed (422 M10_SFV_COMPLETION_INCOMPLETE); the triggering assessment's target date has no HOPE spec to judge the values against (422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; the idempotency layer replays the 422 for 24 h on the same key, so after an operator loads the spec use a NEW Idempotency-Key)); 422 M10_ADMISSION_PROJECTION_GAP (no admission projection is available from the M6 seam; the idempotency layer replays the 422 for 24 h on the same key, so after an operator repairs the admission use a NEW Idempotency-Key); admission read failing after the caseload check passed, retry (503 DEGRADED; a failure inside the caseload check answers 404); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); at most 10 requests a minute per user and 100 per organization (429 RATE_LIMITED beyond, Retry-After 60); the signer must hold an active professional licence on the signing day in the body's author discipline (403 M10_SIGNER_LICENCE_NOT_ACTIVE or M10_SIGNER_LICENCE_WRONG_DISCIPLINE, audited, no override; 503 M10_SIGNER_LICENCE_UNVERIFIABLE when the licence roster cannot be read: retry); 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1AdmissionsByAdmissionIdHopeSfv"];
         delete?: never;
         options?: never;
@@ -13535,6 +13535,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hope/admin/signer-licence-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Platform operator: the organization's enforcement mode for the signer-licence check at HOPE signing (CW-AC-46): enforce (the default for an organization that never set one: configuredAt is null) or shadow, with the reason it runs below enforce; organization-level configuration, no patient data */
+        get: operations["getApiV1HopeAdminSignerlicencepolicy"];
+        /** Platform operator (permission hope.admin.signer_licence_policy, never a tenant default): set the organization's enforcement mode for the signer-licence check (CW-AC-46). enforce refuses a signer with no active licence in the record's discipline; shadow lets the signature through and records the would-be refusal as an m10.signature.licence_refused audit finding (mode shadow) that the CW-MON-01 burst rule still counts. shadow REQUIRES a plain-text reason of 20-200 characters, screened for SSN- and MBI-shaped values (422); enforce takes none (422). No tenant role holds the permission by default. Fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); the change is audited (m10.signature.licence_policy_changed, the previous and new mode and the reason); idempotent */
+        put: operations["putApiV1HopeAdminSignerlicencepolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hope/assessments/{id}": {
         parameters: {
             query?: never;
@@ -13647,7 +13665,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Final-validate and sign a draft HOPE assessment — `attestationConfirmed: true` required (422 M10_ATTESTATION_REQUIRED); optional `attestationVersion` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); 422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; the idempotency layer replays the 422 for 24 h on the same key, so after an operator loads the spec use a NEW Idempotency-Key) for a legacy draft whose spec cannot be frozen; 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
+        /** Final-validate and sign a draft HOPE assessment — `attestationConfirmed: true` required (422 M10_ATTESTATION_REQUIRED); optional `attestationVersion` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); the signer must hold an active professional licence on the signing day in the draft's author discipline (403 M10_SIGNER_LICENCE_NOT_ACTIVE or M10_SIGNER_LICENCE_WRONG_DISCIPLINE, audited, no override; 503 M10_SIGNER_LICENCE_UNVERIFIABLE when the licence roster cannot be read: retry); 422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; the idempotency layer replays the 422 for 24 h on the same key, so after an operator loads the spec use a NEW Idempotency-Key) for a legacy draft whose spec cannot be frozen; 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1HopeAssessmentsByIdSign"];
         delete?: never;
         options?: never;
@@ -73001,6 +73019,65 @@ export interface operations {
                     "application/json": {
                         admissionId: string;
                         scheduleCount: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1HopeAdminSignerlicencepolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        mode: "enforce" | "shadow";
+                        reason: string | null;
+                        configuredAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1HopeAdminSignerlicencepolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    mode: "enforce" | "shadow";
+                    reason?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        mode: "enforce" | "shadow";
+                        reason: string | null;
+                        configuredAt: string | null;
                     };
                 };
             };

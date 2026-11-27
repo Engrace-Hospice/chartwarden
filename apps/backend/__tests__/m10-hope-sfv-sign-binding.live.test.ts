@@ -73,6 +73,7 @@ import {
 } from "../src/modules/10-hope/jobs/cron-workers";
 import { awaitParked } from "./_hope-busy-within";
 import { answerHopeForSign } from "./_hope-sign-ready";
+import { registerLicencedHopeSigners } from "./_hope-signer-licence";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -520,6 +521,8 @@ describe.skipIf(!DB_URL)(
         createAdmissionStatusReader(createDrizzleAdmissionReaderStore(handle.db)),
       );
       registerPatientSeams({ db: handle.db });
+      // CW-AC-46: signing reads the signer's licences (the licence itself: m10-hope-signer-licence.live).
+      registerLicencedHopeSigners();
       registerEffectivePermissionResolver(
         createInMemoryEffectivePermissionStore(
           Object.values(member).map((m) => ({

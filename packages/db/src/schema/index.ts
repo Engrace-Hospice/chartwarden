@@ -372,6 +372,7 @@ export * from "./hope/hope-submissions";
 export * from "./hope/hope-submission-items";
 export * from "./hope/hope-submission-result-events";
 export * from "./hope/hope-retention-reviews"; // GAP-181 — the retention-scan ledger (0482)
+export * from "./hope/hope-signer-licence-policy"; // CW-AC-46 — the per-organization signer-licence enforcement mode (1587)
 
 // ---------------------------------------------------------------------------
 // Module 11 — Orders (M11-T02)

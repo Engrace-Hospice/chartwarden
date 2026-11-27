@@ -48,6 +48,7 @@ import {
   SFV_COMPLETION_INCOMPLETE_MESSAGE,
   buildCompletedSfvRegulatoryAnswerPlan,
 } from "../hope-sfv-completion-plan";
+import { validateSignerLicencePolicyInput } from "../hope-signer-licence-policy";
 import {
   cancelNotAllowedMessage,
   isCancellableSubmissionStatus,
@@ -270,6 +271,26 @@ export interface HopeOperatorActor {
   readonly membershipId: string;
   readonly request?: HopeSignatureRequestFacts;
 }
+/** CW-AC-46 — an organization's enforcement mode for the signer-licence check (`enforce` when it never set one: `configuredAt` null). */
+export interface HopeSignerLicencePolicyView {
+  readonly mode: "enforce" | "shadow";
+  /** The reason the organization runs in shadow; null while it enforces. */
+  readonly reason: string | null;
+  readonly configuredAt: string | null;
+}
+/** The PUT: `reason` is required for shadow and refused for enforce; the actor is the acting membership and the SESSION user. */
+export interface PutSignerLicencePolicyArgs {
+  readonly mode: "enforce" | "shadow";
+  readonly reason?: string;
+  readonly membershipId: string;
+  readonly actorUserId: string;
+  readonly request?: HopeSignatureRequestFacts;
+}
+const DEFAULT_SIGNER_LICENCE_POLICY_VIEW: HopeSignerLicencePolicyView = Object.freeze({
+  mode: "enforce",
+  reason: null,
+  configuredAt: null,
+});
 export interface RecordSfvArgs {
   readonly triggeringAssessmentId: string;
   readonly targetDate: string;
@@ -510,6 +531,13 @@ export interface HopeRouteService extends HopeAbacResolver {
     admissionId: string,
     actor: HopeOperatorActor,
   ): Promise<{ admissionId: string; scheduleCount: number }>;
+  /** CW-AC-46 — the organization's signer-licence enforcement mode (`enforce`, configuredAt null, when it never set one). */
+  getSignerLicencePolicy(organizationId: string): Promise<HopeSignerLicencePolicyView>;
+  /** CW-AC-46 — set it: shadow needs a reason (20-200 characters), enforce takes none; audited. Platform operator + step-up (route). */
+  putSignerLicencePolicy(
+    organizationId: string,
+    args: PutSignerLicencePolicyArgs,
+  ): Promise<HopeSignerLicencePolicyView>;
   /** Drain (and clear) the §2.4 outbox events recorded since the last call (test/relay seam). */
   drainEvents(): RecordedHopeEvent[];
 }
@@ -736,6 +764,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
   const schedules = new Map<string, ScheduleRecord>();
   const sfvs = new Map<string, SfvRecord>();
   const submissions = new Map<string, SubmissionRecord>();
+  const signerLicencePolicies = new Map<string, HopeSignerLicencePolicyView>();
   const events: RecordedHopeEvent[] = [];
   const latest = seed.latestAssessments;
   const admissionPatients = seed.admissionPatients ?? {};
@@ -2151,6 +2180,25 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         (s) => s.organizationId === organizationId && s.admissionId === admissionId,
       ).length;
       return { admissionId, scheduleCount: count };
+    },
+
+    // CW-AC-46 — the signer-licence enforcement mode, per organization (the slice has no signer-licence check: the DB backend
+    // owns it, and the DB backend is what production mounts). Judged by the same validator as the database backend.
+    async getSignerLicencePolicy(organizationId) {
+      // A copy: the route's response parse converts in place, which a frozen default or the stored view must not suffer.
+      return {
+        ...(signerLicencePolicies.get(organizationId) ?? DEFAULT_SIGNER_LICENCE_POLICY_VIEW),
+      };
+    },
+    async putSignerLicencePolicy(organizationId, args) {
+      const reason = validateSignerLicencePolicyInput(args);
+      const view: HopeSignerLicencePolicyView = {
+        mode: args.mode,
+        reason,
+        configuredAt: now(),
+      };
+      signerLicencePolicies.set(organizationId, view);
+      return { ...view };
     },
 
     // ── §4.7 / GAP-018 ABAC resolver (correction + scope predicates) ───────────────────────────────────

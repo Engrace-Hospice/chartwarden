@@ -10,6 +10,7 @@ import { registerPatientSeams } from "../src/modules/05-patient/index";
 import { createDbHopeBackend } from "../src/modules/10-hope/hope-route-service-db";
 import { createHopeSpecRegistry } from "../src/modules/10-hope/hope-spec-registry";
 import { answerHopeForSign } from "./_hope-sign-ready";
+import { registerLicencedHopeSigners } from "./_hope-signer-licence";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 import { seedM5Patient } from "./_m6-admit";
 
@@ -169,6 +170,7 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2A record initialization — LIVE Postg
       },
     });
     registerPatientSeams({ db: handle.db });
+    registerLicencedHopeSigners(); // CW-AC-46: signing reads the signer's licences (the licence itself: m10-hope-signer-licence.live)
     // GAP-015: the capture gate judges the server clock; pin it before every fixture window so the gate
     // reads each fixture's own targetDate.
     svc = createDbHopeBackend(handle.db, undefined, () => new Date("2020-01-01T00:00:00.000Z"));

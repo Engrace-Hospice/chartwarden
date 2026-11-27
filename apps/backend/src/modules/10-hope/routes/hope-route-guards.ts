@@ -4,12 +4,13 @@
 // signature audit row records and the guard lists the submission-lifecycle and regenerate routes share. Split out so the
 // registrar stays a route inventory. No helper here reads a header: the request facts come off `request.context`, which the
 // platform fills at the edge.
-import { hasOrgWideScope, requireAbac, requirePermission } from "@chartwarden/auth";
+import { hasOrgWideScope, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import { assertAuthorBoundToActor, requireAttestation } from "@chartwarden/hope";
 import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { type PreHandler, ROUTE_FORMATS, rejectAiActor } from "@chartwarden/shared/route-kit";
 import { type HopeRfaKind, ValidationError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
+import { FORBIDDEN_REASON_CHARACTER, WHITE_SPACE_RUN } from "../hope-plain-text";
 import type { HopeRouteService, HopeSignatureRequestFacts } from "./service";
 
 /**
@@ -76,20 +77,8 @@ export const adminOverrideRequested = (body: unknown): boolean => {
 /** The justification's minimum length; `RecordTimepointSchema` / `RecordSfvSchema` declare the same number (a unit test pins it). */
 export const OVERRIDE_JUSTIFICATION_MIN_LENGTH = 20;
 
-/** A run of Unicode White_Space: one space for the length minimum. The web client's counter must collapse the same runs. */
-const WHITE_SPACE_RUN = /\p{White_Space}+/gu;
-
-/**
- * Characters a justification may not contain: control characters (`\p{Cc}`: NUL, escapes, NEL...) EXCEPT tab, line feed and
- * carriage return (a multi-line reason is normal), format characters (`\p{Cf}`: zero-width space / joiner, bidi marks, soft
- * hyphen, BOM...) and a surrogate that has no partner (not text at all). Twenty zero-width characters would otherwise pass the
- * length minimum as an invisible "reason", and a NUL or a lone surrogate cannot be stored in the audit event's jsonb (22P05),
- * which would turn this 422 into a 500. REJECTED, never stripped: silently removing characters would store a different text
- * from the one the admin typed and measured the minimum on. Not screened: other blank-looking glyphs (Hangul fillers, the
- * Braille blank); the text is attributable to a named admin and still goes through the patient-identifier screen.
- */
-const FORBIDDEN_JUSTIFICATION_CHARACTER =
-  /(?![\t\n\r])[\p{Cc}\p{Cf}]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u;
+// The whitespace-run and forbidden-character rules a justification is judged by live in ../hope-plain-text.ts: the signer-licence shadow
+// reason (hope-signer-licence-policy.ts) takes the same two, so there is one definition.
 
 /**
  * The late-deadline override's justification, judged and cleaned. It is stored verbatim in the IMMUTABLE critical
@@ -97,7 +86,7 @@ const FORBIDDEN_JUSTIFICATION_CHARACTER =
  * reason and must not name a patient: the surrounding whitespace is trimmed, and the minimum length is measured after every run
  * of Unicode White_Space (spaces, tabs, line breaks, U+00A0, U+2028 and U+2029, the em and en spaces...) is collapsed to ONE
  * space, so twenty blanks of any kind are not a reason (the stored text is the trimmed text as typed, never the collapsed one);
- * text with control or format characters is refused (see {@link FORBIDDEN_JUSTIFICATION_CHARACTER}); and an SSN- or MBI-shaped
+ * text with control or format characters is refused (see {@link FORBIDDEN_REASON_CHARACTER}); and an SSN- or MBI-shaped
  * value is refused with a 422 that names the field and never echoes the text.
  * Returns the text to hand the service, `undefined` when no override was asked for (a text sent without the flag is not kept).
  */
@@ -116,7 +105,7 @@ export function requireOverrideJustification(body: {
       },
     ]);
   }
-  if (FORBIDDEN_JUSTIFICATION_CHARACTER.test(text)) {
+  if (FORBIDDEN_REASON_CHARACTER.test(text)) {
     throw new ValidationError("an admin deadline override needs a plain-text justification", [
       {
         field: "adminOverrideJustification",
@@ -232,4 +221,27 @@ export const REGENERATE_SCHEDULES_GUARDS: readonly PreHandler[] = [
   ADMIN_REGEN,
   REJECT_AI_OPERATIONS,
   SCOPE_BODY_ADMISSION("hope.admin.regenerate_schedules"),
+];
+
+// CW-AC-46 — the organization's enforcement mode for the signer-licence check. The platform-category permission (never a tenant
+// default: a tenant cannot lower its own control), the same key as the step-up operation, and no patient or id to scope (an
+// organization-level configuration; the organization is the caller's own). The step-up is LAST, so a caller the permission refuses
+// is never asked to re-authenticate, and it is not satisfiable by break-glass.
+const ADMIN_SIGNER_LICENCE_POLICY = requirePermission(
+  "hope.admin.signer_licence_policy",
+) as PreHandler;
+const STEP_UP_SIGNER_LICENCE_POLICY = requireStepUp(
+  "hope.admin.signer_licence_policy",
+) as PreHandler;
+
+/** Read the policy: the permission alone (it is organization-level configuration with no patient data). */
+export const SIGNER_LICENCE_POLICY_READ_GUARDS: readonly PreHandler[] = [
+  ADMIN_SIGNER_LICENCE_POLICY,
+];
+
+/** Set the policy: the permission, no AI principal, then a fresh step-up. */
+export const SIGNER_LICENCE_POLICY_WRITE_GUARDS: readonly PreHandler[] = [
+  ADMIN_SIGNER_LICENCE_POLICY,
+  REJECT_AI_OPERATIONS,
+  STEP_UP_SIGNER_LICENCE_POLICY,
 ];

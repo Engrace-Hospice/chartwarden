@@ -5,6 +5,7 @@ import { lockAssessmentRow } from "../src/modules/10-hope/hope-assessment-lock";
 import { createDbHopeBackend } from "../src/modules/10-hope/hope-route-service-db";
 import { cancelHopeSubmission } from "../src/modules/10-hope/hope-submission-cancel-db";
 import { scriptedDb } from "./_hope-g3-fake-db";
+import { registerLicencedHopeSigners } from "./_hope-signer-licence";
 
 // Group g3, round 6 (no Postgres): the claim "a non-uuid URL id never reaches a uuid comparison" holds for EVERY id-taking
 // route-service method, not only the by-id reads. A route id is only length-checked; `hope.scope` answers 404 for it
@@ -21,6 +22,7 @@ const ID = "abcdef01-2345-4678-89ab-cdef01234567";
 
 beforeEach(() => {
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  registerLicencedHopeSigners(); // CW-AC-46: signing reads the signer's licences before its first statement
 });
 afterEach(() => {
   vi.restoreAllMocks();

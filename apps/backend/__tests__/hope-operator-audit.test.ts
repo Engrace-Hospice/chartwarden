@@ -20,6 +20,7 @@ import { createSfvCompletionRecorder } from "../src/modules/10-hope/hope-sfv-com
 import { cancelHopeSubmission } from "../src/modules/10-hope/hope-submission-cancel-db";
 import { regenerateSchedulesForAdmission } from "../src/modules/10-hope/scheduling/schedule-writer";
 import { renderSql, scriptedDb } from "./_hope-g3-fake-db";
+import { registerLicencedHopeSigners } from "./_hope-signer-licence";
 
 // R-08 / audit-trail gaps (no Postgres; the database is scripted): cancel, schedule skip, the admin regenerate and a
 // refused SFV completion each write an explicit audit event with the acting membership and the request's session user,
@@ -562,6 +563,7 @@ describe("the unbound SFV completion refusal", () => {
   });
 
   it("recordSfv audits the refusal after the transaction ended, and the caller still gets the same 409", async () => {
+    registerLicencedHopeSigners(); // CW-AC-46: an SFV completion reads the signer's licences first
     registerSeam("AdmissionStatusReader", {
       getAdmissionSummary: async () => ({ organizationId: ORG, patientId: "p-1" }),
     } as never);
@@ -593,6 +595,7 @@ describe("the unbound SFV completion refusal", () => {
   });
 
   it("recordSfv still answers the 409 when the audit write fails", async () => {
+    registerLicencedHopeSigners();
     registerSeam("AdmissionStatusReader", {
       getAdmissionSummary: async () => ({ organizationId: ORG, patientId: "p-1" }),
     } as never);

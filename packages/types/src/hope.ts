@@ -85,6 +85,18 @@ export type HopeSubmissionItemStatus =
  */
 export const HOPE_ATTESTATION_VERSION = "2026-11-15.1";
 
+/**
+ * CW-AC-46 — the per-organization enforcement mode of the signer-licence check (`hope_signer_licence_mode`, migration 1587; the
+ * database enum is pinned to this list by a test). `enforce` refuses an unlicensed signer; `shadow` lets the signature through and
+ * records the would-be refusal as an audit finding. An organization with no setting is `enforce`: compliant by default.
+ */
+export const HOPE_SIGNER_LICENCE_MODES = ["enforce", "shadow"] as const;
+export type HopeSignerLicenceMode = (typeof HOPE_SIGNER_LICENCE_MODES)[number];
+export const HOPE_SIGNER_LICENCE_DEFAULT_MODE: HopeSignerLicenceMode = "enforce";
+/** The reason running below `enforce` requires, in characters once trimmed (the CW-AC-24 gate's log-only reason bounds). */
+export const HOPE_SIGNER_LICENCE_SHADOW_REASON_MIN = 20;
+export const HOPE_SIGNER_LICENCE_SHADOW_REASON_MAX = 200;
+
 /** The attestation a signer affirms before signing a timepoint (modelled on the M8 encounter sign ceremony). */
 export const HOPE_SIGN_ATTESTATION_STATEMENT =
   "I attest that this HOPE record is complete and accurate to the best of my knowledge. I understand that signing makes it read-only.";

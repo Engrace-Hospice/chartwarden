@@ -6,6 +6,20 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-27 — HOPE signing now verifies the signer's professional licence (M10)
+
+**Routes:** `POST /api/v1/hope/assessments/{id}/sign` and `POST /api/v1/admissions/{admissionId}/hope/sfv` (which inserts the RFA-04 already signed). **No field changed; three refusals are new.** The signer must hold an **active** licence on the signing day (UTC) in the discipline the record is attributed to: RN needs an `rn` licence, NP `np`, MD `md`, LPN and LVN `lpn`. The licence is the one recorded in Scheduling (`POST /api/v1/memberships/{membershipId}/credentials`).
+
+- `403 M10_SIGNER_LICENCE_NOT_ACTIVE`: no active licence in that discipline. A licence that was never recorded, has expired, is suspended or revoked, or is not yet effective is this one answer.
+- `403 M10_SIGNER_LICENCE_WRONG_DISCIPLINE`: an active licence, but in another discipline only.
+- `503 M10_SIGNER_LICENCE_UNVERIFIABLE`: the licence roster could not be read. Nothing was signed; retry (the same key may be reused, except for a legacy draft whose spec had to be frozen by the same request, which needs a new key).
+
+No signature is written on a refusal, there is no override, and the refusal is audited. **The 403 is replayed for 24 hours on the same `Idempotency-Key`** (the refusal is a committed audit write): after the licence is recorded, send the request again with a **new** key. A correction (`/correct`) creates a draft and signs nothing, so it is checked when that correction draft is signed. **Before this reaches production, every clinician who signs HOPE records needs their licence recorded**, or their signature is refused.
+
+**New routes, for a platform operator only:** `GET` and `PUT /api/v1/hope/admin/signer-licence-policy` (permission `hope.admin.signer_licence_policy`, held by no tenant role by default; the `PUT` needs a fresh step-up and refuses an AI principal). They ship in the same release that starts enforcing, so for an organization live at the merge the licences must be recorded first. An organization **enforces by default** (`GET` answers `{"mode":"enforce","reason":null,"configuredAt":null}` for one that never set a mode). For the rollout window it may be put in `{"mode":"shadow","reason":"<20-200 characters, no patient identifiers>"}`: an unlicensed signature then goes through and is recorded as an audit finding instead of being refused. `{"mode":"enforce"}` (no reason) switches it back. `shadow` without a reason, or `enforce` with one, is `422`. A seam outage is still `503` in both modes.
+
+---
+
 ## 2026-11-25 — ESAS-r: the "any symptom 7 or more" change rule now fires (M9)
 
 **No route or field changed; a behaviour that was specified (Module 9 spec §2.4) but never ran now runs.** Recording an ESAS-r reading in which any one of the nine items scores 7 or more writes an open `significant_change_event` (rule `esas_symptom_ge_7`, delta = the worst item score, threshold 7), emits `m9.assessment.significant_change`. The event shows on the patient's significant-change worklist, lands in M14's since-last-IDG slot, and M11 holds an order-suggestion entry for it (a suggested order kind only, for any of the nine items; M11 never creates the order, and no screen shows the entry yet). Severity is `medium` and stays `medium` until someone acknowledges it: only the three critical rules (PPS drop, Braden, NYHA IV) escalate to `high` after 24 hours or route to the medical director, and no consumer sends this event as a message. A capture with no recorded provider entity or location writes no event. A correction runs the rule again, so it can leave the first reading's alert open next to a new one (as it already does for every other rule). Until now `maxSymptomScore` was never passed to the detector, so no tenant ever got this alert. Only readings recorded from now on are evaluated; nothing is back-filled. The optional "other" symptom does not count, as it does not count toward the total.
