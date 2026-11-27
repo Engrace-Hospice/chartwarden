@@ -517,6 +517,8 @@
     "arch:offset-cursors": "bun run scripts/check-offset-cursors.ts",
     "arch:pdf-templates": "bun run scripts/check-pdf-template-coverage.ts",
     "arch:compose-policy": "bun run scripts/check-compose-policy.ts",
+    "arch:tls-policy": "bun run scripts/check-tls-policy.ts",
+    "test:tls-edge:live": "CHARTWARDEN_TLS_LIVE=1 vitest run scripts/__tests__/tls-edge.live.test.ts",
     "test:golden:m22": "vitest run apps/backend/__tests__/m22-forms-golden.test.ts",
     "arch:context-attributes": "bun run scripts/check-context-attributes.ts",
     "arch:route-reachability": "bun run scripts/check-route-reachability.ts",

@@ -115,6 +115,8 @@ if command -v nginx >/dev/null 2>&1; then
   install -d -m 0755 /etc/nginx/snippets
   install -m 0644 "$SOURCE_DIR/nginx/chartwarden-maintenance.conf" /etc/nginx/snippets/chartwarden-maintenance.conf
   install -m 0644 "$SOURCE_DIR/nginx/chartwarden-platform-proxy.conf" /etc/nginx/snippets/chartwarden-platform-proxy.conf
+  # TLS policy (CW-TX-01): nothing includes it until the operator wires it into a `listen 443 ssl` server (README, "TLS policy").
+  install -m 0644 "$SOURCE_DIR/nginx/chartwarden-tls.conf" /etc/nginx/snippets/chartwarden-tls.conf
   install -m 0644 "$SOURCE_DIR/nginx/chartwarden-storage.conf" /etc/nginx/sites-available/chartwarden-storage.conf
   ln -sfn /etc/nginx/sites-available/chartwarden-storage.conf /etc/nginx/sites-enabled/chartwarden-storage.conf
   if [ -n "$TENANT_BASE_DOMAIN" ]; then
