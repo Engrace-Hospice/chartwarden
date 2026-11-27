@@ -71,6 +71,7 @@ import type { MedicareNoticeDispatchStateMachine } from "../services/medicare-no
 import type { MedicareNoticeIssueObservation } from "../services/medicare-notice-operational-issues";
 import { noticeDeadlineIssueObservation } from "../services/medicare-notice-operational-issues";
 import type { MedicareNoticeRenderer } from "../services/medicare-notice-renderer";
+import { baaEnded } from "../tenant-clearinghouse/baa";
 import { reportRevokedResponsesPending } from "../tenant-clearinghouse/revoked-responses-alert";
 import { isVoidM23Claim } from "../void-claim";
 import { CLAIMMD_M23_PAYER_ROUTES_ENV, CLEARINGHOUSE_PAYER_ID_ENV } from "./clearinghouse-context";
@@ -1999,6 +2000,7 @@ export async function claimSubmissionBindingMatches(
       credentialFingerprint: schema.tenantClearinghouseConfig.credentialFingerprint,
       organizationId: schema.tenantClearinghouseConfig.organizationId,
       baaRevokedAt: schema.tenantClearinghouseConfig.baaRevokedAt,
+      baaExpiresOn: schema.tenantClearinghouseConfig.baaExpiresOn,
     })
     .from(schema.tenantClearinghouseConfig)
     .where(eq(schema.tenantClearinghouseConfig.organizationId, submission.organizationId))
@@ -2018,6 +2020,9 @@ export async function claimSubmissionBindingMatches(
       current.organizationId === submission.organizationId &&
       current.status === "active" &&
       current.baaRevokedAt === null &&
+      // An expiry never moves the status off `active` (a revoke does), so the end date is re-judged here: a job that resolved
+      // its transport before Eastern midnight does not dispatch after it (CW-AC-17).
+      !baaEnded(current.baaExpiresOn, medicareReceiptDay(new Date())) &&
       current.vendor === expectedVendor &&
       current.mode === submission.clearinghouseMode &&
       current.version === submission.clearinghouseConfigVersion &&
@@ -2783,8 +2788,11 @@ export async function runTransportAckPull(
       continue;
     }
     if (!orgTransport || orgTransport.binding.vendor === null) {
-      // A revoked BAA is not a silent skip: acknowledgments for claims already sent may sit at the vendor (once-a-day alert per org).
-      if (orgTransport?.binding.unboundReason === "baa_revoked") {
+      // A revoked or expired BAA is not a silent skip: acknowledgments for claims already sent may sit at the vendor (once-a-day alert per org).
+      if (
+        orgTransport?.binding.unboundReason === "baa_revoked" ||
+        orgTransport?.binding.unboundReason === "baa_expired"
+      ) {
         try {
           await (
             deps.reportRevokedResponses ??

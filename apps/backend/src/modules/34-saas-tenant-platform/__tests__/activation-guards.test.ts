@@ -1,7 +1,11 @@
 // onboarding → active (§2.4.12 / D11): the guards the platform status route feeds the lifecycle machine's
 // `activate` event, computed from the tenant's onboarding tasks and its latest BAA record.
 import { describe, expect, it } from "vitest";
-import { evaluateActivationGuards, pickGoverningBaa } from "../routes/platform/activation-guards";
+import {
+  baaTermCoversToday,
+  evaluateActivationGuards,
+  pickGoverningBaa,
+} from "../routes/platform/activation-guards";
 
 const TODAY = new Date("2026-10-13T00:00:00Z");
 const canonical = ["account_created", "ccn_registered"];
@@ -159,6 +163,66 @@ describe("evaluateActivationGuards", () => {
 
 // BaaRegisterRepository lists `ORDER BY executed_on DESC`, and Postgres sorts NULLs first on DESC, so a pending
 // renewal (no executed_on) used to shadow the executed BAA and block activation with BAA_NOT_EXECUTED.
+describe("the BAA's term must cover today, not only be filed (CW-AC-14, CW-AC-17)", () => {
+  const input = {
+    canonicalTemplateKeys: canonical,
+    tasks: [
+      { templateKey: "account_created", status: "done" },
+      { templateKey: "ccn_registered", status: "done" },
+    ],
+  };
+  const baaOn = (over: { effectiveOn?: string | null; expiresOn: string | null }) => ({
+    ...executedBaa(over.expiresOn),
+    effectiveOn: over.effectiveOn,
+  });
+  const at = (iso: string) => new Date(`${iso}T15:30:00Z`);
+
+  it("is not executed while the effective date is still ahead, and is executed on that very day", () => {
+    const baa = baaOn({ effectiveOn: "2026-10-14", expiresOn: "2028-10-14" });
+    expect(
+      evaluateActivationGuards({ ...input, latestBaa: baa, today: at("2026-10-13") }),
+    ).toMatchObject({ baaExecuted: false, baaExpiryClearsNinetyDays: false });
+    expect(
+      evaluateActivationGuards({ ...input, latestBaa: baa, today: at("2026-10-14") }),
+    ).toMatchObject({ baaExecuted: true, baaExpiryClearsNinetyDays: true });
+  });
+
+  it("is not executed once the last day in force has passed (it was counted executed after it before)", () => {
+    const baa = baaOn({ effectiveOn: "2025-10-14", expiresOn: "2026-10-14" });
+    expect(
+      evaluateActivationGuards({ ...input, latestBaa: baa, today: at("2026-10-14") }).baaExecuted,
+    ).toBe(true);
+    expect(
+      evaluateActivationGuards({ ...input, latestBaa: baa, today: at("2026-10-15") }),
+    ).toMatchObject({ baaExecuted: false, baaExpiryClearsNinetyDays: false });
+  });
+
+  it("does not block a row that records no effective date (a row written before the date was kept)", () => {
+    expect(
+      evaluateActivationGuards({
+        ...input,
+        latestBaa: baaOn({ effectiveOn: null, expiresOn: null }),
+        today: at("2026-10-13"),
+      }),
+    ).toMatchObject({ baaExecuted: true });
+    expect(
+      evaluateActivationGuards({
+        ...input,
+        latestBaa: executedBaa("2027-12-31"),
+        today: at("2026-10-13"),
+      }).baaExecuted,
+    ).toBe(true);
+  });
+
+  it("states the rule as a pure helper", () => {
+    expect(
+      baaTermCoversToday({ effectiveOn: "2026-01-01", expiresOn: "2026-12-31" }, at("2026-06-01")),
+    ).toBe(true);
+    expect(baaTermCoversToday({ effectiveOn: null, expiresOn: null }, at("2099-01-01"))).toBe(true);
+    expect(baaTermCoversToday({ expiresOn: "2026-12-31" }, at("2027-01-01"))).toBe(false);
+  });
+});
+
 describe("pickGoverningBaa", () => {
   const row = (baaStatus: string, executedOn: string | null) => ({
     baaStatus,

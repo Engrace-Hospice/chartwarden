@@ -68,7 +68,7 @@ export function evaluateGoLiveGuards(input: {
 const GUARD_MESSAGES: Readonly<Record<string, string>> = {
   canonicalTasksComplete: "every required onboarding step must be done or skipped",
   baaExecuted:
-    "the latest platform BAA must be executed, with the signed agreement filed for this tenant",
+    "the latest platform BAA must be executed, with the signed agreement filed for this tenant and its term in force today",
   baaExpiryClearsNinetyDays: "the executed BAA must have more than 90 days left",
 };
 

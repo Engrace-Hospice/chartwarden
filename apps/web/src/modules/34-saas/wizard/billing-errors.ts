@@ -37,6 +37,10 @@ export const BILLING_ERROR_COPY: OpsErrorCopy = {
   CLEARINGHOUSE_BAA_NOT_VERIFIED:
     "ChartWarden has not verified your vendor BAA yet, so the clearinghouse cannot be activated. The settings have been reloaded.",
   CLEARINGHOUSE_BAA_NOT_RECORDED: "Record your vendor BAA first. The settings have been reloaded.",
+  CLEARINGHOUSE_BAA_EXPIRED:
+    "Your vendor BAA has ended. Record the renewed BAA; ChartWarden verifies it, and then you can activate the clearinghouse. The settings have been reloaded.",
+  CLEARINGHOUSE_BAA_EXPIRY_INVALID:
+    "The end date must be after the effective date and not already past. Leave it empty when the BAA states no end date.",
   CLEARINGHOUSE_BAA_DATE_INVALID:
     "The effective date must be a real date that is not in the future.",
   CLEARINGHOUSE_BAA_REF_INVALID:
@@ -69,6 +73,7 @@ const MOVED_CODES: ReadonlySet<string> = new Set([
   "CLEARINGHOUSE_NOT_VERIFIED",
   "CLEARINGHOUSE_BAA_NOT_VERIFIED",
   "CLEARINGHOUSE_BAA_NOT_RECORDED",
+  "CLEARINGHOUSE_BAA_EXPIRED",
   "CLEARINGHOUSE_NOT_CONFIGURED",
   "CLEARINGHOUSE_CHANGED_DURING_VERIFY",
   "TENANT_NOT_ONBOARDING",

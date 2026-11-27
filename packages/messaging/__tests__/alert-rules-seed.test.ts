@@ -162,6 +162,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m23.clearinghouse.unbound_hold",
       "m41.clearinghouse.unbound_with_work",
       "m23.tenant_clearinghouse.baa_revoked",
+      "m23.tenant_clearinghouse.baa_expiring",
+      "m23.tenant_clearinghouse.baa_expired",
       "m23.clearinghouse.revoked_responses_pending",
       // A tenant billing outside ChartWarden recorded a NOE / NOTR it filed AFTER the due date.
       "m23.noe.filed_externally_late",

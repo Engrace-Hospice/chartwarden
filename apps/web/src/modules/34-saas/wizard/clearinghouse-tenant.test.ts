@@ -12,6 +12,9 @@ import { CLAIMMD_DRAFT, clearinghouseView } from "./panel-fixtures";
 const verifiedBaa = (over = {}) => ({
   heldBy: "tenant" as const,
   effectiveDate: "2026-10-01",
+  expiresOn: null,
+  expired: false,
+  expiresInDays: null,
   documentRef: "Claim.MD BAA, signed copy",
   recordedAt: "2026-11-02T00:00:00.000Z",
   verified: { at: "2026-11-03T00:00:00.000Z" },
@@ -96,6 +99,33 @@ describe("tenantActionsOf", () => {
   it("offers Activate once the connection and the BAA are both verified", () => {
     const view = { ...CLAIMMD_DRAFT, status: "verified" as const, baa: verifiedBaa() };
     expect(tenantActionsOf(view, true)).toMatchObject({ canActivate: true, waitingForBaa: false });
+  });
+
+  it("offers no Activate over a BAA that has ended, however verified it was (CW-AC-17)", () => {
+    const view = {
+      ...CLAIMMD_DRAFT,
+      status: "verified" as const,
+      baa: { ...verifiedBaa(), expiresOn: "2026-11-20", expired: true, expiresInDays: null },
+    };
+    expect(tenantActionsOf(view, true)).toMatchObject({ canActivate: false, canRecordBaa: true });
+  });
+
+  it("does not wait on ChartWarden for a BAA that ended before anyone verified it: only a renewed BAA moves it", () => {
+    const view = {
+      ...CLAIMMD_DRAFT,
+      status: "verified" as const,
+      baa: {
+        ...verifiedBaa({ verified: null }),
+        expiresOn: "2026-11-20",
+        expired: true,
+        expiresInDays: null,
+      },
+    };
+    expect(tenantActionsOf(view, true)).toMatchObject({
+      waitingForBaa: false,
+      canActivate: false,
+      canRecordBaa: true,
+    });
   });
 
   it("offers nothing on billing outside ChartWarden", () => {

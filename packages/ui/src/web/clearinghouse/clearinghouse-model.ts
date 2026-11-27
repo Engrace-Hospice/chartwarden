@@ -131,8 +131,14 @@ export function clearinghouseFacts(
     {
       key: "baa-verified",
       label: wording.baaVerifiedLabel,
-      state: view.baa?.verified ? "ok" : "pending",
-      ...(view.baa?.verified ? { detail: `Verified ${when(view.baa.verified.at)}` } : {}),
+      state: view.baa?.verified && !view.baa.expired ? "ok" : "pending",
+      ...(view.baa?.verified
+        ? {
+            detail: view.baa.expired
+              ? `Ended ${view.baa.expiresOn}: the renewed BAA must be recorded and verified again.`
+              : `Verified ${when(view.baa.verified.at)}`,
+          }
+        : {}),
     },
     {
       key: "connection",
@@ -173,16 +179,24 @@ const NO_ACTIONS: ClearinghouseActions = {
 
 export function clearinghouseActions(view: ClearinghouseSharedView): ClearinghouseActions {
   if (!isChosen(view) || !isTransmitting(view)) return NO_ACTIONS;
-  const baaVerified = view.baa?.verified != null;
+  const baaVerified = view.baa?.verified != null && view.baa.expired !== true;
   const connectionVerified = view.status === "verified";
   return {
-    canVerifyBaa: view.baaRequired && view.baa !== null && !view.baa.revoked && !baaVerified,
+    // An ended BAA is refused (409 CLEARINGHOUSE_BAA_EXPIRED) until the tenant records the renewed one: nothing to verify yet.
+    canVerifyBaa:
+      view.baaRequired &&
+      view.baa !== null &&
+      !view.baa.revoked &&
+      view.baa.expired !== true &&
+      !baaVerified,
     canRevokeBaa: view.baaRequired && view.baa !== null && !view.baa.revoked,
     canVerifyConnection: view.status === "draft" && view.hasSecret,
     tenantActivationNote: !connectionVerified
       ? null
-      : view.baaRequired && !baaVerified
-        ? "Verify the vendor BAA first: the tenant records it, then an operator verifies it. The tenant's own billing administrator then activates the clearinghouse."
-        : "The tenant's own billing administrator activates the clearinghouse from their own settings; this step settles when they do.",
+      : view.baaRequired && view.baa?.expired === true
+        ? "The vendor BAA has ended. The tenant records the renewed BAA, an operator verifies it, and the tenant's own billing administrator then activates the clearinghouse."
+        : view.baaRequired && !baaVerified
+          ? "Verify the vendor BAA first: the tenant records it, then an operator verifies it. The tenant's own billing administrator then activates the clearinghouse."
+          : "The tenant's own billing administrator activates the clearinghouse from their own settings; this step settles when they do.",
   };
 }

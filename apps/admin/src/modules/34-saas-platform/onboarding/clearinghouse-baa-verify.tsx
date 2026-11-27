@@ -46,11 +46,12 @@ export function VerifyBaa({
     setAckError(false);
   }
 
-  // The BAA is gone or already verified (by someone else): close the prompt rather than let it pop open for the next one recorded.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: only whether an unverified BAA is on record is the trigger.
+  const canVerify = clearinghouseActions(view).canVerifyBaa;
+  // The BAA is gone, already verified (by someone else) or ended: close the prompt rather than let it pop open for the next one recorded.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only whether a verifiable BAA is on record is the trigger.
   useEffect(() => {
-    if (open && baa === null) close();
-  }, [open, baa === null]);
+    if (open && (baa === null || !canVerify)) close();
+  }, [open, baa === null, canVerify]);
 
   async function verify(reason: string): Promise<void> {
     if (!baa) return;
@@ -73,13 +74,18 @@ export function VerifyBaa({
     if (outcome.ok) {
       close();
       await onVerified();
-    } else if (outcome.failure.kind === "conflict" || outcome.failure.kind === "precondition") {
+    } else if (
+      outcome.failure.kind === "conflict" ||
+      outcome.failure.kind === "precondition" ||
+      // the kit classes this 409 "refused", but its copy says the step was reloaded: the BAA ended while the prompt was open
+      outcome.failure.code === "CLEARINGHOUSE_BAA_EXPIRED"
+    ) {
       setStale(true);
       await reload();
     }
   }
 
-  if (!clearinghouseActions(view).canVerifyBaa) return null;
+  if (!canVerify) return null;
   if (!mayVerify) return <RoleCannot what="verify the vendor BAA" />;
   return (
     <>
@@ -133,6 +139,12 @@ export function VerifyBaa({
                 { label: "Vendor", value: VENDOR_LABEL[view.vendor ?? ""] ?? "The vendor" },
                 { label: "Document", value: baa.documentRef },
                 { label: "Effective", value: baa.effectiveDate },
+                {
+                  label: "Ends",
+                  value: baa.expiresOn
+                    ? `${baa.expiresOn}${baa.expired ? " (ended)" : ""}`
+                    : "No end date stated",
+                },
                 {
                   label: "Recorded by the tenant",
                   value: new Date(baa.recordedAt).toLocaleString(),

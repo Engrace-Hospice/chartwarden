@@ -99,7 +99,7 @@ function Body({
               <dt>Vendor BAA</dt>
               <dd>
                 {view.baa
-                  ? `${view.baa.documentRef}${view.baa.revoked ? " (revoked)" : view.baa.verified ? "" : " (not verified yet)"}`
+                  ? `${view.baa.documentRef}${view.baa.revoked ? " (revoked)" : view.baa.expired ? " (ended)" : view.baa.verified ? "" : " (not verified yet)"}`
                   : "The tenant has not recorded one"}
               </dd>
               {view.baa?.previousRevocation ? (

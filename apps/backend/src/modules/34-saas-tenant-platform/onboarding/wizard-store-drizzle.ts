@@ -274,6 +274,7 @@ export function createDrizzleWizardStore(
               .limit(1);
       return {
         baaStatus: baa.baaStatus,
+        effectiveOn: dateOnly(baa.effectiveOn),
         expiresOn: dateOnly(baa.expiresOn),
         documentId: baa.documentId,
         documentFiled,

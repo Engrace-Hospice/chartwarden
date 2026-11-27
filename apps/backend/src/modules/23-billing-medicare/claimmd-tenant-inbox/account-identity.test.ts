@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { resolveTenantClaimMdAccount } from "./account-identity";
 
 const organizationId = "00000000-0000-4000-8000-000000000001";
+/** The Eastern day the recorded BAA's end date is judged against: a value the test sets, not the wall clock. */
+const TODAY = "2026-11-26";
 const config = {
   id: "00000000-0000-4000-8000-000000000002",
   organizationId,
@@ -10,6 +12,7 @@ const config = {
   status: "active",
   baaVerifiedAt: new Date("2026-01-01T00:00:00Z"),
   baaRevokedAt: null,
+  baaExpiresOn: null,
   credentialFingerprint: "a".repeat(64),
   credentialFingerprintKeyId: "fingerprint-k1",
 };
@@ -29,10 +32,35 @@ const binding = {
   fingerprintKeyId: config.credentialFingerprintKeyId,
 };
 
+describe("a recorded BAA that ended is out of service for the inbox too (CW-AC-17)", () => {
+  const resolveOn = (today: string, baaExpiresOn: string | null) =>
+    resolveTenantClaimMdAccount({
+      today,
+      organizationId,
+      usage: "production",
+      config: { ...config, baaExpiresOn },
+      identities: [identity],
+      credentialBindings: [binding],
+    });
+
+  it("resolves on the last day in force and fails closed from the day after", () => {
+    expect(resolveOn("2026-12-31", "2026-12-31")).toMatchObject({ ok: true });
+    expect(resolveOn("2027-01-01", "2026-12-31")).toEqual({
+      ok: false,
+      code: "TENANT_ACCOUNT_NOT_ACTIVE",
+    });
+  });
+
+  it("never ends a BAA that states no end date", () => {
+    expect(resolveOn("2099-01-01", null)).toMatchObject({ ok: true });
+  });
+});
+
 describe("tenant Claim.MD external account identity", () => {
   it("resolves only the verified identity attached to active same-tenant Claim.MD configuration", () => {
     expect(
       resolveTenantClaimMdAccount({
+        today: TODAY,
         organizationId,
         usage: "production",
         config,
@@ -58,6 +86,7 @@ describe("tenant Claim.MD external account identity", () => {
   ] as const)("fails closed for invalid account source (%s)", (badConfig, code) => {
     expect(
       resolveTenantClaimMdAccount({
+        today: TODAY,
         organizationId,
         usage: "production",
         config: badConfig,
@@ -73,6 +102,7 @@ describe("tenant Claim.MD external account identity", () => {
   it("does not infer identity from configuration or credentials and rejects missing, retired, or ambiguous identity rows", () => {
     expect(
       resolveTenantClaimMdAccount({
+        today: TODAY,
         organizationId,
         usage: "production",
         config,
@@ -85,6 +115,7 @@ describe("tenant Claim.MD external account identity", () => {
     });
     expect(
       resolveTenantClaimMdAccount({
+        today: TODAY,
         organizationId,
         usage: "production",
         config,
@@ -97,6 +128,7 @@ describe("tenant Claim.MD external account identity", () => {
     });
     expect(
       resolveTenantClaimMdAccount({
+        today: TODAY,
         organizationId,
         usage: "production",
         config,
@@ -109,6 +141,7 @@ describe("tenant Claim.MD external account identity", () => {
     });
     expect(
       resolveTenantClaimMdAccount({
+        today: TODAY,
         organizationId,
         usage: "production",
         config: { ...config, credentialFingerprint: "b".repeat(64) },
@@ -134,6 +167,7 @@ describe("tenant Claim.MD external account identity", () => {
     };
     expect(
       resolveTenantClaimMdAccount({
+        today: TODAY,
         organizationId,
         usage: "production",
         config: rotatedConfig,
@@ -143,6 +177,7 @@ describe("tenant Claim.MD external account identity", () => {
     ).toEqual({ ok: true, account: identity });
     expect(
       resolveTenantClaimMdAccount({
+        today: TODAY,
         organizationId,
         usage: "production",
         config: rotatedConfig,

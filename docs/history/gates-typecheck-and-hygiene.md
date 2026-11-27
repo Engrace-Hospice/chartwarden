@@ -149,5 +149,13 @@
   person confirms the executed agreement): `pending` is the honest first state of every row. What it cannot prove stays
   in the CW-BA-01 gap: that a document exists or says what the row claims, that a hosting or backup provider missing from
   §2 is listed (the `evidence:` files are the reviewer's trail, not a detector), and that PHI stops flowing to a vendor
-  whose row is pending. `effectiveOn` and `expiresOn` are reserved for CW-AC-14 and CW-AC-17: they add the expiry rule
-  to `validityViolations` in this gate, not a second register.
+  whose row is pending. **Validity and expiry (CW-AC-14, CW-AC-17, extended in this gate, not a second register):** a
+  `signed` row is judged as valid, not only filed. `effectiveOn` is required and must not be in the future; `expiresOn`
+  (optional: absent = open-ended, its review date is its only clock) fails the gate the day AFTER it (an ended
+  agreement is not a signed one) and `vendorAgreementWarnings` prints a warning, still passing, from 90 days before it;
+  `covers` (closed set: `phi`, `zero-data-retention`) must include `phi` for a vendor that receives PHI and everything
+  the row's own `requires` names (Anthropic's BAA alone does not cover the use without its zero-data-retention
+  addendum). A row that is not signed carries none of these. No row is signed, so the rules are proved on synthetic rows
+  in the unit tests with an injected `today`; the gate raises no alert between runs (it has no schedule). The tenant-held
+  clearinghouse BAA's end date is in the database (migration 1569, `m23` resolver / claims gate / inbox / alerts) and
+  the M34 register's go-live guard judges the effective window (`baaTermCoversToday`).

@@ -37,6 +37,9 @@ export const tenantClearinghouseConfig = pgTable(
     // The tenant-held vendor BAA: the tenant records it, a platform operator verifies it, and only then may the config go active.
     baaVendor: text("baa_vendor"),
     baaEffectiveDate: date("baa_effective_date"),
+    // Migration 1569: the last day the recorded BAA is in force (NULL = no end date stated). After it the configuration is out of
+    // service (resolver, claims gate, Claim.MD inbox), like a revoked one, until the tenant records the renewed BAA.
+    baaExpiresOn: date("baa_expires_on"),
     baaDocumentRef: text("baa_document_ref"),
     baaRecordedAt: timestamp("baa_recorded_at", { withTimezone: true }),
     baaRecordedByMembershipId: uuid("baa_recorded_by_membership_id"),

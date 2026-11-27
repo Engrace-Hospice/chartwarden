@@ -15,6 +15,7 @@ import {
   type VendorRow,
   checkVendorAgreements,
   parseInventory,
+  vendorAgreementWarnings,
 } from "../check-vendor-agreements";
 
 const ROOT = join(__dirname, "../..");
@@ -69,6 +70,8 @@ const SIGNED = {
   documentRef: "vault:acme-baa-2026",
   confirmedBy: "privacy-officer",
   confirmedOn: "2026-11-10",
+  effectiveOn: "2026-11-04",
+  covers: ["phi"],
 };
 
 describe("vendor register shape", () => {
@@ -309,16 +312,115 @@ describe("tenant-held agreements are tracked by a control that records them, not
   });
 });
 
-describe("validity dates are reserved for CW-AC-14 and CW-AC-17", () => {
+describe("a signed row is judged as valid, not only as filed (CW-AC-14, CW-AC-17)", () => {
+  const dated = (over: Record<string, unknown>) => row({ agreement: { ...SIGNED, ...over } });
+  const at = (iso: string): Partial<CheckInputs> => ({ today: new Date(`${iso}T09:30:00Z`) });
+
   it("accepts effectiveOn and expiresOn in order and rejects a malformed or reversed pair", () => {
-    const ok = { ...SIGNED, effectiveOn: "2026-11-04", expiresOn: "2027-11-04" };
-    expect(run([row({ agreement: ok })])).toEqual([]);
-    expect(run([row({ agreement: { ...ok, expiresOn: "2026-01-01" } })]).join("\n")).toMatch(
+    const ok = { expiresOn: "2027-11-04" };
+    expect(run([dated(ok)])).toEqual([]);
+    expect(run([dated({ expiresOn: "2026-01-01" })]).join("\n")).toMatch(
       /expiresOn 2026-01-01 is not after effectiveOn 2026-11-04/,
     );
-    expect(run([row({ agreement: { ...ok, expiresOn: "next year" } })]).join("\n")).toMatch(
+    expect(run([dated({ expiresOn: "next year" })]).join("\n")).toMatch(
       /expiresOn must be a YYYY-MM-DD date/,
     );
+  });
+
+  it("requires effectiveOn on a signed row, and refuses one that is not in force yet", () => {
+    expect(run([dated({ effectiveOn: undefined })]).join("\n")).toMatch(
+      /signed needs agreement\.effectiveOn/,
+    );
+    expect(run([dated({ effectiveOn: "2026-11-27" })]).join("\n")).toMatch(
+      /effectiveOn 2026-11-27 is in the future: not in force yet/,
+    );
+    expect(run([dated({ effectiveOn: "2026-11-26" })])).toEqual([]);
+  });
+
+  it("fails closed the day after the end date, never on it, whatever time of day the gate runs", () => {
+    const row1 = [dated({ expiresOn: "2026-11-26" })];
+    expect(run(row1, at("2026-11-26"))).toEqual([]);
+    expect(run(row1, at("2026-11-27")).join("\n")).toMatch(
+      /acme: agreement expired on 2026-11-26 \(1 day\(s\) ago\): an ended agreement is not a signed one/,
+    );
+    expect(run(row1, at("2027-03-01")).join("\n")).toMatch(/\(95 day\(s\) ago\)/);
+  });
+
+  it("treats a signed row with no end date as open-ended, and never as expired", () => {
+    expect(
+      checkVendorAgreements(
+        inputs(register([dated({})], { review_by: "2040-06-01" }), at("2040-01-01")),
+      ),
+    ).toEqual([]);
+  });
+
+  it("warns ahead of the end date, soonest first, and stays silent outside the window", () => {
+    const rows = [
+      row({ id: "far", agreement: { ...SIGNED, expiresOn: "2027-03-01" } }),
+      row({ id: "soon", agreement: { ...SIGNED, expiresOn: "2026-12-10" } }),
+      row({ id: "today", agreement: { ...SIGNED, expiresOn: "2026-11-26" } }),
+      row({ id: "open", agreement: SIGNED }),
+      row({ id: "ended", agreement: { ...SIGNED, expiresOn: "2026-11-25" } }),
+      row({ id: "pend" }),
+    ];
+    const w = vendorAgreementWarnings(register(rows), TODAY);
+    expect(w).toHaveLength(2);
+    expect(w[0]).toMatch(/^today: the agreement ends 2026-11-26 \(today\)/);
+    expect(w[1]).toMatch(/^soon: the agreement ends 2026-12-10 \(in 14 day\(s\)\)/);
+    // the 90-day edge: day 90 warns, day 91 does not
+    const edge = (iso: string) =>
+      vendorAgreementWarnings(register([dated({ expiresOn: iso })]), TODAY).length;
+    expect(edge("2027-02-24")).toBe(1);
+    expect(edge("2027-02-25")).toBe(0);
+    expect(vendorAgreementWarnings(undefined, TODAY)).toEqual([]);
+  });
+
+  it("a pending row carries no dates and no coverage: it must not look signed", () => {
+    const v = run([
+      row({
+        agreement: {
+          kind: "baa",
+          status: "pending",
+          effectiveOn: "2026-11-04",
+          expiresOn: "2027-11-04",
+          covers: ["phi"],
+        },
+      }),
+    ]).join("\n");
+    expect(v).toMatch(/status pending must not carry effectiveOn, expiresOn, covers/);
+  });
+
+  it("a signed row must cover what the vendor's use needs", () => {
+    expect(run([dated({ covers: undefined })]).join("\n")).toMatch(
+      /signed needs agreement\.covers/,
+    );
+    // a vendor that receives PHI needs the BAA's coverage of it
+    expect(run([dated({ covers: ["zero-data-retention"] })]).join("\n")).toMatch(
+      /does not cover `phi`/,
+    );
+    // a vendor next to PHI is not owed `phi`, but the row's own requirement still binds
+    const adjacent = (over: Partial<VendorRow>, covers: string[]): VendorRow =>
+      row({ phi: "adjacent", agreement: { ...SIGNED, covers }, ...over });
+    expect(run([adjacent({}, ["zero-data-retention"])])).toEqual([]);
+    expect(run([adjacent({ requires: ["zero-data-retention"] }, ["phi"])]).join("\n")).toMatch(
+      /does not cover `zero-data-retention`/,
+    );
+    expect(
+      run([
+        row({
+          requires: ["zero-data-retention"],
+          agreement: { ...SIGNED, covers: ["phi", "zero-data-retention"] },
+        }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("refuses a coverage word the register does not know", () => {
+    const v = run([
+      row({ requires: ["everything"], agreement: { ...SIGNED, covers: ["phi", "all"] } }),
+    ]).join("\n");
+    expect(v).toMatch(/requires `everything` is not one of phi, zero-data-retention/);
+    expect(v).toMatch(/agreement\.covers `all` is not one of/);
   });
 });
 

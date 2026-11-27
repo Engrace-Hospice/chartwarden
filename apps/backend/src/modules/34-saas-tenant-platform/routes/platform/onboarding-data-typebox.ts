@@ -387,6 +387,24 @@ export const OnboardingClearinghouseViewSchema = Type.Object({
     Type.Object({
       heldBy: Type.Literal("tenant"),
       effectiveDate: Type.String({ format: "date" }),
+      expiresOn: Nullable(
+        Type.String({
+          format: "date",
+          description:
+            "The last day the recorded BAA is in force, or null when it states no end date.",
+        }),
+      ),
+      expired: Type.Boolean({
+        description:
+          "True once the end date has passed: the clearinghouse is out of service until the tenant records the renewed BAA and a platform operator verifies it (verification and activation are refused 409 CLEARINGHOUSE_BAA_EXPIRED meanwhile).",
+      }),
+      expiresInDays: Nullable(
+        Type.Integer({
+          minimum: 0,
+          description:
+            "Whole days left while an end date is stated and not past (0 = the last day is today), else null.",
+        }),
+      ),
       documentRef: Type.String(),
       recordedAt: Iso,
       verified: Nullable(Type.Object({ at: Iso })),

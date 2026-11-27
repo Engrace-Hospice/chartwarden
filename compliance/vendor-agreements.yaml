@@ -16,8 +16,13 @@
 # evidence:  repo files that show where the PHI flow or the hosting is declared (the reviewer's trail).
 #
 # An agent never sets `signed`: a person confirms the executed agreement, then flips the row.
-# effectiveOn / expiresOn are reserved on `agreement` for CW-AC-14 and CW-AC-17 (validity and expiry; issues
-# #1144 and #1143 extend this register, they do not add a second one).
+# A signed row is judged as valid, not only as filed (CW-AC-14, CW-AC-17):
+#   effectiveOn  required; the day the agreement took effect; not in the future.
+#   expiresOn    optional; the last day it is in force. The gate warns within 90 days of it and FAILS the day after
+#                (an ended agreement is not a signed one); absent = open-ended, the review date is its only clock.
+#   covers       what the executed agreement covers (phi, zero-data-retention); must include `phi` for a vendor that
+#                receives PHI and everything the row's `requires` names. Never set by an agent.
+# A row that is not signed carries none of these: a pending row must not look signed.
 owner: privacy-officer
 review_by: 2027-01-31
 vendors:
@@ -33,10 +38,12 @@ vendors:
     evidence:
       - packages/ai-platform/src/backends/anthropic.ts
       - docs/architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md
+    requires: [zero-data-retention]
     agreement: { kind: baa, status: pending }
     note: >-
       In progress per the owner. The Zero Data Retention addendum is a separate hard precondition: flip this
-      row only once the owner confirms both the executed BAA and the addendum.
+      row only once the owner confirms both the executed BAA and the addendum, and lists both in `covers`
+      (the gate refuses a signed row whose coverage lacks `zero-data-retention`).
 
   - id: dosespot
     name: DoseSpot

@@ -697,6 +697,7 @@ export type ClaimsBillingDenyReason =
   | "clearinghouse_outside"
   | "clearinghouse_not_active"
   | "clearinghouse_baa_revoked"
+  | "clearinghouse_baa_expired"
   | "never_purchased"
   | "lapsed"
   | "subscription_suspended"

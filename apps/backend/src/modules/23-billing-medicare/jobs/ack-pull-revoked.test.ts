@@ -2,6 +2,7 @@
 // for it), but a skip is not silent: it asks for the "responses may still be owed" report, once per organization per tick, and only for
 // that reason. A failing report never stops the tick or the other tenants' pulls.
 import {
+  UNBOUND_BAA_EXPIRED,
   UNBOUND_BAA_REVOKED,
   UNBOUND_NOT_ACTIVE,
   UNBOUND_NOT_CHOSEN,
@@ -47,6 +48,27 @@ describe("the 999 / 277CA pull and an organization whose BAA was revoked", () =>
       expect(reported).toEqual([REVOKED_ORG]); // a draft config was never owed anything: not reported
     },
   );
+
+  it("an organization whose recorded BAA ENDED (CW-AC-17) is reported the same way: its responses may be owed too", async () => {
+    const reported: string[] = [];
+    const deps = depsFor(async (org) => void reported.push(org));
+    const transport = deps.transport as M23TransportDeps;
+    await runTransportAckPull(
+      {
+        ...deps,
+        transport: {
+          ...transport,
+          binding: {
+            ...UNBOUND_NOT_CHOSEN,
+            forOrg: async (organizationId: string) =>
+              organizationId === REVOKED_ORG ? UNBOUND_BAA_EXPIRED : UNBOUND_NOT_ACTIVE,
+          },
+        },
+      } as M23WorkerDeps,
+      "ack_999",
+    );
+    expect(reported).toEqual([REVOKED_ORG]);
+  });
 
   it("a failing report never fails the tick", async () => {
     await expect(

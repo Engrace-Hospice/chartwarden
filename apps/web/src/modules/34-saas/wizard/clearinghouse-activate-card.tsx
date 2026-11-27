@@ -95,6 +95,11 @@ export function ActivateCard({
             </Button>
           </div>
         </div>
+      ) : view.baa?.expired ? (
+        <p className="wx-row-sub">
+          Your vendor BAA has ended. Activation opens once you record the renewed BAA and
+          ChartWarden has verified it.
+        </p>
       ) : (
         <p className="wx-row-sub">
           Activation opens once the connection is verified and ChartWarden has verified your vendor

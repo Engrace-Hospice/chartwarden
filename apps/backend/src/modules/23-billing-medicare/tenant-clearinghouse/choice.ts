@@ -9,6 +9,7 @@
 //                                     verified config may not. No fee, no add-on: the subscription and the choice.
 // `CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS` names the organizations the platform's own env binding (CLEARINGHOUSE_VENDOR) keeps
 // serving when they have no row (the demo tenant); every other org with no row has chosen nothing.
+import { medicareReceiptDay } from "@chartwarden/billing";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
@@ -29,6 +30,7 @@ import {
   parseClearinghouseVendor,
 } from "@chartwarden/x12-837-client";
 import { eq } from "drizzle-orm";
+import { baaEnded } from "./baa";
 import type { ConfigRow } from "./config-store";
 import type { PlatformFallback } from "./service";
 
@@ -96,6 +98,7 @@ export function platformFallbackFromEnv(env: EnvMap): {
 export function choiceOf(
   row: ConfigRow | null,
   fallback: PlatformFallback | null,
+  today: string = medicareReceiptDay(new Date()),
 ): TenantClearinghouseChoice {
   if (row) {
     return {
@@ -105,6 +108,8 @@ export function choiceOf(
       source: "tenant",
       // a revoked config is never active; the gate tells the tenant why instead of "not active yet"
       ...(row.baaRevokedAt ? { baaRevoked: true } : {}),
+      // an ACTIVE config whose recorded BAA ran past its last day is out of service too (the resolver holds it the same way)
+      ...(baaEnded(row.baaExpiresOn, today) ? { baaExpired: true } : {}),
     };
   }
   if (fallback) {
@@ -120,6 +125,9 @@ export function choiceOf(
 
 /** The gate's decision from a choice: pure. */
 export function decideClaimsBilling(choice: TenantClearinghouseChoice): ClaimsBillingEntitlement {
+  // An ended BAA first: the config may still read `active`, and an active row would otherwise be entitled.
+  if (choice.baaExpired === true && choice.baaRevoked !== true)
+    return { entitled: false, reason: "clearinghouse_baa_expired" };
   if (transmitsThroughChartWarden(choice)) return { entitled: true };
   if (choice.vendor === null) return { entitled: false, reason: "clearinghouse_not_chosen" };
   if (choice.vendor === "outside") return { entitled: false, reason: "clearinghouse_outside" };
@@ -130,6 +138,8 @@ export function decideClaimsBilling(choice: TenantClearinghouseChoice): ClaimsBi
 export function createTenantClearinghouseReader(deps: {
   readonly db: DbClient;
   readonly platformFallback: (organizationId: string) => PlatformFallback | null;
+  /** The clock a BAA end date is judged against (the Eastern day of this instant); tests drive it. Default: the wall clock. */
+  readonly now?: (() => Date) | undefined;
 }): TenantClearinghouseReader {
   const C = schema.tenantClearinghouseConfig;
   return {
@@ -142,7 +152,11 @@ export function createTenantClearinghouseReader(deps: {
           .limit(1);
         return found ?? null;
       });
-      return choiceOf(row, deps.platformFallback(organizationId));
+      return choiceOf(
+        row,
+        deps.platformFallback(organizationId),
+        medicareReceiptDay((deps.now ?? (() => new Date()))()),
+      );
     },
   };
 }

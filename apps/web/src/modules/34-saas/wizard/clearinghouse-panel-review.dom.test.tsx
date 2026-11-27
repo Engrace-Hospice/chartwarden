@@ -43,6 +43,9 @@ type Reply = ReturnType<typeof ok>;
 const baa = (verified: { at: string } | null) => ({
   heldBy: "tenant" as const,
   effectiveDate: "2026-10-01",
+  expiresOn: null,
+  expired: false,
+  expiresInDays: null,
   documentRef: "Claim.MD BAA, signed copy",
   recordedAt: "2026-11-02T00:00:00.000Z",
   verified,
@@ -143,6 +146,38 @@ describe("a refusal whose copy says 'reloaded' reloads", () => {
       expect(screen.queryByRole("button", { name: "Activate the clearinghouse" })).toBeNull();
     },
   );
+
+  it("CLEARINGHOUSE_BAA_EXPIRED on Activate re-reads the settings: the BAA reads as ended and the button goes (CW-AC-17)", async () => {
+    const ended = {
+      ...READY,
+      baa: { ...VERIFIED_BAA, expiresOn: "2026-11-20", expired: true, expiresInDays: null },
+    };
+    const stub = stubClient({
+      GET: { [PATH]: reads(READY, ended) },
+      POST: { [ACTIVATE]: () => refused(409, "CLEARINGHOUSE_BAA_EXPIRED") as never },
+    });
+    const props = mount(stub);
+    fireEvent.click(await screen.findByRole("button", { name: "Activate the clearinghouse" }));
+
+    expect(
+      await screen.findByText(/Your vendor BAA has ended\. Record the renewed BAA/),
+    ).toBeTruthy();
+    await waitFor(() => expect(getCalls(stub)).toBe(2));
+    await waitFor(() => expect(props.onChanged).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/This BAA ended on 2026-11-20/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Activate the clearinghouse" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Record the renewed BAA" })).toBeTruthy();
+  });
+
+  it("offers no Activate over a BAA that has already ended, before any refusal", async () => {
+    const ended = {
+      ...READY,
+      baa: { ...VERIFIED_BAA, expiresOn: "2026-11-20", expired: true, expiresInDays: null },
+    };
+    mount(stubClient({ GET: { [PATH]: () => ok(ended) } }));
+    expect(await screen.findByText(/This BAA ended on 2026-11-20/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Activate the clearinghouse" })).toBeNull();
+  });
 
   it("CLEARINGHOUSE_CHANGED_DURING_VERIFY on the connection test re-reads the settings and the wizard", async () => {
     const stub = stubClient({

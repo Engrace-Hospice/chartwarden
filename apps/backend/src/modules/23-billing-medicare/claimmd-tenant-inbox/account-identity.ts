@@ -1,3 +1,5 @@
+import { baaEnded } from "../tenant-clearinghouse/baa";
+
 export type TenantClaimMdUsage = "test" | "production";
 
 export interface TenantClaimMdConfigFact {
@@ -8,6 +10,8 @@ export interface TenantClaimMdConfigFact {
   readonly status: string;
   readonly baaVerifiedAt: Date | null;
   readonly baaRevokedAt: Date | null;
+  /** The last day the recorded BAA is in force (CW-AC-17); null = no end date stated. Required: a projection that omits it would skip the check. */
+  readonly baaExpiresOn: string | null;
   readonly credentialFingerprint: string | null;
   readonly credentialFingerprintKeyId: string | null;
 }
@@ -48,6 +52,8 @@ export type TenantClaimMdAccountResolution =
 
 /** Resolver over authoritative config and operator-verified identity rows; no API key or payer id is an identity. */
 export function resolveTenantClaimMdAccount(input: {
+  /** The Eastern day (`YYYY-MM-DD`) the recorded BAA's end date is judged against (CW-AC-17). */
+  readonly today: string;
   readonly organizationId: string;
   readonly usage: TenantClaimMdUsage;
   readonly config: TenantClaimMdConfigFact | null;
@@ -67,7 +73,12 @@ export function resolveTenantClaimMdAccount(input: {
           : "TENANT_ACCOUNT_NOT_CLAIMMD",
     };
   }
-  if (config.status !== "active" || !config.baaVerifiedAt || config.baaRevokedAt)
+  if (
+    config.status !== "active" ||
+    !config.baaVerifiedAt ||
+    config.baaRevokedAt ||
+    baaEnded(config.baaExpiresOn, input.today)
+  )
     return { ok: false, code: "TENANT_ACCOUNT_NOT_ACTIVE" };
   if (config.mode !== input.usage) return { ok: false, code: "TENANT_ACCOUNT_USAGE_MISMATCH" };
   const matching = input.identities.filter(

@@ -90,11 +90,14 @@ export function tenantActionsOf(
   };
   if (!canWrite || !isChosen(view) || !isTransmitting(view)) return none;
   const baaVerified = view.baa?.verified != null;
+  // An ended BAA (CW-AC-17) is not a verified one: the server refuses activation (409 CLEARINGHOUSE_BAA_EXPIRED) until it is renewed.
+  const baaInForce = baaVerified && view.baa?.expired !== true;
   return {
     canRecordBaa: view.baaRequired,
     canVerifyConnection: view.status === "draft" && view.hasSecret,
-    canActivate: view.status === "verified" && (!view.baaRequired || baaVerified),
-    waitingForBaa: view.baaRequired && view.baa !== null && !baaVerified,
+    canActivate: view.status === "verified" && (!view.baaRequired || baaInForce),
+    // an ended BAA is not waiting on anyone: nothing can verify it until the tenant records the renewed one
+    waitingForBaa: view.baaRequired && view.baa !== null && !baaVerified && !view.baa.expired,
     showActivation: true,
   };
 }

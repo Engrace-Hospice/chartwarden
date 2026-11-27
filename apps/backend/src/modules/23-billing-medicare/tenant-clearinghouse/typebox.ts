@@ -64,6 +64,12 @@ export const RecordBaaBodySchema = Type.Object(
       format: "date",
       description: "The BAA's effective date (YYYY-MM-DD), not in the future.",
     }),
+    expiresOn: Type.Optional(
+      Type.Union([Type.String({ format: "date" }), Type.Null()], {
+        description:
+          "The last day the BAA is in force (YYYY-MM-DD), after the effective date and not already past; leave out (or null) when the BAA states no end date. After this day the clearinghouse is out of service until the renewed BAA is recorded and a platform operator verifies it (CW-AC-17). A changed end date is a changed record: it voids the operator's verification.",
+      }),
+    ),
     documentRef: Type.String({
       minLength: 3,
       maxLength: 400,
@@ -123,6 +129,18 @@ export const ClearinghouseConfigViewSchema = Type.Object({
     Type.Object({
       heldBy: Type.Literal("tenant"),
       effectiveDate: Type.String({ format: "date" }),
+      expiresOn: Type.Union([Type.String({ format: "date" }), Type.Null()], {
+        description:
+          "The last day the recorded BAA is in force, or null when it states no end date.",
+      }),
+      expired: Type.Boolean({
+        description:
+          "True once the end date has passed: the clearinghouse is out of service (claims, NOE, NOTR and transfer notices are held) until the tenant records the renewed BAA and a platform operator verifies it.",
+      }),
+      expiresInDays: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()], {
+        description:
+          "Whole days left while an end date is stated and not past (0 = the last day is today), else null. Within 90 days the tenant and platform operations are warned once a day.",
+      }),
       documentRef: Type.String(),
       recordedAt: Iso,
       verified: Type.Union([Type.Object({ at: Iso }), Type.Null()]),

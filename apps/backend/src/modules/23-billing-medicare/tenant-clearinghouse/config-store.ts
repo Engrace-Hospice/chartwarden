@@ -1,6 +1,7 @@
 // apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/config-store.ts — `tenant_clearinghouse_config` over ONE
 // open org-scoped transaction (the caller's `withOrgContext`; RLS scopes every statement to that tenant). The service
 // takes a `ConfigStore` so its rules are tested without a database; this is the Drizzle implementation.
+import { MEDICARE_RECEIPT_TIME_ZONE } from "@chartwarden/billing";
 import { type DbClient, schema } from "@chartwarden/db";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import { and, eq, gte, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
@@ -34,6 +35,12 @@ export const REVOCATION_COLUMNS = [
 ] as const;
 
 export type ConfigRow = schema.TenantClearinghouseConfigRow;
+
+/**
+ * SQL twin of `baaEnded` (baa.ts) for a query that cannot take a clock: the recorded BAA is not past its last day in force, judged on
+ * the Eastern calendar day of the database clock (the day `medicareReceiptDay` reads). A NULL end date states none: never ended.
+ */
+export const baaInForceSql = sql`(${C.baaExpiresOn} IS NULL OR ${C.baaExpiresOn} >= (now() AT TIME ZONE ${MEDICARE_RECEIPT_TIME_ZONE})::date)`;
 
 /** A fingerprint to reserve, with the public id of its key (null: recorded before migration 1436). */
 export interface HeldFingerprint {

@@ -9,6 +9,8 @@
 //                                      onboarding (before go-live approval), and activation alone must never be what lets a claim go
 //                                      out, so the send path asks `isOrganizationLive` itself rather than relying on no claim existing;
 //   a row whose BAA was revoked        UNBOUND (`baa_revoked`: held the same way; its ack / 835 pulls skip WITH an alert);
+//   an active row past its BAA's end   UNBOUND (`baa_expired`, CW-AC-17: the recorded BAA's last day in force has passed, Eastern day;
+//                                      held and alerted exactly like a revoked one, until the tenant records the renewed BAA);
 //   no row, named in the env fallback  the platform's own env binding (the demo tenant), exactly as before;
 //   no row otherwise                   UNBOUND (`not_chosen`: workers HOLD until the tenant chooses).
 // The top-level `vendor` / `transport` are UNBOUND on purpose: they say nothing about any organization, so a consumer that
@@ -18,6 +20,7 @@
 // when the row's `version` moved, so a changed credential or vendor takes effect on the next call and a decrypt happens
 // once per change. Relay ticks and workers are not requests: this never reads a request context. A transport whose
 // credential cannot be opened THROWS (the job fails and retries, loudly) rather than going unbound silently.
+import { medicareReceiptDay } from "@chartwarden/billing";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, type TenantClearinghouseMode } from "@chartwarden/types";
@@ -28,6 +31,7 @@ import {
   NOT_WIRED_TRANSPORT,
   type StediAnomaly,
   type SubmissionAttemptStore,
+  UNBOUND_BAA_EXPIRED,
   UNBOUND_BAA_REVOKED,
   UNBOUND_NOT_ACTIVE,
   UNBOUND_NOT_CHOSEN,
@@ -36,6 +40,7 @@ import {
   createStediTransportFromEnv,
 } from "@chartwarden/x12-837-client";
 import { eq } from "drizzle-orm";
+import { BAA_EXPIRY_WARN_DAYS, baaDaysLeft, baaEnded } from "./baa";
 import type { ConfigRow } from "./config-store";
 import { bindTransportToOrg } from "./org-bound-transport";
 import type { ClearinghouseSecretCipher } from "./secret-cipher";
@@ -83,6 +88,20 @@ export interface TenantBindingDeps {
   readonly isOrganizationLive: (organizationId: string) => Promise<boolean>;
   /** Test seam: replaces the RLS-scoped Drizzle read of the org's row. */
   readonly readRow?: (organizationId: string) => Promise<ConfigRow | null>;
+  /** The clock the BAA end date is judged against (the Eastern day of this instant); tests drive it. Default: the wall clock. */
+  readonly now?: (() => Date) | undefined;
+  /**
+   * Called each time a LIVE configuration is resolved while its recorded BAA ends within {@link BAA_EXPIRY_WARN_DAYS} days or has
+   * ended (`daysLeft` negative): the organization, the end date and the days left, nothing else. The composition root raises the
+   * tenant alert and the platform-ops notice from it, once a day per organization (baa-expiry-notice.ts). Never throws into a resolution.
+   */
+  readonly onBaaEnding?:
+    | ((ending: {
+        readonly organizationId: string;
+        readonly expiresOn: string;
+        readonly daysLeft: number;
+      }) => void)
+    | undefined;
 }
 
 export interface TenantClearinghouseRuntime {
@@ -111,13 +130,21 @@ function scopedCounter(
   };
 }
 
-/** The vendor mode of a LIVE (active, transmitting) row, else null: the one rule behind both the binding and `usageFor`. */
-const liveModeOf = (row: ConfigRow | null): TenantClearinghouseMode | null =>
-  row?.status === "active" && (row.mode === "test" || row.mode === "production") ? row.mode : null;
+/**
+ * The vendor mode of a LIVE (active, transmitting, BAA not ended on `today`) row, else null: the one rule behind both the binding and
+ * `usageFor`.
+ */
+const liveModeOf = (row: ConfigRow | null, today: string): TenantClearinghouseMode | null =>
+  row?.status === "active" &&
+  !baaEnded(row.baaExpiresOn, today) &&
+  (row.mode === "test" || row.mode === "production")
+    ? row.mode
+    : null;
 
 export function createTenantClearinghouseRuntime(
   deps: TenantBindingDeps,
 ): TenantClearinghouseRuntime {
+  const today = (): string => medicareReceiptDay((deps.now ?? (() => new Date()))());
   const built = new Map<
     string,
     { readonly version: number; readonly binding: ClearinghouseBinding }
@@ -191,6 +218,27 @@ export function createTenantClearinghouseRuntime(
       // a revoked BAA is held like any not-live config, but its pulls say responses may still be owed (revoked-pull-alert.ts)
       return row.baaRevokedAt ? UNBOUND_BAA_REVOKED : UNBOUND_NOT_ACTIVE;
     }
+    // The recorded BAA ends within the warning window (or already ended): say so (once a day per organization, the callback's rule).
+    // An alert never stops a resolution: a throw here is swallowed.
+    const day = today();
+    const daysLeft = baaDaysLeft(row.baaExpiresOn, day);
+    if (daysLeft !== null && daysLeft <= BAA_EXPIRY_WARN_DAYS) {
+      try {
+        deps.onBaaEnding?.({
+          organizationId,
+          expiresOn: row.baaExpiresOn as string,
+          daysLeft,
+        });
+      } catch {
+        // best effort
+      }
+    }
+    // A live row whose recorded BAA ran past its last day in force is out of service: nothing is sent, and the cached transport (and
+    // its decrypted credential) is dropped. Judged on every call, so it takes effect on the first resolution after midnight, Eastern.
+    if (baaEnded(row.baaExpiresOn, day)) {
+      built.delete(organizationId);
+      return UNBOUND_BAA_EXPIRED;
+    }
     const cached = built.get(organizationId);
     if (cached && cached.version === row.version) return cached.binding;
     const binding = await build(row);
@@ -213,7 +261,7 @@ export function createTenantClearinghouseRuntime(
     binding: { vendor: null, transport: NOT_WIRED_TRANSPORT, forOrg },
     async usageFor(organizationId) {
       if (!(await deps.isOrganizationLive(organizationId))) return null;
-      return liveModeOf(await readRow(organizationId));
+      return liveModeOf(await readRow(organizationId), today());
     },
   };
 }

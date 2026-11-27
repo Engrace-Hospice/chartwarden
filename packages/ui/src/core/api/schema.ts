@@ -56973,7 +56973,7 @@ export interface operations {
                         claimsBilling?: {
                             entitled: boolean;
                             status: "none" | "trialing" | "active" | "canceled";
-                            reason: ("clearinghouse_not_chosen" | "clearinghouse_outside" | "clearinghouse_not_active" | "clearinghouse_baa_revoked" | "never_purchased" | "lapsed" | "subscription_suspended" | "subscription_canceled" | "subscription_paused") | null;
+                            reason: ("clearinghouse_not_chosen" | "clearinghouse_outside" | "clearinghouse_not_active" | "clearinghouse_baa_revoked" | "clearinghouse_baa_expired" | "never_purchased" | "lapsed" | "subscription_suspended" | "subscription_canceled" | "subscription_paused") | null;
                             trialEndsAt: string | null;
                             activePatientCount: number | null;
                             enforced: boolean;
@@ -104713,6 +104713,10 @@ export interface operations {
                             heldBy: "tenant";
                             /** Format: date */
                             effectiveDate: string;
+                            expiresOn: string | null;
+                            /** @description True once the end date has passed: the clearinghouse is out of service until the tenant records the renewed BAA and a platform operator verifies it (verification and activation are refused 409 CLEARINGHOUSE_BAA_EXPIRED meanwhile). */
+                            expired: boolean;
+                            expiresInDays: number | null;
                             documentRef: string;
                             /** Format: date-time */
                             recordedAt: string;
@@ -104806,6 +104810,10 @@ export interface operations {
                             heldBy: "tenant";
                             /** Format: date */
                             effectiveDate: string;
+                            expiresOn: string | null;
+                            /** @description True once the end date has passed: the clearinghouse is out of service until the tenant records the renewed BAA and a platform operator verifies it (verification and activation are refused 409 CLEARINGHOUSE_BAA_EXPIRED meanwhile). */
+                            expired: boolean;
+                            expiresInDays: number | null;
                             documentRef: string;
                             /** Format: date-time */
                             recordedAt: string;
@@ -104897,6 +104905,10 @@ export interface operations {
                             heldBy: "tenant";
                             /** Format: date */
                             effectiveDate: string;
+                            expiresOn: string | null;
+                            /** @description True once the end date has passed: the clearinghouse is out of service until the tenant records the renewed BAA and a platform operator verifies it (verification and activation are refused 409 CLEARINGHOUSE_BAA_EXPIRED meanwhile). */
+                            expired: boolean;
+                            expiresInDays: number | null;
                             documentRef: string;
                             /** Format: date-time */
                             recordedAt: string;
@@ -104984,6 +104996,10 @@ export interface operations {
                             heldBy: "tenant";
                             /** Format: date */
                             effectiveDate: string;
+                            expiresOn: string | null;
+                            /** @description True once the end date has passed: the clearinghouse is out of service until the tenant records the renewed BAA and a platform operator verifies it (verification and activation are refused 409 CLEARINGHOUSE_BAA_EXPIRED meanwhile). */
+                            expired: boolean;
+                            expiresInDays: number | null;
                             documentRef: string;
                             /** Format: date-time */
                             recordedAt: string;
@@ -105070,6 +105086,10 @@ export interface operations {
                                 heldBy: "tenant";
                                 /** Format: date */
                                 effectiveDate: string;
+                                expiresOn: string | null;
+                                /** @description True once the end date has passed: the clearinghouse is out of service until the tenant records the renewed BAA and a platform operator verifies it (verification and activation are refused 409 CLEARINGHOUSE_BAA_EXPIRED meanwhile). */
+                                expired: boolean;
+                                expiresInDays: number | null;
                                 documentRef: string;
                                 /** Format: date-time */
                                 recordedAt: string;
@@ -105159,6 +105179,10 @@ export interface operations {
                                 heldBy: "tenant";
                                 /** Format: date */
                                 effectiveDate: string;
+                                expiresOn: string | null;
+                                /** @description True once the end date has passed: the clearinghouse is out of service until the tenant records the renewed BAA and a platform operator verifies it (verification and activation are refused 409 CLEARINGHOUSE_BAA_EXPIRED meanwhile). */
+                                expired: boolean;
+                                expiresInDays: number | null;
                                 documentRef: string;
                                 /** Format: date-time */
                                 recordedAt: string;
@@ -124612,6 +124636,12 @@ export interface operations {
                             heldBy: "tenant";
                             /** Format: date */
                             effectiveDate: string;
+                            /** @description The last day the recorded BAA is in force, or null when it states no end date. */
+                            expiresOn: string | null;
+                            /** @description True once the end date has passed: the clearinghouse is out of service (claims, NOE, NOTR and transfer notices are held) until the tenant records the renewed BAA and a platform operator verifies it. */
+                            expired: boolean;
+                            /** @description Whole days left while an end date is stated and not past (0 = the last day is today), else null. Within 90 days the tenant and platform operations are warned once a day. */
+                            expiresInDays: number | null;
                             documentRef: string;
                             /** Format: date-time */
                             recordedAt: string;
@@ -124688,6 +124718,12 @@ export interface operations {
                             heldBy: "tenant";
                             /** Format: date */
                             effectiveDate: string;
+                            /** @description The last day the recorded BAA is in force, or null when it states no end date. */
+                            expiresOn: string | null;
+                            /** @description True once the end date has passed: the clearinghouse is out of service (claims, NOE, NOTR and transfer notices are held) until the tenant records the renewed BAA and a platform operator verifies it. */
+                            expired: boolean;
+                            /** @description Whole days left while an end date is stated and not past (0 = the last day is today), else null. Within 90 days the tenant and platform operations are warned once a day. */
+                            expiresInDays: number | null;
                             documentRef: string;
                             /** Format: date-time */
                             recordedAt: string;
@@ -124753,6 +124789,12 @@ export interface operations {
                             heldBy: "tenant";
                             /** Format: date */
                             effectiveDate: string;
+                            /** @description The last day the recorded BAA is in force, or null when it states no end date. */
+                            expiresOn: string | null;
+                            /** @description True once the end date has passed: the clearinghouse is out of service (claims, NOE, NOTR and transfer notices are held) until the tenant records the renewed BAA and a platform operator verifies it. */
+                            expired: boolean;
+                            /** @description Whole days left while an end date is stated and not past (0 = the last day is today), else null. Within 90 days the tenant and platform operations are warned once a day. */
+                            expiresInDays: number | null;
                             documentRef: string;
                             /** Format: date-time */
                             recordedAt: string;
@@ -124800,6 +124842,8 @@ export interface operations {
                      * @description The BAA's effective date (YYYY-MM-DD), not in the future.
                      */
                     effectiveDate: string;
+                    /** @description The last day the BAA is in force (YYYY-MM-DD), after the effective date and not already past; leave out (or null) when the BAA states no end date. After this day the clearinghouse is out of service until the renewed BAA is recorded and a platform operator verifies it (CW-AC-17). A changed end date is a changed record: it voids the operator's verification. */
+                    expiresOn?: string | null;
                     /** @description Where the signed BAA is kept (3-200 characters after whitespace is collapsed): a title, contract folder or document id. Never patient information. */
                     documentRef: string;
                 };
@@ -124837,6 +124881,12 @@ export interface operations {
                             heldBy: "tenant";
                             /** Format: date */
                             effectiveDate: string;
+                            /** @description The last day the recorded BAA is in force, or null when it states no end date. */
+                            expiresOn: string | null;
+                            /** @description True once the end date has passed: the clearinghouse is out of service (claims, NOE, NOTR and transfer notices are held) until the tenant records the renewed BAA and a platform operator verifies it. */
+                            expired: boolean;
+                            /** @description Whole days left while an end date is stated and not past (0 = the last day is today), else null. Within 90 days the tenant and platform operations are warned once a day. */
+                            expiresInDays: number | null;
                             documentRef: string;
                             /** Format: date-time */
                             recordedAt: string;
@@ -124914,6 +124964,12 @@ export interface operations {
                                 heldBy: "tenant";
                                 /** Format: date */
                                 effectiveDate: string;
+                                /** @description The last day the recorded BAA is in force, or null when it states no end date. */
+                                expiresOn: string | null;
+                                /** @description True once the end date has passed: the clearinghouse is out of service (claims, NOE, NOTR and transfer notices are held) until the tenant records the renewed BAA and a platform operator verifies it. */
+                                expired: boolean;
+                                /** @description Whole days left while an end date is stated and not past (0 = the last day is today), else null. Within 90 days the tenant and platform operations are warned once a day. */
+                                expiresInDays: number | null;
                                 documentRef: string;
                                 /** Format: date-time */
                                 recordedAt: string;

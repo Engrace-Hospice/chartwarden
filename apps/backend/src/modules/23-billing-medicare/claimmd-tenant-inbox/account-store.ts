@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { medicareReceiptDay } from "@chartwarden/billing";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
+import { baaEnded } from "../tenant-clearinghouse/baa";
 import {
   type TenantClaimMdAccountResolution,
   type TenantClaimMdUsage,
@@ -11,6 +13,10 @@ import {
 const C = schema.tenantClearinghouseConfig;
 const A = schema.claimMdTenantResponseAccounts;
 const Q = schema.claimMdTenantResponseAccountCredentials;
+
+/** Whether the config's recorded BAA ran past its last day in force on the Eastern day of now (CW-AC-17); one clock for the store. */
+const baaEndedNow = (baaExpiresOn: string | null): boolean =>
+  baaEnded(baaExpiresOn, medicareReceiptDay(new Date()));
 
 /** Resolves only an active Claim.MD tenant config with a separately operator-verified stable account id. */
 export function createTenantClaimMdAccountIdentityStore(input: {
@@ -39,6 +45,7 @@ export function createTenantClaimMdAccountIdentityStore(input: {
               status: C.status,
               baaVerifiedAt: C.baaVerifiedAt,
               baaRevokedAt: C.baaRevokedAt,
+              baaExpiresOn: C.baaExpiresOn,
               credentialFingerprint: C.credentialFingerprint,
               credentialFingerprintKeyId: C.credentialFingerprintKeyId,
             })
@@ -48,6 +55,7 @@ export function createTenantClaimMdAccountIdentityStore(input: {
           if (!config)
             return resolveTenantClaimMdAccount({
               ...input,
+              today: medicareReceiptDay(new Date()),
               config: null,
               identities: [],
               credentialBindings: [],
@@ -88,7 +96,13 @@ export function createTenantClaimMdAccountIdentityStore(input: {
                   ),
                 )
             : [];
-          return resolveTenantClaimMdAccount({ ...input, config, identities, credentialBindings });
+          return resolveTenantClaimMdAccount({
+            ...input,
+            today: medicareReceiptDay(new Date()),
+            config,
+            identities,
+            credentialBindings,
+          });
         },
       );
     },
@@ -121,6 +135,7 @@ export function createTenantClaimMdAccountIdentityStore(input: {
               status: C.status,
               baaVerifiedAt: C.baaVerifiedAt,
               baaRevokedAt: C.baaRevokedAt,
+              baaExpiresOn: C.baaExpiresOn,
               credentialFingerprint: C.credentialFingerprint,
               credentialFingerprintKeyId: C.credentialFingerprintKeyId,
             })
@@ -135,6 +150,7 @@ export function createTenantClaimMdAccountIdentityStore(input: {
             config.status !== "active" ||
             !config.baaVerifiedAt ||
             config.baaRevokedAt ||
+            baaEndedNow(config.baaExpiresOn) ||
             !config.credentialFingerprint ||
             !config.credentialFingerprintKeyId
           )
@@ -209,6 +225,7 @@ export function createTenantClaimMdAccountIdentityStore(input: {
               status: C.status,
               baaVerifiedAt: C.baaVerifiedAt,
               baaRevokedAt: C.baaRevokedAt,
+              baaExpiresOn: C.baaExpiresOn,
               credentialFingerprint: C.credentialFingerprint,
               credentialFingerprintKeyId: C.credentialFingerprintKeyId,
             })
@@ -224,6 +241,7 @@ export function createTenantClaimMdAccountIdentityStore(input: {
             config.status !== "active" ||
             !config.baaVerifiedAt ||
             config.baaRevokedAt ||
+            baaEndedNow(config.baaExpiresOn) ||
             !config.credentialFingerprint ||
             !config.credentialFingerprintKeyId
           )
