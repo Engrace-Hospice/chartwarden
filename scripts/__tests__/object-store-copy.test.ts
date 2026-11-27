@@ -30,8 +30,14 @@ describe("second copy encryption (CW-AC-05)", () => {
     TARGET_S3_SECRET_KEY: "sk",
   };
   it("TARGET_S3_REQUIRE_SSE=1 makes the target encrypt; absent or 0 leaves it as before", () => {
-    expect(storeConfigFromEnv("TARGET", { ...base, TARGET_S3_REQUIRE_SSE: "1" }).requireServerSideEncryption).toBe(true);
-    expect(storeConfigFromEnv("TARGET", { ...base, TARGET_S3_REQUIRE_SSE: "0" }).requireServerSideEncryption).toBe(false);
+    expect(
+      storeConfigFromEnv("TARGET", { ...base, TARGET_S3_REQUIRE_SSE: "1" })
+        .requireServerSideEncryption,
+    ).toBe(true);
+    expect(
+      storeConfigFromEnv("TARGET", { ...base, TARGET_S3_REQUIRE_SSE: "0" })
+        .requireServerSideEncryption,
+    ).toBe(false);
     expect(storeConfigFromEnv("TARGET", base).requireServerSideEncryption).toBe(false);
   });
 });

@@ -68,7 +68,11 @@ describe("arch:tls-policy", () => {
     });
 
     it("fails when TLS 1.3 is dropped", () => {
-      const input = mutate("tlsSnippet", "ssl_protocols TLSv1.2 TLSv1.3;", "ssl_protocols TLSv1.2;");
+      const input = mutate(
+        "tlsSnippet",
+        "ssl_protocols TLSv1.2 TLSv1.3;",
+        "ssl_protocols TLSv1.2;",
+      );
       expect(problems(input)).toContain("ssl_protocols");
     });
 
@@ -83,7 +87,11 @@ describe("arch:tls-policy", () => {
     });
 
     it("fails when a strict suite is added without updating the documentation", () => {
-      const input = mutate("tlsSnippet", /^ssl_ciphers /m, "ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:");
+      const input = mutate(
+        "tlsSnippet",
+        /^ssl_ciphers /m,
+        "ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:",
+      );
       expect(problems(input)).toContain("differs from the list documented");
     });
 
@@ -167,7 +175,9 @@ describe("arch:tls-policy", () => {
 
     it("the legacy-host redirect file's three 443 servers all include the snippet", () => {
       const legacy = real.nginxConfigs[LEGACY] ?? "";
-      expect(legacy.match(/include \/etc\/nginx\/snippets\/chartwarden-tls\.conf;/g)).toHaveLength(3);
+      expect(legacy.match(/include \/etc\/nginx\/snippets\/chartwarden-tls\.conf;/g)).toHaveLength(
+        3,
+      );
       expect(legacy).not.toContain("options-ssl-nginx.conf\n");
     });
   });
@@ -177,7 +187,9 @@ describe("arch:tls-policy", () => {
       withNginx("r.conf", `server {\n  server_name r.example.test;\n  listen 80;\n  ${line}\n}\n`);
 
     it("accepts a 308 to https and a relative redirect", () => {
-      expect(tlsPolicyProblems(redirect("return 308 https://app.example.test$request_uri;"))).toEqual([]);
+      expect(
+        tlsPolicyProblems(redirect("return 308 https://app.example.test$request_uri;")),
+      ).toEqual([]);
       expect(tlsPolicyProblems(redirect("return 308 /portal/;"))).toEqual([]);
     });
 
@@ -188,8 +200,12 @@ describe("arch:tls-policy", () => {
     });
 
     it("fails a 301 or 302 to https (the documented choice is 308)", () => {
-      expect(problems(redirect("return 301 https://app.example.test$request_uri;"))).toContain("use 308");
-      expect(problems(redirect("return 302 https://app.example.test$request_uri;"))).toContain("use 308");
+      expect(problems(redirect("return 301 https://app.example.test$request_uri;"))).toContain(
+        "use 308",
+      );
+      expect(problems(redirect("return 302 https://app.example.test$request_uri;"))).toContain(
+        "use 308",
+      );
     });
   });
 
@@ -216,7 +232,8 @@ describe("arch:tls-policy", () => {
     });
 
     it("reads both header spellings (nginx add_header and Fastify reply.header)", () => {
-      const nginx = 'add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;';
+      const nginx =
+        'add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;';
       expect(hstsProblems("a", nginx)).toEqual([]);
       const fastify =
         'reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");';
@@ -225,7 +242,11 @@ describe("arch:tls-policy", () => {
   });
 
   it("fails when bootstrap-vps.sh stops installing the snippet", () => {
-    const input = mutate("bootstrapScript", /^.*"\$SOURCE_DIR\/nginx\/chartwarden-tls\.conf".*$/m, "");
+    const input = mutate(
+      "bootstrapScript",
+      /^.*"\$SOURCE_DIR\/nginx\/chartwarden-tls\.conf".*$/m,
+      "",
+    );
     expect(problems(input)).toContain("does not install");
   });
 });

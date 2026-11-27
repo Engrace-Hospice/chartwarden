@@ -99,7 +99,9 @@ function snippetProblems(snippetText: string, doc: string): string[] {
 
   const protocols = directives(snippet, "ssl_protocols");
   if (protocols.length !== 1) {
-    problems.push(`${TLS_SNIPPET_PATH}: must set ssl_protocols exactly once (found ${protocols.length})`);
+    problems.push(
+      `${TLS_SNIPPET_PATH}: must set ssl_protocols exactly once (found ${protocols.length})`,
+    );
   } else {
     const offered = (protocols[0] ?? "").split(/\s+/).sort().join(" ");
     if (offered !== [...ALLOWED_PROTOCOLS].sort().join(" "))
@@ -113,12 +115,16 @@ function snippetProblems(snippetText: string, doc: string): string[] {
   if (documented.length === 0)
     problems.push(`${HARDENING_DOC_PATH}: no cipher list found under "${CIPHER_HEADING}"`);
   if (cipherLists.length !== 1) {
-    problems.push(`${TLS_SNIPPET_PATH}: must set ssl_ciphers exactly once (found ${cipherLists.length})`);
+    problems.push(
+      `${TLS_SNIPPET_PATH}: must set ssl_ciphers exactly once (found ${cipherLists.length})`,
+    );
   } else {
     const suites = (cipherLists[0] ?? "").split(":");
     for (const suite of suites)
       if (!STRICT_SUITE.test(suite))
-        problems.push(`${TLS_SNIPPET_PATH}: suite ${suite} is not ECDHE + AEAD (forward secrecy and authenticated encryption)`);
+        problems.push(
+          `${TLS_SNIPPET_PATH}: suite ${suite} is not ECDHE + AEAD (forward secrecy and authenticated encryption)`,
+        );
     if (documented.length > 0 && [...suites].sort().join(" ") !== [...documented].sort().join(" "))
       problems.push(
         `${TLS_SNIPPET_PATH}: ssl_ciphers (${suites.join(", ")}) differs from the list documented in ${HARDENING_DOC_PATH} §4.3 (${documented.join(", ")}); change both together`,
@@ -147,7 +153,9 @@ function nginxConfigProblems(path: string, text: string): string[] {
       directives(block, "listen").some(terminatesTls) &&
       !directives(block, "include").includes(TLS_SNIPPET_INCLUDE)
     )
-      problems.push(`${path}: server ${name} terminates TLS without \`include ${TLS_SNIPPET_INCLUDE};\``);
+      problems.push(
+        `${path}: server ${name} terminates TLS without \`include ${TLS_SNIPPET_INCLUDE};\``,
+      );
 
     for (const ret of directives(block, "return")) {
       const redirect = ret.match(/^(30\d)\s+(\S+)/);
@@ -156,7 +164,9 @@ function nginxConfigProblems(path: string, text: string): string[] {
       if (!(target ?? "").toLowerCase().startsWith("https://"))
         problems.push(`${path}: server ${name} redirects to ${target}, which is not https://`);
       else if (code !== "308")
-        problems.push(`${path}: server ${name} redirects with ${code}; use 308 so a redirected POST/PUT keeps its method and body`);
+        problems.push(
+          `${path}: server ${name} redirects with ${code}; use 308 so a redirected POST/PUT keeps its method and body`,
+        );
     }
   }
   return problems;
@@ -168,7 +178,9 @@ export function hstsProblems(label: string, text: string): string[] {
   const problems: string[] = [];
   const maxAge = Number(value.match(/max-age=(\d+)/i)?.[1] ?? 0);
   if (maxAge < MIN_HSTS_MAX_AGE_SECONDS)
-    problems.push(`${label}: HSTS max-age ${maxAge} is under ${MIN_HSTS_MAX_AGE_SECONDS} (one year)`);
+    problems.push(
+      `${label}: HSTS max-age ${maxAge} is under ${MIN_HSTS_MAX_AGE_SECONDS} (one year)`,
+    );
   if (!/includeSubDomains/i.test(value)) problems.push(`${label}: HSTS lacks includeSubDomains`);
   return problems;
 }
@@ -176,14 +188,18 @@ export function hstsProblems(label: string, text: string): string[] {
 export function tlsPolicyProblems(input: TlsPolicyInput): string[] {
   const problems = [
     ...snippetProblems(input.tlsSnippet, input.hardeningDoc),
-    ...Object.entries(input.nginxConfigs).flatMap(([path, text]) => nginxConfigProblems(path, text)),
+    ...Object.entries(input.nginxConfigs).flatMap(([path, text]) =>
+      nginxConfigProblems(path, text),
+    ),
     ...hstsProblems(WEB_HEADERS_PATH, stripComments(input.webSecurityHeaders)),
     ...hstsProblems(BACKEND_SECURITY_PATH, input.backendSecurityPlugin),
   ];
   const installsSnippet =
     /^\s*install\b.*"\$SOURCE_DIR\/nginx\/chartwarden-tls\.conf".*\/etc\/nginx\/snippets\/chartwarden-tls\.conf/m;
   if (!installsSnippet.test(input.bootstrapScript))
-    problems.push(`${BOOTSTRAP_PATH}: does not install ${TLS_SNIPPET_PATH} to /etc/nginx/snippets/`);
+    problems.push(
+      `${BOOTSTRAP_PATH}: does not install ${TLS_SNIPPET_PATH} to /etc/nginx/snippets/`,
+    );
   return problems;
 }
 

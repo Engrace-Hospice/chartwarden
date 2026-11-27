@@ -37,7 +37,10 @@ export const criticalLabResultResolutions = pgTable(
     resolvedAt: timestamp("resolved_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    oncePerResult: uniqueIndex("clr_resolution_once_uq").on(t.organizationId, t.criticalLabResultId),
+    oncePerResult: uniqueIndex("clr_resolution_once_uq").on(
+      t.organizationId,
+      t.criticalLabResultId,
+    ),
     resultIdx: index("clr_resolution_result_idx").on(t.criticalLabResultId),
     patientIdx: index("clr_resolution_patient_idx").on(t.patientId),
     providerEntityIdx: index("clr_resolution_provider_entity_idx").on(t.providerEntityId),

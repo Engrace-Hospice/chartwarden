@@ -667,8 +667,12 @@ describe("server-side encryption at rest (CW-AC-05, mocked fetch)", () => {
       fetchImpl: mockFetch(() => head({})).fetchImpl,
       now: fixedNow,
     });
-    expect((await encrypted.inspectObject({ bucket: "b", objectKey: "k" }))?.serverSideEncryption).toBe("AES256");
-    expect((await clear.inspectObject({ bucket: "b", objectKey: "k" }))?.serverSideEncryption).toBeNull();
+    expect(
+      (await encrypted.inspectObject({ bucket: "b", objectKey: "k" }))?.serverSideEncryption,
+    ).toBe("AES256");
+    expect(
+      (await clear.inspectObject({ bucket: "b", objectKey: "k" }))?.serverSideEncryption,
+    ).toBeNull();
   });
 
   it("the provisioner sets the default on a bucket that has none, and proves it took", async () => {
@@ -679,15 +683,14 @@ describe("server-side encryption at rest (CW-AC-05, mocked fetch)", () => {
       return new Response(bucketConfigXml, { status: 200 }); // the verifying GET
     });
     const storage = createS3TenantStorageProvisioner(sseConfig, { fetchImpl, now: fixedNow });
-    await expect(storage.ensureTenantPrefixes({ organizationId, prefixes: [] })).resolves.toMatchObject({
+    await expect(
+      storage.ensureTenantPrefixes({ organizationId, prefixes: [] }),
+    ).resolves.toMatchObject({
       created: false,
     });
-    expect(calls.map((c) => `${c.method} ${c.url.includes("?encryption") ? "encryption" : "bucket"}`)).toEqual([
-      "HEAD bucket",
-      "GET encryption",
-      "PUT encryption",
-      "GET encryption",
-    ]);
+    expect(
+      calls.map((c) => `${c.method} ${c.url.includes("?encryption") ? "encryption" : "bucket"}`),
+    ).toEqual(["HEAD bucket", "GET encryption", "PUT encryption", "GET encryption"]);
     const put = calls[2]!;
     expect(new TextDecoder().decode(put.body!)).toContain("<SSEAlgorithm>AES256</SSEAlgorithm>");
     expect(put.headers["content-md5"]).toBeTruthy();
@@ -695,9 +698,13 @@ describe("server-side encryption at rest (CW-AC-05, mocked fetch)", () => {
 
   it("a 400 ServerSideEncryptionConfigurationNotFoundError (RustFS) reads as 'no default yet', like SeaweedFS's 404", async () => {
     const { fetchImpl, calls } = mockFetch((call, index) => {
-      if (call.method === "HEAD" || call.method === "PUT") return new Response(null, { status: 200 });
+      if (call.method === "HEAD" || call.method === "PUT")
+        return new Response(null, { status: 200 });
       return index === 1
-        ? new Response(`<Error><Code>ServerSideEncryptionConfigurationNotFoundError</Code></Error>`, { status: 400 })
+        ? new Response(
+            `<Error><Code>ServerSideEncryptionConfigurationNotFoundError</Code></Error>`,
+            { status: 400 },
+          )
         : new Response(bucketConfigXml, { status: 200 });
     });
     const storage = createS3TenantStorageProvisioner(sseConfig, { fetchImpl, now: fixedNow });
@@ -707,10 +714,14 @@ describe("server-side encryption at rest (CW-AC-05, mocked fetch)", () => {
 
   it("any other failure reading the default is a real error, not 'none yet'", async () => {
     const { fetchImpl } = mockFetch((call) =>
-      call.method === "HEAD" ? new Response(null, { status: 200 }) : new Response("<Error><Code>AccessDenied</Code></Error>", { status: 403 }),
+      call.method === "HEAD"
+        ? new Response(null, { status: 200 })
+        : new Response("<Error><Code>AccessDenied</Code></Error>", { status: 403 }),
     );
     const storage = createS3TenantStorageProvisioner(sseConfig, { fetchImpl, now: fixedNow });
-    await expect(storage.ensureTenantPrefixes({ organizationId, prefixes: [] })).rejects.toThrow(/getEncryption.*403/);
+    await expect(storage.ensureTenantPrefixes({ organizationId, prefixes: [] })).rejects.toThrow(
+      /getEncryption.*403/,
+    );
   });
 
   it("the provisioner leaves a bucket that already encrypts by default alone (no write)", async () => {
@@ -728,10 +739,14 @@ describe("server-side encryption at rest (CW-AC-05, mocked fetch)", () => {
     const { fetchImpl, calls } = mockFetch((call, index) => {
       if (index === 0) return new Response(null, { status: 404 }); // HEAD: absent
       if (call.method === "PUT") return new Response(null, { status: 200 });
-      return index === 2 ? new Response(noConfig, { status: 404 }) : new Response(bucketConfigXml, { status: 200 });
+      return index === 2
+        ? new Response(noConfig, { status: 404 })
+        : new Response(bucketConfigXml, { status: 200 });
     });
     const storage = createS3TenantStorageProvisioner(sseConfig, { fetchImpl, now: fixedNow });
-    await expect(storage.ensureTenantPrefixes({ organizationId, prefixes: [] })).resolves.toMatchObject({
+    await expect(
+      storage.ensureTenantPrefixes({ organizationId, prefixes: [] }),
+    ).resolves.toMatchObject({
       created: true,
     });
     expect(calls.map((c) => c.method)).toEqual(["HEAD", "PUT", "GET", "PUT", "GET"]);

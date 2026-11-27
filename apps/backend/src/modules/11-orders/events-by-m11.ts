@@ -523,7 +523,10 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       organizationId: id,
       observationId: id,
       patientId: id,
-      resolution: Type.Union([Type.Literal("matched_to_order"), Type.Literal("reviewed_no_action")]),
+      resolution: Type.Union([
+        Type.Literal("matched_to_order"),
+        Type.Literal("reviewed_no_action"),
+      ]),
       matchedOrderId: Type.Optional(id),
     }),
     declaredConsumers: [],

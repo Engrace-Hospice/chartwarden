@@ -249,11 +249,15 @@ describe("preflight.sh across the infra-rename windows", () => {
       expect(r.out).toMatch(/SEAWEEDFS_SSE_KEK is missing or not hex/);
     });
     it("refuses a key that is not 64 hex characters, and never prints the key", () => {
-      const short = run({ env: ["OBJECT_STORE_REQUIRE_SSE=1", `SEAWEEDFS_SSE_KEK=${KEK.slice(2)}`] });
+      const short = run({
+        env: ["OBJECT_STORE_REQUIRE_SSE=1", `SEAWEEDFS_SSE_KEK=${KEK.slice(2)}`],
+      });
       expect(short.code, short.out).toBe(67);
       expect(short.out).toMatch(/exactly 64 hex characters/);
       expect(short.out).not.toContain(KEK.slice(2));
-      const notHex = run({ env: ["OBJECT_STORE_REQUIRE_SSE=1", `SEAWEEDFS_SSE_KEK=${"zz".repeat(32)}`] });
+      const notHex = run({
+        env: ["OBJECT_STORE_REQUIRE_SSE=1", `SEAWEEDFS_SSE_KEK=${"zz".repeat(32)}`],
+      });
       expect(notHex.code, notHex.out).toBe(67);
     });
     it("accepts the flag with a well-formed key, silently", () => {
@@ -276,7 +280,9 @@ describe("preflight.sh across the infra-rename windows", () => {
     it("deploys without the flag, with a WARNING that documents are stored in the clear", () => {
       const r = run({ env: [] });
       expect(r.code, r.out).toBe(0);
-      expect(r.out).toMatch(/OBJECT_STORE_REQUIRE_SSE is not set: documents are stored in the clear/);
+      expect(r.out).toMatch(
+        /OBJECT_STORE_REQUIRE_SSE is not set: documents are stored in the clear/,
+      );
     });
   });
 

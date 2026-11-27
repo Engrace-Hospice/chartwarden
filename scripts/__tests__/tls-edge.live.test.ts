@@ -34,7 +34,8 @@ const read = (rel: string): string => readFileSync(join(ROOT, rel), "utf8");
 const DEPLOY = join(ROOT, "deploy", "production");
 
 /** nginx 1.29 on Alpine's OpenSSL 3: the same major line as the web image. Pinned by digest like compose.yml's images. */
-const IMAGE = "nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de";
+const IMAGE =
+  "nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de";
 const READY_TIMEOUT_MS = 30_000;
 const PROBE_TIMEOUT_MS = 10_000;
 const LEGACY_REDIRECTS = [
@@ -46,7 +47,12 @@ const LEGACY_REDIRECTS = [
 type CertKind = "rsa" | "ec";
 /** TLS 1.2 suites the policy must refuse: ECDHE + AEAD but unlisted, CBC, and no forward secrecy. */
 const DENIED_SUITES: Readonly<Record<CertKind, readonly string[]>> = {
-  rsa: ["ECDHE-RSA-AES128-GCM-SHA256", "ECDHE-RSA-AES256-SHA384", "AES256-GCM-SHA384", "AES128-SHA"],
+  rsa: [
+    "ECDHE-RSA-AES128-GCM-SHA256",
+    "ECDHE-RSA-AES256-SHA384",
+    "AES256-GCM-SHA384",
+    "AES128-SHA",
+  ],
   ec: ["ECDHE-ECDSA-AES128-GCM-SHA256", "ECDHE-ECDSA-AES256-SHA384"],
 };
 
@@ -125,7 +131,12 @@ function get(opts: { port: number; host: string; path: string; ca?: string[] }):
       res.resume();
       resolve({ status: res.statusCode ?? 0, headers: res.headers });
     };
-    const common = { host: "127.0.0.1", port: opts.port, path: opts.path, headers: { Host: opts.host } };
+    const common = {
+      host: "127.0.0.1",
+      port: opts.port,
+      path: opts.path,
+      headers: { Host: opts.host },
+    };
     const req =
       opts.ca === undefined
         ? http.get(common, settle)
@@ -155,10 +166,16 @@ describe.skipIf(!LIVE)("CW-TX-01 live: edge TLS policy handshakes against real n
   /** container label -> (container port -> host port) */
   const ports: Record<string, Record<number, number>> = {};
 
-  const hostPort = (label: string, containerPort: number): number => ports[label]?.[containerPort] ?? 0;
+  const hostPort = (label: string, containerPort: number): number =>
+    ports[label]?.[containerPort] ?? 0;
 
   /** Start an nginx container with read-only mounts, publish the given ports on loopback, wait until it answers http. */
-  async function startNginx(label: string, mounts: Mount[], publish: number[], readyPort: number): Promise<void> {
+  async function startNginx(
+    label: string,
+    mounts: Mount[],
+    publish: number[],
+    readyPort: number,
+  ): Promise<void> {
     const name = `cw-tls-live-${process.pid}-${label}`;
     started.push(name);
     run(
@@ -261,15 +278,24 @@ describe.skipIf(!LIVE)("CW-TX-01 live: edge TLS policy handshakes against real n
   });
 
   const documentedSuites = (kind: CertKind): string[] =>
-    documentedCipherSuites(read("docs/architecture/CHARTWARDEN_SECURITY_HARDENING_v0_2.md")).filter((s) =>
-      s.includes(kind === "rsa" ? "-RSA-" : "-ECDSA-"),
+    documentedCipherSuites(read("docs/architecture/CHARTWARDEN_SECURITY_HARDENING_v0_2.md")).filter(
+      (s) => s.includes(kind === "rsa" ? "-RSA-" : "-ECDSA-"),
     );
 
   it("control: a permissive nginx accepts TLS 1.0 and 1.1 and every suite the policy denies, so the probe's refusals mean something", async () => {
     const port = hostPort("permissive", 443);
     for (const version of ["TLSv1", "TLSv1.1"] as const) {
-      const result = await probe({ port, min: version, max: version, ciphers: "ALL:@SECLEVEL=0", ca: trust });
-      expect(result, `permissive control, ${version}`).toMatchObject({ ok: true, protocol: version });
+      const result = await probe({
+        port,
+        min: version,
+        max: version,
+        ciphers: "ALL:@SECLEVEL=0",
+        ca: trust,
+      });
+      expect(result, `permissive control, ${version}`).toMatchObject({
+        ok: true,
+        protocol: version,
+      });
     }
     for (const kind of ["rsa", "ec"] as const)
       for (const suite of DENIED_SUITES[kind]) {
@@ -285,7 +311,12 @@ describe.skipIf(!LIVE)("CW-TX-01 live: edge TLS policy handshakes against real n
   });
 
   it.each(["rsa", "ec"] as const)("%s edge: negotiates TLS 1.3 by default", async (kind) => {
-    const result = await probe({ port: hostPort(kind, 443), min: "TLSv1.2", max: "TLSv1.3", ca: trust });
+    const result = await probe({
+      port: hostPort(kind, 443),
+      min: "TLSv1.2",
+      max: "TLSv1.3",
+      ca: trust,
+    });
     expect(result).toMatchObject({ ok: true, protocol: "TLSv1.3" });
   });
 
@@ -341,7 +372,11 @@ describe.skipIf(!LIVE)("CW-TX-01 live: edge TLS policy handshakes against real n
   it.each(LEGACY_REDIRECTS)(
     "http on port 80 sends $from to $to with a 308 that keeps the path and query",
     async ({ from, to }) => {
-      const reply = await get({ port: hostPort("rsa", 80), host: from, path: "/fhir/Patient?_count=1" });
+      const reply = await get({
+        port: hostPort("rsa", 80),
+        host: from,
+        path: "/fhir/Patient?_count=1",
+      });
       expect(reply.status).toBe(308);
       expect(reply.headers.location).toBe(`${to}/fhir/Patient?_count=1`);
     },
@@ -350,7 +385,12 @@ describe.skipIf(!LIVE)("CW-TX-01 live: edge TLS policy handshakes against real n
   it.each(LEGACY_REDIRECTS)(
     "https for $from, over a verified connection, also answers 308 to $to",
     async ({ from, to }) => {
-      const reply = await get({ port: hostPort("rsa", 443), host: from, path: "/a?b=1", ca: trust });
+      const reply = await get({
+        port: hostPort("rsa", 443),
+        host: from,
+        path: "/a?b=1",
+        ca: trust,
+      });
       expect(reply.status).toBe(308);
       expect(reply.headers.location).toBe(`${to}/a?b=1`);
     },
@@ -366,7 +406,9 @@ describe.skipIf(!LIVE)("CW-TX-01 live: edge TLS policy handshakes against real n
     for (const path of ["/", "/index.html", "/portal/", "/assets/missing.js"]) {
       const reply = await get({ port, host: "app.chartwarden.cloud", path });
       statuses.push(reply.status);
-      expect(reply.headers["strict-transport-security"], `${path} (${reply.status})`).toBe(expected);
+      expect(reply.headers["strict-transport-security"], `${path} (${reply.status})`).toBe(
+        expected,
+      );
     }
     // At least one error response is in the sample: that is what `always` is for.
     expect(statuses).toContain(404);

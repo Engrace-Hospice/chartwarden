@@ -105,9 +105,7 @@ export function s3ObjectStoreConfigFromEnv(
   };
 }
 
-const ENCRYPTION_CONFIG_XML =
-  `<ServerSideEncryptionConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Rule><ApplyServerSideEncryptionByDefault>` +
-  `<SSEAlgorithm>${SSE_ALGORITHM}</SSEAlgorithm></ApplyServerSideEncryptionByDefault></Rule></ServerSideEncryptionConfiguration>`;
+const ENCRYPTION_CONFIG_XML = `<ServerSideEncryptionConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Rule><ApplyServerSideEncryptionByDefault><SSEAlgorithm>${SSE_ALGORITHM}</SSEAlgorithm></ApplyServerSideEncryptionByDefault></Rule></ServerSideEncryptionConfiguration>`;
 const ENCRYPTION_CONFIG_RE = new RegExp(`<SSEAlgorithm>\\s*${SSE_ALGORITHM}\\s*</SSEAlgorithm>`);
 
 /**
@@ -135,7 +133,10 @@ export async function ensureBucketDefaultEncryption(
     // "no default yet" is ServerSideEncryptionConfigurationNotFoundError: HTTP 404 on SeaweedFS, 400 on RustFS.
     if (!res.ok && /ServerSideEncryptionConfigurationNotFoundError/.test(text)) return false;
     if (res.status === 404) return false;
-    if (!res.ok) throw new Error(`m22 s3 object store: 'getEncryption' failed with HTTP ${res.status} for bucket ${bucket}`);
+    if (!res.ok)
+      throw new Error(
+        `m22 s3 object store: 'getEncryption' failed with HTTP ${res.status} for bucket ${bucket}`,
+      );
     return ENCRYPTION_CONFIG_RE.test(text);
   };
   if (await read()) return false;
@@ -152,7 +153,10 @@ export async function ensureBucketDefaultEncryption(
       "content-type": "application/xml",
     },
   });
-  if (!put.ok) throw new Error(`m22 s3 object store: 'putEncryption' failed with HTTP ${put.status} for bucket ${bucket}`);
+  if (!put.ok)
+    throw new Error(
+      `m22 s3 object store: 'putEncryption' failed with HTTP ${put.status} for bucket ${bucket}`,
+    );
   if (!(await read()))
     throw new Error(`m22 s3 object store: bucket ${bucket} did not keep its default encryption`);
   return true;

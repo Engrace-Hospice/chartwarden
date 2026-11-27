@@ -33,11 +33,23 @@ function fakeS3(opts: FakeOptions = {}) {
   const defaults = new Set<string>();
   const methods: string[] = [];
   let counter = 0;
-  const seed = (bucket: string, key: string, text: string, sse = false, checksummed = true): void => {
+  const seed = (
+    bucket: string,
+    key: string,
+    text: string,
+    sse = false,
+    checksummed = true,
+  ): void => {
     const keys = buckets.get(bucket) ?? new Map<string, Version[]>();
     buckets.set(bucket, keys);
     keys.set(key, [
-      { id: `v${++counter}`, bytes: new TextEncoder().encode(text), mime: "application/pdf", sse, checksummed },
+      {
+        id: `v${++counter}`,
+        bytes: new TextEncoder().encode(text),
+        mime: "application/pdf",
+        sse,
+        checksummed,
+      },
     ]);
   };
   const xml = (status: number, body: string): Response => new Response(body, { status });
@@ -179,7 +191,11 @@ describe("reencryptObjectStore", () => {
     const s3 = fakeS3();
     s3.seed(BUCKET, "documents/a.pdf", "synthetic-a");
     const journal: JournalEntry[] = [];
-    await reencryptObjectStore(config, { apply: true, journal: (e) => void journal.push(e) }, { fetchImpl: s3.fetchImpl });
+    await reencryptObjectStore(
+      config,
+      { apply: true, journal: (e) => void journal.push(e) },
+      { fetchImpl: s3.fetchImpl },
+    );
     expect(journal.map((e) => e.status)).toEqual(["intent", "reencrypted"]);
     const versions = s3.buckets.get(BUCKET)!.get("documents/a.pdf")!;
     expect(journal[0]).toMatchObject({ supersededVersionId: versions[0]!.id });
@@ -188,18 +204,30 @@ describe("reencryptObjectStore", () => {
     const bad = fakeS3({ ignoreSse: true });
     bad.seed(BUCKET, "documents/b.pdf", "synthetic-b");
     const badJournal: JournalEntry[] = [];
-    await reencryptObjectStore(config, { apply: true, journal: (e) => void badJournal.push(e) }, { fetchImpl: bad.fetchImpl });
+    await reencryptObjectStore(
+      config,
+      { apply: true, journal: (e) => void badJournal.push(e) },
+      { fetchImpl: bad.fetchImpl },
+    );
     expect(badJournal.map((e) => e.status)).toEqual(["intent", "failed"]);
   });
 
   it("an object stored without a checksum is refused, unless --adopt-unchecksummed re-checks it against the bytes read", async () => {
     const s3 = fakeS3();
     s3.seed(BUCKET, "documents/render.pdf", "synthetic-render", false, false);
-    const refused = await reencryptObjectStore(config, { apply: true }, { fetchImpl: s3.fetchImpl });
+    const refused = await reencryptObjectStore(
+      config,
+      { apply: true },
+      { fetchImpl: s3.fetchImpl },
+    );
     expect(refused.failed[0]?.reason).toContain("no stored SHA-256");
     expect(s3.buckets.get(BUCKET)!.get("documents/render.pdf")).toHaveLength(1);
 
-    const adopted = await reencryptObjectStore(config, { apply: true, adoptUnchecksummed: true }, { fetchImpl: s3.fetchImpl });
+    const adopted = await reencryptObjectStore(
+      config,
+      { apply: true, adoptUnchecksummed: true },
+      { fetchImpl: s3.fetchImpl },
+    );
     expect(adopted).toMatchObject({ reencrypted: 1, failed: [] });
     const versions = s3.buckets.get(BUCKET)!.get("documents/render.pdf")!;
     expect(versions).toHaveLength(2);
@@ -221,19 +249,32 @@ describe("reencryptObjectStore", () => {
       return real(input as never, init);
     }) as unknown as typeof fetch;
     const journal: JournalEntry[] = [];
-    const summary = await reencryptObjectStore(config, { apply: true, journal: (e) => void journal.push(e) }, { fetchImpl: flaky });
+    const summary = await reencryptObjectStore(
+      config,
+      { apply: true, journal: (e) => void journal.push(e) },
+      { fetchImpl: flaky },
+    );
     expect(summary.failed[0]?.reason).toContain("does not read back");
     const versions = s3.buckets.get(BUCKET)!.get("documents/a.pdf")!;
-    expect(journal.at(-1)).toMatchObject({ status: "failed", supersededVersionId: versions[0]!.id });
+    expect(journal.at(-1)).toMatchObject({
+      status: "failed",
+      supersededVersionId: versions[0]!.id,
+    });
     // and a re-run, which now sees AES256, does not pretend there is nothing on record
-    expect(journal.some((e) => e.status === "intent" && e.supersededVersionId === versions[0]!.id)).toBe(true);
+    expect(
+      journal.some((e) => e.status === "intent" && e.supersededVersionId === versions[0]!.id),
+    ).toBe(true);
   });
 
   it("a failure BEFORE the write names no superseded version (it would be the object's only plaintext copy)", async () => {
     const s3 = fakeS3();
     s3.seed(BUCKET, "documents/render.pdf", "synthetic-render", false, false); // no stored SHA-256, so it is refused before any write
     const journal: JournalEntry[] = [];
-    await reencryptObjectStore(config, { apply: true, journal: (e) => void journal.push(e) }, { fetchImpl: s3.fetchImpl });
+    await reencryptObjectStore(
+      config,
+      { apply: true, journal: (e) => void journal.push(e) },
+      { fetchImpl: s3.fetchImpl },
+    );
     expect(journal).toHaveLength(1);
     expect(journal[0]).toMatchObject({ status: "failed" });
     expect(journal[0]).not.toHaveProperty("supersededVersionId");
@@ -244,7 +285,16 @@ describe("reencryptObjectStore", () => {
     s3.seed(BUCKET, "documents/a.pdf", "synthetic-a");
     s3.seed(BUCKET, "documents/b.pdf", "synthetic-b");
     await expect(
-      reencryptObjectStore(config, { apply: true, journal: () => { throw new Error("EACCES"); } }, { fetchImpl: s3.fetchImpl }),
+      reencryptObjectStore(
+        config,
+        {
+          apply: true,
+          journal: () => {
+            throw new Error("EACCES");
+          },
+        },
+        { fetchImpl: s3.fetchImpl },
+      ),
     ).rejects.toThrow(/journal write failed: EACCES/);
     // the first object was never rewritten: the intent is written before the write
     expect(s3.buckets.get(BUCKET)!.get("documents/a.pdf")).toHaveLength(1);
@@ -256,7 +306,11 @@ describe("reencryptObjectStore", () => {
     s3.seed(BUCKET, "documents/big.pdf", "x".repeat(100));
     const dry = await reencryptObjectStore(config, { maxBytes: 50 }, { fetchImpl: s3.fetchImpl });
     expect(dry.failed[0]?.reason).toContain("over --max-bytes 50");
-    const applied = await reencryptObjectStore(config, { apply: true, maxBytes: 50 }, { fetchImpl: s3.fetchImpl });
+    const applied = await reencryptObjectStore(
+      config,
+      { apply: true, maxBytes: 50 },
+      { fetchImpl: s3.fetchImpl },
+    );
     expect(applied.reencrypted).toBe(0);
     expect(s3.buckets.get(BUCKET)!.get("documents/big.pdf")).toHaveLength(1);
   });
@@ -264,7 +318,11 @@ describe("reencryptObjectStore", () => {
   it("an unversioned bucket holding only encrypted objects needs no rewrite and is not a failure", async () => {
     const s3 = fakeS3({ versioned: false });
     s3.seed(BUCKET, "documents/a.pdf", "synthetic-a", true);
-    const summary = await reencryptObjectStore(config, { apply: true }, { fetchImpl: s3.fetchImpl });
+    const summary = await reencryptObjectStore(
+      config,
+      { apply: true },
+      { fetchImpl: s3.fetchImpl },
+    );
     expect(summary).toMatchObject({ alreadyEncrypted: 1, pending: 0, failed: [] });
   });
 
@@ -295,7 +353,11 @@ describe("reencryptObjectStore", () => {
   it("refuses an unversioned bucket: the rewrite would destroy the source", async () => {
     const s3 = fakeS3({ versioned: false });
     s3.seed(BUCKET, "documents/a.pdf", "synthetic-a");
-    const summary = await reencryptObjectStore(config, { apply: true }, { fetchImpl: s3.fetchImpl });
+    const summary = await reencryptObjectStore(
+      config,
+      { apply: true },
+      { fetchImpl: s3.fetchImpl },
+    );
     expect(summary.failed).toEqual([
       {
         bucket: BUCKET,
@@ -329,7 +391,11 @@ describe("reencryptObjectStore", () => {
   it("fails an object when the store does not confirm encryption (no silent plaintext rewrite)", async () => {
     const s3 = fakeS3({ ignoreSse: true });
     s3.seed(BUCKET, "documents/a.pdf", "synthetic-a");
-    const summary = await reencryptObjectStore(config, { apply: true }, { fetchImpl: s3.fetchImpl });
+    const summary = await reencryptObjectStore(
+      config,
+      { apply: true },
+      { fetchImpl: s3.fetchImpl },
+    );
     expect(summary).toMatchObject({ reencrypted: 0 });
     expect(summary.failed[0]?.reason).toMatch(/without server-side encryption|did not keep/);
   });
@@ -352,7 +418,11 @@ describe("reencryptObjectStore", () => {
 describe("verifyJournal (what is safe to purge)", () => {
   const applyAndJournal = async (s3: ReturnType<typeof fakeS3>): Promise<string> => {
     const journal: JournalEntry[] = [];
-    await reencryptObjectStore(config, { apply: true, journal: (e) => void journal.push(e) }, { fetchImpl: s3.fetchImpl });
+    await reencryptObjectStore(
+      config,
+      { apply: true, journal: (e) => void journal.push(e) },
+      { fetchImpl: s3.fetchImpl },
+    );
     return journal.map((e) => JSON.stringify(e)).join("\n");
   };
 
@@ -367,7 +437,12 @@ describe("verifyJournal (what is safe to purge)", () => {
 
     expect(result.held).toEqual([]);
     expect(result.purgeable).toEqual([
-      { status: "purgeable", bucket: BUCKET, key: "documents/a.pdf", supersededVersionId: versions[0]!.id },
+      {
+        status: "purgeable",
+        bucket: BUCKET,
+        key: "documents/a.pdf",
+        supersededVersionId: versions[0]!.id,
+      },
     ]);
     // it only reads: nothing but GET and HEAD after the apply
     expect(s3.methods.slice(before).filter((m) => m !== "GET" && m !== "HEAD")).toEqual([]);
@@ -386,7 +461,10 @@ describe("verifyJournal (what is safe to purge)", () => {
     const result = await verifyJournal(config, text, {}, { fetchImpl: garbled });
 
     expect(result.purgeable).toEqual([]);
-    expect(result.held[0]).toMatchObject({ status: "hold", reason: expect.stringContaining("does not read back") });
+    expect(result.held[0]).toMatchObject({
+      status: "hold",
+      reason: expect.stringContaining("does not read back"),
+    });
   });
 
   it("holds an object the journal says failed, and an object whose current version is still the plaintext one (a cut-short rewrite that never wrote)", async () => {
@@ -396,7 +474,16 @@ describe("verifyJournal (what is safe to purge)", () => {
     const vf = s3.buckets.get(BUCKET)!.get("documents/failed.pdf")![0]!;
     const vu = s3.buckets.get(BUCKET)!.get("documents/untouched.pdf")![0]!;
     const entry = (key: string, id: string, status: string) =>
-      JSON.stringify({ at: "2026-11-26T00:00:00Z", status, bucket: BUCKET, key, sha256Hex: sha(vf.bytes), byteSize: 1, supersededVersionId: id, reason: "x" });
+      JSON.stringify({
+        at: "2026-11-26T00:00:00Z",
+        status,
+        bucket: BUCKET,
+        key,
+        sha256Hex: sha(vf.bytes),
+        byteSize: 1,
+        supersededVersionId: id,
+        reason: "x",
+      });
     const text = [
       entry("documents/failed.pdf", vf.id, "intent"),
       entry("documents/failed.pdf", vf.id, "failed"),
@@ -419,7 +506,9 @@ describe("verifyJournal (what is safe to purge)", () => {
     s3.buckets.get(BUCKET)!.get("documents/a.pdf")!.shift(); // the operator already purged it
     const result = await verifyJournal(config, text, {}, { fetchImpl: s3.fetchImpl });
     expect(result).toMatchObject({ purgeable: [], held: [], alreadyPurged: 1 });
-    await expect(verifyJournal(config, "not json", {}, { fetchImpl: s3.fetchImpl })).rejects.toThrow(/line 1 is not JSON/);
+    await expect(
+      verifyJournal(config, "not json", {}, { fetchImpl: s3.fetchImpl }),
+    ).rejects.toThrow(/line 1 is not JSON/);
   });
 });
 

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { auditPlatformEvent } from "@chartwarden/audit";
 import {
   createCredentialThrottle,
   createDbActorEnrichmentReader,
@@ -15,7 +16,6 @@ import {
   resetRbacEngine,
   resolveMfaEnforcement,
 } from "@chartwarden/auth";
-import { auditPlatformEvent } from "@chartwarden/audit";
 import { createDbClient } from "@chartwarden/db";
 import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
@@ -125,7 +125,12 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
    * for the audit write), so poll briefly for the row to land instead of racing it.
    */
   async function refusalRows(userId: string, expected = 1) {
-    let rows: { organization_id: string | null; severity: string; outcome: string; context: Record<string, unknown> }[] = [];
+    let rows: {
+      organization_id: string | null;
+      severity: string;
+      outcome: string;
+      context: Record<string, unknown>;
+    }[] = [];
     for (let attempt = 0; attempt < 40; attempt += 1) {
       rows = (
         await admin.query(
