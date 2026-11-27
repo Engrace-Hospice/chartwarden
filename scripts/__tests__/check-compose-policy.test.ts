@@ -7,6 +7,7 @@ import {
   checkBackupImageChain,
   checkBackupOverlayImage,
   checkCompose,
+  checkReplicationServices,
   checkRustEnvExample,
   checkRustEnvScope,
   checkRustTopology,
@@ -352,5 +353,50 @@ describe("arch:compose-policy — the backup image is built on the Postgres prod
     expect(
       checkBackupOverlayImage(loadCompose(join(root, "deploy/production/compose.backup.yml"))),
     ).toEqual([]);
+  });
+});
+
+describe("arch:compose-policy — the streaming-replication services (CW-CP-01)", () => {
+  const image = "${CHARTWARDEN_BACKUP_IMAGE:?set-digest-pinned-GHCR-reference}";
+
+  it("accepts bounded services on the required backup image and an image-less override", () => {
+    const doc = {
+      services: {
+        postgres: { ports: ["x"] },
+        monitor: { image, ...bounded },
+        other: { image: `x/y:1@${DIGEST}`, ...bounded },
+      },
+    };
+    expect(checkReplicationServices(doc, "o.yml")).toEqual([]);
+  });
+
+  it("rejects an unpinned literal, another interpolation and a missing limit", () => {
+    const doc = {
+      services: {
+        a: { image: "x/y:latest", ...bounded },
+        b: { image: "${SOME_OTHER_IMAGE}", ...bounded },
+        c: { image, mem_limit: "1g" },
+        d: { image, cpus: 1 },
+      },
+    };
+    const out = checkReplicationServices(doc, "o.yml");
+    expect(out).toHaveLength(4);
+    expect(out.join("\n")).toMatch(
+      /a\.image[\s\S]*b\.image[\s\S]*c: missing cpus[\s\S]*d: missing mem_limit/,
+    );
+  });
+
+  it("refuses a file that declares no services", () => {
+    expect(checkReplicationServices({ services: {} }, "o.yml")[0]).toMatch(/declares no services/);
+  });
+
+  it("holds on the real overlay and standby project", () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+    for (const p of [
+      "deploy/production/compose.replication.yml",
+      "deploy/production/db-replication/compose.standby.yml",
+    ]) {
+      expect(checkReplicationServices(loadCompose(join(root, p)), p)).toEqual([]);
+    }
   });
 });

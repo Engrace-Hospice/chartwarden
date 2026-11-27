@@ -1,0 +1,201 @@
+{
+  "runId": "589d5d",
+  "startedAt": "2026-11-27T20:27:33.216Z",
+  "tooling": {
+    "pgbackrest": "pgBackRest 2.60.0",
+    "postgres": "postgres (PostgreSQL) 18.6"
+  },
+  "scale": "synthetic: one probe table (2000 rows) and 40000 rows of padding WAL; one primary, one standby, one throwaway CA",
+  "primarySettings": {
+    "max_locks_per_transaction": "4096",
+    "archive_mode": "on",
+    "archive_command": "pgbackrest --stanza=chartwarden archive-push %p",
+    "archive_timeout": "60",
+    "wal_level": "replica",
+    "max_wal_senders": "4",
+    "max_replication_slots": "2",
+    "wal_keep_size": "1GB",
+    "max_slot_wal_keep_size": "4GB",
+    "wal_sender_timeout": "60s",
+    "log_replication_commands": "on",
+    "ssl": "on",
+    "ssl_min_protocol_version": "TLSv1.3",
+    "ssl_cert_file": "/run/secrets/replication_server_cert",
+    "ssl_key_file": "/run/secrets/replication_server_key",
+    "ssl_ca_file": "/run/secrets/replication_ca"
+  },
+  "standbySettings": {
+    "max_locks_per_transaction": "4096",
+    "max_wal_senders": "4",
+    "hot_standby": "on",
+    "archive_mode": "off",
+    "log_connections": "on",
+    "log_disconnections": "on"
+  },
+  "timingsMs": {
+    "full base backup (synthetic scale)": 16532,
+    "standby-bootstrap.sh (pgbackrest --type=standby restore)": 16269,
+    "standby start to streaming": 3380,
+    "write on the primary visible on the standby": 454,
+    "restarted standby catches up 40000 rows of WAL": 2509,
+    "promotion (pg_promote, waited)": 453
+  },
+  "checks": [
+    {
+      "name": "provision-primary.sh creates the role, the slot and the pg_hba block",
+      "ok": true,
+      "detail": "CREATE ROLE\nALTER ROLE\n(cw_standby,0/2000028)\nDO\n2026-11-27T20:28:03Z provision-primary role cw_replicator and slot cw_standby ready\n2026-11-27T20:28:03Z provision-primary pg_hba.conf updated and reloaded\n2026-11-27T20:28:03Z provision-primary replication provisioned"
+    },
+    {
+      "name": "a second provision-primary.sh run changes nothing",
+      "ok": true,
+      "detail": "ALTER ROLE\nDO\n2026-11-27T20:28:04Z provision-primary role cw_replicator and slot cw_standby ready\n2026-11-27T20:28:04Z provision-primary pg_hba.conf already carries the managed block\n2026-11-27T20:28:04Z provision-primary replication provisioned"
+    },
+    {
+      "name": "the managed pg_hba block is first: hostssl replication cert, then the two rejects",
+      "ok": true,
+      "detail": "2:hostssl:{replication}:{cw_replicator}:cert\n3:host:{replication}:{cw_replicator}:reject\n4:host:{all}:{cw_replicator}:reject\n122:local:{all}:{all}:trust\n124:host:{all}:{all}:trust"
+    },
+    {
+      "name": "the pg_hba block appears once and the file has no invalid line",
+      "ok": true,
+      "detail": "see pg_hba_file_rules"
+    },
+    {
+      "name": "the replication role has REPLICATION, no password, no other attribute and a connection limit of 2",
+      "ok": true,
+      "detail": "pg_authid"
+    },
+    {
+      "name": "the cert rule is pinned to the standby's address (a /32), not to every address",
+      "ok": true,
+      "detail": "10.174.193.10|255.255.255.255"
+    },
+    {
+      "name": "replication connects over verified TLS with the client certificate, from the standby's address",
+      "ok": true,
+      "detail": "7712950699328684067|1|0/205CE30|"
+    },
+    {
+      "name": "replication in plain text is refused (no TLS)",
+      "ok": true,
+      "detail": "psql: error: connection to server at \"primary.drill.test\" (10.174.193.2), port 5432 failed: FATAL:  pg_hba.conf rejects replication connection for host \"10.174.193.10\", user \"cw_replicator\", no encryption"
+    },
+    {
+      "name": "replication over TLS without a client certificate is refused",
+      "ok": true,
+      "detail": "psql: error: connection to server at \"primary.drill.test\" (10.174.193.2), port 5432 failed: FATAL:  connection requires a valid client certificate"
+    },
+    {
+      "name": "a client certificate from another CA is refused",
+      "ok": true,
+      "detail": "psql: error: connection to server at \"primary.drill.test\" (10.174.193.2), port 5432 failed: SSL error: tlsv1 alert decrypt error"
+    },
+    {
+      "name": "a certificate from our CA whose CN is not the role is refused",
+      "ok": true,
+      "detail": "psql: error: connection to server at \"primary.drill.test\" (10.174.193.2), port 5432 failed: FATAL:  certificate authentication failed for user \"cw_replicator\""
+    },
+    {
+      "name": "the right certificate from any other address is refused (the rule is pinned to the standby)",
+      "ok": true,
+      "detail": "psql: error: connection to server at \"primary.drill.test\" (10.174.193.2), port 5432 failed: FATAL:  pg_hba.conf rejects replication connection for host \"10.174.193.11\", user \"cw_replicator\", SSL encryption"
+    },
+    {
+      "name": "a logical (replication=database) connection by the role is refused",
+      "ok": true,
+      "detail": "psql: error: connection to server at \"primary.drill.test\" (10.174.193.2), port 5432 failed: FATAL:  pg_hba.conf rejects connection for host \"10.174.193.10\", user \"cw_replicator\", database \"chartwarden\", SSL encryption"
+    },
+    {
+      "name": "the replication role cannot log in as a normal user",
+      "ok": true,
+      "detail": "psql: error: connection to server at \"primary.drill.test\" (10.174.193.2), port 5432 failed: FATAL:  pg_hba.conf rejects connection for host \"10.174.193.10\", user \"cw_replicator\", database \"chartwarden\", SSL encryption"
+    },
+    {
+      "name": "password logins still work over TCP, with and without TLS (the existing clients are untouched)",
+      "ok": true,
+      "detail": "app-login-ok\napp-login-ok"
+    },
+    {
+      "name": "the local socket login the backup sidecar uses still works",
+      "ok": true,
+      "detail": "psql over the socket"
+    },
+    {
+      "name": "standby-bootstrap.sh restores the standby data directory",
+      "ok": true,
+      "detail": "rted)\n2026-11-27 20:28:49.233 P00   INFO: restore size = 30.1MB, file total = 1274\n2026-11-27 20:28:49.233 P00   INFO: restore command end: completed successfully (14813ms)\n2026-11-27T20:28:34Z standby-bootstrap restoring the latest base backup of stanza chartwarden (repo 1) as a standby of primary.drill.test:5432, slot cw_standby\n2026-11-27T20:28:49Z standby-bootstrap standby data directory ready"
+    },
+    {
+      "name": "a second standby-bootstrap.sh leaves the existing cluster alone",
+      "ok": true,
+      "detail": "2026-11-27T20:28:51Z standby-bootstrap /var/lib/postgresql/18/docker already holds a cluster: nothing to restore"
+    },
+    {
+      "name": "the standby streams from the slot cw_standby",
+      "ok": true,
+      "detail": "pg_stat_replication"
+    },
+    {
+      "name": "the walsender connection negotiated TLS 1.3 with the client certificate's CN",
+      "ok": true,
+      "detail": "pg_stat_ssl"
+    },
+    {
+      "name": "rows from before the backup and from between backup and standby are on the standby",
+      "ok": true,
+      "detail": "standby has 1500 of 1500 rows"
+    },
+    {
+      "name": "a write on the primary reaches the standby while streaming",
+      "ok": true,
+      "detail": "standby has 2000 of 2000 rows"
+    },
+    {
+      "name": "the standby is in recovery with the intended recovery settings",
+      "ok": true,
+      "detail": "slot=cw_standby archive_mode=off log_connections=on"
+    },
+    {
+      "name": "provisioning left a trace in the primary's server log",
+      "ok": true,
+      "detail": "docker logs of the primary"
+    },
+    {
+      "name": "the primary runs the overlay's settings (ssl, wal_level, bounded slot)",
+      "ok": true,
+      "detail": "ssl=on max_slot_wal_keep_size=4GB"
+    },
+    {
+      "name": "the monitor is silent and exits 0 while the standby streams",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a stopped standby pages: standby_absent (SEV-2 after 10 min) and slot_wal_retained",
+      "ok": true,
+      "detail": "1 replication.standby_absent SEV-2, replication.slot_wal_retained SEV-3"
+    },
+    {
+      "name": "the same alerts are not repeated on the next pass (the exit stays 1)",
+      "ok": true,
+      "detail": "1 "
+    },
+    {
+      "name": "an unreadable primary raises monitor_blind",
+      "ok": true,
+      "detail": "replication.monitor_blind SEV-2"
+    },
+    {
+      "name": "after the standby catches up the monitor is silent again and the absence clock is cleared",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the standby promotes, takes a write and holds every row",
+      "ok": true,
+      "detail": "promoted=t rows=2001"
+    }
+  ],
+  "passed": true
+}

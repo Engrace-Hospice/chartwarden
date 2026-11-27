@@ -1,0 +1,15 @@
+{
+  "kind": "production-restore-drill",
+  "drilledOn": "YYYY-MM-DD",
+  "result": "pass or fail",
+  "conductedBy": "operator who ran the restore",
+  "witness": "a SECOND person who watched it",
+  "snapshotId": "YYYYMMDDTHHMMSSZ",
+  "restoreWallSeconds": 0,
+  "rtoTargetSeconds": 3600,
+  "snapshotAgeSeconds": 0,
+  "rpoTargetSeconds": 900,
+  "verifierExitCode": 0,
+  "phiCopyDestroyedOn": "YYYY-MM-DD",
+  "notes": "findings and follow-ups, or the path of the findings issue"
+}

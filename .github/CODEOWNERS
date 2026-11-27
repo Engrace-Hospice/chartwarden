@@ -29,6 +29,11 @@
 /scripts/db/migrate.ts     @fabwebdev
 /scripts/check-branch-protection.ts @fabwebdev
 /scripts/verify-branch-protection.ts @fabwebdev
+# The contingency-plan evidence (CW-CP-01): a restore-drill record and the check that counts one decide whether the overdue
+# alarm is silent, so neither changes without the owner (once the main ruleset's code-owner review is applied:
+# docs/runbooks/main-branch-protection.md; until then a record is a self-attested file).
+/audit/restore-drill/      @fabwebdev
+/scripts/backup/check-drill-overdue.ts @fabwebdev
 /scripts/check-hooks-installed.ts   @fabwebdev
 /scripts/check-release-gate.ts      @fabwebdev
 /scripts/check-merge-artifacts.ts   @fabwebdev

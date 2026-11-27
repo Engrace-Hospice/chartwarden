@@ -24,6 +24,8 @@
     "backup:restore-drill": "bun run scripts/db/backup-restore-drill.ts",
     "backup:coordinated-drill": "bun run scripts/backup/coordinated-drill.ts",
     "backup:verify-restore": "bun run scripts/backup/verify-restore.ts",
+    "backup:replication-drill": "bun run scripts/backup/replication-drill.ts",
+    "backup:drill-overdue": "bun run scripts/backup/check-drill-overdue.ts",
     "m36:restore-drill": "bun run scripts/m36-restore-drill.ts",
     "m36:restore-drill:detect": "bun run scripts/m36-restore-drill-detect.ts",
     "storage:reconcile-tenants": "bun run scripts/storage/reconcile-tenant-storage.ts",

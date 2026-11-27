@@ -1,0 +1,123 @@
+name: Restore drills and evidence freshness
+
+# CW-CP-01. Scheduled, never reached from deploy.yml (no workflow_call, no push trigger, nothing here needs or feeds
+# release/deploy). This private repository's Actions minutes are metered, so a scheduled run starts exactly ONE job and
+# there is no matrix (the same rule as backup-image.yml).
+#
+#   monthly `drill`   the synthetic streaming-replication drill (bun run backup:replication-drill) and, when the repository
+#                     variable RESTORE_DRILL_COORDINATED is "true", the coordinated backup -> restore -> verify drill
+#                     (bun run backup:coordinated-drill), on private containers of the runner. The evidence (md + json)
+#                     goes to the job summary and to an artifact kept 400 days. It proves the TOOLING at synthetic scale; it
+#                     is not the monthly restore of production data (DR/BCP 8.2), which only an operator can do.
+#   weekly `overdue`  bun run backup:drill-overdue: fails, and posts backup.restore_drill_overdue to OPS_ALERT_WEBHOOK_URL,
+#                     when audit/restore-drill/ holds no witnessed PRODUCTION restore from the last 35 days (or the newest
+#                     one failed). A manual dispatch runs only from main: the webhook secret is never handed to a branch's
+#                     copy of this workflow or of the script. Until the first witnessed restore is committed (issue #878, section 4) it is red on
+#                     purpose: that is the truth about the control, not a flake.
+#
+# The coordinated drill reaches its off-site stand-in as host.docker.internal (Docker Desktop). A Linux runner resolves
+# that name only when Docker is told to (`--add-host host.docker.internal:host-gateway`) and the stand-in's published port
+# is reachable from the bridge: confirm it on the runner (or run the drill there by hand), then set the variable.
+#
+# The two cron literals appear twice (on.schedule and the job `if`): scripts/__tests__/restore-drill-workflow.test.ts fails
+# when they drift, and when a context a job-level key cannot use sneaks in (an invalid workflow never fires, silently).
+on:
+  schedule:
+    - cron: "41 5 3 * *"
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Which job to run"
+        type: choice
+        options: [overdue, drill]
+        default: overdue
+
+concurrency:
+  group: restore-drill
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  drill:
+    name: Synthetic restore and replication drills (private containers)
+    if: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.job == 'drill') || github.event.schedule == '41 5 3 * *' }}
+    runs-on: [self-hosted, Linux, X64, ci]
+    timeout-minutes: 120
+    env:
+      # The target the coordinated drill measures its restore against (DR/BCP 3, Tier 1).
+      WX_DRILL_RTO_TARGET_S: "3600"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      - run: bun install --frozen-lockfile
+      - name: Streaming replication drill
+        id: replication
+        continue-on-error: true
+        run: bun run backup:replication-drill --out="$RUNNER_TEMP/restore-drill-evidence"
+      - name: Coordinated backup, restore and verify drill
+        id: coordinated
+        if: ${{ vars.RESTORE_DRILL_COORDINATED == 'true' }}
+        continue-on-error: true
+        run: bun run backup:coordinated-drill --out="$RUNNER_TEMP/restore-drill-evidence"
+      - name: Evidence to the job summary
+        if: always()
+        run: |
+          shopt -s nullglob
+          for f in "$RUNNER_TEMP"/restore-drill-evidence/*.md; do cat "$f"; echo; done >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: restore-drill-evidence
+          path: ${{ runner.temp }}/restore-drill-evidence
+          retention-days: 400
+          if-no-files-found: warn
+      - name: Page when a drill failed or was cancelled, then fail the job
+        # failure() covers the steps no `continue-on-error` shields (checkout, setup-bun, install): without it a broken
+        # runner or an install error turns the job red and pages nobody.
+        if: ${{ always() && (steps.replication.outcome == 'failure' || steps.coordinated.outcome == 'failure' || failure() || cancelled()) }}
+        env:
+          OPS_ALERT_WEBHOOK_URL: ${{ secrets.OPS_ALERT_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPLICATION_OUTCOME: ${{ steps.replication.outcome }}
+          COORDINATED_OUTCOME: ${{ steps.coordinated.outcome }}
+        run: |
+          case "$OPS_ALERT_WEBHOOK_URL" in
+            https://*)
+              # The URL is a bearer secret and this runner is shared: it goes to curl on stdin, not on the command line.
+              body="$(jq -nc --arg url "$RUN_URL" --arg rep "$REPLICATION_OUTCOME" --arg coord "$COORDINATED_OUTCOME" \
+                '{kind:"backup.scheduled_drill_failed", summary:"a scheduled synthetic restore or replication drill failed", details:{run:$url, replication:$rep, coordinated:$coord}, correlationId:$url, occurredAt:(now|todate)}')"
+              printf 'url = "%s"\n' "$OPS_ALERT_WEBHOOK_URL" \
+                | curl -fsS -m 10 --proto =https --config - -H 'content-type: application/json' --data "$body" \
+                || echo "alert webhook delivery failed"
+              ;;
+            *) echo "OPS_ALERT_WEBHOOK_URL is not an https URL: no alert posted" ;;
+          esac
+          exit 1
+
+  overdue:
+    name: Witnessed production restore recorded within 35 days
+    if: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.job == 'overdue') || github.event.schedule == '17 6 * * 1' }}
+    runs-on: [self-hosted, Linux, X64, ci]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      # No `bun install`: the check uses only Bun built-ins.
+      - name: Check audit/restore-drill for a witnessed production restore
+        env:
+          OPS_ALERT_WEBHOOK_URL: ${{ secrets.OPS_ALERT_WEBHOOK_URL }}
+        run: bun run backup:drill-overdue

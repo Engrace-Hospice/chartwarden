@@ -110,7 +110,7 @@ above that fits it (the IC at SEV-1); name the lever and the approver before usi
 >
 > **The infrastructure this document operates on does not exist yet.** There is no Proxmox VM fleet,
 > no Pangolin edge, no PgBouncer, no Proxmox Backup Server, no replicated object-store cluster, and no PagerDuty /
-> Grafana / Sentry. No streaming replica is running. Per the owner, the single-host backup of §4.8 (the `backup` sidecar with pgBackRest WAL archiving, and the off-site object mirror) runs in production; the repo holds no evidence of it.
+> Grafana / Sentry. No streaming replica is running in production: its configuration is built and proven on private containers (CW-CP-01, §5.1.1), and nothing provisions it. Per the owner, the single-host backup of §4.8 (the `backup` sidecar with pgBackRest WAL archiving, and the off-site object mirror) runs in production; the repo holds no evidence of it.
 > `ops/pgbackrest/pgbackrest.conf.template` is a placeholder whose own header states it is "NOT
 > wired to any real host/credentials".
 >
@@ -124,6 +124,12 @@ above that fits it (the IC at SEV-1); name the lever and the approver before usi
 > is **enabled in production** (the sidecar runs and the off-site mirror is enabled; §4.8.7 are the operator steps, and the
 > repo holds no evidence of them). The production RPO is the snapshot interval of §4.8.3 plus up to two snapshot run times, which no witnessed production
 > drill has confirmed.
+>
+> **Drills and their alarm (CW-CP-01).** `.github/workflows/restore-drill.yml` runs the synthetic streaming-replication
+> drill monthly (and the coordinated drill once the runner is confirmed to run it, §8.2) and checks weekly that a witnessed
+> PRODUCTION restore is recorded under `audit/restore-drill/` within 35 days (`bun run backup:drill-overdue`; the record's
+> template is `audit/restore-drill/TEMPLATE-production-restore.{md,json}`). They prove the tooling at synthetic scale and
+> raise the alarm; neither is the witnessed production restore of §4.8.7 step 3, which is not recorded.
 >
 > Every RTO/RPO figure, failover procedure and host name below is therefore a **target**, not a
 > commitment, and the `ssh chartwarden-app-01`-style commands name hosts that do not exist. The
@@ -661,7 +667,12 @@ cadence) are not recorded as done. All of them remain the procedure for a new ho
 2. Set the §4.8.4 variables, build the image, run `object-store-provision` with the overlay, recreate `seaweedfs`, `up -d postgres backup`.
 3. First witnessed restore of production data with `restore.sh` + the verifier; record it under `audit/restore-drill/`.
 4. Recurring cadence: monthly isolated restore + verify (§8.2), quarterly full off-site restore timed against the RTO
-   target, and `bun run backup:coordinated-drill` on every change to `deploy/production/backup/`.
+   target, and `bun run backup:coordinated-drill` on every change to `deploy/production/backup/`. The repository carries the
+   alarm for a missed one (CW-CP-01): `bun run backup:drill-overdue` runs weekly (`.github/workflows/restore-drill.yml`) and
+   fails, posting `backup.restore_drill_overdue`, when `audit/restore-drill/` has no witnessed production record from the last
+   35 days (§8.2). The drills themselves are still run by a person.
+5. The database standby (§5.1.1): certificates, the standby host and `.env`, the overlay enabled in a maintenance window,
+   and the first failover rehearsal (§8.3). `deploy/production/README.md`, "Database standby", is the order.
 
 ---
 
@@ -695,6 +706,55 @@ restore_command = 'pgbackrest --stanza=chartwarden archive-get %f %p'
 - Prometheus alerts: replication lag > 60 sec (SEV-3), > 5 min (SEV-2), > 30 min (SEV-1 — replication broken)
 - Replication slot age monitored — slots not consumed will fill WAL and crash primary if left unattended
 
+#### 5.1.1 Built for the single-host stack (CW-CP-01): configuration, not a running standby
+
+The block above is the multi-VM target. For the Docker Compose host the repository ships the standby as configuration;
+**nothing in it starts a standby on a real host, and none exists**. Provisioning the standby host, the certificates and the
+firewall rule is the operator order in `deploy/production/README.md` ("Database standby").
+
+| Piece | File | Role |
+| --- | --- | --- |
+| Primary overlay | `deploy/production/compose.replication.yml` | stacked after `compose.backup.yml`: TLS 1.3, `max_wal_senders=4`, `max_replication_slots=2`, `wal_keep_size=1GB`, a bounded slot (`max_slot_wal_keep_size=4GB`, below the 8 GiB `pg_wal` alert of §4.8.3), `log_replication_commands=on`, 5432 published on one named address (**which publishes the whole listener: every role's password login, not only replication; see below**). Restates the archiving flags, because an overlay `command` replaces |
+| Provisioning | `deploy/production/db-replication/provision-primary.sh` | idempotent: role `cw_replicator` (REPLICATION, no password, no other attribute, connection limit 2, converged on every run), slot `cw_standby`, and a managed block at the TOP of `pg_hba.conf` (`hostssl replication cw_replicator <the standby /32> cert`, then `reject` for plain-text or any-other-address replication and for any normal or logical login by the role); `pg_reload_conf()`, then a check that the new file parses and lists the rule (on failure the previous file is put back; an unbalanced marker is refused). The check proves the file, not that the postmaster finished reloading: the drill proves the behaviour |
+| Certificates | `deploy/production/db-replication/make-certs.sh` | CA, primary server certificate, standby client certificate (CN = the role). The CA key stays offline: it is written outside the directory whose files go to the hosts (`<out-dir>.ca/`) |
+| Standby | `deploy/production/db-replication/compose.standby.yml`, `standby-bootstrap.sh` | its own compose project: `pgbackrest --type=standby` restore of the latest base backup from the off-site repository (READ-ONLY restore key), then a hot standby on the slot, `archive_mode=off`, no published port, healthy only while its WAL receiver streams |
+| Monitor | `deploy/production/db-replication/replication-monitor.sh` | on the primary, every 60 s: `replication.standby_absent`, `replication.lag_high` (replay lag or bytes behind), `replication.slot_missing`, `replication.slot_wal_at_risk`, `replication.slot_lost`, `replication.slot_wal_retained`, `replication.monitor_blind`; severity SEV-3 from 60 s, SEV-2 from 5 min, SEV-1 from 30 min (the ladder above), repeated at most every 15 min per kind; posts to the mandatory https `OPS_ALERT_WEBHOOK_URL` |
+| Drill | `scripts/backup/replication-drill.ts` (`bun run backup:replication-drill`) | starts the overlay's and the standby's real commands on private containers (§8.2) |
+
+**The published port is the exposure.** The cert rule guards `cw_replicator` only and is pinned to the standby's address; the
+cluster's own `host all all all scram-sha-256` rule still accepts the `postgres` superuser and the application roles from any
+source that reaches the port, and before this change there was no host port at all. A host `ufw` does not filter
+Docker-published ports (they are forwarded, not input), so the control is the network: a private (VPN) address, or a provider
+firewall restricted to the standby, proven by a connection attempt from another host (README, "Database standby", step 2).
+There is no certificate revocation list: retiring a client certificate means replacing the CA.
+
+Differences from the target block: no replication password (a client certificate the CA signed for the role, over TLS, from
+the standby's address, or no connection); the slot is bounded so a stalled standby cannot fill the primary's disk before it pages; the standby never
+archives (after a promotion it would write a new timeline into the production stanza, so §6.1.2 re-enables archiving on
+purpose); no PgBouncer, so failover is a decision and a manual cutover (§6.1).
+
+Proven by the drill, on private containers at synthetic scale (`audit/restore-drill/<date>-replication-drill.md`):
+replication works only over verified TLS with a client certificate from this CA whose CN is the role (plain text, no
+certificate, another CA, a wrong CN and a normal login by the role are each refused) while password logins and the socket
+login the sidecar uses are unaffected; provisioning twice changes nothing; the standby restores, streams, receives rows
+written before the backup, between backup and standby, and while streaming; the monitor is silent when healthy, pages a
+stopped standby and the WAL it makes the primary retain (and does not repeat itself), pages an unreadable primary, and clears
+when the standby returns; the standby promotes and takes a write. **Not proven:** the bootstrap from the off-site S3
+repository (the drill restores from a local repository; `backup:coordinated-drill` proves the off-site restore with a
+different recovery type), the `restore_command` fallback (catching up from the WAL archive is configured and asserted, never
+forced), the network path and firewall between two real hosts, certificate renewal, catch-up time and lag at production
+size, the production `pg_hba.conf` (the provisioner prepends and assumes nothing, but the operator reads it first), delivery
+of the monitor's alerts to a human (the drill asserts its output; the delivery code is a copy of the backup sidecar's, and the
+optional `REPLICATION_HEARTBEAT_URL` dead-man's switch is the only thing that notices a dead monitor), and the application
+cutover (§6.1).
+
+**The standby host is a new PHI destination.** It holds a full copy of the database, the off-site cipher passphrase and the
+read-only off-site key, so before it exists its provider needs a signed BAA and its data volume must be encrypted at rest,
+both recorded (the compliance register's CW-BA-01 and CW-AC-05 name the hosts that exist today and do not name it). Reading
+it is PHI access by an operator with no application audit trail: the standby logs connections and disconnections
+(`log_connections`, `log_disconnections`) and the provisioner writes its changes to the primary's server log, and an operator
+read needs a ticket (the runbook, §5.7).
+
 ### 5.2 Object Store Replication
 
 **TARGET:** bucket-level active-active replication between the primary object store (chartwarden-storage-01) and a backup store (chartwarden-backup-01) using the store's built-in async replication:
@@ -722,6 +782,16 @@ Some state intentionally not replicated to keep complexity bounded:
 ## 6. Failover Procedures
 
 ### 6.1 PostgreSQL Primary → Replica Promotion
+
+> **TODAY (CW-CP-01).** The procedure below names the multi-VM target's hosts. On the single-host stack the standby, once an
+> operator has provisioned one (§5.1.1), is the `standby` service of `db-replication/compose.standby.yml`: step 1 is
+> `docker compose exec standby psql -U postgres -c "SELECT pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn()"`, step 3 is
+> `SELECT pg_promote()` (rehearsed on private containers by `bun run backup:replication-drill`: it promotes, takes a write and
+> holds every row). Steps 5 and 6 are NOT built: api/worker reach `postgres` by service name, so a cutover means bringing the
+> application stack up against the promoted standby by hand, and nothing scripts or rehearses that. After a promotion the old
+> stanza must not be written to by the new primary until archiving is re-enabled on purpose with a new stanza (§6.1.2). A
+> promotion is a decision (RPO: whatever `replication.lag_high` last said, up to the primary's last streamed WAL), never an
+> automatic failover.
 
 **Trigger conditions** (any of):
 
@@ -1112,6 +1182,8 @@ After any recovery, before resuming customer traffic:
 | pgBackRest backup completes | Daily        | pgBackRest exit code +`info` command | SEV-3 alert; investigate same day             |
 | WAL archiving keeping up    | Continuous   | Prometheus metric of WAL backlog       | SEV-2 alert if backlog > 5 min                |
 | Object-store copy health    | Continuous   | TARGET: replication-lag metrics. TODAY (second copy enabled): `object_copy.failed` alert, `object-copy` container health | TARGET: SEV-3 alert if lag > 5 min, SEV-2 if > 30 min. TODAY: the alert posts to `OPS_ALERT_WEBHOOK_URL` |
+| Standby streaming and lag   | Every 60 s   | TODAY: `replication-monitor.sh` on the primary (§5.1.1; only once the overlay is enabled) | `replication.*` notice on `OPS_ALERT_WEBHOOK_URL`: SEV-3 from 60 s, SEV-2 from 5 min, SEV-1 from 30 min |
+| Witnessed production restore recorded | Weekly | `bun run backup:drill-overdue` (§8.2), `.github/workflows/restore-drill.yml` | `backup.restore_drill_overdue`; red scheduled run (no record in 35 days, or the newest failed) |
 | Valkey snapshot to backup   | Every 15 min | File freshness check on backup VM      | SEV-3 alert if no snapshot in 30 min          |
 | PBS VM backup completes     | Weekly       | PBS job status                         | SEV-3 alert                                   |
 
@@ -1178,7 +1250,34 @@ psql -d chartwarden -c "SELECT COUNT(*) FROM audit_event WHERE created_at > NOW(
 <scheduled date>
 ```
 
+#### TODAY: scheduled drills, the evidence record and the overdue alarm (CW-CP-01)
+
+- **Scheduled, synthetic.** `.github/workflows/restore-drill.yml` runs monthly (one job, no matrix) on a runner with
+  Docker: `bun run backup:replication-drill` always, and `bun run backup:coordinated-drill` (backup, destroy, restore, run
+  the restored-schema verifier) when the repository variable `RESTORE_DRILL_COORDINATED` is `true`. The coordinated drill
+  reaches its off-site stand-in as `host.docker.internal`, which only Docker Desktop resolves by itself; on a Linux runner it
+  needs `--add-host host.docker.internal:host-gateway` and a reachable published port, so the variable stays off until
+  that is confirmed. Evidence (md and json) goes to the job summary and an artifact kept 400 days; a failure posts
+  `backup.scheduled_drill_failed` and fails the run. These drills prove the tooling at synthetic scale (RTO/RPO of
+  seconds, on a private network): they are not the monthly restore of production data.
+- **The production record.** After a witnessed restore (the operator steps are issue #878, section 4), the operator copies
+  `audit/restore-drill/TEMPLATE-production-restore.md` and `.json` to `<date>-production-restore.{md,json}` and fills them in:
+  who ran it and who WATCHED it (a second person), the snapshot restored, restore wall time against the RTO target, the
+  restored snapshot's age against the RPO target, the verifier's exit code, and when the PHI copy was destroyed.
+- **The alarm.** `bun run backup:drill-overdue` runs weekly. It counts a record only when it is complete and passing
+  (second-person witness, verifier exit 0, PHI copy destroyed on or after the drill date, a real date not in the future) and
+  fails, posting `backup.restore_drill_overdue`, when the newest counting record is older than 35 days (the monthly drill
+  plus five days), when there is none, or when the newest record is a failure. Until the first witnessed restore is
+  committed it is RED by design. Missing the RTO or RPO target is reported as a warning on a record that otherwise passes: it
+  is a finding to act on, not a reason to hide the drill.
+- **Needs an operator, once:** the repository secret `OPS_ALERT_WEBHOOK_URL` (https) for the two alert kinds above (without it
+  the red run is the only alarm), and the first witnessed restore.
+
 ### 8.3 Quarterly Failover Drill
+
+> **TODAY (CW-CP-01).** The only failover rehearsal that exists is the promotion step of `bun run backup:replication-drill`
+> on private containers (§5.1.1, §6.1). A rehearsal on a real standby host, with the application cutover, is not recorded
+> and has no recording template beyond §8.2's; record the first one next to the first witnessed restore.
 
 **Objective:** Practice the actual failover procedure under controlled conditions.
 
