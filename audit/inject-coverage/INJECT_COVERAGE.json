@@ -87,6 +87,7 @@
         "apps/backend/__tests__/audit-accounting.test.ts",
         "apps/backend/__tests__/audit-routes-mount.test.ts",
         "apps/backend/__tests__/audit-routes.test.ts",
+        "apps/backend/__tests__/cw-ac-06-minimum-necessary-reads.live.test.ts",
         "apps/backend/__tests__/gap-003-compliance-routes-mount.test.ts",
         "apps/backend/__tests__/gap-003-compliance-routes.live.test.ts",
         "apps/backend/__tests__/m10-hope-sfv-sign-binding.live.test.ts",
@@ -101,6 +102,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
+        "apps/backend/__tests__/cw-ac-06-minimum-necessary-reads.live.test.ts",
         "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
         "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
@@ -145,6 +147,7 @@
         "apps/backend/__tests__/admission-malformed-id.test.ts",
         "apps/backend/__tests__/admission-routes.test.ts",
         "apps/backend/__tests__/admission-seams.test.ts",
+        "apps/backend/__tests__/cw-ac-06-minimum-necessary-reads.live.test.ts",
         "apps/backend/__tests__/discharge-details-routes.test.ts",
         "apps/backend/__tests__/discharge-worklist-routes.test.ts",
         "apps/backend/__tests__/election-addendum-upload-routes.test.ts",

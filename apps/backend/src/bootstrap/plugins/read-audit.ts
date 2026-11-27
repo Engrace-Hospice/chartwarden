@@ -94,7 +94,7 @@ function atPath(payload: unknown, path: string): string | undefined {
  * with no patient attribution — correct for a read that genuinely has no single patient (an
  * org-wide queue), and the reason a patient-scoped route must name one of them.
  */
-function resolvePatientId(
+function patientIdOfRequest(
   cfg: RouteReadAuditEmit,
   params: Record<string, string>,
   query: unknown,
@@ -122,6 +122,16 @@ function resolvePatientId(
     if (found) return found;
   }
   return undefined;
+}
+
+/**
+ * {@link patientIdOfRequest}, with a uuid in ONE spelling. The accounting join compares `context.patientId` as text, and the uuid
+ * format check accepts upper case, so a request that spelled the id in capitals would otherwise read the patient and leave no
+ * trace in that patient's access history.
+ */
+function resolvePatientId(...args: Parameters<typeof patientIdOfRequest>): string | undefined {
+  const id = patientIdOfRequest(...args);
+  return id !== undefined && UUID_RE.test(id) ? id.toLowerCase() : id;
 }
 
 /** Every distinct patient id a multi-patient read disclosed: the array at `path`, each element's `key` (see `patientIdsPayload`). */

@@ -129,8 +129,8 @@ const PERMISSION_SEED = [
   { organizationId: ORG, userId: "plat_1", permissions: ["audit.read"] }, // elevated reader
 ];
 
-function makeServer() {
-  const audit = createInMemoryAuditQuery(seedRecords());
+function makeServer(records: AuditEventRecord[] = seedRecords()) {
+  const audit = createInMemoryAuditQuery(records);
   const auditSink = createInMemoryAuditExecutor();
 
   const grantStore = createInMemoryEffectivePermissionStore(
@@ -273,6 +273,38 @@ describe("M4-T06 audit query route inventory", () => {
       });
       expect(missing.statusCode).toBe(404);
       expect(missing.json().error.code).toBe("EVENT_NOT_FOUND");
+      await app.close();
+    });
+
+    it("returns a write-audit image through the field denylist: a raw trigger image's dob never leaves, in the list or by id", async () => {
+      // CW-AC-06 — a table write-audit trigger copies the raw row (`dob` included); the read path censors it.
+      const raw: AuditEventRecord = {
+        ...seedRecords()[0]!,
+        id: EVT(9),
+        eventType: "patient.insert",
+        resourceKind: "patient",
+        resourceId: PATIENT,
+        before: null,
+        after: { id: PATIENT, dob: "1950-01-02", status: "active" },
+      };
+      const { app } = makeServer([raw]);
+
+      const detail = await app.inject({
+        method: "GET",
+        url: `/api/v1/audit/events/${EVT(9)}`,
+        headers: COMPLIANCE,
+      });
+      expect(detail.statusCode).toBe(200);
+      expect(detail.json().after).toEqual({ id: PATIENT, dob: "[REDACTED]", status: "active" });
+
+      const list = await app.inject({
+        method: "GET",
+        url: "/api/v1/audit/events",
+        headers: COMPLIANCE,
+      });
+      expect(list.statusCode).toBe(200);
+      expect(list.body).not.toContain("1950-01-02");
+      expect(list.json().items[0].after.dob).toBe("[REDACTED]");
       await app.close();
     });
   });

@@ -1395,6 +1395,11 @@ jobs:
           - { name: "M15 crons", scripts: "test:m15:crons:live" }
           # The Aide POC supervisory-visit staff pickers (plan-scoped aides + RN supervisors) as the NOBYPASSRLS app role.
           - { name: "M15 aide-supervision roster", scripts: "test:m15:aide-roster:live" }
+          # CW-AC-06 — the census age (never a date of birth) and the audit actorName org-scoped lookup, plus the read-audit rows, as the NOBYPASSRLS app role.
+          - {
+              name: "AC-06 minimum-necessary reads",
+              scripts: "test:ac-06:minimum-necessary-reads:live",
+            }
           # GAP-101 — M36 out-of-band delivery workers (send_push/sms/voice/email) + vendor-webhook reconcile.
           - { name: "M36 out-of-band delivery", scripts: "test:m36:delivery:live" }
           - { name: "M14 action-item auto-close", scripts: "test:m14:autoclose:live" }
