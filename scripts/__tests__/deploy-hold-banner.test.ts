@@ -40,5 +40,7 @@ describe("deploy.sh held-deploy banner", () => {
     expect(banner).toMatch(/1508[^\n]*m25-835-deployment\.md/);
     expect(banner).toMatch(/1546[^\n]*object-key-column-rename-deployment\.md/);
     expect(banner).toMatch(/1566[^\n]*security-alert-review\.md/);
+    // 1582 (the audit.archive duty role) is held with 1566 and applies in the same batch (runbook section 7).
+    expect(banner).toMatch(/1582[^\n]*security-alert-review\.md/);
   });
 });

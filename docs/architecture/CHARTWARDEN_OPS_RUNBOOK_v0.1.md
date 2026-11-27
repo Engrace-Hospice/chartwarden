@@ -626,6 +626,11 @@ A partition is never detached, exported or dropped by hand. The built path is th
 - With `AUDIT_ARCHIVE_BUCKET` unset it reports `skipped: "unconfigured"` and touches nothing, so the hot tier keeps every
   partition. TODAY the repo sets no `AUDIT_ARCHIVE_BUCKET`; whether the production env file sets one is unevidenced. The
   bucket must already exist, and the app key reaches only `tenant-*` and `chartwarden-*` buckets.
+- It runs on its own database login, `chartwarden_audit_archive_login` (`DATABASE_AUDIT_ARCHIVE_URL` on the worker; provisioned with
+  `CHARTWARDEN_AUDIT_ARCHIVE_PASSWORD`), which holds the `chartwarden_audit_archiver` duty role (migration 1582): the only role that may call
+  `audit_archive_candidates`, `audit_archive_read_batch` and `audit_archive_detach`. The platform login cannot read or detach a closed month. With a
+  bucket set and no `DATABASE_AUDIT_ARCHIVE_URL` the job fails (the queue retries and the DLQ alert fires) rather than skipping. Applying
+  and rotating it: `docs/runbooks/security-alert-review.md` section 7.
 - It never drops a partition. Destruction is M4's certificate-driven act (an approved destruction certificate, M4 spec
   §2.4.2): never `DROP TABLE` a partition by hand, which bypasses the certificate, the legal-hold overlay and the 42 CFR
   Part 2 refusal.

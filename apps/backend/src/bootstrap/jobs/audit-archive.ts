@@ -19,6 +19,12 @@
 //
 // UNCONFIGURED IS A SKIP, NOT A LOSS. With no archive bucket / object-store credentials the job reports
 // `skipped: "unconfigured"` and touches nothing — the hot tier simply keeps the partitions.
+//
+// THE CREDENTIAL. The functions above are callable only by the `chartwarden_audit_archiver` duty role (migration 1582), so the job
+// runs on its own pool (`DATABASE_AUDIT_ARCHIVE_URL`, login `chartwarden_audit_archive_login`) and never on the platform pool: the
+// platform login can neither read a closed audit month nor detach one. Bucket and object store configured but no archive credential
+// is a FAILURE (`AuditArchiveCredentialMissingError`, so the queue retries and the DLQ alert fires), not a skip: an operator who opted
+// in must not find the archive silently not running.
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { AUDIT_QUEUES } from "@chartwarden/audit";
@@ -104,6 +110,16 @@ export interface ArchivedPartition {
   readonly parts: number;
   readonly manifestKey: string;
   readonly detached: boolean;
+}
+
+/** The archive is configured (bucket + object store) but its own database credential is not: loud, never a skip. */
+export class AuditArchiveCredentialMissingError extends Error {
+  constructor() {
+    super(
+      "AUDIT_ARCHIVE_CREDENTIAL_MISSING: DATABASE_AUDIT_ARCHIVE_URL is not set. The audit.archive functions are callable only by the chartwarden_audit_archive_login (migration 1582); the platform login cannot run them. Provision it (CHARTWARDEN_AUDIT_ARCHIVE_PASSWORD, db:provision-roles) and set the URL on the worker.",
+    );
+    this.name = "AuditArchiveCredentialMissingError";
+  }
 }
 
 export class ArchiveVerificationError extends Error {
@@ -324,16 +340,19 @@ export function createSqlArchiveCatalog(tx: DbClient): ArchiveCatalogPort {
 }
 
 /**
- * Bind a catalog to the platform credential: the unit of work reads EVERY tenant's audit rows, so it enters
- * `withPlatformContext` with `crossTenant: true` (a critical-severity bypass audit row per partition).
+ * Bind a catalog to the audit-archive credential (`DATABASE_AUDIT_ARCHIVE_URL`, the `chartwarden_audit_archive_login` that holds the
+ * `chartwarden_audit_archiver` duty role, migration 1582): the unit of work reads EVERY tenant's audit rows, so it enters
+ * `withPlatformContext` with `crossTenant: true` (a critical-severity bypass audit row per partition). It is deliberately NOT the
+ * platform pool: the platform login holds no EXECUTE on these functions, so a caller cannot hand it in by mistake and get a 42501
+ * where it expected a read.
  */
-export function platformCatalogRunner(deps: {
-  readonly platformDb: DbClient;
+export function archiveCatalogRunner(deps: {
+  readonly archiveDb: DbClient;
   readonly auditBypass: PlatformBypassAuditor<DbClient>;
 }): AuditArchiveDeps["withCatalog"] {
   return (fn) =>
     withPlatformContext(
-      deps.platformDb,
+      deps.archiveDb,
       {
         jobId: AUDIT_ARCHIVE_JOB_ID,
         reason: "archive closed audit_event partitions to object storage (M1 audit.archive)",

@@ -2539,7 +2539,9 @@ Module 1 creates and consumes:
 > **Implementation status (GAP-113).** `idempotency.cleanup` is implemented (`apps/backend/src/bootstrap/jobs/idempotency-cleanup.ts`):
 > hourly, per active org under RLS, batched DELETE of rows past `expires_at`; a failing org does not stop the
 > others and the pass rejects so BullMQ retries (purge is reentrant, §4.8.1). **`audit.archive` is implemented**
-> (`apps/backend/src/bootstrap/jobs/audit-archive.ts`, migration 0432): monthly, on the platform credential, it
+> (`apps/backend/src/bootstrap/jobs/audit-archive.ts`, migration 0432): monthly, on its own database login
+> (`chartwarden_audit_archive_login`, `DATABASE_AUDIT_ARCHIVE_URL`; the `chartwarden_audit_archiver` duty role of migration 1582
+> is the only role that may call the archive functions, the platform login cannot), it
 > copies each CLOSED `audit_event` partition older than `AUDIT_ARCHIVE_HOT_MONTHS` (default 13) to the
 > `AUDIT_ARCHIVE_BUCKET` as gzip'd NDJSON parts plus a checksummed `manifest.json`, **verifying every object back
 > from the store** (server-enforced SHA-256 + `inspectObject`) before it counts. It **never drops** a partition —

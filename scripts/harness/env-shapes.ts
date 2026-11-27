@@ -26,7 +26,7 @@ export const SECRET_WORDS = String.raw`[A-Za-z0-9_]*(?:DATABASE_URL|SECRET|TOKEN
  * Printing one is an ask, not a deny (wave 10, B9; round-7 R7-ADV-14): the documented seed workflow passes M34_TENANT_KEK from
  * the api container, so a human approves a deliberate one. The names `SECRET_WORDS` matches before keep their deny.
  */
-export const GUARDED_WORDS = String.raw`[A-Za-z0-9_]*(?:_KEK(?:_RETIRED)?|DATABASE_(?:ADMIN|PLATFORM|DESTRUCTION)_URL|REDIS_URL|WEBHOOK_URL|KEYRING|TENANT_CONFIGS|KEY_P8|SERVICE_ACCOUNT_JSON|SUBSCRIPTION_KEY(?:_PRODUCTION|_SANDBOX)?)`;
+export const GUARDED_WORDS = String.raw`[A-Za-z0-9_]*(?:_KEK(?:_RETIRED)?|DATABASE_(?:ADMIN|PLATFORM|DESTRUCTION|AUDIT_ARCHIVE)_URL|REDIS_URL|WEBHOOK_URL|KEYRING|TENANT_CONFIGS|KEY_P8|SERVICE_ACCOUNT_JSON|SUBSCRIPTION_KEY(?:_PRODUCTION|_SANDBOX)?)`;
 
 /** What prints or serializes its argument, with the open parenthesis (or the space of a `puts X`). */
 const SINK = String.raw`\b(?:print|pprint|repr|str|json\.dumps?|console\.(?:log|info|warn|error|dir|table)|JSON\.stringify|Object\.(?:keys|values|entries|fromEntries)|puts|pp|p|say|echo|write)\b\s*\(?\s*`;

@@ -2,19 +2,24 @@
 // object is verified and only when opted in; a failure leaves the partition attached; unconfigured is a skip.
 import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
-import { describe, expect, it } from "vitest";
+import type { DbClient } from "@chartwarden/db";
+import { resetPlatformJobRegistry } from "@chartwarden/tenancy";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   type ArchiveCandidate,
   type ArchiveCatalogPort,
   type ArchiveConfig,
   type ArchiveObjectPort,
   ArchiveVerificationError,
+  AuditArchiveCredentialMissingError,
+  archiveCatalogRunner,
   archivePartition,
   auditArchiveConfigFromEnv,
   encodePart,
   manifestKey,
   partKey,
   runAuditArchive,
+  wireAuditArchiveTenancy,
 } from "../audit-archive";
 
 const rowsOf = (n: number): Array<Record<string, unknown>> =>
@@ -236,5 +241,68 @@ describe("auditArchiveConfigFromEnv", () => {
       auditArchiveConfigFromEnv({ AUDIT_ARCHIVE_BUCKET: "b", AUDIT_ARCHIVE_DETACH: "true" })?.config
         .detach,
     ).toBe(true);
+  });
+});
+
+// CW-MON-01 follow-up 2 (migration 1582): the job runs on its own credential, never on the platform pool.
+describe("archiveCatalogRunner", () => {
+  afterEach(() => resetPlatformJobRegistry());
+
+  const recordingDb = () => {
+    const events: string[] = [];
+    const statements: string[] = [];
+    const tx = {
+      execute: async (query: { queryChunks: unknown[] }) => {
+        statements.push(JSON.stringify(query.queryChunks));
+        return { rows: [] };
+      },
+    };
+    const archiveDb = {
+      transaction: async (fn: (t: typeof tx) => Promise<unknown>) => {
+        events.push("transaction");
+        return fn(tx);
+      },
+    } as unknown as DbClient;
+    return { archiveDb, events, statements };
+  };
+
+  it("runs the unit of work on the archive pool, after one critical bypass audit row", async () => {
+    wireAuditArchiveTenancy();
+    const { archiveDb, events, statements } = recordingDb();
+    const withCatalog = archiveCatalogRunner({
+      archiveDb,
+      auditBypass: async (_tx, event) => {
+        events.push(`bypass:${event.severity}:${event.jobId}`);
+      },
+    });
+
+    const candidates = await withCatalog((catalog) => catalog.candidates(13));
+
+    expect(candidates).toEqual([]);
+    expect(events).toEqual(["transaction", "bypass:critical:platform.audit_archive"]);
+    expect(statements.join(" ")).toContain("audit_archive_candidates");
+  });
+
+  it("opens nothing until the job is registered as a platform job", async () => {
+    const { archiveDb, events } = recordingDb();
+    const withCatalog = archiveCatalogRunner({
+      archiveDb,
+      auditBypass: async () => {
+        events.push("bypass");
+      },
+    });
+
+    await expect(withCatalog((catalog) => catalog.candidates(13))).rejects.toThrow();
+    expect(events).toEqual([]);
+  });
+});
+
+describe("AuditArchiveCredentialMissingError", () => {
+  it("names the variable and the login, so the DLQ alert tells an operator what to do", () => {
+    const message = new AuditArchiveCredentialMissingError().message;
+
+    expect(message).toContain("AUDIT_ARCHIVE_CREDENTIAL_MISSING");
+    expect(message).toContain("DATABASE_AUDIT_ARCHIVE_URL");
+    expect(message).toContain("chartwarden_audit_archive_login");
   });
 });

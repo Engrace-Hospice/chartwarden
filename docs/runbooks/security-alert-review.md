@@ -47,7 +47,7 @@ Nothing here is applied by the code change; an operator sets it.
 |---|---|
 | `OPS_ALERT_WEBHOOK_URL` | The destination, **the same variable the DLQ and platform-ops notices use**. It must be **https** (plain http only to the loopback): anything else is a loud *failed* delivery that sends nothing. Each alert is one `POST` of `{ kind: "security_alert", summary, details, correlationId, occurredAt }`. A `2xx` is *delivered*; any other status (a redirect included: redirects are refused), or a 5 s timeout, is *failed* and retried by the next run. |
 | *(unset)* | The alert is still logged (`🔒 security alert [...]`) and recorded with `delivery: no_destination`, the run is `ok`, and the boot log warns once. **That is not monitoring**: no human is told, and those alerts are never re-sent once a webhook is set. Production must set the webhook. |
-| `DATABASE_PLATFORM_URL` | Required (see above). The platform login holds **no SELECT on `audit_event`** (migration 1566 removed the column grant of 1561; the audit.archive job's functions still return closed months in full and can detach one, see the control register, CW-MON-01): the org-less lane reads the sign-in events through three SECURITY DEFINER readers, `m4_review_platform_signals`, `m4_review_platform_cursor` and `m4_review_platform_raised_alerts`, and the platform carrier needs EXECUTE on them (the migration grants it where the carrier exists, and `bun run db:provision-roles` grants it on every run). Check: `SELECT has_function_privilege('chartwarden_platform', 'public.m4_review_platform_cursor()', 'EXECUTE');` is true and `SELECT has_any_column_privilege('chartwarden_platform', 'audit_event', 'SELECT');` is false. **What the readers return:** the org-less `m2.auth.login_failed`, `.account_locked` and `.login_succeeded` rows as an id, an instant, the event type, an actor id and three context keys (`userId`, `ipPrefix`, `emailHash`), plus the cursor and five alert keys of the review's own org-less records: never a tenant's row, never free text. **Bounds:** a window of at most 25 hours, no older than 48 hours and at most 20 001 rows (the alert memory: 48 hours, 10 000 rows); a call outside them is refused with SQLSTATE 22023, so the platform lane fails loudly rather than reading less than it thinks. The readers' owner, `chartwarden_audit_reviewer`, is NOLOGIN and row security admits it org-less rows only. **If the platform lane fails with 42501** either the EXECUTE grant is missing (run `bun run db:provision-roles`) or an older release is running against a database that already has migration 1566 (it still selects `audit_event` directly: roll the release forward). **With 22023** one of the bounds above was exceeded: a review constant (`MAX_CATCH_UP_MS`, `MAX_SIGNAL_ROWS`) or a platform rule's window was raised past it (the alert memory reaches back `MAX_CATCH_UP_MS` + the widest rule window + the one-hour alert cooldown, which must stay within 48 hours), a platform rule was added on an event type other than the three sign-in events, or the app host's clock is more than ten minutes ahead of the database's. Raise the bound in a new migration, or fix the clock; the unit test `security-review-reader.test.ts` fails first when the constants and the migration drift. |
+| `DATABASE_PLATFORM_URL` | Required (see above). The platform login holds **no SELECT on `audit_event`** (migration 1566 removed the column grant of 1561; migration 1582 took the audit.archive functions, which return closed months in full and can detach one, off the platform login too: section 7): the org-less lane reads the sign-in events through three SECURITY DEFINER readers, `m4_review_platform_signals`, `m4_review_platform_cursor` and `m4_review_platform_raised_alerts`, and the platform carrier needs EXECUTE on them (the migration grants it where the carrier exists, and `bun run db:provision-roles` grants it on every run). Check: `SELECT has_function_privilege('chartwarden_platform', 'public.m4_review_platform_cursor()', 'EXECUTE');` is true and `SELECT has_any_column_privilege('chartwarden_platform', 'audit_event', 'SELECT');` is false. **What the readers return:** the org-less `m2.auth.login_failed`, `.account_locked` and `.login_succeeded` rows as an id, an instant, the event type, an actor id and three context keys (`userId`, `ipPrefix`, `emailHash`), plus the cursor and five alert keys of the review's own org-less records: never a tenant's row, never free text. **Bounds:** a window of at most 25 hours, no older than 48 hours and at most 20 001 rows (the alert memory: 48 hours, 10 000 rows); a call outside them is refused with SQLSTATE 22023, so the platform lane fails loudly rather than reading less than it thinks. The readers' owner, `chartwarden_audit_reviewer`, is NOLOGIN and row security admits it org-less rows only. **If the platform lane fails with 42501** either the EXECUTE grant is missing (run `bun run db:provision-roles`) or an older release is running against a database that already has migration 1566 (it still selects `audit_event` directly: roll the release forward). **With 22023** one of the bounds above was exceeded: a review constant (`MAX_CATCH_UP_MS`, `MAX_SIGNAL_ROWS`) or a platform rule's window was raised past it (the alert memory reaches back `MAX_CATCH_UP_MS` + the widest rule window + the one-hour alert cooldown, which must stay within 48 hours), a platform rule was added on an event type other than the three sign-in events, or the app host's clock is more than ten minutes ahead of the database's. Raise the bound in a new migration, or fix the clock; the unit test `security-review-reader.test.ts` fails first when the constants and the migration drift. |
 
 `details` is the alert and nothing else: rule id, severity, counts, ISO window, event ids, a subject *reference* (a user id, a /24
 network prefix, or the first 12 characters of a credential hash), the organization id, and the runbook anchor. No name, note, patient or
@@ -249,16 +249,53 @@ from its own definition, and every rule id needs an anchor in this file. The con
 - Suspended organizations are reviewed; closed ones, and the tenant-offboarding shred event, are not.
 - Dispositions and the weekly review are human records outside the code (section 2, decision 4).
 
-## 7. Applying migration 1566 (the platform lane's bounded readers)
+## 7. Applying the held contract migrations (1566 and 1582)
 
-Migration 1566 removes the platform login's `audit_event` column grant and adds the three readers. It is a **contract** migration, so `deploy.sh` holds it
-for an operator (exit 75, before any schema change, previous release untouched). Nothing needs draining; the order matters:
+Two migrations of this control are **contract** migrations, so `deploy.sh` holds them for an operator (exit 75, before any schema change, previous release
+untouched). They apply together, in one run, in filename order:
 
-1. Merge and let the deploy run: it stops at the hold and the previous release keeps serving, its platform lane still working (the grant is still there).
-2. Apply the migration by hand with the **new** release's image, without `--hold-contract` (the command is in the hold message), and **re-run the deploy straight away**.
-   Until the new release is serving, the previous release's platform lane fails each tick (42501), loudly and with nothing recorded; the cursor holds and the next run
-   resumes from it. The org lanes are not affected.
-3. The re-run's provision step grants EXECUTE on the readers again and revokes the old column grant again; check with the two queries in section 2 (`DATABASE_PLATFORM_URL`).
-4. Do not roll back to the previous release after the migration (its platform lane reads `audit_event` directly and would fail): roll forward. If the re-run fails
-   after the migration was applied by hand, `deploy.sh` may restore the previous release itself (the schema change it can see is empty, so it counts as safe to restore);
-   that release's platform lane then fails each tick until a re-run succeeds, so re-run until it does.
+- **1566** removes the platform login's `audit_event` column grant and adds the three bounded readers (the platform lane of the review, section 2).
+- **1582** gives the audit.archive functions (`audit_archive_candidates`, `audit_archive_read_batch`, `audit_archive_detach`: a closed audit month read whole,
+  and detached) a duty role of their own, `chartwarden_audit_archiver`, and removes EXECUTE on them from every other role (the platform carrier and login, the
+  tenant pool, PUBLIC). The monthly job runs on its own login, `chartwarden_audit_archive_login`, through `DATABASE_AUDIT_ARCHIVE_URL` on the worker.
+
+Nothing needs draining; the order matters:
+
+0. **Only where the archive is on** (`AUDIT_ARCHIVE_BUCKET` is set in `.env.production`): add `CHARTWARDEN_AUDIT_ARCHIVE_PASSWORD` (a secret, at least 16 characters, URL-safe:
+   letters, digits and `. _ ~ -`, the provisioner refuses anything else; `openssl rand -hex 24` does) to `.env.production` before the re-run in step 2. The compose file hands it to the `provision` step, which creates the login, and builds the worker's
+   `DATABASE_AUDIT_ARCHIVE_URL` from it. Where the archive is off, leave it unset: nothing is provisioned and the job stays a skip. Set the bucket without it and the
+   job **fails** (`AUDIT_ARCHIVE_CREDENTIAL_MISSING`: the queue retries and the DLQ alert fires); it never skips quietly and never borrows the platform pool.
+1. Merge and let the deploy run: it stops at the hold and the previous release keeps serving, its platform lane and archive job still working (the grants are still there).
+2. Apply the migrations by hand with the **new** release's image, without `--hold-contract` (the command is in the hold message), and **re-run the deploy straight away**.
+   Until the new release is serving: the previous release's platform lane fails each tick (42501), loudly and with nothing recorded (the cursor holds and the next run
+   resumes from it; the org lanes are not affected), and its audit.archive job, if it runs (monthly, `30 3 2 * *`, and only with a bucket set), fails with 42501 before it
+   reads or detaches anything and is retried. Avoid applying across 03:30 UTC on the 2nd. Every provision run cuts the archive login's open sessions (a deploy, not only a
+   rotation), so the same applies to any deploy at that hour: the job's detach is one transaction, so it rolls back and the retry resumes, loudly.
+3. The re-run's provision step grants EXECUTE on the 1566 readers and revokes the old column grant again, revokes the archive functions from the platform carrier and
+   login again, creates (or rotates) the archive login when `CHARTWARDEN_AUDIT_ARCHIVE_PASSWORD` is set (a rotation cuts that login's open sessions), and **refuses to
+   finish** if the platform login can still execute one of the three archive functions (a PUBLIC grant or a membership it does not know of). Check as a superuser:
+   `SELECT has_function_privilege('chartwarden_platform_login', 'public.audit_archive_read_batch(text, uuid, integer)', 'EXECUTE');` is false for each of the three
+   functions, and `SELECT pg_has_role('chartwarden_platform_login', 'chartwarden_audit_archiver', 'MEMBER');` is false; `chartwarden_audit_archive_login` is the role's only member
+   (section 2's two queries cover the 1566 side).
+4. Do not roll back to the previous release after the migrations (its platform lane reads `audit_event` directly and its archive job runs on the platform pool; both would
+   fail): roll forward. If the re-run fails after the migrations were applied by hand, `deploy.sh` may restore the previous release itself (the schema change it can see is
+   empty, so it counts as safe to restore); that release's platform lane and archive job then fail until a re-run succeeds, so re-run until it does.
+5. To rotate the archive credential, re-run the provisioner with a new `CHARTWARDEN_AUDIT_ARCHIVE_PASSWORD` and update the worker's env (compose does both from the one
+   variable). To disable the login, run it with `CHARTWARDEN_AUDIT_ARCHIVE_REVOKE=true`: removing the password from `.env.production` only stops this deploy creating or rotating it, an
+   already provisioned login keeps working with its old password. With the archive on, the worker warns at boot when the URL is missing, and the job fails at its next run.
+
+**If the archive job fails:** `AUDIT_ARCHIVE_CREDENTIAL_MISSING` means the worker has no `DATABASE_AUDIT_ARCHIVE_URL` (step 0). 42501 from the archive login means the login is
+not a member of `chartwarden_audit_archiver` (re-run the provisioner with the password) or an older release is running against a migrated database (roll forward).
+
+**Stated limits.** The archive functions are still owned by the account that ran the migrations (the `postgres` superuser in production): detaching a partition needs
+ownership of `audit_event`, and reading every tenant's closed month needs BYPASSRLS, so a non-login owner would first have to own the audit trail; that is not done here.
+The separation is at the database login, not the process or the container: `.env.production` is loaded (`env_file`) into every service that reads it (api, worker,
+hl7-listener, migrate, provision, tenant-buckets, seed-runner), so a password put there is in the environment of each of them, the tenant-facing `api` included, exactly as
+`CHARTWARDEN_PLATFORM_PASSWORD` already is. Code that can read the environment of one of those containers can build the archive login's URL and call the functions; what is
+removed is the path through the platform login and the platform pool, not the path through a leaked environment. Delivering the password only to `provision` and the worker
+(a secret file read through `CHARTWARDEN_AUDIT_ARCHIVE_PASSWORD_FILE` and a matching `_FILE` for the URL) would narrow that and is not built. A database superuser, or whoever
+holds the migration credential, can still call the functions.
+The job still detaches only with `AUDIT_ARCHIVE_DETACH=true`. None of the functions writes an audit row of its own (`audit_archive_detach`, `audit_archive_read_batch`,
+`audit_archive_candidates`): the job's `platform.bypass_invoked` row (critical, org-less, a job id and a fixed reason, no partition or row count) is the only record of a run,
+and a call made straight through the archive login leaves none. "Fails loudly" means the queue retries and the DLQ alert fires; that alert reaches a person only where
+`OPS_ALERT_WEBHOOK_URL` is set (section 2), and the first signal of a missing credential is the boot warning, then the run on the 2nd of the month.
