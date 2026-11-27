@@ -1,0 +1,14 @@
+{
+  "format": "claimmd-webhook-capture/1",
+  "receivedAt": "2026-11-05T12:00:03.000Z",
+  "method": "POST",
+  "path": "/api/v1/webhooks/claimmd/test",
+  "headers": {
+    "auth-signature-base64": "LYlxgbfr5HNXHeOV/+sUx7B96Og9VGxxfuXP6v5N4to=",
+    "content-type": "application/json",
+    "content-length": "265",
+    "user-agent": "synthetic-fixture"
+  },
+  "otherHeaderNames": [],
+  "bodyBase64": "eyJVVENUaW1lIjoiMjAyNi0xMS0wNSAxMjowMDowMCIsImFjY3RfbnVtYmVyIjoiOTk5OTkiLCJldmVudHMiOlt7ImV2ZW50aWQiOiIyMDAxIiwiZXZlbnRfdHlwZSI6ImVucm9sbCIsImV2ZW50X3RpbWUiOiIyMDI2LTExLTA1IDEyOjAwOjAwIiwiZXZlbnRfZGF0YSI6eyJlbnJvbGwiOnsiZW5yb2xsaWQiOiI3NyIsImV2ZW50IjoiZW5yb2xsZWQiLCJlbnJvbGxfdHlwZSI6ImVyYSIsInByb3ZfbnBpIjoiMTExMTExMTExMiIsInBheWVyaWQiOiJTWU4wMSJ9fX1dfQ=="
+}

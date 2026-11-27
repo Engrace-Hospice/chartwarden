@@ -12,7 +12,7 @@
 //   * After a valid signature content is never refused: 200 {received:n} once one transaction stored the whole batch;
 //     a database failure is a 5xx (Claim.MD retries at least 30 minutes later, for up to 4 days).
 import { ChartWardenError } from "@chartwarden/types";
-import { verifyClaimMdSignature } from "@chartwarden/x12-837-client";
+import { classifyClaimMdSignature } from "@chartwarden/x12-837-client";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { ClaimMdReceive, ClaimMdUsage } from "./receipt-store";
 
@@ -50,10 +50,30 @@ export function registerClaimMdWebhookRoutes(
   const binding = deps.binding;
   const usage = binding?.usage ?? deps.usage ?? null;
   // The raw body and the signature header are passed in by each route call (so the fitness gates see them read there).
-  const handle = async (body: unknown, header: unknown, reply: FastifyReply) => {
+  const handle = async (
+    body: unknown,
+    header: unknown,
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ) => {
     if (!binding) return unconfigured();
     const rawBody = Buffer.isBuffer(body) ? body : Buffer.alloc(0);
-    if (!verifyClaimMdSignature(binding.accountKey, rawBody, header)) throw invalidSignature();
+    const verdict = classifyClaimMdSignature(binding.accountKey, rawBody, header);
+    if (verdict !== "ok") {
+      // A refused delivery leaves a trace an operator can read: the CLASS of refusal and the size, never the signature, the key
+      // or a byte of the body (anonymous traffic rides the per-IP rate tier, so the line is bounded). Without it a real delivery
+      // that fails on a wrong reading of the scheme would look like noise; the replay report explains one.
+      request.log.warn(
+        {
+          event: "claimmd.webhook.refused",
+          usage: binding.usage,
+          verdict,
+          bodyBytes: rawBody.length,
+        },
+        "claim.md webhook delivery refused",
+      );
+      throw invalidSignature();
+    }
     const received = await binding.receive({ usage: binding.usage, rawBody });
     return reply.code(200).send({ received });
   };
@@ -74,12 +94,12 @@ export function registerClaimMdWebhookRoutes(
     );
     if (usage !== "production") {
       app.post("/api/v1/webhooks/claimmd/test", options, (request: FastifyRequest, reply) =>
-        handle(request.body, request.headers["auth-signature-base64"], reply),
+        handle(request.body, request.headers["auth-signature-base64"], request, reply),
       );
     }
     if (usage !== "test") {
       app.post("/api/v1/webhooks/claimmd/production", options, (request: FastifyRequest, reply) =>
-        handle(request.body, request.headers["auth-signature-base64"], reply),
+        handle(request.body, request.headers["auth-signature-base64"], request, reply),
       );
     }
   }

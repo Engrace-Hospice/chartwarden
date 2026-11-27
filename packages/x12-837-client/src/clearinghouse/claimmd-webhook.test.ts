@@ -1,6 +1,6 @@
 // Claim.MD webhook helpers: signature check and delivery split. Synthetic key and bodies only.
 import { createHash, createHmac } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CLAIMMD_EVENT_ID_MAX,
   CLAIMMD_MAX_SPLIT_EVENTS,
@@ -98,6 +98,34 @@ describe("parseClaimMdDelivery", () => {
       Array.from({ length: CLAIMMD_MAX_SPLIT_EVENTS + 1 }, (_, i) => element(String(i))),
     );
     expect(parseClaimMdDelivery(raw).kind).toBe("unsplittable");
+  });
+
+  it("stores the whole body as one malformed receipt when an element cannot be serialised (never throws)", () => {
+    // A signed element nested deeper than the runtime can stringify (reproduced under Bun with a body under 1 MiB) must not turn
+    // into a 5xx that Claim.MD retries for four days; the runtime-independent way to reach that path is a stringify that throws.
+    const raw = body([element("1001")]);
+    const spy = vi.spyOn(JSON, "stringify").mockImplementationOnce(() => {
+      throw new RangeError("Maximum call stack size exceeded");
+    });
+    try {
+      const d = parseClaimMdDelivery(raw);
+      expect(d.kind).toBe("unsplittable");
+      if (d.kind === "unsplittable") expect(d.acctNumber).toBe("99999");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("lets any error other than a stack overflow through (a real bug must stay loud, not become a quiet 200)", () => {
+    const raw = body([element("1001")]);
+    const spy = vi.spyOn(JSON, "stringify").mockImplementationOnce(() => {
+      throw new TypeError("a real bug");
+    });
+    try {
+      expect(() => parseClaimMdDelivery(raw)).toThrow("a real bug");
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("accepts a numeric eventid as its decimal string", () => {

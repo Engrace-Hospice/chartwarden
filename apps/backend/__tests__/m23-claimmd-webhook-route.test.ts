@@ -89,6 +89,55 @@ describe("POST /api/v1/webhooks/claimmd/<usage>", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("writes one warning for a refused delivery with the usage, verdict and size only: never the signature, the key or a body byte", async () => {
+    const lines: string[] = [];
+    const app = Fastify({
+      logger: { level: "warn", stream: { write: (line: string) => void lines.push(line) } },
+    });
+    applyErrorHandler(app);
+    registerClaimMdWebhookRoutes(app, {
+      binding: { usage: "test", accountKey: KEY, receive: async () => 1 },
+      usage: "test",
+    });
+    const body = '{"acct_number":"99999","events":[{"eventid":"SECRET-MARKER-1"}]}';
+    const forged = sign(body, "SYNTH_other_key");
+
+    const res = await app.inject(
+      post("/api/v1/webhooks/claimmd/test", body, { "auth-signature-base64": forged }),
+    );
+
+    expect(res.statusCode).toBe(401);
+    const refused = lines
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((record) => record.event === "claimmd.webhook.refused");
+    expect(refused).toHaveLength(1);
+    expect(refused[0]).toMatchObject({
+      usage: "test",
+      verdict: "mismatch",
+      bodyBytes: Buffer.byteLength(body),
+    });
+    // the whole log output, not only that record
+    for (const secret of [forged, "SYNTH_other_key", KEY, "SECRET-MARKER-1"])
+      expect(lines.join("")).not.toContain(secret);
+  });
+
+  it("writes no refusal warning for an accepted delivery", async () => {
+    const lines: string[] = [];
+    const app = Fastify({
+      logger: { level: "warn", stream: { write: (line: string) => void lines.push(line) } },
+    });
+    applyErrorHandler(app);
+    registerClaimMdWebhookRoutes(app, {
+      binding: { usage: "test", accountKey: KEY, receive: async () => 1 },
+      usage: "test",
+    });
+    const res = await app.inject(
+      post("/api/v1/webhooks/claimmd/test", BODY, { "auth-signature-base64": sign(BODY) }),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(lines.join("")).not.toContain("claimmd.webhook.refused");
+  });
+
   it("mounts only the configured usage", async () => {
     const { app } = harness();
     const res = await app.inject(
