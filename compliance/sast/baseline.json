@@ -1,0 +1,900 @@
+{
+  "entries": [
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "apps/backend/src/modules/22-documents/seams/s3-object-store.ts",
+      "fingerprint": "0769e37789bd1a96",
+      "count": 1,
+      "reason": "Pattern parts are our own constants: XML tag names are string literals at every call site, the rule id is regex-escaped and `days` is a validated positive integer (ensurePrefixExpiry); S3 response text is only the haystack."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "apps/backend/src/modules/22-documents/seams/s3-object-store.ts",
+      "fingerprint": "68ef475c47fd4037",
+      "count": 1,
+      "reason": "Pattern parts are our own constants: XML tag names are string literals at every call site, the rule id is regex-escaped and `days` is a validated positive integer (ensurePrefixExpiry); S3 response text is only the haystack."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "apps/backend/src/modules/22-documents/seams/s3-object-store.ts",
+      "fingerprint": "70b1f1c3a012543a",
+      "count": 1,
+      "reason": "Pattern parts are our own constants: XML tag names are string literals at every call site, the rule id is regex-escaped and `days` is a validated positive integer (ensurePrefixExpiry); S3 response text is only the haystack."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "apps/backend/src/modules/22-documents/seams/s3-object-store.ts",
+      "fingerprint": "e8b94cd6429249c6",
+      "count": 1,
+      "reason": "Pattern parts are our own constants: XML tag names are string literals at every call site, the rule id is regex-escaped and `days` is a validated positive integer (ensurePrefixExpiry); S3 response text is only the haystack."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "apps/backend/src/modules/36-messaging/ai/pseudonymise.ts",
+      "fingerprint": "76204ca88baa63eb",
+      "count": 1,
+      "reason": "The variable part is regex-escaped before it enters the pattern; the untrusted text is only the haystack being matched, never the pattern."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "apps/portal/src/navigation.ts",
+      "fingerprint": "08bab6871570d775",
+      "count": 1,
+      "reason": "The variable part is regex-escaped before it enters the pattern; the untrusted text is only the haystack being matched, never the pattern."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "apps/web/src/modules/10-hope/hope-assessment-detail.tsx",
+      "fingerprint": "9bdfa2662606437e",
+      "count": 1,
+      "reason": "The variable part is regex-escaped before it enters the pattern; the untrusted text is only the haystack being matched, never the pattern."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "e2e/specs/admission.spec.ts",
+      "fingerprint": "0bf0daefc77c7510",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "e2e/specs/admission.spec.ts",
+      "fingerprint": "87529c2620db50cf",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "e2e/specs/documents.spec.ts",
+      "fingerprint": "a8e85874a89455a0",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "e2e/specs/encounters.spec.ts",
+      "fingerprint": "2ed3524299e731b4",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "e2e/specs/hope.spec.ts",
+      "fingerprint": "0ddad534581d40c4",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "e2e/specs/hope.spec.ts",
+      "fingerprint": "7f550ad976766eb2",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "e2e/specs/intake-operational.spec.ts",
+      "fingerprint": "2c60b1bc9ef91d85",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "e2e/specs/scheduling.spec.ts",
+      "fingerprint": "949cd3f68d25ba21",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "packages/inpatient/src/domain/iv-safety/titration-window-catalog.ts",
+      "fingerprint": "98a419ab7be92a5e",
+      "count": 1,
+      "reason": "`k` iterates the keys of the static in-file TITRATION_CATALOG; clinician text is only the haystack, never the pattern."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "packages/terminology-loader/src/parsers/x12-code-list-html.ts",
+      "fingerprint": "f48da20898d4431b",
+      "count": 1,
+      "reason": "`label` is one of a fixed set of string literals at the call sites; the downloaded HTML is only the haystack."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "packages/ui/src/core/api/client.ts",
+      "fingerprint": "962d2727d1a05f06",
+      "count": 1,
+      "reason": "`name` is only ever one of two module constants (the CSRF cookie names), which contain no regex metacharacters."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/check-abac-composed.ts",
+      "fingerprint": "d7c308109887628e",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/check-abac-predicates.ts",
+      "fingerprint": "d7c308109887628e",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/check-ai-messaging-readonly.ts",
+      "fingerprint": "854fcccafb17acf4",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/check-context-attributes.ts",
+      "fingerprint": "47e042a5854d1784",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/check-context-attributes.ts",
+      "fingerprint": "7fa9c55342a26415",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/check-interactive-rows.ts",
+      "fingerprint": "9df1a9e7e528f517",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/check-live-suite-coverage.ts",
+      "fingerprint": "4b3ada398239f78e",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/check-request-body-contract.ts",
+      "fingerprint": "fcfe5e8cd5e8bdf0",
+      "count": 2,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/check-test-typecheck-coverage.ts",
+      "fingerprint": "01966fc262162ea4",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/check-tls-policy.ts",
+      "fingerprint": "0f82c32820e962d0",
+      "count": 1,
+      "reason": "Dev/CI tooling: `name` is a nginx directive name written as a string literal at every call site in this gate (ssl_protocols, listen, return, ...), never request or user input, and it runs only in arch:fitness."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/ddl-source-scan.ts",
+      "fingerprint": "a9e64c496fd6814f",
+      "count": 2,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/harness/hook-matcher.ts",
+      "fingerprint": "bfdd1e07ba9bce94",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/harness/parallel-command.ts",
+      "fingerprint": "fb8f755d3ae05663",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/harness/secret-flow-routes.ts",
+      "fingerprint": "367ed1ab47f287ec",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/harness/secret-flow-routes.ts",
+      "fingerprint": "6fafe9d3ef88389a",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/harness/sql-file-functions.ts",
+      "fingerprint": "7862b48cb22a4ad6",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/harness/wrappers.ts",
+      "fingerprint": "7dba703ded2461ce",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/lib/architecture-sync.ts",
+      "fingerprint": "fd5661afb0fada51",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/object-store-copy.ts",
+      "fingerprint": "7d1ccd229cd97a69",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/report-implementation-status.ts",
+      "fingerprint": "59fbebd64b5ee031",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/report-implementation-status.ts",
+      "fingerprint": "8f37980ca8f01913",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/report-implementation-status.ts",
+      "fingerprint": "bc565e3aba52818c",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-non-literal-regexp",
+      "path": "scripts/report-inject-coverage.ts",
+      "fingerprint": "9df35f70feb3abb5",
+      "count": 1,
+      "reason": "Dev/CI tooling or e2e spec: the pattern is built from repo constants (route ids, table names, file names, test ids, reviewed settings), never from request or user input, and none of it runs in a served path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-redos",
+      "path": "apps/admin/src/modules/35-subscription-billing/form-rules.ts",
+      "fingerprint": "7ea3ac6863bb17be",
+      "count": 1,
+      "reason": "Anchored pattern whose repeated groups are separated by a literal (`-`, `.` or `,`) or bounded by `{n,m}`, so alternatives cannot overlap and matching is linear in the input; the rule flags only the nested-quantifier shape."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-redos",
+      "path": "apps/admin/src/modules/35-subscription-billing/pricing-plan-model.ts",
+      "fingerprint": "dde8a8f795e74398",
+      "count": 1,
+      "reason": "Anchored pattern whose repeated groups are separated by a literal (`-`, `.` or `,`) or bounded by `{n,m}`, so alternatives cannot overlap and matching is linear in the input; the rule flags only the nested-quantifier shape."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-redos",
+      "path": "apps/backend/src/bootstrap/env.ts",
+      "fingerprint": "06e0760b81a7bede",
+      "count": 1,
+      "reason": "Operator-supplied configuration (an env hostname), not request input; the worst case on a long malformed value is polynomial and the operator would have to supply it themselves."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-redos",
+      "path": "apps/backend/src/bootstrap/env.ts",
+      "fingerprint": "281efe9485f0c302",
+      "count": 1,
+      "reason": "Operator-supplied configuration (an env hostname), not request input; the worst case on a long malformed value is polynomial and the operator would have to supply it themselves."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-redos",
+      "path": "apps/backend/src/bootstrap/tenant-host.ts",
+      "fingerprint": "632a1546ab6313da",
+      "count": 1,
+      "reason": "Operator-supplied configuration (an env hostname), not request input; the worst case on a long malformed value is polynomial and the operator would have to supply it themselves."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-redos",
+      "path": "apps/backend/src/modules/32-ai-platform/seams/doclens-projector.ts",
+      "fingerprint": "095a1c90112693d3",
+      "count": 1,
+      "reason": "Anchored pattern whose repeated groups are separated by a literal (`-`, `.` or `,`) or bounded by `{n,m}`, so alternatives cannot overlap and matching is linear in the input; the rule flags only the nested-quantifier shape."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-redos",
+      "path": "e2e/specs/axe-route-walk.spec.ts",
+      "fingerprint": "00373a95de656368",
+      "count": 1,
+      "reason": "Anchored pattern whose repeated groups are separated by a literal (`-`, `.` or `,`) or bounded by `{n,m}`, so alternatives cannot overlap and matching is linear in the input; the rule flags only the nested-quantifier shape."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-redos",
+      "path": "e2e/specs/axe-route-walk.spec.ts",
+      "fingerprint": "cc04b498bc64a8d2",
+      "count": 1,
+      "reason": "Anchored pattern whose repeated groups are separated by a literal (`-`, `.` or `,`) or bounded by `{n,m}`, so alternatives cannot overlap and matching is linear in the input; the rule flags only the nested-quantifier shape."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-redos",
+      "path": "e2e/specs/portal-smoke.spec.ts",
+      "fingerprint": "87517ec2d8552c2b",
+      "count": 1,
+      "reason": "Anchored pattern whose repeated groups are separated by a literal (`-`, `.` or `,`) or bounded by `{n,m}`, so alternatives cannot overlap and matching is linear in the input; the rule flags only the nested-quantifier shape."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-redos",
+      "path": "packages/shared/src/route-kit/formats.ts",
+      "fingerprint": "68142ff362d663c9",
+      "count": 1,
+      "reason": "Anchored pattern whose repeated groups are separated by a literal (`-`, `.` or `,`) or bounded by `{n,m}`, so alternatives cannot overlap and matching is linear in the input; the rule flags only the nested-quantifier shape."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-redos",
+      "path": "packages/shared/src/text/patient-identifier.ts",
+      "fingerprint": "42b1c4b731ba09a1",
+      "count": 1,
+      "reason": "Anchored pattern whose repeated groups are separated by a literal (`-`, `.` or `,`) or bounded by `{n,m}`, so alternatives cannot overlap and matching is linear in the input; the rule flags only the nested-quantifier shape."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-redos",
+      "path": "packages/types/src/messaging-rich-body.ts",
+      "fingerprint": "daedc73aee6ea134",
+      "count": 1,
+      "reason": "Anchored pattern whose repeated groups are separated by a literal (`-`, `.` or `,`) or bounded by `{n,m}`, so alternatives cannot overlap and matching is linear in the input; the rule flags only the nested-quantifier shape."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-redos",
+      "path": "scripts/harness/db-connect-commands.ts",
+      "fingerprint": "49c26dfefd380976",
+      "count": 1,
+      "reason": "Anchored pattern whose repeated groups are separated by a literal (`-`, `.` or `,`) or bounded by `{n,m}`, so alternatives cannot overlap and matching is linear in the input; the rule flags only the nested-quantifier shape."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-redos",
+      "path": "scripts/harness/mcp-claude.ts",
+      "fingerprint": "7a343c342fa7dce9",
+      "count": 1,
+      "reason": "Anchored pattern whose repeated groups are separated by a literal (`-`, `.` or `,`) or bounded by `{n,m}`, so alternatives cannot overlap and matching is linear in the input; the rule flags only the nested-quantifier shape."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-redos",
+      "path": "scripts/report-e2e-axe-coverage.ts",
+      "fingerprint": "53d8f2d5e6eefb6e",
+      "count": 1,
+      "reason": "Anchored pattern whose repeated groups are separated by a literal (`-`, `.` or `,`) or bounded by `{n,m}`, so alternatives cannot overlap and matching is linear in the input; the rule flags only the nested-quantifier shape."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.detect-redos",
+      "path": "scripts/report-e2e-axe-coverage.ts",
+      "fingerprint": "7dbb5fb496123edf",
+      "count": 1,
+      "reason": "Anchored pattern whose repeated groups are separated by a literal (`-`, `.` or `,`) or bounded by `{n,m}`, so alternatives cannot overlap and matching is linear in the input; the rule flags only the nested-quantifier shape."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop",
+      "path": "apps/backend/src/bootstrap/plugins/read-audit.ts",
+      "fingerprint": "5d25b18ad4afa03c",
+      "count": 2,
+      "reason": "Read-only traversal: the loop only reads `cur[segment]` along a dotted path and never assigns, so there is no prototype-pollution sink."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "apps/backend/src/index.ts",
+      "fingerprint": "36ac9a7ee5ca3a5f",
+      "count": 1,
+      "reason": "`level` is the logger-level union at the call site, so this selects a pino level method; it is not request input."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "apps/backend/src/index.ts",
+      "fingerprint": "5741043d352c8cc4",
+      "count": 1,
+      "reason": "`level` is the logger-level union at the call site, so this selects a pino level method; it is not request input."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "apps/backend/src/index.ts",
+      "fingerprint": "d13e040d17f78f3c",
+      "count": 3,
+      "reason": "`level` is the logger-level union at the call site, so this selects a pino level method; it is not request input."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "apps/backend/src/modules/05-patient/geocoder.ts",
+      "fingerprint": "d29b471014e22988",
+      "count": 1,
+      "reason": "Reviewed: lookup in a closed registry keyed by a typed or operator-configured id (vendor, system, kind); a miss is handled explicitly (deny, throw or return) and the key is not free-form request text. Hardening candidate: `Object.hasOwn` so an inherited name such as `constructor` can never resolve."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "apps/backend/src/modules/06-admission/outbox-consumers/m22-document-rendered.ts",
+      "fingerprint": "3fa1fce2d059851a",
+      "count": 1,
+      "reason": "Reviewed: lookup in a closed registry keyed by a typed or operator-configured id (vendor, system, kind); a miss is handled explicitly (deny, throw or return) and the key is not free-form request text. Hardening candidate: `Object.hasOwn` so an inherited name such as `constructor` can never resolve."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "apps/backend/src/modules/22-documents/outbox-consumers/recipient-resolver.ts",
+      "fingerprint": "a6520746ae25480b",
+      "count": 1,
+      "reason": "Reviewed: lookup in a closed registry keyed by a typed or operator-configured id (vendor, system, kind); a miss is handled explicitly (deny, throw or return) and the key is not free-form request text. Hardening candidate: `Object.hasOwn` so an inherited name such as `constructor` can never resolve."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/service.ts",
+      "fingerprint": "5e8768075598c44f",
+      "count": 1,
+      "reason": "Reviewed: lookup in a closed registry keyed by a typed or operator-configured id (vendor, system, kind); a miss is handled explicitly (deny, throw or return) and the key is not free-form request text. Hardening candidate: `Object.hasOwn` so an inherited name such as `constructor` can never resolve."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "apps/backend/src/modules/30-quality/cahps/pipeline.ts",
+      "fingerprint": "1d55504e0f4e43eb",
+      "count": 1,
+      "reason": "Reviewed: lookup in a closed registry keyed by a typed or operator-configured id (vendor, system, kind); a miss is handled explicitly (deny, throw or return) and the key is not free-form request text. Hardening candidate: `Object.hasOwn` so an inherited name such as `constructor` can never resolve."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "apps/backend/src/modules/30-quality/routes/write-service-drizzle.ts",
+      "fingerprint": "b0cc93c3e5047464",
+      "count": 1,
+      "reason": "Reviewed: lookup in a closed registry keyed by a typed or operator-configured id (vendor, system, kind); a miss is handled explicitly (deny, throw or return) and the key is not free-form request text. Hardening candidate: `Object.hasOwn` so an inherited name such as `constructor` can never resolve."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "apps/backend/src/modules/36-messaging/outbox-consumers/oncall-alerts.ts",
+      "fingerprint": "382121d321f00ea8",
+      "count": 1,
+      "reason": "Reviewed: lookup in a closed registry keyed by a typed or operator-configured id (vendor, system, kind); a miss is handled explicitly (deny, throw or return) and the key is not free-form request text. Hardening candidate: `Object.hasOwn` so an inherited name such as `constructor` can never resolve."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "apps/web/src/modules/09-assessments/wounds/wound-test-fixture.tsx",
+      "fingerprint": "bdeb36851e4a1156",
+      "count": 1,
+      "reason": "Test-support fixture, keyed by the test own method and path; not part of a served request path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "apps/web/src/modules/10-hope/submission-worklist.tsx",
+      "fingerprint": "3132547df78d4c81",
+      "count": 1,
+      "reason": "Reviewed: lookup in a closed registry keyed by a typed or operator-configured id (vendor, system, kind); a miss is handled explicitly (deny, throw or return) and the key is not free-form request text. Hardening candidate: `Object.hasOwn` so an inherited name such as `constructor` can never resolve."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "apps/web/src/modules/26-cap/cap-actions.tsx",
+      "fingerprint": "c4a2eda724de492c",
+      "count": 1,
+      "reason": "Reviewed: lookup in a closed registry keyed by a typed or operator-configured id (vendor, system, kind); a miss is handled explicitly (deny, throw or return) and the key is not free-form request text. Hardening candidate: `Object.hasOwn` so an inherited name such as `constructor` can never resolve."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "apps/web/src/modules/34-saas/wizard/test-support.tsx",
+      "fingerprint": "83b84554ec2cc6cd",
+      "count": 1,
+      "reason": "Test-support fixture, keyed by the test own method and path; not part of a served request path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "apps/web/src/modules/41-billing-commercial/commercial-test-harness.tsx",
+      "fingerprint": "bdeb36851e4a1156",
+      "count": 1,
+      "reason": "Test-support fixture, keyed by the test own method and path; not part of a served request path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "packages/db/src/commit-tracker.ts",
+      "fingerprint": "fa5c59001e39c4df",
+      "count": 1,
+      "reason": "False positive: a numeric array index (`args[args.length - 1]`), not a method lookup by name."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "packages/db/src/commit-tracker.ts",
+      "fingerprint": "fd94f0c517faee65",
+      "count": 1,
+      "reason": "False positive: a numeric array index (`args[args.length - 1]`), not a method lookup by name."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "packages/hearthnote/src/assembly/recorded-findings.ts",
+      "fingerprint": "3d95a14e146c486a",
+      "count": 1,
+      "reason": "Reviewed: lookup in a closed registry keyed by a typed or operator-configured id (vendor, system, kind); a miss is handled explicitly (deny, throw or return) and the key is not free-form request text. Hardening candidate: `Object.hasOwn` so an inherited name such as `constructor` can never resolve."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "packages/shared/src/route-kit/pagination.ts",
+      "fingerprint": "c60cf3c5d26f3e2b",
+      "count": 1,
+      "reason": "Reviewed: lookup in a closed registry keyed by a typed or operator-configured id (vendor, system, kind); a miss is handled explicitly (deny, throw or return) and the key is not free-form request text. Hardening candidate: `Object.hasOwn` so an inherited name such as `constructor` can never resolve."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "packages/terminology-loader/src/parsers/index.ts",
+      "fingerprint": "f86e3786ce5667c3",
+      "count": 1,
+      "reason": "Reviewed: lookup in a closed registry keyed by a typed or operator-configured id (vendor, system, kind); a miss is handled explicitly (deny, throw or return) and the key is not free-form request text. Hardening candidate: `Object.hasOwn` so an inherited name such as `constructor` can never resolve."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "packages/ui/src/testing.ts",
+      "fingerprint": "83b84554ec2cc6cd",
+      "count": 1,
+      "reason": "Test-support fixture, keyed by the test own method and path; not part of a served request path."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "packages/x12-837-client/src/clearinghouse/eligibility-vendor-registry.ts",
+      "fingerprint": "59555f64ca157a84",
+      "count": 1,
+      "reason": "Reviewed: lookup in a closed registry keyed by a typed or operator-configured id (vendor, system, kind); a miss is handled explicitly (deny, throw or return) and the key is not free-form request text. Hardening candidate: `Object.hasOwn` so an inherited name such as `constructor` can never resolve."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "packages/x12-837-client/src/clearinghouse/transport-registry.ts",
+      "fingerprint": "38293de09874bddb",
+      "count": 1,
+      "reason": "Reviewed: lookup in a closed registry keyed by a typed or operator-configured id (vendor, system, kind); a miss is handled explicitly (deny, throw or return) and the key is not free-form request text. Hardening candidate: `Object.hasOwn` so an inherited name such as `constructor` can never resolve."
+    },
+    {
+      "rule": "rules.javascript.lang.security.audit.unsafe-dynamic-method",
+      "path": "packages/x12-837-client/src/dde/provider-registry.ts",
+      "fingerprint": "973d8daad1b27af9",
+      "count": 1,
+      "reason": "Reviewed: lookup in a closed registry keyed by a typed or operator-configured id (vendor, system, kind); a miss is handled explicitly (deny, throw or return) and the key is not free-form request text. Hardening candidate: `Object.hasOwn` so an inherited name such as `constructor` can never resolve."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "apps/backend/src/bootstrap/tenant-kek.ts",
+      "fingerprint": "71c09b1654166c32",
+      "count": 1,
+      "reason": "False positive: `<name>`-style text is a placeholder inside a diagnostic or error message, not markup that is rendered or parsed."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "apps/backend/src/modules/22-documents/seams/s3-object-store.ts",
+      "fingerprint": "1ab431b84b9c637a",
+      "count": 1,
+      "reason": "`prefix` is checked against /^[A-Za-z0-9._\\-/]+$/ and `days` is a positive integer before they reach this XML (ensurePrefixExpiry); the rule id derives from the validated prefix, so none of them can carry markup."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "apps/backend/src/modules/22-documents/seams/s3-object-store.ts",
+      "fingerprint": "441917b01b72e835",
+      "count": 1,
+      "reason": "`prefix` is checked against /^[A-Za-z0-9._\\-/]+$/ and `days` is a positive integer before they reach this XML (ensurePrefixExpiry); the rule id derives from the validated prefix, so none of them can carry markup."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "apps/backend/src/modules/22-documents/seams/s3-object-store.ts",
+      "fingerprint": "56b57f86f0e4d6ac",
+      "count": 1,
+      "reason": "`prefix` is checked against /^[A-Za-z0-9._\\-/]+$/ and `days` is a positive integer before they reach this XML (ensurePrefixExpiry); the rule id derives from the validated prefix, so none of them can carry markup."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "apps/backend/src/modules/22-documents/seams/s3-object-store.ts",
+      "fingerprint": "68666ccef9400992",
+      "count": 1,
+      "reason": "`prefix` is checked against /^[A-Za-z0-9._\\-/]+$/ and `days` is a positive integer before they reach this XML (ensurePrefixExpiry); the rule id derives from the validated prefix, so none of them can carry markup."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "apps/backend/src/modules/22-documents/seams/s3-object-store.ts",
+      "fingerprint": "8d518758814118b8",
+      "count": 1,
+      "reason": "False positive: the template builds the S3 default-encryption request body (XML) from the module constant `SSE_ALGORITHM` (\"AES256\"), no user input reaches it, and it goes to the object store, never into a page."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "apps/backend/src/modules/22-documents/seams/s3-object-store.ts",
+      "fingerprint": "92fbcadbc102c9fe",
+      "count": 1,
+      "reason": "`prefix` is checked against /^[A-Za-z0-9._\\-/]+$/ and `days` is a positive integer before they reach this XML (ensurePrefixExpiry); the rule id derives from the validated prefix, so none of them can carry markup."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "apps/backend/src/modules/22-documents/seams/s3-object-store.ts",
+      "fingerprint": "de87a59f3cc5298d",
+      "count": 1,
+      "reason": "`prefix` is checked against /^[A-Za-z0-9._\\-/]+$/ and `days` is a positive integer before they reach this XML (ensurePrefixExpiry); the rule id derives from the validated prefix, so none of them can carry markup."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "packages/messaging/src/alert-payloads/registry.ts",
+      "fingerprint": "16ee05e2f979ef31",
+      "count": 1,
+      "reason": "False positive: `<name>`-style text is a placeholder inside a diagnostic or error message, not markup that is rendered or parsed."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "packages/messaging/src/dispatch/twilio-transports.ts",
+      "fingerprint": "c6d066a068f9113d",
+      "count": 1,
+      "reason": "`line` is passed through xmlEscape (previous lines) before it enters the TwiML body."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "packages/subscription-billing/src/pseudonym/key-envelope.ts",
+      "fingerprint": "38027655c0f25b3d",
+      "count": 1,
+      "reason": "False positive: `<name>`-style text is a placeholder inside a diagnostic or error message, not markup that is rendered or parsed."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "packages/types/src/messaging-xss-corpus.ts",
+      "fingerprint": "8a92859620e35f45",
+      "count": 1,
+      "reason": "Test corpus of XSS payload strings used to prove the sanitiser rejects them; never rendered."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "scripts/check-compose-policy.ts",
+      "fingerprint": "09b6346c0cf163c6",
+      "count": 1,
+      "reason": "False positive: `<name>`-style text is a placeholder inside a diagnostic or error message, not markup that is rendered or parsed."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "scripts/check-fitness-gaps.ts",
+      "fingerprint": "4df09a6ede275610",
+      "count": 1,
+      "reason": "False positive: `<name>`-style text is a placeholder inside a diagnostic or error message, not markup that is rendered or parsed."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "scripts/check-outbox-bindings.ts",
+      "fingerprint": "4b3d409174b24494",
+      "count": 1,
+      "reason": "False positive: `<name>`-style text is a placeholder inside a diagnostic or error message, not markup that is rendered or parsed."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "scripts/check-ui-screens.ts",
+      "fingerprint": "497f5b150fddcd14",
+      "count": 1,
+      "reason": "False positive: `<name>`-style text is a placeholder inside a diagnostic or error message, not markup that is rendered or parsed."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "scripts/lib/object-tombstones.ts",
+      "fingerprint": "85875df094802e18",
+      "count": 1,
+      "reason": "False positive: `<name>`-style text is a placeholder inside a diagnostic or error message, not markup that is rendered or parsed."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "scripts/object-store-copy.ts",
+      "fingerprint": "5c79925753b4f238",
+      "count": 1,
+      "reason": "False positive: `<name>`-style text is a placeholder inside a diagnostic or error message, not markup that is rendered or parsed."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "scripts/object-store-copy.ts",
+      "fingerprint": "a8e3afb7c7e449c5",
+      "count": 1,
+      "reason": "False positive: `<name>`-style text is a placeholder inside a diagnostic or error message, not markup that is rendered or parsed."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "scripts/object-store-copy.ts",
+      "fingerprint": "f497fe6afa05ce5a",
+      "count": 1,
+      "reason": "False positive: `<name>`-style text is a placeholder inside a diagnostic or error message, not markup that is rendered or parsed."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "scripts/openapi/enrichments.ts",
+      "fingerprint": "49d83545a413f0ca",
+      "count": 1,
+      "reason": "False positive: `<name>`-style text is a placeholder inside a diagnostic or error message, not markup that is rendered or parsed."
+    },
+    {
+      "rule": "rules.javascript.lang.security.html-in-template-string",
+      "path": "scripts/openapi/enrichments.ts",
+      "fingerprint": "fcd9306f8dab8f45",
+      "count": 1,
+      "reason": "False positive: `<name>`-style text is a placeholder inside a diagnostic or error message, not markup that is rendered or parsed."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/bootstrap/claimmd-payload-cipher.ts",
+      "fingerprint": "630d8fa1c3c9dafd",
+      "count": 1,
+      "reason": "Not exploitable at this site: the envelope length is checked (or the tag is a fixed 16-byte slice of a length-checked blob) before setAuthTag, so a short tag cannot reach the decipher. The rule is syntactic; `{ authTagLength: 16 }` on createDecipheriv would be defence in depth."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/bootstrap/tenant-kek.ts",
+      "fingerprint": "e519975b2618c89d",
+      "count": 1,
+      "reason": "Not exploitable at this site: the envelope length is checked (or the tag is a fixed 16-byte slice of a length-checked blob) before setAuthTag, so a short tag cannot reach the decipher. The rule is syntactic; `{ authTagLength: 16 }` on createDecipheriv would be defence in depth."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/modules/08-encounters/hearthnote-crypto.ts",
+      "fingerprint": "22354992a1754f0c",
+      "count": 1,
+      "reason": "Real hardening gap, not a false positive: the GCM tag is read from stored or transmitted data and its length is not enforced here, so a truncated tag would be accepted. Fix is `{ authTagLength: 16 }` on createDecipheriv; deferred out of the SAST change because it alters PHI-decrypt error behaviour and needs its own review and the module live suite. Fixing it makes this entry stale, which forces its removal."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/modules/12-dosespot/webhooks/body-crypto.ts",
+      "fingerprint": "5d42f53534d4b9a6",
+      "count": 1,
+      "reason": "Real hardening gap, not a false positive: the GCM tag is read from stored or transmitted data and its length is not enforced here, so a truncated tag would be accepted. Fix is `{ authTagLength: 16 }` on createDecipheriv; deferred out of the SAST change because it alters PHI-decrypt error behaviour and needs its own review and the module live suite. Fixing it makes this entry stale, which forces its removal."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/modules/16-bereavement/bereavement-crypto.ts",
+      "fingerprint": "22354992a1754f0c",
+      "count": 1,
+      "reason": "Real hardening gap, not a false positive: the GCM tag is read from stored or transmitted data and its length is not enforced here, so a truncated tag would be accepted. Fix is `{ authTagLength: 16 }` on createDecipheriv; deferred out of the SAST change because it alters PHI-decrypt error behaviour and needs its own review and the module live suite. Fixing it makes this entry stale, which forces its removal."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/modules/22-documents/extraction/candidate-value-cipher.ts",
+      "fingerprint": "5d42f53534d4b9a6",
+      "count": 1,
+      "reason": "Real hardening gap, not a false positive: the GCM tag is read from stored or transmitted data and its length is not enforced here, so a truncated tag would be accepted. Fix is `{ authTagLength: 16 }` on createDecipheriv; deferred out of the SAST change because it alters PHI-decrypt error behaviour and needs its own review and the module live suite. Fixing it makes this entry stale, which forces its removal."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/modules/23-billing-medicare/claimmd-evidence/cipher.ts",
+      "fingerprint": "22354992a1754f0c",
+      "count": 1,
+      "reason": "Real hardening gap, not a false positive: the GCM tag is read from stored or transmitted data and its length is not enforced here, so a truncated tag would be accepted. Fix is `{ authTagLength: 16 }` on createDecipheriv; deferred out of the SAST change because it alters PHI-decrypt error behaviour and needs its own review and the module live suite. Fixing it makes this entry stale, which forces its removal."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/modules/23-billing-medicare/claimmd-tenant-inbox/cipher.ts",
+      "fingerprint": "583f5ac57d67511a",
+      "count": 1,
+      "reason": "Not exploitable at this site: the envelope length is checked (or the tag is a fixed 16-byte slice of a length-checked blob) before setAuthTag, so a short tag cannot reach the decipher. The rule is syntactic; `{ authTagLength: 16 }` on createDecipheriv would be defence in depth."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/modules/23-billing-medicare/routes/secret-cipher.ts",
+      "fingerprint": "92e7ddd13d696751",
+      "count": 1,
+      "reason": "Not exploitable at this site: the envelope length is checked (or the tag is a fixed 16-byte slice of a length-checked blob) before setAuthTag, so a short tag cannot reach the decipher. The rule is syntactic; `{ authTagLength: 16 }` on createDecipheriv would be defence in depth."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/modules/23-billing-medicare/services/claim-preview-integrity.ts",
+      "fingerprint": "c009df6aeb3ac976",
+      "count": 1,
+      "reason": "Not exploitable at this site: the envelope length is checked (or the tag is a fixed 16-byte slice of a length-checked blob) before setAuthTag, so a short tag cannot reach the decipher. The rule is syntactic; `{ authTagLength: 16 }` on createDecipheriv would be defence in depth."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/secret-cipher.ts",
+      "fingerprint": "01a5b05a54b9a048",
+      "count": 1,
+      "reason": "Not exploitable at this site: the envelope length is checked (or the tag is a fixed 16-byte slice of a length-checked blob) before setAuthTag, so a short tag cannot reach the decipher. The rule is syntactic; `{ authTagLength: 16 }` on createDecipheriv would be defence in depth."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/modules/24-billing-medicaid/credential-crypto.ts",
+      "fingerprint": "f8d78e0f70bf1ab3",
+      "count": 1,
+      "reason": "Not exploitable at this site: the envelope length is checked (or the tag is a fixed 16-byte slice of a length-checked blob) before setAuthTag, so a short tag cannot reach the decipher. The rule is syntactic; `{ authTagLength: 16 }` on createDecipheriv would be defence in depth."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/modules/26-cap/psr/psr-file-store.ts",
+      "fingerprint": "22354992a1754f0c",
+      "count": 1,
+      "reason": "Real hardening gap, not a false positive: the GCM tag is read from stored or transmitted data and its length is not enforced here, so a truncated tag would be accepted. Fix is `{ authTagLength: 16 }` on createDecipheriv; deferred out of the SAST change because it alters PHI-decrypt error behaviour and needs its own review and the module live suite. Fixing it makes this entry stale, which forces its removal."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/modules/29-external-interfaces/inbound/inbound-crypto.ts",
+      "fingerprint": "b8a1d4a0b229b450",
+      "count": 1,
+      "reason": "Real hardening gap, not a false positive: the GCM tag is read from stored or transmitted data and its length is not enforced here, so a truncated tag would be accepted. Fix is `{ authTagLength: 16 }` on createDecipheriv; deferred out of the SAST change because it alters PHI-decrypt error behaviour and needs its own review and the module live suite. Fixing it makes this entry stale, which forces its removal."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/modules/29-external-interfaces/outbound/dispatch-crypto.ts",
+      "fingerprint": "b8a1d4a0b229b450",
+      "count": 1,
+      "reason": "Real hardening gap, not a false positive: the GCM tag is read from stored or transmitted data and its length is not enforced here, so a truncated tag would be accepted. Fix is `{ authTagLength: 16 }` on createDecipheriv; deferred out of the SAST change because it alters PHI-decrypt error behaviour and needs its own review and the module live suite. Fixing it makes this entry stale, which forces its removal."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/modules/30-quality/cahps/phi-cipher.ts",
+      "fingerprint": "5d42f53534d4b9a6",
+      "count": 1,
+      "reason": "Real hardening gap, not a false positive: the GCM tag is read from stored or transmitted data and its length is not enforced here, so a truncated tag would be accepted. Fix is `{ authTagLength: 16 }` on createDecipheriv; deferred out of the SAST change because it alters PHI-decrypt error behaviour and needs its own review and the module live suite. Fixing it makes this entry stale, which forces its removal."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/modules/31-portal/portal-crypto.ts",
+      "fingerprint": "5d42f53534d4b9a6",
+      "count": 2,
+      "reason": "Real hardening gap, not a false positive: the GCM tag is read from stored or transmitted data and its length is not enforced here, so a truncated tag would be accepted. Fix is `{ authTagLength: 16 }` on createDecipheriv; deferred out of the SAST change because it alters PHI-decrypt error behaviour and needs its own review and the module live suite. Fixing it makes this entry stale, which forces its removal."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/modules/32-ai-platform/invocation/payload-cipher.ts",
+      "fingerprint": "d925ed6730789201",
+      "count": 1,
+      "reason": "Real hardening gap, not a false positive: the GCM tag is read from stored or transmitted data and its length is not enforced here, so a truncated tag would be accepted. Fix is `{ authTagLength: 16 }` on createDecipheriv; deferred out of the SAST change because it alters PHI-decrypt error behaviour and needs its own review and the module live suite. Fixing it makes this entry stale, which forces its removal."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "apps/backend/src/modules/36-messaging/export/export-crypto.ts",
+      "fingerprint": "f8d78e0f70bf1ab3",
+      "count": 1,
+      "reason": "Not exploitable at this site: the envelope length is checked (or the tag is a fixed 16-byte slice of a length-checked blob) before setAuthTag, so a short tag cannot reach the decipher. The rule is syntactic; `{ authTagLength: 16 }` on createDecipheriv would be defence in depth."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "packages/auth/src/identity/two-factor-crypto.ts",
+      "fingerprint": "e519975b2618c89d",
+      "count": 1,
+      "reason": "Not exploitable at this site: the envelope length is checked (or the tag is a fixed 16-byte slice of a length-checked blob) before setAuthTag, so a short tag cannot reach the decipher. The rule is syntactic; `{ authTagLength: 16 }` on createDecipheriv would be defence in depth."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "packages/messaging/src/crypto/body-crypto.ts",
+      "fingerprint": "e519975b2618c89d",
+      "count": 1,
+      "reason": "Not exploitable at this site: the envelope length is checked (or the tag is a fixed 16-byte slice of a length-checked blob) before setAuthTag, so a short tag cannot reach the decipher. The rule is syntactic; `{ authTagLength: 16 }` on createDecipheriv would be defence in depth."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "packages/messaging/src/crypto/body-crypto.ts",
+      "fingerprint": "f8d78e0f70bf1ab3",
+      "count": 1,
+      "reason": "Not exploitable at this site: the envelope length is checked (or the tag is a fixed 16-byte slice of a length-checked blob) before setAuthTag, so a short tag cannot reach the decipher. The rule is syntactic; `{ authTagLength: 16 }` on createDecipheriv would be defence in depth."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "packages/shared/src/crypto/webhook-payload-cipher.ts",
+      "fingerprint": "13ae6834d2a2ad47",
+      "count": 1,
+      "reason": "Real hardening gap, not a false positive: the GCM tag is read from stored or transmitted data and its length is not enforced here, so a truncated tag would be accepted. Fix is `{ authTagLength: 16 }` on createDecipheriv; deferred out of the SAST change because it alters PHI-decrypt error behaviour and needs its own review and the module live suite. Fixing it makes this entry stale, which forces its removal."
+    },
+    {
+      "rule": "rules.javascript.node-crypto.security.gcm-no-tag-length",
+      "path": "packages/subscription-billing/src/pseudonym/key-envelope.ts",
+      "fingerprint": "e519975b2618c89d",
+      "count": 1,
+      "reason": "Not exploitable at this site: the envelope length is checked (or the tag is a fixed 16-byte slice of a length-checked blob) before setAuthTag, so a short tag cannot reach the decipher. The rule is syntactic; `{ authTagLength: 16 }` on createDecipheriv would be defence in depth."
+    }
+  ]
+}

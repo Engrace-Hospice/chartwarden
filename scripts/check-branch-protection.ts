@@ -47,6 +47,8 @@ export const CHANGE_MANAGEMENT_CODEOWNED = [
   "/scripts/check-release-gate.ts",
   "/scripts/check-merge-artifacts.ts",
   "/scripts/run-fitness-gates.ts",
+  // CW-VM-01: the SAST ratchet. Its baseline lives under /compliance/ (already owned); the script that compares to it must be too.
+  "/scripts/check-sast.ts",
   // Every PR-gate check runs as `bun run <script>`, and the script bodies live here: a PR that turns
   // `arch:compliance` into `true` would pass the required check without touching an owned path.
   "/package.json",

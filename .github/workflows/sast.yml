@@ -1,0 +1,64 @@
+name: SAST
+
+# CW-VM-01 (compliance/controls.yaml, #1139): a pinned Semgrep over the TypeScript source, compared to the committed
+# baseline `compliance/sast/baseline.json` (scripts/check-sast.ts; every accepted finding carries a reason, a new
+# finding fails, a fixed one must leave the baseline). No account, no paid licence, no telemetry: the engine is a
+# digest-pinned image and the rules are a pinned commit of semgrep/semgrep-rules (compliance/sast/config.json).
+#
+# Cost (this repo is private; Actions minutes are metered). One job, no matrix, no `bun install`. It runs weekly on
+# `main` and on demand (dispatch it from `main`), nothing else. It is deliberately NOT reachable from deploy.yml or
+# ci.yml: `release`/`deploy` do not wait on it and it is not a second trigger for `verify` (the `debounce` gate in
+# deploy.yml stays the only door to the expensive matrix). `arch:sast` fails if this file gains any trigger but
+# `schedule` and `workflow_dispatch` (so `pull_request`, `push`, `workflow_call` and `workflow_run` are refused), or if
+# deploy.yml/ci.yml name it.
+#
+# Not a required check, and it does not run on PRs, so it blocks nothing: the only PR-time part is `arch:sast`, which
+# `arch:fitness` runs in ci.yml (pins, a reason on every baselined finding, this file's shape). Making the scan a
+# required check later means a path-less `pull_request` trigger (a required check must report on EVERY PR,
+# arch:branch-protection) and a ruleset edit, both owner decisions, after the ruleset is applied.
+#
+# A `nosemgrep` comment cannot silence a finding (the scan runs with --disable-nosem) and neither can an ignore file or
+# a `vendor/` directory: the scan compares the source files it found with the ones Semgrep reports, scans the missing
+# ones by name and fails on any that stay out. CODEOWNERS owns this file, the scanner and the baseline
+# (`/.github/workflows/`, `/compliance/`, `/scripts/check-sast.ts`).
+
+on:
+  # No `pull_request` trigger, on purpose (arch:sast refuses one). This job runs the PR's own scanner and package.json
+  # on the shared self-hosted runner, which has docker access, and the ruleset that gates who may change them
+  # (CW-CM-01, code-owner review) is not applied yet. Re-enable a path-filtered `pull_request` trigger on an ephemeral
+  # runner label once the ruleset is applied. Until then a new finding is caught by the weekly run, and the offline
+  # half (`arch:sast`, inside `arch:fitness`) still runs on every PR through ci.yml.
+  # Weekly, Monday 06:17 UTC. The cadence is the owner's decision (metered minutes); change the cron to change it.
+  schedule:
+    - cron: "17 6 * * 1"
+  # On demand, for the first scheduled-run evidence the register row asks for. Never reaches release/deploy.
+  workflow_dispatch: {}
+
+concurrency:
+  group: sast-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    name: Semgrep ratchet
+    runs-on: [self-hosted, Linux, X64, ci]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.3.5"
+      # Offline: the pins, a reason on every baselined finding and this workflow's own shape. pr-gate.yml does not run
+      # arch:fitness, so without this step a PR could land an empty reason that only fails after the merge.
+      - name: Baseline and workflow shape (arch:sast)
+        run: bun run arch:sast
+      # Pulls the digest-pinned semgrep image and the rules at the pinned commit, scans, and fails on any new or
+      # stale finding against compliance/sast/baseline.json, or on a source file that stayed unscanned.
+      - name: Semgrep findings vs baseline
+        run: bun run sast:scan
