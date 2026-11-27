@@ -161,6 +161,9 @@ export interface ObjectStorePort {
     readonly byteSize: number;
     readonly mimeType: string;
     readonly sha256Hex: string;
+    /** CW-AC-05 — the server-side encryption the store reports for the object (`"AES256"`), or null when it is stored in the clear.
+     *  Absent on stores that do not report it (the in-memory slice). */
+    readonly serverSideEncryption?: string | null;
   } | null>;
   /** Mint a short-TTL presigned GET URL for one object version (the URL itself is never logged). */
   presign(args: {

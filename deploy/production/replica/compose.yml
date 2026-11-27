@@ -20,6 +20,15 @@ services:
       RUSTFS_SECRET_KEY: ${RUSTFS_ROOT_PASSWORD:?set in .env}
       RUSTFS_VOLUMES: /data
       RUSTFS_CONSOLE_ENABLE: "false"
+      # CW-AC-05 — SSE-S3 for the copy. RustFS's local KMS backend keeps its key files under /data/.kms, sealed under
+      # this master key (base64 of 32 random bytes, `openssl rand -base64 32`), which lives in this host's .env and not
+      # in the volume. The default key id is created by `rustfs-provision` below. Lose the master key and the copy is
+      # unreadable: escrow it offline. (The local backend is RustFS's development tier; a Vault backend is the upgrade.)
+      RUSTFS_KMS_ENABLE: "true"
+      RUSTFS_KMS_BACKEND: local
+      RUSTFS_KMS_KEY_DIR: /data/.kms
+      RUSTFS_KMS_LOCAL_MASTER_KEY: ${RUSTFS_KMS_MASTER_KEY:?set in .env (base64 of 32 random bytes)}
+      RUSTFS_KMS_DEFAULT_KEY_ID: cw-default
     volumes:
       - rustfs-data:/data
     ports:
@@ -47,6 +56,8 @@ services:
       - |
         set -eu
         rc alias set local http://rustfs:9000 "$$RUSTFS_ROOT_USER" "$$RUSTFS_ROOT_PASSWORD" >/dev/null
+        # RustFS will not encrypt until its default key exists (cw-default, RUSTFS_KMS_DEFAULT_KEY_ID above); create it once.
+        rc admin kms key list local/ | grep -q '^cw-default ' || rc admin kms key create local/ --name cw-default >/dev/null
         rc admin policy create local/ chartwarden-copy /policy/copy-target-policy.json >/dev/null
         rc admin user add local/ "$$COPY_TARGET_ACCESS_KEY" "$$COPY_TARGET_SECRET_KEY" >/dev/null
         rc admin policy attach local/ chartwarden-copy --user "$$COPY_TARGET_ACCESS_KEY" >/dev/null

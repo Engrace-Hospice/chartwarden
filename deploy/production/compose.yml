@@ -89,6 +89,12 @@ services:
       - -s3.auditLogConfig=/etc/seaweedfs/audit.json
     environment:
       WEED_MASTER_VOLUME_GROWTH_COPY_1: "1"
+      # CW-AC-05 — the SSE-S3 key-encryption key (64 hex chars), held HERE and not in the data volume: SeaweedFS wraps
+      # every object's key under it, so a copy of the volume without this value is ciphertext. EMPTY until the operator
+      # completes the first cutover step (docs/runbooks/object-store-sse-cutover.md): with no value SeaweedFS 4.52 runs with
+      # SSE-S3 disabled and answers every write to an encrypted bucket with a 500 (verified), so OBJECT_STORE_REQUIRE_SSE must
+      # not be set first: it would take uploads down (preflight.sh refuses that). LOSING THIS VALUE LOSES EVERY ENCRYPTED OBJECT: escrow it offline with the other keys.
+      WEED_S3_SSE_KEK: ${SEAWEEDFS_SSE_KEK:-}
     volumes:
       - seaweedfs-data:/data
       - seaweedfs-config:/config:ro
@@ -325,6 +331,9 @@ services:
       OBJECT_STORE_ACCESS_KEY: ${SEAWEEDFS_APP_ACCESS_KEY:?set in .env.production}
       OBJECT_STORE_SECRET_KEY: ${SEAWEEDFS_APP_SECRET_KEY:?set in .env.production}
       OBJECT_STORE_REGION: us-east-1
+      # CW-AC-05 — 1 once the store's key is in place (SEAWEEDFS_SSE_KEK): every write names SSE-S3 and fails if the store
+      # does not confirm it, tenant buckets get an encryption default, and an unencrypted upload is refused.
+      OBJECT_STORE_REQUIRE_SSE: ${OBJECT_STORE_REQUIRE_SSE:-0}
     restart: "no"
 
   api:
@@ -357,6 +366,9 @@ services:
       OBJECT_STORE_ACCESS_KEY: ${SEAWEEDFS_APP_ACCESS_KEY:?set in .env.production}
       OBJECT_STORE_SECRET_KEY: ${SEAWEEDFS_APP_SECRET_KEY:?set in .env.production}
       OBJECT_STORE_REGION: us-east-1
+      # CW-AC-05 — 1 once the store's key is in place (SEAWEEDFS_SSE_KEK): every write names SSE-S3 and fails if the store
+      # does not confirm it, tenant buckets get an encryption default, and an unencrypted upload is refused.
+      OBJECT_STORE_REQUIRE_SSE: ${OBJECT_STORE_REQUIRE_SSE:-0}
       # GAP-138 — DocLens parse worker (compose-network only).
       DOCLING_WORKER_URL: http://docling-worker:8000
       DOCLING_WORKER_TOKEN: ${DOCLING_WORKER_TOKEN:?set in .env.production}
@@ -431,6 +443,9 @@ services:
       OBJECT_STORE_ACCESS_KEY: ${SEAWEEDFS_APP_ACCESS_KEY:?set in .env.production}
       OBJECT_STORE_SECRET_KEY: ${SEAWEEDFS_APP_SECRET_KEY:?set in .env.production}
       OBJECT_STORE_REGION: us-east-1
+      # CW-AC-05 — 1 once the store's key is in place (SEAWEEDFS_SSE_KEK): every write names SSE-S3 and fails if the store
+      # does not confirm it, tenant buckets get an encryption default, and an unencrypted upload is refused.
+      OBJECT_STORE_REQUIRE_SSE: ${OBJECT_STORE_REQUIRE_SSE:-0}
       # GAP-138 — DocLens parse worker (compose-network only).
       DOCLING_WORKER_URL: http://docling-worker:8000
       DOCLING_WORKER_TOKEN: ${DOCLING_WORKER_TOKEN:?set in .env.production}
@@ -496,6 +511,9 @@ services:
       OBJECT_STORE_ACCESS_KEY: ${SEAWEEDFS_APP_ACCESS_KEY:?set in .env.production}
       OBJECT_STORE_SECRET_KEY: ${SEAWEEDFS_APP_SECRET_KEY:?set in .env.production}
       OBJECT_STORE_REGION: us-east-1
+      # CW-AC-05 — 1 once the store's key is in place (SEAWEEDFS_SSE_KEK): every write names SSE-S3 and fails if the store
+      # does not confirm it, tenant buckets get an encryption default, and an unencrypted upload is refused.
+      OBJECT_STORE_REQUIRE_SSE: ${OBJECT_STORE_REQUIRE_SSE:-0}
     ports:
       - "${M29_MLLP_BIND_ADDRESS:-127.0.0.1}:11000-11019:11000-11019"
     depends_on:

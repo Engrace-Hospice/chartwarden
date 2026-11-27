@@ -14,6 +14,7 @@ import { connect } from "node:net";
 import type { OrgId, SignedUrlDescriptor } from "@chartwarden/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { copyObjectStore, listKeys } from "../../../scripts/object-store-copy";
+import { reencryptObjectStore, verifyJournal } from "../../../scripts/storage/reencrypt-objects";
 import { deriveTenantBucket } from "../src/modules/22-documents/lifecycle/storage";
 import {
   type S3ObjectStoreConfig,
@@ -37,27 +38,46 @@ const MAX_BYTES = 8 * 1024 * 1024;
 const FAULT_TEST_TIMEOUT_MS = 120_000;
 const TENANT_BUCKET_PREFIX = "tenant-";
 
+/** CW-AC-05 — the up-scripts start the stores with SSE-S3 keyed and export these (as production's env does). */
+const flagOn = (name: string): boolean => /^(1|true)$/i.test(env[name]?.trim() ?? "");
+const PRIMARY_SSE = flagOn("OBJECT_STORE_REQUIRE_SSE");
+const BACKUP_SSE = flagOn("BACKUP_STORE_REQUIRE_SSE");
+const STORE_DATA_DIR = env.OBJECT_STORE_DATA_DIR?.trim() || "/data";
+/** SeaweedFS only: the master's vacuum endpoint (inside the container) that compacts deleted bytes off the volume. */
+const PRIMARY_VACUUM_URL = env.OBJECT_STORE_VACUUM_URL?.trim() ?? "";
+/** SeaweedFS only: the log line that proves it loaded WEED_S3_SSE_KEK (a store with none mints a key on its own filer). */
+const PRIMARY_KEK_LOG = env.OBJECT_STORE_KEK_LOG_LINE?.trim() ?? "";
+
 const config = (
   endpoint: string | undefined,
   access: string,
   secret: string,
+  requireServerSideEncryption = false,
 ): S3ObjectStoreConfig => ({
   endpoint: endpoint ?? "http://unset.invalid",
   region: REGION,
   accessKeyId: env[access] ?? "",
   secretAccessKey: env[secret] ?? "",
   forcePathStyle: true,
+  ...(requireServerSideEncryption ? { requireServerSideEncryption: true } : {}),
 });
-const primaryApp = config(ENDPOINT, "OBJECT_STORE_APP_ACCESS_KEY", "OBJECT_STORE_APP_SECRET_KEY");
+const primaryApp = config(
+  ENDPOINT,
+  "OBJECT_STORE_APP_ACCESS_KEY",
+  "OBJECT_STORE_APP_SECRET_KEY",
+  PRIMARY_SSE,
+);
 const primaryAdmin = config(
   ENDPOINT,
   "OBJECT_STORE_ADMIN_ACCESS_KEY",
   "OBJECT_STORE_ADMIN_SECRET_KEY",
+  PRIMARY_SSE,
 );
 const backupAdmin = config(
   env.BACKUP_STORE_ENDPOINT?.trim(),
   "BACKUP_STORE_ACCESS_KEY",
   "BACKUP_STORE_SECRET_KEY",
+  BACKUP_SSE,
 );
 
 const bytesOf = (text: string): Uint8Array => new TextEncoder().encode(text);
@@ -423,6 +443,7 @@ describe.skipIf(!ENDPOINT)("object-store resilience — LIVE", () => {
               byteSize: bytes.byteLength,
               mimeType: MIME,
               sha256Hex: sha256(bytes),
+              serverSideEncryption: PRIMARY_SSE ? "AES256" : null,
             });
             expect(await get(store, otherBucket, key), `${key} leaked across tenants`).toBeNull();
           }
@@ -459,6 +480,155 @@ describe.skipIf(!ENDPOINT)("object-store resilience — LIVE", () => {
         expect(unchanged).toMatchObject({ copied: 0, deleted: 0, failed: [] });
       },
       FAULT_TEST_TIMEOUT_MS,
+    );
+  });
+
+  describe.skipIf(!PRIMARY_SSE)("encryption at rest (CW-AC-05)", () => {
+    /** Files under the store's data directory that contain `marker` (a fixed string: the images' grep misses hyphenated regexes). */
+    const filesWith = (container: string, marker: string): string => {
+      try {
+        return docker("exec", container, "grep", "-rlF", marker, STORE_DATA_DIR);
+      } catch {
+        return ""; // grep exits 1 when nothing matches
+      }
+    };
+    /** Poll (stores flush and compact on their own schedule) until the marker's presence matches `present`. */
+    const settle = async (container: string, marker: string, present: boolean, tries = 40): Promise<boolean> => {
+      for (let i = 0; i < tries; i++) {
+        if ((filesWith(container, marker) !== "") === present) return true;
+        await sleep(500);
+      }
+      return false;
+    };
+    const markerBody = (marker: string): Uint8Array => bytesOf(`%PDF-1.4 ${marker} `.repeat(64));
+    const adminFetch = (cfg: S3ObjectStoreConfig) => createS3SignedFetch(cfg, {}, "resilience:enc");
+    const createBucket = async (cfg: S3ObjectStoreConfig, name: string): Promise<void> => {
+      const res = await adminFetch(cfg)({ method: "PUT", bucket: name, objectKey: null, query: [], payload: new Uint8Array() });
+      expect(res.ok, `create ${name}: ${res.status}`).toBe(true);
+    };
+    const enableVersioning = async (name: string): Promise<void> => {
+      const body = bytesOf('<VersioningConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Status>Enabled</Status></VersioningConfiguration>');
+      const res = await adminFetch(primaryAdmin)({ method: "PUT", bucket: name, objectKey: null, query: [["versioning", ""]], payload: body });
+      expect(res.ok, `enable versioning on ${name}: ${res.status}`).toBe(true);
+    };
+
+    it.skipIf(!PRIMARY_KEK_LOG)(
+      "SeaweedFS reads its key-encryption key from the environment, not from one it minted beside the data",
+      () => {
+        const logs = execFileSync("sh", ["-c", `docker logs ${PRIMARY_CONTAINER} 2>&1`], { encoding: "utf8" });
+        expect(logs).toContain(PRIMARY_KEK_LOG);
+      },
+    );
+
+    it.skipIf(!BACKUP_SSE)(
+      "the second copy holds the objects encrypted (reported AES256; the marker is not in the replica's files), and rewrites a plaintext copy it already held",
+      async () => {
+        const marker = `CW-AC05-SYNTHETIC-REPLICA-${randomUUID()}`;
+        const key = `restore/enc-${randomUUID()}`;
+        await put(bucketA, key, markerBody(marker));
+        const copy = await copyObjectStore(primaryAdmin, backupAdmin);
+        expect(copy.failed).toEqual([]);
+        expect((await backup.inspectObject({ bucket: bucketA, objectKey: key }))?.serverSideEncryption).toBe("AES256");
+        // control: a plaintext object on the replica must be findable, or "absent" proves nothing
+        const controlMarker = `CW-AC05-SYNTHETIC-CONTROL-${randomUUID()}`;
+        const controlBucket = `cw-resilience-control-${randomUUID().slice(0, 8)}`;
+        await createBucket(backupAdmin, controlBucket);
+        await createS3ObjectStore({ ...backupAdmin, requireServerSideEncryption: false }).putObject({
+          bucket: controlBucket,
+          objectKey: "control",
+          bytes: markerBody(controlMarker),
+          mimeType: MIME,
+        });
+        expect(await settle(BACKUP_CONTAINER, controlMarker, true), "the replica's plaintext control is not on its volume").toBe(true);
+        expect(filesWith(BACKUP_CONTAINER, marker), "an encrypted copy's marker is readable on the replica").toBe("");
+
+        // a copy that is already on the target in the clear is not "unchanged": a run that must encrypt rewrites it
+        const orgC = randomUUID() as OrgId;
+        const bucketC = deriveTenantBucket(orgC);
+        await createS3TenantStorageProvisioner(primaryApp).ensureTenantPrefixes({ organizationId: orgC, prefixes: [] });
+        const keyC = `restore/legacy-${randomUUID()}`;
+        await createS3ObjectStore(primaryApp).putObject({ bucket: bucketC, objectKey: keyC, bytes: bytesOf("legacy copy"), mimeType: MIME });
+        const clearTarget = { ...backupAdmin, requireServerSideEncryption: false };
+        expect((await copyObjectStore(primaryAdmin, clearTarget, { deleteMissing: false })).failed).toEqual([]);
+        expect((await backup.inspectObject({ bucket: bucketC, objectKey: keyC }))?.serverSideEncryption).toBeNull();
+        const rewritten = await copyObjectStore(primaryAdmin, backupAdmin, { deleteMissing: false });
+        expect(rewritten.failed).toEqual([]);
+        expect(rewritten.copied).toBeGreaterThanOrEqual(1);
+        expect((await backup.inspectObject({ bucket: bucketC, objectKey: keyC }))?.serverSideEncryption).toBe("AES256");
+      },
+      FAULT_TEST_TIMEOUT_MS,
+    );
+
+    it(
+      "re-encrypts legacy plaintext objects, verified by checksum, keeping the plaintext version; the operator's purge and a vacuum then clear it from the volume",
+      async () => {
+        const legacy = deriveTenantBucket(randomUUID() as OrgId);
+        const marker = `CW-AC05-SYNTHETIC-LEGACY-${randomUUID()}`;
+        await createBucket(primaryAdmin, legacy);
+        // The production order: the objects were written long before anyone enables versioning, so they become the bucket's
+        // "null" version, and a rewrite then leaves that version behind. No SSE header, and the bucket has no default.
+        const legacyWriter = createS3ObjectStore({ ...primaryAdmin, requireServerSideEncryption: false });
+        const keys = [0, 1, 2].map((i) => `documents/legacy-${i}/${randomUUID()}.pdf`);
+        const bodies = new Map(keys.map((k, i) => [k, markerBody(`${marker}-${i}`)]));
+        for (const [k, bytes] of bodies) await legacyWriter.putObject({ bucket: legacy, objectKey: k, bytes, mimeType: MIME });
+        expect(await settle(PRIMARY_CONTAINER, marker, true), "the legacy plaintext is not on the volume").toBe(true);
+        const only = new Set([legacy]);
+
+        // an unversioned bucket is refused object by object: a rewrite would overwrite the plaintext source
+        const refused = await reencryptObjectStore(primaryAdmin, { apply: true, buckets: only });
+        expect(refused.reencrypted).toBe(0);
+        expect(refused.failed).toHaveLength(3);
+        expect(refused.failed[0]?.reason).toContain("versioning is not enabled");
+        for (const k of keys) expect((await store.inspectObject({ bucket: legacy, objectKey: k }))?.serverSideEncryption).toBeNull();
+        await enableVersioning(legacy);
+
+        // dry run (the default): reports, changes nothing
+        const dry = await reencryptObjectStore(primaryAdmin, { buckets: only });
+        expect(dry).toMatchObject({ mode: "dry-run", objects: 3, pending: 3, reencrypted: 0, failed: [] });
+        for (const k of keys) expect((await store.inspectObject({ bucket: legacy, objectKey: k }))?.serverSideEncryption).toBeNull();
+
+        // apply: every object is rewritten encrypted, byte-identical, and its plaintext version is still there
+        const journal: { status: string; key: string; supersededVersionId?: string }[] = [];
+        const supersededOf = (k: string): string => journal.find((e) => e.status === "intent" && e.key === k)?.supersededVersionId ?? "";
+        const applied = await reencryptObjectStore(primaryAdmin, { apply: true, buckets: only, journal: (e) => void journal.push(e) });
+        expect(applied).toMatchObject({ mode: "apply", reencrypted: 3, failed: [] });
+        const adminS3 = adminFetch(primaryAdmin);
+        for (const k of keys) {
+          const bytes = bodies.get(k) ?? new Uint8Array();
+          expect(await store.inspectObject({ bucket: legacy, objectKey: k }), k).toMatchObject({ sha256Hex: sha256(bytes), serverSideEncryption: "AES256" });
+          expect(await get(store, legacy, k)).toEqual(bytes);
+          const superseded = supersededOf(k);
+          expect(superseded, `intent journaled before the rewrite of ${k}`).not.toBe("");
+          const old = await adminS3({ method: "GET", bucket: legacy, objectKey: k, query: [["versionId", superseded]], payload: null });
+          expect(old.status, `the plaintext source version of ${k} must survive`).toBe(200);
+          expect(new Uint8Array(await old.arrayBuffer())).toEqual(bytes);
+        }
+        // honest state before the purge: the plaintext version is still on the volume
+        expect(filesWith(PRIMARY_CONTAINER, marker)).not.toBe("");
+        // resumable: a second run finds nothing to do
+        expect(await reencryptObjectStore(primaryAdmin, { apply: true, buckets: only })).toMatchObject({ reencrypted: 0, alreadyEncrypted: 3, pending: 0, failed: [] });
+
+        // the operator's step (runbook): `--verify` names the versions that are safe to delete, those are deleted, then the volume is compacted
+        const verified = await verifyJournal(primaryAdmin, journal.map((e) => JSON.stringify(e)).join("\n"));
+        expect(verified.held).toEqual([]);
+        expect(verified.purgeable.map((p) => p.key).sort()).toEqual([...keys].sort());
+        for (const p of verified.purgeable) {
+          expect(p.supersededVersionId).toBe(supersededOf(p.key));
+          const res = await adminS3({ method: "DELETE", bucket: legacy, objectKey: p.key, query: [["versionId", p.supersededVersionId]], payload: null });
+          expect(res.ok, `purge ${p.key}: ${res.status}`).toBe(true);
+        }
+        for (const k of keys) expect(await get(store, legacy, k), "the current encrypted version is untouched by the purge").toEqual(bodies.get(k));
+        if (PRIMARY_VACUUM_URL) {
+          let gone = false;
+          for (let i = 0; i < 20 && !gone; i++) {
+            docker("exec", PRIMARY_CONTAINER, "wget", "-qO-", PRIMARY_VACUUM_URL);
+            await sleep(1_500);
+            gone = filesWith(PRIMARY_CONTAINER, marker) === "";
+          }
+          expect(gone, "the plaintext is still on the volume after purge and vacuum").toBe(true);
+        }
+      },
+      FAULT_TEST_TIMEOUT_MS * 2,
     );
   });
 });

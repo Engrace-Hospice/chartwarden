@@ -371,7 +371,25 @@ describe("s3ObjectStoreConfigFromEnv", () => {
       secretAccessKey: "object-sk",
       region: "us-west-2",
       forcePathStyle: true,
+      requireServerSideEncryption: false,
     });
+  });
+
+  it("OBJECT_STORE_REQUIRE_SSE turns on required server-side encryption (1 or true, nothing else)", () => {
+    const base = {
+      OBJECT_STORE_ENDPOINT: "http://seaweedfs:8333",
+      OBJECT_STORE_ACCESS_KEY: "object-ak",
+      OBJECT_STORE_SECRET_KEY: "object-sk",
+    };
+    const flag = (v: string | undefined) =>
+      s3ObjectStoreConfigFromEnv({ ...base, OBJECT_STORE_REQUIRE_SSE: v })
+        ?.requireServerSideEncryption;
+    expect(flag("1")).toBe(true);
+    expect(flag("TRUE")).toBe(true);
+    expect(flag(" true ")).toBe(true);
+    expect(flag("0")).toBe(false);
+    expect(flag("yes")).toBe(false);
+    expect(flag(undefined)).toBe(false);
   });
 
   it("ignores the retired MINIO_* names entirely: alone they configure nothing, mixed in they fill no gap", () => {
@@ -405,6 +423,7 @@ describe("s3ObjectStoreConfigFromEnv", () => {
       accessKeyId: "object-ak",
       secretAccessKey: "object-sk",
       forcePathStyle: true,
+      requireServerSideEncryption: false,
     });
   });
 });
@@ -583,6 +602,158 @@ describe("createS3ObjectStore putObject (mocked fetch)", () => {
     expect(err!.message).toContain("403");
     expect(err!.message).not.toContain(AWS_EXAMPLE_SECRET_KEY);
     expect(err!.message).not.toContain("http://");
+  });
+});
+
+describe("server-side encryption at rest (CW-AC-05, mocked fetch)", () => {
+  const sseConfig = { ...testConfig, requireServerSideEncryption: true } as const;
+  const SSE = "x-amz-server-side-encryption";
+  const encryptedHead = (): Response =>
+    new Response(null, { status: 200, headers: { [SSE]: "AES256" } });
+  const bucketConfigXml = `<ServerSideEncryptionConfiguration><Rule><ApplyServerSideEncryptionByDefault><SSEAlgorithm>AES256</SSEAlgorithm></ApplyServerSideEncryptionByDefault></Rule></ServerSideEncryptionConfiguration>`;
+  const noConfig = `<Error><Code>ServerSideEncryptionConfigurationNotFoundError</Code></Error>`;
+  const organizationId = "4f84bc52-d63e-49a6-9faf-a79496bed824";
+
+  it("putObject names SSE-S3 and accepts a store that confirms it", async () => {
+    const { fetchImpl, calls } = mockFetch(encryptedHead);
+    const store = createS3ObjectStore(sseConfig, { fetchImpl, now: fixedNow });
+    await store.putObject({
+      bucket: "tenant-abc",
+      objectKey: "documents/a.pdf",
+      bytes: new Uint8Array([1, 2, 3]),
+      mimeType: "application/pdf",
+    });
+    expect(calls[0]?.headers[SSE]).toBe("AES256");
+    // the header is signed, so a proxy cannot strip it without breaking the signature
+    expect(calls[0]?.headers.authorization).toMatch(new RegExp(`SignedHeaders=[^,]*${SSE}`));
+  });
+
+  it("putObject fails when the store does not confirm encryption (it wrote the bytes in the clear)", async () => {
+    const { fetchImpl } = mockFetch(() => new Response(null, { status: 200 }));
+    const store = createS3ObjectStore(sseConfig, { fetchImpl, now: fixedNow });
+    await expect(
+      store.putObject({
+        bucket: "tenant-abc",
+        objectKey: "documents/a.pdf",
+        bytes: new Uint8Array([1]),
+      }),
+    ).rejects.toThrow(/without server-side encryption/);
+  });
+
+  it("putObject without the flag sends no encryption header and requires no confirmation (legacy behaviour)", async () => {
+    const { fetchImpl, calls } = mockFetch(() => new Response(null, { status: 200 }));
+    const store = createS3ObjectStore(testConfig, { fetchImpl, now: fixedNow });
+    await store.putObject({ bucket: "tenant-abc", objectKey: "k", bytes: new Uint8Array([1]) });
+    expect(calls[0]?.headers[SSE]).toBeUndefined();
+  });
+
+  it("inspectObject reports the encryption the store states, null when it states none", async () => {
+    const sha = createHash("sha256").update("x").digest("base64");
+    const head = (extra: Record<string, string>) =>
+      new Response(null, {
+        status: 200,
+        headers: {
+          "content-length": "1",
+          "content-type": "application/pdf",
+          "x-amz-checksum-sha256": sha,
+          ...extra,
+        },
+      });
+    const encrypted = createS3ObjectStore(testConfig, {
+      fetchImpl: mockFetch(() => head({ [SSE]: "AES256" })).fetchImpl,
+      now: fixedNow,
+    });
+    const clear = createS3ObjectStore(testConfig, {
+      fetchImpl: mockFetch(() => head({})).fetchImpl,
+      now: fixedNow,
+    });
+    expect((await encrypted.inspectObject({ bucket: "b", objectKey: "k" }))?.serverSideEncryption).toBe("AES256");
+    expect((await clear.inspectObject({ bucket: "b", objectKey: "k" }))?.serverSideEncryption).toBeNull();
+  });
+
+  it("the provisioner sets the default on a bucket that has none, and proves it took", async () => {
+    const { fetchImpl, calls } = mockFetch((call, index) => {
+      if (call.method === "HEAD") return new Response(null, { status: 200 });
+      if (index === 1) return new Response(noConfig, { status: 404 }); // GET ?encryption: none yet
+      if (call.method === "PUT") return new Response(null, { status: 200 });
+      return new Response(bucketConfigXml, { status: 200 }); // the verifying GET
+    });
+    const storage = createS3TenantStorageProvisioner(sseConfig, { fetchImpl, now: fixedNow });
+    await expect(storage.ensureTenantPrefixes({ organizationId, prefixes: [] })).resolves.toMatchObject({
+      created: false,
+    });
+    expect(calls.map((c) => `${c.method} ${c.url.includes("?encryption") ? "encryption" : "bucket"}`)).toEqual([
+      "HEAD bucket",
+      "GET encryption",
+      "PUT encryption",
+      "GET encryption",
+    ]);
+    const put = calls[2]!;
+    expect(new TextDecoder().decode(put.body!)).toContain("<SSEAlgorithm>AES256</SSEAlgorithm>");
+    expect(put.headers["content-md5"]).toBeTruthy();
+  });
+
+  it("a 400 ServerSideEncryptionConfigurationNotFoundError (RustFS) reads as 'no default yet', like SeaweedFS's 404", async () => {
+    const { fetchImpl, calls } = mockFetch((call, index) => {
+      if (call.method === "HEAD" || call.method === "PUT") return new Response(null, { status: 200 });
+      return index === 1
+        ? new Response(`<Error><Code>ServerSideEncryptionConfigurationNotFoundError</Code></Error>`, { status: 400 })
+        : new Response(bucketConfigXml, { status: 200 });
+    });
+    const storage = createS3TenantStorageProvisioner(sseConfig, { fetchImpl, now: fixedNow });
+    await storage.ensureTenantPrefixes({ organizationId, prefixes: [] });
+    expect(calls.map((c) => c.method)).toEqual(["HEAD", "GET", "PUT", "GET"]);
+  });
+
+  it("any other failure reading the default is a real error, not 'none yet'", async () => {
+    const { fetchImpl } = mockFetch((call) =>
+      call.method === "HEAD" ? new Response(null, { status: 200 }) : new Response("<Error><Code>AccessDenied</Code></Error>", { status: 403 }),
+    );
+    const storage = createS3TenantStorageProvisioner(sseConfig, { fetchImpl, now: fixedNow });
+    await expect(storage.ensureTenantPrefixes({ organizationId, prefixes: [] })).rejects.toThrow(/getEncryption.*403/);
+  });
+
+  it("the provisioner leaves a bucket that already encrypts by default alone (no write)", async () => {
+    const { fetchImpl, calls } = mockFetch((call) =>
+      call.method === "HEAD"
+        ? new Response(null, { status: 200 })
+        : new Response(bucketConfigXml, { status: 200 }),
+    );
+    const storage = createS3TenantStorageProvisioner(sseConfig, { fetchImpl, now: fixedNow });
+    await storage.ensureTenantPrefixes({ organizationId, prefixes: [] });
+    expect(calls.map((c) => c.method)).toEqual(["HEAD", "GET"]);
+  });
+
+  it("the provisioner also encrypts a bucket it just created", async () => {
+    const { fetchImpl, calls } = mockFetch((call, index) => {
+      if (index === 0) return new Response(null, { status: 404 }); // HEAD: absent
+      if (call.method === "PUT") return new Response(null, { status: 200 });
+      return index === 2 ? new Response(noConfig, { status: 404 }) : new Response(bucketConfigXml, { status: 200 });
+    });
+    const storage = createS3TenantStorageProvisioner(sseConfig, { fetchImpl, now: fixedNow });
+    await expect(storage.ensureTenantPrefixes({ organizationId, prefixes: [] })).resolves.toMatchObject({
+      created: true,
+    });
+    expect(calls.map((c) => c.method)).toEqual(["HEAD", "PUT", "GET", "PUT", "GET"]);
+  });
+
+  it("the provisioner fails when the store does not keep the default it accepted", async () => {
+    const { fetchImpl } = mockFetch((call) =>
+      call.method === "HEAD" || call.method === "PUT"
+        ? new Response(null, { status: 200 })
+        : new Response(noConfig, { status: 404 }),
+    );
+    const storage = createS3TenantStorageProvisioner(sseConfig, { fetchImpl, now: fixedNow });
+    await expect(storage.ensureTenantPrefixes({ organizationId, prefixes: [] })).rejects.toThrow(
+      /did not keep its default encryption/,
+    );
+  });
+
+  it("the provisioner without the flag never touches the bucket's encryption (the store would mint its own key)", async () => {
+    const { fetchImpl, calls } = mockFetch(() => new Response(null, { status: 200 }));
+    const storage = createS3TenantStorageProvisioner(testConfig, { fetchImpl, now: fixedNow });
+    await storage.ensureTenantPrefixes({ organizationId, prefixes: [] });
+    expect(calls.map((c) => c.method)).toEqual(["HEAD"]);
   });
 });
 
@@ -864,7 +1035,12 @@ describe("createS3ObjectStore verified upload (mocked fetch)", () => {
 
     await expect(
       store.inspectObject({ bucket: "tenant-abc", objectKey: "uploads/upload-id/object" }),
-    ).resolves.toEqual({ byteSize: 4096, mimeType: "application/pdf", sha256Hex });
+    ).resolves.toEqual({
+      byteSize: 4096,
+      mimeType: "application/pdf",
+      sha256Hex,
+      serverSideEncryption: null,
+    });
     expect(calls).toHaveLength(1);
     expect(calls[0]?.method).toBe("HEAD");
     expect(calls[0]?.headers["x-amz-checksum-mode"]).toBe("ENABLED");

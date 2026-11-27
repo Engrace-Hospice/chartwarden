@@ -325,7 +325,9 @@ so destroying a DEK does not make them unreadable. Erased objects stay there bec
 never uses `--remove`, the backup key cannot delete under `objects/`, and the lifecycle expires only noncurrent versions
 and delete markers; the COMPLIANCE lock then blocks even the bucket owner until it expires. Nothing in the repo purges an
 erased object after the lock lapses; only a manual owner action could, and no procedure exists. Only the mirror is
-encrypted: the objects on the primary and on the second copy are plaintext (§4.6).
+encrypted by default: the objects on the primary and on the second copy are plaintext until the operator completes the
+server-side-encryption cutover (CW-AC-05, `docs/runbooks/object-store-sse-cutover.md`; the code is built and off until
+then). After it they are encrypted by the store under one key-encryption key, not the tenant's DEK (§4.6).
 
 **TARGET: store-side replication** (active-active site replication between a primary and a backup store, managed with
 `mc replicate`, with a daily replication-status check). Not available in the repo today: SeaweedFS runs as one node,
@@ -400,7 +402,7 @@ Weekly full VM backups to chartwarden-backup-01 via Proxmox Backup Server (PBS):
 All backups are encrypted at rest:
 
 - pgBackRest: AES-256-CBC with stanza-specific keys
-- Object-store replication and second copy: TLS in transit (the copy job refuses a plain `http://` target unless `OBJECT_COPY_ALLOW_PLAINTEXT_TARGET=1`). Objects at rest: TARGET server-side encryption with KMS-managed keys (or AES-256 with locally-managed keys initially). TODAY the objects on the primary and on the RustFS copy are plaintext at rest and rely on host disk encryption, which no gate checks (compliance/controls.yaml CW-AC-05, partial); only the off-site mirror is encrypted (SSE-C under one platform key, §4.8.4), and it is enabled in production per the owner (§4.8.7 are the operator steps). A host that went through the SeaweedFS cutover and has not removed the retired `<prefix>_minio-data` volume also holds a plaintext copy of every document outside the backups, with no recorded removal deadline (the owner decides; `preflight.sh` warns on every deploy; `deploy/production/README.md`, "Object store: removing the retired MinIO data")
+- Object-store replication and second copy: TLS in transit (the copy job refuses a plain `http://` target unless `OBJECT_COPY_ALLOW_PLAINTEXT_TARGET=1`). Objects at rest: SSE-S3 (AES256) with a locally-managed key-encryption key (`SEAWEEDFS_SSE_KEK`; RustFS's local KMS on the copy) is BUILT and OFF until the operator completes `docs/runbooks/object-store-sse-cutover.md`; TARGET a KMS-managed key per tenant. TODAY the objects on the primary and on the RustFS copy are plaintext at rest and rely on host disk encryption, which no gate checks (compliance/controls.yaml CW-AC-05, partial); only the off-site mirror is encrypted (SSE-C under one platform key, §4.8.4), and it is enabled in production per the owner (§4.8.7 are the operator steps). A host that went through the SeaweedFS cutover and has not removed the retired `<prefix>_minio-data` volume also holds a plaintext copy of every document outside the backups, with no recorded removal deadline (the owner decides; `preflight.sh` warns on every deploy; `deploy/production/README.md`, "Object store: removing the retired MinIO data")
 - Proxmox PBS: native encryption with site key
 - Off-site: TARGET a separate key not held on production hosts. TODAY the keys are held on the host as Docker secret files under `./secrets/`: the pgBackRest passphrases are mounted into the backup sidecar and the postgres (WAL archiving) container, and the SSE-C key into the sidecar only (§4.8.4, §4.8.5)
 
@@ -519,7 +521,10 @@ are held on the host as Docker secret files under `./secrets/` (the backup must 
 sealed copy, §4.6). Losing them loses every backup. The off-site provider never holds the two pgBackRest passphrases
 (client-side encryption); the SSE-C key is sent over TLS with every request, and an S3-compatible provider is specified to discard it (the repo
 names no vendor and cannot verify this), but its servers see it and the plaintext transiently. Restores additionally need `MESSAGING_ENCRYPTION_KEY` and `M34_TENANT_KEK` from the same
-escrow, or restored message bodies cannot be decrypted. Rotation: a new pgBackRest passphrase needs a new stanza (old
+escrow, or restored message bodies cannot be decrypted. Once the object-store encryption cutover is done (CW-AC-05,
+`docs/runbooks/object-store-sse-cutover.md`) a restored SeaweedFS also needs `SEAWEEDFS_SSE_KEK` from that escrow, or the
+objects it restores are unreadable; `restore.sh` and the coordinated drill restore into a scratch store that does not use it
+today, so a drill proves the object bytes and not the key. Rotation: a new pgBackRest passphrase needs a new stanza (old
 backups stay readable with the old passphrase until they expire); a new SSE-C key applies to new copies only, so keep
 the old key until its last object expires.
 

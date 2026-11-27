@@ -31,6 +31,9 @@ services:
       TARGET_S3_ENDPOINT: ${OBJECT_COPY_TARGET_ENDPOINT:?set in .env.production (https://...)}
       TARGET_S3_ACCESS_KEY: ${OBJECT_COPY_TARGET_ACCESS_KEY:?set in .env.production}
       TARGET_S3_SECRET_KEY: ${OBJECT_COPY_TARGET_SECRET_KEY:?set in .env.production}
+      # CW-AC-05 — 1: the replica must hold every object encrypted (its KMS is configured, replica/compose.yml); the copy
+      # sets the default on each bucket it writes and fails an object the replica does not report encrypted.
+      TARGET_S3_REQUIRE_SSE: ${OBJECT_COPY_TARGET_REQUIRE_SSE:-0}
       OPS_ALERT_WEBHOOK_URL: ${OPS_ALERT_WEBHOOK_URL:?set in .env.production (https://, copy failures page through it)}
       OBJECT_COPY_INTERVAL_S: ${OBJECT_COPY_INTERVAL_S:-3600}
       OBJECT_COPY_HEARTBEAT_FILE: /tmp/object-copy-last-success

@@ -18,7 +18,11 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-NET=cw-osc-net
+# OSC_SUFFIX keeps a private run (own ports, own containers) from recreating another session's store.
+SUFFIX="${OSC_SUFFIX:-}"
+NET="cw-osc-net${SUFFIX}"
+STORE="cw-osc-seaweedfs${SUFFIX}"
+FLUENT="cw-osc-fluent-bit${SUFFIX}"
 S3_PORT="${OSC_S3_PORT:-18333}"
 SINK_PORT="${OSC_AUDIT_SINK_PORT:-18334}"
 SEAWEEDFS_IMAGE="${OSC_SEAWEEDFS_IMAGE:-chrislusf/seaweedfs:4.52}"
@@ -30,10 +34,13 @@ ADMIN_KEY=conformance-admin
 ADMIN_SECRET=conformance-admin-test-secret-not-real
 APP_KEY=conformance-app
 APP_SECRET=conformance-app-test-secret-not-real
-CONFIG_DIR="${TMPDIR:-/tmp}/cw-osc-seaweedfs-config"
+CONFIG_DIR="${TMPDIR:-/tmp}/cw-osc-seaweedfs-config${SUFFIX}"
+# CW-AC-05 — the store's SSE-S3 key-encryption key, held outside the data directory exactly as production holds it
+# (WEED_S3_SSE_KEK, hex 32 bytes). A test-only literal: without it SeaweedFS mints one on the filer, beside the data.
+SSE_KEK=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
 down() {
-  docker rm -fv cw-osc-seaweedfs cw-osc-fluent-bit >/dev/null 2>&1 || true
+  docker rm -fv "$STORE" "$FLUENT" >/dev/null 2>&1 || true
   docker network rm "$NET" >/dev/null 2>&1 || true
   rm -rf "$CONFIG_DIR"
 }
@@ -49,6 +56,11 @@ export OBJECT_STORE_APP_ACCESS_KEY=$APP_KEY
 export OBJECT_STORE_APP_SECRET_KEY=$APP_SECRET
 export OBJECT_STORE_AUDIT_SINK_PORT=$SINK_PORT
 export OBJECT_STORE_AUDIT_TOKEN=conformance-audit-token-not-real
+export OBJECT_STORE_REQUIRE_SSE=1
+export OBJECT_STORE_CONTAINER=$STORE
+export OBJECT_STORE_DATA_DIR=/data
+export OBJECT_STORE_VACUUM_URL="http://127.0.0.1:9333/vol/vacuum?garbageThreshold=0.0001"
+export OBJECT_STORE_KEK_LOG_LINE="Loaded KEK from s3.sse.kek config"
 EOF
   exit 0
 fi
@@ -70,15 +82,15 @@ SEAWEEDFS_ADMIN_ACCESS_KEY=$ADMIN_KEY SEAWEEDFS_ADMIN_SECRET_KEY=$ADMIN_SECRET \
 chmod 0644 "$CONFIG_DIR/s3.json"
 
 # Fluent Bit reaches the suite's sink on the host. host-gateway makes host.docker.internal resolve on Linux too.
-docker run -d --name cw-osc-fluent-bit --network "$NET" --network-alias fluent-bit \
+docker run -d --name "$FLUENT" --network "$NET" --network-alias fluent-bit \
   --add-host=host.docker.internal:host-gateway \
   -e AUDIT_SINK_HOST=host.docker.internal -e AUDIT_SINK_PORT="$SINK_PORT" -e AUDIT_SINK_PATH=/audit \
   -e AUDIT_SINK_TOKEN=conformance-audit-token-not-real \
   -v "$REPO/deploy/production/object-store/fluent-bit.yaml:/fluent-bit/etc/fluent-bit.yaml:ro" \
   "$FLUENT_BIT_IMAGE" -c /fluent-bit/etc/fluent-bit.yaml >/dev/null
 
-docker run -d --name cw-osc-seaweedfs --network "$NET" -p "127.0.0.1:$S3_PORT:8333" \
-  -e WEED_MASTER_VOLUME_GROWTH_COPY_1=1 \
+docker run -d --name "$STORE" --network "$NET" -p "127.0.0.1:$S3_PORT:8333" \
+  -e WEED_MASTER_VOLUME_GROWTH_COPY_1=1 -e WEED_S3_SSE_KEK="$SSE_KEK" \
   -v "$CONFIG_DIR/s3.json:/etc/seaweedfs/s3.json:ro" -v "$REPO/deploy/production/object-store/audit.json:/etc/seaweedfs/audit.json:ro" \
   "$SEAWEEDFS_IMAGE" server -dir=/data -ip.bind=0.0.0.0 -master.volumeSizeLimitMB=64 \
   -s3 -s3.port=8333 -s3.port.iceberg=0 -s3.port.lance=0 \
@@ -93,5 +105,5 @@ for _ in $(seq "$READY_ATTEMPTS"); do
   sleep 1
 done
 echo "SeaweedFS did not become ready" >&2
-docker logs cw-osc-seaweedfs >&2 || true
+docker logs "$STORE" >&2 || true
 exit 1
