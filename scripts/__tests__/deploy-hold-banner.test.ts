@@ -25,6 +25,7 @@ describe("deploy.sh held-deploy banner", () => {
       "m25-835-deployment.md",
       "m23-sia-revisions-deployment.md",
       "object-key-column-rename-deployment.md",
+      "security-alert-review.md",
     ];
 
     // Assert
@@ -38,5 +39,6 @@ describe("deploy.sh held-deploy banner", () => {
     const banner = holdBanner();
     expect(banner).toMatch(/1508[^\n]*m25-835-deployment\.md/);
     expect(banner).toMatch(/1546[^\n]*object-key-column-rename-deployment\.md/);
+    expect(banner).toMatch(/1566[^\n]*security-alert-review\.md/);
   });
 });

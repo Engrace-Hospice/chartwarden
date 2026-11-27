@@ -44,9 +44,8 @@
  * LEAST-PRIVILEGE POSTURE (documented, deliberate): the `chartwarden_platform` carrier's grant list is
  * ENUMERATED below — it is not `chartwarden_admin`. If a platform code path hits a missing grant it
  * fails loudly with 42501 and the fix is one line HERE, reviewed — never a blanket ALL.
- * Note one grant that is wider than its use: CW-MON-01 (migration 1561) gives the carrier SELECT on six `audit_event` columns,
- * `context` included. The login is BYPASSRLS, so that reaches every tenant's audit rows; only the security review's own
- * `organization_id IS NULL` predicate (proved live) keeps it to the org-less sign-in events. See compliance/controls.yaml CW-MON-01.
+ * The carrier holds NO SELECT on `audit_event`: CW-MON-01's security review reads the org-less sign-in events through the three
+ * `m4_review_platform_*` SECURITY DEFINER readers (migration 1566; EXECUTE is granted below), whose owner can see org-less rows only.
  * ONE deliberate exception is a role MEMBERSHIP rather than an enumerated grant: `claimmd_capture` (the NOLOGIN role that
  * owns the central Claim.MD stream, inbox and ERA-staging privileges, enumerated in migrations 1350/1351/1353/1354/1356/1357/1358/1360/1396),
  * granted here exactly as those migrations grant it when the carrier already exists. It carries those tables' grants for the
@@ -517,10 +516,24 @@ async function main(): Promise<void> {
       for (const t of PLATFORM_READ_TABLES) {
         await run(`GRANT SELECT ON "${t}" TO chartwarden_platform;`);
       }
-      // CW-MON-01 (migration 1561) — the security review's platform lane reads the org-less authentication events. COLUMN
-      // grant, the six columns the review selects: never `before`, `after`, `source_ip`, `user_agent` or the request/trace ids.
+      // CW-MON-01 (migration 1566) — the security review's platform lane reads the org-less authentication events through three
+      // bounded SECURITY DEFINER readers, never `audit_event` itself: EXECUTE on them, and the column grant migration 1561 gave
+      // the carrier is revoked on every run (a re-run of an older provisioner cannot leave the broad grant behind).
+      // Guarded: a database that has not had migration 1566 yet has no readers to grant (the review's platform lane then fails
+      // loudly at its first read, and the migration itself grants EXECUTE when it runs).
+      for (const fn of [
+        "m4_review_platform_signals(text[], timestamptz, timestamptz, integer, boolean)",
+        "m4_review_platform_cursor()",
+        "m4_review_platform_raised_alerts(timestamptz, text[])",
+      ]) {
+        await run(`DO $$ BEGIN
+          IF to_regprocedure('public.${fn}') IS NOT NULL THEN
+            GRANT EXECUTE ON FUNCTION public.${fn} TO chartwarden_platform;
+          END IF;
+        END $$;`);
+      }
       await run(
-        'GRANT SELECT ("id", "created_at", "organization_id", "actor_user_id", "event_type", "context") ON "audit_event" TO chartwarden_platform;',
+        'REVOKE SELECT ("id", "created_at", "organization_id", "actor_user_id", "event_type", "context") ON "audit_event" FROM chartwarden_platform;',
       );
       // M36 WP 2.13 (migration 1089) — the boot check counts message rows still on the legacy body envelope across
       // tenants. COLUMN grants on the scheme marker (generated from body_cipher's first byte) only: the platform login

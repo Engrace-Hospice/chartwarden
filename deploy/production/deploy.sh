@@ -630,7 +630,7 @@ else
       echo "!! DEPLOY HELD BEFORE ANY SCHEMA CHANGE: a pending migration is not proven expand-compatible."
       echo "!! Nothing was applied and the running release is untouched. Drain whatever the migration's header and"
       echo "!! runbook name (docs/runbooks/: 1508 m25-835-deployment.md, 1512-1513 m23-sia-revisions-deployment.md,"
-      echo "!! 1546 object-key-column-rename-deployment.md), then apply it by hand with the NEW release's"
+      echo "!! 1546 object-key-column-rename-deployment.md, 1566 security-alert-review.md section 7), then apply it by hand with the NEW release's"
       echo "!! image (this script is about to put .env.production back on the previous one) and WITHOUT --hold-contract:"
       echo "!!   cd $deploy_dir && CHARTWARDEN_IMAGE='$backend_ref' docker compose --env-file .env.production -f compose.yml \\"
       echo "!!     run --rm --no-deps migrate bun run scripts/db/migrate.ts --strict --schema-only"

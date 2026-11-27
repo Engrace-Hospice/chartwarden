@@ -2,11 +2,12 @@
 // sanctioned reader of its rows is this package; the review job (apps/backend/.../04-audit/jobs/security-review-job.ts)
 // opens the transaction and hands it here, and never selects the table.
 //
-// TWO SCOPES, ONE SET OF QUERIES. The org scope runs on a `withOrgContext` transaction (the NOBYPASSRLS `chartwarden_app`
+// TWO SCOPES, TWO DOORS. The org scope runs on a `withOrgContext` transaction (the NOBYPASSRLS `chartwarden_app`
 // role: RLS scopes the read, and the explicit `organization_id = …` predicate says the same thing again). The platform scope
-// (`organizationId: null`) runs on the audited `withPlatformContext` transaction of the platform login, which carries
-// BYPASSRLS and a COLUMN grant on `audit_event` (migration 1561 / scripts/db/provision-runtime-roles.ts), so the explicit
-// `organization_id IS NULL` predicate is what keeps it to the org-less authentication rows.
+// (`organizationId: null`) runs on the audited `withPlatformContext` transaction of the platform login, which is BYPASSRLS and
+// holds NO SELECT on `audit_event`: it reads the org-less authentication rows only through the three bounded SECURITY DEFINER
+// readers `m4_review_platform_signals`, `_cursor` and `_raised_alerts` (migration 1566), whose owner can see org-less rows and
+// nothing else. A platform-scope read that does not go through one of them is refused by the database (42501).
 //
 // MINIMAL COLUMNS. Only what the rules need is selected, and from `context` only three scalar keys: `userId`, `ipPrefix`
 // and `emailHash` (a hash). No `before`, `after`, free text or any other context key is ever read, so nothing the denylist
@@ -37,14 +38,12 @@ export const TERMINAL_DELIVERY_STATUSES: readonly AlertDeliveryStatus[] = [
 /** UTC ISO-8601 with milliseconds — what a JS Date round-trips. */
 const ISO_UTC_MS = `YYYY-MM-DD"T"HH24:MI:SS.MS"Z"`;
 /** The only expressions ever spliced raw into SQL: literals of this union, never a caller's string. */
-type IsoColumn = "created_at" | "min(created_at)" | "max(created_at)";
+type IsoColumn = "created_at" | "min(created_at)" | "max(created_at)" | "occurred_at" | "row_at";
 const isoOf = (column: IsoColumn): SQL =>
   sql`to_char(${sql.raw(column)} AT TIME ZONE 'UTC', ${sql.raw(`'${ISO_UTC_MS}'`)})`;
 
-const scopeIs = (scope: ReviewScope): SQL =>
-  scope.organizationId === null
-    ? sql`organization_id IS NULL`
-    : sql`organization_id = ${scope.organizationId}::uuid`;
+/** The org scope's predicate. There is deliberately no org-less twin: the platform login reads those rows only through the definer readers. */
+const orgIs = (organizationId: string): SQL => sql`organization_id = ${organizationId}::uuid`;
 
 const inList = (values: readonly string[]): SQL =>
   sql.join(
@@ -68,28 +67,22 @@ export interface SignalRead {
   readonly truncated: boolean;
 }
 
-/**
- * The rows the always / burst / distinct rules look at: `eventTypes` events in `[from, to)`, oldest first, at most `limit`.
- * One extra row is fetched to learn whether the read was cut short.
- */
-export async function readSignalEvents(
-  db: ReviewSqlExecutor,
-  scope: ReviewScope,
-  query: {
-    readonly eventTypes: readonly string[];
-    readonly from: Date;
-    readonly to: Date;
-    readonly limit: number;
-    /**
-     * Keep the NEWEST `limit` rows instead of the oldest. The look-back overlap reads this way: the rows that stitch a burst
-     * straddling the cursor are the ones nearest it, and a cap must not drop those. Rows are returned oldest first either way.
-     */
-    readonly newestFirst?: boolean;
-  },
-): Promise<SignalRead> {
-  if (query.eventTypes.length === 0) return { events: [], truncated: false };
+interface SignalQuery {
+  readonly eventTypes: readonly string[];
+  readonly from: Date;
+  readonly to: Date;
+  readonly limit: number;
+  /**
+   * Keep the NEWEST `limit` rows instead of the oldest. The look-back overlap reads this way: the rows that stitch a burst
+   * straddling the cursor are the ones nearest it, and a cap must not drop those. Rows are returned oldest first either way.
+   */
+  readonly newestFirst?: boolean;
+}
+
+/** The org scope: a direct read of the organization's own rows, under RLS. One extra row is fetched to learn about truncation. */
+function orgSignalRows(db: ReviewSqlExecutor, organizationId: string, query: SignalQuery) {
   const order = query.newestFirst ? sql`ORDER BY created_at DESC, id DESC` : sql`ORDER BY created_at, id`;
-  const result = await db.execute<SignalRow>(sql`
+  return db.execute<SignalRow>(sql`
     SELECT id::text AS id,
            ${isoOf("created_at")} AS created_at,
            event_type,
@@ -98,13 +91,55 @@ export async function readSignalEvents(
            context->>'ipPrefix' AS ip_prefix,
            context->>'emailHash' AS account_hash
       FROM audit_event
-     WHERE ${scopeIs(scope)}
+     WHERE ${orgIs(organizationId)}
        AND event_type IN (${inList(query.eventTypes)})
        AND created_at >= ${query.from.toISOString()}::timestamptz
        AND created_at < ${query.to.toISOString()}::timestamptz
      ${order}
      LIMIT ${query.limit + 1}
   `);
+}
+
+/**
+ * The platform scope: the org-less sign-in events through the bounded SECURITY DEFINER reader (migration 1566), which raises 22023
+ * for an event type, window or row limit outside its bounds. The outer ORDER BY states the order the caller relies on.
+ */
+function platformSignalRows(db: ReviewSqlExecutor, query: SignalQuery) {
+  const order = query.newestFirst
+    ? sql`ORDER BY occurred_at DESC, event_id DESC`
+    : sql`ORDER BY occurred_at, event_id`;
+  return db.execute<SignalRow>(sql`
+    SELECT event_id::text AS id,
+           ${isoOf("occurred_at")} AS created_at,
+           event_kind AS event_type,
+           actor_id::text AS actor_user_id,
+           context_user_id,
+           ip_prefix,
+           account_hash
+      FROM public.m4_review_platform_signals(
+             ARRAY[${inList(query.eventTypes)}]::text[],
+             ${query.from.toISOString()}::timestamptz,
+             ${query.to.toISOString()}::timestamptz,
+             ${query.limit + 1}::integer,
+             ${query.newestFirst === true}::boolean)
+     ${order}
+  `);
+}
+
+/**
+ * The rows the always / burst / distinct rules look at: `eventTypes` events in `[from, to)`, oldest first, at most `limit`.
+ * One extra row is fetched to learn whether the read was cut short.
+ */
+export async function readSignalEvents(
+  db: ReviewSqlExecutor,
+  scope: ReviewScope,
+  query: SignalQuery,
+): Promise<SignalRead> {
+  if (query.eventTypes.length === 0) return { events: [], truncated: false };
+  const result =
+    scope.organizationId === null
+      ? await platformSignalRows(db, query)
+      : await orgSignalRows(db, scope.organizationId, query);
   const kept = result.rows.slice(0, query.limit);
   const rows = query.newestFirst ? [...kept].reverse() : kept;
   return {
@@ -153,6 +188,11 @@ export async function readBulkAccessHits(
     readonly threshold: number;
   },
 ): Promise<BulkAccessRead> {
+  if (scope.organizationId === null) {
+    // No rule of the platform lane aggregates reads, and the platform login cannot read `audit_event` (migration 1566): failing
+    // here is the honest answer to a rule that was added without a reader, never an empty "all clear".
+    throw new Error("CW-MON-01: the platform lane has no bulk-access reader (add a bounded definer reader, never a direct read)");
+  }
   const bucketSeconds = Math.max(1, Math.floor(query.bucketMs / 1000));
   const result = await db.execute<BulkRow>(sql`
     SELECT actor_user_id::text AS actor,
@@ -162,7 +202,7 @@ export async function readBulkAccessHits(
            ${isoOf("max(created_at)")} AS last_at,
            (array_agg(id::text ORDER BY created_at, id))[1:5] AS sample_ids
       FROM audit_event
-     WHERE ${scopeIs(scope)}
+     WHERE ${orgIs(scope.organizationId)}
        AND actor_user_id IS NOT NULL
        AND resource_id IS NOT NULL
        AND (event_type LIKE '%.viewed' OR event_type LIKE '%.disclosed')
@@ -204,17 +244,23 @@ export async function readReviewCursor(
   db: ReviewSqlExecutor,
   scope: ReviewScope,
 ): Promise<Date | null> {
-  const result = await db.execute<{ window_to: string; row_at: string } & Record<string, unknown>>(sql`
-    SELECT context->>'windowTo' AS window_to,
-           ${isoOf("created_at")} AS row_at
-      FROM audit_event
-     WHERE ${scopeIs(scope)}
-       AND event_type = ${SECURITY_REVIEW_COMPLETED_EVENT}
-       AND context->>'status' = 'ok'
-       AND created_at <= now()
-     ORDER BY created_at DESC, id DESC
-     LIMIT 1
-  `);
+  type CursorRow = { window_to: string; row_at: string } & Record<string, unknown>;
+  const result =
+    scope.organizationId === null
+      ? await db.execute<CursorRow>(sql`
+          SELECT window_to, ${isoOf("row_at")} AS row_at FROM public.m4_review_platform_cursor()
+        `)
+      : await db.execute<CursorRow>(sql`
+          SELECT context->>'windowTo' AS window_to,
+                 ${isoOf("created_at")} AS row_at
+            FROM audit_event
+           WHERE ${orgIs(scope.organizationId)}
+             AND event_type = ${SECURITY_REVIEW_COMPLETED_EVENT}
+             AND context->>'status' = 'ok'
+             AND created_at <= now()
+           ORDER BY created_at DESC, id DESC
+           LIMIT 1
+        `);
   const row = result.rows[0];
   if (row === undefined) return null;
   const windowTo = Date.parse(row.window_to);
@@ -241,18 +287,26 @@ export async function readRaisedAlerts(
   scope: ReviewScope,
   since: Date,
 ): Promise<readonly RaisedAlertRef[]> {
-  const result = await db.execute<RaisedRow>(sql`
-    SELECT context->>'fingerprint' AS fingerprint,
-           context->>'ruleId' AS rule_id,
-           context->'subject'->>'kind' AS subject_kind,
-           context->'subject'->>'ref' AS subject_ref,
-           context->>'windowTo' AS window_to
-      FROM audit_event
-     WHERE ${scopeIs(scope)}
-       AND event_type = ${SECURITY_ALERT_RAISED_EVENT}
-       AND created_at >= ${since.toISOString()}::timestamptz
-       AND context->>'delivery' IN (${inList(TERMINAL_DELIVERY_STATUSES)})
-  `);
+  const result =
+    scope.organizationId === null
+      ? await db.execute<RaisedRow>(sql`
+          SELECT fingerprint, rule_id, subject_kind, subject_ref, window_to
+            FROM public.m4_review_platform_raised_alerts(
+                   ${since.toISOString()}::timestamptz,
+                   ARRAY[${inList(TERMINAL_DELIVERY_STATUSES)}]::text[])
+        `)
+      : await db.execute<RaisedRow>(sql`
+          SELECT context->>'fingerprint' AS fingerprint,
+                 context->>'ruleId' AS rule_id,
+                 context->'subject'->>'kind' AS subject_kind,
+                 context->'subject'->>'ref' AS subject_ref,
+                 context->>'windowTo' AS window_to
+            FROM audit_event
+           WHERE ${orgIs(scope.organizationId)}
+             AND event_type = ${SECURITY_ALERT_RAISED_EVENT}
+             AND created_at >= ${since.toISOString()}::timestamptz
+             AND context->>'delivery' IN (${inList(TERMINAL_DELIVERY_STATUSES)})
+        `);
   return result.rows.flatMap((r) => {
     const windowToMs = Date.parse(r.window_to ?? "");
     return r.fingerprint && r.rule_id && r.subject_kind && r.subject_ref && !Number.isNaN(windowToMs)

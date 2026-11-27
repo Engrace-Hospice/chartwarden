@@ -8,8 +8,11 @@
  *   4. bulk record access is aggregated in SQL (120 distinct patients flagged, 99 not);
  *   5. the platform lane reads ONLY org-less rows (a tenant's identical event types are not evaluated there), writes its record
  *      through the platform writer, and every entry is an audited `platform.bypass_invoked`;
- *   6. why the platform lane exists: a tenant context cannot read org-less rows, and the platform login can read neither
- *      `before` nor `user_agent` (the column grant);
+ *   6. why the platform lane exists, and how narrow it is (migration 1566): a tenant context cannot read org-less rows, and the
+ *      platform login holds NO SELECT on `audit_event` — a direct read of any column is refused — only EXECUTE on three
+ *      SECURITY DEFINER readers, owned by a NOLOGIN role that is itself confined by row security to org-less rows;
+ *   6b. the readers return exactly the rules' inputs (seven values, org-less rows, no tenant row, no free text), and every bound
+ *      (event types, window, age, row cap) is refused with 22023, tied to the review's own constants;
  *   7. tenant isolation: org B's review neither reads nor alerts on org A's events, and org A's review rows are invisible to B;
  *   8. a tick over both lanes fails (AggregateError) when an alert cannot be delivered, after the record is committed.
  *
@@ -19,6 +22,8 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
+  MAX_CATCH_UP_MS,
+  MAX_SIGNAL_ROWS,
   type SecurityAlert,
   type SecurityAlertSink,
   type SecurityReviewResult,
@@ -147,13 +152,19 @@ describe.skipIf(!DB_URL)("M4 security review of the audit trail — LIVE Postgre
     );
   }
 
-  /** The SQLSTATE of a statement run as the platform login (Drizzle wraps the driver error; the code is on its cause). */
-  const sqlState = async (query: ReturnType<typeof sql>): Promise<string | undefined> => {
+  /**
+   * The SQLSTATE of a statement run as the platform login (Drizzle wraps the driver error; the code is on its cause), or "ok" when
+   * it succeeded. An error that carries no SQLSTATE (a dropped connection, a timeout) is rethrown: it must never read as success.
+   */
+  const sqlState = async (query: ReturnType<typeof sql>): Promise<string> => {
     try {
       await platform.db.execute(query);
-      return undefined;
+      return "ok";
     } catch (error) {
-      return ((error as { cause?: { code?: string } }).cause ?? (error as { code?: string })).code;
+      const code = ((error as { cause?: { code?: string } }).cause ?? (error as { code?: string }))
+        .code;
+      if (code === undefined) throw error;
+      return code;
     }
   };
 
@@ -467,7 +478,7 @@ describe.skipIf(!DB_URL)("M4 security review of the audit trail — LIVE Postgre
     expect(bypass.rows[0].n).toBeGreaterThanOrEqual(1);
   });
 
-  it("why a platform lane exists, and how narrow it is", async () => {
+  it("why a platform lane exists, and how narrow it is: the platform login has no SELECT on audit_event or any of its partitions", async () => {
     // a tenant context cannot see org-less rows at all (so the tenant pool could never review sign-in failures) …
     const visibleToTenant = await withOrgContext(app.db, systemOrgContext(ORG_A), (tx) =>
       tx.execute<{ n: number }>(
@@ -475,21 +486,355 @@ describe.skipIf(!DB_URL)("M4 security review of the audit trail — LIVE Postgre
       ),
     );
     expect(visibleToTenant.rows[0]?.n).toBe(0);
-    // … and the platform login reads the six granted columns only: never the before/after snapshots or the user agent.
-    // the grant is exactly the six columns the review selects (a later per-column grant of `after` or `source_ip` fails this)
-    const granted = await admin.query(
+    // … and the platform login holds no SELECT on audit_event, directly or inherited (migration 1566 removed 1561's column grant,
+    // and the provisioner that ran after the migrations did not put it back)
+    const columnGrants = await admin.query(
       `SELECT column_name FROM information_schema.column_privileges
-        WHERE table_schema = 'public' AND table_name = 'audit_event' AND grantee = 'chartwarden_platform' AND privilege_type = 'SELECT'
-        ORDER BY column_name`,
+        WHERE table_schema = 'public' AND table_name = 'audit_event' AND grantee = 'chartwarden_platform' AND privilege_type = 'SELECT'`,
     );
-    expect(granted.rows.map((r) => r.column_name)).toEqual(
-      ["actor_user_id", "context", "created_at", "event_type", "id", "organization_id"].sort(),
+    expect(columnGrants.rows).toEqual([]);
+    const login = await admin.query(
+      `SELECT has_any_column_privilege('chartwarden_platform_login', 'audit_event', 'SELECT') AS can_select`,
     );
-    expect(await sqlState(sql`SELECT before FROM audit_event LIMIT 1`)).toBe("42501");
-    expect(await sqlState(sql`SELECT user_agent FROM audit_event LIMIT 1`)).toBe("42501");
-    await expect(
-      platform.db.execute(sql`SELECT event_type, context FROM audit_event LIMIT 1`),
-    ).resolves.toBeDefined();
+    expect(login.rows[0].can_select).toBe(false);
+    // … nor on any partition (a partition's privileges are its own; reading through the parent checks the parent only, but a
+    // direct read of `audit_event_2026_11` or the default partition would check the partition)
+    const partitionGrants = await admin.query(
+      `SELECT c.relname FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+        WHERE i.inhparent = 'audit_event'::regclass
+          AND has_any_column_privilege('chartwarden_platform_login', c.oid, 'SELECT')`,
+    );
+    expect(partitionGrants.rows).toEqual([]);
+    // so a direct read of ANY column is refused, the six the old grant covered included (the BYPASSRLS login is not the bound)
+    for (const read of [
+      sql`SELECT event_type, context FROM audit_event LIMIT 1`,
+      sql`SELECT id FROM audit_event LIMIT 1`,
+      sql`SELECT count(*) FROM audit_event`,
+      sql`SELECT before FROM audit_event LIMIT 1`,
+      sql`SELECT user_agent FROM audit_event LIMIT 1`,
+    ]) {
+      expect(await sqlState(read)).toBe("42501");
+    }
+  });
+
+  it("applied over a database that still carries 1561's column grant (the production upgrade), 1566 revokes it, grants EXECUTE, and a second application changes nothing", async () => {
+    const migration = readFileSync(
+      join(MIGRATIONS_DIR, "1566_m4_security_review_platform_audit_reader.sql"),
+      "utf8",
+    );
+    const readers = [
+      "m4_review_platform_signals(text[], timestamptz, timestamptz, integer, boolean)",
+      "m4_review_platform_cursor()",
+      "m4_review_platform_raised_alerts(timestamptz, text[])",
+    ];
+    // the state migration 1561 and the old provisioner left behind: the six-column grant, and no EXECUTE on the readers
+    await admin.query(
+      `GRANT SELECT ("id", "created_at", "organization_id", "actor_user_id", "event_type", "context") ON "audit_event" TO chartwarden_platform`,
+    );
+    for (const fn of readers)
+      await admin.query(`REVOKE EXECUTE ON FUNCTION ${fn} FROM chartwarden_platform`);
+    expect(await sqlState(sql`SELECT event_type, context FROM audit_event LIMIT 1`)).toBe("ok"); // the old door is open …
+    expect(await sqlState(sql`SELECT * FROM public.m4_review_platform_cursor()`)).toBe("42501"); // … the new one is not yet
+
+    for (const application of [1, 2]) {
+      await admin.query(migration);
+      expect(
+        await sqlState(sql`SELECT event_type, context FROM audit_event LIMIT 1`),
+        `application ${application}`,
+      ).toBe("42501");
+      expect(
+        await sqlState(sql`SELECT * FROM public.m4_review_platform_cursor()`),
+        `application ${application}`,
+      ).toBe("ok");
+    }
+  });
+
+  it("the readers: a NOLOGIN owner, EXECUTE for the platform carrier only, a fixed search_path — and the tenant pool cannot call them", async () => {
+    const fns = await admin.query(
+      `SELECT p.proname,
+              pg_get_userbyid(p.proowner) AS owner,
+              p.prosecdef AS definer,
+              (SELECT substr(c, length('search_path=') + 1) FROM unnest(p.proconfig) c WHERE c LIKE 'search_path=%') AS search_path,
+              (SELECT array_agg(g ORDER BY g)
+                 FROM (SELECT DISTINCT CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END AS g
+                         FROM aclexplode(p.proacl) a) s) AS grantees,
+              has_function_privilege('chartwarden_app', p.oid, 'EXECUTE') AS app_can,
+              has_function_privilege('chartwarden_platform_login', p.oid, 'EXECUTE') AS login_can
+         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public' AND p.proname LIKE 'm4\\_review\\_platform\\_%'
+        ORDER BY p.proname`,
+    );
+    expect(fns.rows.map((r) => r.proname)).toEqual([
+      "m4_review_platform_cursor",
+      "m4_review_platform_raised_alerts",
+      "m4_review_platform_signals",
+    ]);
+    for (const fn of fns.rows) {
+      expect(fn).toMatchObject({
+        owner: "chartwarden_audit_reviewer",
+        definer: true,
+        search_path: "pg_catalog, pg_temp",
+        // never PUBLIC, never the tenant role: the owner and the platform carrier
+        grantees: ["chartwarden_audit_reviewer", "chartwarden_platform"],
+        app_can: false,
+        login_can: true, // through the carrier it inherits
+      });
+    }
+    // the owner is a plain NOLOGIN role: no BYPASSRLS, not a superuser, nobody is a member of it, and the carrier's only member is the platform login
+    const owner = await admin.query(
+      `SELECT rolcanlogin, rolsuper, rolbypassrls,
+              (SELECT count(*)::int FROM pg_auth_members WHERE roleid = r.oid) AS members_of,
+              (SELECT count(*)::int FROM pg_auth_members WHERE member = r.oid) AS member_of
+         FROM pg_roles r WHERE rolname = 'chartwarden_audit_reviewer'`,
+    );
+    expect(owner.rows[0]).toEqual({
+      rolcanlogin: false,
+      rolsuper: false,
+      rolbypassrls: false,
+      members_of: 0,
+      member_of: 0,
+    });
+    const carrierMembers = await admin.query(
+      `SELECT array_agg(m.rolname::text ORDER BY m.rolname) AS members
+         FROM pg_auth_members am JOIN pg_roles m ON m.oid = am.member
+        WHERE am.roleid = 'chartwarden_platform'::regrole`,
+    );
+    expect(carrierMembers.rows[0].members).toEqual(["chartwarden_platform_login"]);
+    // the tenant pool (the real NOBYPASSRLS chartwarden_app) is refused every one of them
+    for (const call of [
+      sql`SELECT * FROM public.m4_review_platform_cursor()`,
+      sql`SELECT * FROM public.m4_review_platform_raised_alerts(now() - interval '1 hour', ARRAY['delivered']::text[])`,
+      sql`SELECT * FROM public.m4_review_platform_signals(ARRAY['m2.auth.login_failed']::text[], now() - interval '1 hour', now(), 10, false)`,
+    ]) {
+      const state = await withOrgContext(app.db, systemOrgContext(ORG_A), async (tx) => {
+        await tx.execute(sql`SAVEPOINT probe`);
+        try {
+          await tx.execute(call);
+          return undefined;
+        } catch (error) {
+          return ((error as { cause?: { code?: string } }).cause ?? (error as { code?: string }))
+            .code;
+        } finally {
+          await tx.execute(sql`ROLLBACK TO SAVEPOINT probe`);
+        }
+      });
+      expect(state).toBe("42501");
+    }
+  });
+
+  it("the reader's owner is confined by row security to org-less rows, whatever a function body says", async () => {
+    // the database-side floor under the function bodies: a session AS the owner role sees no tenant row and none of the columns
+    // the readers do not use, so a defect in a body could not widen the read
+    const asSuperuser = await admin.query(
+      "SELECT count(*)::int AS n FROM audit_event WHERE organization_id IS NOT NULL",
+    );
+    expect(asSuperuser.rows[0].n).toBeGreaterThan(0); // the seeded tenant rows exist, so a zero below means something
+    const owner = new Client({ connectionString: DB_URL });
+    await owner.connect();
+    try {
+      await owner.query("SET ROLE chartwarden_audit_reviewer");
+      const tenantRows = await owner.query(
+        "SELECT count(*)::int AS n FROM audit_event WHERE organization_id IS NOT NULL",
+      );
+      expect(tenantRows.rows[0].n).toBe(0);
+      const orgLessRows = await owner.query(
+        "SELECT count(*)::int AS n FROM audit_event WHERE organization_id IS NULL",
+      );
+      expect(orgLessRows.rows[0].n).toBeGreaterThan(0);
+      for (const column of [
+        "before",
+        '"after"',
+        "source_ip",
+        "user_agent",
+        "resource_id",
+        "correlation_id",
+      ]) {
+        await expect(
+          owner.query(`SELECT ${column} FROM audit_event LIMIT 1`),
+        ).rejects.toMatchObject({
+          code: "42501",
+        });
+      }
+    } finally {
+      await owner.end();
+    }
+  });
+
+  describe("the readers' rows and bounds", () => {
+    const SIGNALS = "public.m4_review_platform_signals";
+    const stateOfSignals = (args: {
+      types?: string;
+      from: string;
+      to: string;
+      limit?: number;
+    }): Promise<string> =>
+      sqlState(
+        sql.raw(
+          `SELECT * FROM ${SIGNALS}(${args.types ?? "ARRAY['m2.auth.login_failed']::text[]"}, '${args.from}'::timestamptz, '${args.to}'::timestamptz, ${args.limit ?? 10}, false)`,
+        ),
+      );
+    const HOUR = 60 * MINUTE;
+    const iso = (offsetMs: number): string => new Date(Date.now() + offsetMs).toISOString();
+
+    it("the signals reader returns exactly the rules' inputs for org-less rows: seven values, no tenant row, no free text", async () => {
+      // three org-less sign-in failures, four hours back, with context keys the rules do not read (free text, a patient id) …
+      for (let i = 0; i < 3; i += 1) {
+        await seed({
+          organizationId: null,
+          eventType: "m2.auth.login_failed",
+          at: ago(240 - i),
+          context: {
+            userId: USER_1,
+            ipPrefix: "198.51.100.0/24",
+            emailHash: `b${i}`.padEnd(32, "0"),
+            reason: "synthetic free text the rules never read",
+            patientId: USER_BELOW,
+          },
+        });
+      }
+      // … a sign-in in a tenant in the same window, and an org-less row of another event type
+      await seed({
+        organizationId: ORG_A,
+        eventType: "m2.auth.login_failed",
+        at: ago(240),
+        context: { ipPrefix: "203.0.113.0/24", emailHash: "e".repeat(32) },
+      });
+      await seed({
+        organizationId: null,
+        eventType: "m3.breakglass.invoked",
+        at: ago(240),
+        context: { ipPrefix: "203.0.113.0/24" },
+      });
+      const read = await platform.db.execute<Record<string, unknown>>(
+        sql`SELECT * FROM public.m4_review_platform_signals(
+              ARRAY['m2.auth.login_failed', 'm2.auth.account_locked', 'm2.auth.login_succeeded']::text[],
+              ${ago(245)}::timestamptz, ${ago(235)}::timestamptz, 100, false)`,
+      );
+      expect(read.rows).toHaveLength(3);
+      expect(Object.keys(read.rows[0] ?? {}).sort()).toEqual(
+        [
+          "account_hash",
+          "actor_id",
+          "context_user_id",
+          "event_id",
+          "event_kind",
+          "ip_prefix",
+          "occurred_at",
+        ].sort(),
+      );
+      expect(read.rows.map((r) => [r.event_kind, r.ip_prefix, r.context_user_id])).toEqual(
+        Array(3).fill(["m2.auth.login_failed", "198.51.100.0/24", USER_1]),
+      );
+      const everything = JSON.stringify(read.rows);
+      for (const absent of ["free text", USER_BELOW, "203.0.113.", ORG_A, "breakglass"]) {
+        expect(everything).not.toContain(absent);
+      }
+      // oldest first, or newest first on request; the row cap holds
+      const oldest = await platform.db.execute<{ occurred_at: Date }>(
+        sql`SELECT occurred_at FROM public.m4_review_platform_signals(ARRAY['m2.auth.login_failed']::text[],
+              ${ago(245)}::timestamptz, ${ago(235)}::timestamptz, 2, false)`,
+      );
+      const newest = await platform.db.execute<{ occurred_at: Date }>(
+        sql`SELECT occurred_at FROM public.m4_review_platform_signals(ARRAY['m2.auth.login_failed']::text[],
+              ${ago(245)}::timestamptz, ${ago(235)}::timestamptz, 2, true)`,
+      );
+      expect(oldest.rows).toHaveLength(2);
+      expect(newest.rows).toHaveLength(2);
+      expect(new Date(oldest.rows[0]?.occurred_at as Date).getTime()).toBeLessThan(
+        new Date(newest.rows[0]?.occurred_at as Date).getTime(),
+      );
+    });
+
+    it("refuses an event type, window or row limit outside its bounds (22023), and accepts the review's own", async () => {
+      // an event type other than the three org-less sign-in events — alone, mixed, or none
+      for (const types of [
+        "ARRAY['m3.breakglass.invoked']::text[]",
+        "ARRAY['m2.auth.login_failed', 'm3.breakglass.invoked']::text[]",
+        "ARRAY[]::text[]",
+        "NULL::text[]",
+      ]) {
+        expect(await stateOfSignals({ types, from: iso(-HOUR), to: iso(0) })).toBe("22023");
+      }
+      // a window longer than 25 hours, older than 48 hours, or more than ten minutes ahead of the clock; a backwards one
+      expect(
+        await stateOfSignals({ from: iso(-26 * HOUR), to: iso(-26 * HOUR + 25 * HOUR + MINUTE) }),
+      ).toBe("22023");
+      expect(await stateOfSignals({ from: iso(-49 * HOUR), to: iso(-48 * HOUR) })).toBe("22023");
+      expect(await stateOfSignals({ from: iso(-HOUR), to: iso(11 * MINUTE) })).toBe("22023");
+      expect(await stateOfSignals({ from: iso(0), to: iso(-HOUR) })).toBe("22023");
+      // a row limit of zero, and one past the review's own read cap (+1 for the extra row it fetches to detect a truncation)
+      expect(await stateOfSignals({ from: iso(-HOUR), to: iso(0), limit: 0 })).toBe("22023");
+      expect(
+        await stateOfSignals({ from: iso(-HOUR), to: iso(0), limit: MAX_SIGNAL_ROWS + 2 }),
+      ).toBe("22023");
+      // the review's own largest read is inside every bound: a full catch-up day, at the row cap
+      expect(
+        await stateOfSignals({
+          from: iso(-MAX_CATCH_UP_MS),
+          to: iso(0),
+          limit: MAX_SIGNAL_ROWS + 1,
+        }),
+      ).toBe("ok");
+      // the alert memory: never further back than 48 hours, always with a delivery status to look for
+      const raised = (since: string, deliveries: string) =>
+        sqlState(
+          sql.raw(
+            `SELECT * FROM public.m4_review_platform_raised_alerts('${since}'::timestamptz, ${deliveries})`,
+          ),
+        );
+      expect(await raised(iso(-49 * HOUR), "ARRAY['delivered']::text[]")).toBe("22023");
+      expect(await raised(iso(-HOUR), "ARRAY[]::text[]")).toBe("22023");
+      expect(await raised(iso(-HOUR), "NULL::text[]")).toBe("22023");
+      expect(await raised(iso(-HOUR), "ARRAY['delivered', 'no_destination']::text[]")).toBe("ok");
+    });
+
+    it("the alert memory returns the five keys of org-less alert rows only, and the cursor only a clean org-less run", async () => {
+      await seed({
+        organizationId: null,
+        eventType: RAISED,
+        at: ago(20),
+        context: {
+          fingerprint: "f".repeat(32),
+          ruleId: "auth.brute_force_by_network",
+          subject: { kind: "ip_prefix", ref: "192.0.2.0/24", note: "never returned" },
+          windowTo: ago(20),
+          delivery: "delivered",
+          count: 15,
+        },
+      });
+      await seed({
+        organizationId: ORG_A,
+        eventType: RAISED,
+        at: ago(20),
+        context: { fingerprint: "9".repeat(32), ruleId: "tenant.rule", delivery: "delivered" },
+      });
+      await seed({
+        organizationId: null,
+        eventType: RAISED,
+        at: ago(20),
+        context: { fingerprint: "8".repeat(32), ruleId: "failed.one", delivery: "failed" },
+      });
+      const memory = await platform.db.execute<Record<string, unknown>>(
+        sql`SELECT * FROM public.m4_review_platform_raised_alerts(${ago(30)}::timestamptz, ARRAY['delivered', 'no_destination']::text[])`,
+      );
+      const marked = memory.rows.filter((r) => r.fingerprint === "f".repeat(32));
+      expect(marked).toHaveLength(1);
+      expect(Object.keys(marked[0] ?? {}).sort()).toEqual(
+        ["fingerprint", "rule_id", "subject_kind", "subject_ref", "window_to"].sort(),
+      );
+      expect(memory.rows.map((r) => r.fingerprint)).not.toContain("9".repeat(32)); // a tenant's row
+      expect(memory.rows.map((r) => r.fingerprint)).not.toContain("8".repeat(32)); // a failed delivery is not memory
+      expect(JSON.stringify(memory.rows)).not.toContain("never returned");
+
+      const cursor = await platform.db.execute<{ window_to: string; row_at: Date }>(
+        sql`SELECT * FROM public.m4_review_platform_cursor()`,
+      );
+      expect(cursor.rows).toHaveLength(1);
+      const newestClean = (await reviewRows(null, COMPLETED))
+        .filter((r) => r.context.status === "ok")
+        .at(-1);
+      expect(cursor.rows[0]?.window_to).toBe(newestClean?.context.windowTo);
+    });
   });
 
   it("holds a sustained attack to one alert: an earlier window of the same pattern inside the cooldown raises nothing, another network still does", async () => {
