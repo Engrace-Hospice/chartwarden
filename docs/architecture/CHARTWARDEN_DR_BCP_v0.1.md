@@ -95,6 +95,14 @@ Incidents are classified at declaration and may be reclassified as conditions ch
 | Engage outside counsel                  | IC                                             | IC                                 | None      | None      |
 | Engage forensic firm (suspected breach) | IC + counsel                                   | IC + counsel                       | None      | None      |
 
+**"Kill switch" means the AI capability kill switch** (AI Governance §12.3; it is per capability and not a feature flag), not a
+general stop. For any other incident the containment levers that exist today are: deploy rollback (OPS runbook §4.4, which names
+the real `deploy/production/README.md` "Rolling back" path); a platform-wide user deactivation
+(`POST /api/v1/platform/users/{id}/deactivate`, §10.4.2); a tenant suspension (OPS §11.2); closing a support session
+(`POST /api/v1/platform/support-sessions/{id}/close`, OPS §18.3); and rotating a credential (OPS §8.2.4). There is no switch that
+stops PHI-bearing writes for one feature; a responder who needs one records the gap. Each lever has the approver of the row
+above that fits it (the IC at SEV-1); name the lever and the approver before using it.
+
 ---
 
 
@@ -548,6 +556,46 @@ delete markers; it cannot destroy them. Recovery: (1) restore with `RESTORE_REPO
 (`mc ls --versions --recursive <alias>/<bucket>/pgbackrest/`) and delete each marker by its version id
 (`mc rm --version-id <marker-id> <alias>/<bucket>/<key>`); deleting a marker is allowed under COMPLIANCE because the
 marker holds no data. Rotate the backup key first. Record the action in the incident log.
+
+**Leaked-key response.** Rehearsed by scenario 2 of `docs/runbooks/incident-response-drill-scenarios.md`. A leaked
+*encryption* key (a pgBackRest passphrase or the SSE-C key) opens nothing by itself: it matters only together with the ciphertext
+(the off-site bucket, or the `pgbackrest-repo` volume on the host), so the first question is which access went with it. A leaked
+*access* key (WAL, backup or restore) gives the ciphertext to whoever also has the passphrase. A folder of escrowed restore files
+(§4.8.6) holds both, and the application keys a restore also needs (`MESSAGING_ENCRYPTION_KEY`, `M34_TENANT_KEK`) are escrowed
+alongside it, so an escrow folder may hold those too: read what it actually holds before deciding what leaked.
+
+1. **Do not copy the value anywhere**, the incident channel included. Preserve the access history of wherever it leaked
+   (share log, repository traffic) before cleaning up; declare the incident (§2.3) and decide the severity in writing.
+2. **Cut access first.** Revoke the leaked off-site S3 key at the provider, or if only an encryption key leaked, the restore, WAL
+   and backup keys as a precaution (90-day cadence, OPS §8.1), and issue the responders a replacement restore key. The COMPLIANCE
+   lock means a stolen key only ever adds delete markers (above); it cannot destroy history. **Revoking the WAL or backup key
+   stops archiving and snapshots until the replacement is in place**: a failing `archive_command` keeps WAL in `pg_wal` until the
+   disk fills. Stage the new key in the container's secret file and recreate the containers, then revoke the old one; or accept the
+   outage and watch `backup.wal_archive_failing`, `backup.pg_wal_large` and `backup.stale` (§4.8.4) until archiving resumes.
+3. **Escrow before retiring.** Put the new key material into the offline escrow and confirm it is readable **before** anything
+   old is dropped; losing the escrow loses every backup.
+4. **Rotate by class.** A new pgBackRest passphrase needs a **new stanza** (OPS §8.3.1); keep the old passphrase and stanza until
+   their last backup expires. On the single-host stack the sidecar reads the stanza from `BACKUP_PG_STANZA` (default
+   `chartwarden`), but the postgres container's `archive_command` in `deploy/production/compose.backup.yml` names the stanza
+   **literally**, so a passphrase rotation changes both and is not a variable change alone; it is not a rehearsed path. A new
+   SSE-C key applies to new copies only. `M34_TENANT_KEK` rotates per OPS §8.3.3. `MESSAGING_ENCRYPTION_KEY`,
+   `TWO_FACTOR_ENCRYPTION_KEY` and `M24_CREDENTIAL_ENCRYPTION_KEY` do **not** rotate today (OPS §8.3.3): their compromise is a
+   re-encryption project.
+5. **Rotation is not retroactive, and the window is long.** Backups written before the rotation stay encrypted under the leaked
+   keys. Read the live Object Lock and lifecycle configuration at declaration (the 120-day lifecycle is operator-set and
+   unchecked, §4.8.3) and then state the window per stream: the **pgBackRest history** (the whole database) lasts about 91 days
+   of retention plus up to 120 days as a noncurrent version, **about 7 months** from creation (§14A.1), and the local repository
+   keeps 2 full sets on the host; the **object mirror** (`objects/`, `snapshots/`) has **no expiry** (§4.2.2: nothing deletes
+   under `objects/`, and the lifecycle expires only noncurrent versions), so every mirrored document stays readable under the
+   leaked SSE-C key until someone purges it. The COMPLIANCE lock blocks even the bucket owner and the provider's root account for
+   its first 100 days or more; after that only a manual owner action (no procedure exists) removes anything. A re-copy under a new
+   SSE-C key writes a new version, and the old one stays. The control that matters for the window is access to the bucket.
+6. **Breach question.** Encryption is a safe harbor only while its key is uncompromised (§9.3). If bucket access by an
+   unauthorized person cannot be ruled out (provider access logs may be shorter than the exposure), a low probability of
+   compromise cannot be shown and the covered-entity notices are drafted per §9.3.
+7. **Prove restore with the new keys** (§4.8.6: isolated `restore.sh` plus `bun run backup:verify-restore`, never onto the running
+   stack) and record it under `audit/restore-drill/`; confirm archiving and the snapshot job are healthy (`archive_command` not failing, `pg_wal` not growing, `backup.stale` alerts after
+   45 minutes without a snapshot) at T+1 hour and T+1 day; update the secret inventory (OPS §8.1) and the incident log.
 
 **Accepted, documented risks.** The SSE-C key is on `mc`'s command line inside the backup container (`mc` has no env
 or file form for it); the WAL key's container holds the same off-site cipher passphrase as the sidecar (pgBackRest
@@ -1147,6 +1195,21 @@ psql -d chartwarden -c "SELECT COUNT(*) FROM audit_event WHERE created_at > NOW(
 | 2026-09-15           | Q3 failover drill       | Fabrice                         |
 | 2026-12-15           | Q4 failover drill       | Fabrice                         |
 | 2026-08-01           | Annual full DR exercise | Fabrice + contracted assistance |
+| Not yet scheduled    | Incident-response tabletop (§8.6) | Security officer             |
+
+### 8.6 Incident-Response Tabletop Drills (CW-IR-01)
+
+The restore and failover drills above test the tools. A tabletop tests the people and this document's incident procedures
+(§2, §9, §10.4): who declares, who may approve what, what is contained first, what is drafted and to whom. The kit is in
+`docs/runbooks/incident-response-drill.md` (ground rules, roles, facilitator script, clock fields, scoring), with three
+scenarios (suspected PHI exposure, leaked backup key, compromised operator account) in
+`docs/runbooks/incident-response-drill-scenarios.md`, and the record to file is
+`audit/incident-drill/TEMPLATE-drill-record.md`.
+
+**Status: the kit is prepared and no drill has been run.** Running it with the real responders and filing a signed record under
+`audit/incident-drill/` is the open part of compliance register row CW-IR-01. A tabletop sends nothing outside the room and
+touches no production system. Provisional cadence (the owner decides): all three scenarios before the first real patient data,
+then each at least annually, plus one within 30 days after any SEV-1.
 
 ---
 
@@ -1161,6 +1224,18 @@ psql -d chartwarden -c "SELECT COUNT(*) FROM audit_event WHERE created_at > NOW(
 | Status page (status.wardenx.app)                | Customer-facing public log | SEV-1 and SEV-2                     |
 | Email distribution list (incidents@wardenx.app) | Compliance & legal CC      | SEV-1, suspected breach             |
 | Incident retrospective doc                      | Permanent record           | All SEV-1 and SEV-2 post-incident   |
+
+**When an operator account or workstation may be compromised (§10.4.2), assume the channels above are observed.** The status
+page, the incident mailbox, Slack and the shared timeline are all reachable from that identity. Open a separate coordination
+channel the suspected identity is not enrolled in (a new Signal group of the responders' own devices, or a phone bridge) and
+keep containment steps, key values and draft notices out of the compromised channels until the account is contained. The page
+that wakes the responders still goes out normally; the *discussion* moves. Record in the timeline which channel carried what. Whatever the channel: identifiers only, no PHI or key material, no
+disappearing messages, and decisions copied to the timeline so the evidence is kept.
+
+**A drill record holds no contacts.** Pager numbers, personal addresses, and counsel, insurer and forensic-firm contacts stay in
+the responders' own tooling and wherever the owner keeps the contact list (OPS Appendix A.3 plans a SOPS-encrypted contacts file and §9.4
+plans a vendor escalation list; neither has been created, and this kit needs neither). A drill records roles and whether a page was
+reached (`docs/runbooks/incident-response-drill.md` §3).
 
 ### 9.2 Customer Communication
 
@@ -1260,28 +1335,62 @@ A detailed post-incident review will be published within 7 days at <link>.
 
 ### 9.3 Regulatory Notification — HIPAA Breach Rule
 
-HIPAA Privacy Rule §164.404 requires notification when there is "unauthorized acquisition, access, use, or disclosure" of PHI.
+The HIPAA **Breach Notification Rule** (45 CFR §§164.400 to 164.414) requires notification of a breach of **unsecured** PHI: an
+acquisition, access, use or disclosure of PHI not permitted by the Privacy Rule that compromises its security or privacy. Such an
+event is **presumed** to be a breach unless a risk assessment shows a low probability that the PHI was compromised (§164.402).
+This section is engineering's reading for responders. **Counsel has not reviewed it** (a sign-off row is pending in §14.4); the
+first drill is the place to have counsel confirm it (`docs/runbooks/incident-response-drill.md` §9).
+
+**Who owes what.** ChartWarden is a Business Associate. Its own duty is the notice to each affected **covered entity** (§164.410).
+The covered entity owns notice to individuals (§164.404), HHS (§164.408) and, above the threshold, the media (§164.406), unless
+the BAA delegates it. A covered entity's clock can start when its business associate discovers the breach if the associate acts
+as its agent, which is why the notice to the covered entity is measured in days.
+
+**Discovery.** A breach is treated as discovered on the **first day it is known** to ChartWarden (to any employee, officer or other agent
+other than the person who committed it) **or would have been known with reasonable diligence** (§164.410(a)(2)). The 60-day limit runs
+from that day, not from the end of the investigation. Fix and record the discovery time at declaration.
 
 **Breach assessment process** (kicked off by IC + Compliance Officer for any SEV-1 with potential PHI exposure):
 
-1. Determine: did PHI access/disclosure occur outside the minimum-necessary, properly-authorized scope?
-2. If yes, conduct 4-factor risk assessment:
-   - Nature and extent of PHI involved
+1. Determine: was PHI acquired, accessed, used or disclosed outside the minimum-necessary, properly-authorized scope?
+2. Check the three exclusions (§164.402): an unintentional good-faith acquisition, access or use by a workforce member or person
+   acting under ChartWarden's or the covered entity's authority, within the scope of that authority, with no further
+   impermissible use; an inadvertent disclosure between two authorized persons at the same covered entity or business associate
+   (or organized health care arrangement), with no further impermissible use; or a good-faith belief that the recipient could
+   not reasonably have retained the information.
+3. Check whether the PHI was **unsecured**. PHI that was encrypted to HHS-guidance standards and whose key was not compromised is
+   not unsecured, so no notice is owed for it. The safe harbor **ends with the key**: a leaked key voids it for every backup or
+   record that key opens (§4.8.5, "Leaked-key response").
+4. If no exclusion applies and the PHI was unsecured, conduct the 4-factor risk assessment (at least these factors):
+   - Nature and extent of PHI involved (including the types of identifiers and the likelihood of re-identification)
    - Unauthorized person who used/received PHI
    - Whether PHI was actually acquired or viewed
    - Extent of risk mitigation
-3. Document assessment in writing
-4. If conclusion is "low probability of compromise" — internal documentation only
-5. If conclusion is "more than low" — breach notification required
+5. Document the assessment in writing, with the name of the role that owns the conclusion
+6. If the conclusion is "low probability of compromise": internal documentation only
+7. If it is "more than low", or if low probability cannot be shown (for example, the access logs are shorter than the exposure):
+   breach notification to the covered entity is required
 
 **Notification timeline:**
 
-- **To affected individuals:** within 60 calendar days of breach discovery
-- **To HHS Secretary:** within 60 days if affecting >500 individuals; in annual log if <500
-- **To media:** within 60 days if breach affects >500 individuals in a state/jurisdiction
-- **To affected covered entity (since ChartWarden is a business associate):** "without unreasonable delay" and no later than 60 days — actual reporting practice is much faster, typically within days of confirmed breach
+- **ChartWarden to each affected covered entity (§164.410):** "without unreasonable delay" and no later than 60 calendar days
+  after discovery. The notice identifies each affected individual as far as it can and gives the covered entity what it needs for
+  its own notice (§164.404(c)): what happened and when, the types of PHI, what is being done, and a contact. The **BAA may set a
+  shorter deadline, and that deadline governs**; the executed BAA is not in this repository, so the Compliance Officer reads it
+  at declaration. Actual practice is days, not weeks.
+- **Covered entity to affected individuals:** without unreasonable delay, no later than 60 calendar days after its discovery
+- **Covered entity to HHS Secretary:** at the same time as individuals if the breach affects **500 or more** individuals; if
+  fewer, in a log submitted within 60 days after the end of the calendar year of discovery
+- **Covered entity to media:** within 60 days if the breach affects **more than 500 residents of a State or jurisdiction**
+- **Law-enforcement delay (§164.412):** a law-enforcement official may ask in writing (or orally, for at most 30 days) for a delay;
+  counsel handles it and the request is recorded
+- **State law** may add recipients (for example a state attorney general) or shorter times; counsel decides, at declaration
+- A **security incident that is not a breach** (no unsecured PHI accessed) is still reported to the covered entity where the BAA
+  requires it (45 CFR 164.314(a)(2)(i)(C))
 
-**Documentation requirements:** All breach assessments, decisions, notifications, and supporting evidence retained 6+ years.
+**Documentation requirements:** All breach assessments, decisions, notifications, and supporting evidence retained 6+ years
+(§164.414(b) puts the burden of proof on the entity; §164.316(b)(2)(i) fixes 6 years for the Security Rule documentation of a
+business associate, and the BAA may add to it).
 
 **Note:** ChartWarden is a HIPAA Business Associate to customer hospice agencies. Customers (Covered Entities) hold primary breach notification responsibility to patients; ChartWarden assists them with required information.
 
@@ -1391,7 +1500,7 @@ The off-site DR target is flagged in Architecture v0.9 as ADR-002. Options under
 1. **Immediate isolation:** disconnect affected hosts from network (don't shut down — preserves forensic state)
 2. Declare SEV-1; engage cybersecurity counsel within 1 hour
 3. Determine scope: which VMs affected? Backups intact?
-4. **Do NOT pay ransom** — Anthropic / company policy + likely sanctions exposure + no guarantee of decryption
+4. **Do NOT pay ransom** — company policy, likely sanctions exposure, no guarantee of decryption; counsel confirms before any contact with the actor
 5. **Restore from known-clean backup point** (before infection) — likely 24-48 hour data loss depending on detection lag
 6. Forensic preservation: backup the encrypted state for investigation
 7. Notify customers — likely a breach under HIPAA (assume PHI exposure unless proven otherwise)
@@ -1417,15 +1526,43 @@ The off-site DR target is flagged in Architecture v0.9 as ADR-002. Options under
 - Unexpected role changes
 - Data exports outside normal pattern
 
-**Response:**
+**Response** (rehearsed by scenario 3 of `docs/runbooks/incident-response-drill-scenarios.md`; it covers a compromised operator
+account as well as a malicious insider):
 
-1. **Account suspension:** disable suspected account; invalidate sessions
-2. Forensic preservation: snapshot audit logs, session records, application logs
-3. Engage cybersecurity counsel; this is potentially criminal
-4. Document scope of unauthorized access
-5. HIPAA breach assessment per §9.3
-6. Customer notification per breach rules
-7. Internal review: how did the actor obtain access? What controls failed?
+1. **Account suspension:** disable the suspected account and invalidate its sessions. For a user in any tenant:
+   `POST /api/v1/platform/users/{id}/deactivate` (platform operator role plus a fresh `user.deactivate_platform` step-up; it
+   revokes every membership in every tenant, reaps all the user's sessions and audits `m2.user.deactivated`; the org-bounded
+   `POST /api/v1/users/{id}/deactivate` serves a tenant admin). **The route needs a platform-role session with a fresh
+   passkey step-up; the code has no self-target guard, so the legitimate operator can deactivate their own account from a trusted
+   device if their passkey is not also compromised, and that is the first option. It is not available when the only operator
+   cannot be trusted or reached (today there is one operator, §2.1), so decide the fallbacks in advance:** remove the platform role
+   with the ticketed, audited CLI (`bun run db:platform-role revoke`, OPS §16.5; needs the owner connection), the break-glass
+   database credential (OPS §8.5: sealed envelope; log time and reason; rotate after use; compliance review within 24 hours; no
+   hand-written SQL on the auth tables), or rotating `BETTER_AUTH_SECRET` and deploying (OPS §8.2.1: it invalidates **every**
+   session of every tenant, so it is a customer-visible decision for the IC). **Deactivation deletes the user's session rows**
+   (including their address and user agent), so export the account's `session` rows and audit trail first, in one query, then
+   contain. Close the account's open support sessions (`POST /api/v1/platform/support-sessions/{id}/close`) and ask
+   the tenant's compliance officer to revoke the consent grants they ran under (a revoke cascades and closes the sessions, OPS
+   §18.3). Contain promptly; preserve the session and audit evidence in the same hour and **before** the step that deletes it
+2. Forensic preservation: snapshot audit logs, session records, application logs. The audit trail is **org-scoped**
+   (`GET /api/v1/audit/events` with `actorUserId`, `from`, `to`; `GET /api/v1/audit/patients/{patientId}/access`), so sweep one
+   tenant at a time; a cross-tenant read leaves an `audit.elevated_access` meta-event. Add the bypass, support-session and
+   break-glass queries of §14A.3. Image a suspected workstation before reimaging it
+3. **Persistence hunt:** users, roles and memberships created or changed by the account; support sessions and consent grants;
+   API tokens; the alert webhook URL; CI and deploy secrets; SSH keys; SOPS and age access. An unrecognised platform role is
+   deactivated through the same route
+4. **Treat every secret the account could read as exposed** (the OPS §8.1 inventory, the SOPS age key of OPS §8.4) and rotate by
+   priority per OPS §8.2.4: access to data or to other secrets first, vendor keys next; the keys that do not rotate today (OPS
+   §8.3.3) are a recorded finding, not a skipped step
+5. Engage cybersecurity counsel; this is potentially criminal. A forensic firm goes through the IC with counsel (§2.4)
+6. Document scope of unauthorized access **per tenant**
+7. HIPAA breach assessment per §9.3, per tenant: PHI accessed by an unauthorized person is a presumptive breach; a tenant with no
+   PHI accessed is not a breach but is still a security incident the BAA may require ChartWarden to report
+8. Customer notification per breach rules, through each tenant's breach-notification contact recorded at provisioning (OPS §18.1)
+9. Internal review: how did the actor obtain access? What controls failed? Coordinate through a channel the suspected identity
+   cannot read (§9.1)
+10. Restore the operator's access only after the workstation is rebuilt, on a new device and a new passkey; name a second
+    platform operator as an action
 
 #### 10.4.3 Anthropic API Extended Outage
 
@@ -1567,7 +1704,7 @@ Additionally referenced HIPAA controls:
 
 - §164.310(d)(2)(i) Disposal of media — addressed by data retention destruction certification (Architecture §24.2)
 - §164.312(b) Audit controls — preserved across DR scenarios; audit log integrity has highest priority in recovery sequencing
-- §164.404 Breach notification — addressed by §9.3 of this document
+- §164.404 / §164.410 Breach notification (covered entity's notice to individuals; business associate's notice to the covered entity) — addressed by §9.3 of this document
 
 ---
 
@@ -1619,6 +1756,7 @@ Specific events that trigger immediate document updates:
 | Version | Date       | Reviewer | Notes                                                    |
 | ------- | ---------- | -------- | -------------------------------------------------------- |
 | v0.1    | 2026-06-08 | Fabrice  | Initial document; spans Phase 1 operational requirements |
+| (pending) | 2026-11-26 | pending owner and counsel sign-off | CW-IR-01 drill kit changes to §2.4, §4.8.5, §8.5/§8.6, §9.1, §9.3, §10.4.1/§10.4.2 and §12: material (a rewritten breach rule and new incident procedures); the version bump and "Last reviewed" date wait for the sign-off |
 
 ---
 
