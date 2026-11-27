@@ -173,6 +173,10 @@ const ORDER_ROUTES: readonly string[] = [
   "GET /api/v1/orders/results-pending-review",
   "GET /api/v1/orders/suggestions/:patientId",
   "GET /api/v1/orders/verbal-expiring",
+  // Quarantined critical lab results (CW-CS-01): reading the queue and resolving a result is a patient-safety duty that must not wait for a note.
+  "GET /api/v1/orders/critical-lab-results",
+  "GET /api/v1/orders/critical-lab-results/:id",
+  "POST /api/v1/orders/critical-lab-results/:id/resolve",
   "POST /api/v1/verbal-orders",
   // Standing orders: read, spawn a patient order from one, pause and discontinue. Authoring, editing and resuming one is not here.
   "GET /api/v1/standing-orders",

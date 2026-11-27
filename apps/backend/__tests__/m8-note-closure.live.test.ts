@@ -398,7 +398,11 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
     gate: NoteClosureGate,
     orgId: string,
     member: Member,
-    route: typeof NON_ALLOWLISTED | typeof ALLOWLISTED = NON_ALLOWLISTED,
+    route: {
+      readonly method: string;
+      readonly routeTemplate: string;
+      readonly rawUrl: string;
+    } = NON_ALLOWLISTED,
   ): Promise<string> {
     try {
       await gate.assertMayCall({
@@ -1341,6 +1345,27 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
         }
       });
     }
+
+    it("the quarantined critical-lab-result queue, one result and its resolution stay open to a blocked clinician (a patient-safety duty must not wait for a note); a route off the allowlist is still refused", async () => {
+      await setPolicy(ORG_A, "block", { thresholdHours: 24, enforceFrom: null });
+      const clock = { now: at(CLOCK0, 30) }; // past the block instant: the same clinician the matrix above blocks
+      const { gate } = buildGate(clock);
+      expect(await gateOutcome(gate, ORG_A, clinician)).toBe("NOTE_CLOSURE_REQUIRED"); // control: this clinician IS blocked
+      for (const [method, routeTemplate] of [
+        ["GET", "/api/v1/orders/critical-lab-results"],
+        ["GET", "/api/v1/orders/critical-lab-results/:id"],
+        ["POST", "/api/v1/orders/critical-lab-results/:id/resolve"],
+      ] as const) {
+        expect(
+          await gateOutcome(gate, ORG_A, clinician, {
+            method,
+            routeTemplate,
+            rawUrl: routeTemplate,
+          }),
+          `${method} ${routeTemplate}`,
+        ).toBe("pass");
+      }
+    });
 
     it("the enforce_from grace moves only the block instant: block @ clock+34h, alerts stay on the true clock", async () => {
       await setPolicy(ORG_A, "block", { thresholdHours: 24, enforceFrom: at(CLOCK0, 10) });
