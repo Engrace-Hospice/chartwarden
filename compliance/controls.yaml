@@ -791,7 +791,13 @@ controls:
       stays unpriced on a claim line (a narrow home continuous care hour is only ever a local, append-only preparation, 1557). A routine home care day lived in a facility is priced only for an assisted-living facility (billing code Q5002,
       snapshot version 2): the planner and the snapshot trigger (1554) require the patient's effective M5 residence and an active,
       unmerged M40 assisted-living facility, which M40's SECURITY DEFINER read function (1553) returns under a row lock without giving
-      the application role any write capability on canonical rows. Any other facility kind is refused.
+      the application role any write capability on canonical rows. Any other facility kind is refused. Effective-dated resolution is
+      swept day by day against date predicates (inclusive first and last day, an adjacent change on the exact day, a one-day overlap
+      ambiguous, a one-day gap a gap, a pending, expired or rejected row never priced, a correction never reviving the row it
+      replaced), a claim-wide total exists only when every day resolves and is the exact integer sum, hourly amounts equal the exact
+      ratio under each rounding mode (once per service day or once over the segment, as configured), and electronic Medicaid
+      submission is unavailable across a cross product of the registry's states, an unknown state, malformed states, every program
+      kind and each gateway, MCO and verification value.
     hipaa: ["164.312(c)(1)"]
     soc2: ["PI1.2", "PI1.3"]
     status: partial
@@ -834,9 +840,20 @@ controls:
       - file: apps/backend/src/modules/24-billing-medicaid/pricing/chc-pricing-preparation.ts
       - file: apps/backend/src/modules/08-encounters/seams/drizzle-store.ts
       - file: docs/audits/billing-e2e/M24_1075_L8A2C2_CHC_HOURLY_PRICING_QUALIFICATION_20261125.md
+      # The effective-dated rate resolution and pricing arithmetic swept against independent expectations, and electronic
+      # submission shown unavailable over its whole argument space. docs/runbooks/m24-medicaid-rate-validation.md is the checklist
+      # for validating against real payer rates; it has not been run, so it is deliberately not listed as evidence.
+      - file: packages/medicaid-adapters/__tests__/medicaid-rate-resolution-sweep.test.ts
+      - file: packages/medicaid-adapters/__tests__/medicaid-submission-disabled.test.ts
     gap:
       reason: >-
-        Not database-enforced end to end. The guards are triggers, so a superuser or the table owner can disable them, and row triggers
+        Proved with invented rates only: no OHA or EOCCO amount is loaded or verified, no operator route exists to author or verify a
+        rate row, and the checklist for validating against real payer rates (docs/runbooks/m24-medicaid-rate-validation.md) has not been
+        run; it needs the real rate sources (the OHA schedule, the executed CCO rate agreement), the payer's written confirmation of
+        methodology and effective dates, and the billing owner's sign-off (recorded as a metadata-only record; none exists). The
+        window-level helper resolvePayerRatePolicy answers partial for a window one rate covers when a rejected draft's edge falls
+        inside it (conservative, never a wrong rate; it has no production caller, because pricing resolves one service day at a
+        time). A computed hourly amount of zero cents is a resolved zero, not an unknown. Not database-enforced end to end. The guards are triggers, so a superuser or the table owner can disable them, and row triggers
         do not fire on TRUNCATE, which the owner and admin roles hold (the same limit as migrations 1138 and 1144). Verification is not
         database-bound (verified_by_membership_id has no foreign key). The snapshot insert guard is a backstop, because application code
         decides which rows are current, and the stored reimbursement amounts are bound only by the snapshot fingerprint and the
