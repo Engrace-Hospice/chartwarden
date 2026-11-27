@@ -17,6 +17,7 @@ import {
   runWithCommitTracker,
 } from "@chartwarden/db";
 import { HopeStateError } from "@chartwarden/hope";
+import type { IdempotencyStore } from "@chartwarden/shared";
 import { ForbiddenError } from "@chartwarden/types";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
@@ -115,6 +116,7 @@ describe("idempotency release needs proof that nothing committed", () => {
     handler: (run: number, reply: import("fastify").FastifyReply) => unknown,
     extra?: (app: FastifyInstance) => void,
     schema?: object,
+    makeStore?: (pool: FakePool) => IdempotencyStore,
   ): Promise<void> {
     runs = 0;
     pool = new FakePool();
@@ -131,7 +133,7 @@ describe("idempotency release needs proof that nothing committed", () => {
       };
     });
     applyErrorHandler(app);
-    applyIdempotency(app, createInMemoryIdempotencyStore());
+    applyIdempotency(app, makeStore ? makeStore(pool) : createInMemoryIdempotencyStore());
     extra?.(app);
     app.post("/write", { ...(schema ? { schema } : {}) }, async (_request, reply) => {
       runs += 1;
@@ -489,5 +491,186 @@ describe("idempotency release needs proof that nothing committed", () => {
     const res = await app.inject({ method: "POST", url: "/write", payload: { a: 1 } });
     expect(res.statusCode).toBe(201);
     expect(pool.inserts()).toBe(1);
+  });
+
+  // CW-AC-36. The release is decided from a snapshot at `onSend`; what the snapshot cannot see is a write the request has not
+  // issued YET (a Promise.race deadline answered 503 while the work behind it carries on). Releasing the key without stopping
+  // that work let the same-key retry AND the abandoned work both commit. Releasing now FENCES the request at the pool: from
+  // that instant every write its connections issue is refused before it reaches the server, whichever route it came from.
+  describe("(n) a released claim fences the request's later writes", () => {
+    const FENCED = { code: "IDEMPOTENCY_WRITE_FENCED" };
+    let startLater: () => void = () => undefined;
+    let later: Promise<unknown> = Promise.resolve();
+
+    /** Work the handler abandons at a deadline: it issues `steps` only once `startLater` runs, after the 503 has gone out. */
+    const abandonedWork = (steps: () => Promise<unknown>): void => {
+      const gate = new Promise<void>((resolve) => {
+        startLater = resolve;
+      });
+      later = gate.then(steps).then(
+        () => "done",
+        (error: unknown) => error,
+      );
+    };
+
+    it("(n1) a 503 over work that has NOT written yet: released, the late first write is refused, the retry writes once", async () => {
+      await build(async (run, reply) => {
+        if (run === 1) {
+          abandonedWork(() => transaction(pool, ["insert into t (n) values (1)"]));
+          return reply.code(503).send({ error: { code: "DEADLINE_EXCEEDED" } });
+        }
+        await transaction(pool, ["insert into t (n) values (2)"]);
+        return reply.code(201).send({ saved: true });
+      });
+      expect((await post()).statusCode).toBe(503);
+      startLater(); // the abandoned work now reaches its first write, after the claim was released
+      expect(await later).toMatchObject(FENCED);
+      expect(pool.inserts()).toBe(0); // refused before it reached the server
+      expect((await post()).statusCode).toBe(201); // the key was released: the retry runs
+      expect(runs).toBe(2);
+      expect(pool.inserts()).toBe(1); // one write in all
+      expect(logLines.some((line) => line.includes("a write was refused"))).toBe(true);
+    });
+
+    it.each([
+      [401, { error: { code: "UNAUTHENTICATED" } }],
+      [403, { error: { code: "FORBIDDEN" } }],
+      [409, { error: { code: "CONCURRENT_UPDATE" } }],
+    ])(
+      "(n8) a retryable %i releases AND fences: the late first write is refused, the retry writes once",
+      async (status, body) => {
+        await build(async (run, reply) => {
+          if (run === 1) {
+            abandonedWork(() => transaction(pool, ["insert into t (n) values (1)"]));
+            return reply.code(status).send(body);
+          }
+          await transaction(pool, ["insert into t (n) values (2)"]);
+          return reply.code(201).send({ saved: true });
+        });
+        expect((await post()).statusCode).toBe(status);
+        startLater();
+        expect(await later).toMatchObject(FENCED);
+        expect(pool.inserts()).toBe(0);
+        expect((await post()).statusCode).toBe(201); // released, so the retry ran
+        expect(pool.inserts()).toBe(1);
+      },
+    );
+
+    it("(n2) reads, SET and an open read-only transaction still work after the release; only the first write is refused", async () => {
+      await build(async (_run, reply) => {
+        const client = (await pool.connect()) as FakeClient;
+        await client.query("begin");
+        await client.query("select 1"); // read-only so far: the tracker counts nothing
+        abandonedWork(async () => {
+          await client.query("select count(*) from t");
+          await client.query("set local app.org_id = '1'");
+          try {
+            await client.query("insert into t (n) values (1)");
+          } finally {
+            await client.query("rollback");
+          }
+        });
+        return reply.code(503).send({ error: { code: "DEADLINE_EXCEEDED" } });
+      });
+      expect((await post()).statusCode).toBe(503);
+      startLater();
+      expect(await later).toMatchObject(FENCED);
+      expect(pool.sent).toEqual([
+        "begin",
+        "select 1",
+        "select count(*) from t",
+        "set local app.org_id = '1'",
+        "rollback",
+      ]);
+    });
+
+    it("(n3) the callback form (pg-pool's own checkout) is refused through its callback", async () => {
+      let held: FakeClient | undefined;
+      await build(async (_run, reply) => {
+        held = (await pool.connect()) as FakeClient;
+        abandonedWork(() => queryWithCallback(held as FakeClient, "update t set n = 2"));
+        return reply.code(500).send({ error: { code: "INTERNAL" } });
+      });
+      expect((await post()).statusCode).toBe(500);
+      startLater();
+      expect(await later).toMatchObject(FENCED);
+      expect(pool.sent).toEqual([]);
+    });
+
+    it("(n4) a failure that is CACHED (a write committed) does not fence: nothing was released, the replay is the answer", async () => {
+      await build(async (_run, reply) => {
+        await transaction(pool, ["insert into t (n) values (1)"]);
+        abandonedWork(() => transaction(pool, ["insert into t (n) values (2)"]));
+        return reply.code(503).send({ error: { code: "DEADLINE_EXCEEDED" } });
+      });
+      expect((await post()).statusCode).toBe(503);
+      startLater();
+      expect(await later).toBe("done"); // the key holds the cached 503; the request's own late write is not refused
+      expect((await post()).statusCode).toBe(503); // replay
+      expect(runs).toBe(1);
+      expect(pool.inserts()).toBe(2);
+    });
+
+    it("(n6) the release is itself a write through the same pool: the fence must not refuse it, or the key stays pending", async () => {
+      // The Postgres store releases with a DELETE on a pooled connection, inside the request's async context. An in-memory store
+      // never touched the pool, which is how a fence that also caught its own release went unseen until the live suite.
+      let releaseDeletes = 0;
+      await build(
+        async (_run, reply) => reply.code(503).send({ error: { code: "DEADLINE_EXCEEDED" } }),
+        undefined,
+        undefined,
+        (fakePool) => {
+          const inner = createInMemoryIdempotencyStore();
+          return {
+            ...inner,
+            release: async (orgId, key, requestHash) => {
+              const client = (await fakePool.connect()) as FakeClient;
+              await client.query("begin");
+              await client.query("delete from idempotency_key where key = 'k'");
+              await client.query("commit");
+              releaseDeletes += 1;
+              return inner.release(orgId, key, requestHash);
+            },
+          };
+        },
+      );
+      expect((await post()).statusCode).toBe(503);
+      expect(releaseDeletes).toBe(1);
+      expect(pool.sent.filter((s) => /^delete/i.test(s))).toHaveLength(1); // it reached the "server"
+      expect((await post()).statusCode).toBe(503);
+      expect(runs).toBe(2); // released, so the retry ran
+    });
+
+    it("(n7) a write still QUEUED for a pool connection when the 503 goes out is refused when its connection arrives", async () => {
+      // Pool exhaustion often causes the deadline. The write is not counted yet (the tracker counts at `client.query`), so the key is
+      // released and fenced; the checkout is served later, from another async context, and must still name the fenced request.
+      let queued: Promise<unknown> = Promise.resolve();
+      await build(async (_run, reply) => {
+        queued = new Promise((resolve) => {
+          pool.connect(((_error: undefined, client: FakeClient) => {
+            queryWithCallback(client, "insert into t (n) values (1)").then(
+              () => resolve("done"),
+              (error: unknown) => resolve(error),
+            );
+          }) as never);
+        });
+        return reply.code(503).send({ error: { code: "DEADLINE_EXCEEDED" } });
+      });
+      expect((await post()).statusCode).toBe(503);
+      pool.pulse(); // the queued checkout is served now, outside the request's context
+      expect(await queued).toMatchObject(FENCED);
+      expect(pool.inserts()).toBe(0);
+    });
+
+    it("(n5) a request that is not fenced (a 2xx) keeps writing after the response, as before", async () => {
+      await build(async (_run, reply) => {
+        abandonedWork(() => transaction(pool, ["insert into t (n) values (1)"]));
+        return reply.code(201).send({ saved: true });
+      });
+      expect((await post()).statusCode).toBe(201);
+      startLater();
+      expect(await later).toBe("done");
+      expect(pool.inserts()).toBe(1);
+    });
   });
 });

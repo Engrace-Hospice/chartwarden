@@ -10,11 +10,15 @@ export * from "./client";
 // Per-request "did a write COMMIT" tracker over the pool (the idempotency middleware's release rule).
 export {
   type CommitTracker,
+  WRITE_FENCED_CODE,
+  WriteFencedError,
   createCommitTracker,
   currentCommitTracker,
+  fenceIfUncommitted,
   instrumentPoolForCommits,
   mayHaveCommitted,
   resetCommitTracker,
+  runOutsideCommitTracker,
   runWithCommitTracker,
 } from "./commit-tracker";
 // F-022 (#55) — business-rule constraint registry: what a UNIQUE index means to a CALLER, declared

@@ -1,15 +1,21 @@
 // The commit tracker's statement rule: what counts as a write, and when a transaction COMMITS one. Conservative by design: any
 // statement it cannot classify is a write.
+import { EventEmitter } from "node:events";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   NOT_A_CALL,
+  WRITE_FENCED_CODE,
+  WriteFencedError,
   classifyStatement,
   createCommitTracker,
   createConnectionTxState,
+  fenceIfUncommitted,
+  instrumentPoolForCommits,
   mayHaveCommitted,
   observeStatement,
+  runWithCommitTracker,
 } from "../src/commit-tracker";
 
 describe("classifyStatement", () => {
@@ -530,6 +536,162 @@ describe("writes still open when the response is built (M3)", () => {
   });
 });
 
+describe("the fence a released idempotency key puts on its request (CW-AC-36)", () => {
+  const track = () => ({ tracker: createCommitTracker(), state: createConnectionTxState() });
+
+  it("fences a tracker that has committed nothing and has nothing open or unanswered", () => {
+    const { tracker, state } = track();
+    observeStatement(state, tracker, "begin");
+    observeStatement(state, tracker, "select 1"); // a read-only transaction is not a write
+    expect(fenceIfUncommitted(tracker)).toBe(true);
+    expect(tracker.fenced).toBe(true);
+  });
+
+  it("refuses to fence once a write committed, is open, or is unanswered (the caller then caches the outcome)", () => {
+    const committed = track();
+    observeStatement(committed.state, committed.tracker, "update t set n = 1")?.(true);
+    expect(fenceIfUncommitted(committed.tracker)).toBe(false);
+    expect(committed.tracker.fenced).toBe(false);
+
+    const open = track();
+    observeStatement(open.state, open.tracker, "begin");
+    observeStatement(open.state, open.tracker, "insert into t values (1)");
+    expect(fenceIfUncommitted(open.tracker)).toBe(false);
+
+    const unanswered = track();
+    observeStatement(unanswered.state, unanswered.tracker, "update t set n = 1");
+    expect(fenceIfUncommitted(unanswered.tracker)).toBe(false);
+    expect(unanswered.tracker.fenced).toBe(false);
+  });
+
+  it("a write whose server refusal cleared it no longer blocks the fence", () => {
+    const { tracker, state } = track();
+    observeStatement(state, tracker, "update t set n = 1")?.(false); // 23505 and the like: not applied
+    expect(fenceIfUncommitted(tracker)).toBe(true);
+  });
+
+  /** A pool that records what reaches the "server". `reuse` hands the same client to every checkout, as a real pool does. */
+  function fakePool(reuse = false) {
+    const sent: unknown[] = [];
+    let shared: { query: (arg: unknown) => Promise<unknown> } | undefined;
+    const pool = Object.assign(new EventEmitter(), {
+      connect: (): Promise<unknown> => {
+        if (reuse && shared) return Promise.resolve(shared);
+        const client = {
+          query: (arg: unknown) => {
+            sent.push(arg);
+            return Promise.resolve({ rows: [] });
+          },
+        };
+        shared = client;
+        pool.emit("connect", client);
+        return Promise.resolve(client);
+      },
+    });
+    instrumentPoolForCommits(pool as never);
+    return { pool, sent };
+  }
+
+  it("a pooled client checked out under a fenced request and re-checked-out outside any request (a worker) is not refused", async () => {
+    const { pool, sent } = fakePool(true);
+    const tracker = createCommitTracker();
+    const underRequest = (await runWithCommitTracker(tracker, () => pool.connect())) as {
+      query: (arg: unknown) => Promise<unknown>;
+    };
+    fenceIfUncommitted(tracker);
+    await expect(underRequest.query("insert into t values (1)")).rejects.toBeInstanceOf(
+      WriteFencedError,
+    );
+    const worker = (await pool.connect()) as { query: (arg: unknown) => Promise<unknown> };
+    expect(worker).toBe(underRequest); // the same pooled connection
+    await worker.query("insert into t values (2)");
+    expect(sent).toEqual(["insert into t values (2)"]);
+  });
+
+  it("refuses a write with WriteFencedError before it is sent, tells the tracker's sink, and lets reads through", async () => {
+    const { pool, sent } = fakePool();
+    const tracker = createCommitTracker();
+    let refusals = 0;
+    const client = (await runWithCommitTracker(tracker, () => pool.connect())) as {
+      query: (arg: unknown) => Promise<unknown>;
+    };
+    expect(
+      fenceIfUncommitted(tracker, () => {
+        refusals += 1;
+      }),
+    ).toBe(true);
+
+    await expect(client.query("insert into t values (1)")).rejects.toBeInstanceOf(WriteFencedError);
+    await expect(client.query({ text: "update t set n = 1", values: [] })).rejects.toMatchObject({
+      code: WRITE_FENCED_CODE,
+    });
+    await client.query("select 1");
+    await client.query("rollback");
+    expect(sent).toEqual(["select 1", "rollback"]);
+    expect(refusals).toBe(2);
+  });
+
+  it("a sink that throws never changes the refusal", async () => {
+    const { pool } = fakePool();
+    const tracker = createCommitTracker();
+    const client = (await runWithCommitTracker(tracker, () => pool.connect())) as {
+      query: (arg: unknown) => Promise<unknown>;
+    };
+    fenceIfUncommitted(tracker, () => {
+      throw new Error("log sink down");
+    });
+    await expect(client.query("delete from t")).rejects.toBeInstanceOf(WriteFencedError);
+  });
+
+  it("a fenced write whose promise nobody awaits is logged, and is not an unhandled rejection that ends the process", async () => {
+    const { pool } = fakePool();
+    const tracker = createCommitTracker();
+    let refusals = 0;
+    const client = (await runWithCommitTracker(tracker, () => pool.connect())) as {
+      query: (arg: unknown) => Promise<unknown>;
+    };
+    fenceIfUncommitted(tracker, () => {
+      refusals += 1;
+    });
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", record);
+    try {
+      void client.query("insert into t values (1)"); // dropped on purpose: nobody awaits it or attaches a catch
+      await new Promise((resolve) => setTimeout(resolve, 20)); // an unhandled rejection is reported after the microtasks drain
+    } finally {
+      process.off("unhandledRejection", record);
+    }
+    expect(unhandled).toEqual([]);
+    expect(refusals).toBe(1);
+  });
+
+  it("a submittable (a cursor: no callback, no promise) is refused by throwing, and a text it does not expose is a write", async () => {
+    const { pool, sent } = fakePool();
+    const tracker = createCommitTracker();
+    const client = (await runWithCommitTracker(tracker, () => pool.connect())) as {
+      query: (arg: unknown) => unknown;
+    };
+    fenceIfUncommitted(tracker);
+    expect(() => client.query({ submit: () => undefined })).toThrow(WriteFencedError);
+    expect(sent).toEqual([]);
+  });
+
+  it("an unfenced request and a checkout outside any request are untouched", async () => {
+    const { pool, sent } = fakePool();
+    const tracker = createCommitTracker();
+    const tracked = (await runWithCommitTracker(tracker, () => pool.connect())) as {
+      query: (arg: unknown) => Promise<unknown>;
+    };
+    const untracked = (await pool.connect()) as { query: (arg: unknown) => Promise<unknown> };
+    await tracked.query("insert into t values (1)");
+    await untracked.query("insert into t values (2)");
+    expect(sent).toHaveLength(2);
+  });
+});
+
 describe("createDbClient is the only place a pg pool is built", () => {
   // The tracker sees only pools it instruments. A second pool (a platform pool built by hand) would make its writes invisible,
   // and a request that committed through it would release its key after a 5xx.
@@ -557,6 +719,21 @@ describe("createDbClient is the only place a pg pool is built", () => {
           readFileSync(file, "utf8"),
         ),
       )
+      .map((file) => file.slice(ROOT.length + 1));
+    expect(offenders).toEqual([]);
+  });
+
+  it("only the idempotency middleware steps out of a request's tracker (and so out of its fence)", () => {
+    // `runOutsideCommitTracker` is exported for the one bookkeeping DELETE that releases a claim. Anything else calling it would
+    // hide its writes from the commit rule and from the fence, so a new caller is a decision, not an accident.
+    const allowed = [
+      join("packages", "db", "src", "commit-tracker.ts"),
+      join("packages", "db", "src", "index.ts"),
+      join("apps", "backend", "src", "bootstrap", "plugins", "idempotency.ts"),
+    ];
+    const offenders = sources
+      .filter((file) => !allowed.some((ok) => file.endsWith(ok)))
+      .filter((file) => readFileSync(file, "utf8").includes("runOutsideCommitTracker"))
       .map((file) => file.slice(ROOT.length + 1));
     expect(offenders).toEqual([]);
   });

@@ -38,6 +38,12 @@
 //   * a COMMIT that fails with anything but a server error is noted too (such an error does not prove the transaction rolled back).
 // A ROLLBACK discards the transaction's writes.
 //
+// THE FENCE. The tracker only observes, and what it saw at the moment a response was built is a snapshot: a write the request has
+// not issued yet (work abandoned behind a 503 deadline) is invisible to it. `fenceIfUncommitted` turns the snapshot into a rule: when
+// the middleware releases an idempotency key it fences the request in the same synchronous step, and from then on this pool refuses
+// every write that request's connections issue (`WriteFencedError`, before anything is sent). A released key is therefore not
+// followed by a commit of the request that released it, apart from what the tracker cannot see (below) (CW-AC-36).
+//
 // WHAT IS NOT TRACKED (the residual, stated rather than hidden): effects that are not a Postgres commit: an outbound HTTP call,
 // a queue enqueue, an object-store or cache write made directly in a route. Those are not visible here. The platform's own
 // pattern puts them behind the outbox (a worker acts after the commit, which IS tracked); a route that makes one directly and
@@ -56,12 +62,67 @@ export interface CommitTracker {
   committed: boolean;
   /** Write transactions still open, plus COMMITs and autocommit writes the server has not answered yet. */
   unsettled: number;
+  /** True once {@link fenceIfUncommitted} fenced the request: every write its connections issue is refused from then on. */
+  fenced: boolean;
+  /** Told each time a fenced write is refused (the idempotency middleware logs it); never allowed to change the refusal. */
+  onFencedWrite?: () => void;
 }
 
-const store = new AsyncLocalStorage<CommitTracker>();
+const store = new AsyncLocalStorage<CommitTracker | undefined>();
 
 export function createCommitTracker(): CommitTracker {
-  return { committed: false, unsettled: 0 };
+  return { committed: false, unsettled: 0, fenced: false };
+}
+
+/** The `code` of {@link WriteFencedError}. */
+export const WRITE_FENCED_CODE = "IDEMPOTENCY_WRITE_FENCED";
+
+/**
+ * What a write of a FENCED request is refused with (see {@link fenceIfUncommitted}). Raised before the statement reaches the server,
+ * so nothing was applied. It surfaces to whatever work the request abandoned (a Promise.race deadline answered 503 over it), whose
+ * response is already sent. It is a plain rejection, logged once through the tracker's sink. The pool's own promise is marked handled,
+ * so a bare `void client.query(write)` cannot end the process, but a chain built on it (an async function, drizzle's wrapper) is an
+ * ordinary promise: work that nobody awaits must attach its own `.catch` (a rejection nobody handles ends a Bun or Node process, and
+ * drizzle's wrapper puts the statement's bound parameters in the message it prints: log it through the database-error redactor,
+ * never raw). Work started under the request (a shared single-flight read, a timer) keeps the request's tracker, so once the request
+ * is fenced the same refusal reaches whoever awaits that shared work. A write still queued for a pool connection when the response is built is refused
+ * when its connection arrives (the tracker counts a write at `client.query`, not at the checkout). A hook that runs after the
+ * idempotency `onSend` and writes on a retryable response would be refused too; none does (the M34 ledger and the read audit write
+ * on a 2xx only).
+ */
+export class WriteFencedError extends Error {
+  readonly code = WRITE_FENCED_CODE;
+  constructor() {
+    super(
+      "write refused: this request's Idempotency-Key claim was released after a retryable failure, so the request may not write any more (a same-key retry is free to run)",
+    );
+    this.name = "WriteFencedError";
+  }
+}
+
+/**
+ * THE FENCE (CW-AC-36). The idempotency middleware releases a key after a retryable failure only on the evidence that the request
+ * has committed nothing, and that evidence is a snapshot of the moment the response is built: it cannot see a write the request has
+ * not issued YET (a handler that answered 503 at a deadline while the work behind it carries on, a continuation resumed later). Left
+ * running, that work and the same-key retry that the release invited would both commit: a double write.
+ *
+ * So the proof and the release are made one step. This returns `false`, and does nothing, when a write of the request committed, may
+ * have, or is still open or unanswered ({@link mayHaveCommitted}); the caller then caches the outcome as before. Otherwise it fences
+ * the tracker and returns `true`, in the same synchronous turn as the check (no statement can be issued in between), and the caller
+ * releases the claim. A fenced tracker refuses, at the pool and before it is sent, every statement classified as a write that any
+ * connection checked out under the request issues (a read, a SET, BEGIN, COMMIT of a read-only transaction and ROLLBACK still run).
+ * A write sent before the fence was counted by the tracker, so it would have prevented the fence. Invariant: a released key is not
+ * followed by a commit of the request that released it, except for the two things named next. It lives in the one pool builder, so it
+ * covers every route and every helper (`withOrgContext`, a bare `db.transaction`, an autocommit `db.insert`) without a per-route change.
+ *
+ * What it cannot see is the same as the tracker's: a write from an async context that no longer names the request, and an effect
+ * outside Postgres.
+ */
+export function fenceIfUncommitted(tracker: CommitTracker, onFencedWrite?: () => void): boolean {
+  if (mayHaveCommitted(tracker)) return false;
+  tracker.fenced = true;
+  if (onFencedWrite) tracker.onFencedWrite = onFencedWrite;
+  return true;
 }
 
 /**
@@ -80,6 +141,15 @@ export function mayHaveCommitted(tracker: CommitTracker): boolean {
 /** Runs `fn` with `tracker` as the ambient tracker for its whole async subtree. */
 export function runWithCommitTracker<T>(tracker: CommitTracker, fn: () => T): T {
   return store.run(tracker, fn);
+}
+
+/**
+ * Runs `fn` with NO ambient tracker: its connections are attributed to no request, so a fence cannot refuse them. For the
+ * idempotency middleware's own bookkeeping after it fenced the request: the `DELETE` that releases the claim is a write, and it
+ * must run (a fenced request's release that is itself refused would leave the key pending for 24 h).
+ */
+export function runOutsideCommitTracker<T>(fn: () => T): T {
+  return store.run(undefined, fn);
 }
 
 /** The ambient tracker, or undefined outside a tracked request (a worker, a boot task, a read route). */
@@ -559,8 +629,36 @@ function trackAnswer(
 }
 
 /**
+ * Refuses a write of a fenced request in the way pg would have answered it: through the callback when there is one (pg-pool's own
+ * checkout), by throwing for a submittable (a cursor has neither a callback nor a promise to carry the error), else a rejected promise.
+ * Nothing is sent.
+ */
+function refuseFencedWrite(tracker: CommitTracker, args: unknown[]): unknown {
+  try {
+    tracker.onFencedWrite?.();
+  } catch {
+    // a log sink must not change the refusal
+  }
+  const error = new WriteFencedError();
+  const last = args[args.length - 1];
+  if (typeof last === "function") {
+    queueMicrotask(() => (last as (failure: unknown) => void)(error));
+    return undefined;
+  }
+  if (typeof (args[0] as { submit?: unknown } | null | undefined)?.submit === "function") {
+    throw error;
+  }
+  // A promise nobody awaits (`void client.query(write)`) must not end the process: the refusal was logged through `onFencedWrite`
+  // above, so marking this promise handled hides nothing. Whoever awaits it still receives the error.
+  const refused = Promise.reject(error);
+  refused.catch(() => undefined);
+  return refused;
+}
+
+/**
  * Wraps a pg pool so every statement its clients run feeds the ambient {@link CommitTracker}. Called once, by `createDbClient`.
- * A checkout made outside a tracked request carries no tracker and each of its queries costs one property read.
+ * A checkout made outside a tracked request carries no tracker and each of its queries costs one property read. A fenced tracker
+ * ({@link fenceIfUncommitted}) additionally has its writes refused here, before they are sent.
  */
 export function instrumentPoolForCommits(pool: PoolLike): void {
   pool.on("connect", (client: PoolClientLike & Tracked) => {
@@ -568,6 +666,9 @@ export function instrumentPoolForCommits(pool: PoolLike): void {
     client.query = ((...args: unknown[]) => {
       const tracker = client[TRACKER];
       const state = client[TX_STATE]; // both set at every checkout, before any query of it
+      if (tracker?.fenced && classifyStatement(textOf(args[0])) === "write") {
+        return refuseFencedWrite(tracker, args);
+      }
       const settle = tracker && state ? observeStatement(state, tracker, args[0]) : undefined;
       return settle ? trackAnswer(args, (a) => original(...a), settle) : original(...args);
     }) as never;
