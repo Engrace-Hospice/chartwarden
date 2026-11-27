@@ -62,8 +62,22 @@ mkdir -p tombstones && sudo chown 1000:1000 tombstones && chmod 0700 tombstones 
 set -e
 $COMPOSE run --rm -T tenant-buckets bun run scripts/storage/object-tombstones.ts > tombstones/tombstones.ndjson.tmp
 mv tombstones/tombstones.ndjson.tmp tombstones/tombstones.ndjson
-tail -n 1 tombstones/tombstones.ndjson                  # the trailer: {"tombstones":N}, N = the lines above it
+tail -n 1 tombstones/tombstones.ndjson                  # the trailer: {"tombstones":N,"sha256":"..."}, N = the lines above it
 ```
+
+The loaders treat the file as untrusted input: every `objectKey` must have a form the document store writes
+(`documents/...`, `intake/...` or `uploads/...`; no `..`, leading slash, empty or encoded segment), the applied set comes from
+the lines only, the trailer count must equal them, and the trailer's SHA-256, when present, must match the records. The
+checksum catches corruption and edits; it does not stop someone who can rewrite the whole file and recompute it, so keep the
+directory at mode 0700. A key outside those forms cannot be tombstoned at all: the erase itself refuses it (a trigger in
+migration 1583 pins the same form), before anything is recorded or destroyed, so once 1583 is applied no list is blocked by one
+(the migration itself refuses to apply while an existing tombstone has such a key: a database administrator must decide first,
+tombstones being append-only; it only reports, by count, document versions whose key is odd, whose documents cannot be erased
+until the key is fixed). The exporter keeps the same check as a backstop (its error names the record number, never the key).
+
+Migration 1583 is declared `contract` (it refuses writes the previous release could make, and revokes TRUNCATE), so `deploy.sh`
+holds a deploy that carries it (exit 75, nothing applied). Apply it by hand after the deploy's drain, then re-run the deploy:
+`$COMPOSE run --rm --no-deps migrate bun run scripts/db/migrate.ts --strict --schema-only`.
 
 The exporter prints `exported N tombstone(s); P pending` on stderr. It uses `DATABASE_ADMIN_URL` only (the operator's
 superuser or BYPASSRLS connection that `tenant-buckets` already has) and refuses a connection that is subject to row

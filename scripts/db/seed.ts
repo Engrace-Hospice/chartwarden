@@ -27,6 +27,7 @@ import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
 import { SEED_CREDENTIALS_PATH, seedUsername, writeSeedCredentials } from "./lib/credentials";
 import { fullCatalogGrantRows } from "./lib/full-catalog-grants";
 import { roleMayHoldPermission } from "./lib/idg-role-grants";
+import { purgeOrgTombstones } from "./lib/purge-org-tombstones";
 import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
@@ -374,6 +375,9 @@ async function main(): Promise<void> {
       [orgId],
     );
     for (const row of soleTenantUsers.rows) soleTenantUserIds.add(row.id);
+    // CW-DS-01: a tombstone is append-only (also under the replica role set above) and restricts the organization delete below, so the
+    // demo org's own are removed first, with the trigger re-enabled straight after (scripts/lib/purge-org-tombstones.ts).
+    await purgeOrgTombstones(db, orgId);
     await purgeOrgOwnedRows(db, orgId);
     await db.query("DELETE FROM membership_role WHERE organization_id = $1", [orgId]);
     await db.query("DELETE FROM role_permission WHERE organization_id = $1", [orgId]);

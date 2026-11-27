@@ -212,7 +212,8 @@ async function seedDocument(
     [
       organizationId,
       documentId,
-      `${organizationId}/${patientId}/dev-seed-${documentId}.pdf`,
+      // a form the document store writes (documents/<patient>/<aggregate>/<document>/<file>): a tombstone for any other key is refused
+      `documents/${patientId}/seed/${documentId}/dev-seed.pdf`,
       createdByMembershipId,
     ],
   );

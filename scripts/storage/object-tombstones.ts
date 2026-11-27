@@ -12,8 +12,10 @@
  *
  * Only a FINISHED erase is exported: a tombstone whose object key a document version still records (the erase was cut short, or a
  * hold was placed after it failed and the document is kept) is counted as `pending` on stderr and left out, so a held document's
- * copy is never destroyed on the strength of it. The file ends with a trailer line holding the record count; the loaders refuse a
- * file without a matching one. Keys carry the patient's opaque id (D11): keep the file with the operator, not in a ticket or a chat.
+ * copy is never destroyed on the strength of it. The file ends with a trailer line holding the record count and a SHA-256 over the
+ * records; the loaders refuse a file without a matching count (and one whose checksum is wrong). An export refuses, naming the record
+ * and never the key, a key whose form the loaders would refuse (not a form the document store writes), so it never writes a list that
+ * cannot be applied. Keys carry the patient's opaque id (D11): keep the file with the operator, not in a ticket or a chat.
  */
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import { sql } from "drizzle-orm";
