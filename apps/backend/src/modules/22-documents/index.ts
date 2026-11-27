@@ -190,6 +190,7 @@ export function mountDocumentRoutes(
       reader: objects,
       scanner: documentContentScannerFromEnv(process.env),
       scanRequired: documentUploadScanRequired(process.env),
+      requireEncrypted: objectStoreConfig?.requireServerSideEncryption === true,
       referralReader: {
         canAccessReferral(input) {
           return getSeam("ReferralReader").canAccessReferral(input);

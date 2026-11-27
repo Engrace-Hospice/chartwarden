@@ -173,7 +173,7 @@ function writeCredentialsBlock(password: string): void {
     `> Belongs to ChartWarden (the \`${PLATFORM_ORG.slug}\` org), not to a tenant. Supersedes \`sysadmin\``,
     "> (`administrator`) and `orgadmin` (`org_admin`): it reads as both plus every platform role and holds the",
     "> permission catalog (less the keys withheld from the admin roles). A tenant's PHI still needs a consented support session or break-glass.",
-    "> A passkey is required once `CHARTWARDEN_MFA_ENFORCEMENT=true`.",
+    "> A passkey is required (the server enforces it by default; `CHARTWARDEN_MFA_ENFORCEMENT=false` relaxes it, as the local Compose stack does).",
     "",
     "| Persona | Email | Password | Org | Role key(s) | Username |",
     "|---|---|---|---|---|---|",

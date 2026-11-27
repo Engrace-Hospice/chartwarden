@@ -38,6 +38,9 @@ export const GATES = [
   // Same "is the repo in a shape worth checking" family: every HIPAA/SOC 2 claim in
   // compliance/controls.yaml still resolves to real evidence, and the agent harness is still wired.
   "arch:compliance",
+  // CW-BA-01 - every integration the architecture says needs a BAA has a row in compliance/vendor-agreements.yaml, and a
+  // row cannot read `signed` without its date, document reference and a role's confirmation. Metadata only.
+  "arch:vendor-agreements",
   // CW-CM-01 - the committed `main` ruleset still demands review, code-owner review and the scan, and its required
   // checks report on PRs; CODEOWNERS owns what that review protects. Offline: it cannot prove the ruleset is applied.
   "arch:branch-protection",

@@ -9,6 +9,7 @@ import { timingSafeEqual } from "node:crypto";
 import {
   DEVICE_ATTESTATION_ATTRIBUTE,
   type SessionTimeoutEnforcer,
+  ipPrefixOf,
   sessionClassRequiresMfa,
 } from "@chartwarden/auth";
 import { ChartWardenError, type OrgScope, type SessionContextResolver } from "@chartwarden/types";
@@ -135,6 +136,22 @@ export interface SessionAuthenticateDeps {
       sessionId: string;
       roleKeys: readonly string[];
     }): Promise<{ satisfied: boolean; requirement: string; reason?: string }>;
+    /**
+     * CW-AC-45 - told, after the verdict and before the 403, that a held session was refused a route outside the
+     * enrolment allowlist. Ids, enums and the ROUTE TEMPLATE only (never the raw URL, which can carry a record id).
+     * It must record the refusal itself and log its own failure: the hook neither awaits it nor lets it change the answer.
+     */
+    onRefused?(input: {
+      userId: string;
+      sessionId: string;
+      organizationId: string;
+      requirement: string;
+      reason: string;
+      method: string;
+      routeTemplate: string;
+      /** The caller's network prefix (v4 /24, v6 /48), never the full address. */
+      ipPrefix: string;
+    }): void | Promise<void>;
   };
   /**
    * A new tenant's first admin signs in while the organization is still `created` (go-live not yet approved). For an org-bound
@@ -281,6 +298,20 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
       if (!verdict.satisfied) {
         const path = request.url.split("?")[0] ?? "";
         if (!MFA_ENROLMENT_ALLOWED_PREFIXES.some((prefix) => path.startsWith(prefix))) {
+          // Not awaited and never allowed to change the answer: the callback records the refusal and logs its own failure.
+          const refusal = {
+            userId: actor.userId,
+            sessionId: snap.sessionId,
+            organizationId: actor.organizationId,
+            requirement: verdict.requirement,
+            reason: verdict.reason ?? "not_enrolled",
+            method: request.method,
+            routeTemplate: request.routeOptions?.url ?? "unmatched",
+            ipPrefix: ipPrefixOf(request.ip ?? ""),
+          };
+          void Promise.resolve()
+            .then(() => deps.mfaEnrolment?.onRefused?.(refusal))
+            .catch(() => undefined);
           throw new ChartWardenError(
             "MFA_ENROLMENT_REQUIRED",
             verdict.reason === "not_verified"

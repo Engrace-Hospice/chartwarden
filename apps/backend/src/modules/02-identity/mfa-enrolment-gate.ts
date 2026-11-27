@@ -10,9 +10,9 @@
 //   - `two-factor/disable`       refused while any held role requires a second factor.
 // The matrix tests ASSURANCE, not just enrolment: the session must have proved the factor at sign-in
 // (`sessionProvedFactor`), else a passkey-only user would pass on a password-only session.
-// Disabled (`enforced: false`) it answers "satisfied" without reading anything: the dev/test default (see
-// `resolveMfaEnforcement`).
-import { type MfaVerdict, evaluateMfa } from "@chartwarden/auth";
+// Disabled (`enforced: false`) it answers "satisfied" without reading anything. That is only the explicit
+// `CHARTWARDEN_MFA_ENFORCEMENT=false` relaxation (see `resolveMfaEnforcement`); the default is enforced.
+import { AUTH_AUDIT_EVENTS, type AuthAuditSink, type MfaVerdict, evaluateMfa } from "@chartwarden/auth";
 import type { DbClient } from "@chartwarden/db";
 import { withUserContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
@@ -141,6 +141,73 @@ export function createMfaEnrolmentGate(deps: MfaEnrolmentGateDeps): MfaEnrolment
       // Not cached: removal is rare and must see the factor state as of now.
       return evaluateMfa(roleKeys, { totp: false, passkey: await passkeyOf(userId) });
     },
+  };
+}
+
+/** A held session retries every route it opens; one refusal row per session + requirement + reason per window. */
+export const MFA_REFUSAL_AUDIT_WINDOW_MS = 5 * 60_000;
+/** Above this many remembered keys the sampler first drops the ones whose window has passed. */
+const MFA_REFUSAL_SAMPLER_PRUNE_AT = 1_000;
+
+export interface MfaRefusal {
+  readonly userId: string;
+  readonly sessionId: string;
+  readonly organizationId: string;
+  readonly requirement: string;
+  readonly reason: string;
+  readonly method: string;
+  readonly routeTemplate: string;
+  readonly ipPrefix: string;
+}
+
+export interface MfaRefusalAuditorDeps {
+  /** The M2 authentication audit sink (org-bound, so the row lands under the tenant's own RLS scope). */
+  readonly sink: AuthAuditSink;
+  /** Called with a failed audit write; the refusal itself is never affected. */
+  readonly onError: (err: unknown) => void;
+  readonly now?: () => number;
+}
+
+/**
+ * CW-AC-45 - the audit row for a refused (held) session: `m2.auth.mfa_enrolment_refused`, sampled once per session,
+ * requirement and reason per {@link MFA_REFUSAL_AUDIT_WINDOW_MS}. A failed write is reported and the sample slot is
+ * released, so the next refusal tries again. Ids, enums and the route template only.
+ */
+export function createMfaRefusalAuditor(
+  deps: MfaRefusalAuditorDeps,
+): (refusal: MfaRefusal) => Promise<void> {
+  const now = deps.now ?? Date.now;
+  const lastWrittenAt = new Map<string, number>();
+  return async (refusal) => {
+    const key = `${refusal.sessionId}:${refusal.requirement}:${refusal.reason}`;
+    const at = now();
+    if ((lastWrittenAt.get(key) ?? Number.NEGATIVE_INFINITY) + MFA_REFUSAL_AUDIT_WINDOW_MS > at)
+      return;
+    if (lastWrittenAt.size >= MFA_REFUSAL_SAMPLER_PRUNE_AT) {
+      for (const [staleKey, writtenAt] of lastWrittenAt)
+        if (writtenAt + MFA_REFUSAL_AUDIT_WINDOW_MS <= at) lastWrittenAt.delete(staleKey);
+    }
+    lastWrittenAt.set(key, at);
+    try {
+      await deps.sink({
+        eventType: AUTH_AUDIT_EVENTS.mfaEnrolmentRefused,
+        outcome: "failure",
+        severity: "warn",
+        userId: refusal.userId,
+        sessionId: refusal.sessionId,
+        organizationId: refusal.organizationId,
+        ipPrefix: refusal.ipPrefix,
+        context: {
+          requirement: refusal.requirement,
+          reason: refusal.reason,
+          method: refusal.method,
+          routeTemplate: refusal.routeTemplate,
+        },
+      });
+    } catch (err) {
+      lastWrittenAt.delete(key);
+      deps.onError(err);
+    }
   };
 }
 

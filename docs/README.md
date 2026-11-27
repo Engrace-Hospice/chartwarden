@@ -27,7 +27,6 @@ wins until the spec is re-locked.
 | AI capability catalog (19) | [`ai/capabilities/`](./ai/capabilities/) | [below](#ai-capability-catalog) |
 | Roadmap & phase plans | `docs/*PHASE*` · `IMPLEMENTATION_ROADMAP.md` | [below](#roadmap--phase-plans) |
 | Implementation guides | [`implementation/`](./implementation/) | [below](#implementation-guides) |
-| Execution plans (waves) | [`plans/`](./plans/) | [below](#execution-plans-waves) |
 | Reference sources | [`reference/`](./reference/) | [below](#reference-sources) |
 | API contract & integrator changes | [`api/`](./api/) | [`api/CHANGES.md`](./api/CHANGES.md) |
 | Mobile architecture & cross-repository contracts | [`mobile/`](./mobile/) | [`mobile/README.md`](./mobile/README.md) |
@@ -42,6 +41,7 @@ wins until the spec is re-locked.
 | [`START_PROJECT.md`](./START_PROJECT.md) | Step-by-step local startup guide — dependencies, migrations, API, worker, web app, and demo seed. **Start here to run the project.** |
 | [`DEVELOPMENT.md`](./DEVELOPMENT.md) | Development runbook + "how to add a module". **Start here to build/extend.** |
 | [`runbooks/security-alert-review.md`](./runbooks/security-alert-review.md) | Operator and security-officer runbook: the scheduled review of the audit trail (CW-MON-01) — the two lanes, `OPS_ALERT_WEBHOOK_URL` and the platform grant, reading the review log, the weekly review, what to do for each alert, and how another control adds a detection. |
+| [`runbooks/mfa-enforcement-rollout.md`](./runbooks/mfa-enforcement-rollout.md) | Operator runbook: the second-factor matrix is enforced by default (CW-AC-45, CW-AC-55) — the enrolment path, the inventory-enrol-deploy-verify order, the audited bounded relaxation and its rollback. |
 | [`runbooks/transactional-email-postmark.md`](./runbooks/transactional-email-postmark.md) | Operator runbook: Postmark account/BAA, verified sender + SPF/DKIM, env vars, verification and rollback for transactional email. |
 | [`runbooks/terminology-catalog-loading.md`](./runbooks/terminology-catalog-loading.md) | Operator runbook: loading CARC/RARC, LOINC, SNOMED CT and RxNorm into M38 — licence to hold, who attests, download, endpoints, expected counts, verification and rollback. |
 | [`runbooks/m34-platform-console-hardening.md`](./runbooks/m34-platform-console-hardening.md) | Operator runbook: CW-AC-22 rollout — the platform console address allowlist (`PLATFORM_CONSOLE_ALLOWED_CIDRS`, what it covers and does not) and the `platform_ops` split into the BAA steward, go-live approver and pricing operator roles (migration 1559, an expand), in order, with the lockout recovery and the monitoring query. |
@@ -53,9 +53,12 @@ wins until the spec is re-locked.
 | [`runbooks/m8-note-closure-policy-reset.md`](./runbooks/m8-note-closure-policy-reset.md) | Operator runbook: undoing a mistaken visit-note closure `block` policy (M8, ADR-0113) — who can reset it in the product, what to do when every policy admin is blocked themselves (close the notes, a clear supervisor's override), and the audited database fallback for platform operations, with how to verify. |
 | [`runbooks/m25-835-deployment.md`](./runbooks/m25-835-deployment.md) | Operator runbook: M25 835 group-identity migration preflight, old-writer drain, compatible startup, verification, and the unsafe application-only rollback boundary. |
 | [`runbooks/m24-payer-readiness-deployment.md`](./runbooks/m24-payer-readiness-deployment.md) | Operator runbook: M24/M25 payer-readiness and ERA-review migrations (1535 to 1539, 1541 to 1544): why a merge to `main` is held at exit 75, what each contract migration does, the previous-release drain, the hand-apply, read-only verification queries and the recovery boundary. |
+| [`runbooks/object-store-sse-cutover.md`](./runbooks/object-store-sse-cutover.md) | Operator runbook: object-store encryption at rest (CW-AC-05) - the key and where it lives, the flag, versioning, the re-encryption tool (dry run, apply, gate), purging the plaintext versions and vacuuming the volume, the other plaintext copies, rollback, and what a delete leaves on the volume. |
 | [`runbooks/object-key-column-rename-deployment.md`](./runbooks/object-key-column-rename-deployment.md) | Operator runbook: the object-key column rename (migration 1546, `minio_object_key` to `object_key`): what a merge to `main` does with the deploy hold, the drain, the hand-apply, the catalog and audit-scrub checks, the names kept as public contracts, restoring an older backup, and the one-way rollback boundary. |
 | [`runbooks/wardenlens-intake-recovery.md`](./runbooks/wardenlens-intake-recovery.md) | Operator runbook: detect and recover WardenLens intake dependency, queue, Docling, object-storage and governed-AI failures without bypassing M22/M6 ownership or admission-readiness controls. |
 | [`runbooks/main-branch-protection.md`](./runbooks/main-branch-protection.md) | Operator runbook: applying, verifying and rolling back the `main` ruleset (CW-CM-01, CW-SEC-01) — plan prerequisite, sole-owner bypass decision, pre-flight, the `gh api` commands, Environment reviewers, `ops:verify-branch-protection`, closing the register rows. |
+| [`runbooks/incident-response-drill.md`](./runbooks/incident-response-drill.md) | Operator runbook: the incident-response tabletop drill kit (CW-IR-01) - ground rules (nothing outward-facing, synthetic data, no contacts in the repo), roles and checklist, roster check, facilitator script, clock fields with targets, scoring, filing the record under `audit/incident-drill/`. The kit exists; no drill has been run. |
+| [`runbooks/incident-response-drill-scenarios.md`](./runbooks/incident-response-drill-scenarios.md) | Drill cards for the three tabletop scenarios (suspected PHI exposure, leaked backup key, compromised operator account): timed injects, expected actions with the runbook section to reach for, probes and traps, the runbook corrections made while preparing them and what is still open. Facilitator only. |
 | [`APP_OVERVIEW.md`](./APP_OVERVIEW.md) | Guided map of what the codebase is and how it fits together — for an engineer joining the project. |
 | [`BUSINESS_LOGIC.md`](./BUSINESS_LOGIC.md) | Business logic, workflows & functionality **as built** across the implemented modules — state machines, validation, calculations, cross-module flows. |
 | [`PLATFORM_TOOLS_MANUAL.md`](./PLATFORM_TOOLS_MANUAL.md) | Private-cloud platform operating manual — Talos, Kubernetes, Cilium, Envoy Gateway, CloudNativePG, SeaweedFS, Valkey, OpenBao, Argo CD, Kyverno and the rest: role, deployment baseline, day-2 operations, HIPAA notes and failure modes per tool. Hosting phases: Hostinger test → OVHcloud production → Hostinger playground (ADR-0050). |
@@ -189,40 +192,6 @@ per-module build truth is the generated matrix (`bun run status:matrix`).
 
 ---
 
-## Execution plans (waves)
-
-Per-wave Archon task plans in [`plans/`](./plans/). These are **authority inputs to the
-deterministic build harness** and are read-only to automation — the `arch:plan-integrity`
-gate fails on any change under `docs/plans/**` (human override: `ALLOW_PLAN_EDITS=1`). Most
-represent **completed, merged** waves and are retained as historical governance records.
-
-| Plan | Wave / scope |
-|---|---|
-| [`M01-M02_VERTICAL_SLICE_PLAN.md`](./plans/M01-M02_VERTICAL_SLICE_PLAN.md) | Phase 1 vertical slice — M1 Foundation + M2 Identity. |
-| [`WAVE_AUTH_BETTER_AUTH_PLAN.md`](./plans/WAVE_AUTH_BETTER_AUTH_PLAN.md) | Better Auth mount + M2 sign-in front door. |
-| [`AUTH_T06_SCHEMA_RECONCILE.md`](./plans/AUTH_T06_SCHEMA_RECONCILE.md) | Better Auth ↔ M1 schema reconciliation. |
-| [`WAVE_A_M3-M4_PLAN.md`](./plans/WAVE_A_M3-M4_PLAN.md) | Wave A — M3 Authorization + M4 Audit. |
-| [`WAVE_B_M36-M38-M40_PLAN.md`](./plans/WAVE_B_M36-M38-M40_PLAN.md) | Wave B — M36 Messaging + M38 Terminology + M40 MDM. |
-| [`WAVE_C_M5-M39_PLAN.md`](./plans/WAVE_C_M5-M39_PLAN.md) | Wave C — M5 Patient + M39 Consent. |
-| [`WAVE_D_M6-M7-M8_PLAN.md`](./plans/WAVE_D_M6-M7-M8_PLAN.md) | Wave D — M6 Admission + M7 Care Plan + M8 Encounters. |
-| [`WAVE_M6_LIVE_WIRE_PLAN.md`](./plans/WAVE_M6_LIVE_WIRE_PLAN.md) | M6 Admission live-wire. |
-| [`WAVE_E_M9-M13_PLAN.md`](./plans/WAVE_E_M9-M13_PLAN.md) | Wave E — clinical depth (M9 · M10 · M11 · M12 · M13). |
-| [`WAVE_F_M14-M17-M18-M22_PLAN.md`](./plans/WAVE_F_M14-M17-M18-M22_PLAN.md) | Wave F — M14 IDG · M17 Scheduling · M18 EVV · M22 Documents. |
-| [`WAVE_G_M23-M25-M26_PLAN.md`](./plans/WAVE_G_M23-M25-M26_PLAN.md) | Wave G — revenue cycle (M23 · M25 · M26). |
-| [`WAVE_H_M28-M29-M30-M32-M34_PLAN.md`](./plans/WAVE_H_M28-M29-M30-M32-M34_PLAN.md) | Wave H — M28 FHIR · M29 Interfaces · M30 HQRP · M32 AI · M34 SaaS. |
-| [`WAVE_P2-1_M15-M16-M21-M24_PLAN.md`](./plans/WAVE_P2-1_M15-M16-M21-M24_PLAN.md) | Wave P2-1 — M15 · M16 · M21 · M24. |
-| [`WAVE_P2-2_M19-M20_PLAN.md`](./plans/WAVE_P2-2_M19-M20_PLAN.md) | Wave P2-2 — M19 On-Call · M20 Field Safety. |
-| [`WAVE_P2-3_M27-M31-M33-M35_PLAN.md`](./plans/WAVE_P2-3_M27-M31-M33-M35_PLAN.md) | Wave P2-3 — M27 · M31 · M33 · M35. |
-| [`WAVE_P3_M37_IPU_PLAN.md`](./plans/WAVE_P3_M37_IPU_PLAN.md) | Phase 3 — M37 Inpatient Unit (IPU). |
-| [`WAVE_ADMIN_CONSOLE_M35_SUBSCRIPTION_PLAN.md`](./plans/WAVE_ADMIN_CONSOLE_M35_SUBSCRIPTION_PLAN.md) | Admin console — M34 shell + M35 §5.2 platform-ops screens. |
-| [`WAVE_FRONTEND_BACKLOG_PLAN.md`](./plans/WAVE_FRONTEND_BACKLOG_PLAN.md) | Frontend backlog (Track A). |
-| [`FRONTEND_INTEGRATION_PLAN.md`](./plans/FRONTEND_INTEGRATION_PLAN.md) | Frontend integration (Foundation + backlog + per-module). |
-| [`PHASE_2A_UPGRADES_PLAN.md`](./plans/PHASE_2A_UPGRADES_PLAN.md) | Phase 2 Part A — flag-activation upgrades. |
-| [`PHASE_3_UPGRADES_PLAN.md`](./plans/PHASE_3_UPGRADES_PLAN.md) | Phase 3 — flag activations. |
-| [`ARCHON_RUN_TRACKER.md`](./plans/ARCHON_RUN_TRACKER.md) | Archon run tracker (execution log). |
-
----
-
 ## Reference sources
 
 | Document | Scope |
@@ -254,5 +223,4 @@ represent **completed, merged** waves and are retained as historical governance 
 ---
 
 *This index is hand-maintained. When adding a document under `docs/`, add a row here in the
-matching section. The design corpus (`design/`) and wave plans (`plans/`) are additionally
-guarded by the `docs:ui` and `arch:plan-integrity` gates respectively.*
+matching section. The design corpus (`design/`) is additionally guarded by the `docs:ui` gate.*

@@ -12,6 +12,7 @@
 //   OBJECT_STORE_AUDIT_SINK_PORT                  the suite listens here for the per-request audit records
 //   OBJECT_STORE_AUDIT_TOKEN                      optional: the bearer the store's audit delivery must present
 //                                                 the store (or its log shipper) POSTs as JSON
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { type Server, createServer } from "node:http";
 import type { OrgId, SignedUrlDescriptor } from "@chartwarden/types";
@@ -47,12 +48,19 @@ const AUDIT_POLL_MS = 250;
 const EXPIRY_DAYS = 3;
 const MIME = "application/pdf";
 
+/** CW-AC-05 — the up-scripts start both stores with SSE-S3 keyed and export this; the adapter then runs as in production. */
+const SSE_REQUIRED = /^(1|true)$/i.test(env.OBJECT_STORE_REQUIRE_SSE?.trim() ?? "");
+/** The store's container and data directory: the at-rest proof reads the volume's own files. Absent => that test skips. */
+const STORE_CONTAINER = env.OBJECT_STORE_CONTAINER?.trim();
+const STORE_DATA_DIR = env.OBJECT_STORE_DATA_DIR?.trim() || "/data";
+
 const credentials = (prefix: "ADMIN" | "APP"): S3ObjectStoreConfig => ({
   endpoint: ENDPOINT ?? "http://unset.invalid",
   region: REGION,
   accessKeyId: env[`OBJECT_STORE_${prefix}_ACCESS_KEY`] ?? "",
   secretAccessKey: env[`OBJECT_STORE_${prefix}_SECRET_KEY`] ?? "",
   forcePathStyle: true,
+  ...(prefix === "APP" && SSE_REQUIRED ? { requireServerSideEncryption: true } : {}),
 });
 
 const bytesOf = (text: string): Uint8Array => new TextEncoder().encode(text);
@@ -211,7 +219,12 @@ describe.skipIf(!ENDPOINT)("object-store conformance — LIVE (ADR-0050 D6)", ()
 
       const inspected = await store.inspectObject({ bucket, objectKey: key });
 
-      expect(inspected).toEqual({ byteSize: bytes.byteLength, mimeType: MIME, sha256Hex });
+      expect(inspected).toEqual({
+        byteSize: bytes.byteLength,
+        mimeType: MIME,
+        sha256Hex,
+        serverSideEncryption: SSE_REQUIRED ? "AES256" : null,
+      });
     });
 
     it("refuses an upload whose x-amz-checksum-sha256 does not match the bytes", async () => {
@@ -267,10 +280,12 @@ describe.skipIf(!ENDPOINT)("object-store conformance — LIVE (ADR-0050 D6)", ()
       const res = await fetch(signed.url, { method: "PUT", headers: signed.headers, body: bytes });
 
       expect(res.status).toBe(200);
+      // no SSE header on this direct client PUT: the bucket's encryption default is what encrypts it
       expect(await store.inspectObject({ bucket, objectKey: key })).toEqual({
         byteSize: bytes.byteLength,
         mimeType: MIME,
         sha256Hex,
+        serverSideEncryption: SSE_REQUIRED ? "AES256" : null,
       });
     });
 
@@ -332,6 +347,86 @@ describe.skipIf(!ENDPOINT)("object-store conformance — LIVE (ADR-0050 D6)", ()
       expect(await store.getObject({ bucket, objectKey: key, maxBytes: 1024 })).toBeNull();
       expect(await versionsOf(sibling)).toBe(1);
     });
+  });
+
+  describe.skipIf(!SSE_REQUIRED)("server-side encryption at rest (CW-AC-05)", () => {
+    const SSE = "x-amz-server-side-encryption";
+    const defaultOf = async (name: string, who: S3ObjectStoreConfig = app): Promise<string> => {
+      const res = await rawS3(who, { method: "GET", bucket: name, query: [["encryption", ""]] });
+      return res.ok ? await res.text() : `HTTP ${res.status}`;
+    };
+
+    it("the provisioner left the tenant bucket encrypting by default, and the scoped key can read that", async () => {
+      expect(await defaultOf(bucket)).toMatch(/<SSEAlgorithm>\s*AES256\s*<\/SSEAlgorithm>/);
+    });
+
+    it("the adapter's put, HEAD, ranged GET and a presigned GET all report AES256, and the checksum still verifies", async () => {
+      const key = `conformance/${randomUUID()}`;
+      const bytes = bytesOf(`sse paths ${key}`);
+      const { sha256Hex } = await store.putObject({ bucket, objectKey: key, bytes, mimeType: MIME });
+
+      const head = await rawS3(app, { method: "HEAD", bucket, key, headers: { "x-amz-checksum-mode": "ENABLED" } });
+      expect(head.headers.get(SSE)).toBe("AES256");
+      expect((await store.inspectObject({ bucket, objectKey: key }))?.sha256Hex).toBe(sha256Hex);
+      const ranged = await rawS3(app, { method: "GET", bucket, key, headers: { range: "bytes=0-2" } });
+      expect(ranged.status).toBe(206);
+      expect(await ranged.text()).toBe("sse");
+      const { url } = await store.presign({ descriptor: descriptorFor(bucket, key), organizationId });
+      const viaUrl = await fetch(url);
+      expect(viaUrl.status).toBe(200);
+      expect(viaUrl.headers.get(SSE)).toBe("AES256");
+      expect(new Uint8Array(await viaUrl.arrayBuffer())).toEqual(bytes);
+    });
+
+    it("a bucket WITHOUT the default stores a client PUT in the clear, which inspectObject reports as null (the upload guard's input)", async () => {
+      const plain = `cw-conformance-plain-${randomUUID().slice(0, 8)}`;
+      expect((await rawS3(admin, { method: "PUT", bucket: plain })).ok).toBe(true);
+      const put = await rawS3(admin, { method: "PUT", bucket: plain, key: "k", body: bytesOf("clear"), headers: { "content-type": MIME } });
+      expect(put.ok).toBe(true);
+      expect(put.headers.get(SSE)).toBeNull();
+      const head = await rawS3(admin, { method: "HEAD", bucket: plain, key: "k" });
+      expect(head.headers.get(SSE)).toBeNull();
+    });
+
+    it("the provisioner restores a default someone removed (the backfill path)", async () => {
+      const removed = await rawS3(admin, { method: "DELETE", bucket, query: [["encryption", ""]] });
+      expect(removed.ok, `admin removes the default: ${removed.status}`).toBe(true);
+      expect(await defaultOf(bucket)).not.toMatch(/AES256/);
+      await provisioner.ensureTenantPrefixes({ organizationId, prefixes: [] });
+      expect(await defaultOf(bucket)).toMatch(/<SSEAlgorithm>\s*AES256\s*<\/SSEAlgorithm>/);
+    });
+
+    it.skipIf(!STORE_CONTAINER)(
+      "the volume holds ciphertext: the marker is not in the store's data files, and the same marker in an unencrypted bucket IS (control)",
+      async () => {
+        const sealedMarker = `CW-AC05-SYNTHETIC-SEALED-${randomUUID()}`;
+        const clearMarker = `CW-AC05-SYNTHETIC-CLEAR-${randomUUID()}`;
+        const bodyOf = (marker: string): Uint8Array => bytesOf(`%PDF-1.4 ${marker} `.repeat(64));
+        await store.putObject({ bucket, objectKey: `conformance/${randomUUID()}`, bytes: bodyOf(sealedMarker), mimeType: MIME });
+        // The control: a bucket with no encryption default and a PUT that names none, so the store keeps it in the clear.
+        const plain = `cw-conformance-control-${randomUUID().slice(0, 8)}`;
+        expect((await rawS3(admin, { method: "PUT", bucket: plain })).ok).toBe(true);
+        const clear = await rawS3(admin, { method: "PUT", bucket: plain, key: "control", body: bodyOf(clearMarker), headers: { "content-type": MIME } });
+        expect(clear.ok).toBe(true);
+
+        const filesWith = (marker: string): string => {
+          try {
+            // -F: a fixed string (the images' busybox grep misses a hyphenated marker as a pattern in a binary volume file)
+            return execFileSync("docker", ["exec", STORE_CONTAINER ?? "", "grep", "-rlF", marker, STORE_DATA_DIR], { encoding: "utf8" });
+          } catch {
+            return ""; // grep exits 1 when nothing matches
+          }
+        };
+        // The control must be findable first, or "not found" proves nothing (stores flush on their own schedule).
+        let controlFiles = "";
+        for (let i = 0; i < 20 && controlFiles === ""; i++) {
+          controlFiles = filesWith(clearMarker);
+          if (controlFiles === "") await new Promise((r) => setTimeout(r, 500));
+        }
+        expect(controlFiles, "the plaintext control is not on the volume: this check cannot see plaintext").not.toBe("");
+        expect(filesWith(sealedMarker), "an encrypted object's marker is readable in the store's own files").toBe("");
+      },
+    );
   });
 
   describe("lifecycle", () => {

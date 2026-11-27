@@ -13,6 +13,11 @@
     },
     {
       "Effect": "Allow",
+      "Action": ["s3:GetBucketEncryption", "s3:PutBucketEncryption"],
+      "Resource": ["arn:aws:s3:::tenant-*", "arn:aws:s3:::chartwarden-*"]
+    },
+    {
+      "Effect": "Allow",
       "Action": [
         "s3:GetObject",
         "s3:PutObject",

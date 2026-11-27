@@ -279,7 +279,9 @@ import {
 import {
   createDbActiveMembershipLister,
   createMfaEnrolmentGate,
+  createMfaRefusalAuditor,
 } from "./modules/02-identity/mfa-enrolment-gate";
+import { recordMfaRelaxation } from "./modules/02-identity/mfa-relaxation";
 import {
   createDbMfaEnrollmentReader,
   createDbSessionProofReader,
@@ -5881,11 +5883,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const authAuditErrorLogger = (err: unknown, event: { eventType: string }) =>
     app.log.error({ err, eventType: event.eventType }, "auth audit write failed");
   // GAP-003/GAP-005 — the server-side MFA matrix (M2 §2.3): roles from M3's org-explicit reader (M2 may not read
-  // M3's tables), factors from M2's enrolment reader. OPT-IN via
-  // `CHARTWARDEN_MFA_ENFORCEMENT=true` (the web app has no enrolment UI yet - see resolveMfaEnforcement).
+  // M3's tables), factors from M2's enrolment reader. ENFORCED BY DEFAULT (CW-AC-45): only the exact
+  // `CHARTWARDEN_MFA_ENFORCEMENT=false` relaxes it (production also needs a reason: collectEnvProblems), and a relaxed
+  // boot writes `m2.auth.mfa_enforcement_relaxed` once the server exists (the relaxation block after `buildServer`).
+  const mfaEnforced = resolveMfaEnforcement(process.env);
   const mfaGate = dbHandle
     ? createMfaEnrolmentGate({
-        enforced: resolveMfaEnforcement(process.env),
+        enforced: mfaEnforced,
         factors: createDbMfaEnrollmentReader(dbHandle.db),
         sessionProvedFactor: createDbSessionProofReader(dbHandle.db),
         roleKeysForMembership: async ({ organizationId, membershipId }) =>
@@ -5895,6 +5899,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         activeMembershipsOf: createDbActiveMembershipLister(dbHandle.db),
       })
     : undefined;
+  // CW-AC-45 - ONE sampler for both refusals: the authenticate hook (an org-bound held session) and `select-organization`
+  // (the usual first refusal of a password-only admin). A refused session leaves `m2.auth.mfa_enrolment_refused`, sampled
+  // per session, requirement and reason. `app` is created below; the error logger only reads it when a write fails.
+  const mfaRefusalAudit =
+    mfaGate && authAuditSink
+      ? createMfaRefusalAuditor({
+          sink: authAuditSink,
+          onError: (err) => app.log.error({ err }, "recording the MFA enrolment refusal failed"),
+        })
+      : undefined;
   // ADR-0049 / ADR-0088 — per-tenant subdomains. Unset TENANT_BASE_DOMAIN is single-host mode (the demo, dev):
   // no guard. Set, the host → organization lookup needs the database, so a missing handle is a boot error rather
   // than a guard that silently never runs.
@@ -5974,6 +5988,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               mfaEnrolment: {
                 check: ({ userId, sessionId, roleKeys }) =>
                   mfaGate.forRoles({ userId, sessionId, roleKeys }),
+                ...(mfaRefusalAudit ? { onRefused: mfaRefusalAudit } : {}),
               },
             }
           : {}),
@@ -6576,7 +6591,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 retentionClass: "compliance",
                 context: { userId: input.userId },
               }),
-            ...(mfaGate ? { mfaGate } : {}),
+            ...(mfaGate
+              ? {
+                  mfaGate: {
+                    forMembership: (input) => mfaGate.forMembership(input),
+                    ...(mfaRefusalAudit ? { onRefused: mfaRefusalAudit } : {}),
+                  },
+                }
+              : {}),
             // `select-organization` admits a `created` organization whose tenant is still onboarding (its first admin).
             onboardingTenants: createOnboardingTenantReader(dbHandle.db),
             // `GET /auth/context` tells the shell whether the organization is still being onboarded: the authenticate hook's own
@@ -9723,6 +9745,18 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         destructionDb: destructionDbHandle?.db,
       }),
   });
+  // CW-AC-45 - a boot that runs with the second-factor matrix relaxed says so loudly and leaves one critical audit row;
+  // production refuses to serve a relaxation it could not record (the reason itself is required by collectEnvProblems).
+  // Only the roles that serve sessions say it: a worker has no session to relax, so it neither warns nor writes a row.
+  if (dbHandle && (role === "all" || role === "api")) {
+    const platformDb = dbHandle.db;
+    await recordMfaRelaxation({
+      enforced: mfaEnforced,
+      env: process.env,
+      audit: (event) => auditPlatformEvent(platformDb, event),
+      log: app.log,
+    });
+  }
   // ADR-0110 D6 — bind the gate's mode + logger now that the seams are validated. The billing routes only mount on a
   // database boot, so that is where a shadow/enforce mode needs the real entitlement reader (refuse to boot otherwise).
   configureClaimsBillingGate({

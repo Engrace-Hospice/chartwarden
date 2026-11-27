@@ -482,6 +482,46 @@ describe("M2-T06 identity route inventory", () => {
       await met.app.close();
     });
 
+    it("CW-AC-45 select-organization reports the refusal (ids, enums, route template, ip prefix) and a failing callback never changes the 403", async () => {
+      const seen: Record<string, unknown>[] = [];
+      const denied = makeServer({
+        seed,
+        mfaGate: {
+          forMembership: async () => ({
+            requirement: "passkey",
+            satisfied: false,
+            reason: "not_enrolled",
+          }),
+          onRefused: (input) => {
+            seen.push(input);
+            throw new Error("audit sink down");
+          },
+        },
+      });
+      const res = await denied.app.inject({
+        method: "POST",
+        url: "/api/v1/auth/select-organization",
+        headers: { "x-test-user": "user_rn" },
+        payload: { organizationId: "org_a" },
+        remoteAddress: "203.0.113.9",
+      });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.code).toBe("MFA_ENROLMENT_REQUIRED");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toMatchObject({
+        userId: "user_rn",
+        organizationId: "org_a",
+        requirement: "passkey",
+        reason: "not_enrolled",
+        method: "POST",
+        routeTemplate: "/api/v1/auth/select-organization",
+        ipPrefix: "203.0.113.0/24",
+      });
+      expect(JSON.stringify(seen)).not.toContain("203.0.113.9");
+      await denied.app.close();
+    });
+
     describe("§11 D19 organization status at sign-in, and a tenant's first admin while it is onboarding", () => {
       const selectOrg = async (opts: Parameters<typeof makeServer>[0]) => {
         const { app } = makeServer({ seed, ...opts });

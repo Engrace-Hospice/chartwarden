@@ -42,6 +42,8 @@ export const CHANGE_MANAGEMENT_CODEOWNED = [
   "/scripts/check-branch-protection.ts",
   "/scripts/verify-branch-protection.ts",
   "/scripts/check-hooks-installed.ts",
+  // The only machine check that a vendor row may read `signed`: a PR that relaxes it needs the owner's review.
+  "/scripts/check-vendor-agreements.ts",
   "/scripts/check-release-gate.ts",
   "/scripts/check-merge-artifacts.ts",
   "/scripts/run-fitness-gates.ts",

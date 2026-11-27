@@ -70,19 +70,39 @@ export function evaluateMfa(roleKeys: readonly string[], factors: MfaFactorState
   return { requirement, satisfied: mfaSatisfied(requirement, factors) };
 }
 
-/**
- * Whether the server enforces the matrix. OPT-IN: only `CHARTWARDEN_MFA_ENFORCEMENT=true` turns it on, in every
- * environment, production included.
- *
- * Why not strict-by-default in production: refusing a staff session until a factor is enrolled needs an in-app
- * enrolment path, and apps/web has a passkey page but no TOTP enrolment screen and does not yet react to
- * `403 MFA_ENROLMENT_REQUIRED`. Defaulting ON would lock every existing staff user (the first org_admin, who needs a
- * passkey, included) out of a deploy with no way to enrol. Roll out by enrolling the existing users first, then set
- * the variable. Flip this default back to strict once the enrolment UI ships.
- */
-export function resolveMfaEnforcement(env: {
+/** The one value that relaxes the matrix. Anything else - unset, `true`, `True`, `1`, a typo - leaves it enforced. */
+export const MFA_ENFORCEMENT_ENV = "CHARTWARDEN_MFA_ENFORCEMENT";
+export const MFA_ENFORCEMENT_RELAXED_VALUE = "false";
+/** Why (and under which ticket) the matrix is relaxed; REQUIRED when `NODE_ENV=production` relaxes it. */
+export const MFA_RELAXATION_REASON_ENV = "CHARTWARDEN_MFA_RELAXATION_REASON";
+/** Shortest reason that can name a ticket and a purpose; a bare "x" or "ok" is not a record. */
+export const MFA_RELAXATION_REASON_MIN_LENGTH = 12;
+/** Longest reason written to the audit trail. */
+export const MFA_RELAXATION_REASON_MAX_LENGTH = 200;
+
+type MfaEnforcementEnv = {
   readonly CHARTWARDEN_MFA_ENFORCEMENT?: string | undefined;
+  readonly CHARTWARDEN_MFA_RELAXATION_REASON?: string | undefined;
   readonly NODE_ENV?: string | undefined;
-}): boolean {
-  return env.CHARTWARDEN_MFA_ENFORCEMENT === "true";
+};
+
+/**
+ * Whether the server enforces the matrix. ENFORCED BY DEFAULT (CW-AC-45): a deployment that says nothing enforces
+ * it, and only the exact value `CHARTWARDEN_MFA_ENFORCEMENT=false` relaxes it, so a typo, a stray capital or a
+ * missing variable can never turn a privileged-factor control off. In production the relaxation also needs
+ * {@link MFA_RELAXATION_REASON_ENV} (`collectEnvProblems` refuses to boot without it) and the boot writes
+ * `m2.auth.mfa_enforcement_relaxed` to the audit trail.
+ *
+ * The enrolment path that the previous opt-in default waited for now exists: a held session reaches `/api/auth/*`
+ * (passkey registration, TOTP enrolment), `select-organization` answers 403 `MFA_ENROLMENT_REQUIRED` with the
+ * requirement in the message, and apps/web links that refusal to the chromeless `/login/passkey`.
+ */
+export function resolveMfaEnforcement(env: MfaEnforcementEnv): boolean {
+  return env.CHARTWARDEN_MFA_ENFORCEMENT !== MFA_ENFORCEMENT_RELAXED_VALUE;
+}
+
+/** The recorded reason for a relaxation, trimmed and capped; null when none was given. */
+export function mfaRelaxationReason(env: MfaEnforcementEnv): string | null {
+  const reason = env.CHARTWARDEN_MFA_RELAXATION_REASON?.trim();
+  return reason ? reason.slice(0, MFA_RELAXATION_REASON_MAX_LENGTH) : null;
 }

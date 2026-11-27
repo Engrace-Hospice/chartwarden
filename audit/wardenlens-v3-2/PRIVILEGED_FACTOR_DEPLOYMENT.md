@@ -1,5 +1,11 @@
 # Privileged-factor deployment evidence
 
+> **Update (CW-AC-45, code change on branch, not yet verified in production):** the server now enforces the second-factor
+> matrix **by default**; only the exact value `CHARTWARDEN_MFA_ENFORCEMENT=false` relaxes it, and in production that also needs
+> `CHARTWARDEN_MFA_RELAXATION_REASON` and is audited at boot. Where this record says "only lowercase `true` enables it",
+> read "anything but `false` enforces it". The steps and the 2026-11-25 results below are unchanged history. Rollout order and
+> the bounded relaxation: [`docs/runbooks/mfa-enforcement-rollout.md`](../../docs/runbooks/mfa-enforcement-rollout.md).
+
 Status: VERIFIED on 2026-11-25 for the platform account `orgadmin@chartwarden.local`; the `superadmin` items are N/A until a
 grant (step 10). The operator ran the production commands and pasted their output; the three browser checks are operator-reported
 (not independently observed). `CHARTWARDEN_MFA_ENFORCEMENT` is read by the release already in production, so it was verified
@@ -74,7 +80,8 @@ Findings, 2026-11-25 (an operator ran the read-only checks below on the producti
    session must be refused at organization selection (`403 MFA_ENROLMENT_REQUIRED`); a passkey sign-in on the web app must
    succeed; on the console, password sign-in followed by the `/step-up` passkey must reach the console.
 8. **If anyone is locked out,** remove the `CHARTWARDEN_MFA_ENFORCEMENT` line (or set it to anything but `true`) and repeat
-   step 5.
+   step 5. **Superseded by CW-AC-45:** that no longer relaxes anything (a missing or non-`false` value now enforces). Relax with
+   `CHARTWARDEN_MFA_ENFORCEMENT=false` plus `CHARTWARDEN_MFA_RELAXATION_REASON`, as the runbook's "Relaxing for a bounded window" says.
 9. **Fill in the fields below,** commit this file, push, then tell Claude so it can update the CW-AC-45 gap text. The merge
    still needs an explicit go-ahead.
 10. **Later, as its own change ticket:** grant `superadmin` (OPS_RUNBOOK §16.5) only after the variable result above is PASS.

@@ -796,6 +796,21 @@ export interface IdentityRouteDeps {
       organizationId: string;
       membershipId: string;
     }): Promise<{ satisfied: boolean; requirement: string; reason?: string }>;
+    /**
+     * CW-AC-45 - told, before the 403, that this attempt to bind an organization was refused. This is the usual FIRST
+     * refusal (a password-only admin cannot bind), which the authenticate hook never sees because the session is not
+     * org-bound yet. The callback records it (sampled per session) and logs its own failure; it never changes the answer.
+     */
+    onRefused?(input: {
+      userId: string;
+      sessionId: string;
+      organizationId: string;
+      requirement: string;
+      reason: string;
+      method: string;
+      routeTemplate: string;
+      ipPrefix: string;
+    }): void | Promise<void>;
   };
 }
 

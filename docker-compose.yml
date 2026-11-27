@@ -185,6 +185,10 @@ services:
       CLAMD_PORT: "3310"
       BETTER_AUTH_URL: http://localhost:3000
       BETTER_AUTH_SECRET: chartwarden-local-compose-dev-secret-not-for-production-use
+      # The server-side MFA matrix is ENFORCED BY DEFAULT in code (CW-AC-45). This synthetic demo seeds password-only staff
+      # (no authenticator, no passkey), so it relaxes the matrix explicitly; the boot logs the relaxation and audits it.
+      # Delete this line to see the real behaviour: a password-only admin is held with 403 MFA_ENROLMENT_REQUIRED.
+      CHARTWARDEN_MFA_ENFORCEMENT: "false"
       TRUSTED_ORIGINS: http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:5175
       # Local-only KEK for the synthetic tenant's envelope-encrypted PHI. Production supplies its
       # own key from .env.production; this default exists so the documented Compose demo can finalize
