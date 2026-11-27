@@ -10,6 +10,7 @@ describe("assembleErrorMessage", () => {
     ["WAGE_INDEX_UNAVAILABLE", 422, /wage-index factor/],
     ["RATE_TABLE_MISSING", 422, /hospice rate table/],
     ["RATE_TABLE_LABOR_SHARE_MISSING", 422, /labor shares/],
+    ["CHC_HOURLY_RATE_INVALID", 422, /Service Intensity Add-on/],
     ["SEQUESTRATION_POLICY_UNAVAILABLE", 422, /Sequestration Policy/],
     ["CHC_HOURS_UNPRICEABLE", 422, /Continuous home care/],
     ["VALIDATION_FAILED", 422, /service-to date/],
