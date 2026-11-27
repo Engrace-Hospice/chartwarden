@@ -352,7 +352,10 @@ docker compose --env-file .env.production -f compose.yml -f compose.object-copy.
 
 Each failed run posts `object_copy.failed` to `OPS_ALERT_WEBHOOK_URL` (counts and bucket/key ids, never content); the
 container turns unhealthy when no run has been clean for three intervals. Restore from the copy into a primary with
-`--restore` (never deletes): run `scripts/object-store-copy.ts --restore` with `SOURCE_S3_*` = the replica and
+`--restore` (never deletes, except the objects a destruction-tombstone list names and only with `--apply-tombstones`, at most
+100 per run: export it first with `scripts/storage/object-tombstones.ts` and pass `--tombstones <file>`,
+`docs/runbooks/object-destruction-copies.md`): run
+`scripts/object-store-copy.ts --restore` with `SOURCE_S3_*` = the replica and
 `TARGET_S3_*` = the primary's admin, then the `tenant-buckets` backfill (the copy carries objects, not bucket
 versioning or expiry rules). Stop `object-copy` first and keep it stopped until the restore and the per-bucket object
 counts check out (a nearly restored primary can sit under the sync's mass-delete guard, which would then delete the

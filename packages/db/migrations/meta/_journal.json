@@ -2521,6 +2521,13 @@
       "when": 1795700000001,
       "tag": "1559_m34_platform_ops_role_split",
       "breakpoints": true
+    },
+    {
+      "idx": 360,
+      "version": "7",
+      "when": 1795800000000,
+      "tag": "1560_m22_object_destruction_tombstone",
+      "breakpoints": true
     }
   ]
 }

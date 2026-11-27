@@ -938,6 +938,7 @@ export const MODULES: ModuleDef[] = [
       "intake_records_request",
       "intake_records_request_fax",
       "intake_upload_batch",
+      "object_destruction_tombstone",
       "tenant_template_overlay",
     ],
   },

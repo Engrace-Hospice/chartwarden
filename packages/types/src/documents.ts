@@ -288,7 +288,8 @@ export type M22TableName =
   | "extraction_discrepancy"
   | "extraction_review"
   | "extraction_decision"
-  | "extraction_provenance";
+  | "extraction_provenance"
+  | "object_destruction_tombstone";
 
 /** Per-table audit denylist (§3.6, M11 D11 pattern). Free-text PHI / tenant-confidential / structural
  * columns that must NOT enter `audit_event.before/after` values — the M4 trigger substitutes a
@@ -301,6 +302,8 @@ export const M22_AUDIT_DENYLIST: { readonly [K in M22TableName]: readonly string
   document_tag: ["tag_value"],
   document_access_log: ["purpose", "recipient_class"],
   document_legal_hold: [],
+  // CW-DS-01 (migration 1560) — the record of a destroyed object: the key carries the patient's opaque id, so the insert's audit snapshot scrubs it.
+  object_destruction_tombstone: ["object_key"],
   form_template: [],
   // `payload_schema` is a serialized TypeBox RENDER CONTRACT (field structure — types/labels/validation
   // rules), not patient data — the table's own schema comment (packages/db/src/schema/documents/
