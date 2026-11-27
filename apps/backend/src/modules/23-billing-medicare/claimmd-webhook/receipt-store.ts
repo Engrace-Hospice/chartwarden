@@ -9,7 +9,11 @@
 import { createHash } from "node:crypto";
 import type { DbClient } from "@chartwarden/db";
 import type { WebhookPayloadCipher } from "@chartwarden/shared";
-import { type ClaimMdDelivery, parseClaimMdDelivery } from "@chartwarden/x12-837-client";
+import {
+  type ClaimMdDelivery,
+  claimMdReceiptOutcome,
+  parseClaimMdDelivery,
+} from "@chartwarden/x12-837-client";
 import { sql } from "drizzle-orm";
 
 export type ClaimMdUsage = "test" | "production";
@@ -65,7 +69,7 @@ function rowsOf(delivery: ClaimMdDelivery, rawBody: Buffer): ReceiptRow[] {
     eventType: e.eventType,
     eventTime: e.eventTime,
     plaintext: e.element,
-    outcome: e.malformed ? "malformed" : e.eventType === "test" ? "test_ack" : null,
+    outcome: claimMdReceiptOutcome(e),
   }));
 }
 

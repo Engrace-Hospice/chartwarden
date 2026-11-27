@@ -21,6 +21,7 @@ import { auditPlatformEvent } from "@chartwarden/audit";
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import { createWebhookPayloadCipher } from "@chartwarden/shared";
 import { registerPlatformJob, withPlatformContext } from "@chartwarden/tenancy";
+import { parseClaimMdCapture } from "@chartwarden/x12-837-client";
 import { type SQL, sql } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -366,6 +367,68 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ received: 3 });
     expect(await rows()).toHaveLength(2);
+  });
+
+  it("stores a delivery once however often and however concurrently the same signed bytes arrive, and only the new events of a partly new batch", async () => {
+    const body = delivery([enroll("r1"), enroll("r2")]);
+    const burst = await Promise.all(Array.from({ length: 8 }, () => post(body)));
+    expect(burst.map((r) => r.statusCode)).toEqual(Array(8).fill(200));
+    expect(burst.map((r) => r.json())).toEqual(Array(8).fill({ received: 2 }));
+    expect((await rows()).map((r) => r.event_id)).toEqual(["r1", "r2"]);
+
+    expect((await post(body)).statusCode).toBe(200); // a replay later: nothing new
+    expect((await post(delivery([enroll("r2"), enroll("r3")]))).json()).toEqual({ received: 2 });
+    expect((await rows()).map((r) => r.event_id)).toEqual(["r1", "r2", "r3"]);
+
+    // the same bytes with one byte changed fail the signature and store nothing
+    const forged = body.replace('"enrollid":"77"', '"enrollid":"78"');
+    expect(forged).not.toBe(body);
+    const refused = await post(forged, { "auth-signature-base64": sign(body) });
+    expect(refused.statusCode).toBe(401);
+    expect(await rows()).toHaveLength(3);
+  });
+
+  it("accepts every committed synthetic capture through the real route and store, each once, and a second replay adds nothing", async () => {
+    const dir = join(
+      __dirname,
+      "../../../packages/x12-837-client/src/clearinghouse/__fixtures__/claimmd-webhook",
+    );
+    const captures = readdirSync(dir)
+      .filter((f) => f.endsWith(".capture.json"))
+      .sort()
+      .map((f) => {
+        const parsed = parseClaimMdCapture(JSON.parse(readFileSync(join(dir, f), "utf8")));
+        if (!parsed.ok) throw new Error(`${f}: ${parsed.reason}`);
+        return parsed;
+      });
+    expect(captures).toHaveLength(4);
+    const replayAll = async () => {
+      const answers: unknown[] = [];
+      for (const { capture, rawBody } of captures) {
+        const { "content-length": _declared, ...headers } = capture.headers;
+        const res = await app.inject({ method: "POST", url: URL_TEST, payload: rawBody, headers });
+        expect(res.statusCode, capture.path).toBe(200);
+        answers.push(res.json());
+      }
+      return answers;
+    };
+
+    expect(await replayAll()).toEqual([
+      { received: 1 },
+      { received: 1 },
+      { received: 4 },
+      { received: 1 },
+    ]);
+    const stored = await rows();
+    expect(stored).toHaveLength(7);
+    // a test event settles on receipt, an element with no eventid is terminal malformed, the rest wait for the sweep
+    const outcome = (id: string) => stored.find((r) => r.event_id === id)?.processing_outcome;
+    expect(outcome("1001")).toBe("test_ack");
+    expect(stored.filter((r) => r.processing_outcome === "malformed")).toHaveLength(1);
+    expect(stored.filter((r) => r.processed_at === null)).toHaveLength(5);
+
+    await replayAll();
+    expect(await rows()).toHaveLength(7);
   });
 
   it("settles a test event terminal on receipt and logs usage and account only", async () => {

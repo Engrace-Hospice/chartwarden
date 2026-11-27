@@ -1,0 +1,14 @@
+{
+  "format": "claimmd-webhook-capture/1",
+  "receivedAt": "2026-11-05T12:00:03.000Z",
+  "method": "POST",
+  "path": "/api/v1/webhooks/claimmd/test",
+  "headers": {
+    "auth-signature-base64": "4YjXpd78Xlg3cxpFTusKxj4bQ8UAmRfWlwL6SzkJRms=",
+    "content-type": "application/json",
+    "content-length": "740",
+    "user-agent": "synthetic-fixture"
+  },
+  "otherHeaderNames": [],
+  "bodyBase64": "eyJVVENUaW1lIjoiMjAyNi0xMS0wNSAxMjowMDowMCIsImFjY3RfbnVtYmVyIjoiOTk5OTkiLCJldmVudHMiOlt7ImV2ZW50aWQiOjMwMDEsImV2ZW50X3R5cGUiOiJlbnJvbGwiLCJldmVudF90aW1lIjoiMjAyNi0xMS0wNSAxMjowMDowMCIsImV2ZW50X2RhdGEiOnsiZW5yb2xsIjp7ImVucm9sbGlkIjoiNzciLCJldmVudCI6ImVucm9sbGVkIiwiZW5yb2xsX3R5cGUiOiJlcmEiLCJwcm92X25waSI6IjExMTExMTExMTIiLCJwYXllcmlkIjoiU1lOMDEifX19LHsiZXZlbnRpZCI6IjMwMDIiLCJldmVudF90eXBlIjoiYXBwZWFsIiwiZXZlbnRfdGltZSI6IjIwMjYtMTEtMDUgMTI6MDA6MDAiLCJldmVudF9kYXRhIjp7ImFwcGVhbCI6eyJhcHBlYWxpZCI6IkEtNTAxIiwicmVtb3RlX2NsYWltaWQiOiJTWU5USENUUkwwMDAxIiwiZXZlbnQiOiJyZWNlaXZlZCIsImFwcGVhbF90eXBlIjoiZWxlY3Ryb25pYyJ9fX0seyJldmVudGlkIjoiMzAwMyIsImV2ZW50X3R5cGUiOiJicmFuZF9uZXciLCJldmVudF90aW1lIjoiMjAyNi0xMS0wNSAxMjowMDowMCIsImV2ZW50X2RhdGEiOnsiZW5yb2xsIjp7ImVucm9sbGlkIjoiNzciLCJldmVudCI6ImVucm9sbGVkIiwiZW5yb2xsX3R5cGUiOiJlcmEiLCJwcm92X25waSI6IjExMTExMTExMTIiLCJwYXllcmlkIjoiU1lOMDEifX19LHsiZXZlbnRfdHlwZSI6ImVucm9sbCIsImV2ZW50X3RpbWUiOiIyMDI2LTExLTA1IDEyOjAwOjAwIiwiZXZlbnRfZGF0YSI6e319XX0="
+}

@@ -400,10 +400,35 @@ export {
   CLAIMMD_EVENT_ID_MAX,
   CLAIMMD_MAX_SPLIT_EVENTS,
   CLAIMMD_SIGNATURE_HEADER,
+  claimMdReceiptOutcome,
+  classifyClaimMdSignature,
   parseClaimMdDelivery,
   verifyClaimMdSignature,
 } from "./clearinghouse/claimmd-webhook";
-export type { ClaimMdDelivery, ClaimMdDeliveryEvent } from "./clearinghouse/claimmd-webhook";
+export type {
+  ClaimMdDelivery,
+  ClaimMdDeliveryEvent,
+  ClaimMdSignatureVerdict,
+} from "./clearinghouse/claimmd-webhook";
+export {
+  CLAIMMD_CAPTURE_FORMAT,
+  CLAIMMD_CAPTURE_MAX_BODY_BYTES,
+  buildClaimMdCapture,
+  parseClaimMdCapture,
+} from "./clearinghouse/claimmd-webhook-capture";
+export type {
+  ClaimMdCapture,
+  ParsedClaimMdCapture,
+} from "./clearinghouse/claimmd-webhook-capture";
+export {
+  CLAIMMD_WEBHOOK_FIELDS_UNVERIFIED,
+  analyzeClaimMdCapture,
+  renderClaimMdReplayReport,
+} from "./clearinghouse/claimmd-webhook-replay";
+export type {
+  ClaimMdReplayReport,
+  ClaimMdReportEvent,
+} from "./clearinghouse/claimmd-webhook-replay";
 export { scopeKey } from "./clearinghouse/submission-identity";
 export { CLEARINGHOUSE_USAGE_ENV, clearinghouseUsageFromEnv } from "./clearinghouse/usage";
 export {

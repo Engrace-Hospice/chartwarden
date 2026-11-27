@@ -6,7 +6,7 @@
 //   - body {UTCTime, acct_number, remote_acct_number?, events: [{eventid, event_type, event_time, event_data}]}, 1..100
 //     events; delivery is at least once, deduped on (acct_number, eventid).
 // The HMAC runs over the bytes as received (a Buffer), never over a decoded or re-serialised string. After a valid
-// signature the ingress never refuses on content: `parseClaimMdDelivery` always yields something storable.
+// signature the ingress never refuses on content: `parseClaimMdDelivery` yields something storable for any body a sender can send.
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 /** The header, lower-cased as Node exposes it. */
@@ -28,21 +28,41 @@ const EVENT_TYPE_RE = /^[a-z0-9_.-]{1,64}$/i;
  *  time from the encrypted element, so a refused value only drops the plaintext column copy. */
 const EVENT_TIME_RE = /^[\x20-\x7e]{1,64}$/;
 
+/** Why a delivery's signature was or was not accepted. Only `ok` accepts; every other value is the same refusal. */
+export type ClaimMdSignatureVerdict =
+  | "ok"
+  | "no_key"
+  | "header_missing"
+  | "header_malformed"
+  | "mismatch";
+
 /**
- * True only when `header` is one canonical base64 SHA-256 HMAC of `rawBody` under the key's Latin-1 bytes. A missing or
- * repeated header, a wrong length, padding or alphabet, and a non-canonical encoding are all refusals.
+ * The one signature decision. `ok` only when `header` is one canonical base64 SHA-256 HMAC of `rawBody` under the key's Latin-1
+ * bytes. A missing or repeated header, a wrong length, padding or alphabet, and a non-canonical encoding are all refusals; the
+ * verdict names the class (never a value) so a refused delivery can be told apart in a PHI-free log line.
  */
+export function classifyClaimMdSignature(
+  accountKey: string,
+  rawBody: Uint8Array,
+  header: unknown,
+): ClaimMdSignatureVerdict {
+  if (accountKey.length === 0) return "no_key";
+  if (header === undefined) return "header_missing";
+  if (typeof header !== "string" || !SIGNATURE_RE.test(header)) return "header_malformed";
+  const given = Buffer.from(header, "base64");
+  if (given.length !== SHA256_BYTES || given.toString("base64") !== header)
+    return "header_malformed";
+  const expected = createHmac("sha256", Buffer.from(accountKey, "latin1")).update(rawBody).digest();
+  return timingSafeEqual(given, expected) ? "ok" : "mismatch";
+}
+
+/** True only for the `ok` verdict of {@link classifyClaimMdSignature}. */
 export function verifyClaimMdSignature(
   accountKey: string,
   rawBody: Uint8Array,
   header: unknown,
 ): boolean {
-  if (accountKey.length === 0 || typeof header !== "string" || !SIGNATURE_RE.test(header))
-    return false;
-  const given = Buffer.from(header, "base64");
-  if (given.length !== SHA256_BYTES || given.toString("base64") !== header) return false;
-  const expected = createHmac("sha256", Buffer.from(accountKey, "latin1")).update(rawBody).digest();
-  return timingSafeEqual(given, expected);
+  return classifyClaimMdSignature(accountKey, rawBody, header) === "ok";
 }
 
 /** One event element, ready to store. `element` is the element's JSON (encrypted at rest by the caller). */
@@ -55,6 +75,16 @@ export interface ClaimMdDeliveryEvent {
   readonly eventTime: string | null;
   readonly malformed: boolean;
   readonly element: string;
+}
+
+/**
+ * What storing an element settles at once: a test event is acknowledged, a malformed one is terminal, everything else (null)
+ * waits for the sweep. The receipt store and the replay report both read this, so a report cannot disagree with the store.
+ */
+export function claimMdReceiptOutcome(
+  event: Pick<ClaimMdDeliveryEvent, "malformed" | "eventType">,
+): "test_ack" | "malformed" | null {
+  return event.malformed ? "malformed" : event.eventType === "test" ? "test_ack" : null;
 }
 
 export type ClaimMdDelivery =
@@ -115,7 +145,7 @@ function decodeJson(rawBody: Uint8Array): unknown {
   }
 }
 
-/** Split a signed delivery into storable events. Never throws. */
+/** Split a signed delivery into storable events. Throws on no body a sender can send (only a bug in this code would throw). */
 export function parseClaimMdDelivery(rawBody: Uint8Array): ClaimMdDelivery {
   const parsed = decodeJson(rawBody);
   const body = isObject(parsed) ? parsed : {};
@@ -129,10 +159,18 @@ export function parseClaimMdDelivery(rawBody: Uint8Array): ClaimMdDelivery {
   ) {
     return { kind: "unsplittable", acctNumber, bodySha256: sha256(rawBody) };
   }
-  return {
-    kind: "events",
-    acctNumber,
-    remoteAcctNumber: accountOf(body.remote_acct_number),
-    events: events.map(eventOf),
-  };
+  try {
+    return {
+      kind: "events",
+      acctNumber,
+      remoteAcctNumber: accountOf(body.remote_acct_number),
+      events: events.map(eventOf),
+    };
+  } catch (error) {
+    // An element nested deeper than JSON.stringify can serialise (a signed body under the 1 MiB limit can be) throws a RangeError
+    // here, which would answer 5xx and be retried for four days. Store the whole body as the one malformed receipt instead (the
+    // other events of that batch then wait for no sweep). Anything else is a real bug and must stay loud.
+    if (!(error instanceof RangeError)) throw error;
+    return { kind: "unsplittable", acctNumber, bodySha256: sha256(rawBody) };
+  }
 }

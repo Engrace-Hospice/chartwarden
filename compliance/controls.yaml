@@ -1788,8 +1788,39 @@ controls:
       - ci: "M23 Claim.MD webhook"
       - file: packages/x12-837-client/src/clearinghouse/claimmd-webhook.test.ts
       - file: apps/backend/src/modules/23-billing-medicare/claimmd-webhook/routes.ts
+      - file: apps/backend/__tests__/m23-claimmd-webhook-route.test.ts
+      - file: apps/backend/__tests__/m23-claimmd-webhook.live.test.ts
+      - file: apps/backend/__tests__/m23-claimmd-webhook-replay.test.ts
+      - file: apps/backend/src/modules/23-billing-medicare/claimmd-webhook/replay.ts
+      - file: packages/x12-837-client/src/clearinghouse/claimmd-webhook-capture.ts
+      - file: packages/x12-837-client/src/clearinghouse/claimmd-webhook-replay.ts
+      - file: packages/x12-837-client/src/clearinghouse/claimmd-webhook-replay.test.ts
+      - file: packages/x12-837-client/src/clearinghouse/__fixtures__/claimmd-webhook/README.md
+      - file: scripts/claimmd-webhook-capture.ts
+      - file: scripts/claimmd-webhook-replay.ts
+      - file: docs/runbooks/claimmd-webhook-first-delivery.md
     gap:
-      reason: The signature scheme and payload shape follow Claim.MD's documentation and are proven against our own signed fixtures only; no real Claim.MD delivery has been captured yet (questions sent to Claim.MD). CLAIMMD_WEBHOOK_ENABLED stays false until one is.
+      reason: >-
+        The signature scheme and payload shape follow Claim.MD's documentation and are proven against our own signed fixtures
+        only; no real Claim.MD delivery has been captured yet (questions sent to Claim.MD). CLAIMMD_WEBHOOK_ENABLED stays false
+        until one is. What now lets the first one be checked without a code change: a loopback-only capture listener
+        (claimmd:webhook:capture, run by an operator) and an offline replay (claimmd:webhook:replay) that runs the real route in
+        process and reports, with no field value, whether the signature verifies, which alternative reading of the scheme WOULD
+        have (hex or base64url digest, a sha256= prefix, a trailing newline, re-serialised JSON, gunzipped bytes, a trimmed or
+        UTF-8 key), how the body splits into events and where it departs from the documented shape. Every vendor field name the
+        receiver and the sweep read is listed as UNVERIFIED (CLAIMMD_WEBHOOK_FIELDS_UNVERIFIED, kept in step with the sweep by a
+        test) and the four synthetic fixtures are built from the documented format. A refused delivery now leaves a PHI-free
+        claimmd.webhook.refused warning naming the class (header_missing, header_malformed, mismatch, no_key). A signed element
+        too deeply nested to serialise (reproduced under Bun with a body under 1 MiB) is stored whole as one malformed receipt
+        instead of throwing into a 5xx retry loop (the other events of that batch then wait for no sweep, and nothing logs it);
+        only a RangeError is caught, and the guard is tested by forcing the throw. Replay and duplicate
+        handling is proven live over real Postgres, including eight concurrent posts of the same signed bytes (stored once) and
+        a partly new batch (only the new events stored); a changed byte is refused. There is deliberately no timestamp window,
+        because the format and zone of UTCTime are unverified and Claim.MD retries for four days, so replay protection is the
+        event-id deduplication alone: a captured signed delivery that is re-sent is absorbed, not rejected. Still open, and
+        needing the user: a real test-account delivery (runbooks/claimmd-webhook-first-delivery.md), which alone confirms the
+        scheme, the field names, the UTCTime format and whether Claim.MD compresses the body or adds headers; everything above
+        is synthetic until then.
       owner: engineering
       review_by: 2027-01-31
   - id: CW-TX-03
