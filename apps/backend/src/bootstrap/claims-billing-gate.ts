@@ -5,12 +5,18 @@
 // fail). It reads the `ClaimsBillingEntitlementReader` seam (owner M35) with no cache: the route preHandler memoises
 // the answer per request only. In-flight work never calls it.
 //
-// Enforcement mode, `CLAIMS_BILLING_ENFORCEMENT` = off | shadow | enforce (default shadow):
+// Enforcement mode, `CLAIMS_BILLING_ENFORCEMENT` = off | shadow | enforce (default enforce, CW-AC-24):
 //   off      nothing is evaluated;
-//   shadow   evaluated; a would-deny is logged (org id + route/queue only) and the work goes ahead;
+//   shadow   log-only: evaluated; a would-deny is logged (org id + route/queue only), recorded as a platform audit
+//            finding (`recordFinding`, once per org, site and reason per window) and the work goes ahead;
 //   enforce  a deny refuses the request (402 CLAIMS_BILLING_ADDON_REQUIRED) or holds the job.
 // A failed entitlement read in `enforce` fails CLOSED (503 BILLING_ENTITLEMENT_UNAVAILABLE / hold); in `shadow` it is
-// logged and the work goes ahead. Boot refuses a non-`off` mode while the seam is still the deny-stub.
+// logged and recorded as a would-fail-closed finding and the work goes ahead. Running below `enforce` in production is
+// a deliberate act (a written reason, audited at boot: ./claims-billing-gate-audit.ts). Boot refuses a non-`off` mode
+// while the seam is still the deny-stub.
+//
+// What shadow would have blocked is the same decision `enforce` makes, exemptions included: a void claim a rule
+// exempts is allowed in both modes and leaves no finding, so the findings are the evidence for a flip.
 import {
   ChartWardenError,
   type ClaimsBillingDenyReason,
@@ -42,16 +48,47 @@ export const CLAIMS_BILLING_ADDON_REQUIRED = "CLAIMS_BILLING_ADDON_REQUIRED";
 export const BILLING_ENTITLEMENT_UNAVAILABLE = "BILLING_ENTITLEMENT_UNAVAILABLE";
 
 type GateLog = (message: string, detail: Record<string, unknown>) => void;
+
+/** What log-only mode would have done instead of letting the work through (never a patient or claim id). */
+export type GateFindingOutcome = "would_deny" | "would_fail_closed";
+
+/** The `reason` of a `would_fail_closed` finding: the entitlement read itself failed. */
+export const ENTITLEMENT_UNAVAILABLE_REASON = "entitlement_unavailable";
+
+export interface GateFinding extends GateSite {
+  readonly organizationId: string;
+  readonly outcome: GateFindingOutcome;
+  readonly reason: ClaimsBillingDenyReason | typeof ENTITLEMENT_UNAVAILABLE_REASON;
+}
+
+/** Persists one finding (the composition root binds a platform audit write). A throw is logged and retried after FINDING_RETRY_MS. */
+export type GateFindingSink = (finding: GateFinding) => Promise<void>;
+
+/** A finding for the same org, site and reason is written once per window (the log line is not throttled). */
+export const FINDING_DEDUPE_MS = 60 * 60_000;
+/** After a failed write the same finding is tried again no sooner than this, so an audit outage is not a write per request. */
+export const FINDING_RETRY_MS = 60_000;
+// ponytail: per-process dedupe, oldest key evicted past this many; a durable counter if the volume ever matters.
+export const MAX_FINDING_KEYS = 10_000;
+
 let mode: ClaimsBillingEnforcementMode = DEFAULT_CLAIMS_BILLING_ENFORCEMENT;
 let log: GateLog = () => {};
+let findingSink: GateFindingSink | undefined;
+const findingSeen = new Map<string, number>();
 
-/** Bind the mode and the logger (composition root, once at boot; tests may call it again). */
+/**
+ * Bind the mode, the logger and the finding sink (composition root, once at boot; tests may call it again). The sink is
+ * rebound on every call, so a reconfigure without one drops the previous one.
+ */
 export function configureClaimsBillingGate(opts: {
   readonly mode: ClaimsBillingEnforcementMode;
   readonly log?: GateLog;
+  readonly recordFinding?: GateFindingSink;
 }): void {
   mode = opts.mode;
   if (opts.log) log = opts.log;
+  findingSink = opts.recordFinding;
+  findingSeen.clear();
 }
 
 export function claimsBillingEnforcementMode(): ClaimsBillingEnforcementMode {
@@ -69,15 +106,19 @@ export function assertClaimsBillingSeamBound(current: ClaimsBillingEnforcementMo
 }
 
 /**
- * Owner decision (round 2, Q2): `shadow` stays the default, but a production deployment running anything other than `enforce`
- * should say so at boot (a refusal there is only logged), once, loudly. Null when there is nothing to say.
+ * CW-AC-24: `enforce` is the default, so a production deployment running anything else chose it on purpose (and gave a
+ * reason, see `claimsBillingLogOnlyReasonProblem`). It still says so at boot, once, loudly. Null when there is nothing to say.
  */
 export function claimsBillingEnforcementBootWarning(
   current: ClaimsBillingEnforcementMode,
   nodeEnv: string | undefined,
 ): string | null {
   if (nodeEnv !== "production" || current === "enforce") return null;
-  return `${CLAIMS_BILLING_ENFORCEMENT_ENV}=${current} on a production deployment: a tenant whose clearinghouse is not live (or whose subscription is suspended) is NOT refused new claims work, only logged; set it to 'enforce' to refuse`;
+  const what =
+    current === "off"
+      ? "nothing is evaluated, logged or recorded, so there is no would_block evidence for a flip"
+      : "it is only logged and recorded as an m23.claims_billing_gate.would_block audit finding";
+  return `${CLAIMS_BILLING_ENFORCEMENT_ENV}=${current} on a production deployment: a tenant whose clearinghouse is not live (or whose subscription is suspended) is NOT refused new claims work; ${what}; unset it (or set 'enforce') to refuse`;
 }
 
 /** Where the decision was asked from — logged on a shadow would-deny (never a patient or claim id). */
@@ -90,15 +131,19 @@ export type GateVerdict =
   | { readonly allow: true }
   | { readonly allow: false; readonly reason: ClaimsBillingDenyReason };
 
-/**
- * The mode-aware decision. Throws ChartWardenError 503 BILLING_ENTITLEMENT_UNAVAILABLE when the read fails in
- * `enforce` (the caller fails closed); allows on a failed read in `shadow` (logged).
- */
-export async function claimsBillingVerdict(
+/** What `enforce` would do with this request, before the mode decides whether to apply it. */
+type Decision =
+  | { readonly kind: "allow" }
+  | { readonly kind: "deny"; readonly reason: ClaimsBillingDenyReason }
+  | { readonly kind: "unavailable" };
+
+const ALLOW: GateVerdict = { allow: true };
+
+async function decide(
   organizationId: string,
   site: GateSite,
-): Promise<GateVerdict> {
-  if (mode === "off") return { allow: true };
+  exempt: ClaimsBillingExemption | undefined,
+): Promise<Decision> {
   let entitlement: ClaimsBillingEntitlement;
   try {
     entitlement = await getSeam("ClaimsBillingEntitlementReader").entitlementForOrg(organizationId);
@@ -109,23 +154,93 @@ export async function claimsBillingVerdict(
       mode,
       error: err instanceof Error ? err.message : String(err),
     });
-    if (mode === "shadow") return { allow: true };
-    throw new ChartWardenError(
-      BILLING_ENTITLEMENT_UNAVAILABLE,
-      "the claims-billing entitlement could not be read; new claims work is refused until it can",
-      503,
-    );
+    return (await isExempt(exempt, organizationId, site))
+      ? { kind: "allow" }
+      : { kind: "unavailable" };
   }
-  if (entitlement.entitled) return { allow: true };
-  if (mode === "shadow") {
+  if (entitlement.entitled) return { kind: "allow" };
+  return (await isExempt(exempt, organizationId, site))
+    ? { kind: "allow" }
+    : { kind: "deny", reason: entitlement.reason };
+}
+
+/**
+ * Log-only: record what `enforce` would have done. The log line is not throttled; the audit finding is written once
+ * per org, site and reason per window, and a failed write is logged and retried after FINDING_RETRY_MS (never fatal here).
+ */
+async function recordLogOnlyFinding(finding: GateFinding): Promise<void> {
+  if (finding.outcome === "would_deny") {
     log("claims-billing would deny (shadow)", {
-      organizationId,
-      ...site,
-      reason: entitlement.reason,
+      organizationId: finding.organizationId,
+      ...(finding.route === undefined ? {} : { route: finding.route }),
+      ...(finding.queue === undefined ? {} : { queue: finding.queue }),
+      reason: finding.reason,
     });
-    return { allow: true };
   }
-  return { allow: false, reason: entitlement.reason };
+  if (!findingSink) return;
+  const key = [
+    finding.organizationId,
+    finding.route ?? "",
+    finding.queue ?? "",
+    finding.reason,
+  ].join("|");
+  const now = Date.now();
+  const last = findingSeen.get(key);
+  if (last !== undefined && now - last < FINDING_DEDUPE_MS) return;
+  if (findingSeen.size >= MAX_FINDING_KEYS) {
+    const oldest = findingSeen.keys().next();
+    if (!oldest.done) findingSeen.delete(oldest.value);
+  }
+  findingSeen.delete(key); // re-insert, so Map order is write order and the oldest key is the first
+  findingSeen.set(key, now); // before the write, so two concurrent hits write one row
+  try {
+    await findingSink(finding);
+  } catch (err) {
+    // back-dated, so the next try is FINDING_RETRY_MS away rather than a write on every request while the audit write fails
+    findingSeen.set(key, now - FINDING_DEDUPE_MS + FINDING_RETRY_MS);
+    log("claims-billing finding not recorded", {
+      organizationId: finding.organizationId,
+      ...(finding.route === undefined ? {} : { route: finding.route }),
+      ...(finding.queue === undefined ? {} : { queue: finding.queue }),
+      reason: finding.reason,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * The mode-aware decision. `exempt` (a rule's carve-out, consulted only when the org would be refused or its read failed)
+ * is part of the decision in every mode, so log-only records exactly what `enforce` would block. Throws ChartWardenError
+ * 503 BILLING_ENTITLEMENT_UNAVAILABLE when the read fails in `enforce` (the caller fails closed); allows on a failed read
+ * in `shadow` (logged and recorded).
+ */
+export async function claimsBillingVerdict(
+  organizationId: string,
+  site: GateSite,
+  exempt?: ClaimsBillingExemption,
+): Promise<GateVerdict> {
+  if (mode === "off") return ALLOW;
+  const decision = await decide(organizationId, site, exempt);
+  if (decision.kind === "allow") return ALLOW;
+  if (mode === "shadow") {
+    await recordLogOnlyFinding(
+      decision.kind === "deny"
+        ? { organizationId, ...site, outcome: "would_deny", reason: decision.reason }
+        : {
+            organizationId,
+            ...site,
+            outcome: "would_fail_closed",
+            reason: ENTITLEMENT_UNAVAILABLE_REASON,
+          },
+    );
+    return ALLOW;
+  }
+  if (decision.kind === "deny") return { allow: false, reason: decision.reason };
+  throw new ChartWardenError(
+    BILLING_ENTITLEMENT_UNAVAILABLE,
+    "the claims-billing entitlement could not be read; new claims work is refused until it can",
+    503,
+  );
 }
 
 /**
@@ -192,23 +307,7 @@ async function isExempt(
   return true;
 }
 
-/** The verdict with an exemption folded in: a refused (or unreadable, in `enforce`) org passes when the work is exempt. */
-async function verdictWithExemption(
-  organizationId: string,
-  site: GateSite,
-  exempt: ClaimsBillingExemption | undefined,
-): Promise<GateVerdict> {
-  let verdict: GateVerdict;
-  try {
-    verdict = await claimsBillingVerdict(organizationId, site);
-  } catch (err) {
-    if (await isExempt(exempt, organizationId, site)) return { allow: true };
-    throw err;
-  }
-  if (verdict.allow || !(await isExempt(exempt, organizationId, site))) return verdict;
-  return { allow: true };
-}
-
+const UNMATCHED_ROUTE = "(unmatched route)";
 const memo = new WeakMap<FastifyRequest, Promise<GateVerdict>>();
 
 declare module "fastify" {
@@ -229,9 +328,10 @@ export async function claimsBillingPreHandler(request: FastifyRequest): Promise<
   let pending = memo.get(request);
   if (!pending) {
     const exemption = request.routeOptions.config?.claimsBillingExemption;
-    pending = verdictWithExemption(
+    pending = claimsBillingVerdict(
       organizationId,
-      { route: `${request.method} ${request.routeOptions.url ?? request.url}` },
+      // the registered route template, never the raw URL (a path id or query string would land in the audit finding)
+      { route: `${request.method} ${request.routeOptions.url ?? UNMATCHED_ROUTE}` },
       exemption ? () => exemption(request) : undefined,
     );
     memo.set(request, pending);
@@ -365,7 +465,7 @@ export async function holdUnlessClaimsBillingEntitled(
   opts: { readonly exempt?: ClaimsBillingExemption; readonly now?: () => number } = {},
 ): Promise<void> {
   const { exempt, now = Date.now } = opts;
-  const allowed = await verdictWithExemption(organizationId, { queue }, exempt).then(
+  const allowed = await claimsBillingVerdict(organizationId, { queue }, exempt).then(
     (v) => v.allow,
     () => false, // already logged; fail closed without failing the job
   );

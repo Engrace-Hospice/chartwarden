@@ -1,5 +1,5 @@
 // A claim job for an org whose clearinghouse is not live is HELD before it runs (no DLQ, no half-written claim), whatever the
-// claims-billing enforcement mode says (shadow is the default, and shadow lets the work through the gate).
+// claims-billing enforcement mode says (these tests run in shadow, which lets the work through the gate; enforce is the default).
 import { ChartWardenError } from "@chartwarden/types";
 import {
   type ClearinghouseBinding,

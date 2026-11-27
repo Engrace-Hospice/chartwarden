@@ -74,7 +74,12 @@ vi.mock("../services/submission-service", async () => {
   };
 });
 
+import { configureClaimsBillingGate } from "../../../bootstrap/claims-billing-gate";
 import { runSubmissionDrain } from "./submission-worker";
+
+// The drain asks the claims-billing gate first; an unconfigured gate enforces (CW-AC-24) and its entitlement seam is unbound here.
+// This file is about the per-org transport, so the gate stays out of the way.
+beforeEach(() => configureClaimsBillingGate({ mode: "off" }));
 
 const syntheticClaimX12 = readFileSync(
   new URL(
