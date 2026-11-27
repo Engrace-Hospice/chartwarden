@@ -77,7 +77,7 @@ import {
 import { __resetClearinghouseAlertMemoryForTest } from "../src/modules/23-billing-medicare/jobs/clearinghouse-unbound-hold";
 import { holdBeforeRun } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
 import {
-  buildDrizzleOrgMacJurisdictionReader,
+  buildDrizzleOrgMacCredentialReader,
   buildMacFeedConfiguredReader,
 } from "../src/modules/23-billing-medicare/jobs/mac-jurisdictions";
 import { M23_QUEUES } from "../src/modules/23-billing-medicare/jobs/queues";
@@ -497,7 +497,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         orgSeed: buildOrgSeedFactsReader(tenantPool.db),
         orgAdminCount: buildOrgAdminCountReader(tenantPool.db),
         macFeedConfigured: buildMacFeedConfiguredReader(
-          buildDrizzleOrgMacJurisdictionReader(tenantPool.db),
+          buildDrizzleOrgMacCredentialReader(tenantPool.db),
         ),
         clearinghouseSettled: async (orgId) => {
           const choice = await getSeam("TenantClearinghouseReader").choiceForOrg(orgId);
