@@ -279,6 +279,10 @@ services:
       PROVISION_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       CHARTWARDEN_PLATFORM_PASSWORD: ${CHARTWARDEN_PLATFORM_PASSWORD:?set in .env.production}
       CHARTWARDEN_DESTRUCTION_PASSWORD: ${CHARTWARDEN_DESTRUCTION_PASSWORD:?set in .env.production}
+      # CW-MON-01 follow-up 2 (migration 1582): the audit.archive job's own login. OPTIONAL: empty = this run neither creates nor rotates
+      # it (an existing login keeps working until the provisioner runs with CHARTWARDEN_AUDIT_ARCHIVE_REVOKE=true); needed only where
+      # AUDIT_ARCHIVE_BUCKET is set. URL-safe (it is spliced into the worker's URL). The platform login can no longer run the archive functions.
+      CHARTWARDEN_AUDIT_ARCHIVE_PASSWORD: ${CHARTWARDEN_AUDIT_ARCHIVE_PASSWORD:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -422,6 +426,9 @@ services:
     command: ["bun", "run", "apps/backend/src/worker.ts"]
     environment:
       WORKER_PORT: "3001"
+      # CW-MON-01 follow-up 2 (migration 1582): the audit.archive job runs on its own login, never on the platform pool. Set only when
+      # CHARTWARDEN_AUDIT_ARCHIVE_PASSWORD is (empty otherwise): with AUDIT_ARCHIVE_BUCKET set and this empty the job fails loudly.
+      DATABASE_AUDIT_ARCHIVE_URL: ${CHARTWARDEN_AUDIT_ARCHIVE_PASSWORD:+postgresql://chartwarden_audit_archive_login:${CHARTWARDEN_AUDIT_ARCHIVE_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}}
       # GAP-043 / M29 §4.11.5 — the listener-health WATCHER (decides listener_down / listener_recovered from the listener's
       # heartbeat + a TCP probe + the newest frame, so a DEAD listener still pages). Read from the SAME variable as the
       # `hl7-listener` service, which stops paging when it is on: turn it on only where the listener runs. The probe host is

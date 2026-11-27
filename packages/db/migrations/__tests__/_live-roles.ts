@@ -25,6 +25,7 @@ export const LIVE_DROP_ROLES: readonly string[] = [
   "chartwarden_body_backfill_login",
   "chartwarden_m25_evaluator_login",
   "chartwarden_m25_era_source_login",
+  "chartwarden_audit_archive_login",
   "chartwarden_platform_live_test",
   "claimmd_capture",
   "wp213_resealer",
@@ -41,6 +42,7 @@ export const LIVE_DROP_ROLES: readonly string[] = [
   "chartwarden_readonly",
   "chartwarden_audit_writer",
   "chartwarden_audit_reviewer",
+  "chartwarden_audit_archiver",
   // pre-1139 names (a stale cluster, or the alias 1139 keeps while something still references it)
   "wardenx_destruction_login",
   "wardenx_platform_login",

@@ -826,6 +826,9 @@ jobs:
           # NOBYPASSRLS chartwarden_app (org lane) and the BYPASSRLS platform login (org-less sign-in events); a failed delivery
           # is recorded and retried, bulk access is aggregated in SQL, and a tenant's events never reach another tenant's review.
           - { name: "M4 security review of the audit trail", scripts: "test:m4:security-review:live" }
+          # CW-MON-01 follow-up 2: the audit.archive functions (a closed month read whole, a closed month detached) belong to a duty role
+          # of their own. The platform login and the tenant pool cannot call them; the archive job on its own login still can.
+          - { name: "M1 audit.archive duty role", scripts: "test:m1:audit-archive-duty:live" }
           - { name: "M3 proposed-role attach (F-097)", scripts: "test:m3:role-attach:live" }
           # AC-03: the §4.3.2/D9 step-up tighten-only invariant. `trg_tenant_step_up_tighten_only`
           # was asserted by name in a code comment and existed in no migration, and nothing had ever

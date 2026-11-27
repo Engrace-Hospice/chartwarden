@@ -172,8 +172,9 @@ import {
 import {
   AUDIT_ARCHIVE_CRON,
   AUDIT_ARCHIVE_QUEUE,
+  AuditArchiveCredentialMissingError,
+  archiveCatalogRunner,
   auditArchiveConfigFromEnv,
-  platformCatalogRunner,
   runAuditArchive,
   wireAuditArchiveTenancy,
 } from "./bootstrap/jobs/audit-archive";
@@ -4095,6 +4096,24 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   if (!destructionDbHandle) {
     console.warn(
       "⚠️  DATABASE_DESTRUCTION_URL is not configured: right-to-erasure paths over append-only tables (clinical core, billing, audit_event) will fail loudly rather than certify undone work.",
+    );
+  }
+  // CW-MON-01 follow-up 2 (migration 1582) — the AUDIT-ARCHIVE credential: a login IN ROLE chartwarden_audit_archiver, the only role that may
+  // call the audit.archive SECURITY DEFINER functions (read a closed audit month whole, detach it). The platform pool above holds no EXECUTE
+  // on them, so the monthly job runs here and nowhere else. Absent, the job is a skip when the archive is not configured and a loud failure
+  // when it is (see the worker below); the pool is never replaced by the platform or tenant pool.
+  const auditArchiveDbHandle = process.env.DATABASE_AUDIT_ARCHIVE_URL
+    ? createDbClient({ connectionString: process.env.DATABASE_AUDIT_ARCHIVE_URL })
+    : undefined;
+  // Said at boot, in the roles that run the job, not first at 03:30 on the 2nd: the archive is switched on (a bucket is set) but has no
+  // credential, so its next run will fail loudly.
+  if (
+    !auditArchiveDbHandle &&
+    (requestedRole === "worker" || requestedRole === "all") &&
+    auditArchiveConfigFromEnv(process.env) !== null
+  ) {
+    console.warn(
+      "⚠️  AUDIT_ARCHIVE_BUCKET is set but DATABASE_AUDIT_ARCHIVE_URL is not: the monthly audit.archive job will fail (it does not fall back to the platform login, which cannot run the archive functions). Provision chartwarden_audit_archive_login and set the URL (docs/runbooks/security-alert-review.md section 7).",
     );
   }
   // WP 5.6 (ADR-0086): the message destruction executor exists only with BOTH the destruction credential and the platform pool (the weekly
@@ -10416,6 +10435,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // Close the separate M35 platform-ops credential pool on shutdown (when configured).
   if (platformDbHandle) app.addHook("onClose", () => platformDbHandle.close());
   if (destructionDbHandle) app.addHook("onClose", () => destructionDbHandle.close());
+  if (auditArchiveDbHandle) app.addHook("onClose", () => auditArchiveDbHandle.close());
 
   // M37 D16 — the AI-prohibited-zone boot validator (§8.6). With a db, M32's real AIPromptRegistry is
   // registered (bootSeams ran inside buildServer), so this asks the D18 table-only query whether any active
@@ -11342,8 +11362,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     // checksummed gzip parts + a manifest, VERIFY them back from the store, and (only if AUDIT_ARCHIVE_DETACH=true)
     // detach the partition. It never drops anything — destruction is M4's certificate-driven act. Unconfigured
     // (no AUDIT_ARCHIVE_BUCKET, or no OBJECT_STORE_* credentials) it is a logged skip: the hot tier keeps everything.
-    // Platform credential, like partition rotation: reading every tenant's audit rows and detaching a partition
-    // are definer-rights functions (migration 0432) that `chartwarden_platform` is granted EXECUTE on.
+    // Its OWN credential, NOT the platform pool: reading every tenant's audit rows and detaching a partition are definer-rights
+    // functions (migration 0432, 1053) that only the `chartwarden_audit_archiver` duty role may execute (migration 1582), reached as
+    // `chartwarden_audit_archive_login` through DATABASE_AUDIT_ARCHIVE_URL. `chartwarden_platform` holds no EXECUTE on them.
     const auditArchiveSetup = auditArchiveConfigFromEnv(process.env);
     const auditArchiveWorker = new Worker(
       AUDIT_ARCHIVE_QUEUE,
@@ -11358,9 +11379,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           );
           return { skipped: "unconfigured" };
         }
+        // Configured but no credential of its own: fail (the queue retries, the DLQ alert fires) rather than skip or borrow another pool.
+        if (!auditArchiveDbHandle) throw new AuditArchiveCredentialMissingError();
         const run = await runAuditArchive({
-          withCatalog: platformCatalogRunner({
-            platformDb: platformDbHandle?.db ?? dbHandle.db,
+          withCatalog: archiveCatalogRunner({
+            archiveDb: auditArchiveDbHandle.db,
             auditBypass: m34PlatformBypassAuditor,
           }),
           store: m34DsarObjectStore,

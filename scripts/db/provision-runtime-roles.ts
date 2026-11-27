@@ -32,6 +32,10 @@
  *   · `chartwarden_destruction_login` → DATABASE_DESTRUCTION_URL. Plain `IN ROLE chartwarden_destruction`
  *     (0157 already enumerates its DELETE/UPDATE grants + org-pinned RLS policies). NO BYPASSRLS —
  *     destruction is org-scoped by design.
+ *   · `chartwarden_audit_archive_login` → DATABASE_AUDIT_ARCHIVE_URL (CHARTWARDEN_AUDIT_ARCHIVE_PASSWORD). Its one carrier is
+ *     `chartwarden_audit_archiver` (migration 1582): the only role with EXECUTE on the audit.archive SECURITY DEFINER functions
+ *     (closed audit months read whole, and detached). The platform carrier and login hold none of it and this script takes it back on
+ *     every run and refuses to finish if the platform login can still call one. NOBYPASSRLS; a rotation is a re-run.
  *
  * Usage:
  *   PROVISION_DATABASE_URL=postgres://postgres:...@host/db \
@@ -78,6 +82,9 @@ const m25EvaluatorPassword = runtimePassword("CHARTWARDEN_M25_EVALUATOR_PASSWORD
 const revokeM25Evaluator = process.env.CHARTWARDEN_M25_EVALUATOR_REVOKE === "true";
 const m25EraSourcePassword = runtimePassword("CHARTWARDEN_M25_ERA_SOURCE_PASSWORD");
 const revokeM25EraSource = process.env.CHARTWARDEN_M25_ERA_SOURCE_REVOKE === "true";
+// CW-MON-01 follow-up 2: the only login that may run the audit.archive job's functions. An empty value (compose's `:-` default) is unset.
+const auditArchivePassword = runtimePassword("CHARTWARDEN_AUDIT_ARCHIVE_PASSWORD") || undefined;
+const revokeAuditArchive = process.env.CHARTWARDEN_AUDIT_ARCHIVE_REVOKE === "true";
 
 if (!url) {
   console.error("PROVISION_DATABASE_URL (superuser/owner) is required");
@@ -90,7 +97,9 @@ if (
   !m25EvaluatorPassword &&
   !revokeM25Evaluator &&
   !m25EraSourcePassword &&
-  !revokeM25EraSource
+  !revokeM25EraSource &&
+  !auditArchivePassword &&
+  !revokeAuditArchive
 ) {
   console.error(
     "set CHARTWARDEN_PLATFORM_PASSWORD, CHARTWARDEN_DESTRUCTION_PASSWORD and/or CHARTWARDEN_BODY_BACKFILL_PASSWORD (≥16 chars) — nothing to provision otherwise",
@@ -103,11 +112,23 @@ for (const [name, pw] of [
   ["CHARTWARDEN_BODY_BACKFILL_PASSWORD", bodyBackfillPassword],
   ["CHARTWARDEN_M25_EVALUATOR_PASSWORD", m25EvaluatorPassword],
   ["CHARTWARDEN_M25_ERA_SOURCE_PASSWORD", m25EraSourcePassword],
+  ["CHARTWARDEN_AUDIT_ARCHIVE_PASSWORD", auditArchivePassword],
 ] as const) {
   if (pw !== undefined && pw.length < 16) {
     console.error(`${name} must be ≥16 characters`);
     process.exit(1);
   }
+}
+// The archive password is spliced into DATABASE_AUDIT_ARCHIVE_URL by compose, unencoded: a character with a meaning in a URL
+// (/ @ : ? # %) would break the URL or misdirect the connection, and the pool is lazy, so it would only show when the job runs.
+if (
+  auditArchivePassword !== undefined &&
+  (!/^[A-Za-z0-9._~-]+$/.test(auditArchivePassword) || auditArchivePassword.startsWith("REPLACE_"))
+) {
+  console.error(
+    "CHARTWARDEN_AUDIT_ARCHIVE_PASSWORD must be URL-safe (letters, digits, . _ ~ -) and not the example placeholder, for example `openssl rand -hex 24`",
+  );
+  process.exit(1);
 }
 
 /** The M35 §5.2 / M34 platform surface the carrier may read cross-tenant (SELECT). */
@@ -217,16 +238,24 @@ const PLATFORM_WRITER_FUNCTIONS = [
   // this grant widens WHO may rotate partitions, not what the platform role can do to the schema.
   "rotate_time_partitions(int)",
   "time_partition_coverage()",
-  // GAP-113 — the `audit.archive` job's three entry points (migration 0432). Reading every tenant's closed audit
-  // partitions and detaching one need BYPASSRLS / table ownership the platform role must not hold; each function
-  // is SECURITY DEFINER and validates its partition name against `pg_inherits` before using it. None can drop.
-  "audit_archive_candidates(int)",
-  "audit_archive_read_batch(text, uuid, int)",
-  "audit_archive_detach(text, bigint, boolean)",
+  // The `audit.archive` job's three entry points (migration 0432: audit_archive_candidates, _read_batch, 1053: _detach) are NOT here:
+  // since migration 1582 only the `chartwarden_audit_archiver` duty role may call them (AUDIT_ARCHIVE_FUNCTIONS below).
   // M34 onboarding wizard: is this user ChartWarden platform staff? The compliance officer and the go-live attester must not
   // be (migration 1097's SECURITY DEFINER holder reader; user ids only, platform-owned roles only). The platform pool reads it
   // when approval re-checks the attester, the tenant pool already holds EXECUTE from the migration.
   "m34_platform_role_holders(text[])",
+] as const;
+
+/**
+ * CW-MON-01 follow-up 2 (migration 1582) — the audit.archive job's SECURITY DEFINER functions (0432, 1053). One of them returns WHOLE rows
+ * of every tenant's closed audit months and one detaches a closed month from `audit_event`, so only the `chartwarden_audit_archiver` duty
+ * role holds EXECUTE; the platform carrier and login never do. Revoked from the carrier on every run (an older provisioner or a hand grant
+ * cannot leave one behind) and checked against the login's effective privilege at the end of the platform block.
+ */
+const AUDIT_ARCHIVE_FUNCTIONS = [
+  "audit_archive_candidates(integer)",
+  "audit_archive_read_batch(text, uuid, integer)",
+  "audit_archive_detach(text, bigint, boolean)",
 ] as const;
 
 /** The M35 platform-only tables (migration 0143 — RLS with no chartwarden_app grant): full write. */
@@ -504,6 +533,27 @@ async function main(): Promise<void> {
         m25EraSourcePassword,
       );
       console.log("✓ chartwarden_m25_era_source_login provisioned (function-only source reader)");
+    }
+    if (revokeAuditArchive) {
+      await revokeIsolatedLogin("chartwarden_audit_archive_login");
+      console.log("✓ chartwarden_audit_archive_login disabled and active sessions terminated");
+    } else if (auditArchivePassword) {
+      const carrier = await db.query(
+        "SELECT 1 FROM pg_roles WHERE rolname = 'chartwarden_audit_archiver'",
+      );
+      if (carrier.rowCount === 0)
+        throw new Error("chartwarden_audit_archiver is missing — apply migration 1582 first");
+      await provisionIsolatedLogin(
+        "chartwarden_audit_archive_login",
+        "chartwarden_audit_archiver",
+        auditArchivePassword,
+      );
+      console.log(
+        "✓ chartwarden_audit_archive_login provisioned (audit.archive duty only, NOBYPASSRLS)",
+      );
+      console.log(
+        "  → set DATABASE_AUDIT_ARCHIVE_URL=postgres://chartwarden_audit_archive_login:<pw>@<host>/<db> on the worker (the audit.archive job)",
+      );
     }
     if (platformPassword) {
       // ── the chartwarden_platform carrier + its enumerated grants ─────────────────────────────────
@@ -811,6 +861,34 @@ async function main(): Promise<void> {
       //    other grant in this script — this can't live in a migration file either.
       for (const fn of PLATFORM_WRITER_FUNCTIONS) {
         await run(`GRANT EXECUTE ON FUNCTION ${fn} TO chartwarden_platform;`);
+      }
+
+      // CW-MON-01 follow-up 2 (migration 1582): the audit.archive functions read closed audit months whole and detach them, so the
+      // platform carrier and login hold NO path to them: take every grant back on every run (a re-run of an older provisioner, or a
+      // hand grant, cannot leave one), keep the duty role out of both, and refuse to finish if the login can still execute one (which
+      // also catches a PUBLIC grant or a membership this script does not know of). Guarded: before the migration there is nothing to revoke.
+      for (const fn of AUDIT_ARCHIVE_FUNCTIONS) {
+        await run(`DO $$ BEGIN
+          IF to_regprocedure('public.${fn}') IS NOT NULL THEN
+            REVOKE ALL ON FUNCTION public.${fn} FROM chartwarden_platform, chartwarden_platform_login;
+          END IF;
+        END $$;`);
+      }
+      await run(`DO $$ BEGIN
+        IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'chartwarden_audit_archiver') THEN
+          REVOKE chartwarden_audit_archiver FROM chartwarden_platform, chartwarden_platform_login;
+        END IF;
+      END $$;`);
+      const archivePathHeld = await db.query<{ signature: string }>(
+        `SELECT f.signature FROM unnest($1::text[]) AS f(signature)
+          WHERE to_regprocedure('public.' || f.signature) IS NOT NULL
+            AND has_function_privilege('chartwarden_platform_login', to_regprocedure('public.' || f.signature), 'EXECUTE')`,
+        [[...AUDIT_ARCHIVE_FUNCTIONS]],
+      );
+      if (archivePathHeld.rows.length > 0) {
+        throw new Error(
+          `chartwarden_platform_login can still execute ${archivePathHeld.rows.map((r) => r.signature).join(", ")}: only chartwarden_audit_archiver may (migration 1582); find the grant or membership that gives it and remove it`,
+        );
       }
 
       // ── the login role (BYPASSRLS is an attribute — it lives HERE, not on the carrier) ───────

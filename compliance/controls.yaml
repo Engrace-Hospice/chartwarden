@@ -1589,8 +1589,17 @@ controls:
     status: implemented
     evidence:
       # CW-MON-01 reviews this trail (scheduled detections and alerts). Its org lane reads under RLS as chartwarden_app; its org-less lane
-      # reads the sign-in events through three bounded SECURITY DEFINER readers (migration 1566): the platform login has no SELECT on audit_event
-      # (closed months stay readable and detachable through the audit.archive functions; see the CW-MON-01 gap).
+      # reads the sign-in events through three bounded SECURITY DEFINER readers (migration 1566): the platform login has no SELECT on audit_event,
+      # and since migration 1582 no EXECUTE on the audit.archive functions either (a closed month read whole, a closed month detached): only the
+      # chartwarden_audit_archiver duty role, held by the archive job's own login, has it. The live suite proves the platform login and the tenant
+      # pool are refused (42501), the closed month stays intact, and the job on its own login still archives and detaches it. The limits
+      # that remain (the functions' owner is the migration superuser, the archive password sits in the environment of every service that
+      # loads .env.production, the functions write no audit row of their own, and 1566 and 1582 are contract migrations held for an operator,
+      # so a database they were not applied to keeps the old grants) are stated in the CW-MON-01 gap.
+      - script: test:m1:audit-archive-duty:live
+      - ci: "M1 audit.archive duty role"
+      - file: packages/db/migrations/1582_m1_audit_archive_duty_role.sql
+      - file: apps/backend/__tests__/m1-audit-archive-duty-role.live.test.ts
       - script: test:m4:audit-integrity:live
       - script: test:m4:read-audit:live
       # Every SECURITY DEFINER function, the audit-writing ones included, ends its search_path in pg_temp, so a temp table named
@@ -2345,6 +2354,17 @@ controls:
       - file: packages/db/migrations/1566_m4_security_review_platform_audit_reader.sql
       - file: packages/audit/__tests__/security-review-reader.test.ts
       - file: scripts/db/provision-runtime-roles.ts
+      # Migration 1582: the audit.archive functions (a closed audit month read whole, a closed month detached) belong to the
+      # chartwarden_audit_archiver duty role, held by the archive job's own login; the platform login and the tenant pool have no EXECUTE.
+      # The live suite proves, as the platform login and the real NOBYPASSRLS chartwarden_app, that every call is refused (42501) and the
+      # closed month stays intact, that the job function (runAuditArchive over archiveCatalogRunner, on the archive login's pool) still reads,
+      # verifies and detaches it (the booted worker's wiring, its pool, boot warning and compose-built URL, is not exercised by a test), and that applying 1582 over an
+      # older grant (twice) and a provisioner re-run take the old access back.
+      - script: test:m1:audit-archive-duty:live
+      - ci: "M1 audit.archive duty role"
+      - file: packages/db/migrations/1582_m1_audit_archive_duty_role.sql
+      - file: apps/backend/__tests__/m1-audit-archive-duty-role.live.test.ts
+      - file: apps/backend/src/bootstrap/jobs/audit-archive.ts
       # check:boot:platform asserts, with a queue connection, that the backend logs the review worker among the constructed M4 audit
       # workers (a bound worker is not a computing one).
       - script: check:boot:platform
@@ -2376,13 +2396,26 @@ controls:
         so no tenant row or free text can reach the review through them. What remains: the org-less authentication rows themselves (an
         email hash and a /24 or /48 network, which an alert already carries; whether portal or caregiver sign-ins reach
         m2.auth.login_failed is not verified, so "no PHI" is claimed for workforce sign-ins only), and EXECUTE on the readers for the
-        platform carrier. NOT closed by this control: the platform carrier still holds EXECUTE on the audit.archive job's SECURITY
-        DEFINER functions (migration 0432 and 1053). audit_archive_read_batch returns whole rows (before and after included) of every
-        tenant's closed monthly partitions, and audit_archive_detach detaches a closed partition from audit_event (kept, never dropped)
-        with no audit row of its own and a legal-hold guard that trusts a caller argument, so "the platform login cannot read tenant
-        audit rows" is not true of closed months and the same login can take a closed month out of every audit_event scan (integrity and
-        availability, HIPAA 164.312(c)(1)); a carrier of its own for audit.archive is a separate follow-up. Migration 1566 is a contract migration that deploy.sh holds for an operator, so a database
-        it has not been applied to still carries the column grant of 1561 (six audit_event columns, context included, across tenants).
+        platform carrier. The platform login has no path to a closed month either (migration 1582): audit_archive_read_batch (whole rows,
+        before and after included, of every tenant's closed monthly partitions), audit_archive_detach (takes a closed partition out of
+        audit_event; kept, never dropped, no audit row of its own, a legal-hold guard that trusts a caller argument) and
+        audit_archive_candidates are executable only by the chartwarden_audit_archiver duty role (NOLOGIN, NOBYPASSRLS, member of nothing),
+        held by the audit.archive job's own login chartwarden_audit_archive_login (DATABASE_AUDIT_ARCHIVE_URL, provisioned by the operator).
+        The platform carrier and login, the tenant pool and PUBLIC hold no EXECUTE on them, the provisioner takes any back on every run and
+        refuses to finish while the platform login can still execute one, and the live suite proves the refusals and that the job still
+        archives and detaches on its own login. What remains: the archive functions are owned by the migration account (a superuser: a
+        partition detach needs ownership of audit_event and a whole-month read needs BYPASSRLS, so a non-login owner is a larger change not
+        made here); the separation is at the database login, not the process or the container (compose loads .env.production into every
+        service that reads it, so the archive password sits in the environment of api, worker and the rest, as the platform password
+        already does: a leaked environment still reaches the functions through the archive login, only the platform-login path is gone);
+        a database superuser can call them; the functions write no audit row of their own, so the job's critical
+        platform.bypass_invoked row (a job id and a fixed reason, no partition or row count) is the only record of a run, and a direct
+        call by the archive login (a leaked environment) leaves none, audit_archive_read_batch and audit_archive_candidates included;
+        the archive login also holds EXECUTE on audit_writer_insert_platform_event, which writes any org-less audit row (no wider than
+        the platform login or the tenant pool already hold); and the job's detach step is opt-in
+        (AUDIT_ARCHIVE_DETACH). Migrations 1566 and 1582 are contract migrations that deploy.sh holds for an operator
+        (security-alert-review.md section 7), so a database they have not been applied to still carries the column grant of 1561 (six
+        audit_event columns, context included, across tenants) and the platform carrier's EXECUTE on the archive functions.
         The org-less platform-lane review records are in no hash-chain seal (the chain is per organization). The per-scope advisory lock is takeable by any database role
         (a held lock makes the scope skip; the job logs each skip but stays green). A second-factor removal by a session with no bound
         organization is written org-less and is seen by neither lane. Break-glass already pages the tenant's compliance officer
