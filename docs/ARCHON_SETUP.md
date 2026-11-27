@@ -80,32 +80,32 @@ location — repo-local workflows take precedence over Archon's bundled defaults
 | Archon concept               | ChartWarden artifact                                                                                                                             |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | Workflow (YAML DAG)          | `.archon/workflows/chartwarden-piv.yaml` (plan → implement-loop → **validate gate** → fix → finalize → auto-PR; no interactive approve — [ADR-0031](adr/ADR-0031-chartwarden-piv-no-interactive-approve.md)) |
-| AI `prompt:` node input    | `docs/plans/M01-M02_VERTICAL_SLICE_PLAN.md` (the task plan) + the cited `docs/modules/` spec sections                                    |
+| AI `prompt:` node input    | a task plan, `docs/plans/<PLAN>.md`, named in the run message (the shipped plans were deleted in #603; a human adds the next one) + the cited `docs/modules/` spec sections |
 | Deterministic `bash:` gate | `bun run build && bun run arch:fitness && bun run test` — a task is **done only when this is green**                                |
 | `until:` loop condition    | "all tasks in the plan complete" / "gate green"                                                                                              |
 | `finalize` + auto-PR       | review happens on the **GitHub PR** (no interactive pause — it hung under #1067; [ADR-0031](adr/ADR-0031-chartwarden-piv-no-interactive-approve.md)) |
 | Knowledge grounding          | the spec corpus in `docs/` + the manifest (`architecture/module-manifest.ts`); the plan tells the agent exactly which §sections to read |
 
-## 5. Run the first slice
+## 5. Run a plan
 
 The CLI shape is `archon workflow run <name> [message]` (no `--plan`/`--input` flag in v0.4.x). The
 plan is chosen by the **run message**: the `setup` node greps a `docs/plans/*.md` path out of the
-message and writes it to `.archon/run-plan.txt`, which every node reads. With **no message** it falls
-back to the M1+M2 slice default, so just:
+message and writes it to `.archon/run-plan.txt`, which every node reads (incl. fresh-context loop
+iterations).
+
+> **No plan ships in the tree.** The wave plans that used to live in `docs/plans/` (the M1+M2 slice,
+> Waves A to H and the Phase 2 and 3 plans) were deleted in #603 once their waves were merged; they remain in
+> git history (`git log --diff-filter=D -- docs/plans`). A human adds the next plan under `docs/plans/` (the
+> `arch:plan-integrity` gate blocks automated edits there; a human override is `ALLOW_PLAN_EDITS=1`) and
+> **always names it in the run message**: with no message the `setup` node falls back to
+> `docs/plans/M01-M02_VERTICAL_SLICE_PLAN.md`, which no longer exists, so a run without a message has no plan to read.
 
 ```bash
 cd <path-to-your-checkout>
 # isolated worktree (recommended) so the run can't disturb your working tree:
-archon workflow run chartwarden-piv --branch feat/m1-m2-slice
+archon workflow run chartwarden-piv --branch feat/<wave> "Use the plan at docs/plans/<PLAN>.md"
 # …or run directly on the current branch:
-archon workflow run chartwarden-piv --no-worktree
-```
-
-To target **Wave A (M3+M4)** instead, name the plan path in the run message (the `setup` node resolves
-it to `.archon/run-plan.txt` for every node, incl. fresh-context loop iterations):
-
-```bash
-archon workflow run chartwarden-piv --branch feat/wave-a "Use the plan at docs/plans/WAVE_A_M3-M4_PLAN.md"
+archon workflow run chartwarden-piv --no-worktree "Use the plan at docs/plans/<PLAN>.md"
 ```
 
 The loop implements one plan task at a time in a **fresh context**, runs the fitness gate after each,
