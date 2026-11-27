@@ -909,6 +909,82 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
       expect(one(stored.rows).reason).toBe(REASON);
     });
 
+    it("CW-AC-48: the third grant for one clinician inside seven days writes m8.encounter.closure_override_chained (a revoked grant counts, the reason is not in it); the first two and a grant outside the window write none", async () => {
+      const chained = await seedMember(orgs.A, "chain-clinician");
+      await seedEncounter({
+        org: orgs.A,
+        authorMembershipId: chained.membershipId,
+        clockStartedAt: at(NOW, -30),
+      });
+      const grant = (now: Date) =>
+        inOrg(ORG_A, supervisorA.userId, (tx) =>
+          grantClosureOverride(tx, {
+            organizationId: ORG_A,
+            subjectMembershipId: chained.membershipId,
+            grantedByMembershipId: supervisorA.membershipId,
+            obligationKind: "visit_note",
+            reason: REASON,
+            hours: 1,
+            locationIds: null,
+            audit: auditContextOf(ORG_A, supervisorA.userId),
+            now,
+          }),
+        );
+      const chainEvents = async () =>
+        (
+          await admin.query(
+            `SELECT resource_id::text AS resource_id, actor_user_id::text AS actor, severity, retention_class, after, context
+               FROM audit_event
+              WHERE organization_id=$1 AND event_type='m8.encounter.closure_override_chained'
+                AND after->>'subjectMembershipId'=$2 ORDER BY created_at, id`,
+            [ORG_A, chained.membershipId],
+          )
+        ).rows as {
+          resource_id: string;
+          actor: string;
+          severity: string;
+          retention_class: string;
+          after: Record<string, unknown>;
+          context: Record<string, unknown>;
+        }[];
+      const hoursAfter = (hours: number) => new Date(NOW.getTime() + hours * 3_600_000);
+
+      await grant(NOW);
+      const second = await grant(hoursAfter(2)); // the first expired an hour ago
+      await revokeAt(second.id, hoursAfter(2.2)); // a revoked grant still counts toward the chain
+      expect(await chainEvents()).toEqual([]);
+
+      const third = await grant(hoursAfter(4));
+      const events = await chainEvents();
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        resource_id: third.id,
+        actor: supervisorA.userId,
+        severity: "warn",
+        retention_class: "compliance",
+        after: {
+          overrideId: third.id,
+          subjectMembershipId: chained.membershipId,
+          grantedByMembershipId: supervisorA.membershipId,
+          obligationKind: "visit_note",
+          grantsInWindow: 3,
+          windowDays: 7,
+        },
+      });
+      expect(JSON.stringify(events[0])).not.toContain("on-call crisis");
+
+      // eight days on, the earlier three are outside the window: this grant is the first of a new chain
+      await grant(new Date(NOW.getTime() + 8 * 24 * 3_600_000));
+      expect(await chainEvents()).toHaveLength(1);
+      // the plain grant event is written every time (3 + 1), the chained one only for the chain
+      const plain = await admin.query(
+        `SELECT count(*)::int AS n FROM audit_event
+          WHERE organization_id=$1 AND event_type='m8.encounter.closure_override_granted' AND after->>'subjectMembershipId'=$2`,
+        [ORG_A, chained.membershipId],
+      );
+      expect(one(plain.rows).n).toBe(4);
+    });
+
     it("an SSN- or MBI-shaped reason is refused with a 422 on the reason field: nothing is written, no event, the value is not echoed", async () => {
       // Synthetic identifiers only (compliance/synthetic-identifiers.json): an SSN with area 900 and a listed MBI.
       const identifiers = ["900-12-3456", "1EG4TE5MK73"];
