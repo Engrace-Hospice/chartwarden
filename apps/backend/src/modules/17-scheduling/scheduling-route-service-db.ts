@@ -127,6 +127,7 @@ import {
   createDrizzleOnCallRotationStore,
 } from "./seams/oncall-rotation-store";
 import { orgContextFor } from "./system-actor";
+import { ALL_SCHEDULING_DISCIPLINES, heldSchedulingDisciplines } from "./visit-held-disciplines";
 import { computeVisitMetrics } from "./visit-metrics";
 
 /** Safety cap on the internal (unscoped) visit read that metrics / portal / optimiser compose over. */
@@ -146,10 +147,6 @@ const MEM_ROLE = schema.membershipRoles;
 const ROLE = schema.roles;
 const ORG = schema.organizations;
 const USER = schema.users;
-
-/** Every discipline any visit purpose accepts (GAP-030) — the full `SchedulingDiscipline` vocab,
- *  derived from the policy map rather than duplicated as a literal list. */
-const ALL_SCHEDULING_DISCIPLINES = new Set<string>(Object.values(VISIT_PURPOSE_DISCIPLINES).flat());
 
 /** The two D8 gate facts that come from CROSS-MODULE seams, resolved with no transaction open (the seams
  *  each take their own pooled connection) and then handed to the gate running inside the write tx. */
@@ -442,24 +439,7 @@ export function createDbSchedulingBackend(
     orgId: string,
     membershipId: string,
   ): Promise<SchedulingDiscipline[]> {
-    const roleRows = await tx
-      .select({ key: ROLE.key })
-      .from(MEM_ROLE)
-      .innerJoin(ROLE, eq(MEM_ROLE.roleId, ROLE.id))
-      .where(
-        and(
-          eq(MEM_ROLE.organizationId, orgId),
-          eq(MEM_ROLE.membershipId, membershipId),
-          or(isNull(MEM_ROLE.expiresAt), gt(MEM_ROLE.expiresAt, new Date())),
-        ),
-      );
-    return [
-      ...new Set(
-        roleRows
-          .map((r) => r.key)
-          .filter((k): k is SchedulingDiscipline => ALL_SCHEDULING_DISCIPLINES.has(k)),
-      ),
-    ].sort();
+    return heldSchedulingDisciplines(tx, orgId, membershipId);
   }
 
   async function allowsUnassignedPoolTx(tx: DbClient, orgId: string): Promise<boolean> {
