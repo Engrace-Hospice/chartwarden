@@ -59,6 +59,7 @@ import {
 } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
 import { runTransferNoticeSubmit } from "../src/modules/23-billing-medicare/jobs/transfer-notice-jobs";
 import { resolveRhcCarryOver } from "../src/modules/23-billing-medicare/services/rhc-carry-over";
+import { createTenantClearinghouseReader } from "../src/modules/23-billing-medicare/tenant-clearinghouse/choice";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
@@ -78,6 +79,7 @@ const CCN: Record<string, string> = { [ORG_A]: "381501", [ORG_B]: "381502" };
 const SENDING_CCN = "381777";
 const SENDING_NPI = "1234567893";
 const TRANSFER_DATE = "2026-03-10";
+type NoticePorts = NonNullable<Parameters<typeof buildTransferNoticeService>[1]>;
 
 describe.skipIf(!DB_URL)("M23 transfer notice (TOB 8xC) — LIVE Postgres", () => {
   let admin: Client;
@@ -85,6 +87,8 @@ describe.skipIf(!DB_URL)("M23 transfer notice (TOB 8xC) — LIVE Postgres", () =
   let svc: ReturnType<typeof createDbAdmissionRouteService>;
   let dispatcher: ReturnType<typeof createOutboxDispatcher>;
   let notices: ReturnType<typeof buildTransferNoticeService>;
+  /** The same service with the composition root's `billsOutside` binding over the real choice table (CW-AC-20). */
+  let noticesWithChoice: ReturnType<typeof buildTransferNoticeService>;
   let workerDeps: M23WorkerDeps;
   const providerOf: Record<string, string> = {};
   const membershipOf: Record<string, string> = {};
@@ -283,7 +287,7 @@ describe.skipIf(!DB_URL)("M23 transfer notice (TOB 8xC) — LIVE Postgres", () =
       options: { log: () => {} },
     });
 
-    notices = buildTransferNoticeService(handle.db as never, {
+    const noticePorts: NoticePorts = {
       outbox: bind("m23") as never,
       jobs: {
         async enqueue(queue, dedupeKey, payload) {
@@ -293,6 +297,16 @@ describe.skipIf(!DB_URL)("M23 transfer notice (TOB 8xC) — LIVE Postgres", () =
       },
       transferInFacts: (org, transferEventId) =>
         transferInNoticeContextForOrg(handle.db, org, transferEventId),
+    };
+    notices = buildTransferNoticeService(handle.db as never, noticePorts);
+    // The composition root's own binding (index.ts): the org's real choice row, read as the app role on its RLS scope, no cache.
+    const choices = createTenantClearinghouseReader({
+      db: handle.db as never,
+      platformFallback: () => null,
+    });
+    noticesWithChoice = buildTransferNoticeService(handle.db as never, {
+      ...noticePorts,
+      billsOutside: async (org) => (await choices.choiceForOrg(org)).vendor === "outside",
     });
 
     workerDeps = {
@@ -564,6 +578,126 @@ describe.skipIf(!DB_URL)("M23 transfer notice (TOB 8xC) — LIVE Postgres", () =
     );
     expect(seenFromB.rows).toHaveLength(0);
   });
+  // CW-AC-20: a tenant that bills outside ChartWarden files its own transfer notices. m23-transfer-notice-outside.test.ts proves the
+  // service branch with a stub port; these two prove it over the real choice table, read as the NOBYPASSRLS app role.
+
+  /** A drafted notice whose prior hospice's billing is confirmed: only the clearinghouse choice stands between it and a queued filing. */
+  async function submitReadyNoticeFor(org: string) {
+    const { admissionId, id } = await draftedNoticeFor(org);
+    const draft = await notices.get(actor(org), id);
+    const view = await notices.confirmPriorBilling(actor(org), id, {
+      expectedVersion: draft.version,
+      priorHospiceThroughDate: TRANSFER_DATE,
+      priorHospicePatientStatus: "51",
+    });
+    expect(view.blockers).toEqual([]);
+    expect(view.allowedActions).toContain("submit");
+    return { admissionId, id, version: view.version };
+  }
+
+  /** Everything a submit would touch: its submission rows, the org's outbox, queued jobs, and the notice's own state and version. */
+  async function submitFootprint(org: string, id: string, admissionId: string) {
+    const submissions = await admin.query(
+      "SELECT count(*)::int AS n FROM claim_submission WHERE transfer_notice_id=$1",
+      [id],
+    );
+    const outbox = await admin.query(
+      "SELECT count(*)::int AS n FROM outbox_event WHERE organization_id=$1",
+      [org],
+    );
+    const [notice] = await noticeRowsFor(admissionId);
+    return {
+      submissions: submissions.rows[0].n as number,
+      outboxEvents: outbox.rows[0].n as number,
+      queuedJobs: enqueued.length,
+      state: notice.state as string,
+      version: notice.version as number,
+    };
+  }
+
+  it("CW-AC-20: refuses a transfer notice at submit with 409 for a tenant whose recorded choice is 'outside', touches nothing, and follows the choice row", async () => {
+    // Arrange — the handle really is the NOBYPASSRLS app role (a superuser or BYPASSRLS connection would make this proof empty).
+    const who = await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+      tx.execute(
+        sql`SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user`,
+      ),
+    );
+    expect(who.rows).toEqual([
+      { rolname: "chartwarden_app", rolsuper: false, rolbypassrls: false },
+    ]);
+    // ORG_A bills outside (its real config row); ORG_B has recorded no choice. Both notices are ready to submit.
+    const outside = await submitReadyNoticeFor(ORG_A);
+    const other = await submitReadyNoticeFor(ORG_B);
+    await admin.query(
+      "INSERT INTO tenant_clearinghouse_config (organization_id, vendor, status, set_by_membership_id) VALUES ($1,'outside','active',$2)",
+      [ORG_A, membershipOf[ORG_A]],
+    );
+    try {
+      const before = await submitFootprint(ORG_A, outside.id, outside.admissionId);
+      expect(before).toMatchObject({ submissions: 0, state: "DRAFT" });
+
+      // Act + Assert — the refusal is typed and leaves no trace: nothing recorded, published or queued.
+      await expect(
+        noticesWithChoice.submit(actor(ORG_A), outside.id, { expectedVersion: outside.version }),
+      ).rejects.toMatchObject({ code: "CLAIMS_FILE_WITH_YOUR_BILLER", statusCode: 409 });
+      expect(await submitFootprint(ORG_A, outside.id, outside.admissionId)).toEqual(before);
+
+      // The choice is per org: ORG_A's row does not hold ORG_B's notice back.
+      const queuedBefore = enqueued.length;
+      const accepted = await noticesWithChoice.submit(actor(ORG_B), other.id, {
+        expectedVersion: other.version,
+      });
+      expect(accepted.kind).toBe("transfer_notice");
+      expect(enqueued.length).toBe(queuedBefore + 1);
+
+      // Nothing is cached or latched: with the row gone the very same notice is queued for filing.
+      await admin.query("DELETE FROM tenant_clearinghouse_config WHERE organization_id=$1", [
+        ORG_A,
+      ]);
+      const released = await noticesWithChoice.submit(actor(ORG_A), outside.id, {
+        expectedVersion: outside.version,
+      });
+      expect(released.kind).toBe("transfer_notice");
+      const after = await submitFootprint(ORG_A, outside.id, outside.admissionId);
+      expect(after).toMatchObject({ submissions: 1, state: "READY" });
+    } finally {
+      await admin.query("DELETE FROM tenant_clearinghouse_config WHERE organization_id=$1", [
+        ORG_A,
+      ]);
+    }
+  });
+
+  it("CW-AC-20: fails closed with a typed 503 when the clearinghouse choice cannot be read, and touches nothing", async () => {
+    // Arrange — a ready notice, and a service whose choice reader sits on a connection pool that is already closed.
+    const ready = await submitReadyNoticeFor(ORG_A);
+    const brokenHandle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
+    await brokenHandle.close();
+    const brokenChoices = createTenantClearinghouseReader({
+      db: brokenHandle.db as never,
+      platformFallback: () => null,
+    });
+    const failClosed = buildTransferNoticeService(handle.db as never, {
+      outbox: {
+        publish: () => {
+          throw new Error("must not publish");
+        },
+      } as never,
+      jobs: {
+        enqueue: async () => {
+          throw new Error("must not enqueue");
+        },
+      },
+      billsOutside: async (org) => (await brokenChoices.choiceForOrg(org)).vendor === "outside",
+    });
+    const before = await submitFootprint(ORG_A, ready.id, ready.admissionId);
+
+    // Act + Assert — never "no" (it could transmit for a tenant that files elsewhere), never "yes" either.
+    await expect(
+      failClosed.submit(actor(ORG_A), ready.id, { expectedVersion: ready.version }),
+    ).rejects.toMatchObject({ code: "CLEARINGHOUSE_CHOICE_UNAVAILABLE", statusCode: 503 });
+    expect(await submitFootprint(ORG_A, ready.id, ready.admissionId)).toEqual(before);
+  });
+
   it("carries the sending hospice's inherited-period days into the transfer-in's two-tier RHC count", async () => {
     // Arrange — a transfer-in on 03/10 whose inherited period started 01/01 at the sending hospice.
     const admissionId = await intakeAdmission(ORG_A);
