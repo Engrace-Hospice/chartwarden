@@ -1509,6 +1509,12 @@ export const hopeAssessmentStatus = pgEnum("hope_assessment_status", [
   "superseded",
 ]);
 
+/**
+ * `hope_signer_licence_mode` — the per-organization enforcement mode of the HOPE signer-licence check (CW-AC-46, migration 1587):
+ * `enforce` refuses an unlicensed signer, `shadow` lets the signature through and records the would-be refusal. An absent row is `enforce`.
+ */
+export const hopeSignerLicenceMode = pgEnum("hope_signer_licence_mode", ["enforce", "shadow"]);
+
 /** `hope_author_discipline` — frozen attribution on each HOPE assessment row. */
 export const hopeAuthorDiscipline = pgEnum("hope_author_discipline", [
   "RN",

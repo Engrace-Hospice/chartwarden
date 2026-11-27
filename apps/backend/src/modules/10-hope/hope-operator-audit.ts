@@ -15,12 +15,35 @@
 // own transaction rolled back, so its caller writes it on a NEW transaction (see hope-sfv-completion-guards.ts).
 import { audit } from "@chartwarden/audit";
 import type { DbClient } from "@chartwarden/db";
+import type { HopeSignerLicenceMode } from "@chartwarden/types";
 import {
   type HopeAuditRequestFacts,
   clientCorrelationContext,
   hopeAuditActor,
 } from "./hope-signature-audit";
 
+/**
+ * What a licence refusal records: closed values only (an enum, a discipline code, the licence kinds held), never free text.
+ * Built by hope-signer-licence.ts; defined HERE, the lower layer, so the two files do not import each other.
+ */
+export interface SignerLicenceRefusalDetail {
+  readonly operation: "timepoint_sign" | "sfv_complete";
+  readonly reason: "no_active_licence" | "wrong_discipline";
+  readonly rfaKind: string;
+  /** The record's frozen author discipline; null for a legacy row that carries none (nothing to match a licence to). */
+  readonly requiredDiscipline: string | null;
+  readonly heldKinds: readonly string[];
+  /** The calendar day (UTC) the licences were judged on. */
+  readonly asOf: string;
+}
+
+/**
+ * CW-AC-46 — a signature refused because the signer holds no active licence in the record's discipline. Catalogued
+ * (`m10.*`, packages/audit/src/actions/m10.ts) because the CW-MON-01 rule `signature.licence_refusal_burst` reads it.
+ */
+export const HOPE_SIGNER_LICENCE_REFUSED_EVENT = "m10.signature.licence_refused";
+/** CW-AC-46 — an organization's enforcement mode for the signer-licence check was set (catalogued, m10.ts). */
+export const HOPE_SIGNER_LICENCE_POLICY_CHANGED_EVENT = "m10.signature.licence_policy_changed";
 export const HOPE_SUBMISSION_CANCELLED_EVENT = "hope.submission_cancelled";
 export const HOPE_SCHEDULE_SKIPPED_EVENT = "hope.schedule_skipped";
 export const HOPE_SCHEDULES_REGENERATED_EVENT = "hope.schedules_regenerated";
@@ -172,5 +195,72 @@ export const auditHopeSfvCompletionDenied = (
       reason: "sfv_not_bound_to_admission",
       triggeringAssessmentId: input.triggeringAssessmentId,
       triggeringAssessmentIdIsUuid: input.triggeringAssessmentId !== null,
+    },
+  });
+
+/**
+ * A signature refused for the signer's licence (CW-AC-46): which signing act (`operation`), why (`reason`: no active licence
+ * on the day vs. a licence held in another discipline only), the discipline the record is attributed to, the licence KINDS
+ * the signer did hold (a closed M17 enum, no number or issuing body) and the day they were judged on. The resource is the
+ * draft being signed, or the admission an SFV completion was filed under (that RFA-04 does not exist yet).
+ *
+ * `mode` is the organization's enforcement mode when it was judged. `enforce`: the signature WAS refused (outcome `denied`),
+ * written on a NEW transaction after the refused one rolled back (see hope-signer-licence.ts). `shadow`: the signature went
+ * through and this is the finding of what enforce would have refused (outcome `success`), written on the signing transaction.
+ * Both are the same event type, so the CW-MON-01 burst rule counts them alike.
+ */
+export const auditHopeSignerLicenceRefused = (
+  t: DbClient,
+  input: OperatorAuditBase & {
+    readonly resourceKind: "hope_assessment" | "admission";
+    readonly resourceId: string;
+    readonly code: string;
+    readonly mode: HopeSignerLicenceMode;
+    readonly refusal: SignerLicenceRefusalDetail;
+  },
+): Promise<void> =>
+  writeOperatorEvent(t, input, {
+    eventType: HOPE_SIGNER_LICENCE_REFUSED_EVENT,
+    resourceKind: input.resourceKind,
+    resourceId: input.resourceId,
+    outcome: input.mode === "enforce" ? "denied" : "success",
+    severity: "warn",
+    context: {
+      mode: input.mode,
+      errorCode: input.code,
+      operation: input.refusal.operation,
+      reason: input.refusal.reason,
+      rfaKind: input.refusal.rfaKind,
+      requiredDiscipline: input.refusal.requiredDiscipline,
+      heldLicenceKinds: [...input.refusal.heldKinds],
+      licenceAsOf: input.refusal.asOf,
+    },
+  });
+
+/**
+ * An organization's enforcement mode for the signer-licence check was set (CW-AC-46): the previous and the new mode, and for
+ * `shadow` the reason the operator gave, which is the only durable record of why the control was lowered (it was length-checked
+ * and screened for patient identifiers by the service before it got here; `justification` is the key the late-deadline override
+ * uses for the same kind of text). Severity `warn` when the organization moves below enforce, `info` on the return. Written on the
+ * same transaction as the row, so they commit or roll back together. The resource is the organization.
+ */
+export const auditHopeSignerLicencePolicyChanged = (
+  t: DbClient,
+  input: OperatorAuditBase & {
+    readonly previousMode: HopeSignerLicenceMode;
+    readonly mode: HopeSignerLicenceMode;
+    readonly reason: string | null;
+  },
+): Promise<void> =>
+  writeOperatorEvent(t, input, {
+    eventType: HOPE_SIGNER_LICENCE_POLICY_CHANGED_EVENT,
+    resourceKind: "organization",
+    resourceId: input.organizationId,
+    outcome: "success",
+    severity: input.mode === "enforce" ? "info" : "warn",
+    context: {
+      previousMode: input.previousMode,
+      mode: input.mode,
+      justification: input.reason,
     },
   });

@@ -5,7 +5,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { NOTE_CLOSURE_PERMISSION_KEYS, allPermissionMirrorRows } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
-import { WITHHELD_CLOSURE_KEYS, fullCatalogGrantRows } from "../db/lib/full-catalog-grants";
+import {
+  WITHHELD_CLOSURE_KEYS,
+  WITHHELD_PLATFORM_KEYS,
+  fullCatalogGrantRows,
+} from "../db/lib/full-catalog-grants";
 
 const [OVERRIDE, POLICY_ADMIN] = NOTE_CLOSURE_PERMISSION_KEYS;
 const source = (file: string): string => readFileSync(join(__dirname, "../db", file), "utf8");
@@ -22,7 +26,16 @@ describe("fullCatalogGrantRows", () => {
 
   it("drops exactly the withheld rows from the catalog", () => {
     expect(rows.some((row) => row.key === OVERRIDE)).toBe(true);
-    expect(fullCatalogGrantRows(rows)).toHaveLength(rows.length - WITHHELD_CLOSURE_KEYS.size);
+    expect(fullCatalogGrantRows(rows)).toHaveLength(
+      rows.length - WITHHELD_CLOSURE_KEYS.size - WITHHELD_PLATFORM_KEYS.size,
+    );
+  });
+
+  it("also withholds the platform key that lowers the HOPE signer-licence check (CW-AC-46), so a seeded admin cannot lower its own control", () => {
+    expect([...WITHHELD_PLATFORM_KEYS]).toEqual(["hope.admin.signer_licence_policy"]);
+    expect(rows.some((row) => row.key === "hope.admin.signer_licence_policy")).toBe(true);
+    const granted = new Set(fullCatalogGrantRows(rows).map((row) => row.key));
+    expect(granted.has("hope.admin.signer_licence_policy")).toBe(false);
   });
 });
 

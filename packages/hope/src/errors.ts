@@ -50,6 +50,17 @@ export const M10_ERROR_STATUS = {
   // not `HOPE_ATTESTATION_VERSION`): nothing is written, and the signer must reload and read the new wording. 409: the
   // request is well-formed but conflicts with the server's current state.
   M10_ATTESTATION_STALE: 409,
+  // CW-AC-46 — the signer's professional licence is checked when a HOPE record is signed (POST /sign, and the RFA-04 SFV
+  // completion which inserts an already-signed row), through M17's `CredentialReader` seam, as of the signing day. The
+  // seam answers only ACTIVE rows (status active, inside its effective/expiry window), so an expired, suspended, revoked,
+  // not-yet-effective or never-recorded licence is the SAME answer: `NOT_ACTIVE`. `WRONG_DISCIPLINE`: the signer holds an
+  // active licence, but not in the discipline the record is attributed to (an RN licence cannot sign an NP record). 403:
+  // the request is understood and refused until the licence is recorded; nothing is written and there is no override.
+  M10_SIGNER_LICENCE_NOT_ACTIVE: 403,
+  M10_SIGNER_LICENCE_WRONG_DISCIPLINE: 403,
+  // The seam could not be read (absent, denying or down). Fail closed: nothing is signed. Retryable (the idempotency
+  // plugin releases a 5xx key), so it is not a licence verdict and is logged, not audited as a refusal.
+  M10_SIGNER_LICENCE_UNVERIFIABLE: 503,
   // §4.4 — canonical answer engine / draft mutation.
   M10_ASSESSMENT_IMMUTABLE: 409,
   M10_VERSION_CONFLICT: 409,

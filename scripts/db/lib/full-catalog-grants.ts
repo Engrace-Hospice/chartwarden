@@ -10,7 +10,19 @@ export const WITHHELD_CLOSURE_KEYS: ReadonlySet<string> = new Set(
   NOTE_CLOSURE_PERMISSION_KEYS.filter((key) => FULL_CATALOG_EXCLUDED_KEYS.has(key)),
 );
 
-/** The catalog rows a full-catalog dev role is given: every row except the withheld closure keys. */
+/**
+ * CW-AC-46: the key that lowers the HOPE signer-licence check to shadow. It is category `platform`, which the tenant materializer already
+ * withholds from org_admin and administrator (so it is not in FULL_CATALOG_EXCLUDED_KEYS, whose arithmetic is for non-platform keys), but
+ * THESE seed scripts grant every catalog row, so a seeded or demo tenant's admin would hold it and could lower its own control. Withheld
+ * here: a dev database holds what a freshly provisioned tenant holds.
+ */
+export const WITHHELD_PLATFORM_KEYS: ReadonlySet<string> = new Set([
+  "hope.admin.signer_licence_policy",
+]);
+
+/** The catalog rows a full-catalog dev role is given: every row except the withheld closure and platform keys. */
 export function fullCatalogGrantRows<T extends { readonly key: string }>(rows: readonly T[]): T[] {
-  return rows.filter((row) => !WITHHELD_CLOSURE_KEYS.has(row.key));
+  return rows.filter(
+    (row) => !WITHHELD_CLOSURE_KEYS.has(row.key) && !WITHHELD_PLATFORM_KEYS.has(row.key),
+  );
 }

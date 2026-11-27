@@ -3,6 +3,7 @@ import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
 import { createDbHopeBackend } from "../src/modules/10-hope/hope-route-service-db";
 import type { HopeWriteOutboxPort } from "../src/modules/10-hope/outbox-port";
 import { SCRIPT_EXHAUSTED, scriptedDb } from "./_hope-g3-fake-db";
+import { registerLicencedHopeSigners } from "./_hope-signer-licence";
 
 // Group g3: the route service's re-judging after a lock, with the database scripted (no Postgres). Each case stops the
 // code under test at a known statement (the script runs out), so what is asserted is the ORDER and the PREDICATE of the
@@ -329,6 +330,7 @@ describe("seam failures the service answers around are logged, not swallowed", (
   };
 
   it("sign: an M9 outage (no D8 snapshot) and an M6 outage (no siting) each leave one line with the class, never the message", async () => {
+    registerLicencedHopeSigners(); // CW-AC-46: signing reads the signer's licences first
     registerSeam("LatestAssessmentProvider", { latestBatch: down("M9DownError") } as never);
     registerSeam("AdmissionStatusReader", { getAdmissionSummary: down("M6DownError") } as never);
     const { svc } = backend([[specFrozenDraft]]); // the write transaction's lock read is past the script

@@ -4,7 +4,8 @@
 // ./hope-sfv-completion-answers.ts.
 //
 // THE ORDER IS SECURITY-RELEVANT: attestation -> calendar date (pure, body only) -> M6 seam read (outside the tx:
-// another module's seam opens its own tenant context) -> locked, admission-bound SFV lookup -> patient equality ->
+// another module's seam opens its own tenant context) -> the signer's licences (M17 seam, also outside the tx; judged first
+// thing inside it, CW-AC-46) -> locked, admission-bound SFV lookup -> patient equality ->
 // J2052/J2053 content -> only then the signed insert, `planSfvCompletion`, the guarded UPDATE, the signature audit,
 // the answer write and the event. Lock order inside the tx: SFV row, then the triggering assessment, then its answers.
 import { type DbClient, schema } from "@chartwarden/db";
@@ -38,6 +39,7 @@ import {
   type HopeAuditRequestFacts,
   auditHopeSignature,
 } from "./hope-signature-audit";
+import { applySignerLicence, auditLicenceRefusals, readSignerLicence } from "./hope-signer-licence";
 import { uuidOrNotFound } from "./hope-uuid";
 import type { HopeAssessmentView, RecordSfvArgs } from "./routes/service";
 
@@ -357,16 +359,38 @@ export function createSfvCompletionRecorder(deps: SfvCompletionDeps) {
     // today): before the M6 seam read and the locked SFV lookup, which compare it with uuid columns.
     const admissionId = uuidOrNotFound(urlAdmissionId, `Admission ${urlAdmissionId} not found`);
     const admissionPatientId = await resolveSfvAdmissionPatient(organizationId, admissionId);
+    // CW-AC-46 — the signer's active licences (M17 seam, its own tenant context, so read outside the tx), read as late as
+    // it can be so the window before the verdict is only the transaction's start. They concern the caller only, so judging
+    // them before the SFV lookup tells a probe nothing about any SFV.
+    // The day is the SERVER's now, not `deps.clock()`: that clock is read AFTER the SFV lock wait (a test pins it), this one is not.
+    const licence = await readSignerLicence(organizationId, userId, new Date());
+    const licenceCaller = { organizationId, membershipId: userId, request: args.request };
+    const licenceResource = { kind: "admission", id: admissionId } as const;
     try {
-      return await withOrgContext(deps.db, { organizationId, userId: "" }, async (tx) =>
-        completeSfvInTx(deps, tx as unknown as DbClient, {
-          organizationId,
-          userId,
-          admissionId,
-          admissionPatientId,
-          args,
-          completedDate,
-          attestationConfirmed,
+      return await auditLicenceRefusals(
+        deps.db,
+        licenceCaller,
+        licenceResource,
+        withOrgContext(deps.db, { organizationId, userId: "" }, async (tx) => {
+          // The RFA-04 is inserted already signed, so the licence is judged on the discipline it will be attributed to
+          // (an enforced refusal throws, rolling this back; in the organization's shadow mode a finding is written here).
+          await applySignerLicence(
+            tx as unknown as DbClient,
+            licenceCaller,
+            licenceResource,
+            licence,
+            { authorDiscipline: args.authorDiscipline, rfaKind: "04_sfv" },
+            "sfv_complete",
+          );
+          return completeSfvInTx(deps, tx as unknown as DbClient, {
+            organizationId,
+            userId,
+            admissionId,
+            admissionPatientId,
+            args,
+            completedDate,
+            attestationConfirmed,
+          });
         }),
       );
     } catch (error) {

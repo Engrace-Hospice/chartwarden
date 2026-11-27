@@ -457,6 +457,7 @@
     "test:m10:submission-result:live": "vitest run apps/backend/__tests__/m10-hope-submission-result.live.test.ts",
     "test:m10:s04-override:live": "vitest run apps/backend/__tests__/m10-s04-hope-override.live.test.ts",
     "test:m10:sfv-sign-binding:live": "vitest run apps/backend/__tests__/m10-hope-sfv-sign-binding.live.test.ts",
+    "test:m10:signer-licence:live": "vitest run apps/backend/__tests__/m10-hope-signer-licence.live.test.ts",
     "test:m10:g3:live": "vitest run apps/backend/__tests__/m10-hope-g3-lock-canonical.live.test.ts",
     "test:fk-indexes:live": "vitest run packages/db/migrations/__tests__/fk-index-coverage.live.test.ts",
     "test:definer:search-path:live": "vitest run apps/backend/__tests__/definer-search-path.live.test.ts",

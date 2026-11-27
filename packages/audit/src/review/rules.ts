@@ -20,7 +20,7 @@
 // NO PHI. A finding carries rule ids, counts, windows, event ids and a subject REFERENCE (a user id, a /24 network prefix,
 // a truncated credential hash) — never a name, a note, a patient or a free-text reason.
 
-export const SECURITY_REVIEW_RULES_VERSION = "2026-11-26.1";
+export const SECURITY_REVIEW_RULES_VERSION = "2026-11-27.2";
 
 export type SecurityReviewLane = "org" | "platform";
 export type SecuritySeverity = "info" | "warn" | "critical";
@@ -237,6 +237,38 @@ export const SECURITY_RULES: readonly SecurityRule[] = [
     subject: "actor",
     threshold: 5,
     windowMs: 15 * MINUTE_MS,
+  },
+  {
+    // CW-AC-46. One refusal is routine (a licence that lapsed, or one not entered yet); the same signer refused three times
+    // inside an hour is someone who keeps trying to sign clinical records without an active licence in the discipline, which
+    // compliance must hear about. Burst, not `always`: a rollout that finds many licences unrecorded would otherwise raise an
+    // alert per retry, where this raises one per signer per hour (ALERT_COOLDOWN_MS). An organization in SHADOW (the per-organization
+    // switch, hope_signer_licence_policy) records the same event with `mode: shadow` for each unlicensed signature it let through,
+    // so this counts those too: a shadowed rollout alerts exactly as an enforced one does.
+    id: "signature.licence_refusal_burst",
+    title:
+      "One user was refused (or, in shadow, would have been refused) a HOPE signature repeatedly: no active licence in the record's discipline",
+    kind: "burst",
+    lane: "org",
+    severity: "warn",
+    controls: ["CW-AC-46", "CW-MON-01"],
+    eventTypes: ["m10.signature.licence_refused"],
+    subject: "actor",
+    threshold: 3,
+    windowMs: 60 * MINUTE_MS,
+  },
+  {
+    // CW-AC-46. Lowering the licence check is rare and deliberate (a platform operator, a reason, a step-up), and nothing expires it:
+    // an organization left in shadow signs unlicensed records for as long as nobody notices, and a low-volume unlicensed signer never
+    // reaches the burst rule's threshold. So every change of the mode is itself a finding, the one reminder that shadow was entered
+    // (and, on the return to enforce, that it ended). `always`: one alert per change.
+    id: "signature.licence_policy_changed",
+    title: "An organization's HOPE signer-licence check was put in shadow (or returned to enforce)",
+    kind: "always",
+    lane: "org",
+    severity: "warn",
+    controls: ["CW-AC-46", "CW-MON-01"],
+    eventTypes: ["m10.signature.licence_policy_changed"],
   },
   {
     // The tenant-offboarding shred (`data.destruction_certified`, M34) is NOT here: it is written against an organization that is

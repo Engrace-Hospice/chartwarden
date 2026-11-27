@@ -38,6 +38,7 @@ import {
 } from "../src/modules/10-hope/index";
 import { busyWithin } from "./_hope-busy-within";
 import { answerHopeForSign } from "./_hope-sign-ready";
+import { registerLicencedHopeSigners } from "./_hope-signer-licence";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -195,6 +196,8 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       createAdmissionStatusReader(createDrizzleAdmissionReaderStore(handle.db)),
     );
     registerPatientSeams({ db: handle.db });
+    // CW-AC-46: signing reads the signer's licences (the licence itself: m10-hope-signer-licence.live).
+    registerLicencedHopeSigners();
   }
 
   beforeAll(async () => {
@@ -902,10 +905,12 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       // Recording a 01_admission draft REQUIRES the M6 seam (recordTimepoint resolves the admission's
       // patient/siting/admission date through it) and its prefill reads M5, so the draft is recorded and
       // answered with the boot seams in place; the registry is then emptied so the SIGN path — the
-      // subject of this test — runs with none at all.
+      // subject of this test — runs with none at all. (Except the signer's licences, CW-AC-46: a seam that cannot
+      // answer is a 503 by design, so the registry is emptied of every seam D8 reads, not of that one.)
       const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
       await answerForSign(draft.id);
       __resetSeamsForTest();
+      registerLicencedHopeSigners();
       const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id, {
         attestationConfirmed: true,
       });

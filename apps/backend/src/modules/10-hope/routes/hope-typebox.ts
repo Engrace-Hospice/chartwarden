@@ -973,6 +973,26 @@ export const HopeRegenerateResponseSchema = Type.Object({
 });
 
 /**
+ * CW-AC-46 — an organization's enforcement mode for the signer-licence check. `reason` is required for `shadow` (20-200 characters,
+ * judged by the service so the 422 names the bound) and refused for `enforce`; the schema only bounds the size of what is read.
+ */
+const SignerLicenceModeSchema = Type.Union([Type.Literal("enforce"), Type.Literal("shadow")]);
+export const PutSignerLicencePolicySchema = Type.Object(
+  {
+    mode: SignerLicenceModeSchema,
+    // `null` is accepted as "none" (it is what the GET answers for an organization that enforces): the service judges the rest.
+    reason: Type.Optional(Type.Union([Type.String({ maxLength: 1000 }), Type.Null()])),
+  },
+  { additionalProperties: false },
+);
+/** Routes 21/22 — the effective policy (`enforce` for an organization that never set one: `configuredAt` null). */
+export const HopeSignerLicencePolicyResponseSchema = Type.Object({
+  mode: SignerLicenceModeSchema,
+  reason: NullableString(),
+  configuredAt: NullableString(),
+});
+
+/**
  * Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. For an `additionalProperties: false`
  * schema the error's path IS the property name the client chose, which would be echoed into the 422 (and cached by the
  * idempotency layer for 24 h): an unexpected property is reported as the static `(unexpected property)`, never by name.

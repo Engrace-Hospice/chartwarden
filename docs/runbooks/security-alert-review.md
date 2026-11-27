@@ -177,6 +177,101 @@ One user assigned 10 or more roles in 15 minutes. Bulk onboarding is the benign 
 One user deactivated 5 or more accounts in 15 minutes. Offboarding a team is the benign cause; otherwise treat as sabotage and
 reinstate (`m2.membership.reinstated`) while you investigate.
 
+<a id="signature.licence_refusal_burst"></a>
+### signature.licence_refusal_burst (warn)
+One user was refused a HOPE signature three or more times in an hour because they hold no active licence in the record's discipline
+(`m10.signature.licence_refused`, CW-AC-46). An organization running in **shadow** (see the rollout below) is not refusing: its
+unlicensed signatures go through and each leaves the same event with `mode: shadow`, which this rule counts the same, so a rollout
+still alerts once per signer per hour. The event says why: `no_active_licence` (nothing active on the signing day: never
+recorded, expired, suspended or revoked) or `wrong_discipline` (an active licence, but not the one the record is attributed to), and
+the licence kinds held. The usual cause is a roster that was never filled in or a renewal not yet entered: have an administrator with
+`membership_credential.grant` record the current licence (Scheduling, clinician credentials), after confirming it with the clinician's
+own board record, then tell the clinician to sign again with a **new** Idempotency-Key (the refusal is replayed for 24 h on the same
+key). If the licence really has lapsed, the clinician may not sign: reassign the record to a licensed clinician. A user who keeps
+trying without a licence is a conduct matter for the compliance officer, not a data fix. There is no override: the check reads only the
+signer's membership and the record's frozen discipline. (A seam outage is not this alert: it answers 503
+`M10_SIGNER_LICENCE_UNVERIFIABLE` and leaves only a log line.)
+
+**Rolling the licence check out to an organization (operator procedure).** Read this first, because the order matters:
+
+- **The check ENFORCES by default, from the deploy.** An organization with no setting refuses an unlicensed signature at the first
+  deploy that carries this change. The shadow switch (the table and the routes) ships in that same release, so it is **not** a soak
+  you can start before the deploy: for an organization that is live at the merge, steps 1 and 2 must be done BEFORE the merge (the
+  merge is held until they are), and shadow is the valve for the days after it (a clinician nobody listed) and the pre-enforcement
+  window for organizations onboarded later.
+- **No tenant role holds the switch by default.** `hope.admin.signer_licence_policy` is a `platform` key that lowers a compliance
+  control. The tenant materializer and the seed scripts withhold it from org admins and every other tenant role (superadmin in the
+  platform organization holds it but cannot act inside a tenant organization), and a tenant administrator cannot grant it to themselves.
+  The operator grants it directly (a `role_permission` row, through the operator tooling or a migration) to the one named
+  person who will run steps 3 and 4, who needs an active membership in that organization (the grant store reads nothing else), and
+  removes the grant afterwards. The call needs a fresh step-up (break-glass does not satisfy it) and refuses an AI principal.
+- **Every change is audited** (`m10.signature.licence_policy_changed`: the previous and new mode and the reason) and raises the CW-MON-01
+  alert `signature.licence_policy_changed` (below).
+
+1. **Back-fill the licences.** Every clinician who signs HOPE records needs a current licence recorded for the discipline they sign
+   as (RN `rn`, NP `np`, MD or DO `md`, LPN or LVN `lpn`): `POST /api/v1/memberships/:membershipId/credentials`, or Scheduling,
+   clinician credentials, confirmed against the clinician's own board record.
+2. **Run the read-only last-90-day query** at the end of this section, as the operator on the organization's database (never from an
+   agent session). It lists the people who signed a HOPE record in the last 90 days and hold no active licence at all today; fix every
+   one, then compare each signer's record discipline with their licence kind for the wrong-discipline case.
+3. **If the organization must run unlicensed signatures for a while, put it in shadow, with a reason.**
+   `PUT /api/v1/hope/admin/signer-licence-policy` with `{"mode":"shadow","reason":"<20-200 characters of plain text>"}`. The reason is
+   kept on the row, in the row trigger's snapshot and in the change event, so it is screened for SSN- and MBI-shaped values only (it
+   cannot tell a name from a word): **do not name a patient in it**. An unlicensed signature now goes through and leaves an
+   `m10.signature.licence_refused` finding with `mode: shadow`. Read the findings until each is explained and fixed (`reason` is
+   `no_active_licence` or `wrong_discipline`):
+
+   ```sql
+   SELECT context->>'byMembershipId' AS membership, context->>'reason' AS reason,
+          context->>'requiredDiscipline' AS discipline, count(*) AS would_be_refusals
+     FROM audit_event
+    WHERE organization_id = :org AND event_type = 'm10.signature.licence_refused'
+      AND context->>'mode' = 'shadow' AND created_at > now() - interval '14 days'
+    GROUP BY 1, 2, 3 ORDER BY 4 DESC;
+   ```
+
+   **A shadow-signed record is a real, signed, final HOPE record** (read-only, eligible for iQIES submission); nothing marks the record
+   itself, and the finding lives only in the trail. Shadow covers a roster that was not filled in, never a wrong signer. For each
+   finding, decide with the compliance officer before the record is submitted: record the signer's licence if it was valid on the day
+   (the finding is then explained), or have a licensed clinician correct and re-sign the record (`/correct`), or hold the record's
+   submission. Name an owner for the list.
+4. **Switch to enforce.** `PUT .../signer-licence-policy` with `{"mode":"enforce"}` (no reason; the row's reason is cleared). From the
+   next signature an unlicensed one is refused. **Nothing expires a shadow setting**: an organization stays in shadow until this step. The
+   only reminders are the change alert (once, when shadow was entered) and the burst rule (only for a signer with three or more
+   findings in an hour), so put the end of the shadow window in the operator's calendar.
+
+`GET .../signer-licence-policy` shows the current mode and reason (`enforce` with `configuredAt` null for an organization that never
+set one). A seam outage is a 503 in both modes: shadow covers roster data, not an outage. A shadow signature whose finding cannot be
+written fails (nothing is signed): shadow records, it does not skip the audit.
+
+The step-2 query:
+
+```sql
+SELECT DISTINCT a.signed_by_membership_id
+  FROM hope_assessment a
+ WHERE a.organization_id = :org
+   AND a.signed_at > now() - interval '90 days'
+   AND NOT EXISTS (
+         SELECT 1 FROM membership_credential c
+          WHERE c.organization_id = a.organization_id
+            AND c.membership_id = a.signed_by_membership_id
+            AND c.status = 'active' AND c.revoked_at IS NULL
+            AND c.effective_at <= current_date
+            AND (c.expires_at IS NULL OR c.expires_at >= current_date));
+```
+
+It finds nobody who holds a licence in the WRONG discipline (an RN licence on a record attributed to an NP): compare each signer's
+record discipline with their licence kind (RN: `rn`, NP: `np`, MD or DO: `md`, LPN or LVN: `lpn`). A legacy draft with no frozen author
+discipline can never be signed on any licence: re-record it with one.
+
+<a id="signature.licence_policy_changed"></a>
+### signature.licence_policy_changed (warn)
+An organization's HOPE signer-licence check was set to `shadow` (unlicensed signatures now go through, each leaving a finding) or returned
+to `enforce` (`m10.signature.licence_policy_changed`, CW-AC-46). The event names the previous and new mode, the reason (for shadow) and the
+operator. Confirm it was the planned rollout step, that the person holding the grant is the one named for it, and write down when shadow
+must end: nothing expires it, and this alert fires once, at the change. If nobody planned it, treat it as someone lowering a compliance
+control: switch the organization back to enforce, remove the grant, and review the shadow findings since.
+
 <a id="destructive.data_destruction_approved"></a>
 ### destructive.data_destruction_approved (critical)
 A destruction certificate was approved. Destruction is irreversible: confirm the retention class and that no legal hold

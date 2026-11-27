@@ -31,6 +31,7 @@ import { assertAuthorBoundToActor } from "@chartwarden/hope";
 // applied as a query narrowing instead, GAP-182). `POST /hope/admin/regenerate-schedules` (§4.1 ABAC = `platform_admin`, a role
 // check) was left out of GAP-018 but now binds `hope.scope` on the body's admissionId (`SCOPE_BODY_ADMISSION`, GAP-124).
 import { type PreHandler, membershipActorOf, rejectAiActor } from "@chartwarden/shared/route-kit";
+import { ForbiddenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { HOPE_SFV_STEP_UP_OPERATION, HOPE_SIGN_STEP_UP_OPERATION } from "../hope-signature-audit";
@@ -43,6 +44,8 @@ import {
   REGENERATE_SCHEDULES_GUARDS,
   REJECT_AI_OPERATIONS,
   SCOPE_SUBMISSION,
+  SIGNER_LICENCE_POLICY_READ_GUARDS,
+  SIGNER_LICENCE_POLICY_WRITE_GUARDS,
   SUBMISSION_ASSEMBLE_GUARDS,
   SUBMISSION_OPERATION_GUARDS,
   adminOverrideRequested,
@@ -63,12 +66,14 @@ import {
   HopeAssessmentReviewResponseSchema,
   HopeAssessmentWorkspaceResponseSchema,
   HopeSignResponseSchema,
+  HopeSignerLicencePolicyResponseSchema,
   HopeWorkflowStateResponseSchema,
   ImportSubmissionResultSchema,
   InactivateTimepointSchema,
   MarkSubmissionUploadedSchema,
   PatchAnswersSchema,
   PatientParamsSchema,
+  PutSignerLicencePolicySchema,
   RecordSfvSchema,
   RecordTimepointSchema,
   RegenerateSchedulesSchema,
@@ -765,6 +770,55 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
         membershipId: userId,
         request: signatureRequestFacts(request),
       });
+    },
+  );
+
+  // 21 — CW-AC-46: the organization's enforcement mode for the signer-licence check (enforce, or shadow with a reason). Platform
+  // operator authority (never a tenant default), organization-level configuration with no patient data.
+  app.get(
+    "/api/v1/hope/admin/signer-licence-policy",
+    {
+      preHandler: [...SIGNER_LICENCE_POLICY_READ_GUARDS],
+      config: {
+        auditRead: {
+          none: "Organization-level signer-licence enforcement mode and the reason it is below enforce; no patient data.",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = membershipActorOf(request);
+      return parse(
+        HopeSignerLicencePolicyResponseSchema,
+        await service.getSignerLicencePolicy(organizationId),
+      );
+    },
+  );
+
+  // 22 — set it. Shadow needs a reason (20-200 characters, screened for patient identifiers); enforce takes none. The write and its
+  // `m10.signature.licence_policy_changed` audit event commit together. The acting SESSION user is recorded on the row, so a call
+  // that has none (it cannot be attributed) is refused.
+  app.put(
+    "/api/v1/hope/admin/signer-licence-policy",
+    { preHandler: [...SIGNER_LICENCE_POLICY_WRITE_GUARDS] },
+    async (request) => {
+      // The permission is resolved through the caller's active membership in this organization (the grant store reads nothing
+      // else), so a caller here has one: the audit names it, and the session user is recorded on the row.
+      const { organizationId, userId: membershipId } = membershipActorOf(request);
+      const facts = signatureRequestFacts(request);
+      if (!facts.actorUserId) {
+        throw new ForbiddenError("The signer-licence policy needs an identified user session");
+      }
+      const body = parse(PutSignerLicencePolicySchema, request.body);
+      return parse(
+        HopeSignerLicencePolicyResponseSchema,
+        await service.putSignerLicencePolicy(organizationId, {
+          mode: body.mode,
+          ...(typeof body.reason === "string" ? { reason: body.reason } : {}),
+          membershipId,
+          actorUserId: facts.actorUserId,
+          request: facts,
+        }),
+      );
     },
   );
 }

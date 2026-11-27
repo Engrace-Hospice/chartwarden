@@ -1598,6 +1598,14 @@ export const M10_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "none",
   },
+  // CW-AC-46: sets an organization's enforcement mode for the signer-licence check (enforce | shadow, a reason required below
+  // enforce). Platform operator authority, like the keys above: never a tenant default, so a tenant cannot lower its own control.
+  "hope.admin.signer_licence_policy": {
+    resource: "hope_admin",
+    action: "signer_licence_policy",
+    category: "platform",
+    abac: "none",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M10 contributed permission keys. */
