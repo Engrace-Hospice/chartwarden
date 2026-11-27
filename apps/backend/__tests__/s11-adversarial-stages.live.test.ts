@@ -107,13 +107,15 @@ interface Stage {
   /** Column that names the patient on the row (for break-glass targeting); null when the row IS the patient. */
   readonly patientColumn: string | null;
   /**
-   * Does an invoked glass actually open this stage's read? Only the stages whose ABAC target carries `patientId`
-   * (patient, order) consult the break-glass checker (`contract.ts` keys on `target.patientId`). The others stay
-   * CLOSED under glass: fail-closed, but a clinician in an emergency cannot reach that part of the chart (S11 gap).
+   * A patient-keyed read for stages whose own read is not patient-scoped (IDG meeting -> the patient's IDG history).
+   * A meeting spans patients and is scoped by location, so no one patient's glass opens it (CW-AC-03).
    */
-  readonly glassOpens: boolean;
-  /** A patient-keyed read for stages whose own read is not patient-scoped (IDG meeting -> the patient's IDG history). */
   readonly glassRead?: (patientId: string) => string;
+  /**
+   * The write route has NO per-chart scope guard (the encounter void is an admin override gated by its permission alone),
+   * so it is not refused for a clinician outside the caseload, glass or no glass. It still rides no glass.
+   */
+  readonly writeUngatedByScope?: boolean;
   /** Discipline roles the CONTROL writer also needs (an ABAC discipline gate on top of the permission). */
   readonly writeActorRoles?: readonly string[];
   /** Extra column values the filler cannot guess (CHECKs, enum states the route cares about). */
@@ -123,7 +125,6 @@ interface Stage {
 const STAGES: readonly Stage[] = [
   {
     name: "patient",
-    glassOpens: true,
     table: "patient",
     read: { url: (id) => `/api/v1/patients/${id}`, perms: ["patient.read"] },
     write: {
@@ -136,7 +137,6 @@ const STAGES: readonly Stage[] = [
   },
   {
     name: "admission",
-    glassOpens: false,
     table: "admission",
     read: { url: (id) => `/api/v1/admissions/${id}`, perms: ["admission.read"] },
     write: {
@@ -149,7 +149,7 @@ const STAGES: readonly Stage[] = [
   },
   {
     name: "encounter",
-    glassOpens: false,
+    writeUngatedByScope: true,
     table: "encounter",
     read: { url: (id) => `/api/v1/encounters/${id}`, perms: ["encounter.read"] },
     write: {
@@ -162,7 +162,6 @@ const STAGES: readonly Stage[] = [
   },
   {
     name: "order",
-    glassOpens: true,
     table: "order_record",
     read: { url: (id) => `/api/v1/orders/${id}`, perms: ["orders.read"] },
     write: {
@@ -175,7 +174,6 @@ const STAGES: readonly Stage[] = [
   },
   {
     name: "emar",
-    glassOpens: false,
     table: "administration_record",
     read: { url: (id) => `/api/v1/administrations/${id}`, perms: ["administration.read"] },
     write: {
@@ -188,7 +186,6 @@ const STAGES: readonly Stage[] = [
   },
   {
     name: "hope",
-    glassOpens: false,
     table: "hope_assessment",
     read: { url: (id) => `/api/v1/hope/assessments/${id}`, perms: ["hope.timepoint.read"] },
     write: {
@@ -199,10 +196,12 @@ const STAGES: readonly Stage[] = [
     },
     patientColumn: "patient_id",
     writeActorRoles: ["rn"],
+    // Migration 1452 froze the author's discipline on the row; `hope.authorDisciplineAllowed` refuses a draft edit whose
+    // row carries none (a legacy NULL), so the CONTROL writer (an `rn`) needs a row it authored as an RN.
+    overrides: { author_discipline: "RN" },
   },
   {
     name: "idg",
-    glassOpens: false,
     table: "idg_meeting",
     read: { url: (id) => `/api/v1/idg/meetings/${id}`, perms: ["idg.read"] },
     write: {
@@ -216,7 +215,6 @@ const STAGES: readonly Stage[] = [
   },
   {
     name: "discharge",
-    glassOpens: false,
     table: "admission",
     read: {
       url: (id) => `/api/v1/admissions/${id}/discharge-details`,
@@ -492,6 +490,22 @@ describe.skipIf(!DB_URL)("S11 adversarial cases across clinical stages — LIVE 
   }
 
   const isDenied = (status: number) => status === 401 || status === 403 || status === 404;
+
+  /**
+   * Whether a PHI-read event (`<resource kind>.viewed`) exists for `userId` against `resourceId`. The read audit is
+   * written as the response is sent, so poll briefly rather than race it.
+   */
+  async function readAuditLanded(userId: string, resourceId: string): Promise<boolean> {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const found = await admin.query(
+        "SELECT 1 FROM audit_event WHERE organization_id=$1 AND actor_user_id=$2 AND resource_id=$3::uuid AND event_type LIKE '%.viewed'",
+        [ORG_A, userId, resourceId],
+      );
+      if ((found.rowCount ?? 0) > 0) return true;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return false;
+  }
 
   // ── boot ───────────────────────────────────────────────────────────────────────────────────────────
   beforeAll(async () => {
@@ -870,29 +884,143 @@ describe.skipIf(!DB_URL)("S11 adversarial cases across clinical stages — LIVE 
       const invoked = audit.find((r) => r.event_type === "m3.breakglass.invoked");
       expect(invoked?.actor_user_id).toBe(clinician.userId);
       expect(invoked?.after).toMatchObject({ reason, targetPatientId: patientId });
-      if (stage.glassOpens) {
-        expect(inside.statusCode, inside.body).toBe(200);
-        // every chart view under glass is its own critical audit row: actor, the patient, and the glass it rode
-        const access = audit.find((r) => r.event_type === "m3.breakglass.access");
-        expect(access?.actor_user_id).toBe(clinician.userId);
-        expect(access?.rid).toBe(patientId);
-        expect(access?.context).toMatchObject({ breakGlassEventId: glassId });
-      } else {
-        // KNOWN GAP (fail-closed): this stage never consults the glass. Flip glassOpens when it does.
-        expect(inside.statusCode, inside.body).toBe(404);
-        expect(types).not.toContain("m3.breakglass.access");
-      }
+      expect(inside.statusCode, inside.body).toBe(200);
+      // every chart view under glass is its own critical audit row: actor, the patient, and the glass it rode
+      const access = audit.find((r) => r.event_type === "m3.breakglass.access");
+      expect(access?.actor_user_id).toBe(clinician.userId);
+      expect(access?.rid).toBe(patientId);
+      expect(access?.context).toMatchObject({ breakGlassEventId: glassId });
+
+      // the read ALSO leaves its own PHI-read trail against the resource it opened. That row needs the route's
+      // `resourceIdParam`: without it the insert fails on the uuid cast and the best-effort wrapper swallows it.
+      expect(
+        await readAuditLanded(clinician.userId, stage.glassRead ? patientId : rows().rowA),
+      ).toBe(true);
 
       // closing it closes the door again
       const reviewer = await staff(ORG_A, "compliance_officer", BREAKGLASS_PERMS);
       const revoke = await call(reviewer, "POST", `/api/v1/breakglass/${glassId}/revoke`, {});
       expect(revoke.statusCode, revoke.body).toBe(200);
-      // Only meaningful where the glass opened the door; a KNOWN-GAP stage was 404 before the revoke too.
-      if (stage.glassOpens) {
-        const after = await call(clinician, "GET", readUrl);
-        expect(after.statusCode, after.body).toBe(404);
+      const after = await call(clinician, "GET", readUrl);
+      expect(after.statusCode, after.body).toBe(404);
+    });
+
+    // CW-AC-03: the rest of the per-stage break-glass proof. `outsideClinician` works at a SECOND site with no caseload
+    // row, so only the glass can open the chart; each case below changes exactly one thing about the glass.
+    const outsideClinician = (extraPerms: readonly string[] = BREAKGLASS_PERMS) =>
+      staff(ORG_A, CLINICIAN_ROLE, [...perms, ...extraPerms], PE_A2, LOC_A2);
+    const glassPatient = () => (stage.table === "patient" ? rows().rowA : rows().patientA);
+    const glassReadUrl = () =>
+      stage.glassRead ? stage.glassRead(glassPatient()) : stage.read.url(rows().rowA);
+    const invoke = async (who: Staff, patientId: string) => {
+      const res = await call(who, "POST", "/api/v1/breakglass", {
+        reason: `synthetic emergency cover for ${stage.name}`,
+        targetPatientId: patientId,
+      });
+      expect(res.statusCode, res.body).toBe(201);
+      return res.json().breakGlassId as string;
+    };
+    const accessRows = async (userId: string) =>
+      (
+        await admin.query(
+          "SELECT 1 FROM audit_event WHERE organization_id=$1 AND actor_user_id=$2 AND event_type='m3.breakglass.access'",
+          [ORG_A, userId],
+        )
+      ).rowCount ?? 0;
+
+    it("BREAK-GLASS EXPIRY: the glass opens the read, then grants nothing once it has expired", async () => {
+      const clinician = await outsideClinician();
+      const glassId = await invoke(clinician, glassPatient());
+      expect((await call(clinician, "GET", glassReadUrl())).statusCode).toBe(200);
+      await admin.query(
+        "UPDATE break_glass_event SET expires_at = now() - interval '1 minute' WHERE id=$1",
+        [glassId],
+      );
+      const after = await call(clinician, "GET", glassReadUrl());
+      expect(after.statusCode, after.body).toBe(404);
+      // the one read that opened is the only access row: the refused read after expiry wrote none
+      expect(await accessRows(clinician.userId)).toBe(1);
+    });
+
+    it("BREAK-GLASS TENANT: another organization's clinician, holding a glass naming this patient's id, is shown nothing of this organization", async () => {
+      const foreign = await staff(ORG_B, CLINICIAN_ROLE, [...perms, ...BREAKGLASS_PERMS]);
+      // The invoke is accepted for any id (M3 cannot read the patient table). The glass is org B's and every row it
+      // could reach is org B's: RLS and the stage's own org-scoped lookups hide org A's.
+      await call(foreign, "POST", "/api/v1/breakglass", {
+        reason: `synthetic emergency cover for ${stage.name}`,
+        targetPatientId: glassPatient(),
+      });
+      const read = await call(foreign, "GET", glassReadUrl());
+      if (read.statusCode === 200) {
+        // Only the patient-keyed IDG History can answer 200 for an id that is no patient of org B: an empty list.
+        expect(stage.glassRead, read.body).toBeDefined();
+        expect(read.json()).toEqual({ meetings: [] });
+      } else {
+        expect(read.statusCode, read.body).toBe(404);
+      }
+      // nothing of org A's was disclosed
+      expect(read.body).not.toContain(rows().rowA);
+    });
+
+    it("BREAK-GLASS IS READ-ONLY: a live glass opens no write, and every scope-gated write is still refused with the row unchanged", async () => {
+      const clinician = await outsideClinician();
+      await invoke(clinician, glassPatient());
+      expect((await call(clinician, "GET", glassReadUrl())).statusCode).toBe(200);
+      const accessBefore = await accessRows(clinician.userId);
+      const before = await rowHash(stage.table, rows().rowA);
+      const write = await call(
+        clinician,
+        stage.write.method,
+        stage.write.url(rows().rowA),
+        stage.write.body,
+      );
+      // the write rode no glass: the shared gate wrote no further access row for it
+      expect(await accessRows(clinician.userId)).toBe(accessBefore);
+      if (!stage.writeUngatedByScope) {
+        expect(isDenied(write.statusCode), write.body).toBe(true);
+        expect(await rowHash(stage.table, rows().rowA)).toBe(before);
       }
     });
+
+    it("BREAK-GLASS WITHOUT: the same clinician with no glass is refused, and no access row exists", async () => {
+      const clinician = await outsideClinician();
+      const read = await call(clinician, "GET", glassReadUrl());
+      expect(read.statusCode, read.body).toBe(404);
+      expect(await accessRows(clinician.userId)).toBe(0);
+    });
+
+    if (stage.name === "hope") {
+      // The workspace / review / validation GETs refresh and version-bump a draft for a caller who may write. A read a
+      // glass opened is a read only: the clinician holds hope.timepoint.write, yet the assessment must not move.
+      it("BREAK-GLASS HOPE: a glass-opened workspace read writes nothing to the assessment", async () => {
+        const clinician = await outsideClinician();
+        await invoke(clinician, glassPatient());
+        const before = await rowHash(stage.table, rows().rowA);
+        for (const suffix of ["workspace", "review", "validation"]) {
+          await call(clinician, "GET", `/api/v1/hope/assessments/${rows().rowA}/${suffix}`);
+        }
+        expect(await rowHash(stage.table, rows().rowA)).toBe(before);
+      });
+    }
+
+    if (stage.name === "idg") {
+      // A meeting spans patients and is scoped by location: the by-patient packet read names the glassed patient in its
+      // params, but no single patient's glass covers the meeting.
+      it("BREAK-GLASS IDG: the by-patient packet read of a meeting stays refused under a glass over that patient", async () => {
+        const clinician = await outsideClinician();
+        await invoke(clinician, glassPatient());
+        const packet = await call(
+          clinician,
+          "GET",
+          `/api/v1/idg/meetings/${rows().rowA}/packets/${glassPatient()}`,
+        );
+        expect(isDenied(packet.statusCode), packet.body).toBe(true);
+        expect(await accessRows(clinician.userId)).toBe(0);
+        const meeting = await call(clinician, "GET", stage.read.url(rows().rowA));
+        expect(isDenied(meeting.statusCode), meeting.body).toBe(true);
+        expect(await accessRows(clinician.userId)).toBe(0);
+      });
+    }
 
     it("AUDITOR: an enrolment-stage session cannot reach this stage's read or write (AUDITOR_ENROLMENT_REQUIRED)", async () => {
       const cookie = await auditorEnrolmentSession();

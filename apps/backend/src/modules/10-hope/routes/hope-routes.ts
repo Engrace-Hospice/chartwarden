@@ -1,5 +1,6 @@
 import {
   type AbacTarget,
+  BREAK_GLASS_ATTRIBUTE,
   requireAbac,
   requirePermission,
   requireStepUp,
@@ -124,6 +125,9 @@ const ADMIN_LATE_OVERRIDE = P("hope.admin.late_deadline_override");
  * is shown the stored state.
  */
 async function callerMayWrite(request: FastifyRequest): Promise<boolean> {
+  // CW-AC-03: a read a break-glass grant opened is a read only. These GETs refresh and version-bump a draft for a writer,
+  // so an off-caseload clinician under an emergency glass is shown the stored state, never a write.
+  if (typeof request.context.attributes[BREAK_GLASS_ATTRIBUTE] === "string") return false;
   const granted = await resolveActorPermissions(request.context);
   return granted.has("hope.timepoint.write");
 }

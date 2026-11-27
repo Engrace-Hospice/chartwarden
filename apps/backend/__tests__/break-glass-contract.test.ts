@@ -49,7 +49,7 @@ function makeRequest(params: unknown = { patientId: "p1" }): GuardRequest {
     userAgent: "vitest",
     startTime: 0,
   };
-  return { context, params };
+  return { context, params, method: "GET" };
 }
 
 afterEach(() => {

@@ -158,6 +158,9 @@ function makeServer(
   for (const [name, predicate] of Object.entries(buildIdgAbacPredicates({ resolver: backend }))) {
     reg.register(name, predicate);
   }
+  // The patient IDG History read is gated by the shared per-chart scope (M7's `caseload_or_scope`, registered at boot,
+  // CW-AC-03); this server's caseload covers every patient, so the shared predicate admits every patient too.
+  reg.register("caseload_or_scope", () => true);
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });

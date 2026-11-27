@@ -20,7 +20,7 @@
 // NO PHI. A finding carries rule ids, counts, windows, event ids and a subject REFERENCE (a user id, a /24 network prefix,
 // a truncated credential hash) — never a name, a note, a patient or a free-text reason.
 
-export const SECURITY_REVIEW_RULES_VERSION = "2026-11-26.1";
+export const SECURITY_REVIEW_RULES_VERSION = "2026-11-27.1";
 
 export type SecurityReviewLane = "org" | "platform";
 export type SecuritySeverity = "info" | "warn" | "critical";
@@ -150,6 +150,23 @@ export const SECURITY_RULES: readonly SecurityRule[] = [
     severity: "critical",
     controls: ["CW-MON-01"],
     eventTypes: ["m3.breakglass.invoked"],
+  },
+  {
+    // USE of a glass, not just its invocation. Every gated read a glass opens, at ANY clinical stage (patient, order,
+    // admission, discharge, encounter, eMAR, HOPE, the patient's IDG history), is one critical `m3.breakglass.access`
+    // row written by the one shared gate, so a single rule covers every stage: the row names the actor, the patient and
+    // the glass, never what was read. A chart open is a few dozen gated reads, so the threshold sits above one patient's
+    // chart and below a walk through many; it is the stated starting point, tuned from production (CW-AC-03).
+    id: "access.break_glass_heavy_use",
+    title: "One user opened a large number of reads under emergency (break-glass) access",
+    kind: "burst",
+    lane: "org",
+    severity: "warn",
+    controls: ["CW-MON-01", "CW-AC-03"],
+    eventTypes: ["m3.breakglass.access"],
+    subject: "actor",
+    threshold: 150,
+    windowMs: 15 * MINUTE_MS,
   },
   {
     id: "access.privilege_escalation_blocked",

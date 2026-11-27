@@ -39,7 +39,9 @@
 import {
   type AbacContext,
   type AbacTarget,
+  type BreakGlassSubjectResolver,
   hasOrgWideScope,
+  registerBreakGlassSubject,
   registerPredicateIdempotent,
 } from "@chartwarden/auth";
 import { controlledSubstanceWitnessEligible } from "@chartwarden/emar";
@@ -250,22 +252,50 @@ export function buildEmarAbacPredicates(
       return actorDisciplinesOf(context).some((d) => (matrix as readonly string[]).includes(d));
     },
     "emar.scope": async (context, target) => {
-      const patientIds: string[] = [];
-      const named = targetStr(target, "patientId");
-      if (named) patientIds.push(named);
-      for (const kind of EMAR_SCOPE_REF_KINDS) {
-        const id = targetStr(target, kind);
-        if (!id) continue;
-        const patientId = await resolver.loadScopePatientId(context.organizationId, kind, id);
-        if (!patientId) return false; // absent / cross-tenant row (fail-closed)
-        patientIds.push(patientId);
-      }
-      if (patientIds.length === 0) return false; // nothing named → deny (fail-closed)
-      for (const patientId of new Set(patientIds)) {
+      // null = a named row is absent / cross-tenant; empty = nothing named: both deny (fail-closed).
+      const patientIds = await emarScopePatientIds(resolver, context.organizationId, target);
+      if (patientIds === null || patientIds.size === 0) return false;
+      for (const patientId of patientIds) {
         if (!(await patientInScope(context, patientId))) return false;
       }
       return true;
     },
+  };
+}
+
+/**
+ * Every patient an `emar.scope` target is about: the `patientId` it names plus the patient of each M13 row / order it
+ * names. `null` when a named row does not resolve (absent or another tenant's). Shared by the predicate and by its
+ * break-glass subject resolver, so the patient a glass is judged against is the patient the caseload was judged on.
+ */
+async function emarScopePatientIds(
+  resolver: EmarAbacResolver,
+  organizationId: string,
+  target: AbacTarget,
+): Promise<ReadonlySet<string> | null> {
+  const patientIds = new Set<string>();
+  const named = targetStr(target, "patientId");
+  if (named) patientIds.add(named);
+  for (const kind of EMAR_SCOPE_REF_KINDS) {
+    const id = targetStr(target, kind);
+    if (!id) continue;
+    const patientId = await resolver.loadScopePatientId(organizationId, kind, id);
+    if (!patientId) return null;
+    patientIds.add(patientId);
+  }
+  return patientIds;
+}
+
+/**
+ * Break-glass (CW-AC-03): the patient an `emar.scope` target belongs to, so an emergency grant over that patient opens
+ * the administration read like it opens the chart. A target about no patient or about SEVERAL resolves to `null`: a
+ * grant is per patient and covers one. The grant only ever opens a GET (`requireAbac` refuses the branch for any
+ * other method).
+ */
+export function buildEmarBreakGlassSubject(deps: EmarAbacDeps): BreakGlassSubjectResolver {
+  return async (context, target) => {
+    const patientIds = await emarScopePatientIds(deps.resolver, context.organizationId, target);
+    return patientIds !== null && patientIds.size === 1 ? ([...patientIds][0] ?? null) : null;
   };
 }
 
@@ -279,4 +309,5 @@ export function registerEmarAbacPredicates(deps: EmarAbacDeps): void {
   for (const [name, predicate] of Object.entries(predicates)) {
     registerPredicateIdempotent(name, predicate);
   }
+  registerBreakGlassSubject("emar.scope", buildEmarBreakGlassSubject(deps));
 }
