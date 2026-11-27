@@ -32,8 +32,10 @@ const untouched = {
 const inScope = async () => undefined;
 const prescriber = { membershipId: MEMBERSHIP, userId: "u1", disciplines: ["hospice_physician"] };
 const noAction: ResolveCriticalLabInput = { resolution: "reviewed_no_action", reason: REASON };
-const run = (input: ResolveCriticalLabInput, actor: Parameters<typeof resolveCriticalLabResult>[4] = prescriber) =>
-  resolveCriticalLabResult(untouched, ORG, RESULT, input, actor, inScope);
+const run = (
+  input: ResolveCriticalLabInput,
+  actor: Parameters<typeof resolveCriticalLabResult>[4] = prescriber,
+) => resolveCriticalLabResult(untouched, ORG, RESULT, input, actor, inScope);
 
 describe("resolveCriticalLabResult — refusals before any database access", () => {
   it("refuses a non-prescriber discipline (403)", async () => {

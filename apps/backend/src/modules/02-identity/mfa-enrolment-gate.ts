@@ -12,7 +12,12 @@
 // (`sessionProvedFactor`), else a passkey-only user would pass on a password-only session.
 // Disabled (`enforced: false`) it answers "satisfied" without reading anything. That is only the explicit
 // `CHARTWARDEN_MFA_ENFORCEMENT=false` relaxation (see `resolveMfaEnforcement`); the default is enforced.
-import { AUTH_AUDIT_EVENTS, type AuthAuditSink, type MfaVerdict, evaluateMfa } from "@chartwarden/auth";
+import {
+  AUTH_AUDIT_EVENTS,
+  type AuthAuditSink,
+  type MfaVerdict,
+  evaluateMfa,
+} from "@chartwarden/auth";
 import type { DbClient } from "@chartwarden/db";
 import { withUserContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";

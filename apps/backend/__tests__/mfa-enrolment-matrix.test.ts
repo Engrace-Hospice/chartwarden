@@ -1,7 +1,7 @@
 import {
-  PLATFORM_DUTY_ROLE_KEYS,
   type AuthAuditEvent,
   MFA_RELAXATION_REASON_MAX_LENGTH,
+  PLATFORM_DUTY_ROLE_KEYS,
   evaluateMfa,
   mfaRelaxationReason,
   mfaRequirementFor,
@@ -69,7 +69,18 @@ describe("the MFA matrix (pure)", () => {
 
   it("only the exact value `false` relaxes it; a typo, a capital or a number leaves it enforced", () => {
     expect(resolveMfaEnforcement({ CHARTWARDEN_MFA_ENFORCEMENT: "false" })).toBe(false);
-    for (const value of ["true", "True", "FALSE", "False", "0", "off", "no", "", " false", "false "])
+    for (const value of [
+      "true",
+      "True",
+      "FALSE",
+      "False",
+      "0",
+      "off",
+      "no",
+      "",
+      " false",
+      "false ",
+    ])
       expect(resolveMfaEnforcement({ CHARTWARDEN_MFA_ENFORCEMENT: value })).toBe(true);
   });
 
@@ -279,7 +290,12 @@ describe("the authenticate-stage hold (GAP-003)", () => {
       const seen: Record<string, unknown>[] = [];
       const hook = hookWithCallback((input) => void seen.push(input));
       await expect(
-        hook(refusedRequest("/api/v1/intake/uploads/0b1d5c9e-0000-4000-8000-000000000001/workspace", "/api/v1/intake/uploads/:id/workspace")),
+        hook(
+          refusedRequest(
+            "/api/v1/intake/uploads/0b1d5c9e-0000-4000-8000-000000000001/workspace",
+            "/api/v1/intake/uploads/:id/workspace",
+          ),
+        ),
       ).rejects.toMatchObject({ code: "MFA_ENROLMENT_REQUIRED" });
       await Promise.resolve();
       expect(seen).toEqual([

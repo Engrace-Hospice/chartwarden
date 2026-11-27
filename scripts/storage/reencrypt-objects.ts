@@ -139,7 +139,8 @@ interface Head {
   readonly versionId: string | null;
 }
 
-const reasonOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+const reasonOf = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
 
 async function headObject(
   fetchS3: SignedFetch,
@@ -162,14 +163,19 @@ async function headObject(
   const checksum = res.headers.get("x-amz-checksum-sha256");
   return {
     byteSize: Number(res.headers.get("content-length") ?? Number.NaN),
-    mimeType: res.headers.get("content-type")?.split(";", 1)[0]?.trim() || "application/octet-stream",
+    mimeType:
+      res.headers.get("content-type")?.split(";", 1)[0]?.trim() || "application/octet-stream",
     sha256Hex: checksum ? Buffer.from(checksum, "base64").toString("hex") : null,
     encryption: res.headers.get("x-amz-server-side-encryption"),
     versionId: res.headers.get("x-amz-version-id"),
   };
 }
 
-async function bucketIsVersioned(fetchS3: SignedFetch, bucket: string, signal: AbortSignal): Promise<boolean> {
+async function bucketIsVersioned(
+  fetchS3: SignedFetch,
+  bucket: string,
+  signal: AbortSignal,
+): Promise<boolean> {
   const res = await fetchS3({
     method: "GET",
     bucket,
@@ -178,7 +184,10 @@ async function bucketIsVersioned(fetchS3: SignedFetch, bucket: string, signal: A
     payload: null,
     signal,
   });
-  if (!res.ok) throw new Error(`GetBucketVersioning answered HTTP ${res.status} (run with the operator's admin key)`);
+  if (!res.ok)
+    throw new Error(
+      `GetBucketVersioning answered HTTP ${res.status} (run with the operator's admin key)`,
+    );
   return /<Status>\s*Enabled\s*<\/Status>/.test(await res.text());
 }
 
@@ -223,7 +232,12 @@ async function rewriteObject(
     );
   if (before.versionId === null)
     throw new Error("the store reported no version id, so the retained source cannot be proven");
-  const bytes = await store.getObject({ bucket, objectKey: key, maxBytes: MAX_OBJECT_BYTES, signal: signal() });
+  const bytes = await store.getObject({
+    bucket,
+    objectKey: key,
+    maxBytes: MAX_OBJECT_BYTES,
+    signal: signal(),
+  });
   if (!bytes) throw new Error("vanished during the run");
   const actual = sigV4Sha256Hex(bytes);
   if (before.sha256Hex !== null && actual !== before.sha256Hex)
@@ -241,7 +255,13 @@ async function rewriteObject(
   });
   state.intentWritten = true;
   // `putObject` names SSE-S3 and fails when the store does not confirm it.
-  await store.putObject({ bucket, objectKey: key, bytes, mimeType: before.mimeType, signal: signal() });
+  await store.putObject({
+    bucket,
+    objectKey: key,
+    bytes,
+    mimeType: before.mimeType,
+    signal: signal(),
+  });
   return { reference, size: bytes.byteLength };
 }
 
@@ -258,13 +278,19 @@ async function reencryptObject(
   const superseded = before.versionId as string; // rewriteObject refused a null one
 
   const after = await headObject(fetchS3, bucket, key, signal());
-  if (after?.encryption !== SSE_ALGORITHM) throw new Error("the rewritten object is not reported as encrypted");
+  if (after?.encryption !== SSE_ALGORITHM)
+    throw new Error("the rewritten object is not reported as encrypted");
   if (after.sha256Hex !== reference || after.byteSize !== size)
     throw new Error("the rewritten object does not have the source's SHA-256 and size");
   if (after.versionId === null || after.versionId === superseded)
     throw new Error("the rewrite did not create a new version, so the source may be gone");
   // The encrypted version must also DECRYPT to the same bytes: a purge deletes the only other readable copy.
-  const readBack = await store.getObject({ bucket, objectKey: key, maxBytes: MAX_OBJECT_BYTES, signal: signal() });
+  const readBack = await store.getObject({
+    bucket,
+    objectKey: key,
+    maxBytes: MAX_OBJECT_BYTES,
+    signal: signal(),
+  });
   if (!readBack || sigV4Sha256Hex(readBack) !== reference)
     throw new Error("the encrypted version does not read back as the source's bytes");
   const source = await headObject(fetchS3, bucket, key, signal(), superseded);
@@ -343,7 +369,9 @@ async function runBucket(
         key,
         reason,
         // only once the intent was on disk: before that the version named here would be the object's one and only plaintext copy
-        ...(state.intentWritten && before?.versionId ? { supersededVersionId: before.versionId } : {}),
+        ...(state.intentWritten && before?.versionId
+          ? { supersededVersionId: before.versionId }
+          : {}),
       });
     }
   }
@@ -377,7 +405,13 @@ export async function reencryptObjectStore(
   const names = [...(await list.text()).matchAll(LIST_BUCKETS_KEY_RE)]
     .map((m) => m[1] ?? "")
     .filter((n) => REENCRYPTED_BUCKET.test(n) && (!options.buckets || options.buckets.has(n)));
-  const tally: Tally = { objects: 0, alreadyEncrypted: 0, reencrypted: 0, pending: 0, pendingBytes: 0 };
+  const tally: Tally = {
+    objects: 0,
+    alreadyEncrypted: 0,
+    reencrypted: 0,
+    pending: 0,
+    pendingBytes: 0,
+  };
   const failed: ReencryptFailure[] = [];
   const budget = { left: options.limit ?? Number.POSITIVE_INFINITY };
   for (const bucket of names) {
@@ -456,7 +490,13 @@ export async function verifyJournal(
       continue;
     }
     try {
-      const superseded = await headObject(fetchS3, bucket, key, signal(), intent.supersededVersionId);
+      const superseded = await headObject(
+        fetchS3,
+        bucket,
+        key,
+        signal(),
+        intent.supersededVersionId,
+      );
       if (superseded === null) {
         alreadyPurged++; // nothing left to purge
         continue;
@@ -552,7 +592,9 @@ if (import.meta.main) {
   const accessKeyId = env.OBJECT_STORE_ACCESS_KEY?.trim();
   const secretAccessKey = env.OBJECT_STORE_SECRET_KEY?.trim();
   if (!endpoint || !accessKeyId || !secretAccessKey)
-    throw new Error("OBJECT_STORE_ENDPOINT, OBJECT_STORE_ACCESS_KEY and OBJECT_STORE_SECRET_KEY are required");
+    throw new Error(
+      "OBJECT_STORE_ENDPOINT, OBJECT_STORE_ACCESS_KEY and OBJECT_STORE_SECRET_KEY are required",
+    );
   if (verify !== undefined) {
     // One NDJSON line per version: purgeable (safe to delete) or hold (not yet). Exit 1 while anything is held.
     const { readFile } = await import("node:fs/promises");
@@ -566,7 +608,8 @@ if (import.meta.main) {
       },
       await readFile(verify, "utf8"),
     );
-    for (const line of [...result.purgeable, ...result.held]) process.stdout.write(`${JSON.stringify(line)}\n`);
+    for (const line of [...result.purgeable, ...result.held])
+      process.stdout.write(`${JSON.stringify(line)}\n`);
     process.stderr.write(
       `verify: ${result.purgeable.length} purgeable, ${result.held.length} held, ${result.alreadyPurged} already purged\n`,
     );

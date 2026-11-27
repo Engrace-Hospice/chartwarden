@@ -17,24 +17,36 @@ describe("uploadObjectVerdict (CW-AC-05)", () => {
 
   it("accepts an object with the declared bytes, encrypted or not when encryption is not required", () => {
     expect(uploadObjectVerdict(stored, expected, true)).toBe("ok");
-    expect(uploadObjectVerdict({ ...stored, serverSideEncryption: null }, expected, false)).toBe("ok");
+    expect(uploadObjectVerdict({ ...stored, serverSideEncryption: null }, expected, false)).toBe(
+      "ok",
+    );
     expect(uploadObjectVerdict({ ...expected }, expected, false)).toBe("ok"); // a store that reports nothing
   });
 
   it("refuses an object the store reports as not encrypted when encryption is required", () => {
-    expect(uploadObjectVerdict({ ...stored, serverSideEncryption: null }, expected, true)).toBe("unencrypted");
+    expect(uploadObjectVerdict({ ...stored, serverSideEncryption: null }, expected, true)).toBe(
+      "unencrypted",
+    );
     expect(uploadObjectVerdict({ ...expected }, expected, true)).toBe("unencrypted");
-    expect(uploadObjectVerdict({ ...stored, serverSideEncryption: "aws:kms" }, expected, true)).toBe("unencrypted");
+    expect(
+      uploadObjectVerdict({ ...stored, serverSideEncryption: "aws:kms" }, expected, true),
+    ).toBe("unencrypted");
   });
 
   it("an unencrypted object is refused as such even when its bytes also differ", () => {
-    expect(uploadObjectVerdict({ ...stored, serverSideEncryption: null, byteSize: 11 }, expected, true)).toBe("unencrypted");
+    expect(
+      uploadObjectVerdict({ ...stored, serverSideEncryption: null, byteSize: 11 }, expected, true),
+    ).toBe("unencrypted");
   });
 
   it("still refuses a size, type or checksum that does not match", () => {
     expect(uploadObjectVerdict({ ...stored, byteSize: 11 }, expected, true)).toBe("mismatch");
-    expect(uploadObjectVerdict({ ...stored, mimeType: "image/png" }, expected, true)).toBe("mismatch");
-    expect(uploadObjectVerdict({ ...stored, sha256Hex: "c".repeat(64) }, expected, true)).toBe("mismatch");
+    expect(uploadObjectVerdict({ ...stored, mimeType: "image/png" }, expected, true)).toBe(
+      "mismatch",
+    );
+    expect(uploadObjectVerdict({ ...stored, sha256Hex: "c".repeat(64) }, expected, true)).toBe(
+      "mismatch",
+    );
   });
 });
 

@@ -363,15 +363,33 @@ describe.skipIf(!ENDPOINT)("object-store conformance — LIVE (ADR-0050 D6)", ()
     it("the adapter's put, HEAD, ranged GET and a presigned GET all report AES256, and the checksum still verifies", async () => {
       const key = `conformance/${randomUUID()}`;
       const bytes = bytesOf(`sse paths ${key}`);
-      const { sha256Hex } = await store.putObject({ bucket, objectKey: key, bytes, mimeType: MIME });
+      const { sha256Hex } = await store.putObject({
+        bucket,
+        objectKey: key,
+        bytes,
+        mimeType: MIME,
+      });
 
-      const head = await rawS3(app, { method: "HEAD", bucket, key, headers: { "x-amz-checksum-mode": "ENABLED" } });
+      const head = await rawS3(app, {
+        method: "HEAD",
+        bucket,
+        key,
+        headers: { "x-amz-checksum-mode": "ENABLED" },
+      });
       expect(head.headers.get(SSE)).toBe("AES256");
       expect((await store.inspectObject({ bucket, objectKey: key }))?.sha256Hex).toBe(sha256Hex);
-      const ranged = await rawS3(app, { method: "GET", bucket, key, headers: { range: "bytes=0-2" } });
+      const ranged = await rawS3(app, {
+        method: "GET",
+        bucket,
+        key,
+        headers: { range: "bytes=0-2" },
+      });
       expect(ranged.status).toBe(206);
       expect(await ranged.text()).toBe("sse");
-      const { url } = await store.presign({ descriptor: descriptorFor(bucket, key), organizationId });
+      const { url } = await store.presign({
+        descriptor: descriptorFor(bucket, key),
+        organizationId,
+      });
       const viaUrl = await fetch(url);
       expect(viaUrl.status).toBe(200);
       expect(viaUrl.headers.get(SSE)).toBe("AES256");
@@ -381,7 +399,13 @@ describe.skipIf(!ENDPOINT)("object-store conformance — LIVE (ADR-0050 D6)", ()
     it("a bucket WITHOUT the default stores a client PUT in the clear, which inspectObject reports as null (the upload guard's input)", async () => {
       const plain = `cw-conformance-plain-${randomUUID().slice(0, 8)}`;
       expect((await rawS3(admin, { method: "PUT", bucket: plain })).ok).toBe(true);
-      const put = await rawS3(admin, { method: "PUT", bucket: plain, key: "k", body: bytesOf("clear"), headers: { "content-type": MIME } });
+      const put = await rawS3(admin, {
+        method: "PUT",
+        bucket: plain,
+        key: "k",
+        body: bytesOf("clear"),
+        headers: { "content-type": MIME },
+      });
       expect(put.ok).toBe(true);
       expect(put.headers.get(SSE)).toBeNull();
       const head = await rawS3(admin, { method: "HEAD", bucket: plain, key: "k" });
@@ -402,17 +426,32 @@ describe.skipIf(!ENDPOINT)("object-store conformance — LIVE (ADR-0050 D6)", ()
         const sealedMarker = `CW-AC05-SYNTHETIC-SEALED-${randomUUID()}`;
         const clearMarker = `CW-AC05-SYNTHETIC-CLEAR-${randomUUID()}`;
         const bodyOf = (marker: string): Uint8Array => bytesOf(`%PDF-1.4 ${marker} `.repeat(64));
-        await store.putObject({ bucket, objectKey: `conformance/${randomUUID()}`, bytes: bodyOf(sealedMarker), mimeType: MIME });
+        await store.putObject({
+          bucket,
+          objectKey: `conformance/${randomUUID()}`,
+          bytes: bodyOf(sealedMarker),
+          mimeType: MIME,
+        });
         // The control: a bucket with no encryption default and a PUT that names none, so the store keeps it in the clear.
         const plain = `cw-conformance-control-${randomUUID().slice(0, 8)}`;
         expect((await rawS3(admin, { method: "PUT", bucket: plain })).ok).toBe(true);
-        const clear = await rawS3(admin, { method: "PUT", bucket: plain, key: "control", body: bodyOf(clearMarker), headers: { "content-type": MIME } });
+        const clear = await rawS3(admin, {
+          method: "PUT",
+          bucket: plain,
+          key: "control",
+          body: bodyOf(clearMarker),
+          headers: { "content-type": MIME },
+        });
         expect(clear.ok).toBe(true);
 
         const filesWith = (marker: string): string => {
           try {
             // -F: a fixed string (the images' busybox grep misses a hyphenated marker as a pattern in a binary volume file)
-            return execFileSync("docker", ["exec", STORE_CONTAINER ?? "", "grep", "-rlF", marker, STORE_DATA_DIR], { encoding: "utf8" });
+            return execFileSync(
+              "docker",
+              ["exec", STORE_CONTAINER ?? "", "grep", "-rlF", marker, STORE_DATA_DIR],
+              { encoding: "utf8" },
+            );
           } catch {
             return ""; // grep exits 1 when nothing matches
           }
@@ -423,8 +462,14 @@ describe.skipIf(!ENDPOINT)("object-store conformance — LIVE (ADR-0050 D6)", ()
           controlFiles = filesWith(clearMarker);
           if (controlFiles === "") await new Promise((r) => setTimeout(r, 500));
         }
-        expect(controlFiles, "the plaintext control is not on the volume: this check cannot see plaintext").not.toBe("");
-        expect(filesWith(sealedMarker), "an encrypted object's marker is readable in the store's own files").toBe("");
+        expect(
+          controlFiles,
+          "the plaintext control is not on the volume: this check cannot see plaintext",
+        ).not.toBe("");
+        expect(
+          filesWith(sealedMarker),
+          "an encrypted object's marker is readable in the store's own files",
+        ).toBe("");
       },
     );
   });

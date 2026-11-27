@@ -22,9 +22,9 @@ import {
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAbacRegistry,
+  resetAuthorizationContract,
   resetBreakGlassAuditHook,
   resetBreakGlassChecker,
-  resetAuthorizationContract,
   resetRbacEngine,
   setBreakGlassAuditHook,
   setBreakGlassChecker,
@@ -76,7 +76,12 @@ const USERS: Record<
     perms: READ_COMPLETE,
   },
   np: { id: "33333333-3333-3333-3333-333333333302", org: ORG_A, roles: "np", perms: READ_COMPLETE },
-  off: { id: "33333333-3333-3333-3333-333333333303", org: ORG_A, roles: "np", perms: READ_COMPLETE },
+  off: {
+    id: "33333333-3333-3333-3333-333333333303",
+    org: ORG_A,
+    roles: "np",
+    perms: READ_COMPLETE,
+  },
   rn: {
     id: "33333333-3333-3333-3333-333333333304",
     org: ORG_A,
@@ -178,9 +183,10 @@ describe.skipIf(!DB_URL)("CW-CS-01 critical lab result resolution — LIVE Postg
         observationDatetime: new Date().toISOString(),
       },
     } as never);
-    const { rows } = await admin.query("SELECT id FROM critical_lab_result WHERE observation_id=$1", [
-      observationId,
-    ]);
+    const { rows } = await admin.query(
+      "SELECT id FROM critical_lab_result WHERE observation_id=$1",
+      [observationId],
+    );
     return { id: rows[0].id as string, observationId };
   }
   const resolve = (who: Who, id: string, body: Record<string, unknown>) =>
@@ -285,7 +291,9 @@ describe.skipIf(!DB_URL)("CW-CS-01 critical lab result resolution — LIVE Postg
     appUrl = await appRoleConnectionString(admin, DB_URL as string);
     handle = createDbClient({ connectionString: appUrl });
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M11_OUTBOX_EVENTS]));
-    outbox = { publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m11" }) };
+    outbox = {
+      publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m11" }),
+    };
     applier = buildM11LabResultsApplierConsumer({ db: handle.db, outbox });
 
     resetAuthorizationContract();
@@ -416,7 +424,10 @@ describe.skipIf(!DB_URL)("CW-CS-01 critical lab result resolution — LIVE Postg
       url: `/api/v1/orders/critical-lab-results/${a.id}`,
       headers: as("md"),
     });
-    expect(get.json().resolution).toMatchObject({ resolution: "reviewed_no_action", reason: REASON });
+    expect(get.json().resolution).toMatchObject({
+      resolution: "reviewed_no_action",
+      reason: REASON,
+    });
 
     const audit = (
       await admin.query(
@@ -667,23 +678,37 @@ describe.skipIf(!DB_URL)("CW-CS-01 critical lab result resolution — LIVE Postg
   });
 
   it("the queue pages by (respond_by, id) without gaps or repeats, rejects tampered and cross-tenant cursors, and narrows to the caseload", async () => {
-    const rows = [await quarantine(ORG_A, PAT_A2), await quarantine(ORG_A, PAT_A2), await quarantine(ORG_A, PAT_A2)];
+    const rows = [
+      await quarantine(ORG_A, PAT_A2),
+      await quarantine(ORG_A, PAT_A2),
+      await quarantine(ORG_A, PAT_A2),
+    ];
     const ids = rows.map((r) => r.id).sort(); // equal respond_by: the id is the tie-break (uuid order == lowercase hex order)
     await admin.query(
       "UPDATE critical_lab_result SET respond_by = '2000-01-01T00:00:00.123456Z' WHERE id = ANY($1::uuid[])",
       [ids],
     );
     const page = (who: Who, query: string) =>
-      app.inject({ method: "GET", url: `/api/v1/orders/critical-lab-results?${query}`, headers: as(who) });
+      app.inject({
+        method: "GET",
+        url: `/api/v1/orders/critical-lab-results?${query}`,
+        headers: as(who),
+      });
 
     const first = await page("md", "limit=2");
     expect((first.json().items as { id: string }[]).map((i) => i.id)).toEqual(ids.slice(0, 2));
     expect(first.json().nextCursor).toEqual(expect.any(String));
-    const second = await page("md", `limit=2&cursor=${encodeURIComponent(first.json().nextCursor)}`);
+    const second = await page(
+      "md",
+      `limit=2&cursor=${encodeURIComponent(first.json().nextCursor)}`,
+    );
     expect((second.json().items as { id: string }[])[0]?.id).toBe(ids[2]); // no gap, no repeat
 
     expect((await page("md", "limit=2&cursor=garbage.garbage")).statusCode).toBe(422);
-    expect((await page("mdB", `limit=2&cursor=${encodeURIComponent(first.json().nextCursor)}`)).statusCode).toBe(422); // another org's cursor
+    expect(
+      (await page("mdB", `limit=2&cursor=${encodeURIComponent(first.json().nextCursor)}`))
+        .statusCode,
+    ).toBe(422); // another org's cursor
 
     // `np` is on PAT_A's caseload, not PAT_A2's: the filter (not an empty-caseload short circuit) keeps those rows out.
     const np = await queueIds("np");
@@ -694,7 +719,10 @@ describe.skipIf(!DB_URL)("CW-CS-01 critical lab result resolution — LIVE Postg
   it("two simultaneous resolves of one result: exactly one wins (200), the other is a clean 409, one row, one event", async () => {
     const a = await quarantine(ORG_A, PAT_A);
 
-    const results = await Promise.all([resolve("md", a.id, noAction()), resolve("np", a.id, noAction())]);
+    const results = await Promise.all([
+      resolve("md", a.id, noAction()),
+      resolve("np", a.id, noAction()),
+    ]);
 
     expect(results.map((r) => r.statusCode).sort()).toEqual([200, 409]);
     expect(await resolutionRows(a.id)).toHaveLength(1);
@@ -704,7 +732,12 @@ describe.skipIf(!DB_URL)("CW-CS-01 critical lab result resolution — LIVE Postg
   it("the database stamps resolved_at and refuses a resolution that does not match its ledger row", async () => {
     const a = await quarantine(ORG_A, PAT_A);
     const paged = await quarantine(ORG_A, PAT_A, orderA); // 'paged', not quarantined
-    const insert = (org: string, patient: string, resultId: string, resolvedAt = "2000-01-01T00:00:00Z") =>
+    const insert = (
+      org: string,
+      patient: string,
+      resultId: string,
+      resolvedAt = "2000-01-01T00:00:00Z",
+    ) =>
       asApp<{ resolved_at: Date }>(
         ORG_A,
         `INSERT INTO critical_lab_result_resolution (organization_id, patient_id, critical_lab_result_id, resolution, reason, resolver_membership_id, resolver_discipline, resolved_at)
@@ -713,7 +746,9 @@ describe.skipIf(!DB_URL)("CW-CS-01 critical lab result resolution — LIVE Postg
       );
 
     const [stamped] = await insert(ORG_A, PAT_A, a.id); // a forged 2000-01-01 clock is overwritten
-    expect(Math.abs(new Date(stamped?.resolved_at as Date).getTime() - Date.now())).toBeLessThan(60_000);
+    expect(Math.abs(new Date(stamped?.resolved_at as Date).getTime() - Date.now())).toBeLessThan(
+      60_000,
+    );
     await expect(insert(ORG_A, PAT_A2, a.id)).rejects.toThrow(/same organization and patient/);
     await expect(insert(ORG_A, PAT_A, paged.id)).rejects.toThrow(/quarantined result/);
   });
@@ -756,7 +791,9 @@ describe.skipIf(!DB_URL)("CW-CS-01 critical lab result resolution — LIVE Postg
     }
 
     expect(paged).not.toContain(q.observationId);
-    const stamp = await admin.query("SELECT escalated_at FROM critical_lab_result WHERE id=$1", [q.id]);
+    const stamp = await admin.query("SELECT escalated_at FROM critical_lab_result WHERE id=$1", [
+      q.id,
+    ]);
     expect(stamp.rows[0].escalated_at).toBeNull();
   });
 
