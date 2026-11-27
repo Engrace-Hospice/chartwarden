@@ -1,4 +1,10 @@
-import type { AuditContext, AuditExecutor, AuditQuery } from "@chartwarden/audit";
+import {
+  type AuditContext,
+  type AuditEventRecord,
+  type AuditExecutor,
+  type AuditQuery,
+  redact,
+} from "@chartwarden/audit";
 import { requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/04-audit/routes/audit-routes.ts — M4-T06 the audit query route
 // inventory (M4 spec §4.1–4.3; the §10.2 "who touched this chart" + §4.2 event search).
@@ -51,6 +57,17 @@ function auditContextFor(request: FastifyRequest): AuditContext {
 
 const auditRead = requirePermission("audit.read") as PreHandler;
 
+/**
+ * CW-AC-06 — an audit read returns the fact of a change, never a second copy of the PHI it describes (§164.312(b), the
+ * field denylist's own rule). `audit()` censors a snapshot at capture, but a table write-audit trigger copies the raw row
+ * (`patient.insert` holds `dob`), so every image leaves through the same denylist here, old rows included.
+ */
+const censoredImages = (event: AuditEventRecord): AuditEventRecord => ({
+  ...event,
+  before: redact(event.before),
+  after: redact(event.after),
+});
+
 export function registerAuditRoutes(app: FastifyInstance, deps: AuditRouteDeps): void {
   /** Emit the audit-of-audit meta-event when the reader is elevated / cross-tenant (§2.6). */
   async function metaLogIfElevated(request: FastifyRequest, routeId: string): Promise<void> {
@@ -65,7 +82,8 @@ export function registerAuditRoutes(app: FastifyInstance, deps: AuditRouteDeps):
     const { organizationId } = actorOf(request);
     const q = parse(AuditEventsQuerySchema, request.query);
     await metaLogIfElevated(request, "GET /api/v1/audit/events");
-    return deps.query.searchEvents(organizationId, { ...q, includeActorNames: true });
+    const page = await deps.query.searchEvents(organizationId, { ...q, includeActorNames: true });
+    return { ...page, items: page.items.map(censoredImages) };
   });
 
   // --- §4.2 single-event detail (the before/after diff) -----------------------------------
@@ -75,7 +93,7 @@ export function registerAuditRoutes(app: FastifyInstance, deps: AuditRouteDeps):
     await metaLogIfElevated(request, "GET /api/v1/audit/events/:id");
     const event = await deps.query.getEvent(organizationId, id);
     if (!event) throw new ChartWardenError("EVENT_NOT_FOUND", "audit event not found", 404);
-    return event;
+    return censoredImages(event);
   });
 
   // --- §10.2 "who touched this chart" — per-patient internal access history ----------------

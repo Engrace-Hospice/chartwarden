@@ -746,7 +746,11 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     "/api/v1/admissions",
     {
       preHandler: [ADMISSION_READ],
-      config: { auditRead: { resourceKind: "admission", list: true } },
+      // CW-AC-06 — a census narrowed to one patient (`?patientId=`) discloses that patient's name, MRN and age, so the read is
+      // accounted against the patient (§164.528, "who touched this chart"), not just counted.
+      config: {
+        auditRead: { resourceKind: "admission", list: true, patientIdQueryParam: "patientId" },
+      },
     },
     async (request) => {
       const { organizationId } = actorOf(request);

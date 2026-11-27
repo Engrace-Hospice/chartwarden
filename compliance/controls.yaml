@@ -477,8 +477,45 @@ controls:
       - file: apps/backend/src/modules/03-authorization/staff-at-location-for-org.ts
       # Proves the roster as the NOBYPASSRLS role: cross-tenant, suspended, expired, off-site and disabled-role members are never listed.
       - script: test:m15:aide-roster:live
+      # Proves the census age and the audit reads over the real routes as the NOBYPASSRLS chartwarden_app role. Authentication (user, org,
+      # roles) and the permission grants are stubbed, as in every route-level live suite, so the session-to-org binding is proven elsewhere;
+      # the M5 caseload store is the real Drizzle one. GET /api/v1/admissions: whole-year age (a birthday still ahead stays the younger year),
+      # no date of birth as a key or a value; an org-wide role lists its own org, a non-org-wide role only its OPEN caseload (an ended
+      # assignment adds nothing); no admission.read grant is 403, no organization context or session is 401; each tenant sees only its own
+      # patients, and the age and identity reads return nothing across tenants with the SQL predicate and the RLS policy each load-bearing.
+      # The read lands one admission.list_viewed row in the caller's org only (count, no date of birth, no age); a census narrowed to one
+      # patient (?patientId=) is accounted against that patient, in one spelling of the uuid, and listed by the per-patient access history; a
+      # refused read lands none.
+      # GET /api/v1/audit/events and /:id: actorName comes only from a membership in the caller's org (a username stands in for a missing
+      # display name; a member with neither stays null; never the email); an actor of the other tenant, of no tenant, or the system is never
+      # named; another tenant's events and ids are invisible both ways (404 on a foreign id); no audit.read is 403, no org context 401; an
+      # elevated platform-role read lands audit.elevated_access in the reader's org, a routine one none; the before/after images leave through
+      # the field denylist, so a patient write's dob reads [REDACTED] in the list and by id, on both sides of an update. The 403 for another
+      # org's claim comes from the per-org grant store, so the tenant proof is the isolation cases, not that status. Known limits: the user
+      # table has no RLS (the membership join, under its RLS policy and an org predicate, withholds other tenants' names; the two layers are
+      # not separately proven for the audit lookup); the denylist matches exact lower-case key names, so it blanks email, phone, note or dose
+      # on any table's image and misses snake_case columns; the unfiltered census read audit is a count and the request filter, not one
+      # event per patient, and a census asked for a patient outside the caller's caseload (an empty result) is still accounted against
+      # that patient; a routine read of the audit log is not itself audited (only an elevated read is, M4 spec 2.6); the M5 privacy-flag
+      # snapshot history route reads raw images of audit()-written rows (censored at capture); emission is best-effort, only the success
+      # path is proven.
+      - script: test:ac-06:minimum-necessary-reads:live
+      - ci: "AC-06 minimum-necessary reads"
+      - file: apps/backend/__tests__/cw-ac-06-minimum-necessary-reads.live.test.ts
+      - file: apps/backend/src/modules/04-audit/routes/audit-routes.ts
     gap:
-      reason: The census age field and the audit actorName org-scoped lookup are covered by in-memory tests and a manual Docker check only; no live suite proves them against the NOBYPASSRLS role.
+      reason: >-
+        The census age, the audit actorName lookup, the read audit and the Aide roster are proven live, and the audit API no longer returns a
+        patient's dob, but the audit log still holds patient identifiers at rest and the API still returns some of them. The patient
+        write-audit trigger (audit_phi_write_patient, migration 0021) scrubs only legal_first_name, legal_last_name and legal_middle_name, so
+        audit_event.before and after carry dob, mrn and the other demographic columns (sex_assigned_at_birth, gender_identity_code,
+        sexual_orientation_code, pronouns_code, marital_status_code, race_codes, ethnicity_codes, deceased_date, legal_name_suffix) for
+        every patient insert and update (dob and mrn confirmed on a private database). The API censors dob through the field denylist,
+        which matches exact lower-case key names, so mrn and those snake_case columns still return to any audit.read holder; rows already
+        written keep everything in the append-only, hash-chained log (backups, archived partitions in object storage and a database
+        administrator included). Closing it is a decision: scrub those columns in the trigger through a new expand migration plus an M5
+        entry in the audit-denylist sync gate (patient is not in it, which is why this went unnoticed), widen the response censoring, and
+        settle what happens to existing rows and archives; the suite proves only the API read of dob.
       owner: platform
       review_by: 2027-01-31
 
