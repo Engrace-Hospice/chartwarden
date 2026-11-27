@@ -209,6 +209,31 @@ describe("the service and an end date", () => {
     expect(live.baa).toMatchObject({ expired: false });
   });
 
+  it("does not carry the operator's verification over to a renewal of the same document: it reads as not verified until the operator verifies again (owner decision)", async () => {
+    const { store, service, clock } = await tenantWithConnection();
+    await service.recordBaa(store, TENANT, BAA);
+    await service.verifyBaa(store, OPERATOR, await pinOf(service, store));
+    await service.activate(store, TENANT);
+
+    clock.at = new Date("2027-01-16T17:00:00Z"); // the day after the last day in force; the config still reads `active`
+    expect((await service.view(store, ORG)).status).toBe("active");
+
+    // the renewal: the very same document and effective date, a new end date
+    const renewed = await service.recordBaa(store, TENANT, { ...BAA, expiresOn: "2028-01-15" });
+    expect(renewed.view.baa).toMatchObject({
+      documentRef: BAA.documentRef,
+      effectiveDate: BAA.effectiveDate,
+      expiresOn: "2028-01-15",
+      expired: false,
+      verified: null,
+    });
+    expect(renewed.view.status).toBe("verified"); // taken off `active`: nothing sends until it is verified and activated again
+    expect(await codeOf(service.activate(store, TENANT))).toBe("CLEARINGHOUSE_BAA_NOT_VERIFIED");
+
+    await service.verifyBaa(store, OPERATOR, await pinOf(service, store));
+    expect((await service.activate(store, TENANT)).status).toBe("active");
+  });
+
   it("refuses an end date the tenant records already past, whatever the lane's clock says it is", async () => {
     const { store, service, clock } = await tenantWithConnection();
     clock.at = new Date("2027-01-16T17:00:00Z");

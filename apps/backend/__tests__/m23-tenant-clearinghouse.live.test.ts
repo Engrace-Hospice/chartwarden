@@ -3789,7 +3789,13 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       expect(renewed.statusCode, renewed.body).toBe(200);
       expect(renewed.json()).toMatchObject({ status: "verified", baa: { verified: null } });
       expect(await rowOf()).toMatchObject({ status: "verified", baa_verified_at: null });
+      // no carry-over (owner decision): the renewed term of the SAME document is held like any unverified record until the operator
+      // verifies it again and the tenant activates it: nothing binds and the claims gate refuses meanwhile
+      expect((await runtime().binding.forOrg?.(END_ORG))?.vendor).toBeNull();
+      expect(await claimsBillingVerdict(END_ORG, {})).toMatchObject({ allow: false });
       await verifyAndActivate((renewed.json() as View).baa?.recordedAt as string);
+      expect((await runtime().binding.forOrg?.(END_ORG))?.vendor).toBe("claimmd");
+      expect(await claimsBillingVerdict(END_ORG, {})).toEqual({ allow: true });
     });
 
     it("fails closed the day after the last day in force: resolver, claims gate and inbox gate hold it; verify is refused; a renewed record restores it", async () => {
