@@ -112,6 +112,9 @@ const EXPECTED_ALLOWLIST = [
   "GET /api/v1/orders",
   "GET /api/v1/orders/:id",
   "GET /api/v1/orders/cosign-pending",
+  // quarantined critical lab results (CW-CS-01): a patient-safety duty that must not wait for a note, so the queue, one result and its resolution stay open
+  "GET /api/v1/orders/critical-lab-results",
+  "GET /api/v1/orders/critical-lab-results/:id",
   "GET /api/v1/orders/held-transmissions",
   "GET /api/v1/orders/pending-signature",
   "GET /api/v1/orders/results-pending-review",
@@ -269,6 +272,7 @@ const EXPECTED_ALLOWLIST = [
   "POST /api/v1/orders/:id/sign",
   "POST /api/v1/orders/:id/sign-on-behalf",
   "POST /api/v1/orders/:id/verbal",
+  "POST /api/v1/orders/critical-lab-results/:id/resolve",
   "POST /api/v1/patients/:id/code-status",
   "POST /api/v1/patients/:id/code-status/:entryId/entered-in-error",
   "POST /api/v1/patients/:id/deceased",
