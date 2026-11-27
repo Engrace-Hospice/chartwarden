@@ -44,6 +44,7 @@ import {
   type AbacTarget,
   hasOrgWideScope,
   isStepUpRecent,
+  registerBreakGlassSubject,
   registerPredicateIdempotent,
   resolveActorPermissions,
 } from "@chartwarden/auth";
@@ -183,4 +184,8 @@ export function registerIdgAbacPredicates(deps: IdgAbacDeps): void {
   for (const [name, predicate] of Object.entries(predicates)) {
     registerPredicateIdempotent(name, predicate);
   }
+  // CW-AC-03: a meeting spans patients and is scoped by LOCATION, so no one patient's glass covers it. An authoritative
+  // `null` keeps a meeting-scoped guard shut under a glass even when the route's params also name a patient (the
+  // by-patient packet read): without it the glass would pass the location guard on that `patientId` alone.
+  registerBreakGlassSubject("idg_meeting_scope", () => null);
 }

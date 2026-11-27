@@ -133,6 +133,80 @@ export function resetBreakGlassAuditHook(): void {
   breakGlassAuditHook = NOOP_AUDIT;
 }
 
+/**
+ * Names the ONE patient an id-keyed predicate's target belongs to (an admission, an encounter, an administration, a
+ * HOPE assessment: rows the route addresses by their own id, not by `patientId`). A scope predicate already resolves
+ * that patient to judge the caseload; registering the same resolution here is what lets the §2.2 break-glass branch
+ * see which patient a denied target is about, because a grant is per patient and the checker reads `target.patientId`.
+ *
+ * Return `null` when the target is not about exactly one patient (a meeting that spans patients, a provider-entity
+ * scope, a target naming two patients, an absent or cross-tenant row): the glass then covers nothing. Once a predicate
+ * registers a resolver, its answer is authoritative: a `patientId` already on the target is not trusted over it.
+ */
+export type BreakGlassSubjectResolver = (
+  context: AbacContext,
+  target: AbacTarget,
+) => Promise<string | null> | string | null;
+
+const breakGlassSubjects = new Map<string, BreakGlassSubjectResolver>();
+
+/**
+ * The owning module of a scope predicate registers how its target resolves to one patient. The FIRST registration of a
+ * predicate name wins, like the predicate registry it sits beside (a same-name re-registration there is a no-op), so a
+ * predicate and its resolver come from the same registration (a re-boot with other deps cannot split them).
+ */
+export function registerBreakGlassSubject(
+  predicate: string,
+  resolver: BreakGlassSubjectResolver,
+): void {
+  if (!breakGlassSubjects.has(predicate)) breakGlassSubjects.set(predicate, resolver);
+}
+
+/**
+ * The one patient a target belongs to when every id it names resolved to the SAME patient. `null` when none was named,
+ * when any resolved to nothing (absent, another tenant's), or when two resolved to different patients: a grant is per
+ * patient, so a target about several patients is covered by none of them.
+ */
+export function singleBreakGlassSubject(
+  patientIds: readonly (string | null | undefined)[],
+): string | null {
+  const distinct = new Set(patientIds);
+  const [only] = distinct;
+  return distinct.size === 1 && typeof only === "string" && only.length > 0 ? only : null;
+}
+
+/** Drop every registered subject resolver (boot reset / tests). */
+export function resetBreakGlassSubjects(): void {
+  breakGlassSubjects.clear();
+}
+
+/** The target the break-glass checker and its audit row see: the denied predicate's own patient, when it names one. */
+async function breakGlassTargetOf(
+  predicates: readonly string[],
+  context: AbacContext,
+  target: AbacTarget,
+): Promise<AbacTarget> {
+  for (const predicate of predicates) {
+    const resolver = breakGlassSubjects.get(predicate);
+    if (!resolver) continue;
+    const subject = await resolver(context, target);
+    const { patientId: _untrusted, ...rest } = target;
+    return typeof subject === "string" && subject.length > 0
+      ? { ...rest, patientId: subject }
+      : rest;
+  }
+  return target;
+}
+
+/**
+ * Break-glass is emergency READ access (M3 §7.4: "view a patient outside my normal scope"). A grant never lets an
+ * off-scope actor write, whichever predicate denied, so the branch opens only for a safe HTTP method. A request that
+ * carries no method is not a read: fail closed.
+ */
+const BREAK_GLASS_METHODS: ReadonlySet<string> = new Set(["GET", "HEAD"]);
+const isBreakGlassRead = (request: GuardRequest): boolean =>
+  typeof request.method === "string" && BREAK_GLASS_METHODS.has(request.method.toUpperCase());
+
 /** The break-glass id flagged onto the request so the handler's audit records it (§4.4). */
 export const BREAK_GLASS_ATTRIBUTE = "breakGlassEventId";
 
@@ -218,11 +292,14 @@ function abacGuard(
     // every step-up ceremony in the org — including `support_session.elevate_phi_read` and the
     // device-attestation gate on bulk PHI export, i.e. the ceremonies that exist precisely to
     // require a second, live human factor. A grant cannot substitute for one.
-    if (options.breakGlassBypassable !== false) {
-      const grant = await breakGlassChecker(abacContext, action, target);
+    if (options.breakGlassBypassable !== false && isBreakGlassRead(request)) {
+      // The patient comes from the denied predicate's own resolution, so an id-keyed stage (admission, encounter,
+      // administration, assessment) is covered by the same per-patient grant as the patient-keyed ones.
+      const glassTarget = await breakGlassTargetOf(predicates, abacContext, target);
+      const grant = await breakGlassChecker(abacContext, action, glassTarget);
       if (grant) {
         ctx.attributes[BREAK_GLASS_ATTRIBUTE] = grant.eventId;
-        await breakGlassAuditHook({ grant, action, context: abacContext, target });
+        await breakGlassAuditHook({ grant, action, context: abacContext, target: glassTarget });
         return;
       }
     }
@@ -265,4 +342,5 @@ export function resetAuthorizationContract(): void {
   resetAbacEvaluator();
   resetBreakGlassChecker();
   resetBreakGlassAuditHook();
+  resetBreakGlassSubjects();
 }

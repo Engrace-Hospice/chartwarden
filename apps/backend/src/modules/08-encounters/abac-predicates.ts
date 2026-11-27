@@ -30,8 +30,11 @@
 import {
   type AbacContext,
   type AbacTarget,
+  type BreakGlassSubjectResolver,
   hasOrgWideScope,
+  registerBreakGlassSubject,
   registerPredicateIdempotent,
+  singleBreakGlassSubject,
 } from "@chartwarden/auth";
 import { getSeam } from "../../bootstrap/index";
 import type { EncounterAbacResolver } from "./routes/service";
@@ -173,18 +176,50 @@ export function buildEncounterAbacPredicates(
       return addendumAuthor !== null && addendumAuthor !== caller;
     },
     "encounter.scope": async (context, target) => {
-      const patientId = targetId(target, "patientId");
-      if (patientId) return caseloadOrScopeFor(context, patientId);
-
-      const encounterId = targetId(target, "encounterId");
-      if (encounterId) {
-        const facts = await resolver.loadEncounter(context.organizationId, encounterId);
-        if (!facts) return false; // fail-closed (absent / cross-tenant)
-        return caseloadOrScopeFor(context, facts.patientId);
-      }
-
-      return false; // no id at all — every wired route names one; fail closed on a misconfiguration.
+      // No patient (a missing / cross-tenant encounter, or no id at all — every wired route names one) fails closed.
+      const patientId = await encounterScopePatientId(resolver, context.organizationId, target);
+      return patientId !== null && caseloadOrScopeFor(context, patientId);
     },
+  };
+}
+
+/**
+ * The patient an `encounter.scope` target is about: the `patientId` it names (the create route's body subject) or the
+ * patient of the `encounterId` it names (every other route's path param). The predicate judges the first; the
+ * break-glass subject resolver below resolves the same lookups and requires every named patient to agree.
+ */
+async function encounterScopePatientId(
+  resolver: EncounterAbacResolver,
+  organizationId: string,
+  target: AbacTarget,
+): Promise<string | null> {
+  const patientId = targetId(target, "patientId");
+  if (patientId) return patientId;
+  const encounterId = targetId(target, "encounterId");
+  if (!encounterId) return null;
+  return (await resolver.loadEncounter(organizationId, encounterId))?.patientId ?? null;
+}
+
+/**
+ * Break-glass (CW-AC-03): the patient an `encounter.scope` target belongs to, so an emergency grant over that patient
+ * opens the encounter read like it opens the chart. The grant only ever opens a GET (`requireAbac` refuses the branch
+ * for any other method).
+ */
+export function buildEncounterBreakGlassSubject(
+  deps: EncounterAbacDeps,
+): BreakGlassSubjectResolver {
+  return async (context, target) => {
+    // EVERY patient the target names must agree: the predicate judges the first, but a target naming a patient AND an
+    // encounter of another patient is covered by neither's glass.
+    const named = targetId(target, "patientId");
+    const encounterId = targetId(target, "encounterId");
+    const ofEncounter = encounterId
+      ? ((await deps.resolver.loadEncounter(context.organizationId, encounterId))?.patientId ??
+        null)
+      : undefined;
+    return singleBreakGlassSubject(
+      [named ?? undefined, ofEncounter].filter((id) => id !== undefined),
+    );
   };
 }
 
@@ -199,4 +234,5 @@ export function registerEncounterAbacPredicates(deps: EncounterAbacDeps): void {
   for (const [name, predicate] of Object.entries(predicates)) {
     registerPredicateIdempotent(name, predicate);
   }
+  registerBreakGlassSubject("encounter.scope", buildEncounterBreakGlassSubject(deps));
 }

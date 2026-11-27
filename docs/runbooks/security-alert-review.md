@@ -139,6 +139,19 @@ Emergency access was invoked in the organization. Break-glass must be co-signed 
 (`m3.breakglass.cosigned`) and that the clinical reason fits. The tenant's compliance officer is also paged in-app by the M36 consumer
 (GAP-010); this alert is the second line.
 
+<a id="access.break_glass_heavy_use"></a>
+### access.break_glass_heavy_use (warn)
+One user opened 150 or more gated reads under emergency access in 15 minutes. Every read a glass opens is one critical
+`m3.breakglass.access` audit row, whatever the clinical stage (patient, order, admission, discharge, encounter, eMAR, HOPE, the
+patient's IDG history): the row's `resource_type` is the guarded action (`admission.read`, `encounter.read`, …), its `resource_id`
+is the patient, and its context carries the break-glass event id. One rule therefore covers every stage, and the alert carries only
+the user reference, the count and the window, never what was read. A glass covers ONE patient and only reads: it never opens a
+write, a second patient, a meeting (which spans patients), a provider-entity scope, or any step-up ceremony. A burst this large is
+therefore many reads of one patient's chart. Open the sample events, take the break-glass event id from their context, and compare
+the volume and the reason on `m3.breakglass.invoked` with what a covering clinician needs. If it does not fit, revoke the glass
+(`POST /api/v1/breakglass/:id/revoke`), review the user's other activity in that window, and treat it as possible snooping. The
+threshold is a starting point, tuned from production.
+
 <a id="access.privilege_escalation_blocked"></a>
 ### access.privilege_escalation_blocked (critical)
 Someone tried to grant a role beyond their own and was refused. Find the actor in the sample event, ask why, and review what else they

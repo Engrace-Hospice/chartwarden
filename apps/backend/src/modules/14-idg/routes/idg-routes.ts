@@ -109,8 +109,9 @@ export interface IdgRouteDeps {
    */
   sudDisclosure?: PacketDisclosurePort;
   /**
-   * GAP-128 — the per-patient caseload resolver for the packet read and idg-history. Defaults to M5's published
-   * `CaseloadProvider` seam (an unbound seam fails closed for non-org-wide roles). Injected in tests.
+   * GAP-128 — the per-patient caseload resolver for the packet reads. Defaults to M5's published `CaseloadProvider`
+   * seam (an unbound seam fails closed for non-org-wide roles). Injected in tests. The patient idg-history read no
+   * longer uses it: it is gated by the shared `caseload_or_scope` predicate (CW-AC-03), which reads the same seam.
    */
   caseload?: IdgCaseloadResolver;
   /**
@@ -144,6 +145,22 @@ const ACT_OR_COORDINATE: PreHandler = async (request) => {
 // §4.7 ABAC guards. `idg_meeting_scope` defaults its target to the route params (`:id` / `:meetingId`).
 const SCOPE = (action: string): PreHandler =>
   requireAbac(action, "idg_meeting_scope") as PreHandler;
+/** A malformed patient id is a 422 BEFORE the scope predicate casts it to a uuid (that would be a 500). */
+const PATIENT_ID_PARAMS = (async (request: FastifyRequest) => {
+  parse(PatientIdParamsSchema, request.params);
+}) as unknown as PreHandler;
+/** The patient-keyed IDG History read: the shared per-chart scope, a miss is the non-leaking 404, break-glass-eligible. */
+const PATIENT_HISTORY_SCOPE = requireAbac("idg.read", "caseload_or_scope", {
+  notFoundOnDeny: true,
+  getTarget: (request) => {
+    const patientId = (request.params as { patientId?: unknown } | undefined)?.patientId;
+    // `caseload_or_scope` ADMITS a target that names no patient (a collection route): this route is never one, so a
+    // missing id is the non-leaking 404 here and does not depend on `PATIENT_ID_PARAMS` having run first.
+    if (typeof patientId !== "string" || patientId.length === 0)
+      throw new NotFoundError("resource");
+    return { patientId };
+  },
+}) as PreHandler;
 /**
  * Discipline-note WRITE gate (spec extension): the caller needs `idg.attend` (a participant) OR `idg.coordinate`
  * (any-discipline). Which of the two they hold decides {@link DisciplineNoteActor.isCoordinator}; the finer
@@ -732,21 +749,19 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 14b — patient-scoped IDG review history (patient-chart "IDG History" tab). Gated by idg.read; no
   // per-meeting idg_meeting_scope ABAC (the target is a patient, not one meeting). Metadata only — no
   // packet/decision narrative — so there is no SUD payload to redact. A patient never on an agenda → empty.
+  // CW-AC-03: the patient's caseload scope is the shared `caseload_or_scope` gate (the same org-wide / pinned-session /
+  // caseload rule `assertIdgPatientInScope` applied), so an emergency break-glass grant over this patient opens the
+  // IDG History tab like it opens the rest of the chart. A meeting's own routes stay refused under glass: a meeting
+  // spans patients and is scoped by location (`idg_meeting_scope`), so no single patient's grant covers one.
   app.get(
     "/api/v1/patients/:patientId/idg-history",
     {
-      preHandler: [READ],
+      preHandler: [READ, PATIENT_ID_PARAMS, PATIENT_HISTORY_SCOPE],
       config: { auditRead: { resourceKind: "idg_history", patientIdParam: "patientId" } },
     },
     async (request) => {
       const { organizationId } = membershipActorOf(request);
       const { patientId } = parse(PatientIdParamsSchema, request.params);
-      await assertIdgPatientInScope(
-        patientScopeFactsOf(request),
-        organizationId,
-        patientId,
-        caseload,
-      );
       return service.getPatientIdgHistory(organizationId, patientId);
     },
   );

@@ -634,6 +634,7 @@ describe("M3-T08 authorization route inventory", () => {
       // so the §2.2 break-glass branch is consulted. The covered target passes under glass.
       const guard = requireAbac("patient.read", "caseload_membership");
       const probe = (patientId: string) => ({
+        method: "GET", // break-glass opens a read only (CW-AC-03)
         context: {
           correlationId: "c",
           userId: "rn_1",

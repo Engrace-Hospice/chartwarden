@@ -27,6 +27,8 @@ import type { PermissionKey } from "../permissions/catalog";
  */
 export interface GuardRequest {
   readonly context: HttpRequestContext;
+  /** The HTTP method (a Fastify request carries it). Break-glass opens a guard only for a GET/HEAD — see `requireAbac`. */
+  readonly method?: string;
   readonly params?: unknown;
   readonly body?: unknown;
   readonly query?: unknown;

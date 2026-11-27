@@ -1,8 +1,11 @@
 import {
   type AbacContext,
   type AbacTarget,
+  type BreakGlassSubjectResolver,
   hasOrgWideScope,
+  registerBreakGlassSubject,
   registerPredicateIdempotent,
+  singleBreakGlassSubject,
 } from "@chartwarden/auth";
 // apps/backend/src/modules/10-hope/abac-predicates.ts — M10-T06 (§4.7).
 //
@@ -162,6 +165,79 @@ const defaultResolveAdmissionPatient = async (
   }
 };
 
+type ResolveAdmissionPatient = NonNullable<HopeAbacDeps["resolveAdmissionPatient"]>;
+
+/**
+ * The patient a `hope.scope` target is about, in the order the predicate reads its fields: `patientId`, `admissionId`,
+ * `scheduleId`, `sfvId`, then `assessmentId` / bare `id`. `undefined` = the target names no patient-bearing id (the
+ * provider-entity / submission / empty-filter shapes); `null` = it names one that does not resolve (absent, another
+ * tenant's, or an M6 seam gap). Shared by the predicate and by its break-glass subject resolver, so the patient a
+ * glass is judged against is the patient the caseload was judged on.
+ */
+async function hopeScopePatientId(
+  resolver: HopeAbacResolver,
+  resolveAdmissionPatient: ResolveAdmissionPatient,
+  organizationId: string,
+  target: AbacTarget,
+): Promise<string | null | undefined> {
+  const [first] = hopePatientLookups(resolver, resolveAdmissionPatient, organizationId, target);
+  return first ? first() : undefined;
+}
+
+/**
+ * One lookup per patient-bearing field the target names, in the predicate's order (each resolves to the patient, or
+ * `null` when absent / another tenant's / an M6 seam gap). The predicate runs only the FIRST; the break-glass subject
+ * resolver runs ALL of them, so a target that names two patients is covered by neither's glass.
+ */
+function hopePatientLookups(
+  resolver: HopeAbacResolver,
+  resolveAdmissionPatient: ResolveAdmissionPatient,
+  organizationId: string,
+  target: AbacTarget,
+): readonly (() => Promise<string | null>)[] {
+  const lookups: Array<() => Promise<string | null>> = [];
+  const patientId = targetStr(target, "patientId");
+  if (patientId) lookups.push(async () => patientId);
+  const admissionId = targetStr(target, "admissionId");
+  if (admissionId)
+    lookups.push(
+      async () => (await resolveAdmissionPatient(organizationId, admissionId))?.patientId ?? null,
+    );
+  const scheduleId = targetStr(target, "scheduleId");
+  if (scheduleId)
+    lookups.push(
+      async () => (await resolver.loadSchedule(organizationId, scheduleId))?.patientId ?? null,
+    );
+  const sfvId = targetStr(target, "sfvId");
+  if (sfvId)
+    lookups.push(async () => (await resolver.loadSfv(organizationId, sfvId))?.patientId ?? null);
+  const assessmentId = targetStr(target, "assessmentId") ?? targetStr(target, "id");
+  if (assessmentId)
+    lookups.push(
+      async () => (await resolver.loadAssessment(organizationId, assessmentId))?.patientId ?? null,
+    );
+  return lookups;
+}
+
+/**
+ * Break-glass (CW-AC-03): the patient a `hope.scope` target belongs to, so an emergency grant over that patient opens
+ * the HOPE assessment read like it opens the chart. A provider-entity or submission target belongs to no patient and
+ * resolves to `null`: those stay refused. So does a target naming several patients, or one that does not resolve. The
+ * grant only ever opens a GET (`requireAbac` refuses the branch for any other method).
+ */
+export function buildHopeBreakGlassSubject(deps: HopeAbacDeps): BreakGlassSubjectResolver {
+  const resolveAdmissionPatient = deps.resolveAdmissionPatient ?? defaultResolveAdmissionPatient;
+  return async (context, target) => {
+    const lookups = hopePatientLookups(
+      deps.resolver,
+      resolveAdmissionPatient,
+      context.organizationId,
+      target,
+    );
+    return singleBreakGlassSubject(await Promise.all(lookups.map((lookup) => lookup())));
+  };
+}
+
 /**
  * Build M10's four predicate resolvers over injected deps (pure factory — unit-tested with a fresh
  * registry; the boot path registers them via {@link registerHopeAbacPredicates}). The author/SFV routes
@@ -236,36 +312,16 @@ export function buildHopeAbacPredicates(
       return facts.originalSignedBy != null && facts.originalSignedBy === actingMembershipId;
     },
     "hope.scope": async (context, target) => {
-      const patientId = targetStr(target, "patientId");
-      if (patientId) return caseloadOrScopeFor(context, patientId);
-
-      const admissionId = targetStr(target, "admissionId");
-      if (admissionId) {
-        const facts = await resolveAdmissionPatient(context.organizationId, admissionId);
-        if (!facts) return false; // fail-closed (absent / cross-tenant / seam gap)
-        return caseloadOrScopeFor(context, facts.patientId);
-      }
-
-      const scheduleId = targetStr(target, "scheduleId");
-      if (scheduleId) {
-        const facts = await resolver.loadSchedule(context.organizationId, scheduleId);
-        if (!facts) return false; // fail-closed (absent / cross-tenant)
-        return caseloadOrScopeFor(context, facts.patientId);
-      }
-
-      const sfvId = targetStr(target, "sfvId");
-      if (sfvId) {
-        const facts = await resolver.loadSfv(context.organizationId, sfvId);
-        if (!facts) return false; // fail-closed (absent / cross-tenant)
-        return caseloadOrScopeFor(context, facts.patientId);
-      }
-
-      const assessmentId = targetStr(target, "assessmentId") ?? targetStr(target, "id");
-      if (assessmentId) {
-        const facts = await resolver.loadAssessment(context.organizationId, assessmentId);
-        if (!facts) return false; // fail-closed (absent / cross-tenant)
-        return caseloadOrScopeFor(context, facts.patientId);
-      }
+      // A patient-bearing id (patient / admission / schedule / SFV / assessment) is judged on its patient's caseload;
+      // one that names a patient but does not resolve (absent / cross-tenant / seam gap) fails closed.
+      const patientId = await hopeScopePatientId(
+        resolver,
+        resolveAdmissionPatient,
+        context.organizationId,
+        target,
+      );
+      if (patientId === null) return false;
+      if (patientId !== undefined) return caseloadOrScopeFor(context, patientId);
 
       const providerEntityId = targetStr(target, "providerEntityId");
       if (providerEntityId) return peOrScopeFor(context, providerEntityId);
@@ -300,4 +356,5 @@ export function registerHopeAbacPredicates(deps: HopeAbacDeps): void {
   for (const [name, predicate] of Object.entries(predicates)) {
     registerPredicateIdempotent(name, predicate);
   }
+  registerBreakGlassSubject("hope.scope", buildHopeBreakGlassSubject(deps));
 }

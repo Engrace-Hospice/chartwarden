@@ -19,9 +19,11 @@ import {
   type AbacContext,
   type AbacTarget,
   BUSINESS_ADMIN_SCOPE_ROLES,
+  type BreakGlassSubjectResolver,
   INTAKE_ROLE_KEYS,
   hasAdmittingClinicianRole,
   hasOrgWideScope,
+  registerBreakGlassSubject,
   registerPredicateIdempotent,
 } from "@chartwarden/auth";
 import { getSeam } from "../../bootstrap/index";
@@ -154,6 +156,36 @@ function resourceKindOf(target: AbacTarget): AdmissionScopeResourceKind {
 }
 
 /**
+ * The OWNING admission's scope facts for the resource `target.id` names (`resourceKind` picks the loader), or `null`
+ * when the id is absent, unknown or another tenant's. One lookup shared by the `admission.scope` predicate and by its
+ * break-glass subject resolver, so the patient a glass is judged against is the patient the caseload was judged on.
+ */
+function loadAdmissionScopeFacts(
+  resolver: AdmissionAbacResolver,
+  organizationId: string,
+  target: AbacTarget,
+) {
+  const id = targetId(target);
+  if (!id) return Promise.resolve(null);
+  switch (resourceKindOf(target)) {
+    case "admission":
+      return resolver.loadAdmission(organizationId, id);
+    case "electionPeriod":
+      return resolver.loadElectionPeriodScope(organizationId, id);
+    case "electionStatement":
+      return resolver.loadElectionStatementScope(organizationId, id);
+    case "cti":
+      return resolver.loadCtiScope(organizationId, id);
+    case "f2f":
+      return resolver.loadF2fScope(organizationId, id);
+    case "loc":
+      return resolver.loadLocScope(organizationId, id);
+    case "complianceWindow":
+      return resolver.loadComplianceWindow(organizationId, id);
+  }
+}
+
+/**
  * Build M6's ten §4.6 predicate resolvers + `admission_intake_scope` + `admission_clinical_site_scope` over injected deps (pure factory — unit-tested with a fresh
  * registry; the boot path registers these into the shared registry via {@link registerAdmissionAbacPredicates}).
  */
@@ -249,26 +281,7 @@ export function buildAdmissionAbacPredicates(
       return facts.locationId === null || context.locationIds.includes(facts.locationId);
     },
     "admission.scope": async (context, target) => {
-      const id = targetId(target);
-      if (!id) return false;
-      const facts = await (async () => {
-        switch (resourceKindOf(target)) {
-          case "admission":
-            return resolver.loadAdmission(context.organizationId, id);
-          case "electionPeriod":
-            return resolver.loadElectionPeriodScope(context.organizationId, id);
-          case "electionStatement":
-            return resolver.loadElectionStatementScope(context.organizationId, id);
-          case "cti":
-            return resolver.loadCtiScope(context.organizationId, id);
-          case "f2f":
-            return resolver.loadF2fScope(context.organizationId, id);
-          case "loc":
-            return resolver.loadLocScope(context.organizationId, id);
-          case "complianceWindow":
-            return resolver.loadComplianceWindow(context.organizationId, id);
-        }
-      })();
+      const facts = await loadAdmissionScopeFacts(resolver, context.organizationId, target);
       if (!facts) return false; // fail-closed (absent / cross-tenant)
       // #613: the census lists these roles every admission (readScopeOf → hasOrgWideScope), so a read must open it.
       if (target.access === "read" && hasOrgWideScope(context.roles)) return true;
@@ -429,4 +442,18 @@ export function registerAdmissionAbacPredicates(deps: AdmissionAbacDeps): void {
   for (const [name, predicate] of Object.entries(predicates)) {
     registerPredicateIdempotent(name, predicate);
   }
+  registerBreakGlassSubject("admission.scope", buildAdmissionBreakGlassSubject(deps));
+}
+
+/**
+ * Break-glass (CW-AC-03): the patient an `admission.scope` target belongs to, so an emergency grant over that patient
+ * opens the admission read and the discharge-details read (both guarded by this predicate) like it opens the chart.
+ * The grant only ever opens a GET (`requireAbac` refuses the branch for any other method).
+ */
+export function buildAdmissionBreakGlassSubject(
+  deps: AdmissionAbacDeps,
+): BreakGlassSubjectResolver {
+  return async (context, target) =>
+    (await loadAdmissionScopeFacts(deps.resolver, context.organizationId, target))?.patientId ??
+    null;
 }
