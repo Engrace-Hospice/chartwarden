@@ -995,9 +995,9 @@ describe.skipIf(!DB_URL)(
           `INSERT INTO claimmd_era_m25_stage
            (id,organization_id,provider_entity_id,source_inbox_id,account_reference,usage,era_id,file_index,
             interchange_control_number,transaction_set_control_number,original_835_digest,source_file_digest,
-            resolution_id,resolution_version,source_evidence,state)
+            resolution_id,resolution_version,source_evidence,state,protected_details_cipher,protected_details_key_id)
          VALUES ($1,$2,$3,$4,$5,'test',$6,0,'100000001','0001',$7,$8,$9,1,
-            '{"codes":["SYNTHETIC_TEST_FIXTURE"]}'::jsonb,'staged')`,
+            '{"codes":["SYNTHETIC_TEST_FIXTURE"]}'::jsonb,'staged',$10,'synthetic-l6b')`,
           [
             stageId,
             ORG_A,
@@ -1008,6 +1008,7 @@ describe.skipIf(!DB_URL)(
             captureDigest,
             rawFileDigest,
             resolutionId,
+            encryptedDetails.toString("base64"),
           ],
         );
         await db.query(
@@ -1158,12 +1159,25 @@ describe.skipIf(!DB_URL)(
         const sourceProjection = await sourceReaderSql.query<{
           stage_id: string;
           stage_digest: string;
-        }>("SELECT stage_id,stage_digest FROM m25_read_staged_claimmd_era($1,$2,$3)", [
+          cipher_text: string;
+        }>("SELECT stage_id,stage_digest,cipher_text FROM m25_read_staged_claimmd_era($1,$2,$3)", [
           stageId,
           ORG_A,
           providerEntityId,
         ]);
-        expect(sourceProjection.rows).toEqual([{ stage_id: stageId, stage_digest: rawFileDigest }]);
+        expect(sourceProjection.rows).toEqual([
+          {
+            stage_id: stageId,
+            stage_digest: rawFileDigest,
+            cipher_text: encryptedFiles.toString("base64"),
+          },
+        ]);
+        await expect(
+          sourceReaderSql.query(
+            "SELECT protected_details_cipher FROM claimmd_era_m25_stage WHERE id=$1",
+            [stageId],
+          ),
+        ).rejects.toThrow(/permission denied/);
         const foreignSourceProjection = await sourceReaderSql.query(
           "SELECT * FROM m25_read_staged_claimmd_era($1,$2,$3)",
           [stageId, ORG_B, providerEntityId],
@@ -1176,6 +1190,7 @@ describe.skipIf(!DB_URL)(
         let apiProcess: ReturnType<typeof spawn> | null = null;
         let runtimeDirectory: string | null = null;
         let sourceReaderHandle: ReturnType<typeof createDbClient> | null = null;
+        let evaluatorReaderSql: Client | null = null;
         const runtimeContainerName = `m25-l6c2-${randomUUID().slice(0, 8)}`;
         const apiContainerName = `m25-l6d-api-${randomUUID().slice(0, 8)}`;
         const runtimeNetworkName = `m25-l6c2-net-${randomUUID().slice(0, 8)}`;
@@ -1219,6 +1234,29 @@ describe.skipIf(!DB_URL)(
           const readers = buildDrizzleMedicaidEraReviewReaders(appHandle.db, store);
           const evaluator = createMedicaidEraReviewService(readers);
           expect((await evaluator.inspect(actor, stageId)).status).toBe("review_only");
+          const evaluatorSql = new Client({ connectionString: evaluatorUrl.toString() });
+          evaluatorReaderSql = evaluatorSql;
+          await evaluatorSql.connect();
+          expect(
+            (await evaluatorSql.query<{ current_user: string }>("SELECT current_user")).rows[0]
+              ?.current_user,
+          ).toBe("chartwarden_m25_evaluator_login");
+          const readEvaluatorStageForOrg = async (organizationId: string) => {
+            await evaluatorSql.query("BEGIN");
+            try {
+              await evaluatorSql.query("SELECT set_config('app.org_id',$1,true)", [organizationId]);
+              return await evaluatorSql.query<{ protected_details_cipher: string }>(
+                "SELECT protected_details_cipher FROM claimmd_era_m25_stage WHERE id=$1",
+                [stageId],
+              );
+            } finally {
+              await evaluatorSql.query("ROLLBACK");
+            }
+          };
+          expect((await readEvaluatorStageForOrg(ORG_A)).rows).toEqual([
+            { protected_details_cipher: encryptedDetails.toString("base64") },
+          ]);
+          expect((await readEvaluatorStageForOrg(ORG_B)).rows).toEqual([]);
           const workflow = buildDrizzleMedicaidEraReviewWorkflow(appHandle.db, evaluator);
           runtimeDirectory = mkdtempSync(join(tmpdir(), "cw-l6c2-"));
           const { privateKey, publicKey } = generateKeyPairSync("ed25519");
@@ -1478,7 +1516,7 @@ describe.skipIf(!DB_URL)(
             : "http://127.0.0.1:39125";
           const apiEnvironment = {
             NODE_ENV: "test",
-            PORT: "3000",
+            PORT: useRuntimeContainer ? "3000" : String(apiPort),
             DATABASE_URL: apiDatabaseUrl,
             BETTER_AUTH_SECRET: TEST_BETTER_AUTH_SECRET,
             BETTER_AUTH_URL: useRuntimeContainer
@@ -1488,7 +1526,9 @@ describe.skipIf(!DB_URL)(
             M25_EVALUATOR_ENABLED: "true",
             M25_EVALUATOR_URL: apiEvaluatorUrl,
             M25_EVALUATOR_SIGNING_KEY_ID: "synthetic-l6d",
-            M25_EVALUATOR_SIGNING_KEY_FILE: "/run/secrets/private",
+            M25_EVALUATOR_SIGNING_KEY_FILE: useRuntimeContainer
+              ? "/run/secrets/private"
+              : join(runtimeDirectory, "private"),
             ...(useBrowserJourney ? { M25_TEST_CLAIMMD_KEYRING_FILE: "/run/secrets/keyring" } : {}),
           };
           const apiChild = useRuntimeContainer
@@ -2770,12 +2810,14 @@ describe.skipIf(!DB_URL)(
             platform_member: boolean;
             direct_inbox_read: boolean;
             direct_delivery_read: boolean;
+            direct_stage_protected_read: boolean;
             function_execute: boolean;
           }>(
             `SELECT role.rolsuper AS superuser,role.rolbypassrls AS bypass_rls,
                   pg_has_role('chartwarden_m25_era_source_login','chartwarden_platform','member') AS platform_member,
                   has_table_privilege('chartwarden_m25_era_source_login','claimmd_era_inbox','SELECT') AS direct_inbox_read,
                   has_table_privilege('chartwarden_m25_era_source_login','claimmd_era_delivery','SELECT') AS direct_delivery_read,
+                  has_column_privilege('chartwarden_m25_era_source_login','claimmd_era_m25_stage','protected_details_cipher','SELECT') AS direct_stage_protected_read,
                   has_function_privilege('chartwarden_m25_era_source_login',
                     'm25_read_staged_claimmd_era(uuid,uuid,uuid)','EXECUTE') AS function_execute
              FROM pg_roles role WHERE role.rolname='chartwarden_m25_era_source_login'`,
@@ -2786,6 +2828,7 @@ describe.skipIf(!DB_URL)(
             platform_member: false,
             direct_inbox_read: false,
             direct_delivery_read: false,
+            direct_stage_protected_read: false,
             function_execute: true,
           });
           await expect(
@@ -2852,6 +2895,7 @@ describe.skipIf(!DB_URL)(
             spawnSync("docker", ["network", "rm", apiEdgeNetworkName], { stdio: "ignore" });
           }
           if (runtimeDirectory) rmSync(runtimeDirectory, { recursive: true, force: true });
+          await evaluatorReaderSql?.end().catch(() => undefined);
           await sourceReaderSql.end().catch(() => undefined);
           await sourceReaderHandle?.close();
           await platformSql.end();

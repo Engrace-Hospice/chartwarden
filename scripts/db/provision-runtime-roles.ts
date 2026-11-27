@@ -47,10 +47,10 @@
  * The carrier holds NO SELECT on `audit_event`: CW-MON-01's security review reads the org-less sign-in events through the three
  * `m4_review_platform_*` SECURITY DEFINER readers (migration 1566; EXECUTE is granted below), whose owner can see org-less rows only.
  * ONE deliberate exception is a role MEMBERSHIP rather than an enumerated grant: `claimmd_capture` (the NOLOGIN role that
- * owns the central Claim.MD stream, inbox and ERA-staging privileges, enumerated in migrations 1350/1351/1353/1354/1356/1357/1358/1360/1396),
- * granted here exactly as those migrations grant it when the carrier already exists. It carries those tables' grants for the
- * platform login (table-wide SELECT on `claimmd_era_m25_stage`, so across tenants), which is what `m23-claimmd-webhook.live`
- * proves is present after migrate-then-provision; compliance/controls.yaml CW-AC-10 names it.
+ * owns platform-side Claim.MD capture, inbox, resolution and delivery privileges, enumerated in migrations 1350/1351/1353/1354/1356/1357/1358/1360/1396),
+ * granted here exactly as those migrations grant it when the carrier already exists. Migration 1567 removes its table-wide
+ * and column-level SELECT plus the permissive policy on tenant-owned `claimmd_era_m25_stage`; no central capture or dispatcher
+ * reads that M25 stage. This provisioner repeats only the membership needed for the other capture tables and does not restore stage access.
  */
 import { readFileSync } from "node:fs";
 import { Client } from "pg";
@@ -554,8 +554,9 @@ async function main(): Promise<void> {
       await run(
         'GRANT UPDATE (last_health_status, last_health_check_at) ON "ai_model_backend" TO chartwarden_platform;',
       );
-      // Central Claim.MD capture (migrations 1350 / 1356): the platform carrier reaches the account-wide stream, inbox and
-      // ERA-staging tables only through membership of the NOLOGIN `claimmd_capture` role. Those migrations grant the
+      // Central Claim.MD capture (migrations 1350 / 1356): the platform carrier reaches the account-wide response and ERA
+      // streams/inboxes through membership of the NOLOGIN `claimmd_capture` role. Migration 1567 removes its former stage-table
+      // read because capture and dispatch never read tenant-owned M25 ERA staging. The migrations grant the
       // membership only if `chartwarden_platform` already exists when they run, and nothing but this provisioner creates
       // it, so a fresh database (migrate, then provision) would leave the platform login with "permission denied" on every
       // central Claim.MD table. Repeat the grant here, like the other conditional carrier grants; it is idempotent and
