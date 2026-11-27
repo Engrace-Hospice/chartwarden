@@ -527,4 +527,214 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
       expect(runs).toBe(2);
     });
   });
+
+  // CW-AC-36 — the concurrency proof and the release fence, on the real store and the real pool as `chartwarden_app`.
+  describe("parallel retries of one key write once; a released key fences its request's late writes (CW-AC-36)", () => {
+    const PARALLEL = 20;
+    type Mode = "write" | "hang-before-write" | "write-then-hang" | "late-tx" | "late-autocommit";
+    let app: FastifyInstance;
+    let runs = 0;
+    let mode: Mode = "write";
+    // `hold` parks a handler (a request whose process is as good as dead); `startLate` lets abandoned work reach its first write.
+    let hold: Promise<void> = Promise.resolve();
+    let openHold: () => void = () => undefined;
+    let lateStart: Promise<void> = Promise.resolve();
+    let startLate: () => void = () => undefined;
+    let lateWrite: Promise<unknown> = Promise.resolve();
+
+    const rewind = (): void => {
+      hold = new Promise<void>((resolve) => {
+        openHold = resolve;
+      });
+      lateStart = new Promise<void>((resolve) => {
+        startLate = resolve;
+      });
+    };
+    const raceRows = async (key: string): Promise<number> =>
+      Number(
+        (await admin.query("SELECT count(*)::int AS n FROM idem_race_probe WHERE k = $1", [key]))
+          .rows[0].n,
+      );
+    const post = (key: string) =>
+      app.inject({
+        method: "POST",
+        url: "/race",
+        headers: { "idempotency-key": key },
+        payload: { a: 1 },
+      });
+    const wave = (key: string) => Array.from({ length: PARALLEL }, () => post(key));
+    const codeOf = (res: { json: () => { error?: { code?: string } } }) => res.json().error?.code;
+    const poll = async (reached: () => boolean | Promise<boolean>): Promise<void> => {
+      for (let i = 0; i < 500 && !(await reached()); i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(await reached()).toBe(true);
+    };
+
+    beforeAll(async () => {
+      await admin.query(
+        "CREATE TABLE idem_race_probe (id serial PRIMARY KEY, k text NOT NULL, n int NOT NULL)",
+      );
+      await admin.query("GRANT ALL ON idem_race_probe TO chartwarden_app");
+      await admin.query("GRANT USAGE ON SEQUENCE idem_race_probe_id_seq TO chartwarden_app");
+      rewind();
+      app = Fastify();
+      app.decorateRequest("context", undefined as never);
+      app.addHook("onRequest", async (request) => {
+        (request as unknown as { context: unknown }).context = { organizationId: ORG_A };
+      });
+      applyErrorHandler(app);
+      applyIdempotency(app, store);
+      app.post("/race", async (request, reply) => {
+        runs += 1;
+        const run = runs;
+        const key = String(request.headers["idempotency-key"]);
+        const scope = { organizationId: ORG_A, userId: "" };
+        const insert = () =>
+          withOrgContext(handle.db, scope, (tx) =>
+            (tx as unknown as { execute: (q: unknown) => Promise<unknown> }).execute(
+              sql`INSERT INTO idem_race_probe (k, n) VALUES (${key}, ${run})`,
+            ),
+          );
+        if (mode === "hang-before-write") await hold; // claimed, never wrote
+        if (mode === "late-tx" || mode === "late-autocommit") {
+          // The deadline pattern: answer 503 and abandon the work, which has not issued its first write yet.
+          const autocommit = mode === "late-autocommit";
+          lateWrite = lateStart
+            .then(() =>
+              autocommit
+                ? handle.db.execute(sql`INSERT INTO idem_race_probe (k, n) VALUES (${key}, ${run})`)
+                : insert(),
+            )
+            .then(
+              () => "done",
+              (error: unknown) => error,
+            );
+          return reply.code(503).send({ error: { code: "DEADLINE_EXCEEDED" } });
+        }
+        await insert();
+        if (mode === "write-then-hang") await hold; // wrote, never answered
+        return reply.code(201).send({ run });
+      });
+      await app.ready();
+    });
+    afterAll(async () => {
+      openHold();
+      startLate();
+      await app?.close();
+    });
+
+    it("N parallel requests with one key: one handler run, one row, one 201; the others are IN_FLIGHT, then N parallel retries all replay that response", async () => {
+      mode = "write-then-hang";
+      runs = 0;
+      rewind();
+      const key = "cw-ac-36-parallel";
+      const settled: number[] = [];
+      const first = wave(key).map((p) =>
+        p.then((res) => {
+          settled.push(res.statusCode);
+          return res;
+        }),
+      );
+      await poll(() => settled.length === PARALLEL - 1); // every loser answers while the winner is parked
+      expect(settled.every((status) => status === 409)).toBe(true);
+      openHold();
+      const responses = await Promise.all(first);
+      const winners = responses.filter((res) => res.statusCode === 201);
+      expect(winners).toHaveLength(1);
+      for (const res of responses.filter((r) => r.statusCode === 409)) {
+        expect(codeOf(res)).toBe("IDEMPOTENCY_IN_FLIGHT");
+      }
+      expect(runs).toBe(1);
+      expect(await raceRows(key)).toBe(1);
+      expect(await rowFor(ORG_A, key)).toMatchObject([{ state: "complete", status: "201" }]);
+
+      // the retries: the same one response, never a second run
+      const replays = await Promise.all(wave(key));
+      for (const res of replays) {
+        expect(res.statusCode).toBe(201);
+        expect(res.json()).toEqual(winners[0]?.json());
+      }
+      expect(runs).toBe(1);
+      expect(await raceRows(key)).toBe(1);
+    });
+
+    it("crash BETWEEN CLAIM AND WRITE: parallel retries never run the handler, in flight and then stuck, and the claim is never reclaimed", async () => {
+      mode = "hang-before-write";
+      runs = 0;
+      rewind();
+      const key = "cw-ac-36-crash-before-write";
+      const holder = post(key); // claims the key and never writes: its process is gone
+      await poll(() => runs === 1);
+      expect((await Promise.all(wave(key))).map(codeOf)).toEqual(
+        Array(PARALLEL).fill("IDEMPOTENCY_IN_FLIGHT"),
+      );
+      await admin.query(
+        "UPDATE idempotency_key SET created_at = now() - interval '20 minutes' WHERE key = $1",
+        [key],
+      );
+      expect((await Promise.all(wave(key))).map(codeOf)).toEqual(
+        Array(PARALLEL).fill("IDEMPOTENCY_KEY_STUCK"),
+      );
+      expect(runs).toBe(1); // none of the 2 x N retries ran the handler
+      expect(await raceRows(key)).toBe(0);
+      expect(await rowFor(ORG_A, key)).toMatchObject([{ state: "pending" }]); // never reclaimed or released
+      openHold();
+      expect((await holder).statusCode).toBe(201);
+    });
+
+    it("crash BETWEEN WRITE AND ANSWER: the write is durable, parallel retries never repeat it", async () => {
+      mode = "write-then-hang";
+      runs = 0;
+      rewind();
+      const key = "cw-ac-36-crash-after-write";
+      const holder = post(key); // wrote and committed, then its process is gone before it answered
+      await poll(async () => (await raceRows(key)) === 1);
+      expect((await Promise.all(wave(key))).map(codeOf)).toEqual(
+        Array(PARALLEL).fill("IDEMPOTENCY_IN_FLIGHT"),
+      );
+      await admin.query(
+        "UPDATE idempotency_key SET created_at = now() - interval '20 minutes' WHERE key = $1",
+        [key],
+      );
+      expect((await Promise.all(wave(key))).map(codeOf)).toEqual(
+        Array(PARALLEL).fill("IDEMPOTENCY_KEY_STUCK"),
+      );
+      expect(runs).toBe(1);
+      expect(await raceRows(key)).toBe(1);
+      openHold();
+      expect((await holder).statusCode).toBe(201);
+    });
+
+    it.each(["late-tx", "late-autocommit"] as const)(
+      "a 503 over work that writes AFTER the answer (%s): the key is released, the late write is refused, and N parallel retries write once",
+      async (lateMode) => {
+        mode = lateMode;
+        runs = 0;
+        rewind();
+        const key = `cw-ac-36-fence-${lateMode}`;
+        expect((await post(key)).statusCode).toBe(503);
+        expect(await rowFor(ORG_A, key)).toEqual([]); // released: nothing of the request had committed
+        startLate(); // the abandoned work now reaches its first write
+        // drizzle wraps what the driver throws; the cause is the pool's refusal
+        expect((await lateWrite) as { cause?: unknown }).toMatchObject({
+          cause: { code: "IDEMPOTENCY_WRITE_FENCED" },
+        });
+        expect(await raceRows(key)).toBe(0); // refused before the server saw it
+
+        mode = "write";
+        const retries = await Promise.all(wave(key));
+        const done = retries.filter((res) => res.statusCode === 201);
+        expect(done.length).toBeGreaterThanOrEqual(1);
+        for (const res of retries.filter((r) => r.statusCode !== 201)) {
+          expect(codeOf(res)).toBe("IDEMPOTENCY_IN_FLIGHT");
+        }
+        for (const res of done) expect(res.json()).toEqual(done[0]?.json());
+        expect(runs).toBe(2); // the 503 run and exactly one retry
+        expect(await raceRows(key)).toBe(1); // one write in all
+        expect((await post(key)).json()).toEqual(done[0]?.json()); // and from now on it replays
+        expect(runs).toBe(2);
+      },
+    );
+  });
 });

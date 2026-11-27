@@ -37,19 +37,31 @@ import { createHmac, randomBytes } from "node:crypto";
 // route hijacks its reply so `onSend` never runs: the M33 CSV export streams) stays `pending`. A duplicate is told IN_FLIGHT for
 // IDEMPOTENCY_PENDING_MAX_AGE_MS and STUCK after it (`@chartwarden/shared` idempotency.ts); the row is never reclaimed or re-run.
 //
-// TWO RESIDUALS of the fail-closed rule, stated plainly. (1) It holds only at its two checkpoints, the claim (below) and `onSend`:
-// it does not see an async context that is lost INSIDE the handler, so a write made after that point reaches no tracker, and a
-// failure that then reaches `onSend` with the context intact is released although a write committed. (2) A route that answers a
-// 5xx/503 while its handler keeps running (a Promise.race deadline, a timeout wrapper) and has not yet issued its first write can be
-// released and still commit afterwards: the tracker has seen nothing to count at `onSend`. The routes in apps/backend/src that
-// answer before their work ends were reviewed (M32 AI invocation, M23 DDE provider send: each writes its ledger or in-doubt row,
-// which is tracked, before it answers; the others only abandon outbound calls or reads); a new one must write before it answers or
-// be kept off this path.
+// THE RELEASE FENCES THE REQUEST (CW-AC-36). The proof above is a snapshot of the instant the response is built, and a route that
+// answers a 5xx/503 while its handler keeps running (a Promise.race deadline, a timeout wrapper) can still issue its FIRST write
+// afterwards, which the snapshot cannot see; released, the key would then run again beside that write. So a release is made together
+// with a fence on the request's commit tracker (`fenceIfUncommitted`, one synchronous step): from then on the one pool builder
+// refuses every write that request's connections issue (`WriteFencedError`, before it is sent, logged once per refusal with the key
+// and no payload). A released key is not followed by a commit of the request that released it, except for the two residuals below.
+// An `onSend` or `onResponse` hook that writes on a retryable response is refused as well (none does; the M34 ledger and the read audit
+// write on a 2xx only), and abandoned work nobody awaits must attach its own `.catch` (the pool's own promise is marked handled, a
+// chain built on it is not). Work shared across requests that was STARTED under this one (a single-flight read, a memoised loader)
+// keeps this request's tracker, so once the request is fenced a write in it is refused for every waiter: none writes today. A route
+// that must write AFTER it has answered a retryable failure now fails loudly instead of writing twice: it writes before it answers
+// (M32 AI invocation and the M23 DDE provider send already write their ledger or in-doubt row first, which is tracked, so they are
+// cached, not released).
+//
+// TWO RESIDUALS that remain, stated plainly. (1) The fail-closed rule holds only at its two checkpoints, the claim (below) and
+// `onSend`: it does not see an async context that is lost INSIDE the handler, so a write made after that point reaches no tracker
+// (nothing to count, nothing to fence), and a failure that then reaches `onSend` with the context intact is released although a write
+// committed. (2) What is not a Postgres statement is neither counted nor fenced: an outbound call or a queue / object-store write
+// made directly in an abandoned route can still happen after the release.
 import {
   createCommitTracker,
   currentCommitTracker,
-  mayHaveCommitted,
+  fenceIfUncommitted,
   resetCommitTracker,
+  runOutsideCommitTracker,
   runWithCommitTracker,
 } from "@chartwarden/db";
 import type { CommitTracker } from "@chartwarden/db";
@@ -262,19 +274,37 @@ export function applyIdempotency(
     // transaction still running behind a 503 deadline): its COMMIT would land under a freed key.
     const retryable = isRetryableOutcome(reply.statusCode, response.body);
     const ownsContext = tracker !== undefined && currentCommitTracker() === tracker;
-    const provablyUncommitted = tracker !== undefined && !mayHaveCommitted(tracker) && ownsContext;
     if (retryable && tracker !== undefined && !ownsContext) {
       request.log.warn(
         { idempotencyKey: marker.key, statusCode: reply.statusCode },
         "idempotency: the async context was lost before the response; a retryable failure is cached, not released",
       );
     }
-    if (provablyUncommitted && retryable) {
+    // THE PROOF AND THE FENCE ARE ONE STEP (CW-AC-36). "Nothing of this request committed" is true only of this instant: work the
+    // handler abandoned (a deadline 503 over a handler that has not issued its first write) can still write afterwards, and
+    // would commit beside the same-key retry that the release below invites. So the release is allowed only together with a
+    // fence on the request's tracker, set in the same synchronous turn as the check: from then on the pool refuses every write
+    // the request issues, so a released key is never followed by a commit of the request that released it.
+    const log = request.log;
+    const mayRelease =
+      retryable &&
+      tracker !== undefined &&
+      ownsContext &&
+      fenceIfUncommitted(tracker, () =>
+        log.warn(
+          { idempotencyKey: marker.key },
+          "idempotency: a write was refused: this request's claim was released after a retryable failure, so it may not write any more",
+        ),
+      );
+    if (mayRelease) {
       // Nothing of this request committed, so "retry" is true: free the key so the same-key retry runs instead of replaying
       // the failure. A failed release leaves the record `pending` (a retry answers 409 in flight until the record's TTL), the
       // same fail-safe as a failed `complete`; it is logged, never allowed to rewrite the response.
       try {
-        await store.release(marker.orgId, marker.key, marker.requestHash);
+        // Outside the request's tracker: the release is a DELETE, a write, and the request is fenced from this line on.
+        await runOutsideCommitTracker(() =>
+          store.release(marker.orgId, marker.key, marker.requestHash),
+        );
       } catch (error) {
         request.log.error(
           { err: error, idempotencyKey: marker.key },
