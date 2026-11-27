@@ -180,7 +180,7 @@ payer companion guide, provider enrollment, claim acceptance or production route
 
 ### L8A.2C3 election history and IRC continuity — 2026-11-26
 
-- Migration 1558 adds append-only M6 election-history completeness evidence and extends the shared daily
+- Migration 1562 (originally qualified privately as ordinal 1558 before main's migration-number collision) adds append-only M6 election-history completeness evidence and extends the shared daily
   pricing snapshot profiles with RHC election-bucket v3 and local IRC v4. Historical snapshot versions
   remain unchanged; all new local profiles keep institutional-format qualification false.
 - A private PostgreSQL fixture used the actual M6 election reader to resolve election days 58–64 and
@@ -195,3 +195,17 @@ payer companion guide, provider enrollment, claim acceptance or production route
   Synthetic managed-care rates, locality, code and charge facts were confined to the disposable database;
   no actual OHA/EOCCO rates or patient data were added. F04/F06/F07/F11 remain partially addressed and
   external payer qualification is still outstanding. Full L7/monorepo qualification remains separate.
+
+### L8A.2C4 GIP local pricing and in-home respite clinical evidence — 2026-11-26
+
+- Migration 1563 supports only the synthetic own-IPU GIP daily local profile (snapshot v5, Q5006 local
+  draft coding) and binds the snapshot to the M37 stay, criteria, confirmed historical bed coverage, unit
+  ownership and M40 facility facts. It does not infer or qualify an Oregon/EOCCO reimbursement or accepted
+  institutional format.
+- Migration 1564 adds a separate M8 append-only delivered in-home respite evidence record sourced from an
+  actual signed encounter. M24 can recognize the current owner projection only to keep pricing and line
+  generation held; no respite rate, quantity methodology or code is qualified.
+- The M24 election-history migration is now ordinal 1562 because main uses 1558 for an M11 change. The
+  ordinal move preserved the SQL and did not apply it outside the private disposable qualification DB.
+  Migration 1563 is contract-held; 1564 is additive. CW-DS-01 remains open and no retention exception or
+  duration was introduced. See the [L8A.2C4 qualification report](./M24_1075_L8A2C4_GIP_AND_IN_HOME_RESPITE_QUALIFICATION_20261126.md).

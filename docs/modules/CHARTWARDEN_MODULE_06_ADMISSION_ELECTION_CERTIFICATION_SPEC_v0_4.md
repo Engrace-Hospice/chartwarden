@@ -621,7 +621,7 @@ a separately verified, explicitly synthetic managed-care method before qualifyin
 hourly preparation. This narrow integration is not a payer rule, does not change M6's LOC state machine,
 and does not establish EOCCO/Oregon billing eligibility or institutional units.
 
-**As-built M24 election-history source (L8A.2C3, 2026-11-26):** M6 also owns an append-only,
+**As-built M24 election-history source (L8A.2C3, 2026-11-26; migration 1562):** M6 also owns an append-only,
 provider/admission/election-scoped Medicaid election-history completeness attestation. Its narrow pricing
 reader returns the current signed election anchor, bounded election periods, transfer/revocation/discharge
 facts, source versions and an explicit truncation/completeness disposition. The first M24 use is limited to

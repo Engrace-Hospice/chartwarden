@@ -581,4 +581,98 @@ describe.skipIf(!DB_URL)("M8 Encounters — RLS cross-tenant denial — LIVE Pos
       expect(left.rows.map((r) => r.organization_id)).toEqual([ORG_A]);
     });
   });
+
+  it("delivered in-home respite evidence is tenant isolated and immutable for the app role", async () => {
+    const serviceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const sourceEncounter = (
+      await db.query(
+        `INSERT INTO encounter (
+           organization_id, provider_entity_id, location_id, patient_id, admission_id,
+           encounter_type, discipline, authored_by_membership_id, service_date,
+           started_at, ended_at, time_source, status, signed_at, vocab_version_id
+         ) VALUES (
+           $1,$2,$3,$4,$5,'routine_visit','rn',$6,'2026-01-15',
+           '2026-01-15T18:00:00Z','2026-01-15T19:00:00Z','clinician','signed',
+           '2026-01-15T20:00:00Z',$7
+         ) RETURNING id`,
+        [ORG_A, a.providerEntity, a.location, PATIENT, ADMISSION, a.membership, VOCAB],
+      )
+    ).rows[0].id as string;
+    const evidenceId = (
+      await withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO encounter_in_home_respite_evidence (
+           service_id, organization_id, provider_entity_id, location_id, patient_id, admission_id,
+           source_encounter_id, source_encounter_version, service_date, service_started_at,
+           service_ended_at, observed_duration_seconds, time_source, version, recorded_by_membership_id
+         ) VALUES (
+           $1,$2,$3,$4,$5,$6,$7,0,'2026-01-15','2026-01-15T18:00:00Z',
+           '2026-01-15T19:00:00Z',3600,'clinician',1,$8
+         ) RETURNING id`,
+          [
+            serviceId,
+            ORG_A,
+            a.providerEntity,
+            a.location,
+            PATIENT,
+            ADMISSION,
+            sourceEncounter,
+            a.membership,
+          ],
+        ),
+      )
+    ).rows[0].id as string;
+
+    const flags = await db.query(
+      `SELECT relrowsecurity, relforcerowsecurity FROM pg_class
+        WHERE oid = 'encounter_in_home_respite_evidence'::regclass`,
+    );
+    expect(flags.rows[0]).toEqual({ relrowsecurity: true, relforcerowsecurity: true });
+
+    const visibleToA = await withOrg(ORG_A, () =>
+      db.query(`SELECT id FROM encounter_in_home_respite_evidence WHERE id=$1`, [evidenceId]),
+    );
+    expect(visibleToA.rows.map((row) => row.id)).toEqual([evidenceId]);
+    const visibleToB = await withOrg(ORG_B, () =>
+      db.query(`SELECT id FROM encounter_in_home_respite_evidence WHERE id=$1`, [evidenceId]),
+    );
+    expect(visibleToB.rows).toHaveLength(0);
+
+    await expect(
+      withOrg(ORG_B, () =>
+        db.query(
+          `INSERT INTO encounter_in_home_respite_evidence (
+             service_id, organization_id, provider_entity_id, location_id, patient_id, admission_id,
+             source_encounter_id, source_encounter_version, service_date, service_started_at,
+             service_ended_at, observed_duration_seconds, time_source, version, recorded_by_membership_id
+           ) VALUES (
+             $1,$2,$3,$4,$5,$6,$7,0,'2026-01-15','2026-01-15T18:00:00Z',
+             '2026-01-15T19:00:00Z',3600,'clinician',1,$8
+           )`,
+          [
+            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            ORG_A,
+            a.providerEntity,
+            a.location,
+            PATIENT,
+            ADMISSION,
+            sourceEncounter,
+            a.membership,
+          ],
+        ),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(`UPDATE encounter_in_home_respite_evidence SET version=2 WHERE id=$1`, [
+          evidenceId,
+        ]),
+      ),
+    ).rejects.toThrow(/permission denied/);
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(`DELETE FROM encounter_in_home_respite_evidence WHERE id=$1`, [evidenceId]),
+      ),
+    ).rejects.toThrow(/permission denied/);
+  });
 });

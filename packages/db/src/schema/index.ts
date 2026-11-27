@@ -330,6 +330,7 @@ export * from "./encounter/hearthnote-signed-sections";
 export * from "./encounter/encounter-amendments"; // ADR-0114 VN-D30: the sections an addendum amends and the author's resolution of each (1523)
 export * from "./encounter/addendum-cosignature-requests"; // ADR-0114 VN-D30: the cosignature request an amending addendum opens (1523)
 export * from "./encounter/visit-note-draft-policies";
+export * from "./encounter/in-home-respite-evidence";
 
 // ── Module 9 (Clinical Assessments Suite) — the validated-scale spine (§3.3) ──────────────────
 // M9 owns 5 tables (M9-T02): the shared `clinical_assessment` base table (one row per measurement

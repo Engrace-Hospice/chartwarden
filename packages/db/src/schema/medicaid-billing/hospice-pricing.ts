@@ -103,7 +103,7 @@ export const medicaidHospiceBillingEvidence = pgTable(
     ),
     stateValid: check(
       "medicaid_hospice_billing_evidence_state",
-      sql`program_kind = 'managed_care' AND service_state = 'OR' AND service_category IN ('RHC', 'CHC', 'IRC')`,
+      sql`program_kind = 'managed_care' AND service_state = 'OR' AND service_category IN ('RHC', 'CHC', 'IRC', 'GIP')`,
     ),
     periodValid: check(
       "medicaid_hospice_billing_evidence_period",
@@ -125,7 +125,10 @@ export const medicaidHospiceBillingEvidence = pgTable(
             revenue_code IS NULL AND hcpcs_code IS NULL) OR
            (service_category = 'IRC' AND quantity_policy = 'm37_irc_episode_daily_v1' AND
             quantity_evidence_owner = 'm37_irc_episode_and_remote_stay' AND billing_unit = 'daily' AND
-            revenue_code = '0655' AND hcpcs_code = 'Q5005'))) IS TRUE`,
+            revenue_code = '0655' AND hcpcs_code = 'Q5005') OR
+           (service_category = 'GIP' AND quantity_policy = 'm37_gip_own_unit_daily_v1' AND
+            quantity_evidence_owner = 'm37_gip_admission_criteria_and_confirmed_bed_history' AND
+            billing_unit = 'daily' AND revenue_code = '0656' AND hcpcs_code = 'Q5006'))) IS TRUE`,
     ),
     qualityFactsValid: check(
       "medicaid_hospice_billing_evidence_quality",
@@ -306,6 +309,38 @@ export type MedicaidClaimLinePricingSnapshotPayload =
       readonly estimatedReimbursementCents: number;
       readonly billedChargeCents: number;
       readonly assessmentTimestamp: string;
+    })
+  | (Record<string, unknown> & {
+      readonly schemaVersion: 5;
+      readonly profile: "gip_own_ipu_q5006_daily_local_v1";
+      readonly localBillingProfile: "gip_own_ipu_q5006_daily_local_v1";
+      readonly postingAuthorized: false;
+      readonly institutionalFormatQualified: false;
+      readonly organizationId: string;
+      readonly providerEntityId: string;
+      readonly patientId: string;
+      readonly admissionId: string;
+      readonly canonicalPayerId: string;
+      readonly programKind: "managed_care";
+      readonly serviceState: "OR";
+      readonly levelOfCare: "GIP";
+      readonly serviceFrom: string;
+      readonly serviceTo: string;
+      readonly revenueCode: "0656";
+      readonly hcpcsCode: "Q5006";
+      readonly serviceLocation: {
+        readonly kind: "facility";
+        readonly facilityId: string;
+        readonly facilityKind: "ipu";
+        readonly unitId: string;
+        readonly locationId: string;
+        readonly timeZone: string;
+      };
+      readonly gipStay: Record<string, unknown>;
+      readonly quantity: { readonly basis: "per_day"; readonly units: number };
+      readonly reimbursementEstimateCents: number;
+      readonly billedChargeCents: number;
+      readonly assessmentTimestamp: string;
     });
 
 export const medicaidClaimLinePricingSnapshot = pgTable(
@@ -372,7 +407,7 @@ export const medicaidClaimLinePricingSnapshot = pgTable(
     fingerprintValid: check(
       // 1554 drops and re-adds the 1551 constraints under their original names, so the mirror keeps them.
       "medicaid_claim_line_pricing_snapshot_fingerprint",
-      sql`fingerprint ~ '^[0-9a-f]{64}$' AND snapshot_schema_version IN (1, 2, 3, 4)`,
+      sql`fingerprint ~ '^[0-9a-f]{64}$' AND snapshot_schema_version IN (1, 2, 3, 4, 5)`,
     ),
     snapshotShape: check(
       "medicaid_claim_line_pricing_snapshot_shape",
@@ -407,6 +442,23 @@ export const medicaidClaimLinePricingSnapshot = pgTable(
             snapshot #>> '{episode,serviceTimeZone}' IS NOT NULL AND
             snapshot #>> '{episode,consecutiveDayFrom}' ~ '^[1-9][0-9]*$' AND
             snapshot #>> '{episode,consecutiveDayTo}' ~ '^[1-9][0-9]*$' AND
+            snapshot #>> '{quantity,basis}' = 'per_day' AND
+            snapshot #>> '{quantity,units}' ~ '^[1-9][0-9]*$' AND
+            snapshot ->> 'reimbursementEstimateCents' ~ '^[0-9]+$' AND
+            snapshot ->> 'billedChargeCents' ~ '^[1-9][0-9]*$') OR
+           (snapshot_schema_version = 5 AND snapshot ->> 'profile' = 'gip_own_ipu_q5006_daily_local_v1' AND
+            snapshot ->> 'localBillingProfile' = 'gip_own_ipu_q5006_daily_local_v1' AND
+            snapshot ->> 'institutionalFormatQualified' = 'false' AND snapshot ->> 'levelOfCare' = 'GIP' AND
+            snapshot ->> 'revenueCode' = '0656' AND snapshot ->> 'hcpcsCode' = 'Q5006' AND
+            snapshot #>> '{serviceLocation,kind}' = 'facility' AND
+            snapshot #>> '{serviceLocation,facilityKind}' = 'ipu' AND
+            snapshot #>> '{serviceLocation,facilityId}' IS NOT NULL AND
+            snapshot #>> '{serviceLocation,unitId}' IS NOT NULL AND
+            snapshot #>> '{serviceLocation,locationId}' IS NOT NULL AND
+            snapshot #>> '{serviceLocation,timeZone}' IS NOT NULL AND
+            snapshot #>> '{gipStay,ipuAdmissionId}' IS NOT NULL AND
+            snapshot #>> '{gipStay,bedAssignmentId}' IS NOT NULL AND
+            snapshot #>> '{gipStay,criteriaId}' IS NOT NULL AND
             snapshot #>> '{quantity,basis}' = 'per_day' AND
             snapshot #>> '{quantity,units}' ~ '^[1-9][0-9]*$' AND
             snapshot ->> 'reimbursementEstimateCents' ~ '^[0-9]+$' AND

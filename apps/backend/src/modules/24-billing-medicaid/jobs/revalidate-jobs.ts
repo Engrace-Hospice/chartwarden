@@ -71,7 +71,11 @@ import {
   readInSavepoint,
   verifyStoredRhcPricingSnapshots,
 } from "../pricing/rhc-pricing-snapshot";
-import type { IrcPricingEpisodeReader } from "../pricing/rhc-pricing-snapshot";
+import type {
+  GipPricingStayReader,
+  InHomeRespiteEvidenceReaderPort,
+  IrcPricingEpisodeReader,
+} from "../pricing/rhc-pricing-snapshot";
 import type {
   CanonicalPayerIdentityReader,
   FacilityKindReaderPort,
@@ -185,6 +189,8 @@ export interface RevalidateWorkerDeps {
   /** M6's transaction-bound election/history facts for bucketed RHC snapshot verification. */
   readonly electionHistoryReader?: MedicaidElectionHistoryReader;
   readonly ircEpisodeReader?: IrcPricingEpisodeReader;
+  readonly gipPricingStayReader?: GipPricingStayReader;
+  readonly inHomeRespiteEvidenceReader?: InHomeRespiteEvidenceReaderPort;
   now?: () => Date;
   readonly outbox: RevalidateWorkerOutboxPort;
 }
@@ -533,7 +539,10 @@ export async function runMedicaidRevalidate(
             lineRows.filter((line) => !line.isRb).length > 0 &&
               lineRows.filter((line) => !line.isRb).every((line) => line.levelOfCare === "IRC")
               ? "IRC"
-              : "RHC",
+              : lineRows.filter((line) => !line.isRb).length > 0 &&
+                  lineRows.filter((line) => !line.isRb).every((line) => line.levelOfCare === "GIP")
+                ? "GIP"
+                : "RHC",
           );
           const assessedAt = clock().toISOString();
           const rateRows = await readMedicaidRatePolicyLineage(savepoint, {
@@ -572,6 +581,8 @@ export async function runMedicaidRevalidate(
             facilityKindReader,
             electionHistory,
             ircEpisodeReader: deps.ircEpisodeReader,
+            gipPricingStayReader: deps.gipPricingStayReader,
+            inHomeRespiteEvidenceReader: deps.inHomeRespiteEvidenceReader,
             assessedAt,
           });
         },

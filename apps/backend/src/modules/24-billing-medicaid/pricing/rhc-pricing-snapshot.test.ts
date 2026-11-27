@@ -501,6 +501,9 @@ function verifyAgainst(
     rateRows: [RATE_ROW],
     payerReader: PAYER_READER,
     residenceReader: { residencesBetweenInTransaction: async () => [HOME] },
+    inHomeRespiteEvidenceReader: {
+      readInTransaction: async () => ({ status: "none", serviceCount: 0, evidenceVersions: [] }),
+    },
     assessedAt: ASSESSED_AT,
   });
 }
@@ -636,6 +639,9 @@ describe("verifyStoredRhcPricingSnapshots for a facility (Q5002) residence", () 
           residence as unknown as readonly (typeof ALF_SPAN)[],
       },
       facilityKindReader,
+      inHomeRespiteEvidenceReader: {
+        readInTransaction: async () => ({ status: "none", serviceCount: 0, evidenceVersions: [] }),
+      },
       assessedAt: ASSESSED_AT,
     });
   const lockedReader = (kind: string) => ({

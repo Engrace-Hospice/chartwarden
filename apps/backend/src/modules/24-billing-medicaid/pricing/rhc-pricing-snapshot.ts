@@ -79,7 +79,7 @@ export interface RHCPriceScope {
 }
 
 export interface RHCPriceLinePlan {
-  readonly snapshotSchemaVersion: 1 | 2 | 3 | 4;
+  readonly snapshotSchemaVersion: 1 | 2 | 3 | 4 | 5;
   readonly serviceFrom: string;
   readonly serviceTo: string;
   readonly locPeriodId: string;
@@ -103,7 +103,7 @@ export interface RHCPriceLinePlan {
 /** Validate the explicit persisted daily-RHC snapshot profile before handing JSON to Drizzle. */
 export function assertSupportedRhcPricingSnapshotPayload(
   snapshot: Record<string, unknown>,
-  expectedVersion: 1 | 2 | 3 | 4,
+  expectedVersion: 1 | 2 | 3 | 4 | 5,
 ): MedicaidClaimLinePricingSnapshotPayload {
   const location = snapshot.serviceLocation;
   const hasCommonIdentity =
@@ -120,7 +120,8 @@ export function assertSupportedRhcPricingSnapshotPayload(
     !hasCommonIdentity ||
     snapshot.schemaVersion !== expectedVersion ||
     snapshot.postingAuthorized !== false ||
-    snapshot.levelOfCare !== (expectedVersion === 4 ? "IRC" : "RHC") ||
+    snapshot.levelOfCare !==
+      (expectedVersion === 4 ? "IRC" : expectedVersion === 5 ? "GIP" : "RHC") ||
     snapshot.programKind !== "managed_care" ||
     !location ||
     typeof location !== "object"
@@ -197,6 +198,38 @@ export function assertSupportedRhcPricingSnapshotPayload(
       return snapshot as MedicaidClaimLinePricingSnapshotPayload;
     }
   }
+  const gipStay = snapshot.gipStay;
+  if (
+    expectedVersion === 5 &&
+    snapshot.schemaVersion === 5 &&
+    snapshot.profile === "gip_own_ipu_q5006_daily_local_v1" &&
+    snapshot.localBillingProfile === "gip_own_ipu_q5006_daily_local_v1" &&
+    snapshot.institutionalFormatQualified === false &&
+    snapshot.revenueCode === "0656" &&
+    snapshot.hcpcsCode === "Q5006" &&
+    gipStay !== null &&
+    typeof gipStay === "object" &&
+    quantity !== null &&
+    typeof quantity === "object" &&
+    (quantity as Record<string, unknown>).basis === "per_day" &&
+    Number.isSafeInteger((quantity as Record<string, unknown>).units) &&
+    ((quantity as Record<string, unknown>).units as number) > 0
+  ) {
+    const stay = gipStay as Record<string, unknown>;
+    if (
+      typeof stay.ipuAdmissionId === "string" &&
+      typeof stay.unitId === "string" &&
+      typeof stay.bedAssignmentId === "string" &&
+      typeof stay.facilityId === "string" &&
+      stay.facilityKind === "ipu" &&
+      typeof stay.serviceTimeZone === "string" &&
+      typeof stay.criteriaId === "string" &&
+      Array.isArray(stay.dailyEvidence) &&
+      stay.dailyEvidence.length === (quantity as Record<string, unknown>).units
+    ) {
+      return snapshot as MedicaidClaimLinePricingSnapshotPayload;
+    }
+  }
   throw new ChartWardenError(
     "RHC_PRICING_SNAPSHOT_PROFILE_UNSUPPORTED",
     "pricing snapshot does not match its supported daily RHC profile",
@@ -261,6 +294,81 @@ export interface IrcPricingEpisodeReader {
       | "serviceTo"
     > & { readonly locPeriodId: string },
   ): Promise<IrcPricingEpisodeFacts | null>;
+}
+
+/** Minimal M37 owner projection for one continuous own-IPU GIP daily service window. */
+export interface GipPricingStayFacts {
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  readonly patientId: string;
+  readonly admissionId: string;
+  readonly locPeriodId: string;
+  readonly ipuAdmissionId: string;
+  readonly ipuAdmissionVersion: number;
+  readonly ipuAdmissionUpdatedAt: Date;
+  readonly ipuAdmissionKind: string;
+  readonly ipuAdmissionState: string;
+  readonly activatedAt: Date;
+  readonly closedAt: Date | null;
+  readonly unitId: string;
+  readonly unitVersion: number;
+  readonly unitFacilityId: string;
+  readonly bedId: string;
+  readonly bedAssignmentId: string;
+  readonly bedAssignmentVersion: number;
+  readonly bedAssignedAt: Date;
+  readonly bedEndedAt: Date | null;
+  readonly facilityId: string;
+  readonly facilityKind: "ipu";
+  readonly locationId: string;
+  readonly serviceTimeZone: string;
+  readonly criteriaId: string;
+  readonly criteriaVersion: number;
+  readonly criteriaKind: string;
+  readonly criteriaAttestedAt: Date;
+  readonly dailyEvidence: readonly {
+    readonly serviceDate: string;
+    readonly sourceId: string;
+    readonly sourceVersion: number;
+    readonly verifiedAt: Date;
+    readonly stillMet: true;
+  }[];
+  readonly serviceFrom: string;
+  readonly serviceTo: string;
+}
+
+export interface GipPricingStayReader {
+  readInTransaction(
+    transaction: unknown,
+    scope: Pick<
+      RHCPriceScope,
+      | "organizationId"
+      | "providerEntityId"
+      | "patientId"
+      | "admissionId"
+      | "serviceFrom"
+      | "serviceTo"
+    > & { readonly locPeriodId: string; readonly assessedAt: string },
+  ): Promise<GipPricingStayFacts | null>;
+}
+
+/** M8-owned current delivered in-home respite facts; M24 may only use this to hold pricing. */
+export interface InHomeRespiteEvidenceReaderPort {
+  readInTransaction(
+    transaction: unknown,
+    scope: {
+      readonly organizationId: string;
+      readonly providerEntityId: string;
+      readonly patientId: string;
+      readonly admissionId: string;
+      readonly serviceFrom: string;
+      readonly serviceTo: string;
+    },
+  ): Promise<{
+    readonly status: "none" | "current" | "incomplete" | "ambiguous" | "scope_conflict";
+    readonly serviceCount: number;
+    readonly evidenceVersions: readonly unknown[];
+  }>;
 }
 
 export interface CurrentPayerIdentityReader {
@@ -341,7 +449,7 @@ export async function lockHospiceBillingEvidenceScope(
     | "programKind"
     | "serviceState"
   >,
-  serviceCategory: "RHC" | "CHC" | "IRC" = "RHC",
+  serviceCategory: "RHC" | "CHC" | "IRC" | "GIP" = "RHC",
 ): Promise<void> {
   await lockMedicaidRatePolicyScope(tx, scope);
   const key = `m24-hospice-evidence:${scope.organizationId}:${scope.providerEntityId}:${scope.patientId}:${scope.admissionId}:${scope.canonicalPayerId}:${scope.programKind}:${scope.serviceState}:${serviceCategory}`;
@@ -568,6 +676,8 @@ export async function verifyStoredRhcPricingSnapshots(input: {
   readonly facilityKindReader?: RHCFacilityKindReader;
   readonly electionHistory?: MedicaidElectionHistoryFacts | null;
   readonly ircEpisodeReader?: IrcPricingEpisodeReader;
+  readonly gipPricingStayReader?: GipPricingStayReader;
+  readonly inHomeRespiteEvidenceReader?: InHomeRespiteEvidenceReaderPort;
   readonly assessedAt: string;
 }): Promise<StoredRhcPricingVerification> {
   const hospiceLines = input.lines.filter((line) => !line.isRb);
@@ -603,8 +713,25 @@ export async function verifyStoredRhcPricingSnapshots(input: {
     assessedAt: input.assessedAt,
     inclusiveEndDate: input.inclusiveEndDate ?? null,
   };
+  if (!input.inHomeRespiteEvidenceReader) {
+    return { pricingSnapshotVerified: false, institutionalFormatQualified: false };
+  }
+  const respite = await input.inHomeRespiteEvidenceReader.readInTransaction(input.tx, {
+    organizationId: input.claim.organizationId,
+    providerEntityId: input.claim.providerEntityId,
+    patientId: input.claim.patientId,
+    admissionId: input.claim.admissionId,
+    serviceFrom: scope.serviceFrom,
+    serviceTo: scope.serviceTo,
+  });
+  if (respite.status !== "none") {
+    return { pricingSnapshotVerified: false, institutionalFormatQualified: false };
+  }
   if (hospiceLines.every((line) => line.levelOfCare === "IRC")) {
     return verifyStoredIrcPricingSnapshots({ ...input, scope, hospiceLines });
+  }
+  if (hospiceLines.every((line) => line.levelOfCare === "GIP")) {
+    return verifyStoredGipPricingSnapshots({ ...input, scope, hospiceLines });
   }
   if (hospiceLines.some((line) => line.levelOfCare !== "RHC")) {
     return { pricingSnapshotVerified: false, institutionalFormatQualified: false };
@@ -719,6 +846,125 @@ export async function verifyStoredRhcPricingSnapshots(input: {
     }
   }
   return { pricingSnapshotVerified: true, institutionalFormatQualified };
+}
+
+async function verifyStoredGipPricingSnapshots(input: {
+  readonly tx: Tx;
+  readonly claim: StoredRhcClaimFacts;
+  readonly hospiceLines: readonly StoredRhcClaimLine[];
+  readonly scope: RHCPriceScope;
+  readonly locPeriods: readonly RHCServiceLocPeriod[];
+  readonly rateRows: readonly RateRow[];
+  readonly facilityKindReader?: RHCFacilityKindReader;
+  readonly gipPricingStayReader?: GipPricingStayReader;
+  readonly assessedAt: string;
+}): Promise<StoredRhcPricingVerification> {
+  const refuse = { pricingSnapshotVerified: false, institutionalFormatQualified: false } as const;
+  if (!input.gipPricingStayReader || !input.facilityKindReader?.kindsForInTransaction)
+    return refuse;
+  const overlapping = input.locPeriods.filter((period) => {
+    const from = isoDate(period.effectiveAt);
+    const to =
+      m6LocClaimEndDate(period.endedAt, input.scope.inclusiveEndDate ?? null) ??
+      input.scope.serviceTo;
+    return from <= input.scope.serviceTo && to >= input.scope.serviceFrom;
+  });
+  if (
+    overlapping.length !== 1 ||
+    overlapping[0]!.levelOfCare !== "general_inpatient_care" ||
+    overlapping[0]!.id !== input.hospiceLines[0]?.locPeriodId
+  )
+    return refuse;
+  const period = overlapping[0]!;
+  const stay = await input.gipPricingStayReader.readInTransaction(input.tx, {
+    organizationId: input.claim.organizationId,
+    providerEntityId: input.claim.providerEntityId,
+    patientId: input.claim.patientId,
+    admissionId: input.claim.admissionId,
+    locPeriodId: period.id,
+    serviceFrom: input.scope.serviceFrom,
+    serviceTo: input.scope.serviceTo,
+    assessedAt: input.assessedAt,
+  });
+  if (!stay) return refuse;
+  const facilityKinds = await input.facilityKindReader.kindsForInTransaction(input.tx, [
+    stay.facilityId,
+  ]);
+  const evidence = await readMedicaidGipBillingEvidence(input.tx, input.scope);
+  if (evidence.status !== "verified") return refuse;
+  const plan = resolveGipDailyPricingPlan({
+    scope: input.scope,
+    evidence: evidence.row,
+    locPeriods: input.locPeriods,
+    rates: input.rateRows.map(rateRowAsFact),
+    stay,
+    facilityKinds,
+  });
+  if (plan.status !== "resolved" || plan.lines.length !== input.hospiceLines.length) return refuse;
+  const snapshots = await input.tx
+    .select()
+    .from(schema.medicaidClaimLinePricingSnapshot)
+    .where(
+      and(
+        eq(schema.medicaidClaimLinePricingSnapshot.organizationId, input.claim.organizationId),
+        eq(schema.medicaidClaimLinePricingSnapshot.providerEntityId, input.claim.providerEntityId),
+        eq(schema.medicaidClaimLinePricingSnapshot.medicaidClaimId, input.claim.id),
+      ),
+    );
+  if (snapshots.length !== input.hospiceLines.length) return refuse;
+  const expectedLines = [...plan.lines].sort((a, b) => a.serviceFrom.localeCompare(b.serviceFrom));
+  const actualLines = [...input.hospiceLines].sort((a, b) =>
+    isoValue(a.serviceDate).localeCompare(isoValue(b.serviceDate)),
+  );
+  for (let index = 0; index < expectedLines.length; index += 1) {
+    const expected = expectedLines[index]!;
+    const actual = actualLines[index]!;
+    const snapshot = snapshots.find((candidate) => candidate.medicaidClaimLineId === actual.id);
+    if (
+      !snapshot ||
+      actual.organizationId !== input.claim.organizationId ||
+      actual.providerEntityId !== input.claim.providerEntityId ||
+      actual.medicaidClaimId !== input.claim.id ||
+      actual.levelOfCare !== "GIP" ||
+      actual.locPeriodId !== expected.locPeriodId ||
+      actual.serviceDateTo === null ||
+      isoValue(actual.serviceDate) !== expected.serviceFrom ||
+      isoValue(actual.serviceDateTo) !== expected.serviceTo ||
+      actual.units !== expected.units ||
+      actual.rateAtAssemblyCents !== expected.rateCents ||
+      actual.chargesCents !== expected.chargesCents ||
+      actual.revenueCode !== "0656" ||
+      actual.qCode !== "Q5006" ||
+      actual.payerRatePolicyIdSnapshot !== expected.rate.id ||
+      actual.stateRateScheduleIdSnapshot !== null ||
+      snapshot.payerRatePolicyId !== expected.rate.id ||
+      snapshot.billingEvidenceId !== expected.evidence.id ||
+      snapshot.snapshotSchemaVersion !== 5
+    )
+      return refuse;
+    const saved = snapshot.snapshot as Record<string, unknown>;
+    const { assessmentTimestamp: _savedAssessmentTimestamp, ...savedMaterial } = saved;
+    const expectedMaterial: Record<string, unknown> = {
+      ...expected.integrityFacts,
+      medicaidClaimId: input.claim.id,
+      claimLineId: actual.id,
+    };
+    const {
+      assessmentTimestamp: _expectedAssessmentTimestamp,
+      ...expectedMaterialWithoutAssessment
+    } = expectedMaterial;
+    if (
+      saved.claimLineId !== actual.id ||
+      saved.medicaidClaimId !== input.claim.id ||
+      saved.postingAuthorized !== false ||
+      saved.institutionalFormatQualified !== false ||
+      (await databasePricingSnapshotFingerprint(input.tx, saved)) !== snapshot.fingerprint ||
+      canonicalPricingSnapshotJson(savedMaterial) !==
+        canonicalPricingSnapshotJson(expectedMaterialWithoutAssessment)
+    )
+      return refuse;
+  }
+  return { pricingSnapshotVerified: true, institutionalFormatQualified: false };
 }
 
 async function verifyStoredIrcPricingSnapshots(input: {
@@ -1070,6 +1316,81 @@ export async function readMedicaidIrcBillingEvidence(
     row.billedChargeCentsPerUnit <= 0
   ) {
     return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_UNSUPPORTED" };
+  }
+  return { status: "verified", row };
+}
+
+/** Source-backed local GIP daily coding and charge profile. It never qualifies payer transmission. */
+export async function readMedicaidGipBillingEvidence(
+  tx: Tx,
+  scope: RHCPriceScope,
+): Promise<
+  | { readonly status: "verified"; readonly row: BillingEvidence }
+  | { readonly status: "unresolved" | "ambiguous"; readonly reasonCode: string }
+> {
+  const table = schema.medicaidHospiceBillingEvidence;
+  await lockHospiceBillingEvidenceScope(tx, scope, "GIP");
+  const rows = await tx
+    .select()
+    .from(table)
+    .where(
+      and(
+        eq(table.organizationId, scope.organizationId),
+        eq(table.providerEntityId, scope.providerEntityId),
+        eq(table.patientId, scope.patientId),
+        eq(table.admissionId, scope.admissionId),
+        eq(table.canonicalPayerId, scope.canonicalPayerId),
+        eq(table.programKind, "managed_care"),
+        eq(table.serviceState, scope.serviceState),
+        eq(table.serviceCategory, "GIP"),
+        lte(table.effectiveFrom, scope.serviceTo),
+      ),
+    )
+    .orderBy(table.effectiveFrom, table.id)
+    .limit(1001);
+  if (rows.length > 1000)
+    return { status: "ambiguous", reasonCode: "BILLING_EVIDENCE_HISTORY_LIMIT_EXCEEDED" };
+  if (rows.length === 0) return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_MISSING" };
+  const lineage = resolveBillingEvidenceLineage({
+    rows,
+    serviceFrom: scope.serviceFrom,
+    serviceTo: scope.serviceTo,
+    assessedAt: scope.assessedAt,
+  });
+  if (lineage.status === "segmentation_required")
+    return { status: "ambiguous", reasonCode: "GIP_BILLING_EVIDENCE_SEGMENTATION_UNSUPPORTED" };
+  if (lineage.status !== "verified") return lineage;
+  const row = lineage.row;
+  const assessedAt = Date.parse(scope.assessedAt);
+  if (
+    scope.admissionVersion === undefined ||
+    row.admissionVersion !== scope.admissionVersion ||
+    !Number.isFinite(assessedAt) ||
+    !row.verifiedAt ||
+    row.verifiedAt.getTime() > assessedAt ||
+    row.effectiveFrom > scope.serviceFrom ||
+    (row.effectiveTo !== null && row.effectiveTo < scope.serviceTo)
+  ) {
+    return { status: "unresolved", reasonCode: "BILLING_EVIDENCE_NOT_CURRENT_FOR_ASSESSMENT" };
+  }
+  if (
+    row.organizationId !== scope.organizationId ||
+    row.providerEntityId !== scope.providerEntityId ||
+    row.patientId !== scope.patientId ||
+    row.admissionId !== scope.admissionId ||
+    row.canonicalPayerId !== scope.canonicalPayerId ||
+    row.programKind !== "managed_care" ||
+    row.serviceState !== "OR" ||
+    row.serviceCategory !== "GIP" ||
+    row.quantityPolicy !== "m37_gip_own_unit_daily_v1" ||
+    row.quantityEvidenceOwner !== "m37_gip_admission_criteria_and_confirmed_bed_history" ||
+    row.billingUnit !== "daily" ||
+    row.revenueCode !== "0656" ||
+    row.hcpcsCode !== "Q5006" ||
+    row.codingProfile !== "local_draft_only" ||
+    row.billedChargeCentsPerUnit <= 0
+  ) {
+    return { status: "unresolved", reasonCode: "GIP_BILLING_EVIDENCE_UNSUPPORTED" };
   }
   return { status: "verified", row };
 }
@@ -2030,6 +2351,358 @@ export function resolveIrcDailyPricingPlan(input: {
   if (expected !== nextCalendarDate(scope.serviceTo))
     return refuse("unresolved", "IRC_PRICING_SPAN_INCOMPLETE");
   return { status: "resolved", lines };
+}
+
+/**
+ * Narrow own-IPU GIP local-draft planner. Every day must be covered by current M37 GIP criteria,
+ * an activated own-unit stay and one accepted historical bed assignment. It uses the shared payer
+ * pricing engine and keeps reimbursement estimates separate from provider billed charges.
+ */
+export function resolveGipDailyPricingPlan(input: {
+  readonly scope: RHCPriceScope;
+  readonly evidence: BillingEvidence;
+  readonly locPeriods: readonly RHCServiceLocPeriod[];
+  readonly rates: readonly PayerRatePolicyFact[];
+  readonly stay: GipPricingStayFacts | null;
+  readonly facilityKinds: ReadonlyMap<string, string>;
+}): RHCPricePlanResult {
+  const { scope, evidence, stay } = input;
+  const refuse = (status: "unresolved" | "ambiguous" | "unsupported", reasonCode: string) =>
+    ({ status, reasonCode }) as const;
+  if (!stay) return refuse("unresolved", "GIP_OWN_IPU_STAY_OR_CRITERIA_UNAVAILABLE");
+  const assessedAt = Date.parse(scope.assessedAt);
+  if (
+    scope.programKind !== "managed_care" ||
+    scope.serviceState !== "OR" ||
+    evidence.organizationId !== scope.organizationId ||
+    evidence.providerEntityId !== scope.providerEntityId ||
+    evidence.patientId !== scope.patientId ||
+    evidence.admissionId !== scope.admissionId ||
+    evidence.canonicalPayerId !== scope.canonicalPayerId ||
+    evidence.programKind !== "managed_care" ||
+    evidence.serviceState !== "OR" ||
+    evidence.verificationStatus !== "verified" ||
+    evidence.serviceCategory !== "GIP" ||
+    evidence.quantityPolicy !== "m37_gip_own_unit_daily_v1" ||
+    evidence.quantityEvidenceOwner !== "m37_gip_admission_criteria_and_confirmed_bed_history" ||
+    evidence.billingUnit !== "daily" ||
+    evidence.revenueCode !== "0656" ||
+    evidence.hcpcsCode !== "Q5006" ||
+    evidence.codingProfile !== "local_draft_only" ||
+    evidence.admissionVersion !== scope.admissionVersion ||
+    evidence.effectiveFrom > scope.serviceFrom ||
+    (evidence.effectiveTo !== null && evidence.effectiveTo < scope.serviceTo) ||
+    !Number.isFinite(assessedAt) ||
+    evidence.verifiedAt === null ||
+    evidence.verifiedAt.getTime() > assessedAt
+  ) {
+    return refuse("unresolved", "GIP_BILLING_EVIDENCE_SCOPE_OR_PROFILE_UNSUPPORTED");
+  }
+  if (
+    stay.organizationId !== scope.organizationId ||
+    stay.providerEntityId !== scope.providerEntityId ||
+    stay.patientId !== scope.patientId ||
+    stay.admissionId !== scope.admissionId ||
+    stay.serviceFrom !== scope.serviceFrom ||
+    stay.serviceTo !== scope.serviceTo ||
+    stay.ipuAdmissionKind !== "gip" ||
+    !["active", "discharged", "deceased", "closed"].includes(stay.ipuAdmissionState) ||
+    stay.activatedAt.getTime() > assessedAt ||
+    stay.ipuAdmissionUpdatedAt.getTime() > assessedAt ||
+    stay.criteriaAttestedAt.getTime() > assessedAt ||
+    !stay.serviceTimeZone.trim() ||
+    stay.facilityId !== stay.unitFacilityId ||
+    stay.facilityKind !== "ipu" ||
+    input.facilityKinds.get(stay.facilityId) !== "ipu" ||
+    !Number.isSafeInteger(stay.ipuAdmissionVersion) ||
+    !Number.isSafeInteger(stay.unitVersion) ||
+    !Number.isSafeInteger(stay.bedAssignmentVersion) ||
+    !Number.isSafeInteger(stay.criteriaVersion) ||
+    stay.dailyEvidence.length !== dayCount(scope.serviceFrom, scope.serviceTo) ||
+    new Set(stay.dailyEvidence.map((item) => item.serviceDate)).size !==
+      dayCount(scope.serviceFrom, scope.serviceTo)
+  ) {
+    return refuse("unresolved", "GIP_OWN_IPU_EVIDENCE_SCOPE_OR_VERSION_UNRESOLVED");
+  }
+  const periods = input.locPeriods
+    .map((period) => ({
+      period,
+      from: isoDate(period.effectiveAt),
+      to: m6LocClaimEndDate(period.endedAt, scope.inclusiveEndDate ?? null) ?? scope.serviceTo,
+    }))
+    .filter(({ from, to }) => from <= scope.serviceTo && to >= scope.serviceFrom);
+  if (periods.length !== 1) return refuse("ambiguous", "GIP_LOC_PERIOD_AMBIGUOUS");
+  const { period, from, to } = periods[0]!;
+  if (
+    period.levelOfCare !== "general_inpatient_care" ||
+    period.id !== stay.locPeriodId ||
+    from > scope.serviceFrom ||
+    to < scope.serviceTo ||
+    (period.facilityId !== undefined &&
+      period.facilityId !== null &&
+      period.facilityId !== stay.facilityId) ||
+    (period.ipuBedAssignmentId !== undefined &&
+      period.ipuBedAssignmentId !== null &&
+      period.ipuBedAssignmentId !== stay.bedAssignmentId) ||
+    !Number.isSafeInteger(period.version) ||
+    !period.updatedAt ||
+    period.updatedAt.getTime() > assessedAt
+  ) {
+    return refuse("unresolved", "GIP_LOC_AND_ACTUAL_STAY_MISMATCH");
+  }
+  const evidenceByDate = new Map(stay.dailyEvidence.map((item) => [item.serviceDate, item]));
+  const days: Parameters<typeof assessHospicePricing>[0]["days"][number][] = [];
+  for (let date = scope.serviceFrom; date <= scope.serviceTo; date = nextCalendarDate(date) ?? "") {
+    const clinical = evidenceByDate.get(date);
+    if (
+      !clinical ||
+      !clinical.stillMet ||
+      clinical.verifiedAt.getTime() > assessedAt ||
+      clinical.sourceVersion <= 0 ||
+      !Number.isSafeInteger(clinical.sourceVersion) ||
+      !clinical.sourceId.trim()
+    ) {
+      return refuse("unresolved", "GIP_DAILY_CLINICAL_ELIGIBILITY_UNRESOLVED");
+    }
+    days.push({
+      serviceDate: date,
+      serviceCategory: "GIP",
+      unitBasis: "per_day",
+      localityCode: evidence.localityCode,
+      localityEvidence: {
+        localityCode: evidence.localityCode,
+        serviceState: "OR",
+        sourceReference: evidence.localityEvidenceReference,
+        version: evidence.localityEvidenceVersion,
+        verifiedAt: evidence.verifiedAt.toISOString(),
+        effectiveFrom: evidence.effectiveFrom,
+        effectiveTo: evidence.effectiveTo,
+      },
+      electionDayEvidence: null,
+      inpatientRespiteDayEvidence: null,
+      quantity: { unitBasis: "per_day", units: 1 },
+      quantityEvidence: {
+        serviceDate: date,
+        providerEntityId: scope.providerEntityId,
+        serviceCategory: "GIP",
+        unitBasis: "per_day",
+        sourceReference: `m37:gip_daily:${clinical.sourceId}:v${clinical.sourceVersion}`,
+        version: clinical.sourceVersion,
+        verifiedAt: clinical.verifiedAt.toISOString(),
+      },
+      providerUsualCharge: null,
+      payerContext: {
+        organizationId: scope.organizationId,
+        providerEntityId: scope.providerEntityId,
+        canonicalPayerId: scope.canonicalPayerId,
+        programKind: "managed_care",
+        serviceState: "OR",
+        assessedAt: scope.assessedAt,
+        qualityReporting: {
+          applicability: evidence.qualityReportingApplicability as "required" | "not_required",
+          providerStatus: evidence.qualityReportingStatus as
+            | "not_applicable"
+            | "meets"
+            | "does_not_meet",
+          evidenceReference: evidence.qualityEvidenceReference,
+          evidenceVersion: evidence.qualityEvidenceVersion,
+          verifiedAt: evidence.verifiedAt.toISOString(),
+          effectiveFrom: evidence.effectiveFrom,
+          effectiveTo: evidence.effectiveTo,
+        },
+      },
+    });
+  }
+  const rates = input.rates.filter(
+    (rate) =>
+      rate.serviceCategory === "GIP" &&
+      rate.unitBasis === "per_day" &&
+      rate.bucketFrom === null &&
+      rate.bucketTo === null &&
+      rate.electionDayBasis === "unqualified",
+  );
+  if (rates.length === 0) return refuse("unresolved", "MEDICAID_RATE_POLICY_UNRESOLVED");
+  const assessment = assessHospicePricing({
+    serviceFrom: scope.serviceFrom,
+    serviceTo: scope.serviceTo,
+    assessedAt: scope.assessedAt,
+    days,
+    rates,
+  });
+  if (assessment.status !== "fully_resolved" || !assessment.coversRequestedPeriod) {
+    const reason = assessment.segments.flatMap((segment) => segment.reasonCodes)[0];
+    return refuse(
+      assessment.status === "ambiguous"
+        ? "ambiguous"
+        : assessment.status === "unsupported"
+          ? "unsupported"
+          : "unresolved",
+      reason ?? "MEDICAID_RATE_POLICY_UNRESOLVED",
+    );
+  }
+  const lines: RHCPriceLinePlan[] = [];
+  for (const segment of assessment.segments) {
+    if (
+      segment.status !== "resolved" ||
+      segment.serviceCategory !== "GIP" ||
+      !segment.rateEvidence ||
+      segment.quantity?.unitBasis !== "per_day" ||
+      !Number.isSafeInteger(segment.quantity.units) ||
+      segment.quantity.units <= 0 ||
+      segment.baseReimbursementCents === null ||
+      segment.reimbursementEstimateCents === null
+    )
+      return refuse("unresolved", "GIP_DAILY_RATE_SEGMENT_UNRESOLVED");
+    const rate = rates.find(
+      (row) => row.id === segment.rateEvidence!.id && row.version === segment.rateEvidence!.version,
+    );
+    if (
+      !rate ||
+      rate.pricingMethod !== "per_day" ||
+      rate.quantityConversionMethod !== "daily_units" ||
+      rate.chargeCeilingMethod !== "none" ||
+      rate.chargeCeilingCents !== null
+    )
+      return refuse("unsupported", "GIP_DAILY_RATE_METHODOLOGY_UNQUALIFIED");
+    const charges = safeProduct(evidence.billedChargeCentsPerUnit, segment.quantity.units);
+    if (charges === null) return refuse("unresolved", "BILLED_CHARGE_OVERFLOW");
+    const dayEvidence = stay.dailyEvidence.filter(
+      (item) => item.serviceDate >= segment.serviceFrom && item.serviceDate <= segment.serviceTo,
+    );
+    const integrityFacts: Record<string, unknown> = {
+      schemaVersion: 5,
+      profile: "gip_own_ipu_q5006_daily_local_v1",
+      localBillingProfile: "gip_own_ipu_q5006_daily_local_v1",
+      postingAuthorized: false,
+      institutionalFormatQualified: false,
+      organizationId: scope.organizationId,
+      providerEntityId: scope.providerEntityId,
+      patientId: scope.patientId,
+      admissionId: scope.admissionId,
+      canonicalPayerId: scope.canonicalPayerId,
+      programKind: "managed_care",
+      serviceState: "OR",
+      serviceCategory: "GIP",
+      levelOfCare: "GIP",
+      serviceFrom: segment.serviceFrom,
+      serviceTo: segment.serviceTo,
+      locPeriodId: period.id,
+      locEffectiveFrom: from,
+      locEffectiveTo: to,
+      locPeriodVersion: period.version,
+      locEvidenceUpdatedAt: period.updatedAt.toISOString(),
+      gipStay: {
+        ipuAdmissionId: stay.ipuAdmissionId,
+        ipuAdmissionVersion: stay.ipuAdmissionVersion,
+        ipuAdmissionKind: stay.ipuAdmissionKind,
+        ipuAdmissionState: stay.ipuAdmissionState,
+        activatedAt: stay.activatedAt.toISOString(),
+        closedAt: stay.closedAt?.toISOString() ?? null,
+        unitId: stay.unitId,
+        unitVersion: stay.unitVersion,
+        bedId: stay.bedId,
+        bedAssignmentId: stay.bedAssignmentId,
+        bedAssignmentVersion: stay.bedAssignmentVersion,
+        bedAssignedAt: stay.bedAssignedAt.toISOString(),
+        bedEndedAt: stay.bedEndedAt?.toISOString() ?? null,
+        facilityId: stay.facilityId,
+        facilityKind: stay.facilityKind,
+        facilityKindSource: "m40_locked_facility_reader",
+        locationId: stay.locationId,
+        serviceTimeZone: stay.serviceTimeZone,
+        criteriaId: stay.criteriaId,
+        criteriaVersion: stay.criteriaVersion,
+        criteriaKind: stay.criteriaKind,
+        criteriaAttestedAt: stay.criteriaAttestedAt.toISOString(),
+        dailyEvidence: dayEvidence.map((item) => ({
+          serviceDate: item.serviceDate,
+          sourceId: item.sourceId,
+          sourceVersion: item.sourceVersion,
+          verifiedAt: item.verifiedAt.toISOString(),
+        })),
+      },
+      quantity: {
+        basis: "per_day",
+        units: segment.quantity.units,
+        source: "M37_GIP_own_unit_days_v1",
+      },
+      locality: {
+        code: evidence.localityCode,
+        evidenceReference: evidence.localityEvidenceReference,
+        evidenceVersion: evidence.localityEvidenceVersion,
+      },
+      qualityReporting: {
+        applicability: evidence.qualityReportingApplicability,
+        status: evidence.qualityReportingStatus,
+        evidenceReference: evidence.qualityEvidenceReference,
+        evidenceVersion: evidence.qualityEvidenceVersion,
+      },
+      billingEvidenceId: evidence.id,
+      billingEvidenceVersion: evidence.version,
+      rateCents: rate.rateCents,
+      rateVersion: rate.version,
+      payerRatePolicyId: rate.id,
+      rateSourceKind: rate.sourceKind,
+      rateDocumentReference: rate.sourceDocumentRef,
+      pricingMethod: rate.pricingMethod,
+      methodologyVersion: rate.methodologyVersion,
+      quantityConversionMethod: rate.quantityConversionMethod,
+      roundingMode: rate.roundingMode,
+      roundingBoundary: rate.roundingBoundary,
+      chargeCeilingMethod: rate.chargeCeilingMethod,
+      chargeCeilingBoundary: rate.chargeCeilingBoundary,
+      reimbursementEstimateCents: segment.reimbursementEstimateCents,
+      baseReimbursementCents: segment.baseReimbursementCents,
+      appliedCeilings: [],
+      billedChargeCentsPerUnit: evidence.billedChargeCentsPerUnit,
+      billedChargeCents: charges,
+      chargeEvidenceReference: evidence.chargeEvidenceReference,
+      chargeEvidenceVersion: evidence.chargeEvidenceVersion,
+      revenueCode: "0656",
+      hcpcsCode: "Q5006",
+      codingProfile: "local_draft_only",
+      codingEvidenceReference: evidence.codingEvidenceReference,
+      codingEvidenceVersion: evidence.codingEvidenceVersion,
+      sourceDocumentReference: evidence.sourceDocumentReference,
+      serviceLocation: {
+        kind: "facility",
+        facilityId: stay.facilityId,
+        facilityKind: "ipu",
+        unitId: stay.unitId,
+        locationId: stay.locationId,
+        timeZone: stay.serviceTimeZone,
+      },
+      medicaidClaimId: "pending",
+      claimLineId: "pending",
+      assessmentTimestamp: scope.assessedAt,
+    };
+    lines.push({
+      snapshotSchemaVersion: 5,
+      serviceFrom: segment.serviceFrom,
+      serviceTo: segment.serviceTo,
+      locPeriodId: period.id,
+      units: segment.quantity.units,
+      rateCents: rate.rateCents,
+      baseReimbursementCents: segment.baseReimbursementCents,
+      chargesCents: charges,
+      reimbursementEstimateCents: segment.reimbursementEstimateCents,
+      appliedCeilings: [],
+      revenueCode: "0656",
+      hcpcsCode: "Q5006",
+      rate,
+      evidence,
+      integrityFacts,
+    });
+  }
+  return { status: "resolved", lines };
+}
+
+function dayCount(from: string, to: string): number {
+  return (
+    Math.round(
+      (Date.parse(`${to}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`)) / 86_400_000,
+    ) + 1
+  );
 }
 
 function nextCalendarDate(day: string): string | null {

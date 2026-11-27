@@ -519,6 +519,7 @@ exports.MODULES = [
       "encounter_amendment",
       "addendum_cosignature_request",
       "visit_note_draft_policy",
+      "encounter_in_home_respite_evidence",
     ],
   },
   {

@@ -19,7 +19,6 @@ import { join } from "node:path";
 import type { AbacContext } from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
 import { createMdmEntityProvider } from "@chartwarden/mdm";
-import type { PlaceOfServiceFacilityKind } from "@chartwarden/medicaid-adapters";
 import { NARRATIVE_VOCAB_RELEASES } from "@chartwarden/narrative-vocab";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
@@ -33,6 +32,10 @@ import {
   createAdmissionLocPeriodsReader,
   createMedicaidElectionHistoryReader,
 } from "../src/modules/06-admission";
+import {
+  createDbInHomeRespiteService,
+  readInHomeRespiteForBillingInTransaction,
+} from "../src/modules/08-encounters/in-home-respite";
 import { createDrizzleEncounterReaderStore } from "../src/modules/08-encounters/seams/drizzle-store";
 import {
   buildDrizzleM24AbacResolver,
@@ -57,6 +60,7 @@ import {
   buildDrizzleM24WriteService as buildProductionM24WriteService,
   readMedicaidRatePolicyLineage,
 } from "../src/modules/24-billing-medicaid/routes/write-service-drizzle";
+import { gipPricingStayInTransaction } from "../src/modules/37-ipu/seams/gip-pricing-stay";
 import { ircPricingEpisodeInTransaction } from "../src/modules/37-ipu/seams/irc-pricing-episode";
 import {
   createDbMdmStore,
@@ -91,6 +95,7 @@ const RHC_ADDRESS = "abababab-abab-abab-abab-abababababac";
 const RHC_ENCOUNTER = "abababab-abab-abab-abab-abababababcc";
 const RHC_UNRELATED_ENCOUNTER = "abababab-abab-abab-abab-abababababce";
 const RHC_SIGNER_MEMBERSHIP = "abababab-abab-abab-abab-abababababcd";
+const RHC_RESPITE_CORRECTION_ENCOUNTER = "abababab-abab-abab-abab-abababababd6";
 const RHC_BUCKET_PATIENT = "abababab-abab-abab-abab-ababababac31";
 const RHC_BUCKET_ADMISSION = "abababab-abab-abab-abab-ababababac32";
 const RHC_BUCKET_COVERAGE = "abababab-abab-abab-abab-ababababac33";
@@ -116,6 +121,23 @@ const IRC_RATE = "abababab-abab-abab-abab-ababababe00a";
 const IRC_BILLING_EVIDENCE = "abababab-abab-abab-abab-ababababe00b";
 const IRC_PAYER = "abababab-abab-abab-abab-ababababe00c";
 const IRC_CLASSIFICATION = "abababab-abab-abab-abab-ababababe00d";
+const GIP_PATIENT = "abababab-abab-abab-abab-ababababe101";
+const GIP_ADMISSION = "abababab-abab-abab-abab-ababababe102";
+const GIP_COVERAGE = "abababab-abab-abab-abab-ababababe103";
+const GIP_LOC = "abababab-abab-abab-abab-ababababe104";
+const GIP_FACILITY = "abababab-abab-abab-abab-ababababe105";
+const GIP_UNIT = "abababab-abab-abab-abab-ababababe106";
+const GIP_ROOM = "abababab-abab-abab-abab-ababababe107";
+const GIP_BED = "abababab-abab-abab-abab-ababababe108";
+const GIP_IPU_ADMISSION = "abababab-abab-abab-abab-ababababe109";
+const GIP_BED_ASSIGNMENT = "abababab-abab-abab-abab-ababababe10a";
+const GIP_CRITERIA = "abababab-abab-abab-abab-ababababe10b";
+const GIP_REASSESSMENT_2 = "abababab-abab-abab-abab-ababababe10c";
+const GIP_REASSESSMENT_3 = "abababab-abab-abab-abab-ababababe10d";
+const GIP_RATE = "abababab-abab-abab-abab-ababababe10e";
+const GIP_BILLING_EVIDENCE = "abababab-abab-abab-abab-ababababe10f";
+const GIP_PAYER = "abababab-abab-abab-abab-ababababe110";
+const GIP_CLASSIFICATION = "abababab-abab-abab-abab-ababababe111";
 const ALF_RHC_PATIENT = "abababab-abab-abab-abab-ababababac01";
 const ALF_RHC_ADMISSION = "abababab-abab-abab-abab-ababababac02";
 const ALF_RHC_COVERAGE = "abababab-abab-abab-abab-ababababac03";
@@ -219,6 +241,8 @@ function buildDrizzleM24WriteServiceWithCadence(
     args[15],
     args[16],
     args[17],
+    args[18],
+    args[19] ?? { readInTransaction: readInHomeRespiteForBillingInTransaction },
   );
 }
 
@@ -403,7 +427,7 @@ describe.skipIf(!DB_URL)(
       );
       await expect(operation()).rejects.toMatchObject({
         code: expect.stringMatching(
-          /^MEDICAID_(RATE_POLICY_UNRESOLVED|BILLING_EVIDENCE_UNRESOLVED)$/,
+          /^MEDICAID_(RATE_POLICY_UNRESOLVED|BILLING_EVIDENCE_UNRESOLVED|GIP_MIXED_SERVICE_UNSUPPORTED)$/,
         ),
         ...(message ? { message: expect.stringMatching(message) } : {}),
       });
@@ -456,8 +480,8 @@ describe.skipIf(!DB_URL)(
       );
 
       await admin.query(
-        `INSERT INTO location (id,provider_entity_id,name,address_line1,city,state,postal_code,timezone)
-         VALUES ($1,$2,'Synthetic RHC location','123 Test St','Testville','OR','00000','America/Los_Angeles')`,
+        `INSERT INTO location (id,provider_entity_id,name,address_line1,city,state,postal_code,timezone,status)
+         VALUES ($1,$2,'Synthetic RHC location','123 Test St','Testville','OR','00000','America/Los_Angeles','active')`,
         [locationId, peId],
       );
       await admin.query(
@@ -633,6 +657,11 @@ describe.skipIf(!DB_URL)(
         undefined,
         undefined,
         canonicalPayerReader,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { readInTransaction: readInHomeRespiteForBillingInTransaction },
       );
       await expectUnpricedAssembly(() =>
         noEvidenceService.assembleClaim(
@@ -799,6 +828,8 @@ describe.skipIf(!DB_URL)(
         undefined,
         electionHistoryReader,
         { readInTransaction: ircPricingEpisodeInTransaction },
+        { readInTransaction: gipPricingStayInTransaction },
+        { readInTransaction: readInHomeRespiteForBillingInTransaction },
       );
       const actor = { organizationId: ORG, userId: USER, roles: ["billing_manager"] } as const;
       const readEvidenceInScope = (organizationId: string, providerEntityId: string) =>
@@ -1054,6 +1085,10 @@ describe.skipIf(!DB_URL)(
         canonicalPayerReader,
         electionHistoryReader,
         ircEpisodeReader: { readInTransaction: ircPricingEpisodeInTransaction },
+        gipPricingStayReader: { readInTransaction: gipPricingStayInTransaction },
+        inHomeRespiteEvidenceReader: {
+          readInTransaction: readInHomeRespiteForBillingInTransaction,
+        },
         patientAddresses: patientAddressReader,
         facilityKindReader,
         outbox: {
@@ -3177,6 +3212,434 @@ describe.skipIf(!DB_URL)(
         { rule_key: "medicaid_hospice_institutional_format_qualified", outcome: "fail" },
         { rule_key: "medicaid_payer_rate_policy_snapshot_verified", outcome: "pass" },
       ]);
+
+      // Checkpoint A: real M37 own-unit stay, accepted historical bed coverage and daily criteria
+      // support a local-only Q5006 draft across the Oregon DST boundary. All rates and identities are
+      // fictional qualification fixtures; the M37/M40/M6 owner readers and actual M24 transaction run.
+      await admin.query(
+        `INSERT INTO facility (id,kind,name) VALUES ($1,'ipu','Synthetic owned IPU')`,
+        [GIP_FACILITY],
+      );
+      await admin.query(
+        `INSERT INTO payer (id,kind,state_code,payer_id,name,status)
+         VALUES ($1,'medicaid','OR',NULL,'Synthetic GIP CCO payer','active')`,
+        [GIP_PAYER],
+      );
+      await admin.query(
+        `INSERT INTO mdm_medicaid_payer_program_classification
+           (id,canonical_payer_id,state_code,classification,effective_from,verification_status,
+            source_kind,source_reference,verified_at,verified_by)
+         VALUES ($1,$2,'OR','medicaid_cco','2025-01-01','verified','state_contract',
+                 'contract:synthetic-gip/classification','2025-01-01T00:00:00Z',
+                 'synthetic-qualification-reviewer')`,
+        [GIP_CLASSIFICATION, GIP_PAYER],
+      );
+      await admin.query(
+        `INSERT INTO patient
+           (id,organization_id,provider_entity_id,location_id,mrn,legal_first_name,legal_last_name,
+            dob,sex_assigned_at_birth,status)
+         VALUES ($1,$2,$3,$4,'SYN-GIP-0001','Taylor','Testpatient','1952-02-02','unknown','active')`,
+        [GIP_PATIENT, ORG, peId, locationId],
+      );
+      await admin.query(
+        `INSERT INTO patient_payer
+           (id,patient_id,organization_id,provider_entity_id,location_id,payer_id,rank,coverage_kind,
+            subscriber_id,effective_from,effective_to)
+         VALUES ($1,$2,$3,$4,$5,$6,1,'medicaid','SYNTHETIC-MEMBER-GIP-01','2025-01-01',NULL)`,
+        [GIP_COVERAGE, GIP_PATIENT, ORG, peId, locationId, GIP_PAYER],
+      );
+      await admin.query(
+        `INSERT INTO admission
+           (id,organization_id,provider_entity_id,location_id,patient_id,status,admission_at,activated_at,
+            admitted_by_physician_id,service_address_line1,service_address_city,service_address_state,
+            service_address_postal_code,service_address_country)
+         VALUES ($1,$2,$3,$4,$5,'active','2026-10-31T07:00:00Z','2026-10-31T07:00:00Z',$6,
+                 '123 Test St','Testville','OR','00000','US')`,
+        [GIP_ADMISSION, ORG, peId, locationId, GIP_PATIENT, USER],
+      );
+      await admin.query(
+        `INSERT INTO level_of_care_period
+           (id,organization_id,admission_id,level_of_care,status,effective_at,ended_at,facility_id,
+            assigned_by,reason,q_code,version)
+         VALUES ($1,$2,$3,'general_inpatient_care','ended','2026-11-01T07:00:00Z',
+                 '2026-11-04T08:00:00Z',$4,$5,'Synthetic continuous own-IPU GIP LOC','Q5006',1)`,
+        [GIP_LOC, ORG, GIP_ADMISSION, GIP_FACILITY, USER],
+      );
+      await admin.query(
+        `INSERT INTO medicaid_program_assignment
+           (id,organization_id,patient_id,patient_payer_id,admission_id,provider_entity_id,location_id,
+            service_state,program_kind,canonical_payer_id,canonical_payer_classification_id,
+            payer_snapshot,status,effective_from,effective_to,source_kind,verification_source,
+            evidence_reference,verified_at,verified_by_membership_id,recorded_by_membership_id,version)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'OR','managed_care',$8,$9,
+                 jsonb_build_object('id',$8::uuid::text,'displayName','Synthetic GIP CCO',
+                   'kind','medicaid','stateCode','OR'),
+                 'verified','2026-11-01','2026-11-03','payer_confirmation',
+                 'synthetic_qualification_fixture','doc:synthetic-gip/program-assignment',
+                 '2026-10-30T00:00:00Z',$10,$11,1)`,
+        [
+          randomUUID(),
+          ORG,
+          GIP_PATIENT,
+          GIP_COVERAGE,
+          GIP_ADMISSION,
+          peId,
+          locationId,
+          GIP_PAYER,
+          GIP_CLASSIFICATION,
+          verifierId,
+          USER,
+        ],
+      );
+      await admin.query(
+        `INSERT INTO inpatient_unit
+           (id,organization_id,facility_id,display_name,bed_count,is_active,version)
+         VALUES ($1,$2,$3,'Synthetic own IPU',1,true,1)`,
+        [GIP_UNIT, ORG, GIP_FACILITY],
+      );
+      await admin.query(
+        `INSERT INTO ipu_room
+           (id,organization_id,unit_id,room_number,kind,bed_count,is_active,version)
+         VALUES ($1,$2,$3,'GIP-01','private',1,true,1)`,
+        [GIP_ROOM, ORG, GIP_UNIT],
+      );
+      await admin.query(
+        `INSERT INTO ipu_bed
+           (id,organization_id,room_id,unit_id,bed_label,cleaning_status,is_active,version)
+         VALUES ($1,$2,$3,$4,'GIP-01A','ready',true,1)`,
+        [GIP_BED, ORG, GIP_ROOM, GIP_UNIT],
+      );
+      await admin.query(
+        `INSERT INTO ipu_admission
+           (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,
+            level_of_care_period_id,unit_id,remote_facility_id,kind,state,opened_at,activated_at,
+            closed_at,created_by,version,updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,'gip','discharged',
+                 '2026-10-31T07:00:00Z','2026-10-31T07:00:00Z','2026-11-04T09:00:00Z',$9,1,
+                 '2026-11-04T09:00:00Z')`,
+        [
+          GIP_IPU_ADMISSION,
+          ORG,
+          peId,
+          locationId,
+          GIP_PATIENT,
+          GIP_ADMISSION,
+          GIP_LOC,
+          GIP_UNIT,
+          USER,
+        ],
+      );
+      await admin.query(
+        `INSERT INTO ipu_bed_assignment
+           (id,organization_id,ipu_admission_id,bed_id,assigned_at,ended_at,assigned_by,version,updated_at)
+         VALUES ($1,$2,$3,$4,'2026-10-31T07:00:00Z','2026-11-04T09:00:00Z',$5,1,
+                 '2026-11-04T09:00:00Z')`,
+        [GIP_BED_ASSIGNMENT, ORG, GIP_IPU_ADMISSION, GIP_BED, USER],
+      );
+      const syntheticCriteria = {
+        criterion_kind: "acute_symptom_management",
+        uncontrolled_symptoms: [
+          {
+            symptom: "Synthetic acute symptom",
+            severity_score: 8,
+            duration_hours: 3,
+            interventions_attempted_in_home: ["Synthetic home intervention attempted"],
+          },
+        ],
+        planned_inpatient_interventions: ["Synthetic inpatient symptom management"],
+        rationale:
+          "Synthetic qualification evidence only: the fictional scenario records symptoms requiring an inpatient level of monitoring and management.",
+      };
+      await admin.query(
+        `INSERT INTO gip_admission_criteria
+           (id,organization_id,ipu_admission_id,criterion_kind,data,attesting_physician_id,
+            attesting_membership_id,attested_at,step_up_assertion_id,created_at,updated_at,version)
+         VALUES ($1,$2,$3,'acute_symptom_management',$4::jsonb,$5,$6,'2026-11-01T16:00:00Z',
+                 $7,'2026-11-01T16:00:00Z','2026-11-01T16:00:00Z',1)`,
+        [
+          GIP_CRITERIA,
+          ORG,
+          GIP_IPU_ADMISSION,
+          JSON.stringify(syntheticCriteria),
+          USER,
+          verifierId,
+          randomUUID(),
+        ],
+      );
+      await admin.query(
+        `INSERT INTO gip_criteria_reassessment
+           (id,organization_id,gip_admission_criteria_id,ipu_admission_id,reassessed_by_membership_id,
+            criterion_still_met,rationale,assessed_at,created_at,version)
+         VALUES ($1,$2,$3,$4,$5,true,
+                 'Synthetic qualification reassessment confirms the fictional criterion for this service day.',
+                 '2026-11-02T16:00:00Z','2026-11-02T16:00:00Z',1),
+                ($6,$2,$3,$4,$5,true,
+                 'Synthetic qualification reassessment confirms the fictional criterion for this service day.',
+                 '2026-11-03T16:00:00Z','2026-11-03T16:00:00Z',1)`,
+        [GIP_REASSESSMENT_2, ORG, GIP_CRITERIA, GIP_IPU_ADMISSION, verifierId, GIP_REASSESSMENT_3],
+      );
+      await admin.query(
+        `INSERT INTO medicaid_hospice_billing_evidence
+           (id,organization_id,provider_entity_id,patient_id,admission_id,admission_version,
+            canonical_payer_id,program_kind,service_state,locality_code,locality_evidence_reference,
+            locality_evidence_version,quality_reporting_applicability,quality_reporting_status,
+            quality_evidence_reference,quality_evidence_version,service_category,quantity_policy,
+            quantity_evidence_owner,billing_unit,revenue_code,hcpcs_code,coding_profile,
+            coding_evidence_reference,coding_evidence_version,billed_charge_cents_per_unit,
+            charge_evidence_reference,charge_evidence_version,verification_status,effective_from,
+            effective_to,source_document_reference,verified_at,verified_by_membership_id,
+            recorded_by_membership_id,version)
+         VALUES ($1,$2,$3,$4,$5,0,$6,'managed_care','OR','synthetic-gip-locality',
+                 'evidence:synthetic-gip/locality',1,'not_required','not_applicable',
+                 'evidence:synthetic-gip/quality-applicability',1,'GIP','m37_gip_own_unit_daily_v1',
+                 'm37_gip_admission_criteria_and_confirmed_bed_history','daily','0656','Q5006',
+                 'local_draft_only','evidence:synthetic-gip/local-coding',1,100000,
+                 'evidence:synthetic-gip/independent-charge',1,'verified','2026-11-01','2026-11-03',
+                 'doc:synthetic-gip/billing-profile','2026-10-30T00:00:00Z',$7,$8,1)`,
+        [GIP_BILLING_EVIDENCE, ORG, peId, GIP_PATIENT, GIP_ADMISSION, GIP_PAYER, verifierId, USER],
+      );
+      await admin.query(
+        `INSERT INTO medicaid_payer_rate_policy
+           (id,organization_id,provider_entity_id,canonical_payer_id,program_kind,service_state,
+            locality_code,service_category,unit_basis,bucket_from,bucket_to,election_day_basis,
+            rate_cents,pricing_method,quantity_conversion_method,minimum_duration_method,
+            methodology_version,rounding_mode,rounding_boundary,charge_ceiling_method,
+            charge_ceiling_boundary,quality_reporting_applicability,quality_reporting_status,
+            source_kind,verification_status,effective_from,effective_to,source_document_ref,
+            verified_at,verified_by_membership_id,recorded_by_membership_id,version)
+         VALUES ($1,$2,$3,$4,'managed_care','OR','synthetic-gip-locality','GIP','per_day',NULL,NULL,
+                 'unqualified',85000,'per_day','daily_units','not_applicable',1,'exact_only',
+                 'not_applicable','none','not_applicable','not_required','not_applicable',
+                 'cco_contract','verified','2026-11-01','2026-11-03','doc:synthetic-gip/daily-rate',
+                 '2026-10-30T00:00:00Z',$5,$6,1)`,
+        [GIP_RATE, ORG, peId, GIP_PAYER, verifierId, USER],
+      );
+      const gipClaim = await service.assembleClaim(actor, {
+        patientId: GIP_PATIENT,
+        admissionId: GIP_ADMISSION,
+        providerEntityId: peId,
+        serviceFrom: "2026-11-01",
+        serviceTo: "2026-11-03",
+        kind: "hospice_only",
+      });
+      expect(gipClaim.state).toBe("DRAFT");
+      const gipLines = await admin.query(
+        `SELECT service_date::date::text AS service_from,service_date_to::date::text AS service_to,
+                units,level_of_care,revenue_code,q_code,rate_at_assembly_cents,charges_cents
+           FROM medicaid_claim_line WHERE medicaid_claim_id=$1 ORDER BY line_number`,
+        [gipClaim.id],
+      );
+      expect(gipLines.rows).toEqual([
+        {
+          service_from: "2026-11-01",
+          service_to: "2026-11-03",
+          units: 3,
+          level_of_care: "GIP",
+          revenue_code: "0656",
+          q_code: "Q5006",
+          rate_at_assembly_cents: 85000,
+          charges_cents: 300000,
+        },
+      ]);
+      const gipSnapshots = await admin.query(
+        `SELECT snapshot_schema_version,snapshot,billing_evidence_id,payer_rate_policy_id
+           FROM medicaid_claim_line_pricing_snapshot WHERE medicaid_claim_id=$1`,
+        [gipClaim.id],
+      );
+      expect(gipSnapshots.rows).toHaveLength(1);
+      expect(gipSnapshots.rows[0]).toMatchObject({
+        snapshot_schema_version: 5,
+        billing_evidence_id: GIP_BILLING_EVIDENCE,
+        payer_rate_policy_id: GIP_RATE,
+        snapshot: {
+          profile: "gip_own_ipu_q5006_daily_local_v1",
+          postingAuthorized: false,
+          institutionalFormatQualified: false,
+          gipStay: {
+            ipuAdmissionId: GIP_IPU_ADMISSION,
+            unitId: GIP_UNIT,
+            bedId: GIP_BED,
+            bedAssignmentId: GIP_BED_ASSIGNMENT,
+            criteriaId: GIP_CRITERIA,
+            facilityId: GIP_FACILITY,
+            facilityKind: "ipu",
+          },
+          reimbursementEstimateCents: 255000,
+          billedChargeCents: 300000,
+        },
+      });
+      const gipSubmissions = await admin.query(
+        "SELECT count(*)::int AS n FROM medicaid_submission WHERE medicaid_claim_id=$1",
+        [gipClaim.id],
+      );
+      expect(gipSubmissions.rows[0].n).toBe(0);
+      const { validationRunId: gipManualRunId } = await service.validateClaim(actor, gipClaim.id);
+      const gipManualResults = await admin.query(
+        `SELECT rule_key,outcome FROM medicaid_validation_result
+          WHERE organization_id=$1 AND medicaid_validation_run_id=$2
+            AND rule_key IN ('medicaid_payer_rate_policy_snapshot_verified',
+                             'medicaid_hospice_institutional_format_qualified')
+          ORDER BY rule_key`,
+        [ORG, gipManualRunId],
+      );
+      expect(gipManualResults.rows).toEqual([
+        { rule_key: "medicaid_hospice_institutional_format_qualified", outcome: "fail" },
+        { rule_key: "medicaid_payer_rate_policy_snapshot_verified", outcome: "pass" },
+      ]);
+      const gipWorkerEventId = randomUUID();
+      await withOrgContext(handle.db, { organizationId: ORG, userId: USER }, (tx) =>
+        runMedicaidRevalidate(tx, workerDeps, {
+          organizationId: ORG,
+          patientId: GIP_PATIENT,
+          eventId: gipWorkerEventId,
+          eventName: "m24.medicaid_claim.revalidate_requested",
+        }),
+      );
+      const gipBackgroundResults = await admin.query(
+        `SELECT result.rule_key,result.outcome
+           FROM medicaid_validation_run run
+           JOIN medicaid_validation_result result ON result.organization_id=run.organization_id
+             AND result.medicaid_validation_run_id=run.id
+          WHERE run.medicaid_claim_id=$1 AND run.trigger_signal_id=$2
+            AND result.rule_key IN ('medicaid_payer_rate_policy_snapshot_verified',
+                                    'medicaid_hospice_institutional_format_qualified')
+          ORDER BY result.rule_key`,
+        [gipClaim.id, gipWorkerEventId],
+      );
+      expect(gipBackgroundResults.rows).toEqual([
+        { rule_key: "medicaid_hospice_institutional_format_qualified", outcome: "fail" },
+        { rule_key: "medicaid_payer_rate_policy_snapshot_verified", outcome: "pass" },
+      ]);
+
+      // Checkpoint B: M8 captures delivered in-home respite from a signed encounter, preserves a
+      // correction as a new version, and M24 blocks a claim overlapping that service because no
+      // payer pricing/coding policy is qualified. This is clinical evidence only, not a priced line.
+      const respiteService = createDbInHomeRespiteService(handle.db);
+      const initialRespite = await respiteService.recordForSignedEncounter(
+        ORG,
+        USER,
+        RHC_SIGNER_MEMBERSHIP,
+        CHC_PREP_ENCOUNTER,
+      );
+      expect(initialRespite).toMatchObject({
+        version: 1,
+        sourceEncounterId: CHC_PREP_ENCOUNTER,
+        serviceDate: "2026-11-05",
+        observedDurationSeconds: 6 * 60 * 60 + 30 * 60,
+        timeSource: "clinician",
+        supersedesId: null,
+      });
+      const repeatedCapture = await respiteService.recordForSignedEncounter(
+        ORG,
+        USER,
+        RHC_SIGNER_MEMBERSHIP,
+        CHC_PREP_ENCOUNTER,
+      );
+      expect(repeatedCapture.id).toBe(initialRespite.id);
+
+      await admin.query(
+        `INSERT INTO encounter
+           (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,
+            encounter_type,discipline,authored_by_membership_id,service_date,started_at,ended_at,
+            time_source,status,signed_at,vocab_version_id)
+         VALUES ($1,$2,$3,$4,$5,$6,'routine_visit','rn',$7,'2026-11-05',
+                 '2026-11-05T21:00:00Z','2026-11-05T22:00:00Z','clinician','signed',
+                 '2026-11-05T22:30:00Z',$8)`,
+        [
+          RHC_RESPITE_CORRECTION_ENCOUNTER,
+          ORG,
+          peId,
+          locationId,
+          RHC_PATIENT,
+          RHC_ADMISSION,
+          RHC_SIGNER_MEMBERSHIP,
+          NARRATIVE_VOCAB_RELEASES[0]!.id,
+        ],
+      );
+      const correctedRespite = await respiteService.correctFromSignedEncounter(
+        ORG,
+        USER,
+        RHC_SIGNER_MEMBERSHIP,
+        {
+          serviceId: initialRespite.serviceId,
+          expectedVersion: 1,
+          encounterId: RHC_RESPITE_CORRECTION_ENCOUNTER,
+        },
+      );
+      expect(correctedRespite).toMatchObject({
+        serviceId: initialRespite.serviceId,
+        version: 2,
+        sourceEncounterId: RHC_RESPITE_CORRECTION_ENCOUNTER,
+        supersedesId: initialRespite.id,
+      });
+      await expect(
+        respiteService.readForSignedEncounter(ORG, USER, CHC_PREP_ENCOUNTER),
+      ).resolves.toMatchObject([
+        { serviceId: initialRespite.serviceId, version: 2, id: correctedRespite.id },
+        { serviceId: initialRespite.serviceId, version: 1, id: initialRespite.id },
+      ]);
+      await expect(
+        respiteService.readForSignedEncounter(ORG, USER, RHC_RESPITE_CORRECTION_ENCOUNTER),
+      ).resolves.toMatchObject([
+        { serviceId: initialRespite.serviceId, version: 2, id: correctedRespite.id },
+        { serviceId: initialRespite.serviceId, version: 1, id: initialRespite.id },
+      ]);
+      await expect(
+        respiteService.correctFromSignedEncounter(ORG, USER, RHC_SIGNER_MEMBERSHIP, {
+          serviceId: initialRespite.serviceId,
+          expectedVersion: 1,
+          encounterId: CHC_PREP_CARRY_IN_ENCOUNTER,
+        }),
+      ).rejects.toMatchObject({ code: "M8_IN_HOME_RESPITE_VERSION_STALE" });
+      const respiteProjection = await withOrgContext(
+        handle.db,
+        { organizationId: ORG, userId: USER },
+        (tx) =>
+          readInHomeRespiteForBillingInTransaction(tx, {
+            organizationId: ORG,
+            providerEntityId: peId,
+            patientId: RHC_PATIENT,
+            admissionId: RHC_ADMISSION,
+            serviceFrom: "2026-11-05",
+            serviceTo: "2026-11-05",
+          }),
+      );
+      expect(respiteProjection).toMatchObject({ status: "current", serviceCount: 1 });
+      expect(respiteProjection.evidenceVersions[0]).toMatchObject({
+        serviceId: initialRespite.serviceId,
+        version: 2,
+        sourceEncounterId: RHC_RESPITE_CORRECTION_ENCOUNTER,
+      });
+      const respitePreview = await previewClaimAssemblyOf(service)(actor, {
+        patientId: RHC_PATIENT,
+        admissionId: RHC_ADMISSION,
+        providerEntityId: peId,
+        serviceFrom: "2026-11-05",
+        serviceTo: "2026-11-05",
+      });
+      expect(respitePreview.pricing).toMatchObject({ status: "unresolved" });
+      expect(respitePreview.pricing.segments.flatMap((segment) => segment.reasonCodes)).toContain(
+        "IN_HOME_RESPITE_POLICY_UNQUALIFIED",
+      );
+      const claimCountBeforeRespiteHold = await admin.query(
+        "SELECT count(*)::int AS n FROM medicaid_claim WHERE organization_id=$1",
+        [ORG],
+      );
+      await expect(
+        service.assembleClaim(actor, {
+          patientId: RHC_PATIENT,
+          admissionId: RHC_ADMISSION,
+          providerEntityId: peId,
+          serviceFrom: "2026-11-05",
+          serviceTo: "2026-11-05",
+          kind: "hospice_only",
+        }),
+      ).rejects.toMatchObject({ code: "MEDICAID_IN_HOME_RESPITE_POLICY_UNQUALIFIED" });
+      const claimCountAfterRespiteHold = await admin.query(
+        "SELECT count(*)::int AS n FROM medicaid_claim WHERE organization_id=$1",
+        [ORG],
+      );
+      expect(claimCountAfterRespiteHold.rows).toEqual(claimCountBeforeRespiteHold.rows);
       expect(events).not.toContain("m24.medicaid_claim.ready_for_submission");
     });
 
@@ -3906,56 +4369,6 @@ describe.skipIf(!DB_URL)(
           },
         ),
       );
-    });
-
-    it.skip("a confirmed own-IPU bed resolves Q5006 regardless of the LOC period's facility kind (pricing required)", async () => {
-      const admissionId = "dddddddd-5555-6666-7777-888888888888";
-      const facility = await admin.query(
-        `INSERT INTO facility (kind, name) VALUES ('hospital', 'Contracted Hospital') RETURNING id`,
-      );
-      const facilityId: string = facility.rows[0].id;
-      const facilityKindReader = {
-        async kindsFor(ids: readonly string[]) {
-          const m = new Map<string, PlaceOfServiceFacilityKind>();
-          if (ids.includes(facilityId)) m.set(facilityId, "hospital");
-          return m;
-        },
-      };
-      const svc = buildDrizzleM24WriteService(
-        handle.db,
-        NOOP_OUTBOX,
-        OPEN_CIPHER,
-        coverage,
-        ccnReader,
-        locPeriodReader([
-          {
-            id: LOC_2,
-            levelOfCare: "general_inpatient_care",
-            effectiveAt: new Date("2026-07-10"),
-            endedAt: new Date("2026-07-13"),
-            facilityId,
-            ipuBedAssignmentId: "ipu-bed-1",
-          },
-        ]),
-        noEncounters(),
-        facilityKindReader,
-      );
-      const claim = await svc.assembleClaim(
-        { organizationId: ORG, userId: USER, roles: [] },
-        {
-          patientId: PATIENT,
-          admissionId,
-          providerEntityId: peId,
-          serviceFrom: "2026-07-10",
-          serviceTo: "2026-07-12",
-          kind: "hospice_only",
-        },
-      );
-      const lines = await admin.query(
-        "SELECT q_code FROM medicaid_claim_line WHERE medicaid_claim_id=$1",
-        [claim.id],
-      );
-      expect(lines.rows).toEqual([{ q_code: "Q5006" }]);
     });
 
     it("no LOC period overlapping the window → MEDICAID_NO_BILLABLE_LOC_DAYS", async () => {

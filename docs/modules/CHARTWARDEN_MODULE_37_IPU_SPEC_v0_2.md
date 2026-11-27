@@ -2625,3 +2625,9 @@ Module 37 is "Locked" when every line below is checked.
 -----
 
 **End of Module 37 — Inpatient Unit (IPU) Management Specification v0.2 (Locked)**
+
+### As-built M24-1075 L8A.2C4 — scoped GIP pricing reader (2026-11-26)
+
+M37 now publishes `readGipPricingStayInTransaction` as a narrow, transaction-bound owner projection for M24. It verifies an active/closed own-unit GIP admission, patient/admission/provider scope, M6 LOC identity, GIP criteria and current reassessment evidence, actual stay bounds, confirmed historical bed-assignment coverage, unit-to-provider ownership, and the M40 facility identity returned under its locked canonical reader. It carries source identities and versions only; it does not expose clinical note content, calculate reimbursement, choose a billing code, or assert payer authorization.
+
+The initial supported case is a single continuous stay in an owned inpatient unit with complete confirmed bed coverage and the synthetic local daily Q5006 profile. Transfers, arranged facilities, uncertain historical bed coverage, incompatible M6 service-location identity, and unsupported admission states remain held. The M24 local pricing snapshot remains institutional-format unqualified and nonposting. This is not EOCCO certification or a statement of real Oregon billing policy.

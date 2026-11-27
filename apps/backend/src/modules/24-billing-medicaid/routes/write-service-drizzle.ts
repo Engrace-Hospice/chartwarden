@@ -67,14 +67,18 @@ import {
   lockHospiceBillingEvidenceScope,
   lockMedicaidRatePolicyScope,
   rateRowAsFact,
+  readMedicaidGipBillingEvidence,
   readMedicaidHospiceBillingEvidence,
   readMedicaidIrcBillingEvidence,
+  resolveGipDailyPricingPlan,
   resolveIrcDailyPricingPlan,
   resolveRhcDailyPricingPlan,
   rethrowUnlessDomainError,
   verifyStoredRhcPricingSnapshots,
 } from "../pricing/rhc-pricing-snapshot";
 import type { IrcPricingEpisodeReader } from "../pricing/rhc-pricing-snapshot";
+import type { GipPricingStayReader } from "../pricing/rhc-pricing-snapshot";
+import type { InHomeRespiteEvidenceReaderPort } from "../pricing/rhc-pricing-snapshot";
 import type { M24Actor } from "./actor";
 import {
   ENROLLMENT_REQUIREMENTS,
@@ -1591,6 +1595,8 @@ export function buildDrizzleM24WriteService(
   tenantClearinghouseReader?: TenantClearinghouseReadPort,
   electionHistoryReader?: MedicaidElectionHistoryReader,
   ircPricingEpisodeReader?: IrcPricingEpisodeReader,
+  gipPricingStayReader?: GipPricingStayReader,
+  inHomeRespiteEvidenceReader?: InHomeRespiteEvidenceReaderPort,
 ): M24WriteService {
   const C = schema.medicaidClaim;
   const SUB = schema.medicaidSubmission;
@@ -2439,7 +2445,37 @@ export function buildDrizzleM24WriteService(
                 programResponsibility.programKind === "managed_care"
               ? "managed_care"
               : null;
-        if (
+        const respiteEvidence = inHomeRespiteEvidenceReader
+          ? await withOrgContext(db, actor, (tx) =>
+              inHomeRespiteEvidenceReader.readInTransaction(tx, {
+                organizationId: actor.organizationId,
+                providerEntityId: input.providerEntityId,
+                patientId: input.patientId,
+                admissionId: input.admissionId,
+                serviceFrom: day(input.serviceFrom),
+                serviceTo: day(input.serviceTo),
+              }),
+            )
+          : null;
+        if (respiteEvidence && respiteEvidence.status !== "none") {
+          const ambiguous =
+            respiteEvidence.status === "ambiguous" || respiteEvidence.status === "scope_conflict";
+          pricing = unresolvedPricingPreview({
+            from: input.serviceFrom,
+            to: input.serviceTo,
+            reasonCode:
+              respiteEvidence.status === "current"
+                ? "IN_HOME_RESPITE_POLICY_UNQUALIFIED"
+                : "IN_HOME_RESPITE_EVIDENCE_UNRESOLVED",
+            requiredInputs: [
+              "Resolve how this delivered in-home respite service relates to the claim's other hospice level of care",
+              "Qualified in-home respite reimbursement policy and institutional billing format",
+            ],
+            status: ambiguous ? "ambiguous" : "unresolved",
+            serviceCategory: "IN_HOME_RESPITE",
+            assessedAt,
+          });
+        } else if (
           payerResponsibility !== "medicaid_primary" ||
           programResponsibility.status !== "verified" ||
           !programResponsibility.canonicalPayerId ||
@@ -2501,7 +2537,9 @@ export function buildDrizzleM24WriteService(
             });
             const ircOnly =
               ircOverlaps.length === 1 && ircOverlaps[0]!.levelOfCare === "inpatient_respite_care";
-            const supportedDailyOnly = rhcOnly || ircOnly;
+            const gipOnly =
+              ircOverlaps.length === 1 && ircOverlaps[0]!.levelOfCare === "general_inpatient_care";
+            const supportedDailyOnly = rhcOnly || ircOnly || gipOnly;
             const admissionVersion = previewReads.admissionSnapshot.version;
             if (
               rateProgramKind === "managed_care" &&
@@ -2533,7 +2571,7 @@ export function buildDrizzleM24WriteService(
                     programKind: "managed_care",
                     serviceState: recordedEligibility.serviceState!,
                   },
-                  ircOnly ? "IRC" : "RHC",
+                  gipOnly ? "GIP" : ircOnly ? "IRC" : "RHC",
                 );
                 const assessedAt = new Date().toISOString();
                 const scope = {
@@ -2564,19 +2602,21 @@ export function buildDrizzleM24WriteService(
                   input.serviceFrom,
                   input.serviceTo,
                 );
-                const evidence = ircOnly
-                  ? await readMedicaidIrcBillingEvidence(tx, scope)
-                  : await readMedicaidHospiceBillingEvidence(tx, scope);
+                const evidence = gipOnly
+                  ? await readMedicaidGipBillingEvidence(tx, scope)
+                  : ircOnly
+                    ? await readMedicaidIrcBillingEvidence(tx, scope)
+                    : await readMedicaidHospiceBillingEvidence(tx, scope);
                 if (
                   evidence.status !== "verified" &&
-                  (ircOnly || evidence.status !== "segmentation_required")
+                  (ircOnly || gipOnly || evidence.status !== "segmentation_required")
                 ) {
                   return {
                     plan: {
                       status: "unresolved" as const,
                       reasonCode: billingEvidenceReasonCode(evidence),
                     },
-                    serviceLocationKind: ircOnly ? null : serviceLocationKind,
+                    serviceLocationKind: ircOnly || gipOnly ? null : serviceLocationKind,
                     assessedAt,
                   };
                 }
@@ -2625,6 +2665,43 @@ export function buildDrizzleM24WriteService(
                     assessedAt,
                   };
                 }
+                if (gipOnly) {
+                  const locPeriod = ircOverlaps[0]!;
+                  const stay = gipPricingStayReader
+                    ? await gipPricingStayReader.readInTransaction(tx, {
+                        organizationId: actor.organizationId,
+                        providerEntityId: input.providerEntityId,
+                        patientId: input.patientId,
+                        admissionId: input.admissionId,
+                        locPeriodId: locPeriod.id,
+                        serviceFrom: input.serviceFrom,
+                        serviceTo: input.serviceTo,
+                        assessedAt,
+                      })
+                    : null;
+                  const facilityKinds = stay
+                    ? await facilityKindsInTransaction(tx, [{ facilityId: stay.facilityId }])
+                    : new Map<string, PlaceOfServiceFacilityKind>();
+                  const plan =
+                    evidence.status === "verified"
+                      ? resolveGipDailyPricingPlan({
+                          scope,
+                          evidence: evidence.row,
+                          locPeriods: rawPeriods,
+                          rates: rateRows.map(rateRowAsFact),
+                          stay,
+                          facilityKinds,
+                        })
+                      : {
+                          status: "unresolved" as const,
+                          reasonCode: billingEvidenceReasonCode(evidence),
+                        };
+                  return {
+                    plan,
+                    serviceLocationKind: plan.status === "resolved" ? ("facility" as const) : null,
+                    assessedAt,
+                  };
+                }
                 const facilityKinds = await facilityKindsInTransaction(tx, residenceSpans);
                 const plan = resolveRhcDailyPricingPlan({
                   scope,
@@ -2646,7 +2723,11 @@ export function buildDrizzleM24WriteService(
                 const segments = result.plan.lines.map((line) => ({
                   serviceFrom: line.serviceFrom,
                   serviceTo: line.serviceTo,
-                  serviceCategory: ircOnly ? ("IRC" as const) : ("RHC" as const),
+                  serviceCategory: gipOnly
+                    ? ("GIP" as const)
+                    : ircOnly
+                      ? ("IRC" as const)
+                      : ("RHC" as const),
                   serviceLocationKind: serviceLocationKindFromPricingFacts(line.integrityFacts),
                   status: "resolved" as const,
                   rateStatus: "qualified" as const,
@@ -2714,10 +2795,14 @@ export function buildDrizzleM24WriteService(
                   reasonCode: result.plan.reasonCode,
                   requiredInputs: ircOnly
                     ? ircPricingRequiredInputs(result.plan.reasonCode)
-                    : rhcPricingRequiredInputs(result.plan.reasonCode),
+                    : gipOnly
+                      ? [
+                          "Current M37 GIP admission, confirmed own-IPU bed, and daily clinical evidence",
+                        ]
+                      : rhcPricingRequiredInputs(result.plan.reasonCode),
                   serviceLocationKind: result.serviceLocationKind,
                   status: result.plan.status,
-                  serviceCategory: ircOnly ? "IRC" : "RHC",
+                  serviceCategory: gipOnly ? "GIP" : ircOnly ? "IRC" : "RHC",
                   assessedAt: result.assessedAt,
                 });
               }
@@ -3462,6 +3547,9 @@ export function buildDrizzleM24WriteService(
           const ircOnly =
             overlappingLocPeriods.length === 1 &&
             overlappingLocPeriods[0]!.levelOfCare === "inpatient_respite_care";
+          const gipOnly =
+            overlappingLocPeriods.length === 1 &&
+            overlappingLocPeriods[0]!.levelOfCare === "general_inpatient_care";
           if (
             overlappingLocPeriods.some(
               (period) => period.levelOfCare === "inpatient_respite_care",
@@ -3471,6 +3559,17 @@ export function buildDrizzleM24WriteService(
             throw new DegradedError(
               "MEDICAID_IRC_MIXED_SERVICE_UNSUPPORTED",
               "local IRC preparation requires one continuous IRC level of care without another service or Room and Board",
+            );
+          }
+          if (
+            overlappingLocPeriods.some(
+              (period) => period.levelOfCare === "general_inpatient_care",
+            ) &&
+            (!gipOnly || input.kind !== "hospice_only")
+          ) {
+            throw new DegradedError(
+              "MEDICAID_GIP_MIXED_SERVICE_UNSUPPORTED",
+              "local own-IPU GIP preparation requires one continuous GIP level of care without another service or Room and Board",
             );
           }
           const encounters = signedEncounters
@@ -3505,7 +3604,7 @@ export function buildDrizzleM24WriteService(
               programKind: "managed_care",
               serviceState,
             },
-            ircOnly ? "IRC" : "RHC",
+            gipOnly ? "GIP" : ircOnly ? "IRC" : "RHC",
           );
           const electionHistory = electionHistoryReader
             ? await electionHistoryReader.readInTransaction(tx, {
@@ -3530,13 +3629,38 @@ export function buildDrizzleM24WriteService(
             assessedAt,
             inclusiveEndDate: inclusiveLocEndDate,
           };
-          const evidenceResult = ircOnly
-            ? await readMedicaidIrcBillingEvidence(tx, priceScope)
-            : await readMedicaidHospiceBillingEvidence(tx, priceScope);
+          if (!inHomeRespiteEvidenceReader) {
+            throw new DegradedError(
+              "MEDICAID_IN_HOME_RESPITE_READER_UNAVAILABLE",
+              "M8 in-home respite evidence must be checked before local hospice pricing",
+            );
+          }
+          const respiteProjection = await inHomeRespiteEvidenceReader.readInTransaction(tx, {
+            organizationId: actor.organizationId,
+            providerEntityId: input.providerEntityId,
+            patientId: input.patientId,
+            admissionId: input.admissionId,
+            serviceFrom: priceScope.serviceFrom,
+            serviceTo: priceScope.serviceTo,
+          });
+          if (respiteProjection.status !== "none") {
+            throw new DegradedError(
+              respiteProjection.status === "current"
+                ? "MEDICAID_IN_HOME_RESPITE_POLICY_UNQUALIFIED"
+                : "MEDICAID_IN_HOME_RESPITE_EVIDENCE_UNRESOLVED",
+              "delivered in-home respite overlaps this claim window; its relationship to the other hospice service and billing policy is unresolved",
+            );
+          }
+          const evidenceResult = gipOnly
+            ? await readMedicaidGipBillingEvidence(tx, priceScope)
+            : ircOnly
+              ? await readMedicaidIrcBillingEvidence(tx, priceScope)
+              : await readMedicaidHospiceBillingEvidence(tx, priceScope);
           const evidenceReasonCode = billingEvidenceReasonCode(evidenceResult);
           if (
-            (ircOnly && evidenceResult.status !== "verified") ||
+            ((ircOnly || gipOnly) && evidenceResult.status !== "verified") ||
             (!ircOnly &&
+              !gipOnly &&
               evidenceResult.status !== "verified" &&
               evidenceResult.status !== "segmentation_required")
           ) {
@@ -3585,6 +3709,37 @@ export function buildDrizzleM24WriteService(
                     status: "unresolved" as const,
                     reasonCode: billingEvidenceReasonCode(evidenceResult),
                   };
+          } else if (gipOnly) {
+            const locPeriod = overlappingLocPeriods[0]!;
+            const stay = gipPricingStayReader
+              ? await gipPricingStayReader.readInTransaction(tx, {
+                  organizationId: actor.organizationId,
+                  providerEntityId: input.providerEntityId,
+                  patientId: input.patientId,
+                  admissionId: input.admissionId,
+                  locPeriodId: locPeriod.id,
+                  serviceFrom: priceScope.serviceFrom,
+                  serviceTo: priceScope.serviceTo,
+                  assessedAt,
+                })
+              : null;
+            const facilityKinds = stay
+              ? await facilityKindsInTransaction(tx, [{ facilityId: stay.facilityId }])
+              : new Map<string, PlaceOfServiceFacilityKind>();
+            pricingPlan =
+              evidenceResult.status === "verified"
+                ? resolveGipDailyPricingPlan({
+                    scope: priceScope,
+                    evidence: evidenceResult.row,
+                    locPeriods: rawPeriods,
+                    rates: rateRows.map(rateRowAsFact),
+                    stay,
+                    facilityKinds,
+                  })
+                : {
+                    status: "unresolved",
+                    reasonCode: billingEvidenceReasonCode(evidenceResult),
+                  };
           } else {
             const residenceSpans = residenceReader
               ? await residenceReader.residencesBetweenInTransaction(
@@ -3614,7 +3769,7 @@ export function buildDrizzleM24WriteService(
           if (pricingPlan.status !== "resolved") {
             throw new DegradedError(
               "MEDICAID_RATE_POLICY_UNRESOLVED",
-              `the local ${ircOnly ? "IRC" : "RHC"} daily pricing facts are ${pricingPlan.reasonCode.toLowerCase().replaceAll("_", " ")}`,
+              `the local ${gipOnly ? "GIP" : ircOnly ? "IRC" : "RHC"} daily pricing facts are ${pricingPlan.reasonCode.toLowerCase().replaceAll("_", " ")}`,
             );
           }
           if (pricingPlan.lines.length === 0) {
@@ -3635,7 +3790,12 @@ export function buildDrizzleM24WriteService(
                 serviceDateTo: new Date(planLine.serviceTo),
                 revenueCode: planLine.revenueCode,
                 qCode: planLine.hcpcsCode,
-                levelOfCare: planLine.integrityFacts.levelOfCare === "IRC" ? "IRC" : "RHC",
+                levelOfCare:
+                  planLine.integrityFacts.levelOfCare === "GIP"
+                    ? "GIP"
+                    : planLine.integrityFacts.levelOfCare === "IRC"
+                      ? "IRC"
+                      : "RHC",
                 locPeriodId: planLine.locPeriodId,
                 units: planLine.units,
                 rateAtAssemblyCents: planLine.rateCents,
@@ -3971,7 +4131,10 @@ export function buildDrizzleM24WriteService(
                 },
                 hospiceLines.length > 0 && hospiceLines.every((line) => line.levelOfCare === "IRC")
                   ? "IRC"
-                  : "RHC",
+                  : hospiceLines.length > 0 &&
+                      hospiceLines.every((line) => line.levelOfCare === "GIP")
+                    ? "GIP"
+                    : "RHC",
               );
               const electionHistory = electionHistoryReader
                 ? await electionHistoryReader.readInTransaction(tx, {
@@ -4008,6 +4171,8 @@ export function buildDrizzleM24WriteService(
                 facilityKindReader,
                 electionHistory,
                 ircEpisodeReader: ircPricingEpisodeReader,
+                gipPricingStayReader,
+                inHomeRespiteEvidenceReader,
                 assessedAt,
               });
               hospicePricingSnapshotVerified = pricingVerification.pricingSnapshotVerified;

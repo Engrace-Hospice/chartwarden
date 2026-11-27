@@ -177,7 +177,7 @@ See the [L8A.2C2 qualification report](../audits/billing-e2e/M24_1075_L8A2C2_CHC
 
 ### As-built L8A.2C3 — RHC election buckets and local IRC episode pricing (2026-11-26)
 
-Migration 1558 adds the M6-owned append-only election-history completeness evidence and extends the shared
+Migration 1562 adds the M6-owned append-only election-history completeness evidence and extends the shared
 immutable daily snapshot profiles with RHC v3 (home RHC with explicit election-day bucket facts) and IRC v4
 (local daily inpatient-respite profile). The RHC resolver uses only complete current signed-election history
 and explicit verified bucket rate rows for the supported synthetic managed-care continuous-election method;
@@ -191,7 +191,15 @@ while `medicaid_hospice_institutional_format_qualified` fails. The operator prev
 bucket ranges and IRC episode-day ranges without exposing source identifiers. No historical snapshot or
 financial amount is promoted or rewritten. Transfer/reset election rules, episode resumption, over-limit
 exceptions and actual payer-specific tariffs/coding remain unresolved. See the
-[L8A.2C3 qualification report](../audits/billing-e2e/M24_1075_L8A2C3_ELECTION_HISTORY_AND_IRC_QUALIFICATION_20261126.md).
+[L8A.2C3 qualification report](../audits/billing-e2e/M24_1075_L8A2C3_ELECTION_HISTORY_AND_IRC_QUALIFICATION_20261126.md); its M6 election-history migration is 1562 in the synchronized migration inventory.
+
+### As-built L8A.2C4 — own-IPU GIP local pricing and in-home respite hold (2026-11-26)
+
+Migration 1563 adds snapshot profile v5 for one narrow local-only service: daily GIP in an owned M37 inpatient unit, supported by the transaction-bound M37 stay/criteria/bed-history reader and M40 facility identity. The actual assembly planner uses current M6 LOC, M37 stay facts, payer-rate and billing-evidence lineage, `assessHospicePricing()`, and separately sourced charges. Manual and background verification re-read these sources. Q5006 and the local daily units are explicitly local-draft coding only; the non-overridable institutional-format rule remains false, so this evidence cannot make a claim READY or sendable.
+
+M8 migration 1564 adds a distinct append-only delivered in-home respite evidence record derived from a signed encounter. M24 consumes the owner projection only to identify that respite evidence exists and to refuse pricing/claim-line generation. The record does not define a payer quantity, billing code, rate, authorization or independent billable day. Its patient-linked retention/destruction treatment remains part of the open CW-DS-01 owner decision.
+
+These are synthetic qualification profiles, not Oregon FFS or EOCCO policy. No real tariffs, payer coding acceptance, authorization or production source evidence are represented. The complete scoped results and remaining limits are in the [L8A.2C4 qualification report](../audits/billing-e2e/M24_1075_L8A2C4_GIP_AND_IN_HOME_RESPITE_QUALIFICATION_20261126.md).
 
 ## 1. Purpose & Scope
 

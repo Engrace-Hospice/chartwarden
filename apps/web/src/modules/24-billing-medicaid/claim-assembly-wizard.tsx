@@ -34,7 +34,7 @@ const SERVICE_CATEGORY_LABEL: Readonly<Record<string, string>> = {
   RHC: "RHC",
   CHC: "CHC",
   IRC: "IRC",
-  GIP: "GIP",
+  GIP: "General Inpatient Care",
   IN_HOME_RESPITE: "In-home respite",
 };
 /** Rate source kinds carry acronyms (OHA, CCO) that `humanize` would flatten ("Cco contract"). */
@@ -55,6 +55,28 @@ const PRICING_REASON_LABEL: Readonly<Record<string, string>> = {
     "The billing evidence uses a local RHC code that is not priced (only Q5001 and Q5002 are).",
   RHC_FACILITY_KIND_UNRESOLVED:
     "The recorded facility has no active M40 record (it may be merged, deactivated or unknown).",
+  IN_HOME_RESPITE_POLICY_UNQUALIFIED:
+    "In-home respite clinical evidence is available. Reimbursement policy and institutional billing format are not yet qualified.",
+  IN_HOME_RESPITE_EVIDENCE_UNRESOLVED:
+    "In-home respite evidence is incomplete or conflicts with the current clinical source. Resolve that evidence before billing review.",
+  GIP_OWN_IPU_STAY_OR_CRITERIA_UNAVAILABLE:
+    "A current M37 own-IPU stay, confirmed bed coverage and daily GIP criteria are required for local pricing.",
+  GIP_BILLING_EVIDENCE_SCOPE_OR_PROFILE_UNSUPPORTED:
+    "No verified local own-IPU GIP billing profile covers this payer and service period.",
+  GIP_OWN_IPU_EVIDENCE_SCOPE_OR_VERSION_UNRESOLVED:
+    "The inpatient stay or daily GIP evidence changed or does not match the selected admission and service dates.",
+  GIP_LOC_PERIOD_AMBIGUOUS:
+    "More than one level-of-care period overlaps these service dates. Resolve the conflict before pricing.",
+  GIP_LOC_AND_ACTUAL_STAY_MISMATCH:
+    "The recorded GIP level of care and actual inpatient stay do not cover the same service dates.",
+  GIP_DAILY_CLINICAL_ELIGIBILITY_UNRESOLVED:
+    "Current daily GIP clinical evidence is incomplete or not attested for every service date.",
+  GIP_DAILY_RATE_SEGMENT_UNRESOLVED:
+    "No verified daily GIP rate policy covers this payer and service period.",
+  GIP_DAILY_RATE_METHODOLOGY_UNQUALIFIED:
+    "The GIP rate methodology does not match the supported local daily profile.",
+  BILLED_CHARGE_OVERFLOW:
+    "The independently sourced provider charge cannot be represented safely for this service span.",
 };
 const labelFor = (labels: Readonly<Record<string, string>>, value: string): string =>
   (Object.hasOwn(labels, value) ? labels[value] : undefined) ?? humanize(value);
@@ -1126,8 +1148,18 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                               ? "Home RHC"
                               : labelFor(SERVICE_CATEGORY_LABEL, segment.serviceCategory)
                           : "Service category unresolved"}
+                        {segment.serviceCategory === "GIP" && segment.status === "resolved"
+                          ? " · local own-IPU preparation"
+                          : ""}
                         {` · ${segment.serviceFrom}${segment.serviceTo === segment.serviceFrom ? "" : ` to ${segment.serviceTo}`}`}
                       </strong>
+                      {segment.serviceCategory === "GIP" && segment.status === "resolved" ? (
+                        <p style={mutedStyle}>
+                          Current own-IPU stay, confirmed bed coverage and daily evidence support
+                          this local Q5006 profile. Payer coding and institutional format remain
+                          unqualified; electronic submission is unavailable.
+                        </p>
+                      ) : null}
                       {segment.electionDayRange ? (
                         <p style={mutedStyle}>
                           {`Election days ${segment.electionDayRange.dayFrom}–${segment.electionDayRange.dayTo}; rate bucket ${segment.electionDayRange.rateBucketFrom}–${segment.electionDayRange.rateBucketTo ?? "open"}. The line is split where the verified election-day bucket changes.`}

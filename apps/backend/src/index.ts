@@ -679,6 +679,7 @@ import {
   encounterVisitIdsForOrg,
   evaluateMemberClosure,
   mountEncounterRoutes,
+  readInHomeRespiteForBillingInTransaction,
   registerClosureAlertCatalog,
   registerEncounterAbacPredicates,
   registerEncounterDraftReader,
@@ -2069,6 +2070,7 @@ import {
   validateIpuAIBlock,
   wireM37Tenancy,
 } from "./modules/37-ipu/index";
+import { gipPricingStayInTransaction } from "./modules/37-ipu/seams/gip-pricing-stay";
 import { inpatientFacilityIdsForPeriodsForOrg } from "./modules/37-ipu/seams/inpatient-facilities-for-periods-for-org";
 import { ircPricingEpisodeInTransaction } from "./modules/37-ipu/seams/irc-pricing-episode";
 import { restraintAdmissionSitingForOrg } from "./modules/37-ipu/seams/restraint-admission-siting-for-org";
@@ -5623,6 +5625,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const m24IrcPricingEpisodeReader = dbHandle
     ? { readInTransaction: ircPricingEpisodeInTransaction }
     : undefined;
+  const m24GipPricingStayReader = dbHandle
+    ? { readInTransaction: gipPricingStayInTransaction }
+    : undefined;
+  const m24InHomeRespiteEvidenceReader = dbHandle
+    ? { readInTransaction: readInHomeRespiteForBillingInTransaction }
+    : undefined;
   // M24 → M40 (place-of-service follow-up) — `facility` is M40-owned/NON_ORG_SCOPED; same escape-valve
   // posture as `m24LocPeriodReader`, but NON_ORG_SCOPED so no org context. Batched by id so one claim assembly issues at most one query here.
   const m24FacilityKindReader = dbHandle
@@ -9026,6 +9034,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   },
                   m24ElectionHistoryReader,
                   m24IrcPricingEpisodeReader,
+                  m24GipPricingStayReader,
+                  m24InHomeRespiteEvidenceReader,
                 ),
                 chcPricingPreparationService: m24ChcPricingPreparationService,
               }),
@@ -12220,6 +12230,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       canonicalPayerReader: m24CanonicalPayerReader,
       electionHistoryReader: m24ElectionHistoryReader,
       ircEpisodeReader: m24IrcPricingEpisodeReader,
+      gipPricingStayReader: m24GipPricingStayReader,
+      inHomeRespiteEvidenceReader: m24InHomeRespiteEvidenceReader,
       patientAddresses: getSeam("PatientAddressReader") as PatientAddressReader,
       facilityKindReader: m24FacilityKindReader,
       chcPricingPreparations:

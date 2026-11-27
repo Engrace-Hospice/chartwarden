@@ -79,6 +79,8 @@ export interface EncounterEraseCounts {
   readonly amendments: number;
   /** ADR-0114 VN-D30: the cosignature requests amending addenda opened. */
   readonly addendumCosignatureRequests: number;
+  /** Delivered in-home respite evidence sourced from signed encounter notes. */
+  readonly inHomeRespiteEvidence: number;
 }
 
 /** What the satellite delete reports; `eraseEncounterRecord` adds the tombstoned roots from {@link EncounterEraseStore.tombstoneEncounters}. */
@@ -168,6 +170,7 @@ export function createInMemoryEncounterEraseStore(
     signedSections: 0,
     amendments: 0,
     addendumCosignatureRequests: 0,
+    inHomeRespiteEvidence: 0,
   };
   const { tombstonedRoots = 0, ...subtreeSeed } = seed;
   const counts: EncounterSubtreeCounts = { ...zero, ...subtreeSeed };
@@ -235,6 +238,7 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
   const SIGNED = schema.hearthnoteSignedSections;
   const AMEND = schema.encounterAmendments;
   const ADD_COSIGN = schema.addendumCosignatureRequests;
+  const RESPITE = schema.encounterInHomeRespiteEvidence;
 
   /** The patient's encounter-root ids — every satellite is keyed on `encounter_id`, not the patient. */
   const encounterIdsFor = async (tx: Tx, patientId: string): Promise<string[]> =>
@@ -324,6 +328,7 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
           signedSections: 0,
           amendments: 0,
           addendumCosignatureRequests: 0,
+          inHomeRespiteEvidence: 0,
         };
         if (encounterIds.length === 0) return zero; // idempotent: a second erase finds nothing.
         const addendumIds = await addendumIdsFor(tx, encounterIds);
@@ -429,6 +434,14 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
             .where(inArray(NUTRITION.encounterId, encounterIds))
             .returning({ id: NUTRITION.id }),
         );
+        const inHomeRespiteEvidence = await del(() =>
+          tx
+            .delete(RESPITE)
+            .where(
+              and(eq(RESPITE.organizationId, organizationId), eq(RESPITE.patientId, patientId)),
+            )
+            .returning({ id: RESPITE.id }),
+        );
 
         return {
           signatures,
@@ -448,6 +461,7 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
           signedSections,
           amendments,
           addendumCosignatureRequests,
+          inHomeRespiteEvidence,
         };
       });
     },

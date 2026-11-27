@@ -37,6 +37,7 @@ import {
   readEncounter,
 } from "./encounter-read-load";
 import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
+import { InHomeRespiteEvidencePanel } from "./in-home-respite-evidence-panel";
 import { NoteViewUnavailable } from "./note-view-unavailable";
 import {
   type FieldErrors,
@@ -1083,6 +1084,10 @@ export function EncounterRead(): JSX.Element {
                   </div>
                 )}
               </section>
+
+              {e.status === "signed" || e.status === "cosigned" ? (
+                <InHomeRespiteEvidencePanel encounterId={e.id} encounterStatus={e.status} />
+              ) : null}
 
               {/* ───────────────────────────────────────────────────────
                 2. VITALS

@@ -12233,6 +12233,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/encounters/{encounterId}/in-home-respite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read delivered in-home respite evidence derived from a signed encounter; this is clinical evidence only and does not establish pricing or institutional billing qualification */
+        get: operations["getApiV1EncountersByEncounterIdInhomerespite"];
+        put?: never;
+        /** Record delivered in-home respite evidence from a signed encounter after an authorized clinician attests to the documented service; no reimbursement or billing code is inferred */
+        post: operations["postApiV1EncountersByEncounterIdInhomerespite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/in-home-respite/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct an in-home respite service observation from its signed source encounter using an expected evidence version; the prior observation remains auditable */
+        post: operations["postApiV1EncountersByEncounterIdInhomerespiteCorrections"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/encounters/{encounterId}/late-entry-override": {
         parameters: {
             query?: never;
@@ -69539,6 +69574,152 @@ export interface operations {
                             status: "open" | "in_progress" | "completed" | "cancelled" | "auto_closed";
                             linked: boolean;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersByEncounterIdInhomerespite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        serviceId: string;
+                        version: number;
+                        /** Format: uuid */
+                        sourceEncounterId: string;
+                        sourceEncounterVersion: number;
+                        /** Format: date */
+                        serviceDate: string;
+                        /** Format: date-time */
+                        serviceStartedAt: string;
+                        /** Format: date-time */
+                        serviceEndedAt: string;
+                        observedDurationSeconds: number;
+                        timeSource: "evv" | "clinician";
+                        supersedesId: string | null;
+                        /** Format: uuid */
+                        recordedByMembershipId: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1EncountersByEncounterIdInhomerespite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        serviceId: string;
+                        version: number;
+                        /** Format: uuid */
+                        sourceEncounterId: string;
+                        sourceEncounterVersion: number;
+                        /** Format: date */
+                        serviceDate: string;
+                        /** Format: date-time */
+                        serviceStartedAt: string;
+                        /** Format: date-time */
+                        serviceEndedAt: string;
+                        observedDurationSeconds: number;
+                        timeSource: "evv" | "clinician";
+                        supersedesId: string | null;
+                        /** Format: uuid */
+                        recordedByMembershipId: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1EncountersByEncounterIdInhomerespiteCorrections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    serviceId: string;
+                    expectedVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        serviceId: string;
+                        version: number;
+                        /** Format: uuid */
+                        sourceEncounterId: string;
+                        sourceEncounterVersion: number;
+                        /** Format: date */
+                        serviceDate: string;
+                        /** Format: date-time */
+                        serviceStartedAt: string;
+                        /** Format: date-time */
+                        serviceEndedAt: string;
+                        observedDurationSeconds: number;
+                        timeSource: "evv" | "clinician";
+                        supersedesId: string | null;
+                        /** Format: uuid */
+                        recordedByMembershipId: string;
+                        /** Format: date-time */
+                        createdAt: string;
                     };
                 };
             };

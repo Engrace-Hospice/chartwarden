@@ -1169,7 +1169,7 @@ describe.skipIf(!DB_URL)(
                 charge_ceiling_method, charge_ceiling_boundary, quality_reporting_applicability,
                 quality_reporting_status,
                 verified_by_membership_id, recorded_by_membership_id)
-             VALUES ($1,$2,gen_random_uuid(),'managed_care','OR','CBSA-TEST','RHC','per_day',1,60,
+             VALUES ($1,$2,gen_random_uuid(),'managed_care','OR','CBSA-TEST','RHC','per_day',NULL,NULL,
                      10000,'cco_contract','verified','2026-01-01','doc:synthetic',now(),
                      'per_day','daily_units','not_applicable',NULL,1,'not_applicable','not_applicable',
                      'none','not_applicable','required','meets',
