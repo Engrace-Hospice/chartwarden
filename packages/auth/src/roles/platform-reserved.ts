@@ -80,6 +80,21 @@ export function expandSuperadminRoles(roles: readonly string[]): readonly string
   return [...new Set([...roles, ...SUPERSEDED_ADMIN_ROLE_KEYS, ...PLATFORM_GRANTABLE_ROLE_KEYS])];
 }
 
+/**
+ * The role keys left once platform authority is withheld (CW-AC-22: a request from outside `PLATFORM_CONSOLE_ALLOWED_CIDRS`): every
+ * reserved platform key goes ({@link isReservedPlatformRoleKey}, so `platform_alert_audience` too). A holder of `superadmin` also loses
+ * the `administrator` and `org_admin` it was expanded into ({@link expandSuperadminRoles}): after expansion a held `org_admin` and a
+ * superadmin's are the same key, so both go (fail closed). Pure; the input is not changed.
+ */
+export function withoutPlatformRoles(roles: readonly string[]): readonly string[] {
+  const droppedWithSuperadmin: readonly string[] = roles.includes(SUPERADMIN_ROLE_KEY)
+    ? SUPERSEDED_ADMIN_ROLE_KEYS
+    : [];
+  return roles.filter(
+    (role) => !isReservedPlatformRoleKey(role) && !droppedWithSuperadmin.includes(role),
+  );
+}
+
 /** The role category reserved to platform-owned roles. */
 export const RESERVED_PLATFORM_ROLE_CATEGORY = "platform_staff";
 

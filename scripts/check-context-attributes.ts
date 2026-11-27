@@ -119,6 +119,11 @@ export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
       "authenticate hook — the ONE patient the session is pinned to, resolved through `sessionPinnedPatientId` off the `scope` jsonb (so the CLASS decides, not the presence of a key). Legitimately null between mint and select-patient on a portal session (M31 §2.3 / D2), which is why the CHECK requires the ACCOUNT and not the patient; non-null from mint on collaborator/funeral. Retired three names for this one fact: M31/M19's `portalPatientId`, M19's `patientId` fallback beside it, and M7's `scopePatientIds` array.",
   },
 
+  platformAuthorityStripped: {
+    producer:
+      "platform console guard — `stripPlatformAuthority` (packages/auth/src/rbac/platform-authority-strip.ts), called from the onRequest guard in bootstrap/platform-console-allowlist.ts for a request outside PLATFORM_CONSOLE_ALLOWED_CIDRS that held a platform role (CW-AC-22); read through `PLATFORM_AUTHORITY_STRIPPED_ATTRIBUTE` by the effective-permission resolver (rbac/resolve.ts) and /me/permissions, which then answer without the platform roles' grants. Written by server code only, never from a header or body.",
+  },
+
   breakGlassEventId: {
     producer:
       "`requireAbac`'s break-glass branch (packages/auth/src/abac/require-abac.ts) — stamped onto the SAME attributes object the handler reads, by reference, when an emergency grant carries the call.",

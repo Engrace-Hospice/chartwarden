@@ -42,6 +42,7 @@
         "apps/backend/__tests__/m31-portal-signin.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts",
         "apps/backend/__tests__/m34-platform-alert-audience-no-authority.test.ts",
+        "apps/backend/__tests__/m34-platform-console.live.test.ts",
         "apps/backend/__tests__/m36-death-notifications.live.test.ts",
         "apps/backend/__tests__/m36-retention-governance.live.test.ts",
         "apps/backend/__tests__/m36-transactional-email.live.test.ts",
@@ -630,6 +631,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap-097-m33-schedule-authz.test.ts",
+        "apps/backend/__tests__/m34-platform-console.live.test.ts",
         "apps/backend/__tests__/m36-response-analytics.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/reporting-inject.test.ts"

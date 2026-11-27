@@ -97,6 +97,7 @@ export {
   RESERVED_PLATFORM_ROLE_PREFIX,
   SUPERADMIN_ROLE_KEY,
   expandSuperadminRoles,
+  withoutPlatformRoles,
   isPlatformGrantableRoleKey,
   isReservedPlatformRoleKey,
   isTenantRoleReserved,

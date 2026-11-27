@@ -4,6 +4,7 @@
 // (sessionId / sessionClass), never from a header; the shadow callback fires only after the response is sent; a
 // client-sent X-CW-Actor-Assertion never reaches the authenticate hook, a route, or the bridge.
 import {
+  PLATFORM_AUTHORITY_STRIPPED_ATTRIBUTE,
   createInMemoryEffectivePermissionStore,
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
@@ -42,6 +43,10 @@ function makeServer(bridge?: AuthzRouteDeps["mePermissionsBridge"]) {
     // The real authenticate hook stamps these (bootstrap/plugins/authenticate.ts).
     request.context.attributes.sessionId = "sess-123";
     request.context.attributes.sessionClass = "staff";
+    // What the platform console guard does to a platform operator's request from outside the allowlist (CW-AC-22).
+    if (request.headers["x-test-stripped"] === "1") {
+      request.context.attributes[PLATFORM_AUTHORITY_STRIPPED_ATTRIBUTE] = true;
+    }
   };
   const grants = createInMemoryEffectivePermissionStore([
     {
@@ -93,6 +98,28 @@ describe("CW-RUST-M02 bridge at GET /api/v1/me/permissions", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ permissions: KEYS });
+    await app.close();
+  });
+
+  it("a request whose platform authority was withheld (CW-AC-22) is answered by Bun alone: Rust reads the grants itself, so it never reaches the bridge", async () => {
+    let calls = 0;
+    const { app } = makeServer({
+      handle: async (i) => {
+        calls++;
+        return i.bun();
+      },
+    });
+    const stripped = await app.inject({
+      method: "GET",
+      url: "/api/v1/me/permissions",
+      headers: { ...AS_USER, "x-test-stripped": "1" },
+    });
+    expect(stripped.statusCode).toBe(200);
+    expect(stripped.json()).toEqual({ permissions: KEYS });
+    expect(calls).toBe(0);
+    // The same user's ordinary request still goes through the bridge.
+    await app.inject({ method: "GET", url: "/api/v1/me/permissions", headers: AS_USER });
+    expect(calls).toBe(1);
     await app.close();
   });
 

@@ -15,6 +15,7 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
+  stripPlatformAuthority,
 } from "@chartwarden/auth";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -319,6 +320,8 @@ function headerAuth(request: FastifyRequest): void {
   request.context.attributes.actorKind = PERSONAS[user]?.actorKind ?? "user";
   request.context.organizationId = ORG;
   request.context.roles = PERSONAS[user]?.roles ? [...PERSONAS[user]!.roles!] : ["rn"];
+  // What the platform console guard does to a request from outside PLATFORM_CONSOLE_ALLOWED_CIDRS (CW-AC-22), through the real helper.
+  if (request.headers["x-test-stripped"] === "1") stripPlatformAuthority(request.context);
 }
 
 const PERSONAS: Record<string, Persona> = {
@@ -334,6 +337,12 @@ const PERSONAS: Record<string, Persona> = {
     roles: expandSuperadminRoles(["superadmin"]),
   },
   platform_operator: { licensed: false, consent: false, roles: ["platform_ops"] },
+  // A platform operator who ALSO holds a real tenant administrator row (a platform home org, a single-tenant deployment).
+  platform_operator_tenant_admin: {
+    licensed: false,
+    consent: false,
+    roles: ["platform_ops", "administrator"],
+  },
   ai_administrator: {
     licensed: false,
     consent: false,
@@ -564,6 +573,27 @@ describe("GAP-067 — DocLens review routes compose the Part 2 need-to-know chec
       expect(workspace.json().sud.contentRedacted).toBe(true);
 
       const page = await app.inject({ method: "GET", url: imageUrl, headers: as(user) });
+      expect(page.statusCode).toBe(403);
+      expect(calls.renders).toBe(0);
+    },
+  );
+
+  it.each([
+    ["from the console's own network", {}],
+    [
+      "from outside PLATFORM_CONSOLE_ALLOWED_CIDRS, where the platform roles are stripped",
+      { "x-test-stripped": "1" },
+    ],
+  ])(
+    "a platform operator who also holds a tenant administrator role is denied the Part 2 bypass %s (a strip must not turn the denial into an admit)",
+    async (_where, extra) => {
+      const { app, calls } = makeServer("confirmed");
+      const headers = { ...as("platform_operator_tenant_admin"), ...extra };
+      const workspace = await app.inject({ method: "GET", url: workspaceUrl, headers });
+      expect(workspace.statusCode).toBe(200);
+      expect(workspace.json().sud.contentRedacted).toBe(true);
+
+      const page = await app.inject({ method: "GET", url: imageUrl, headers });
       expect(page.statusCode).toBe(403);
       expect(calls.renders).toBe(0);
     },
