@@ -3334,6 +3334,244 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     });
   });
 
+  describe("interest, PLB L6, partial lines, a mixed two-set file and unrecognised segments through the real parser (CW-PI-03)", () => {
+    // Synthetic only. Every file goes through the REAL in-process parser, the REAL receive/post pair, the REAL
+    // catalog-validating outbox publisher and the NOBYPASSRLS app role; nothing says how a real MAC formats a remittance.
+    const NPI = "1234567893";
+    const actor: M25IngestActor = { organizationId: ORG_A };
+    const outboxPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M25_OUTBOX_EVENTS]));
+    const outbox: WriteOutboxPort = {
+      publish: (tx, emission) =>
+        outboxPublisher.publish(tx as never, { ...emission, callerModule: "m25" }),
+    };
+
+    const setBody = (trace: string, bpr: string, ...claim: string[]): string[] => [
+      `BPR*I*${bpr}*C*ACH*CCP*01*999999992*DA*123456789*1512345678**01*999988880*DA*98765*20260615`,
+      `TRN*1*${trace}*1512345678`,
+      "N1*PR*SYNTHETIC MAC",
+      `N1*PE*SYNTH HOSPICE*XX*${NPI}`,
+      "LX*1",
+      ...claim,
+    ];
+    const seg = (st02: string, body: readonly string[]) =>
+      `${body.map((x) => `${x}~`).join("")}SE*${body.length + 2}*${st02}~`;
+    function ediOf(
+      isa13: string,
+      sets: readonly { st02: string; body: readonly string[] }[],
+    ): string {
+      const [first, ...rest] = sets;
+      if (!first) throw new Error("need a set");
+      return `${buildRawEdi(isa13, first.st02)}${seg(first.st02, first.body)}${rest
+        .map((s) => `ST*835*${s.st02}~${seg(s.st02, s.body)}`)
+        .join("")}GE*${sets.length}*1~IEA*1*${isa13.padStart(9, "0")}~`;
+    }
+    const input = (key: string, raw: string): ReceiveAdviceInput => ({
+      providerEntityId: PE_A,
+      payerId: PAYER,
+      payerKind: "medicare",
+      objectKey: key,
+      fileSha256: sha256Hex(raw),
+      rawEdi: raw,
+    });
+    const serviceFor = (raw: string, client?: X12835WorkerClient) =>
+      buildDrizzleM25IngestService(handle.db, {
+        client: client ?? createX12835Client({ readRaw: async () => raw }),
+        terminology: fakeTerminology({}),
+        claims: { medicare: fakeClaims({}, {}) },
+        payeeNpi: async () => NPI,
+        outbox,
+      });
+    const advicesOf = async (isa13: string) =>
+      (
+        await admin.query(
+          "SELECT id, transaction_set_control_number AS st FROM remittance_advice WHERE interchange_control_number=$1 ORDER BY 2",
+          [isa13],
+        )
+      ).rows as { id: string; st: string }[];
+    /** sum(CLP04) - PLB = BPR02, decided in SQL on the stored numerics. */
+    const ledgerOf = async (adviceId: string) =>
+      (
+        await admin.query(
+          `SELECT a.total_payment_amount::text AS bpr, a.plb_total_amount::text AS plb,
+                  sum(l.clp04_total_payment_amount)::text AS paid,
+                  (sum(l.clp04_total_payment_amount) - a.plb_total_amount = a.total_payment_amount) AS balanced
+             FROM remittance_advice a JOIN remittance_line l ON l.remittance_advice_id = a.id
+            WHERE a.id=$1 GROUP BY a.total_payment_amount, a.plb_total_amount`,
+          [adviceId],
+        )
+      ).rows[0] as { bpr: string; plb: string; paid: string; balanced: boolean };
+
+    // Two partial service lines: 600.00 paid 500.00 (PR 60.00, CO 40.00) and 400.00 paid 300.00 (PR 40.00, CO 60.00).
+    const PARTIAL_LINES = (icn: string): string[] => [
+      `CLP*PCN-${icn}*1*1000.00*800.00*100.00*MC*${icn}`,
+      "SVC*HC:Q5001*600.00*500.00",
+      "CAS*PR*2*60.00",
+      "CAS*CO*45*40.00",
+      "SVC*HC:Q5002*400.00*300.00",
+      "CAS*PR*2*40.00",
+      "CAS*CO*45*60.00",
+    ];
+    const INTEREST_CLAIM = (icn: string): string[] => [
+      `CLP*PCN-${icn}*1*500.00*500.00*0.00*MC*${icn}`,
+      "AMT*I*12.34",
+      "SVC*HC:Q5001*500.00*500.00",
+    ];
+    const L6 = "PLB*1512345678*20261231*L6:INT-PI03*-12.34";
+
+    it("posts partial service lines whose BPR02 carries interest as a negative PLB L6, and the ledger identity holds", async () => {
+      const raw = ediOf("000008101", [
+        { st02: "8101", body: setBody("EFT-PI03-A", "812.34", ...PARTIAL_LINES("ICN-PI03-A"), L6) },
+      ]);
+      const service = serviceFor(raw);
+
+      const received = await service.receiveAdvice(actor, input("minio/pi03-l6.835", raw));
+      expect(received.outcome).toBe("queued");
+      if (received.outcome !== "queued") return;
+      const posted = await service.postAdvice(actor, received.adviceId);
+
+      expect(["posted", "partial_posted"]).toContain(posted.outcome);
+      expect(await ledgerOf(received.adviceId)).toEqual({
+        bpr: "812.34",
+        plb: "-12.34",
+        paid: "800.00",
+        balanced: true,
+      });
+      const lines = await admin.query(
+        `SELECT count(DISTINCT s.id)::int AS service_lines, COALESCE(sum(x.adjustment_amount), 0)::text AS adjusted
+           FROM remittance_service_line s
+           JOIN remittance_line l ON s.remittance_line_id = l.id
+           LEFT JOIN remittance_adjustment x ON x.remittance_service_line_id = s.id
+          WHERE l.remittance_advice_id=$1`,
+        [received.adviceId],
+      );
+      expect(lines.rows[0]).toEqual({ service_lines: 2, adjusted: "200.00" });
+    });
+
+    it("validates a claim-level AMT*I but never posts it: the advice carries no PLB and the line pays what CLP04 says", async () => {
+      const raw = ediOf("000008102", [
+        { st02: "8102", body: setBody("EFT-PI03-B", "500.00", ...INTEREST_CLAIM("ICN-PI03-B")) },
+      ]);
+      const service = serviceFor(raw);
+
+      const received = await service.receiveAdvice(actor, input("minio/pi03-amt-i.835", raw));
+      expect(received.outcome).toBe("queued");
+      if (received.outcome !== "queued") return;
+      await service.postAdvice(actor, received.adviceId);
+
+      expect(await ledgerOf(received.adviceId)).toEqual({
+        bpr: "500.00",
+        plb: "0.00",
+        paid: "500.00",
+        balanced: true,
+      });
+    });
+
+    it("refuses a BPR02 that includes the AMT*I interest before anything is stored", async () => {
+      const raw = ediOf("000008103", [
+        { st02: "8103", body: setBody("EFT-PI03-C", "512.34", ...INTEREST_CLAIM("ICN-PI03-C")) },
+      ]);
+
+      const result = await serviceFor(raw).receiveAdvice(
+        actor,
+        input("minio/pi03-amt-i-in-bpr.835", raw),
+      );
+
+      expect(result).toMatchObject({ outcome: "malformed", cause: "content" });
+      expect((result as { reason: string }).reason).toContain("BPR02 512.34 != sum(CLP04)");
+      expect(await advicesOf("000008103")).toEqual([]);
+    });
+
+    it("queues and posts each set of a mixed two-set file from its own facts, each ledger balanced on its own", async () => {
+      const raw = ediOf("000008104", [
+        {
+          st02: "8104",
+          body: setBody("EFT-PI03-D1", "812.34", ...PARTIAL_LINES("ICN-PI03-D1"), L6),
+        },
+        { st02: "8105", body: setBody("EFT-PI03-D2", "500.00", ...INTEREST_CLAIM("ICN-PI03-D2")) },
+      ]);
+      const service = serviceFor(raw);
+
+      const received = await service.receiveAdvice(actor, input("minio/pi03-two-sets.835", raw));
+      expect(received.outcome).toBe("queued");
+
+      const advices = await advicesOf("000008104");
+      expect(advices.map((a) => a.st)).toEqual(["8104", "8105"]);
+      const ledgers = [];
+      for (const a of advices) {
+        const posted = await service.postAdvice(actor, a.id);
+        expect(["posted", "partial_posted"]).toContain(posted.outcome);
+        ledgers.push(await ledgerOf(a.id));
+      }
+      expect(ledgers).toEqual([
+        { bpr: "812.34", plb: "-12.34", paid: "800.00", balanced: true },
+        { bpr: "500.00", plb: "0.00", paid: "500.00", balanced: true },
+      ]);
+    });
+
+    it("refuses the whole file when its second set carries a segment the parser does not model, storing nothing", async () => {
+      const raw = ediOf("000008106", [
+        { st02: "8106", body: setBody("EFT-PI03-E1", "500.00", ...INTEREST_CLAIM("ICN-PI03-E1")) },
+        {
+          st02: "8107",
+          body: setBody(
+            "EFT-PI03-E2",
+            "500.00",
+            "TS3*1999999999*11*20261231*1*500.00",
+            ...INTEREST_CLAIM("ICN-PI03-E2"),
+          ),
+        },
+      ]);
+
+      const result = await serviceFor(raw).receiveAdvice(actor, input("minio/pi03-ts3.835", raw));
+
+      expect(result).toMatchObject({ outcome: "malformed", cause: "content" });
+      expect((result as { reason: string }).reason).toContain("does not model (TS3)");
+      expect(await advicesOf("000008106")).toEqual([]);
+    });
+
+    it("re-judges an advice queued before the refusal existed at post: it fails (replayable) and posts nothing", async () => {
+      const raw = ediOf("000008108", [
+        { st02: "8108", body: setBody("EFT-PI03-F", "500.00", ...INTEREST_CLAIM("ICN-PI03-F")) },
+      ]);
+      const clean = createX12835Client({ readRaw: async () => raw });
+      const received = await serviceFor(raw, clean).receiveAdvice(
+        actor,
+        input("minio/pi03-queued-before.835", raw),
+      );
+      expect(received.outcome).toBe("queued");
+      if (received.outcome !== "queued") return;
+      // The same file as a parser that reports a TS3 segment would hand it back.
+      const strict: X12835WorkerClient = {
+        ...clean,
+        parse835: async (request) => {
+          const parsed = await clean.parse835(request);
+          return parsed.ok
+            ? {
+                ok: true,
+                value: {
+                  ...parsed.value,
+                  unknownSegments: [{ segmentId: "TS3", elements: ["1"] }],
+                },
+              }
+            : parsed;
+        },
+      };
+
+      const failed = await serviceFor(raw, strict).postAdvice(actor, received.adviceId);
+
+      expect(failed).toMatchObject({ outcome: "failed" });
+      expect((failed as { reason: string }).reason).toContain("does not model (TS3)");
+      expect(await lineCount(received.adviceId)).toBe(0);
+      const status = await admin.query("SELECT parse_status FROM remittance_advice WHERE id=$1", [
+        received.adviceId,
+      ]);
+      expect(status.rows[0].parse_status).toBe("failed");
+
+      const replayed = await serviceFor(raw, clean).postAdvice(actor, received.adviceId);
+      expect(["posted", "partial_posted"]).toContain(replayed.outcome);
+    });
+  });
+
   describe("payee TIN through M1's reader + M2's tax-id cipher (#671)", () => {
     const TENANT_NPI = "1234567893";
     const TIN = "123456789";

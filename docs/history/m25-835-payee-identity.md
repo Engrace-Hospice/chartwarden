@@ -29,6 +29,18 @@ Claim.MD staging, identity resolution, controlled review, and commercial payer r
 
 Follow-up work must provide authorized de-identified MAC 835s and the applicable companion-guide passages for financial/date validation; a governed provider-payer enrollment capability for PTAN evidence; and business confirmation before implementing multi-ISA or mixed-transaction dispatch. No PTAN schema or multi-ISA behavior is added here.
 
+## CW-PI-03: synthetic variants and unrecognised input
+
+The matrix of documented variants is pinned in `packages/x12-835-client/__tests__/parse-x12-835-variants.test.ts` (partial service lines, every CAS group and up to six triplets, AMT*I versus PLB L6, several ST/SE sets) and, through receive and post as the app role, in the CW-PI-03 block of `m25-835-ingestion.live.test.ts`. They pin today's behavior on synthetic files; none is a reading of the implementation guide.
+
+Refusals added with it (each fails closed, with a PHI-free reason):
+
+- A segment outside the modelled set (`unknownSegments`: TS3, TS2, CUR, RDM or a vendor segment) refuses the whole file at receive (a content refusal, so it counts toward the pull's quarantine cap) and fails an advice queued earlier at post (replayable). Before, only Claim.MD controlled posting refused it; the receive and post paths posted the file silently. `LX` is modelled (shape-checked, no amount), so it no longer shows as unknown. Whether real MAC files carry TS3 or the like is unknown until real files are seen (TS3 is a legal 5010 segment and a Medicare Part A MAC may send it on every file); such a file is refused, never posted, until the segment is modelled against the guide. The refusal is judged after the payee check, so a file addressed to another tenant stays an environment refusal (pinned and loud) even when it also carries such a segment. The pull's quarantine code for it is the generic `RECEIVE_REFUSED` and its alert does not name the segment; the reason (segment ids only) is in the receive result.
+- A side effect: `LX` was an unmodelled segment, so Claim.MD controlled posting blocked any 835 that carried one (`M25_POSTING_FACTS_UNSUPPORTED`). It is now modelled (header number, no amount), so an `LX` alone no longer blocks it.
+- A CAS with more than six reason triplets (the seventh used to be dropped with its amount), a CAS reason code that is not 1-5 alphanumerics, a PLB reason code that is not two characters, and an LX01 that is not 1-6 digits.
+
+Unchanged and still not certified: AMT*I is validated and never added to a payment, and is not reconciled against PLB L6; BPR02 = 0 with BPR04 other than NON is accepted. Validating them needs real files: [`m25-835-real-file-intake.md`](../runbooks/m25-835-real-file-intake.md).
+
 ## Validation evidence
 
 All evidence below uses synthetic fixtures and an isolated private PostgreSQL database. The migration output was executed by the maintainer from `fix/m25-671-final-integration` after verifying that branch and the migration test's 1508 references.
