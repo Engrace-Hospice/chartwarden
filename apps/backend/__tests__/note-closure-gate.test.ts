@@ -17,12 +17,15 @@ import {
   NOTE_CLOSURE_EVALUATION_BUDGET_PER_SECOND,
   NOTE_CLOSURE_EVALUATION_TIMEOUT_MS,
   NOTE_CLOSURE_FAILURE_LOG_INTERVAL_MS,
+  NOTE_CLOSURE_MEMBER_REFUSAL_AUDIT_INTERVAL_MS,
+  NOTE_CLOSURE_MEMBER_REFUSAL_MAX_ENTRIES,
   NOTE_CLOSURE_POLICY_STALE_MS,
   NOTE_CLOSURE_REFUSAL_LOG_INTERVAL_MS,
   NOTE_CLOSURE_REQUIRED_CODE,
   NOTE_CLOSURE_UNAVAILABLE_CODE,
   type NoteClosureGateEvaluation,
   type NoteClosureGateRequest,
+  type NoteClosureMemberRefusal,
   createNoteClosureGate,
   noteClosureMayCall,
 } from "../src/bootstrap/note-closure-gate";
@@ -69,6 +72,8 @@ function harness(options: {
   mode?: DocumentationObligationMode | "bogus";
   evaluation?: () => Promise<NoteClosureGateEvaluation>;
   policy?: () => Promise<{ mode: DocumentationObligationMode }>;
+  /** What the per-member refusal audit sink does (default: resolves). */
+  memberSink?: (refusal: NoteClosureMemberRefusal) => void | Promise<void>;
   timers?: { set: (callback: () => void, ms: number) => unknown; clear: (handle: unknown) => void };
 }) {
   let nowMs = NOW.getTime();
@@ -79,12 +84,14 @@ function harness(options: {
   const evaluate = vi.fn(options.evaluation ?? (async () => blocked));
   const onFailure = vi.fn();
   const onRefusal = vi.fn();
+  const onMemberRefusal = vi.fn(options.memberSink ?? (async () => {}));
   const gate = createNoteClosureGate({
     policyCache: { get },
     evaluate,
     now: () => new Date(nowMs),
     onFailure,
     onRefusal,
+    onMemberRefusal,
     ...(options.timers ? { timers: options.timers } : {}),
   });
   return {
@@ -93,6 +100,7 @@ function harness(options: {
     evaluate,
     onFailure,
     onRefusal,
+    onMemberRefusal,
     advance: (ms: number) => {
       nowMs += ms;
     },
@@ -834,7 +842,7 @@ describe("the gate - a hung evaluation cannot poison a member (deadline)", () =>
     const { all, scheduled, timers } = fakeTimers();
     const h = harness({ timers });
     await refusalOf(h.gate.assertMayCall(request())); // resolves blocked
-    expect(all).toHaveLength(2); // the policy read's and the evaluation's
+    expect(all).toHaveLength(3); // the policy read's, the evaluation's and the refusal audit sink's (CW-AC-47)
     expect(all.every((timer) => timer.cleared)).toBe(true);
     expect(scheduled).toHaveLength(0);
     const failing = fakeTimers();
@@ -919,6 +927,172 @@ describe("the gate - a hung evaluation cannot poison a member (deadline)", () =>
     await hung;
     slow.resolve(blocked); // arrives too late
     await expect(h.gate.assertMayCall(request())).resolves.toBeUndefined();
+  });
+});
+
+describe("the gate - a refusal is tied to its member in the audit trail (CW-AC-47)", () => {
+  const first = (h: ReturnType<typeof harness>): NoteClosureMemberRefusal =>
+    h.onMemberRefusal.mock.calls[0]?.[0] as NoteClosureMemberRefusal;
+
+  it("reports the first refusal of a member with who, which note, which route template and how many it stands for", async () => {
+    const h = harness({});
+    await refusalOf(h.gate.assertMayCall(request()));
+    expect(h.onMemberRefusal).toHaveBeenCalledTimes(1);
+    expect(first(h)).toEqual({
+      organizationId: ORG,
+      userId: USER,
+      membershipId: MEMBER,
+      encounterId: ENCOUNTER,
+      overdueCount: 3,
+      method: "GET",
+      routeTemplate: BLOCKED_ROUTE.routeTemplate,
+      refused: 1,
+    });
+  });
+
+  it("records the route TEMPLATE the router matched, never the URL the caller sent", async () => {
+    const h = harness({});
+    await refusalOf(
+      h.gate.assertMayCall(
+        request({
+          method: "post",
+          routeTemplate: "/api/v1/patients/:patientId/billing",
+          rawUrl: "/api/v1/patients/9d3f0000-0000-4000-8000-000000000000/billing?x=1",
+        }),
+      ),
+    );
+    expect(first(h)).toMatchObject({
+      method: "POST",
+      routeTemplate: "/api/v1/patients/:patientId/billing",
+    });
+    expect(JSON.stringify(first(h))).not.toContain("9d3f0000");
+  });
+
+  it("holds the rest of the member's refusals back and carries them in the next event after the interval", async () => {
+    const h = harness({});
+    for (let i = 0; i < 5; i++) await refusalOf(h.gate.assertMayCall(request()));
+    expect(h.onMemberRefusal).toHaveBeenCalledTimes(1);
+    h.advance(NOTE_CLOSURE_MEMBER_REFUSAL_AUDIT_INTERVAL_MS - 1);
+    await refusalOf(h.gate.assertMayCall(request()));
+    expect(h.onMemberRefusal).toHaveBeenCalledTimes(1); // one millisecond short of the interval
+    h.advance(1);
+    await refusalOf(h.gate.assertMayCall(request()));
+    expect(h.onMemberRefusal).toHaveBeenCalledTimes(2);
+    expect(h.onMemberRefusal.mock.calls[1]?.[0]).toMatchObject({ refused: 6 }); // the 5 held back + this one
+  });
+
+  it("throttles per organization AND member: another member, and the same membership id in another organization, each get their own event", async () => {
+    const h = harness({});
+    await refusalOf(h.gate.assertMayCall(request()));
+    await refusalOf(h.gate.assertMayCall(request({ membershipId: OTHER_MEMBER })));
+    await refusalOf(h.gate.assertMayCall(request({ organizationId: OTHER_ORG })));
+    expect(h.onMemberRefusal).toHaveBeenCalledTimes(3);
+  });
+
+  it("writes nothing for a pass, an allowlisted route, an off or warn policy, a 503 and a 429", async () => {
+    const pass = harness({ evaluation: async () => clear() });
+    await pass.gate.assertMayCall(request());
+    await pass.gate.assertMayCall(
+      request({ ...ALLOWED_ROUTE, rawUrl: ALLOWED_ROUTE.routeTemplate }),
+    );
+    for (const mode of ["off", "warn"] as const) {
+      const h = harness({ mode });
+      await h.gate.assertMayCall(request());
+      expect(h.onMemberRefusal).not.toHaveBeenCalled();
+    }
+    const down = harness({
+      evaluation: async () => {
+        throw new Error("db down");
+      },
+    });
+    await refusalOf(down.gate.assertMayCall(request()));
+    expect(pass.onMemberRefusal).not.toHaveBeenCalled();
+    expect(down.onMemberRefusal).not.toHaveBeenCalled();
+    // over the evaluation budget: the 429 is not a refusal of the control, so it adds no event to the one the first refusal wrote
+    const limited = harness({});
+    for (let i = 0; i < NOTE_CLOSURE_EVALUATION_BUDGET_PER_SECOND; i++) {
+      await refusalOf(limited.gate.assertMayCall(request()));
+    }
+    await expect(limited.gate.assertMayCall(request())).rejects.toBeInstanceOf(RateLimitedError);
+    expect(limited.onMemberRefusal).toHaveBeenCalledTimes(1);
+  });
+
+  it("is awaited before the 403 is answered, so the event is written when the caller sees the refusal", async () => {
+    const order: string[] = [];
+    const h = harness({
+      memberSink: async () => {
+        await Promise.resolve();
+        order.push("audit written");
+      },
+    });
+    await refusalOf(h.gate.assertMayCall(request()).finally(() => order.push("refusal answered")));
+    expect(order).toEqual(["audit written", "refusal answered"]);
+  });
+
+  it("never turns the refusal into anything else when the sink throws or rejects", async () => {
+    for (const memberSink of [
+      () => {
+        throw new Error("audit write failed");
+      },
+      async () => {
+        throw new Error("audit write failed");
+      },
+    ]) {
+      const h = harness({ memberSink });
+      const error = await refusalOf(h.gate.assertMayCall(request()));
+      expect(error.code).toBe(NOTE_CLOSURE_REQUIRED_CODE);
+      expect(error.statusCode).toBe(403);
+    }
+  });
+
+  it("gives up on a sink that never settles after the evaluation deadline, and still answers 403", async () => {
+    const scheduled: { callback: () => void; ms: number }[] = [];
+    const h = harness({
+      memberSink: () => new Promise<void>(() => {}),
+      timers: {
+        set: (callback, ms) => {
+          scheduled.push({ callback, ms });
+          return scheduled.length;
+        },
+        clear: () => {},
+      },
+    });
+    const refusal = refusalOf(h.gate.assertMayCall(request()));
+    await vi.waitFor(() => expect(h.onMemberRefusal).toHaveBeenCalledTimes(1));
+    const sinkTimer = scheduled.at(-1);
+    expect(sinkTimer?.ms).toBe(NOTE_CLOSURE_EVALUATION_TIMEOUT_MS);
+    sinkTimer?.callback();
+    expect((await refusal).code).toBe(NOTE_CLOSURE_REQUIRED_CODE);
+  });
+
+  it("the EVV offline-sync path (assertNotBlocked) reports the refusal with no route", async () => {
+    const h = harness({});
+    await refusalOf(
+      h.gate.assertNotBlocked({ organizationId: ORG, userId: USER, membershipId: MEMBER }),
+    );
+    expect(first(h)).toMatchObject({ method: null, routeTemplate: null, refused: 1 });
+  });
+
+  it("is optional: a gate built without the sink refuses exactly as before", async () => {
+    const gate = createNoteClosureGate({
+      policyCache: { get: async () => ({ mode: "block" as const }) },
+      evaluate: async () => blocked,
+    });
+    expect((await refusalOf(gate.assertMayCall(request()))).code).toBe(NOTE_CLOSURE_REQUIRED_CODE);
+  });
+
+  it(`tracks at most ${NOTE_CLOSURE_MEMBER_REFUSAL_MAX_ENTRIES} members per interval: a full map of live ones leaves a new member unaudited (the counter and the log still count it), and expired ones make room`, async () => {
+    const h = harness({});
+    const memberN = (n: number) => `33333333-3333-4333-8333-${String(n).padStart(12, "0")}`;
+    for (let n = 0; n < NOTE_CLOSURE_MEMBER_REFUSAL_MAX_ENTRIES; n++) {
+      await refusalOf(h.gate.assertMayCall(request({ membershipId: memberN(n) })));
+    }
+    expect(h.onMemberRefusal).toHaveBeenCalledTimes(NOTE_CLOSURE_MEMBER_REFUSAL_MAX_ENTRIES);
+    await refusalOf(h.gate.assertMayCall(request({ membershipId: memberN(999_999) })));
+    expect(h.onMemberRefusal).toHaveBeenCalledTimes(NOTE_CLOSURE_MEMBER_REFUSAL_MAX_ENTRIES); // not tracked, not audited
+    h.advance(NOTE_CLOSURE_MEMBER_REFUSAL_AUDIT_INTERVAL_MS);
+    await refusalOf(h.gate.assertMayCall(request({ membershipId: memberN(999_999) })));
+    expect(h.onMemberRefusal).toHaveBeenCalledTimes(NOTE_CLOSURE_MEMBER_REFUSAL_MAX_ENTRIES + 1);
   });
 });
 
