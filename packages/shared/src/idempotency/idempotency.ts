@@ -84,25 +84,37 @@ export type IdempotencyRecord =
 
 /**
  * Storage port (Valkey / Postgres `idempotency_key`) injected at boot. `putPending` is the
- * atomic CLAIM: it resolves `true` when THIS caller now owns the key (no record existed, or the
- * existing one had expired and was reclaimed) and `false` when another caller holds a live
- * record. A caller that loses the claim must not run the handler; it reloads and replays or
- * reports in-flight (GAP-007).
+ * atomic CLAIM: it returns a unique generation token when THIS caller owns the key (no record
+ * existed, or an expired completed response was reclaimed) and `null` when another caller owns
+ * the key. Pending claims never expire automatically: an unknown outcome must be reconciled before
+ * the key is made runnable again. A caller that loses the claim must not run the handler; it reloads
+ * and replays or reports in-flight (GAP-007 / CW-AC-36).
  */
 export interface IdempotencyStore {
   load(organizationId: string, key: string): Promise<IdempotencyRecord | null>;
-  putPending(organizationId: string, key: string, requestHash: string): Promise<boolean>;
-  complete(organizationId: string, key: string, response: IdempotentResponse): Promise<void>;
+  putPending(organizationId: string, key: string, requestHash: string): Promise<string | null>;
+  complete(
+    organizationId: string,
+    key: string,
+    claimId: string,
+    response: IdempotentResponse,
+  ): Promise<void>;
   /**
    * Drops the caller's own still-`pending` claim so the SAME key can run again. For a failure that must not be
    * replayed because NOTHING of the request committed (a deadlock/serialization 409, a 5xx that followed no durable write; the
    * HTTP middleware proves that with the per-request commit tracker before it calls this): caching it would answer every
    * retry with the failure for the whole TTL while the write never ran. A failure that followed a commit is completed, not
-   * released: re-running it would write twice. Only the claimant's row goes: a row that is no longer `pending`, or whose
-   * `requestHash` is another claimant's, is left alone. If this call fails the key stays `pending` until its TTL.
+   * released: re-running it would write twice. Only the exact claim generation goes: a row that is no longer `pending`,
+   * belongs to a newer claim, or whose `requestHash` differs is left alone. If this call fails the key stays pending until
+   * it is reconciled; elapsed TTL alone never makes an unknown outcome retryable.
    */
-  release(organizationId: string, key: string, requestHash: string): Promise<void>;
+  release(organizationId: string, key: string, claimId: string, requestHash: string): Promise<void>;
 }
+
+/** The result of the atomic claim: this request owns a generation, or it must replay the winner. */
+export type IdempotencyClaimResult =
+  | { readonly kind: "claimed"; readonly claimId: string }
+  | { readonly kind: "replay"; readonly response: IdempotentResponse };
 
 /** The one `Idempotency-Key`-reused-with-a-different-body error (409 IDEMPOTENCY_CONFLICT, SEC-025). */
 export { IdempotencyConflictError };
@@ -169,8 +181,8 @@ function replay(record: IdempotencyRecord, key: string, requestHash: string): Id
 }
 
 /**
- * Claim `(organizationId, key)` for a request fingerprinted `requestHash`. Resolves `null` when THIS caller
- * now owns the key and must run the handler (then `store.complete` it); otherwise resolves the cached
+ * Claim `(organizationId, key)` for a request fingerprinted `requestHash`. Returns a generation token when THIS caller
+ * owns the key and must run the handler (then `store.complete` that exact generation); otherwise returns the cached
  * response to replay. Throws {@link IdempotencyConflictError} for a different body,
  * {@link IdempotencyKeyStaleError} for a record under another server key, and
  * {@link IdempotencyInFlightError} while the first request is still pending, and {@link IdempotencyKeyStuckError} once it has been
@@ -183,12 +195,13 @@ export async function claimIdempotencyKey(
   organizationId: string,
   key: string,
   requestHash: string,
-): Promise<IdempotentResponse | null> {
+): Promise<IdempotencyClaimResult> {
   const existing = await store.load(organizationId, key);
-  if (existing) return replay(existing, key, requestHash);
-  if (await store.putPending(organizationId, key, requestHash)) return null;
+  if (existing) return { kind: "replay", response: replay(existing, key, requestHash) };
+  const claimId = await store.putPending(organizationId, key, requestHash);
+  if (claimId) return { kind: "claimed", claimId };
   const winner = await store.load(organizationId, key);
-  if (winner) return replay(winner, key, requestHash);
+  if (winner) return { kind: "replay", response: replay(winner, key, requestHash) };
   throw new IdempotencyInFlightError(key);
 }
 
@@ -208,9 +221,9 @@ export async function runIdempotent(
   hmacKey: string | Uint8Array,
 ): Promise<IdempotentResponse> {
   const requestHash = computeIdempotencyHash(organizationId, key, body, hmacKey);
-  const cached = await claimIdempotencyKey(store, organizationId, key, requestHash);
-  if (cached) return cached;
+  const claim = await claimIdempotencyKey(store, organizationId, key, requestHash);
+  if (claim.kind === "replay") return claim.response;
   const response = await handler();
-  await store.complete(organizationId, key, response);
+  await store.complete(organizationId, key, claim.claimId, response);
   return response;
 }

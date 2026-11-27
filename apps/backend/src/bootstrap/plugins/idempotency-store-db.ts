@@ -9,12 +9,13 @@
 // The write surfaces that REQUIRE the header (M23 claim submit, M26 settlement finalize, M30) are the
 // ones where a duplicate is a duplicated claim or a duplicated settlement, not a cosmetic repeat.
 //
-// ATOMICITY is the whole contract: `putPending` is the claim and RETURNS whether it won, so two
+// ATOMICITY is the whole contract: `putPending` is the claim and RETURNS a generation id when it wins, so two
 // concurrent duplicates serialize. That is delegated to Postgres via the `idempotency_org_key_idx`
-// UNIQUE index and `ON CONFLICT DO UPDATE ... WHERE expires_at <= now() RETURNING id` — the loser gets
+// UNIQUE index and `ON CONFLICT DO UPDATE ... WHERE state = 'complete' AND expires_at <= now() RETURNING id` — the loser gets
 // zero rows back (GAP-007), reloads, and sees the winner's `pending` row (in-flight 409) or its
-// completed response (replay); an EXPIRED row is reclaimed in the same statement. A read-then-write
-// would let both through.
+// completed response (replay); an expired completed response is reclaimed in the same statement.
+// Pending rows have unknown outcomes and are never made runnable by TTL. A read-then-write would let
+// both through.
 //
 // RLS: every statement is org-scoped through `withOrgContext`, so a tenant can only ever see or claim
 // its own keys — the `idempotency_key_org` policy (0001) is a plain `app.org_id` match.
@@ -43,6 +44,7 @@ import { and, eq, sql } from "drizzle-orm";
 
 /** How long a cached response stays replayable (§3.10). */
 const TTL_MS = 24 * 60 * 60 * 1000;
+const expiresAtFromNow = () => sql`now() + ${TTL_MS} * interval '1 millisecond'`;
 
 export function createDbIdempotencyStore(db: DbClient): IdempotencyStore {
   const T = schema.idempotencyKeys;
@@ -60,7 +62,7 @@ export function createDbIdempotencyStore(db: DbClient): IdempotencyStore {
             requestHash: T.requestHash,
             responseStatus: T.responseStatus,
             responseBody: T.responseBody,
-            expiresAt: T.expiresAt,
+            isExpired: sql<boolean>`${T.expiresAt} <= now()`,
             // by the DATABASE's clock, so a skewed app clock cannot make a young claim look stuck
             pendingForMs: sql<string>`(extract(epoch from (now() - ${T.createdAt})) * 1000)::bigint`,
           })
@@ -69,10 +71,6 @@ export function createDbIdempotencyStore(db: DbClient): IdempotencyStore {
           .limit(1);
         const row = rows[0];
         if (!row) return null;
-        // An expired record is ABSENT, not replayable — treating it as present would let a key
-        // resurrect a response long after the client stopped expecting one. The row is left for the
-        // §3.10 sweeper rather than deleted here (a read must not mutate).
-        if (row.expiresAt.getTime() <= Date.now()) return null;
         if (row.state === "pending") {
           return {
             state: "pending",
@@ -80,6 +78,9 @@ export function createDbIdempotencyStore(db: DbClient): IdempotencyStore {
             pendingForMs: Number(row.pendingForMs),
           };
         }
+        // Only completed responses expire. A pending claim has an unknown outcome and must stay
+        // visible until it is completed or explicitly reconciled; TTL alone cannot authorize a retry.
+        if (row.isExpired) return null;
         return {
           state: "complete",
           requestHash: row.requestHash,
@@ -93,15 +94,14 @@ export function createDbIdempotencyStore(db: DbClient): IdempotencyStore {
       });
     },
 
-    async putPending(organizationId, key, requestHash): Promise<boolean> {
+    async putPending(organizationId, key, requestHash): Promise<string | null> {
       return scoped(organizationId, async (tx) => {
         // THE CLAIM (GAP-007). The unique index on (organization_id, key) is the serialization point:
         //   * no row            -> INSERT wins, RETURNING yields the id           -> claimed.
         //   * live row          -> conflict, the WHERE is false, no row returned  -> claim LOST.
-        //   * EXPIRED row       -> conflict, the WHERE holds, the row is reset to a fresh `pending`
-        //     claim (new hash and TTL, response cleared) and RETURNING yields the id -> claimed.
-        // Without the DO UPDATE an expired row stayed in place until a sweeper that does not exist,
-        // so every retry of an expired key looked "absent" and re-executed the handler.
+        //   * EXPIRED complete  -> conflict, the WHERE holds, the row is reset to a fresh `pending`
+        //     claim (new generation id, hash and TTL, response cleared) and RETURNING yields the id -> claimed.
+        //   * EXPIRED pending   -> conflict, the WHERE is false: its outcome is unknown, so it remains stuck.
         // Postgres row-locks the conflicting row, so two racers on an expired key serialize: the
         // second re-evaluates the WHERE against the first's fresh row and loses.
         const claimed = await tx
@@ -113,30 +113,32 @@ export function createDbIdempotencyStore(db: DbClient): IdempotencyStore {
             state: "pending",
             responseStatus: null,
             responseBody: null,
-            expiresAt: new Date(Date.now() + TTL_MS),
+            expiresAt: expiresAtFromNow(),
           })
           .onConflictDoUpdate({
             target: [T.organizationId, T.key],
             set: {
+              // The primary key is also the claim-generation fence. A stale completion or release
+              // from an earlier, expired completed record cannot affect the new generation.
+              id: sql`gen_random_uuid()`,
               requestHash,
               state: "pending",
               responseStatus: null,
               responseBody: null,
               createdAt: sql`now()`,
-              expiresAt: new Date(Date.now() + TTL_MS),
+              expiresAt: expiresAtFromNow(),
             },
-            setWhere: sql`${T.expiresAt} <= now()`,
+            setWhere: sql`${T.state} = 'complete' AND ${T.expiresAt} <= now()`,
           })
           .returning({ id: T.id });
-        return claimed.length > 0;
+        return claimed[0]?.id ?? null;
       });
     },
 
-    async complete(organizationId, key, response: IdempotentResponse): Promise<void> {
+    async complete(organizationId, key, claimId, response: IdempotentResponse): Promise<void> {
       await scoped(organizationId, async (tx) => {
-        // Narrowed to `state = 'pending'`: only the request that HOLDS the claim may complete it. A
-        // late or duplicated completion updates zero rows rather than overwriting a cached response
-        // someone is already replaying.
+        // The id is a claim-generation fence. A late completion from a reclaimed record updates
+        // zero rows rather than overwriting the newer claimant's pending state or response.
         await tx
           .update(T)
           .set({
@@ -145,12 +147,20 @@ export function createDbIdempotencyStore(db: DbClient): IdempotencyStore {
             // `?? null` is load-bearing: Drizzle drops `undefined` keys, so a bodiless response would
             // otherwise leave the column unmentioned by the UPDATE (F-073).
             responseBody: (response.body ?? null) as never,
+            expiresAt: expiresAtFromNow(),
           })
-          .where(and(eq(T.organizationId, organizationId), eq(T.key, key), eq(T.state, "pending")));
+          .where(
+            and(
+              eq(T.organizationId, organizationId),
+              eq(T.key, key),
+              eq(T.id, claimId),
+              eq(T.state, "pending"),
+            ),
+          );
       });
     },
 
-    async release(organizationId, key, requestHash): Promise<void> {
+    async release(organizationId, key, claimId, requestHash): Promise<void> {
       await scoped(organizationId, async (tx) => {
         // The claimant's own PENDING row only: a completed response someone is replaying, or a fresh claim another
         // request made with a different fingerprint after this one's expired, is never deleted. The retryable outcome
@@ -161,6 +171,7 @@ export function createDbIdempotencyStore(db: DbClient): IdempotencyStore {
             and(
               eq(T.organizationId, organizationId),
               eq(T.key, key),
+              eq(T.id, claimId),
               eq(T.state, "pending"),
               eq(T.requestHash, requestHash),
             ),

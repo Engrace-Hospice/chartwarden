@@ -1,17 +1,15 @@
 // apps/backend/src/bootstrap/jobs/idempotency-cleanup.ts — the M1 `idempotency.cleanup` / `purge_expired` job
-// (GAP-113, M1 spec §4.8). `createDbIdempotencyStore.load` treats an expired record as ABSENT and "leaves it for
-// the §3.10 sweeper" — a sweeper that did not exist, so `idempotency_key` grew without bound (one row per
-// distinct Idempotency-Key ever sent). This is that sweeper: hourly, per organization IN EVERY STATUS (the table is
+// (GAP-113, M1 spec §4.8). `createDbIdempotencyStore.load` treats an expired completed response as ABSENT and leaves it for
+// this sweeper. It runs hourly, per organization IN EVERY STATUS (the table is
 // RLS-forced, so the delete runs under each org's context), deleting rows whose `expires_at` has passed. Every status,
 // not only `active`: an org in `created` (the onboarding orgs, where platform operators write with an Idempotency-Key),
 // `suspended` or `closed` holds rows too, and the 24 h replay window is only a window if the rows really go.
 //
 // Reentrant by construction (§4.8.1: "purge is reentrant"): a replayed tick or a racing replica simply matches fewer
-// rows. Batched, so one org with a large backlog cannot hold a long transaction. The batch is SELECTed and then DELETEd
-// in a second statement, and `putPending` can reclaim an expired key in between (ON CONFLICT DO UPDATE ... WHERE
-// expires_at <= now() resets the SAME row id to a fresh 24 h pending claim), so the DELETE re-checks `expires_at` (and
-// the org): a delete by id alone would remove a LIVE claim and a retry would run the handler twice. No row is ever
-// deleted before its TTL.
+// rows. Batched, so one org with a large backlog cannot hold a long transaction. Only expired COMPLETE responses are
+// purgeable. Pending claims have unknown outcomes and must not become retryable when their TTL elapses. The batch is
+// SELECTed and then DELETEd in a second statement; an expired completed key can be reclaimed in between, at which point
+// the generation id changes and the `expires_at` recheck also protects the new pending claim.
 import type { DbClient } from "@chartwarden/db";
 import { schema } from "@chartwarden/db";
 import {
@@ -86,7 +84,7 @@ async function purgeOrg(
       const expired = (await t
         .select({ id: T.id })
         .from(T)
-        .where(lte(T.expiresAt, now))
+        .where(and(eq(T.state, "complete"), lte(T.expiresAt, now)))
         .limit(IDEMPOTENCY_PURGE_BATCH)) as Array<{ id: string }>;
       if (expired.length === 0) return 0;
       // Still expired AND this org: a row reclaimed since the SELECT is a live claim and survives. `returning` counts what was
@@ -100,6 +98,7 @@ async function purgeOrg(
               expired.map((r) => r.id),
             ),
             eq(T.organizationId, organizationId),
+            eq(T.state, "complete"),
             lte(T.expiresAt, now),
           ),
         )

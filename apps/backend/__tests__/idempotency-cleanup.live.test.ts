@@ -3,10 +3,10 @@
  * delete a live claim.
  *
  * It enumerated only `active` orgs (the enumerator's default), so an org in `created` (the onboarding orgs, where platform
- * operators write onboarding data with an Idempotency-Key), `suspended` or `closed` kept its expired rows forever. The 24 h replay
- * window of the request fingerprint is only a window if the rows really go. And it SELECTs the expired ids and DELETEs them in a
- * second statement: `putPending` can reclaim an expired key in between (resetting the same row id to a fresh 24 h pending claim),
- * so the DELETE re-checks `expires_at`.
+ * operators write onboarding data with an Idempotency-Key), `suspended` or `closed` kept its expired rows forever. This proves
+ * completed responses are purged in every organization status while unresolved pending outcomes remain protected. The batch is
+ * SELECTed and DELETEd in separate statements, so the test also covers an expired completed row reclaimed in between: its new
+ * generation id must survive the sweep as a pending claim.
  *
  * LIVE by necessity: the table is RLS-forced (the delete runs per org under the NOBYPASSRLS `chartwarden_app` role), and the org
  * list is read through the REAL platform login (`chartwarden_platform_login`, built by scripts/db/provision-runtime-roles.ts) under
@@ -120,9 +120,17 @@ describe.skipIf(!DB_URL)(
       await admin.query("DELETE FROM idempotency_key");
     });
 
-    /** One key per org, through the real store; `expired` back-dates it past its TTL. */
-    async function seed(org: string, key: string, expired: boolean): Promise<void> {
-      expect(await store.putPending(org, key, `hash-${key}`)).toBe(true);
+    /** One key per org, through the real store; completed rows are purgeable, pending rows are unknown outcomes. */
+    async function seed(
+      org: string,
+      key: string,
+      expired: boolean,
+      state: "complete" | "pending" = "complete",
+    ): Promise<void> {
+      const claimId = await store.putPending(org, key, `hash-${key}`);
+      expect(claimId).toBeTruthy();
+      if (state === "complete")
+        await store.complete(org, key, claimId as string, { status: "201", body: { seeded: true } });
       if (expired) {
         await admin.query(
           `UPDATE idempotency_key SET expires_at = now() - interval '1 minute'
@@ -170,6 +178,7 @@ describe.skipIf(!DB_URL)(
       for (const status of STATUSES) {
         await seed(ORGS[status], "live-unexpired", false);
         await seed(ORGS[status], "live-expired", true);
+        await seed(ORGS[status], "live-expired-pending", true, "pending");
       }
       await seed(ORGS.other, "other-unexpired", false);
 
@@ -177,7 +186,10 @@ describe.skipIf(!DB_URL)(
 
       expect(purged).toBe(4); // one expired row per status
       for (const status of STATUSES) {
-        expect(await keysOf(ORGS[status]), status).toEqual(["live-unexpired"]);
+        expect(await keysOf(ORGS[status]), status).toEqual([
+          "live-expired-pending",
+          "live-unexpired",
+        ]);
       }
       // another org's unexpired row is untouched
       expect(await keysOf(ORGS.other)).toEqual(["other-unexpired"]);
@@ -193,10 +205,12 @@ describe.skipIf(!DB_URL)(
       for (const status of STATUSES) {
         await seed(ORGS[status], "re-unexpired", false);
         await seed(ORGS[status], "re-expired", true);
+        await seed(ORGS[status], "re-expired-pending", true, "pending");
       }
       expect(await runIdempotencyCleanup({ db: handle.db, activeOrgs: enumerateAll() })).toBe(4);
       expect(await runIdempotencyCleanup({ db: handle.db, activeOrgs: enumerateAll() })).toBe(0);
-      for (const status of STATUSES) expect(await keysOf(ORGS[status])).toEqual(["re-unexpired"]);
+      for (const status of STATUSES)
+        expect(await keysOf(ORGS[status])).toEqual(["re-expired-pending", "re-unexpired"]);
     });
 
     /** `db` with a hook that runs once, right after the sweeper's SELECT of the expired ids and before its DELETE. */
@@ -256,8 +270,8 @@ describe.skipIf(!DB_URL)(
       await seed(ORGS.active, "reclaimed", true);
       await seed(ORGS.active, "still-expired", true);
       const hooked = afterSweeperSelect(handle.db, async () => {
-        // exactly what putPending does for an expired key: the SAME row id, a fresh 24 h pending claim
-        expect(await store.putPending(ORGS.active, "reclaimed", "claimed-again")).toBe(true);
+        // An expired complete row is reclaimed with a new generation id and a fresh pending claim.
+        expect(await store.putPending(ORGS.active, "reclaimed", "claimed-again")).toBeTruthy();
       });
       const purged = await runIdempotencyCleanup({
         db: hooked,

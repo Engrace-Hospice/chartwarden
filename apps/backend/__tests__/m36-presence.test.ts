@@ -274,7 +274,7 @@ describe("presence routes", () => {
       },
       putPending: async () => {
         touched.push("putPending");
-        return true;
+        return "test-generation";
       },
       complete: async () => {
         touched.push("complete");

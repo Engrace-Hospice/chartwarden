@@ -5,7 +5,7 @@
  * whole 24h TTL while the write never ran. These outcomes now RELEASE the claim, so the same key runs again, PROVIDED the
  * request committed nothing (these handlers fail before any write; the committed-then-failed half is
  * `idempotency-commit-tracker.test.ts`); every other outcome (a 201, a business-rule 409, a 4xx other than a 401/403 refusal) is still cached and replayed.
- * If the release itself fails (the store is down) the key stays pending: a retry is a 409 in flight until the TTL.
+ * If the release itself fails (the store is down) the key stays pending: a retry is a 409 in flight until reconciliation.
  *
  * Unit level over the in-memory store; the Postgres store's `release` is proved in
  * `gap-007-idempotency-claim.live.test.ts`.
@@ -25,30 +25,30 @@ const ORG = "00000000-0000-4000-8000-000000000001";
 describe("in-memory IdempotencyStore.release", () => {
   it("drops the claimant's own pending record so the key can be claimed again", async () => {
     const store = createInMemoryIdempotencyStore();
-    await store.putPending(ORG, "k", "h");
-    await store.release(ORG, "k", "h");
+    const claimId = (await store.putPending(ORG, "k", "h")) as string;
+    await store.release(ORG, "k", claimId, "h");
     expect(await store.load(ORG, "k")).toBeNull();
-    expect(await store.putPending(ORG, "k", "h")).toBe(true);
+    expect(await store.putPending(ORG, "k", "h")).toBeTruthy();
   });
 
   it("leaves a pending record that another claimant's fingerprint owns", async () => {
     const store = createInMemoryIdempotencyStore();
-    await store.putPending(ORG, "k", "owner");
-    await store.release(ORG, "k", "someone-else");
+    const claimId = (await store.putPending(ORG, "k", "owner")) as string;
+    await store.release(ORG, "k", claimId, "someone-else");
     expect(await store.load(ORG, "k")).toMatchObject({ state: "pending", requestHash: "owner" });
   });
 
   it("never deletes a completed response", async () => {
     const store = createInMemoryIdempotencyStore();
-    await store.putPending(ORG, "k", "h");
-    await store.complete(ORG, "k", { status: "201", body: { id: 1 } });
-    await store.release(ORG, "k", "h");
+    const claimId = (await store.putPending(ORG, "k", "h")) as string;
+    await store.complete(ORG, "k", claimId, { status: "201", body: { id: 1 } });
+    await store.release(ORG, "k", claimId, "h");
     expect(await store.load(ORG, "k")).toMatchObject({ state: "complete", requestHash: "h" });
   });
 
   it("is a no-op for an absent key", async () => {
     const store = createInMemoryIdempotencyStore();
-    await expect(store.release(ORG, "missing", "h")).resolves.toBeUndefined();
+    await expect(store.release(ORG, "missing", "missing-generation", "h")).resolves.toBeUndefined();
   });
 });
 

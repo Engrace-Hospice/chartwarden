@@ -695,6 +695,36 @@ describe("M29-external-interfaces-inject — §4.1.4 NPPES administration (route
     await app.close();
   });
 
+  it("route 25 — an enqueue with an unknown outcome returns STUCK and same-key retry does not enqueue again", async () => {
+    const acceptedJobs: Array<{ kind: string; triggeredByMembershipId: string }> = [];
+    const { app } = makeServer({
+      nppesSyncTrigger: {
+        async enqueue(input) {
+          // The queue accepted the job, then its acknowledgement was lost to this process.
+          acceptedJobs.push(input);
+          throw new Error("synthetic lost queue acknowledgement");
+        },
+      },
+    });
+    const headers = { ...PLATFORM_OP, "idempotency-key": "nppes-ambiguous-queue-write" };
+    const request = () =>
+      app.inject({
+        method: "POST",
+        url: "/api/admin/external-interfaces/nppes/sync-runs",
+        headers,
+        payload: {},
+      });
+
+    const first = await request();
+    const retry = await request();
+    expect(first.statusCode).toBe(409);
+    expect(first.json().error.code).toBe("IDEMPOTENCY_KEY_STUCK");
+    expect(retry.statusCode).toBe(409);
+    expect(retry.json().error.code).toBe("IDEMPOTENCY_KEY_STUCK");
+    expect(acceptedJobs).toHaveLength(1);
+    await app.close();
+  });
+
   it("route 25 — with NO queue connection the trigger 503s: 'no worker here', not 'no such feature'", async () => {
     const { app } = makeServer(); // trigger unbound — a db-only / REDIS-less boot
     const res = await app.inject({

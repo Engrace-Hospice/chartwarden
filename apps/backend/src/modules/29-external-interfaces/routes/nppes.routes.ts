@@ -16,6 +16,7 @@
 import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
+import { IdempotencyKeyStuckError } from "@chartwarden/shared";
 import { actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 import { ABAC_IN_ORG, ABAC_NPPES_PLATFORM, P, STEP_UP } from "./guards";
 import { NppesSyncRunListQuery, NppesSyncTriggerBody, parse, parseQuery } from "./m29-typebox";
@@ -96,12 +97,23 @@ export function registerNppesRoutes(app: FastifyInstance, deps: NppesRouteDeps):
           503,
         );
       }
-      const queued = await deps.syncTrigger.enqueue({
-        // A manual run is `manual` unless the operator explicitly asks for one of the scheduled kinds
-        // (a forced re-run of the weekly dissemination or the monthly deactivation pass).
-        kind: body.kind ?? "manual",
-        triggeredByMembershipId: actor.membershipId,
-      });
+      let queued: { readonly syncRunId: string; readonly jobId: string };
+      try {
+        queued = await deps.syncTrigger.enqueue({
+          // A manual run is `manual` unless the operator explicitly asks for one of the scheduled kinds
+          // (a forced re-run of the weekly dissemination or the monthly deactivation pass).
+          kind: body.kind ?? "manual",
+          triggeredByMembershipId: actor.membershipId,
+        });
+      } catch (error) {
+        // BullMQ may accept the job and lose the reply to this process. No PostgreSQL commit tracker
+        // can prove that queue effect absent, so a retryable 5xx would free the key and enqueue a
+        // second NPPES run. Return the existing unknown-outcome response; the idempotency middleware
+        // records it as final and clients are told to inspect the sync-run list before using a new key.
+        const key = request.headers["idempotency-key"];
+        if (typeof key === "string" && key.length > 0) throw new IdempotencyKeyStuckError(key);
+        throw error;
+      }
       return reply.code(202).send({
         syncRunId: queued.syncRunId,
         jobId: queued.jobId,

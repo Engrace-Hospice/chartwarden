@@ -15,7 +15,7 @@
 // with the SAME body returns the cached response; a DIFFERENT body is a 409
 // IDEMPOTENCY_CONFLICT (a record written under another server key, i.e. after a secret rotation, is a 409
 // IDEMPOTENCY_KEY_STALE); a concurrent duplicate still in flight is a 409 IDEMPOTENCY_IN_FLIGHT.
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 // A concurrent duplicate uses its own code so a client keeps its key and retries instead of renewing it while the first
 // request is still writing.
 //
@@ -30,7 +30,7 @@ import { createHmac, randomBytes } from "node:crypto";
 // this request's (the async context was lost, so its writes were not seen). A SELECT that calls a function counts as a write
 // unless the function is a known read-only builtin. Released, the same key runs again once the store is reachable; if the
 // release itself fails (a database outage that caused the 5xx usually breaks it too) the key stays `pending` and a retry
-// answers 409 in flight until the record's 24h TTL ends. What the tracker cannot see (an outbound call, a queue or object-store
+// answers 409 in flight or STUCK until the outcome is reconciled. What the tracker cannot see (an outbound call, a queue or object-store
 // write made directly in a route) is not counted: those belong behind the outbox, after the commit.
 //
 // A claim that is never completed or released (the process died after it, the store failed on `complete` and on `release`, or a
@@ -88,7 +88,7 @@ declare module "fastify" {
 /** Per-request marker: a `pending` lock this request opened and must `complete` (or `release`) on send. */
 const pendingCaptures = new WeakMap<
   FastifyRequest,
-  { orgId: string; key: string; requestHash: string }
+  { orgId: string; key: string; claimId: string; requestHash: string }
 >();
 
 /**
@@ -238,8 +238,11 @@ export function applyIdempotency(
     // 409 IDEMPOTENCY_KEY_STALE, a duplicate still in flight is 409 IDEMPOTENCY_IN_FLIGHT, and an abandoned old claim is
     // 409 IDEMPOTENCY_KEY_STUCK. Only the keyed `h1:` fingerprint matches: a record the pre-HMAC middleware wrote (plain SHA-256,
     // no prefix) is never replayed and never re-run, it answers 409 IDEMPOTENCY_CONFLICT until its 24 h TTL ends (CW-SEC-02).
-    const cached = await claimIdempotencyKey(store, orgId, key, requestHash);
-    if (cached) return reply.code(Number(cached.status) || 200).send(cached.body);
+    const claim = await claimIdempotencyKey(store, orgId, key, requestHash);
+    if (claim.kind === "replay")
+      return reply
+        .code(Number(claim.response.status) || 200)
+        .send(claim.response.body);
     // Only what commits AFTER the claim is the write the key guards (authentication may touch a session row before it).
     const tracker = commitTrackers.get(request);
     if (tracker) {
@@ -256,7 +259,7 @@ export function applyIdempotency(
         );
       }
     }
-    pendingCaptures.set(request, { orgId, key, requestHash });
+    pendingCaptures.set(request, { orgId, key, claimId: claim.claimId, requestHash });
   });
 
   app.addHook("onSend", async (request, reply, payload) => {
@@ -298,12 +301,12 @@ export function applyIdempotency(
       );
     if (mayRelease) {
       // Nothing of this request committed, so "retry" is true: free the key so the same-key retry runs instead of replaying
-      // the failure. A failed release leaves the record `pending` (a retry answers 409 in flight until the record's TTL), the
+      // the failure. A failed release leaves the record `pending` (a retry answers 409 in flight or STUCK until reconciliation), the
       // same fail-safe as a failed `complete`; it is logged, never allowed to rewrite the response.
       try {
         // Outside the request's tracker: the release is a DELETE, a write, and the request is fenced from this line on.
         await runOutsideCommitTracker(() =>
-          store.release(marker.orgId, marker.key, marker.requestHash),
+          store.release(marker.orgId, marker.key, marker.claimId, marker.requestHash),
         );
       } catch (error) {
         request.log.error(
@@ -325,7 +328,7 @@ export function applyIdempotency(
     // under the SAME key then answers 409 rather than re-running, so duplicate prevention still
     // fails safe. Reporting the truth about the write is the property worth keeping here.
     try {
-      await store.complete(marker.orgId, marker.key, response);
+      await store.complete(marker.orgId, marker.key, marker.claimId, response);
     } catch (error) {
       request.log.error(
         { err: error, idempotencyKey: marker.key },
@@ -348,7 +351,8 @@ export interface InMemoryIdempotencyStoreOptions {
 /**
  * In-memory IdempotencyStore — the slice default (single instance). `putPending` is the atomic
  * claim (check-and-set with no await between), so concurrent duplicates serialize: exactly one
- * caller gets `true`. An expired record is absent to `load` and is reclaimed by `putPending`.
+ * caller gets a generation token. Completed records expire and can be reclaimed; a pending record
+ * has an unknown outcome and remains protected until it is completed or reconciled.
  * Production injects the Postgres-backed store with the same contract. Exported for boot wiring + tests.
  */
 export function createInMemoryIdempotencyStore(
@@ -356,44 +360,52 @@ export function createInMemoryIdempotencyStore(
 ): IdempotencyStore {
   const ttlMs = options.ttlMs ?? IN_MEMORY_TTL_MS;
   const now = options.now ?? Date.now;
-  type Entry = { record: IdempotencyRecord; expiresAt: number; claimedAt: number };
+  type Entry = { record: IdempotencyRecord; expiresAt: number; claimedAt: number; claimId: string };
   const entries = new Map<string, Entry>();
   const k = (orgId: string, key: string) => `${orgId} ${key}`;
-  const live = (orgId: string, key: string): Entry | undefined => {
-    const entry = entries.get(k(orgId, key));
-    return entry && entry.expiresAt > now() ? entry : undefined;
-  };
   return {
     async load(orgId, key) {
-      const entry = live(orgId, key);
+      const entry = entries.get(k(orgId, key));
       if (!entry) return null;
-      return entry.record.state === "pending"
-        ? { ...entry.record, pendingForMs: now() - entry.claimedAt }
-        : entry.record;
+      if (entry.record.state === "pending")
+        return { ...entry.record, pendingForMs: now() - entry.claimedAt };
+      return entry.expiresAt > now() ? entry.record : null;
     },
     async putPending(orgId, key, requestHash) {
-      if (live(orgId, key)) return false;
+      const existing = entries.get(k(orgId, key));
+      if (
+        existing &&
+        (existing.record.state === "pending" || existing.expiresAt > now())
+      )
+        return null;
+      const claimId = randomUUID();
       entries.set(k(orgId, key), {
         record: { state: "pending", requestHash },
         expiresAt: now() + ttlMs,
         claimedAt: now(),
+        claimId,
       });
-      return true;
+      return claimId;
     },
-    async complete(orgId, key, response) {
-      const existing = live(orgId, key);
-      // Only the claim holder completes a pending record (mirrors the Postgres store's narrowing).
-      if (existing?.record.state !== "pending") return;
+    async complete(orgId, key, claimId, response) {
+      const existing = entries.get(k(orgId, key));
+      // Only the exact claim generation may complete; TTL does not release an unknown pending outcome.
+      if (existing?.record.state !== "pending" || existing.claimId !== claimId) return;
       entries.set(k(orgId, key), {
         record: { state: "complete", requestHash: existing.record.requestHash, response },
-        expiresAt: existing.expiresAt,
+        expiresAt: now() + ttlMs,
         claimedAt: existing.claimedAt,
+        claimId,
       });
     },
-    async release(orgId, key, requestHash) {
-      // Only the claimant's own pending record goes (same hash, still pending); never a completed response.
-      const existing = live(orgId, key);
-      if (existing?.record.state !== "pending" || existing.record.requestHash !== requestHash) {
+    async release(orgId, key, claimId, requestHash) {
+      // Only the exact claimant's pending record goes; never a newer generation or completed response.
+      const existing = entries.get(k(orgId, key));
+      if (
+        existing?.record.state !== "pending" ||
+        existing.claimId !== claimId ||
+        existing.record.requestHash !== requestHash
+      ) {
         return;
       }
       entries.delete(k(orgId, key));
