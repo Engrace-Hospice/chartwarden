@@ -27,7 +27,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "@chartwarden/types";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, count, eq, gte, isNull } from "drizzle-orm";
 import { assertGrantAllowed, assertMayRevoke } from "./override-grant-guards";
 import {
   type ClosureOverrideView,
@@ -47,8 +47,15 @@ export const CLOSURE_OVERRIDE_AUDIT_EVENT = "m8.encounter.closure_override_grant
 /** The explicit audit event a revoke writes, only when THIS call revoked the grant. Ids and instants; never the reason. */
 export const CLOSURE_OVERRIDE_REVOKED_AUDIT_EVENT = "m8.encounter.closure_override_revoked";
 
+/** The explicit audit event of a chained grant (the third or later for one clinician and kind within the window; CW-AC-48). */
+export const CLOSURE_OVERRIDE_CHAINED_AUDIT_EVENT = "m8.encounter.closure_override_chained";
+/** Grants of one kind for one clinician, this one included, at which a grant is a chain. */
+export const CLOSURE_OVERRIDE_CHAIN_THRESHOLD = 3;
+export const CLOSURE_OVERRIDE_CHAIN_WINDOW_DAYS = 7;
+
 const MIN_OVERRIDE_HOURS = 1;
 const MS_PER_HOUR = 3_600_000;
+const MS_PER_DAY = 24 * MS_PER_HOUR;
 const OVERRIDE_RESOURCE_KIND = "documentation_obligation_override";
 /** The details code of a reason refused for looking like a patient identifier (the house screen's own code). */
 const LOOKS_LIKE_IDENTIFIER_CODE = "EVIDENCE_LOOKS_LIKE_PHI";
@@ -188,7 +195,54 @@ export async function grantClosureOverride(
     // `hope.late_deadline_override`, which carries its justification the same way.
     context: { justification: reason },
   });
+  await auditChainedGrant(tx, input, created, now);
   return created;
+}
+
+/**
+ * CW-AC-48: a grant expires within 24 hours and the same clinician can be released again, by the same supervisor or another, so a
+ * chain of overrides keeps a clinician unblocked for as long as anyone keeps granting. Counting the clinician's grants of this kind
+ * over the window (this one included, revoked ones too: a revoke then a re-grant is the same chain), the third and every later
+ * grant also writes `m8.encounter.closure_override_chained`, which the CW-MON-01 review alerts on. Ids, an enum and counts only.
+ */
+async function auditChainedGrant(
+  tx: DbClient,
+  input: GrantClosureOverrideInput,
+  created: ClosureOverrideView,
+  now: Date,
+): Promise<void> {
+  const windowStart = new Date(now.getTime() - CLOSURE_OVERRIDE_CHAIN_WINDOW_DAYS * MS_PER_DAY);
+  // ponytail: no lock, so two grants for one clinician that commit together can each count one fewer and the alert arrives one grant
+  // late; a per-clinician advisory lock if that ever matters. The table is small and append-only, so the count needs no index.
+  const [row] = await tx
+    .select({ grants: count() })
+    .from(O)
+    .where(
+      and(
+        eq(O.organizationId, input.organizationId),
+        eq(O.subjectMembershipId, input.subjectMembershipId),
+        eq(O.obligationKind, input.obligationKind),
+        gte(O.grantedAt, windowStart),
+      ),
+    );
+  const grantsInWindow = row?.grants ?? 0;
+  if (grantsInWindow < CLOSURE_OVERRIDE_CHAIN_THRESHOLD) return;
+  await audit(tx, input.audit, {
+    eventType: CLOSURE_OVERRIDE_CHAINED_AUDIT_EVENT,
+    resourceKind: OVERRIDE_RESOURCE_KIND,
+    resourceId: created.id,
+    outcome: "success",
+    severity: "warn",
+    retentionClass: "compliance",
+    after: {
+      overrideId: created.id,
+      subjectMembershipId: input.subjectMembershipId,
+      grantedByMembershipId: input.grantedByMembershipId,
+      obligationKind: input.obligationKind,
+      grantsInWindow,
+      windowDays: CLOSURE_OVERRIDE_CHAIN_WINDOW_DAYS,
+    },
+  });
 }
 
 export interface RevokeClosureOverrideInput {

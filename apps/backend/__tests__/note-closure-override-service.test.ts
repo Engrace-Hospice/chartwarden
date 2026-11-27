@@ -14,6 +14,9 @@ import type { MemberClosureEvaluation } from "../src/modules/08-encounters/closu
 import { evaluateMemberClosure } from "../src/modules/08-encounters/closure/closure-reader";
 import {
   CLOSURE_OVERRIDE_AUDIT_EVENT,
+  CLOSURE_OVERRIDE_CHAINED_AUDIT_EVENT,
+  CLOSURE_OVERRIDE_CHAIN_THRESHOLD,
+  CLOSURE_OVERRIDE_CHAIN_WINDOW_DAYS,
   CLOSURE_OVERRIDE_REVOKED_AUDIT_EVENT,
   NOTE_CLOSURE_GRANTOR_BLOCKED_CODE,
   NOTE_CLOSURE_SUBJECT_NOT_BLOCKED_CODE,
@@ -400,7 +403,7 @@ describe("grantClosureOverride: who may be released, and by whom", () => {
   it("an org-wide grantor needs no scope query", async () => {
     const fake = fakeTx([[{ id: SUBJECT }], [overrideRow()], []]);
     await grantClosureOverride(fake.tx, grantArgs({ locationIds: null }));
-    expect(fake.queriesRun()).toBe(3); // membership, insert, audit
+    expect(fake.queriesRun()).toBe(4); // membership, insert, audit, the chain count (CW-AC-48)
   });
 
   it("a site-scoped grantor is refused when the oldest note is outside their sites: the same 409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED as any other nothing-to-lift", async () => {
@@ -440,6 +443,85 @@ describe("grantClosureOverride: who may be released, and by whom", () => {
     expect(failure.code).toBe(NOTE_CLOSURE_SUBJECT_NOT_BLOCKED_CODE);
     const where = fake.calls.filter((c) => c.op === "where")[1]?.args[0] as SQL;
     expect(new PgDialect().sqlToQuery(where).sql).toContain("false");
+  });
+});
+
+describe("grantClosureOverride: a chain of grants for one clinician (CW-AC-48)", () => {
+  // Query order of a grant: the subject check, the INSERT, the grant's audit event, the chain count, then (at the threshold) the
+  // chained audit event. The count row is the clinician's grants of this kind in the window, this one included.
+  const grantQueue = (grants: number) => [[{ id: SUBJECT }], [overrideRow()], [], [{ grants }], []];
+
+  it("writes only the grant's own event for the first and second grant in the window", async () => {
+    for (const grants of [1, 2]) {
+      const fake = fakeTx(grantQueue(grants));
+      await grantClosureOverride(fake.tx, grantArgs());
+      expect(fake.insertedValues()).toHaveLength(2);
+    }
+  });
+
+  it.each([3, 4, 9])(
+    "writes m8.encounter.closure_override_chained beside the grant when it is grant number %s",
+    async (grants) => {
+      const fake = fakeTx(grantQueue(grants));
+      await grantClosureOverride(fake.tx, grantArgs());
+      const [, , chained] = fake.insertedValues() as Record<string, unknown>[];
+      expect(chained).toMatchObject({
+        eventType: CLOSURE_OVERRIDE_CHAINED_AUDIT_EVENT,
+        resourceKind: "documentation_obligation_override",
+        resourceId: OVERRIDE_ID,
+        severity: "warn",
+        outcome: "success",
+        retentionClass: "compliance",
+        after: {
+          overrideId: OVERRIDE_ID,
+          subjectMembershipId: SUBJECT,
+          grantedByMembershipId: SUPERVISOR,
+          obligationKind: "visit_note",
+          grantsInWindow: grants,
+          windowDays: CLOSURE_OVERRIDE_CHAIN_WINDOW_DAYS,
+        },
+      });
+    },
+  );
+
+  it("carries ids, an enum and counts only: never the reason", async () => {
+    const fake = fakeTx(grantQueue(3));
+    await grantClosureOverride(fake.tx, grantArgs());
+    const chained = fake.insertedValues()[2] as Record<string, unknown>;
+    expect(JSON.stringify(chained)).not.toContain("justification");
+    expect(JSON.stringify(chained)).not.toContain("hospice admission");
+  });
+
+  it("names the audit event in the m8 namespace the action catalog owns, and counts at three", () => {
+    expect(CLOSURE_OVERRIDE_CHAINED_AUDIT_EVENT).toBe("m8.encounter.closure_override_chained");
+    expect(CLOSURE_OVERRIDE_CHAIN_THRESHOLD).toBe(3);
+    expect(CLOSURE_OVERRIDE_CHAIN_WINDOW_DAYS).toBe(7);
+  });
+
+  it("counts the clinician's grants of this kind in this organization over the last seven days, revoked ones included", async () => {
+    const fake = fakeTx(grantQueue(1));
+    await grantClosureOverride(fake.tx, grantArgs());
+    const where = fake.calls.filter((c) => c.op === "where")[1]?.args[0] as SQL;
+    const { sql, params } = new PgDialect().sqlToQuery(where);
+    expect(sql).toContain('"organization_id" = $1');
+    expect(sql).toContain('"subject_membership_id" = $2');
+    expect(sql).toContain('"obligation_kind" = $3');
+    expect(sql).toContain('"granted_at" >=');
+    expect(sql).not.toContain("revoked_at");
+    expect(sql).not.toContain("granted_by_membership_id"); // whoever granted the earlier ones
+    expect(params).toContain(ORG);
+    expect(params).toContain(SUBJECT);
+    expect(JSON.stringify(params)).toContain(
+      new Date(NOW.getTime() - 7 * 24 * HOUR_MS).toISOString(),
+    );
+  });
+
+  it("treats an empty count as no chain rather than failing the grant", async () => {
+    const fake = fakeTx([[{ id: SUBJECT }], [overrideRow()], [], [], []]);
+    await expect(grantClosureOverride(fake.tx, grantArgs())).resolves.toMatchObject({
+      id: OVERRIDE_ID,
+    });
+    expect(fake.insertedValues()).toHaveLength(2);
   });
 });
 

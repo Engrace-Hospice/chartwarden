@@ -215,6 +215,14 @@ export const M8_ACTION_CATALOG: ModuleActionCatalog = [
     isPartTwoEligible: false,
   },
   {
+    action: "m8.encounter.closure_override_chained",
+    moduleOwner: "m8",
+    defaultRetentionClass: "compliance",
+    description: "A visit-note closure override grant was the third or later for the same clinician and obligation kind within seven days, whoever granted the earlier ones and whether or not they were revoked (overrideId, subjectMembershipId, grantedByMembershipId, obligationKind, grantsInWindow, windowDays; severity warn; ids, an enum and counts only, never the reason; written in the grant's own transaction beside m8.encounter.closure_override_granted; the CW-MON-01 review alerts on it; CW-AC-48). No patient, so never Part 2.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
     action: "m8.encounter.closure_policy_changed",
     moduleOwner: "m8",
     defaultRetentionClass: "compliance",

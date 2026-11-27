@@ -191,9 +191,10 @@ describe("M8-T12 — m8 audit action catalog (§8.1)", () => {
     }
   });
 
-  it("covers all 22 §8.1 events, the four ADR-0113 closure events (override granted, revoked and denied, policy changed) and the four ADR-0114 draft events (policy changed, section resolved, section amended, IDG follow-up link refused)", () => {
-    expect(M8_ACTION_CATALOG.length).toBe(30);
+  it("covers all 22 §8.1 events, the five ADR-0113 closure events (override granted, revoked, denied and chained, policy changed) and the four ADR-0114 draft events (policy changed, section resolved, section amended, IDG follow-up link refused)", () => {
+    expect(M8_ACTION_CATALOG.length).toBe(31);
     const actions = M8_ACTION_CATALOG.map((e) => e.action);
+    expect(actions).toContain("m8.encounter.closure_override_chained");
     expect(actions).toContain("m8.encounter.draft_policy_changed");
     expect(actions).toContain("m8.encounter.draft_section_resolved");
     expect(actions).toContain("m8.encounter.section_amended");

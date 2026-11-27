@@ -188,6 +188,35 @@ reviewed here: it is recorded against an organization that is being closed.)
 The sealed audit hash chain no longer verifies: the log was altered out of band. This is a security incident (CW-IR-01). Preserve the
 database and open the integrity run (`audit_integrity_run`) named in the M36 alert.
 
+<a id="closure.policy_changed"></a>
+### closure.policy_changed (warn)
+A tenant's visit-note closure policy was written (CW-AC-48, ADR-0113 D4): `previousMode`, `mode`, thresholds and `enforceFrom` are in the
+`m8.encounter.closure_policy_changed` event the alert points at. The policy is set by the director of nursing or a tenant administrator
+with a fresh step-up and no second person, so this alert is the second pair of eyes. Look at the direction: a move to `off`, or to a long
+threshold, switches off the check that makes late notes block a clinician, and the event names who did it. Confirm with that person and
+the tenant's compliance officer that it was meant (a change ticket, the DON's own decision), not a stolen session. A move toward `block`
+is routine and needs only the confirmation. The platform-operator database fallback in `m8-note-closure-policy-reset.md` writes only the
+row-trigger event, not this one, so a reset made that way does not alert: its change ticket is the record.
+
+<a id="closure.override_chained"></a>
+### closure.override_chained (warn)
+A supervisor released a clinician from the closure block for the third time, or more, within seven days (CW-AC-48; the count is of that
+clinician's grants of that kind whoever granted them, revoked ones included, so the chain is the clinician's, not the supervisor's). One
+override is routine (a long visit, a system outage); a chain keeps a clinician unblocked for as long as anyone keeps granting. Open the
+`m8.encounter.closure_override_granted` events for the clinician (`subjectMembershipId` in the alert's sample event): who granted, and the
+reason each time (it is on the grant event, not in the alert). Ask the clinician's supervisor why the note is still open; if the notes
+are being left open on purpose, the policy (not the override) is the lever, and the grants may be revoked
+(`m8.encounter.closure_override_revoked`).
+
+<a id="draft.policy_changed"></a>
+### draft.policy_changed (warn)
+A tenant's visit-note draft switch was written (CW-AC-49, ADR-0114 VN-D17): `previousEnabled`, `enabled` and `enabledAt` are in the
+`m8.encounter.draft_policy_changed` event. The switch is held by the director of nursing and the tenant administrators with a fresh
+step-up and no second person. Enabling is refused until the platform phrase corpus release in force has its named clinical review, so an
+enable is routine once a release is approved and the tenant's roles hold the source-domain read keys its templates need (a draft is
+refused 403 to a clinician without them); a **disable** removes the draft and the sign gate for the tenant, and is always allowed.
+Confirm a disable with the person named in the event.
+
 ### Alerts about the review itself
 
 <a id="review.alert_flood"></a>
@@ -220,9 +249,11 @@ A control that needs "alert when this audit event happens" adds **one entry** to
 
 Tests enforce the rest: every rule's event types are in the action catalog, each rule gets a positive and a negative fixture generated
 from its own definition, and every rule id needs an anchor in this file. The control's row in `compliance/controls.yaml` then drops
-"no alert (CW-MON-01 is a gap)" and cites the rule id. Examples ready to add once those controls name the event:
-`m8.encounter.closure_policy_changed` (CW-AC-48, `always`, org), `m8.encounter.closure_override_granted` (CW-AC-48 chained grants,
-`burst` per actor), `m8.encounter.draft_policy_changed` (CW-AC-49, `always`, org).
+"no alert (CW-MON-01 is a gap)" and cites the rule id. Worked examples: `closure.policy_changed` and `closure.override_chained`
+(CW-AC-48) and `draft.policy_changed` (CW-AC-49), all `always`, org. A pattern that is NOT about the acting user (the chained override
+is about the clinician released, and a burst rule groups by the actor, which is the grantor) is counted where the event is written and
+raised as its own event type; a window longer than an hour also widens the look-back of every org-lane rule (`maxRuleWindowMs`), so
+add one only on purpose.
 
 ## 6. Stated limits
 

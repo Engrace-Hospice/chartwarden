@@ -20,7 +20,7 @@
 // NO PHI. A finding carries rule ids, counts, windows, event ids and a subject REFERENCE (a user id, a /24 network prefix,
 // a truncated credential hash) — never a name, a note, a patient or a free-text reason.
 
-export const SECURITY_REVIEW_RULES_VERSION = "2026-11-26.1";
+export const SECURITY_REVIEW_RULES_VERSION = "2026-11-27.1";
 
 export type SecurityReviewLane = "org" | "platform";
 export type SecuritySeverity = "info" | "warn" | "critical";
@@ -257,6 +257,38 @@ export const SECURITY_RULES: readonly SecurityRule[] = [
     severity: "critical",
     controls: ["CW-MON-01", "CW-AU-01"],
     eventTypes: ["audit.integrity_mismatch"],
+  },
+  {
+    // The policy that decides whether a blocked clinician is refused is set by a DON or a tenant administrator with step-up and no
+    // second person (CW-AC-48): a change to off, or to a long threshold, is only ever seen by someone who reads the trail. One alert
+    // per write, whichever way it moved.
+    id: "closure.policy_changed",
+    title: "The visit-note closure policy was changed (the setting that decides whether late notes block a clinician)",
+    kind: "always",
+    lane: "org",
+    severity: "warn",
+    controls: ["CW-AC-48"],
+    eventTypes: ["m8.encounter.closure_policy_changed"],
+  },
+  {
+    // Written by the grant itself when it is the third or later for one clinician and kind within seven days (the grant service, not
+    // this table, counts: a burst rule groups by the acting user, which is the grantor, not the clinician kept unblocked).
+    id: "closure.override_chained",
+    title: "One clinician was released from the visit-note closure block again and again (chained overrides)",
+    kind: "always",
+    lane: "org",
+    severity: "warn",
+    controls: ["CW-AC-48"],
+    eventTypes: ["m8.encounter.closure_override_chained"],
+  },
+  {
+    id: "draft.policy_changed",
+    title: "The visit-note draft switch was changed (the per-tenant setting behind the draft and its sign gate)",
+    kind: "always",
+    lane: "org",
+    severity: "warn",
+    controls: ["CW-AC-49"],
+    eventTypes: ["m8.encounter.draft_policy_changed"],
   },
 ];
 

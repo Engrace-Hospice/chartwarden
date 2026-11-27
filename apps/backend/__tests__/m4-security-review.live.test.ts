@@ -27,6 +27,7 @@ import {
   type SecurityAlert,
   type SecurityAlertSink,
   type SecurityReviewResult,
+  audit,
   auditPlatformEvent,
 } from "@chartwarden/audit";
 import { createDbClient } from "@chartwarden/db";
@@ -60,6 +61,8 @@ const USER_BULK = "00000000-0000-4000-8000-0000000004c2"; // 120 distinct record
 const USER_BELOW = "00000000-0000-4000-8000-0000000004c3"; // 99 distinct records
 const USER_TRAVEL = "00000000-0000-4000-8000-0000000004c4"; // signs in from three networks
 const USER_B = "00000000-0000-4000-8000-0000000004c5";
+const ORG_C = "00000000-0000-4000-8000-0000000004d1"; // the visit-note policy controls (CW-AC-48, CW-AC-49)
+const USER_C = "00000000-0000-4000-8000-0000000004c6";
 
 const MINUTE = 60_000;
 const BULK_BUCKET = 15 * MINUTE;
@@ -883,5 +886,78 @@ describe.skipIf(!DB_URL)("M4 security review of the audit trail — LIVE Postgre
       `${ORG_B}:access.break_glass_invoked`,
     ]);
     expect((await reviewRows(ORG_B, COMPLETED)).at(-1)?.context.status).toBe("ok");
+  });
+
+  it("the visit-note policy controls alert (CW-AC-48, CW-AC-49): each event shaped like the M8 emitters' (written through the real audit() helper as chartwarden_app; the emitters themselves are proven in their own live suites) is one alert with ids and enums only, and the plain grant is not one", async () => {
+    await admin.query(
+      "INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,'m4rev-c','m4rev-c','m4rev-c','active')",
+      [ORG_C],
+    );
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m4revc@example.test')`, [USER_C]);
+    const emit = (eventType: string, after: Record<string, unknown>, resourceKind: string) =>
+      withOrgContext(app.db, systemOrgContext(ORG_C), (tx) =>
+        audit(
+          tx,
+          { organizationId: ORG_C, userId: USER_C, correlationId: `m8-policy-live-${eventType}` },
+          {
+            eventType,
+            resourceKind,
+            outcome: "success",
+            severity: "warn",
+            retentionClass: "compliance",
+            after,
+          },
+        ),
+      );
+    await emit(
+      "m8.encounter.closure_policy_changed",
+      { obligationKind: "visit_note", previousMode: "block", mode: "off" },
+      "documentation_obligation_policy",
+    );
+    await emit(
+      "m8.encounter.closure_override_chained",
+      { obligationKind: "visit_note", grantsInWindow: 3, windowDays: 7 },
+      "documentation_obligation_override",
+    );
+    await emit(
+      "m8.encounter.draft_policy_changed",
+      { previousEnabled: true, enabled: false },
+      "visit_note_draft_policy",
+    );
+    // the control: an ordinary grant (and a revoke) is not a finding
+    await emit(
+      "m8.encounter.closure_override_granted",
+      { obligationKind: "visit_note", hours: 4 },
+      "documentation_obligation_override",
+    );
+
+    const { alerts, sink } = collect();
+    const { run } = ran(await runSecurityReviewForOrg(deps(sink, [ORG_C]), ORG_C));
+
+    expect(alerts.map((a) => a.ruleId).sort()).toEqual([
+      "closure.override_chained",
+      "closure.policy_changed",
+      "draft.policy_changed",
+    ]);
+    expect(run).toMatchObject({ status: "ok", findings: 3, newAlerts: 3, delivered: 3 });
+    for (const alert of alerts) {
+      expect(alert).toMatchObject({ organizationId: ORG_C, lane: "org", severity: "warn" });
+      expect(alert.runbook).toMatch(new RegExp(`#${alert.ruleId.replace(".", "\\.")}$`));
+      expect(alert.subject.kind).toBe("event"); // an `always` rule: the event itself, whose actor is on the event
+      expect(alert.sampleEventIds).toContain(alert.subject.ref);
+    }
+    const controls = Object.fromEntries(alerts.map((a) => [a.ruleId, a.controls]));
+    expect(controls).toEqual({
+      "closure.policy_changed": ["CW-AC-48"],
+      "closure.override_chained": ["CW-AC-48"],
+      "draft.policy_changed": ["CW-AC-49"],
+    });
+    // a second run raises nothing again, and another tenant's review never sees these events
+    expect(ran(await runSecurityReviewForOrg(deps(collect().sink, [ORG_C]), ORG_C)).raised).toEqual(
+      [],
+    );
+    const other = collect();
+    await runSecurityReviewForOrg(deps(other.sink), ORG_B);
+    expect(other.alerts.map((a) => a.ruleId)).not.toContain("closure.policy_changed");
   });
 });
