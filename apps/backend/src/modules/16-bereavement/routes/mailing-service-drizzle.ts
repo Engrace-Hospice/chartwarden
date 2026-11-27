@@ -76,7 +76,7 @@ export interface M16MailingDeps {
   /** Hands a claimed run to the `m16-mailing-generate` worker (BullMQ in prod). */
   readonly enqueue: MailingGenerateEnqueuePort;
   /** M22's org-level download seam; defaults to the registry's `OrgDocumentAccessProvider`. */
-  readonly orgDocuments?: () => OrgDocumentAccessProvider;
+  readonly orgDocuments?: () => Pick<OrgDocumentAccessProvider, "mintOrgDownloadUrl">;
   /** Is an email channel bound for this tenant? Defaults to false: the email channel is not built (see mailings/eligibility.ts). */
   readonly emailChannelAvailable?: boolean;
   readonly now?: () => Date;

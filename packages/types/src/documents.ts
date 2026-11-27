@@ -627,6 +627,26 @@ export type OrgDocumentDenialReason =
   | "no_active_version";
 
 /**
+ * CW-BR-10 — why {@link OrgDocumentAccessProvider.destroyOrgDocument} left a document alone. `held` = an active legal hold, status `legal_hold` or Part 2
+ * class (nothing was touched). `held_after_destroy` = a hold (or another writer) got in AFTER the objects were deleted: the row is unchanged but the bytes are gone.
+ */
+export type OrgDocumentDestroyRefusalReason =
+  | "not_found"
+  | "wrong_type"
+  | "not_org_level"
+  | "held"
+  | "held_after_destroy"
+  | "already_destroyed";
+
+/** CW-BR-10 — one not-yet-destroyed org-level document the seam offers a retention job. Ids and a timestamp only. */
+export interface OrgDocumentPurgeCandidate {
+  readonly documentId: DocumentId;
+  readonly createdAt: IsoInstant;
+  /** An active legal hold (M22 hold row or status), or Part 2 class: the job must leave it alone. */
+  readonly held: boolean;
+}
+
+/**
  * ADR-0109 D10 — the ORG-LEVEL document door: a module that owns a document with NO patient (M16's mailing batch PDF: every recipient's name and mailing
  * address, filed under an internal-only aggregate type) mints its short-lived download URL through M22, instead of reaching into M22's tables or storing a
  * bucket key of its own. It is NOT a general document door: the caller names the aggregate types it may hand out (intersected with the seam-only
@@ -680,6 +700,38 @@ export interface OrgDocumentAccessProvider {
         readonly documentVersionId: DocumentVersionId;
       }
     | { readonly denied: true; readonly reason: OrgDocumentDenialReason }
+  >;
+  /**
+   * CW-BR-10 — the retention job's list: the org-level, not-yet-destroyed documents of ONE seam-only type created before `createdBefore`, oldest first.
+   * Ids, timestamps and the hold flag only. At most `limit` come back; `truncated` says there were more (the caller must then refuse to plan,
+   * never act on a partial list). Any type that is not seam-only is `{ denied }`. Reads under the caller's org request context.
+   */
+  listOrgDocumentsForPurge(args: {
+    readonly organizationId: OrgId;
+    readonly aggregateType: DocumentAggregateType;
+    readonly createdBefore: IsoInstant;
+    readonly limit: number;
+  }): Promise<
+    | { readonly documents: readonly OrgDocumentPurgeCandidate[]; readonly truncated: boolean }
+    | { readonly denied: true; readonly reason: "wrong_type" }
+  >;
+  /**
+   * CW-BR-10 — destroy ONE org-level document of a seam-only type: every object version in the tenant bucket (version-aware, DR-019), then the row goes
+   * `destroyed_tombstone` with no active version and its in-row cipher shredded. The `document` and `document_version` rows stay (ids, hashes, keys: no
+   * PHI), and the audit trigger on both records the change. Refuses a held document (M22 hold row, status `legal_hold`, Part 2 class), a patient's
+   * document, another type and a missing one; a second call is `already_destroyed`. Idempotent, so an interrupted run resumes. The caller (M16) owns the
+   * retention rule and the M4 legal-hold check (it serialises against hold application with M4's per-org advisory lock, the M36 protocol); this seam
+   * checks only M22's own holds. If a hold still lands after the objects were deleted the row is left as it was and the answer is
+   * `held_after_destroy`: the bytes are gone, so the caller must alarm, never count it as a quiet refusal.
+   */
+  destroyOrgDocument(args: {
+    readonly organizationId: OrgId;
+    readonly documentId: DocumentId;
+    /** The aggregate types the CALLER may destroy; intersected with the seam-only types, as the mint is. */
+    readonly allowedAggregateTypes: readonly DocumentAggregateType[];
+  }): Promise<
+    | { readonly destroyed: true; readonly objectVersionsDestroyed: number }
+    | { readonly refused: true; readonly reason: OrgDocumentDestroyRefusalReason }
   >;
 }
 

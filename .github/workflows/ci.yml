@@ -1429,6 +1429,8 @@ jobs:
           - { name: "M16 encounter-signed", scripts: "test:m16:encounter-signed:live" }
           - { name: "M16 document-rendered", scripts: "test:m16:document-rendered:live" }
           - { name: "M16 mailings", scripts: "test:m16:mailings:live" }
+          # CW-BR-10 — the retention purge of the rendered mailing batch files (rule, M22 + M4 holds, tenancy, record, cap, resume).
+          - { name: "M16 mailing file purge", scripts: "test:m16:mailing-file-purge:live" }
           - { name: "M16 program activities", scripts: "test:m16:program-activities:live" }
           # Readmission workflow — re-election into the next benefit period, the period-3 F2F gate, and the
           # readmission NOE held until the prior election's NOTR / final claim is filed.

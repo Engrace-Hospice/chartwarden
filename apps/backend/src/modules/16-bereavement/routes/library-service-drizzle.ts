@@ -24,7 +24,10 @@ const LIBRARY_TYPE = "bereavement_library_item" as const;
 
 export interface M16LibraryDeps {
   /** M22's org-level document seam; defaults to the registry's `OrgDocumentAccessProvider`. */
-  readonly orgDocuments?: () => OrgDocumentAccessProvider;
+  readonly orgDocuments?: () => Pick<
+    OrgDocumentAccessProvider,
+    "describeOrgDocument" | "mintOrgDownloadUrl"
+  >;
   readonly now?: () => Date;
 }
 

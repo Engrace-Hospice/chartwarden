@@ -224,6 +224,24 @@ export {
   runMissDeadlineCron,
   scheduleM16Jobs,
 } from "./jobs/cron-workers";
+// CW-BR-10 — the retention purge of the rendered mailing batch files: the worker and the pure rule it applies.
+export {
+  type ActiveLegalHolds as M16ActiveLegalHolds,
+  type MailingFilePurgeDeps,
+  type MailingFilePurgeOutcome,
+  MailingFilePurgeRefusedError,
+  purgeMailingFilesForOrg,
+  resolvePurgeMode,
+  runMailingFilePurgeCron,
+} from "./jobs/mailing-file-purge";
+export { MAILING_FILE_PURGE_EXECUTE_SUPPORTED } from "./jobs/index";
+export {
+  DEFAULT_MAILING_FILE_RETENTION,
+  MAILING_FILE_RETENTION_FLOOR_DAYS,
+  type MailingFilePurgeBasis,
+  type MailingFileRetention,
+  planMailingFilePurge,
+} from "./mailings/file-purge-plan";
 export { M16_PLATFORM_JOB_ID, wireM16Tenancy } from "./wiring";
 
 // ADR-0109 D10 (PR 3) — the bereaved family's memorial invitations / RSVP for M31 (`BereavementPortalContentProvider`).

@@ -24,7 +24,7 @@ import type {
   IntakeMetrics,
   ProvenanceRecord,
 } from "@chartwarden/types";
-import { and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { StaffMintAccessLogPort } from "../routes/signed-url-service";
 import type { OrgDocumentAccessPort } from "./org-document-access";
 import type { DocumentReaderStore, PortalAccessLogPort } from "./readers-store";
@@ -451,6 +451,93 @@ export function createDrizzleOrgDocumentAccessPort(db: DbClient): OrgDocumentAcc
           )
           .limit(1);
         return row?.id ?? null;
+      });
+    },
+    // CW-BR-10 — the retention job's reads and the final row change. The hold subquery names the document by BOUND id (or a qualified column), never by a
+    // bare column reference: Drizzle renders a column UNQUALIFIED inside a single-table statement, so `h.document_id = "id"` would compare the hold's own id.
+    async listPurgeCandidates({ organizationId, aggregateType, createdBefore, limit }) {
+      return withOrgContextFromRequest(db, async (tx: SeamTx) => {
+        const rows = await tx
+          .select({
+            documentId: DOC.id,
+            createdAt: DOC.createdAt,
+            status: DOC.status,
+            retentionClass: DOC.retentionClass,
+            heldRow: sql<boolean>`EXISTS (SELECT 1 FROM document_legal_hold h WHERE h.document_id = "document"."id" AND h.released_at IS NULL)`,
+          })
+          .from(DOC)
+          .where(
+            and(
+              eq(DOC.organizationId, organizationId),
+              eq(DOC.aggregateType, aggregateType),
+              isNull(DOC.patientId),
+              inArray(DOC.status, ["active", "superseded", "legal_hold"]),
+              lt(DOC.createdAt, createdBefore),
+            ),
+          )
+          .orderBy(asc(DOC.createdAt), asc(DOC.id))
+          .limit(limit);
+        return rows.map((r) => ({
+          documentId: r.documentId,
+          createdAt: r.createdAt,
+          held:
+            r.status === "legal_hold" ||
+            r.heldRow === true ||
+            r.retentionClass === "compliance_42cfr_part2",
+        }));
+      });
+    },
+    async loadDestroyTarget({ organizationId, documentId }) {
+      return withOrgContextFromRequest(db, async (tx: SeamTx) => {
+        const [doc] = await tx
+          .select({
+            aggregateType: DOC.aggregateType,
+            patientId: DOC.patientId,
+            status: DOC.status,
+            retentionClass: DOC.retentionClass,
+            heldRow: sql<boolean>`EXISTS (SELECT 1 FROM document_legal_hold h WHERE h.document_id = ${documentId}::uuid AND h.released_at IS NULL)`,
+          })
+          .from(DOC)
+          .where(and(eq(DOC.id, documentId), eq(DOC.organizationId, organizationId)))
+          .limit(1);
+        if (!doc) return null;
+        const versions = await tx
+          .select({ objectKey: DV.objectKey })
+          .from(DV)
+          .where(and(eq(DV.documentId, documentId), eq(DV.organizationId, organizationId)));
+        return {
+          aggregateType: doc.aggregateType,
+          patientId: doc.patientId,
+          status: doc.status,
+          held: doc.heldRow === true || doc.retentionClass === "compliance_42cfr_part2",
+          objectKeys: [...new Set(versions.map((v) => v.objectKey))],
+        };
+      });
+    },
+    async markDestroyed({ organizationId, documentId }) {
+      return withOrgContextFromRequest(db, async (tx: SeamTx) => {
+        // The guard is the row's own state: only an `active` / `superseded`, patient-less, non-Part-2 document with no unreleased hold row flips.
+        const flipped = await tx
+          .update(DOC)
+          .set({ status: "destroyed_tombstone", activeVersionId: null, updatedAt: new Date() })
+          .where(
+            and(
+              eq(DOC.id, documentId),
+              eq(DOC.organizationId, organizationId),
+              inArray(DOC.status, ["active", "superseded"]),
+              isNull(DOC.patientId),
+              ne(DOC.retentionClass, "compliance_42cfr_part2"),
+              sql`NOT EXISTS (SELECT 1 FROM document_legal_hold h WHERE h.document_id = ${documentId}::uuid AND h.released_at IS NULL)`,
+            ),
+          )
+          .returning({ id: DOC.id });
+        if (flipped.length === 0) return false;
+        // The version rows stay (id, hash, size, key: no PHI) but the in-row cipher is shredded.
+        await tx
+          .update(DV)
+          .set({ bytePayloadCipher: null })
+          .where(and(eq(DV.documentId, documentId), eq(DV.organizationId, organizationId)));
+        return true;
       });
     },
   };

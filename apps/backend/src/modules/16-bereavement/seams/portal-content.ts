@@ -31,7 +31,7 @@ export interface BereavementPortalContentDeps {
   /** Opens a virtual service's link. Unbound => no link is shown. */
   readonly cipher?: BereavementCipher;
   /** M22's org-level document seam (the portal library mint); defaults to the registry's `OrgDocumentAccessProvider`. */
-  readonly orgDocuments?: () => OrgDocumentAccessProvider;
+  readonly orgDocuments?: () => Pick<OrgDocumentAccessProvider, "mintPortalLibraryUrl">;
   readonly now?: () => Date;
 }
 

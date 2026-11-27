@@ -470,6 +470,12 @@ export const orgDocumentAccessProviderDenyStub: OrgDocumentAccessProvider = {
   mintPortalLibraryUrl() {
     throw new NotImplementedError("OrgDocumentAccessProvider");
   },
+  listOrgDocumentsForPurge() {
+    throw new NotImplementedError("OrgDocumentAccessProvider");
+  },
+  destroyOrgDocument() {
+    throw new NotImplementedError("OrgDocumentAccessProvider");
+  },
 };
 
 export const sessionContextResolverDenyStub: SessionContextResolver = {
