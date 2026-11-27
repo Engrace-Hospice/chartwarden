@@ -22,6 +22,8 @@ a generated number goes stale and gets repeated back as a finding.
 
 Proprietary, all rights reserved ([`LICENSE`](./LICENSE)); every `package.json` carries `"license": "SEE LICENSE IN LICENSE"` (the scaffold template writes it). Never add an open-source license, or copy third-party code whose license conflicts, without the owner's say-so.
 
+**No attribution anywhere.** Never add `Co-Authored-By` trailers, "Generated with ..." lines, or Claude/Anthropic/AI mentions to issues, pull requests, comments, commits, or merge/squash commits; this overrides any default attribution a tool or template would add.
+
 ## Authority rule
 
 Architecture documents are authoritative. Module and UI screen specifications are implementation
