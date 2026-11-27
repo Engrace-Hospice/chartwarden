@@ -6,6 +6,16 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-27 — Professional licence roster: step-up and no self-grant (M17, CW-AC-46 follow-up)
+
+**No new route and no changed field; two existing routes refuse more.** The roster is what the visit-create credential gate trusts and the HOPE signer-licence check (CW-AC-46, #1206) reads, so recording or revoking a licence is now a guarded act.
+
+- **`POST /memberships/{membershipId}/credentials` and `DELETE /memberships/{membershipId}/credentials/{credentialId}` need a fresh step-up.** A stale session is refused `403 STEP_UP_REQUIRED` (the same code every step-up route answers; break-glass cannot satisfy it). A client that already routes `STEP_UP_REQUIRED` to the step-up screen needs no change; the web screen now does. Step-up operation key: `membership_credential.manage`.
+- **`POST` refuses a licence recorded on the caller's own membership: `403 CREDENTIAL_SELF_GRANT_REFUSED`** ("You cannot record a professional licence on your own membership. Ask another administrator to record it."). No row is written. Another member holding `membership_credential.grant` can record it; no second approver is required. The refused attempt writes an `m17.credential.self_grant_refused` audit event (ids and the discipline only), so the `403` is normally replayed under the same `Idempotency-Key`: use a new key for a different request. A membership outside the caller's organization now answers `404` (it used to be accepted with a row scoped to the caller's organization).
+- A member may still revoke their own licence.
+
+---
+
 ## 2026-11-25 — ESAS-r: the "any symptom 7 or more" change rule now fires (M9)
 
 **No route or field changed; a behaviour that was specified (Module 9 spec §2.4) but never ran now runs.** Recording an ESAS-r reading in which any one of the nine items scores 7 or more writes an open `significant_change_event` (rule `esas_symptom_ge_7`, delta = the worst item score, threshold 7), emits `m9.assessment.significant_change`. The event shows on the patient's significant-change worklist, lands in M14's since-last-IDG slot, and M11 holds an order-suggestion entry for it (a suggested order kind only, for any of the nine items; M11 never creates the order, and no screen shows the entry yet). Severity is `medium` and stays `medium` until someone acknowledges it: only the three critical rules (PPS drop, Braden, NYHA IV) escalate to `high` after 24 hours or route to the medical director, and no consumer sends this event as a message. A capture with no recorded provider entity or location writes no event. A correction runs the rule again, so it can leave the first reading's alert open next to a new one (as it already does for every other rule). Until now `maxSymptomScore` was never passed to the detector, so no tenant ever got this alert. Only readings recorded from now on are evaluated; nothing is back-filled. The optional "other" symptom does not count, as it does not count toward the total.

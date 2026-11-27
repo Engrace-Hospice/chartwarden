@@ -375,6 +375,8 @@
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
         "apps/backend/__tests__/gap-050-visit-start-self-attest.test.ts",
         "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
+        "apps/backend/__tests__/m17-credential-grant-routes.test.ts",
+        "apps/backend/__tests__/m17-credential-grant.live.test.ts",
         "apps/backend/__tests__/m8-note-closure.live.test.ts",
         "apps/backend/__tests__/scheduling-caseload-scope.test.ts",
         "apps/backend/__tests__/scheduling-inject.test.ts",

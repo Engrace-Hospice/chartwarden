@@ -13,6 +13,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
+import { credentialSelfGrantRefusal, isCredentialSelfGrant } from "../credential-grant-guard";
 import type { CredentialRecord, CredentialStore } from "./credentials";
 
 const MC = schema.membershipCredentials;
@@ -72,10 +73,30 @@ export function createDrizzleCredentialStore(db: DbClient): CredentialStore {
     },
 
     async grant(organizationId, input) {
+      // CW-AC-46 follow-up — the one place the row is written, so the no-self-grant rule is enforced HERE and a future internal caller
+      // (an import, a bulk onboarding) cannot record a licence on the grantor's own membership either. The route refuses and audits it
+      // earlier; this is the backstop. (The seed scripts write as the database admin and are outside it.)
+      if (isCredentialSelfGrant(input.grantedByMembershipId, input.membershipId)) {
+        throw credentialSelfGrantRefusal();
+      }
       return withOrgContext(
         db,
         { organizationId, userId: input.grantedByMembershipId },
         async (tx) => {
+          // The FK on `membership_id` does not know about tenants: without this read, an administrator of one organization could
+          // record a licence row that names another organization's member. The licence roster is per organization, so a member
+          // outside it is a 404 (the same answer as an unknown id: no existence oracle).
+          const [member] = await tx
+            .select({ id: schema.memberships.id })
+            .from(schema.memberships)
+            .where(
+              and(
+                eq(schema.memberships.id, input.membershipId),
+                eq(schema.memberships.organizationId, organizationId),
+              ),
+            )
+            .limit(1);
+          if (!member) throw new NotFoundError("membership", input.membershipId);
           const [inserted] = await tx
             .insert(MC)
             .values({

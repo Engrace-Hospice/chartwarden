@@ -172,6 +172,31 @@ export); a module that audits its own export adds its event type to this rule.
 ### privileged.role_grant_burst (warn)
 One user assigned 10 or more roles in 15 minutes. Bulk onboarding is the benign cause; otherwise review who received which role.
 
+<a id="privileged.credential_self_grant_attempt"></a>
+### privileged.credential_self_grant_attempt (warn)
+A member holding `membership_credential.grant` tried to record a professional licence on **their own** membership
+(`m17.credential.self_grant_refused`; CW-AC-46). The route refused it (403 `CREDENTIAL_SELF_GRANT_REFUSED`) and wrote no row, so this is
+an attempt, not a grant. One refused attempt fires one alert (no burst threshold): a self-grant is anomalous, because the visit-create
+gate and the HOPE signer-licence check (CW-AC-46, #1206) read the licence roster and a second administrator records an administrator's own licence. The sample event's `context` holds the
+membership id (the actor and the target are the same) and the closed discipline (`credentialType`), no licence number and no free text.
+
+What to ask:
+1. **Is the licence real?** Ask the member for the state-board verification, out of band. The usual benign cause is an administrator
+   who is also a nurse recording their own licence through the screen; have another administrator record it (that grant needs a fresh
+   step-up and is audited with the grantor's membership id).
+2. **Has anything been signed on it?** Open the audit log for the member's `hope.timepoint_signed` and `hope.sfv_completed` events and `membership_credential` row
+   changes (`granted_by_membership_id`) since the alert. A grant by another member close in time to this refusal, for the same
+   discipline, is the collusion case: **two permission holders can still record each other's licence** (no second-approver workflow
+   exists; see the CW-AC-46 register row).
+3. **Several in a short time**, or the same member repeating it after being told why: treat as an attempt to forge a signing
+   credential; remove `membership_credential.grant` from the member's roles while you investigate.
+
+A self-grant **cannot succeed through the API** (route and service both refuse it). A `membership_credential` row whose
+`granted_by_membership_id` equals its `membership_id` was written outside the API (the demo seed scripts do this on purpose; a
+direct database write would too): list them with
+`SELECT id, organization_id, membership_id, credential_type, created_at FROM membership_credential WHERE granted_by_membership_id = membership_id;`
+and expect only seeded demo organizations in production-like databases.
+
 <a id="privileged.mass_deactivation"></a>
 ### privileged.mass_deactivation (critical)
 One user deactivated 5 or more accounts in 15 minutes. Offboarding a team is the benign cause; otherwise treat as sabotage and

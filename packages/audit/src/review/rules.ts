@@ -20,7 +20,7 @@
 // NO PHI. A finding carries rule ids, counts, windows, event ids and a subject REFERENCE (a user id, a /24 network prefix,
 // a truncated credential hash) — never a name, a note, a patient or a free-text reason.
 
-export const SECURITY_REVIEW_RULES_VERSION = "2026-11-26.1";
+export const SECURITY_REVIEW_RULES_VERSION = "2026-11-27.1";
 
 export type SecurityReviewLane = "org" | "platform";
 export type SecuritySeverity = "info" | "warn" | "critical";
@@ -225,6 +225,20 @@ export const SECURITY_RULES: readonly SecurityRule[] = [
     subject: "actor",
     threshold: 10,
     windowMs: 15 * MINUTE_MS,
+  },
+  {
+    // An `always` rule, not a burst: a self-grant is anomalous by definition (the UI never offers one and a second administrator
+    // records an administrator's own licence), so one refused attempt is worth a look. It serves CW-AC-46: the licence roster is
+    // the fact the visit-create gate trusts and the HOPE signer-licence check (#1206) reads. The route refuses the grant, so this is an
+    // attempt; no grant by the caller to their own
+    // membership can succeed through the API (the register row names the unguarded seed and direct-database paths).
+    id: "privileged.credential_self_grant_attempt",
+    title: "A member tried to record a professional licence on their own membership",
+    kind: "always",
+    lane: "org",
+    severity: "warn",
+    controls: ["CW-MON-01", "CW-AC-46"],
+    eventTypes: ["m17.credential.self_grant_refused"],
   },
   {
     id: "privileged.mass_deactivation",

@@ -17236,7 +17236,7 @@ export interface paths {
         /** GAP-093: a membership's clinical-license/certification roster */
         get: operations["getApiV1MembershipsByMembershipIdCredentials"];
         put?: never;
-        /** GAP-093: grant a clinical-license/certification credential (201); Idempotency-Key required */
+        /** GAP-093: grant a clinical-license/certification credential (201); Idempotency-Key required. Needs a fresh step-up (403 STEP_UP_REQUIRED otherwise; break-glass cannot satisfy it). The credential cannot be recorded on the caller's own membership: that is refused 403 CREDENTIAL_SELF_GRANT_REFUSED (message: You cannot record a professional licence on your own membership. Ask another administrator to record it.) and writes no row; another member holding membership_credential.grant can record it. The refused attempt commits a best-effort m17.credential.self_grant_refused audit event (ids and the discipline only) that the security review alerts on, so the 403 is normally replayed under the same Idempotency-Key: send a new key for a different request. A membership outside the caller's organization answers 404 */
         post: operations["postApiV1MembershipsByMembershipIdCredentials"];
         delete?: never;
         options?: never;
@@ -17254,7 +17254,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** GAP-093: revoke a credential (204); Idempotency-Key required */
+        /** GAP-093: revoke a credential (204); Idempotency-Key required. Needs a fresh step-up (403 STEP_UP_REQUIRED otherwise). A member may revoke their own credential: it only removes a fact */
         delete: operations["deleteApiV1MembershipsByMembershipIdCredentialsByCredentialId"];
         options?: never;
         head?: never;

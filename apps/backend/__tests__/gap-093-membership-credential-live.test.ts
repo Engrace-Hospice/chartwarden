@@ -69,6 +69,7 @@ describe.skipIf(!DB_URL)("GAP-093 — M17 membership_credential + D8 gate — LI
   let rnRoleId: string;
   let patientId: string;
   let rn: { userId: string; membershipId: string };
+  let granter: { userId: string; membershipId: string };
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -151,6 +152,19 @@ describe.skipIf(!DB_URL)("GAP-093 — M17 membership_credential + D8 gate — LI
       [patientId, org, userId],
     );
     rn = { userId, membershipId };
+    // CW-AC-46 follow-up — a licence is recorded by ANOTHER member (a self-grant is refused), so the roster's manager is its own
+    // membership. The step-up and self-grant guards are proven in m17-credential-grant.live.test.ts.
+    const granterUserId = (
+      await admin.query(`INSERT INTO "user" (email) VALUES ('g93-granter@x.test') RETURNING id`)
+    ).rows[0].id as string;
+    const granterMembershipId = (
+      await admin.query(
+        `INSERT INTO membership (user_id, organization_id, status, default_provider_entity_id, default_location_ids)
+         VALUES ($1,$2,'active',$3,$4::jsonb) RETURNING id`,
+        [granterUserId, org, pe, JSON.stringify([location])],
+      )
+    ).rows[0].id as string;
+    granter = { userId: granterUserId, membershipId: granterMembershipId };
 
     handle = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
@@ -172,25 +186,19 @@ describe.skipIf(!DB_URL)("GAP-093 — M17 membership_credential + D8 gate — LI
   function bootApp(grantedUserId: string) {
     resetAuthorizationContract();
     resetRbacEngine();
-    const { store: grantStore } = createInMemoryEffectivePermissionStore([
-      {
+    const permissionKeys = [
+      "visit.create",
+      "membership_credential.grant",
+      "membership_credential.revoke",
+      "membership_credential.read",
+    ];
+    const { store: grantStore } = createInMemoryEffectivePermissionStore(
+      [grantedUserId, granter.userId].map((userId) => ({
         orgId: org,
-        userId: grantedUserId,
-        grants: [
-          {
-            roleKey: "seed",
-            enabled: true,
-            expiresAt: null,
-            permissionKeys: [
-              "visit.create",
-              "membership_credential.grant",
-              "membership_credential.revoke",
-              "membership_credential.read",
-            ],
-          },
-        ],
-      },
-    ]);
+        userId,
+        grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys }],
+      })),
+    );
     registerEffectivePermissionResolver(grantStore);
     registerPatientSeams({
       db: handle.db,
@@ -200,6 +208,9 @@ describe.skipIf(!DB_URL)("GAP-093 — M17 membership_credential + D8 gate — LI
 
     const backend = createDbSchedulingBackend(handle.db);
     const registry = createPredicateRegistry();
+    // The grant and revoke routes now require a fresh step-up; this suite is about the D8 gate, so the freshness is stubbed true
+    // here and proven for real (stale refused, fresh allowed) in m17-credential-grant.live.test.ts.
+    registry.register("step_up_recent", async () => true);
     const predicates = buildSchedulingAbacPredicates({ resolver: backend });
     for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
     registerAbacRegistry(registry);
@@ -254,11 +265,18 @@ describe.skipIf(!DB_URL)("GAP-093 — M17 membership_credential + D8 gate — LI
       "x-test-org": org,
     };
 
+    // CW-AC-46 follow-up: ANOTHER member records the licence (the clinician cannot record their own)
+    const granterHeaders = {
+      "x-test-user": granter.userId,
+      "x-test-membership": granter.membershipId,
+      "x-test-org": org,
+    };
+
     // grant an 'rn' credential, effective well in the past, non-expiring
     const grantRes = await app.inject({
       method: "POST",
       url: `/api/v1/memberships/${rn.membershipId}/credentials`,
-      headers: { ...headers, ...idem() },
+      headers: { ...granterHeaders, ...idem() },
       payload: { credentialType: "rn", effectiveAt: "2020-01-01", issuingBody: "Oregon BON" },
     });
     expect(grantRes.statusCode).toBe(201);
@@ -288,7 +306,7 @@ describe.skipIf(!DB_URL)("GAP-093 — M17 membership_credential + D8 gate — LI
     const revokeRes = await app.inject({
       method: "DELETE",
       url: `/api/v1/memberships/${rn.membershipId}/credentials/${credentialId}`,
-      headers: { ...headers, ...idem() },
+      headers: { ...granterHeaders, ...idem() },
       payload: { reason: "license lapsed per state board notice" },
     });
     expect(revokeRes.statusCode).toBe(204);

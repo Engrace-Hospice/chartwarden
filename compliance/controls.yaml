@@ -1859,8 +1859,19 @@ controls:
       # reader is answered a static 409 for a legacy spec-less draft instead of having its spec frozen.
       - file: apps/backend/__tests__/hope-workspace-read-only.test.ts
       - file: apps/backend/__tests__/hope-read-only-no-writes.test.ts
+      # The licence roster (M17 `membership_credential`) is the fact the visit-create credential gate trusts and the signer-licence
+      # check (#1206) reads, so its grant and revoke routes need a fresh step-up (not satisfiable by break-glass) and the grant refuses
+      # a licence recorded on the caller's OWN membership (403 CREDENTIAL_SELF_GRANT_REFUSED, no row, an
+      # `m17.credential.self_grant_refused` audit event, a CW-MON-01 finding). Live as the real NOBYPASSRLS chartwarden_app:
+      # self-grant refused, stale step-up refused on both routes, another member's grant works, a grant for another organization's
+      # member refused and its roster read returns nothing, the audit row lands, and the review rule yields a finding when the real
+      # review reader and evaluator run over it (not the job's alert sink).
+      - script: test:m17:credential-grant:live
+      - ci: "M17 credential grant guards"
+      - file: apps/backend/src/modules/17-scheduling/credential-grant-guard.ts
+      - file: apps/backend/__tests__/m17-credential-grant-routes.test.ts
     gap:
-      reason: The sign routes require the caller's attestation and a fresh step-up (not satisfiable by break-glass), and the ceremony is audited, but the signer is not required to be the record's author and the signer's licence is not checked at signing; the ABAC discipline check compares the signer's discipline with the discipline frozen on the record at authoring, not with a licence. `attestationVersion` is optional on the sign and SFV requests, so a signature can record "attested" without the client naming a wording version (the audit row then says `attestationVersionSupplied:false`). An attestation flag and a named version prove the string was sent, not that a human read the wording. The step-up is session recency (`hope.timepoint.sign` / `hope.sfv.record`, which break-glass cannot satisfy), not bound to the specific record being signed. The SFV completion route is gated on `hope.timepoint.write` plus caseload and discipline (spec §4.1), not on `hope.timepoint.sign`, although it inserts an already-signed record; whether it should require the sign permission is an open policy question for a human, because it would change which roles can complete an SFV.
+      reason: The sign routes require the caller's attestation and a fresh step-up (not satisfiable by break-glass), and the ceremony is audited, but the signer is not required to be the record's author and the signer's licence is not checked at signing; the ABAC discipline check compares the signer's discipline with the discipline frozen on the record at authoring, not with a licence. `attestationVersion` is optional on the sign and SFV requests, so a signature can record "attested" without the client naming a wording version (the audit row then says `attestationVersionSupplied:false`). An attestation flag and a named version prove the string was sent, not that a human read the wording. The step-up is session recency (`hope.timepoint.sign` / `hope.sfv.record`, which break-glass cannot satisfy), not bound to the specific record being signed. The SFV completion route is gated on `hope.timepoint.write` plus caseload and discipline (spec §4.1), not on `hope.timepoint.sign`, although it inserts an already-signed record; whether it should require the sign permission is an open policy question for a human, because it would change which roles can complete an SFV. The licence roster itself is guarded now (CW-AC-46 follow-up). The M17 grant and revoke routes (`membership_credential.grant` / `.revoke`) need a fresh step-up, and the grant refuses a licence recorded on the caller's own membership (403 CREDENTIAL_SELF_GRANT_REFUSED; the route writes `m17.credential.self_grant_refused` on its own transaction, best effort, CW-MON-01 alerts on it as rule `privileged.credential_self_grant_attempt`, and the Drizzle credential store, the one place the row is written, refuses it again as the backstop). What is left of that guard, stated rather than implied, is that no second approver is required, so two holders of `membership_credential.grant` can record each other's licence (a four-eyes pending-then-approved grant would be a new table and routes, an owner decision; the default chosen is that one other membership suffices); the guard compares memberships, not people, so a person who holds two accounts in the organization can record a licence on the second (the roster has no identity proofing); the database does not refuse a self-grant (the demo seed scripts write `granted_by_membership_id` equal to the member, so a CHECK needs a data decision, and a trigger scoped to the application role would leave the seeds alone, an owner decision, while a direct database write is outside the API); the refusal's audit row is written per request, so a holder of the permission with a fresh step-up can add rows, bounded only by the global limiter (no per-route limit); there is no edit route (a licence is replaced by revoke then grant); the revoke route ignores the membership id in its path (the credential id decides which licence is revoked) and the effective date of a grant is not bounded (a second holder can backdate a licence); and a revoke of one's own licence is allowed on purpose (it removes a fact). The roster remains administrator-entered data with no state-board verification.
       owner: clinical-platform
       review_by: 2027-04-30
 
@@ -2317,7 +2328,7 @@ controls:
     soc2: ["CC7.2", "CC7.3"]
     status: partial
     evidence:
-      # The scheduled review of the audit trail (queue audit.security_review, every 15 minutes): 15 detection rules as data, a
+      # The scheduled review of the audit trail (queue audit.security_review, every 15 minutes): detection rules as data, a
       # pure evaluator, one run per scope that reads since the last clean review and raises each NEW finding once, and the
       # review record (m4.security_review.completed / .alert_raised) appended to the audit trail. Two lanes: the org-less sign-in
       # events (platform context, audited) and each active organization (withOrgContext). The live suite proves it as the real
@@ -2326,6 +2337,10 @@ controls:
       # platform lane reads org-less rows only; a tenant's events never reach another tenant's review.
       - script: test:m4:security-review:live
       - ci: "M4 security review of the audit trail"
+      # A control adds one rule: CW-AC-46 follow-up adds `privileged.credential_self_grant_attempt` (an attempted self-grant of a
+      # professional licence, `m17.credential.self_grant_refused`), proven through the real review reader in this suite.
+      - script: test:m17:credential-grant:live
+      - ci: "M17 credential grant guards"
       - file: packages/audit/src/review/rules.ts
       - file: packages/audit/src/review/evaluate.ts
       - file: packages/audit/src/review/run.ts
