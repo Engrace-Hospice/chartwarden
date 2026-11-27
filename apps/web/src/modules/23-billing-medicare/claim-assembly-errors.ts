@@ -24,6 +24,8 @@ const ASSEMBLE_ERROR_MESSAGES: Readonly<Record<string, string>> = {
     "No hospice rate table covers this service date. A billing administrator must enter the CMS per-diem rates for that fiscal year, then retry.",
   RATE_TABLE_LABOR_SHARE_MISSING:
     "The effective hospice rate table has no labor shares. A billing administrator must supersede it with the CMS-published labor shares, then retry.",
+  CHC_HOURLY_RATE_INVALID:
+    "The continuous home care hourly rate for the year of the death resolves to zero or an invalid amount, so the Service Intensity Add-on cannot be priced. A billing administrator must correct the rate table's CHC hourly rate and the wage index, then retry.",
   SEQUESTRATION_POLICY_UNAVAILABLE:
     "No Medicare sequestration policy covers this service date. Enter it under Billing → Sequestration Policy, then retry.",
   CHC_HOURS_UNPRICEABLE:

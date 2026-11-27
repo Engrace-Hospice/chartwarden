@@ -586,6 +586,15 @@ async function resolveSiaPricing(
     siaWageIndex,
     siaScope,
   );
+  // A rate that is not a positive whole number of cents is a missing rate in disguise (a zero would price the add-on at
+  // $0 and still pass the amount check): fail closed rather than store a payable add-on worth nothing.
+  if (!Number.isInteger(chcHourlyRateCents) || chcHourlyRateCents <= 0) {
+    throw new ChartWardenError(
+      "CHC_HOURLY_RATE_INVALID",
+      `the CHC hourly rate resolved for fiscal year ${siaFiscalYear} is not a positive amount; the SIA add-on is priced with it. Correct the hospice rate table's CHC hourly rate and the wage index (POST /api/v1/billing/rate-tables/:id/supersede) and retry`,
+      422,
+    );
+  }
   return { chcHourlyRateCents, fiscalYear: siaFiscalYear, wageIndexFactor: siaWageIndex };
 }
 

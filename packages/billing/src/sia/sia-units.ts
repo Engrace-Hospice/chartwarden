@@ -1,5 +1,6 @@
 // @chartwarden/billing — the shared SIA units engine (M23, D6). Medicare pays the Service Intensity Add-on from the
-// claim's visit lines (Medicare Claims Processing Manual ch. 11 §30.2.2; 42 CFR 418.302(e)(4); 80 FR 47142): in-person
+// claim's visit lines (Medicare Claims Processing Manual ch. 11 §30.2.2; 42 CFR 418.302(b)(1)(i)-(ii) for the window,
+// the disciplines and the 4-hour day and 418.302(e)(4) for the CHC hourly rate; 80 FR 47142): in-person
 // RN (0551 + G0299) and social-work (056x + G0155) care on ROUTINE HOME CARE days in the last 7 days of life
 // (`[death − 6, death]`, the death date is day 1 of 7), each visit rounded to 15-minute units, 1..16 units per day
 // combined, paid at the wage-adjusted CHC hourly rate / 4 per unit. ONE pure function owns that decision so the
