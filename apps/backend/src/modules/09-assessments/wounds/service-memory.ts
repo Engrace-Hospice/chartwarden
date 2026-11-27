@@ -14,6 +14,11 @@ import {
 } from "@chartwarden/assessments";
 import { type EncounterDraftReader, NotFoundError } from "@chartwarden/types";
 import {
+  type WoundPatientReader,
+  assertPatientExists,
+  everyWoundPatientExists,
+} from "./patient-exists";
+import {
   type WoundObservationRecord,
   type WoundRecord,
   observationValuesOf,
@@ -35,6 +40,8 @@ export interface InMemoryWoundOptions {
   readonly now?: () => Date;
   /** M8's visit facts; defaults to a reader that knows no visit, so a visit-tied observation is refused. */
   readonly visits?: EncounterDraftReader;
+  /** M5's patient existence; defaults to a reader that knows every patient (the memory store has no patient table). */
+  readonly patients?: WoundPatientReader;
   /** The organisation-local ISO date; defaults to the UTC date of `now`. */
   readonly today?: () => string;
   readonly newId?: () => string;
@@ -56,6 +63,7 @@ export function createInMemoryWoundService(
   const today = options.today ?? (() => now().toISOString().slice(0, 10));
   const newId = options.newId ?? randomUUID;
   const visits = options.visits ?? noEncounterDraftReader;
+  const patients = options.patients ?? everyWoundPatientExists;
   let wounds: readonly WoundRecord[] = [];
   let observations: readonly WoundObservationRecord[] = [];
 
@@ -165,6 +173,7 @@ export function createInMemoryWoundService(
     },
 
     async createWound(actor, patientId, input): Promise<WoundView> {
+      await assertPatientExists(patients, { organizationId: actor.organizationId, patientId });
       assertValidWound(input, today());
       const wound: WoundRecord = {
         id: newId(),

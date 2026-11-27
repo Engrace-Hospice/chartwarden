@@ -52,6 +52,7 @@ M9 has **no direct external integration of its own**. Its couplings are internal
 | consume | M40 (MDM) | discipline / provider identity for the `discipline_can_record_scale` eligibility gate | minimal (ids) |
 | consume | M39 (Consent) | `ConsentEvaluator` seam — Part-2/AIMS disclosure gate on the READ/egress path (never the write path) | yes (ids) |
 | consume | M36 (Messaging) | `AlertEmitter` — significant-change alert payload (§4.9); never inline on the recording path | minimal (ids) |
+| consume | M5 (Patient) | `PatientReader` seam — `wounds/patient-exists.ts`: wound registration (CW-AC-54) asks whether the patient exists in the caller's organisation, before the write (fails closed: a reader error or an unbound seam refuses it); the identity the reader returns is compared with the id and discarded, never stored, logged or returned | yes (identity, not retained) |
 
 Notes:
 - The M22 PDF render path ships as a PURE forward-seam **deny-stub** now (`seams/m22-summary-pdf.ts`,

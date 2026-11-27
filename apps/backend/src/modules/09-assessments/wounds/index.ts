@@ -18,4 +18,9 @@ export {
   toWoundObservationView,
 } from "./seam";
 export { type WoundEraseCounts, eraseWoundSubtree } from "./erase";
+export {
+  type WoundPatientReader,
+  seamWoundPatientReader,
+  woundPatientReaderOver,
+} from "./patient-exists";
 export type { WoundObservationRecord, WoundRecord } from "./projection";

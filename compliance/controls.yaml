@@ -1483,7 +1483,7 @@ controls:
       (422 WOUND_NOT_IN_NOTE). The seam fails closed. Its registry entry is a deny stub that throws until the real reader is registered (the
       composition root registers it only when a database is wired), and a reader error refuses the write. A visit that closes between the check and
       the commit is reconciled after the commit (a proposal is released or withdrawn with its visit, an observation is taken out of the closed note
-      by a wrong_visit correction) instead of staying bound to it
+      by a wrong_visit correction) instead of staying bound to it. A wound is registered only for a patient of the caller's organisation: M9 asks M5's PatientReader seam before it writes (404 otherwise, the same for an absent uuid and another tenant's patient)
     hipaa: ["164.312(a)(1)", "164.312(c)(1)"]
     soc2: ["CC6.1", "CC6.3"]
     status: partial
@@ -1498,6 +1498,10 @@ controls:
       - file: apps/backend/src/modules/08-encounters/encounter-draft-reader.ts
       - file: apps/backend/src/modules/07-care-plan/change-proposals-visit.ts
       - file: apps/backend/src/modules/09-assessments/wounds/source-visit.ts
+      # The wound registration asks M5's PatientReader before it writes (404 for a patient that is not the organisation's; fails closed): live
+      # over the real reader and a real patient table, an absent uuid and the other tenant's patient refused alike, nothing stored.
+      - file: apps/backend/src/modules/09-assessments/wounds/patient-exists.ts
+      - file: apps/backend/__tests__/wounds-patient-exists.test.ts
       - file: apps/backend/src/modules/08-encounters/fall-incident-reader.ts
       - file: apps/backend/src/bootstrap/seams/providers.ts
       - file: apps/backend/src/bootstrap/seams/registry.ts
@@ -1511,9 +1515,16 @@ controls:
     gap:
       reason: >-
         The check binds a record only when it names a visit. A wound is registered, and an observation recorded without a visit tie, on
-        assessment.author and the caseload_or_scope predicate alone, and M9 has no patient-existence seam, so a wound can be created for a patient
-        uuid that does not exist inside the caller's own organisation (wound.patient_id has no foreign key; another tenant's patient is out of reach
-        through RLS). The note-closure allowlist (apps/backend/src/bootstrap/note-closure-allowlist.ts, ADR-0113; CW-AC-47 carries the same limit
+        assessment.author and the caseload_or_scope predicate, plus, for the registration, a patient-existence check: M9's createWound asks M5's
+        PatientReader seam before it writes and answers 404 for a patient that is not one of the caller's organisation (an absent uuid and another
+        tenant's patient alike, so it is no existence oracle across tenants; a failed or unbound reader refuses the write). The check is made at
+        registration only (and before the insert's transaction opens, so a patient erased between the two leaves a wound the eraser has already passed)
+        and wound.patient_id still has no foreign key, so a later change to the patient (an erasure removes the wound subtree)
+        is not re-judged. A patient merged into another is refused (M5 answers a retired id with the survivor, which is not the id asked for), but a
+        destroyed patient is not: the M5 eraser keeps the patient row as a tombstone (the reader has no status filter), so a wound can still be
+        registered for an erased patient, and nothing sweeps it up afterwards (the M5 destroyed marker and an id-only existence read are tracked in a follow-up issue, #1205). Wounds registered before this check, against a patient that was
+        never there, are not found or removed. An observation needs an existing wound of the patient, so it inherits the check for new wounds only.
+        The note-closure allowlist (apps/backend/src/bootstrap/note-closure-allowlist.ts, ADR-0113; CW-AC-47 carries the same limit
         from the gate's side) deliberately keeps the wound routes,
         the proposal list, create, replace and withdraw routes and the ADL, nutrition and weight routes open to a clinician the note-closure clock has
         blocked, so that clinician can still register wounds and propose plan changes until the block lifts (a proposal still needs that clinician's own
@@ -1521,8 +1532,7 @@ controls:
         that key this check is the whole of the authorization beyond caseload_or_scope. On the read side, M8 reads a patient's recorded falls from
         M30 through the IncidentRegisterProvider seam (fall-incident-reader.ts), and M30's listIncidents ignores the permissions array M8 passes
         (always empty) and uses the actor id only to set app.user_id, so it relies on M8's own route guards (the encounter.author permission,
-        encounter.scope and is_author_or_supervisor) and on org RLS. Close the first with a patient-existence seam in M9, and decide
-        whether a blocked clinician should be able to register a wound.
+        encounter.scope and is_author_or_supervisor) and on org RLS. By design, a clinician blocked by the closure gate CAN still register wounds: POST /api/v1/patients/:patientId/wounds (with the other wound routes) is on the ADR-0113 note-closure allowlist, which keeps the wound routes open so that care is not held back by paperwork. That is intended behaviour, not an open gap or a pending decision.
       owner: clinical-platform
       review_by: 2027-04-30
 
