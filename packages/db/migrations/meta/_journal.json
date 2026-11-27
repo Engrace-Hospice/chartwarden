@@ -2514,6 +2514,13 @@
       "when": 1795700000000,
       "tag": "1557_m24_chc_local_pricing_preparations",
       "breakpoints": true
+    },
+    {
+      "idx": 359,
+      "version": "7",
+      "when": 1795800000000,
+      "tag": "1560_m22_object_destruction_tombstone",
+      "breakpoints": true
     }
   ]
 }

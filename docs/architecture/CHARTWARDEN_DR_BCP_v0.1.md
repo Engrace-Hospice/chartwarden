@@ -302,7 +302,12 @@ and every object is re-put with its SHA-256 and verified on the target. The mass
 empty or a run would delete more than max(10, 10% of the target count), so a smaller loss on the primary propagates
 on the next run. An erasure reaching the copy has three limits (a large erasure is held by the guard until an operator
 names the bucket via `ALLOW_MASS_DELETE`; a bucket dropped on the primary is never removed from the copy; `--restore`
-after an erasure brings the destroyed objects back). The copy target must be `https://`
+after an erasure brings the destroyed objects back), and one remedy (CW-DS-01): the M22 eraser records an append-only
+`object_destruction_tombstone` per object it destroys, `scripts/storage/object-tombstones.ts` exports them, and
+`--tombstones <file>` (or `OBJECT_COPY_TOMBSTONES_FILE`, re-read each run) makes the copy tool destroy those objects on the
+target outside the guard, in a bucket the source no longer lists, and in a `--restore`, and never copy them. The list is
+refreshed by whoever runs the export (nothing schedules it), and covers only objects the eraser destroyed after migration
+1560 (`docs/runbooks/object-destruction-copies.md`); without the file the three limits stand. The copy target must be `https://`
 (the copy carries PHI between hosts; `OBJECT_COPY_ALLOW_PLAINTEXT_TARGET=1` overrides). A failed run posts `object_copy.failed` to `OPS_ALERT_WEBHOOK_URL`, and the
 container turns unhealthy when no run has been clean for three intervals. **Not enabled in production**: the replica
 host needs a BAA (CW-BA-01), disk encryption on both hosts (CW-AC-05) and a D12 shred that reaches the copy (CW-DS-01)
@@ -815,15 +820,25 @@ up; the api `/ready` reports the object store unreachable; `GET /healthz` on `se
    (admin, app, readers) and `seaweedfs` starts as a single node on the same service name, so the applications'
    `OBJECT_STORE_ENDPOINT` (`http://seaweedfs:8333`) does not change. If the host itself is lost, this is the stack
    rebuild of §7.4.
+1a. Export the destruction tombstones from the database as it stands after its own restore (§4.1), with the operator's
+   connection (`DATABASE_ADMIN_URL`; there is no fallback): `bun run scripts/storage/object-tombstones.ts >
+   tombstones.ndjson.tmp && mv tombstones.ndjson.tmp tombstones.ndjson` (`docs/runbooks/object-destruction-copies.md`). The
+   file ends with a trailer line holding its record count; the copy tool refuses a file without a matching one, so a failed
+   or empty export stops the restore instead of letting it resurrect destroyed documents.
 2. Load the copy into the new primary with `scripts/object-store-copy.ts --restore`: `SOURCE_S3_*` = the RustFS
-   second copy, `TARGET_S3_*` = the new primary with the SeaweedFS admin key. `--restore` never deletes, and every
-   object is re-put with its SHA-256 and verified on the target (a generic `mc mirror` or `rclone` copy would leave
+   second copy, `TARGET_S3_*` = the new primary with the SeaweedFS admin key, and `--tombstones <file>` = the export from
+   step 1a (`--restore` never deletes, except the objects that list names, and every
+   object is re-put with its SHA-256 and verified on the target; a generic `mc mirror` or `rclone` copy would leave
    uploads unverifiable, so it is not a substitute).
 3. Run the `tenant-buckets` backfill (`scripts/backfill-tenant-buckets.ts`, which `deploy.sh` also runs each deploy):
    the copy carries objects, not bucket creation, versioning or expiry rules.
 4. Verify: api `/ready` is green, one upload plus download succeeds per tenant (§7.5), and each bucket's object count
    on the new primary matches the copy's. Only then start `object-copy` again.
-5. Re-run the D12 erasures (the M22 eraser and the Phase 2 object-scope destruction of §14A.2). A restore resurrects
+5. Use the step 1a file for any hand load as well (`object-store-copy.ts --tombstones` also destroys a listed object a load
+   already put back). It names every object the M22 eraser finished destroying since migration 1560, as far as the restored
+   database knows: a database restored to a point before a destruction does not have its tombstones, so that erasure must be
+   re-run like the ones the list never covered (the Phase 2 object-scope destruction of §14A.2, and any erasure completed
+   before the table existed). Re-run the D12 erasures the list does not cover. A restore resurrects
    destroyed objects: those erased after the copy's last clean run, those whose deletion the guard held, those in a
    bucket dropped on the primary, and, when the source is the off-site mirror (hand-loaded; not a tested procedure, §4.8.6), everything erased after the snapshot being
    loaded (`restore-objects` uploads only that snapshot's manifest entries). The objects are

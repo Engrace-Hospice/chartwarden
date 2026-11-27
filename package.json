@@ -90,6 +90,7 @@
     "test:rate-limit-store:live": "vitest run apps/backend/src/bootstrap/plugins/__tests__/rate-limit-store.live.test.ts",
     "test:object-store:conformance:live": "vitest run apps/backend/__tests__/object-store-conformance.live.test.ts",
     "test:object-store:resilience:live": "vitest run apps/backend/__tests__/object-store-resilience.live.test.ts",
+    "test:m22:object-destruction:live": "vitest run apps/backend/__tests__/m22-object-destruction-tombstones.live.test.ts",
     "test:partition-rotation:live": "vitest run apps/backend/src/bootstrap/jobs/__tests__/partition-rotation.live.test.ts",
     "test:rls:live": "vitest run packages/db/migrations/__tests__/rls-isolation.live.test.ts",
     "test:rls:live:m31": "vitest run packages/db/migrations/__tests__/m31-rls-isolation.live.test.ts",
