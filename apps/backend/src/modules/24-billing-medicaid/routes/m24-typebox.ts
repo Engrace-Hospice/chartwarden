@@ -318,6 +318,22 @@ const AssemblyPreviewPricingSegment = Type.Object({
   baseReimbursementCents: Type.Union([cents(), Type.Null()]),
   reimbursementEstimateCents: Type.Union([cents(), Type.Null()]),
   actualBilledChargeCents: Type.Union([cents(), Type.Null()]),
+  electionDayRange: Type.Optional(
+    Type.Object({
+      basis: Type.Literal("current_signed_election_calendar_days_v1"),
+      dayFrom: Type.Integer({ minimum: 1 }),
+      dayTo: Type.Integer({ minimum: 1 }),
+      rateBucketFrom: Type.Integer({ minimum: 1 }),
+      rateBucketTo: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+    }),
+  ),
+  ircEpisodeDayRange: Type.Optional(
+    Type.Object({
+      episodeStartDate: isoDate(),
+      dayFrom: Type.Integer({ minimum: 1 }),
+      dayTo: Type.Integer({ minimum: 1 }),
+    }),
+  ),
   reasonCodes: Type.Array(Type.String()),
 });
 export const AssemblyPreviewResponse = Type.Object({

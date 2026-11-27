@@ -19,10 +19,12 @@ import {
 } from "./encounters-route-service-db";
 import { createDrizzleFindingsService, registerFindingsRoutes } from "./findings/index";
 import type { HearthnoteCiphers } from "./hearthnote-crypto";
+import { createDbInHomeRespiteService } from "./in-home-respite";
 import { registerClosureRoutes as _registerM8ClosureRoutes } from "./routes/closure-routes";
 import { registerDraftSectionRoutes as _registerM8DraftSectionRoutes } from "./routes/draft-section-routes";
 import { registerDraftingRoutes as _registerM8DraftingRoutes } from "./routes/drafting-routes";
 import { registerEncounterRoutes as _registerM8Routes } from "./routes/encounters-routes";
+import { registerInHomeRespiteRoutes } from "./routes/in-home-respite-routes";
 
 /**
  * M8L-T01/T02 — mount the M8 encounter routes over the PRODUCTION Drizzle route service + ABAC resolver
@@ -64,6 +66,7 @@ export function mountEncounterRoutes(
 ): void {
   _registerM8Abac({ resolver: createDbEncounterAbacResolver(db) });
   _registerM8Routes(app, { service: createDbEncounterRouteService(db, outbox, ciphers) });
+  registerInHomeRespiteRoutes(app, { service: createDbInHomeRespiteService(db) });
   registerFindingsRoutes(app, { service: createDrizzleFindingsService({ db }) });
   _registerM8ClosureRoutes(app, {
     overrideRateLimit: closure?.overrideRateLimit ?? (async () => {}),
@@ -101,6 +104,14 @@ export {
   createDrizzleFindingsService,
   registerFindingsRoutes,
 } from "./findings/index";
+export {
+  createDbInHomeRespiteService,
+  readInHomeRespiteForBillingInTransaction,
+  type InHomeRespiteBillingProjection,
+  type InHomeRespiteEvidenceView,
+  type InHomeRespiteReadScope,
+  type InHomeRespiteService,
+} from "./in-home-respite";
 
 // WF09 — the visit facts (patient / status / author) M7 change proposals and M9 wounds check before binding a record to a note.
 export {

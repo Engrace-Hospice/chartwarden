@@ -38,6 +38,7 @@ export * from "./certification/f2f-performer";
 export * from "./admission-uploaded-evidence";
 export * from "./admission-document-validator";
 export * from "./physician-authority";
+export * from "./seams/medicaid-election-history";
 // FY2027 — the 42 CFR 418.24(c)/(d) election statement addendum (service, clocks, M7 consumer, routes).
 export * from "./election-addendum/index";
 export {

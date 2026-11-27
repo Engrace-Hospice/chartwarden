@@ -50,6 +50,7 @@ import {
 } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray } from "drizzle-orm";
+import type { MedicaidElectionHistoryReader } from "../../06-admission/seams/medicaid-election-history";
 import {
   type CurrentLocPeriodForClaim,
   hospiceClaimLineSnapshotIssue,
@@ -69,6 +70,11 @@ import {
   lockMedicaidRatePolicyScopes,
   readInSavepoint,
   verifyStoredRhcPricingSnapshots,
+} from "../pricing/rhc-pricing-snapshot";
+import type {
+  GipPricingStayReader,
+  InHomeRespiteEvidenceReaderPort,
+  IrcPricingEpisodeReader,
 } from "../pricing/rhc-pricing-snapshot";
 import type {
   CanonicalPayerIdentityReader,
@@ -180,6 +186,11 @@ export interface RevalidateWorkerDeps {
   readonly patientAddresses?: Pick<PatientAddressReader, "residencesBetweenInTransaction">;
   /** M40's canonical facility-kind read for supported local RHC residence profiles. */
   readonly facilityKindReader?: FacilityKindReaderPort;
+  /** M6's transaction-bound election/history facts for bucketed RHC snapshot verification. */
+  readonly electionHistoryReader?: MedicaidElectionHistoryReader;
+  readonly ircEpisodeReader?: IrcPricingEpisodeReader;
+  readonly gipPricingStayReader?: GipPricingStayReader;
+  readonly inHomeRespiteEvidenceReader?: InHomeRespiteEvidenceReaderPort;
   now?: () => Date;
   readonly outbox: RevalidateWorkerOutboxPort;
 }
@@ -514,15 +525,25 @@ export async function runMedicaidRevalidate(
         async (savepoint) => {
           // Rate locks were taken above; take this claim's evidence lock, THEN read the clock: a rate or
           // evidence correction that commits while the job waits is then part of the instant assessed.
-          await lockHospiceBillingEvidenceScope(savepoint, {
-            organizationId: claim.organizationId,
-            providerEntityId: claim.providerEntityId,
-            patientId: claim.patientId,
-            admissionId: claim.admissionId,
-            canonicalPayerId,
-            programKind: "managed_care",
-            serviceState: claim.serviceState,
-          });
+          await lockHospiceBillingEvidenceScope(
+            savepoint,
+            {
+              organizationId: claim.organizationId,
+              providerEntityId: claim.providerEntityId,
+              patientId: claim.patientId,
+              admissionId: claim.admissionId,
+              canonicalPayerId,
+              programKind: "managed_care",
+              serviceState: claim.serviceState,
+            },
+            lineRows.filter((line) => !line.isRb).length > 0 &&
+              lineRows.filter((line) => !line.isRb).every((line) => line.levelOfCare === "IRC")
+              ? "IRC"
+              : lineRows.filter((line) => !line.isRb).length > 0 &&
+                  lineRows.filter((line) => !line.isRb).every((line) => line.levelOfCare === "GIP")
+                ? "GIP"
+                : "RHC",
+          );
           const assessedAt = clock().toISOString();
           const rateRows = await readMedicaidRatePolicyLineage(savepoint, {
             organizationId: claim.organizationId,
@@ -533,6 +554,14 @@ export async function runMedicaidRevalidate(
             serviceTo: day(claim.serviceTo),
             assessedAt,
           });
+          const electionHistory = deps.electionHistoryReader
+            ? await deps.electionHistoryReader.readInTransaction(savepoint, {
+                organizationId: claim.organizationId,
+                providerEntityId: claim.providerEntityId,
+                patientId: claim.patientId,
+                admissionId: claim.admissionId,
+              })
+            : null;
           return verifyStoredRhcPricingSnapshots({
             tx: savepoint,
             claim,
@@ -550,6 +579,10 @@ export async function runMedicaidRevalidate(
                   }
                 : undefined,
             facilityKindReader,
+            electionHistory,
+            ircEpisodeReader: deps.ircEpisodeReader,
+            gipPricingStayReader: deps.gipPricingStayReader,
+            inHomeRespiteEvidenceReader: deps.inHomeRespiteEvidenceReader,
             assessedAt,
           });
         },

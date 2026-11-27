@@ -510,6 +510,7 @@ export const MODULES: ModuleDef[] = [
       "notice_of_rights_acknowledgment",
       "compliance_window",
       "admission_evidence",
+      "medicaid_election_history_evidence",
       "election_addendum", // FY2027 — 42 CFR 418.24(c) election statement addendum (ADR-0015 D1 amendment)
       "nomnc_notice", // 10a — NOMNC delivery record per admission (ADR-0015 D5 amendment; record-keeping only)
       "expedited_review", // 10a — BFCC-QIO fast-track review facts (0..1 per notice)
@@ -566,6 +567,7 @@ export const MODULES: ModuleDef[] = [
       "encounter_amendment", // ADR-0114 VN-D30 — the sections an addendum amends and the author's resolution of each (PHI satellite)
       "addendum_cosignature_request", // ADR-0114 VN-D30 — the cosignature request an amending addendum opens (sibling of cosignature_request)
       "visit_note_draft_policy", // ADR-0114 — per-tenant draft switch, default off (org-level, no patient)
+      "encounter_in_home_respite_evidence", // M24-1075 L8A.2C4 — signed-encounter-derived clinical service evidence; no billing facts
     ],
   },
   {

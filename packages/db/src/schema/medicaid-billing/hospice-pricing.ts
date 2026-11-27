@@ -103,7 +103,7 @@ export const medicaidHospiceBillingEvidence = pgTable(
     ),
     stateValid: check(
       "medicaid_hospice_billing_evidence_state",
-      sql`program_kind = 'managed_care' AND service_state = 'OR' AND service_category IN ('RHC', 'CHC')`,
+      sql`program_kind = 'managed_care' AND service_state = 'OR' AND service_category IN ('RHC', 'CHC', 'IRC', 'GIP')`,
     ),
     periodValid: check(
       "medicaid_hospice_billing_evidence_period",
@@ -122,7 +122,13 @@ export const medicaidHospiceBillingEvidence = pgTable(
             revenue_code = '0651' AND hcpcs_code IN ('Q5001', 'Q5002')) OR
            (service_category = 'CHC' AND quantity_policy = 'm6_symptom_crisis_plus_signed_m8_rn_intervals_v1' AND
             quantity_evidence_owner = 'm6_loc_m8_encounter' AND billing_unit = 'hourly' AND
-            revenue_code IS NULL AND hcpcs_code IS NULL))) IS TRUE`,
+            revenue_code IS NULL AND hcpcs_code IS NULL) OR
+           (service_category = 'IRC' AND quantity_policy = 'm37_irc_episode_daily_v1' AND
+            quantity_evidence_owner = 'm37_irc_episode_and_remote_stay' AND billing_unit = 'daily' AND
+            revenue_code = '0655' AND hcpcs_code = 'Q5005') OR
+           (service_category = 'GIP' AND quantity_policy = 'm37_gip_own_unit_daily_v1' AND
+            quantity_evidence_owner = 'm37_gip_admission_criteria_and_confirmed_bed_history' AND
+            billing_unit = 'daily' AND revenue_code = '0656' AND hcpcs_code = 'Q5006'))) IS TRUE`,
     ),
     qualityFactsValid: check(
       "medicaid_hospice_billing_evidence_quality",
@@ -240,6 +246,101 @@ export type MedicaidClaimLinePricingSnapshotPayload =
       readonly hcpcsCode: "Q5002";
       readonly serviceLocation: MedicaidRhcAssistedLivingLocationSnapshot;
       readonly localBillingProfile: "rhc_assisted_living_q5002_daily_v1";
+    })
+  | (MedicaidRhcPricingSnapshotCommon & {
+      readonly schemaVersion: 3;
+      readonly hcpcsCode: "Q5001";
+      readonly serviceLocation: MedicaidRhcHomeLocationSnapshot;
+      readonly localBillingProfile: "rhc_home_election_bucket_daily_v1";
+      readonly electionDay: {
+        readonly basis: "current_signed_election_calendar_days_v1";
+        readonly electionPeriodId: string;
+        readonly electionStatementId: string;
+        readonly electionStartDate: string;
+        readonly sourceReference: string;
+        readonly sourceVersion: number;
+        readonly historyReference: string;
+        readonly historyFingerprint: string;
+        readonly historyVersion: number;
+        readonly historyEvidenceId: string;
+        readonly historyEvidenceVersion: number;
+        readonly verifiedAt: string;
+        readonly dayFrom: number;
+        readonly dayTo: number;
+        readonly rateBucketFrom: number;
+        readonly rateBucketTo: number | null;
+      };
+    })
+  | (Record<string, unknown> & {
+      readonly schemaVersion: 4;
+      readonly profile: "irc_hospital_q5005_daily_local_v1";
+      readonly localBillingProfile: "irc_hospital_q5005_daily_local_v1";
+      readonly postingAuthorized: false;
+      readonly institutionalFormatQualified: false;
+      readonly organizationId: string;
+      readonly providerEntityId: string;
+      readonly patientId: string;
+      readonly admissionId: string;
+      readonly canonicalPayerId: string;
+      readonly programKind: "managed_care";
+      readonly serviceState: "OR";
+      readonly levelOfCare: "IRC";
+      readonly serviceFrom: string;
+      readonly serviceTo: string;
+      readonly revenueCode: "0655";
+      readonly hcpcsCode: "Q5005";
+      readonly serviceLocation: {
+        readonly kind: "facility";
+        readonly facilityId: string;
+        readonly facilityKind: "hospital";
+      };
+      readonly episode: {
+        readonly episodeId: string;
+        readonly episodeVersion: number;
+        readonly ipuAdmissionId: string;
+        readonly ipuAdmissionVersion: number;
+        readonly remoteStayId: string;
+        readonly remoteStayVersion: number;
+        readonly consecutiveDayFrom: number;
+        readonly consecutiveDayTo: number;
+        readonly serviceTimeZone: string;
+      };
+      readonly quantity: { readonly basis: "per_day"; readonly units: number };
+      readonly estimatedReimbursementCents: number;
+      readonly billedChargeCents: number;
+      readonly assessmentTimestamp: string;
+    })
+  | (Record<string, unknown> & {
+      readonly schemaVersion: 5;
+      readonly profile: "gip_own_ipu_q5006_daily_local_v1";
+      readonly localBillingProfile: "gip_own_ipu_q5006_daily_local_v1";
+      readonly postingAuthorized: false;
+      readonly institutionalFormatQualified: false;
+      readonly organizationId: string;
+      readonly providerEntityId: string;
+      readonly patientId: string;
+      readonly admissionId: string;
+      readonly canonicalPayerId: string;
+      readonly programKind: "managed_care";
+      readonly serviceState: "OR";
+      readonly levelOfCare: "GIP";
+      readonly serviceFrom: string;
+      readonly serviceTo: string;
+      readonly revenueCode: "0656";
+      readonly hcpcsCode: "Q5006";
+      readonly serviceLocation: {
+        readonly kind: "facility";
+        readonly facilityId: string;
+        readonly facilityKind: "ipu";
+        readonly unitId: string;
+        readonly locationId: string;
+        readonly timeZone: string;
+      };
+      readonly gipStay: Record<string, unknown>;
+      readonly quantity: { readonly basis: "per_day"; readonly units: number };
+      readonly reimbursementEstimateCents: number;
+      readonly billedChargeCents: number;
+      readonly assessmentTimestamp: string;
     });
 
 export const medicaidClaimLinePricingSnapshot = pgTable(
@@ -306,7 +407,7 @@ export const medicaidClaimLinePricingSnapshot = pgTable(
     fingerprintValid: check(
       // 1554 drops and re-adds the 1551 constraints under their original names, so the mirror keeps them.
       "medicaid_claim_line_pricing_snapshot_fingerprint",
-      sql`fingerprint ~ '^[0-9a-f]{64}$' AND snapshot_schema_version IN (1, 2)`,
+      sql`fingerprint ~ '^[0-9a-f]{64}$' AND snapshot_schema_version IN (1, 2, 3, 4, 5)`,
     ),
     snapshotShape: check(
       "medicaid_claim_line_pricing_snapshot_shape",
@@ -323,7 +424,45 @@ export const medicaidClaimLinePricingSnapshot = pgTable(
             snapshot ->> 'localBillingProfile' = 'rhc_assisted_living_q5002_daily_v1' AND
             snapshot #>> '{serviceLocation,kind}' = 'facility' AND
             snapshot #>> '{serviceLocation,facilityKind}' = 'alf' AND
-            snapshot #>> '{serviceLocation,facilityId}' IS NOT NULL))) IS TRUE`,
+            snapshot #>> '{serviceLocation,facilityId}' IS NOT NULL) OR
+           (snapshot_schema_version = 3 AND snapshot ->> 'hcpcsCode' = 'Q5001' AND
+            snapshot ->> 'localBillingProfile' = 'rhc_home_election_bucket_daily_v1' AND
+            snapshot #>> '{serviceLocation,kind}' = 'home' AND
+            snapshot #>> '{serviceLocation,facilityId}' IS NULL AND
+            snapshot #>> '{electionDay,basis}' = 'current_signed_election_calendar_days_v1') OR
+           (snapshot_schema_version = 4 AND snapshot ->> 'profile' = 'irc_hospital_q5005_daily_local_v1' AND
+            snapshot ->> 'localBillingProfile' = 'irc_hospital_q5005_daily_local_v1' AND
+            snapshot ->> 'institutionalFormatQualified' = 'false' AND snapshot ->> 'levelOfCare' = 'IRC' AND
+            snapshot ->> 'revenueCode' = '0655' AND snapshot ->> 'hcpcsCode' = 'Q5005' AND
+            snapshot #>> '{serviceLocation,kind}' = 'facility' AND
+            snapshot #>> '{serviceLocation,facilityKind}' = 'hospital' AND
+            snapshot #>> '{serviceLocation,facilityId}' IS NOT NULL AND
+            snapshot #>> '{episode,episodeId}' IS NOT NULL AND
+            snapshot #>> '{episode,remoteStayId}' IS NOT NULL AND
+            snapshot #>> '{episode,serviceTimeZone}' IS NOT NULL AND
+            snapshot #>> '{episode,consecutiveDayFrom}' ~ '^[1-9][0-9]*$' AND
+            snapshot #>> '{episode,consecutiveDayTo}' ~ '^[1-9][0-9]*$' AND
+            snapshot #>> '{quantity,basis}' = 'per_day' AND
+            snapshot #>> '{quantity,units}' ~ '^[1-9][0-9]*$' AND
+            snapshot ->> 'reimbursementEstimateCents' ~ '^[0-9]+$' AND
+            snapshot ->> 'billedChargeCents' ~ '^[1-9][0-9]*$') OR
+           (snapshot_schema_version = 5 AND snapshot ->> 'profile' = 'gip_own_ipu_q5006_daily_local_v1' AND
+            snapshot ->> 'localBillingProfile' = 'gip_own_ipu_q5006_daily_local_v1' AND
+            snapshot ->> 'institutionalFormatQualified' = 'false' AND snapshot ->> 'levelOfCare' = 'GIP' AND
+            snapshot ->> 'revenueCode' = '0656' AND snapshot ->> 'hcpcsCode' = 'Q5006' AND
+            snapshot #>> '{serviceLocation,kind}' = 'facility' AND
+            snapshot #>> '{serviceLocation,facilityKind}' = 'ipu' AND
+            snapshot #>> '{serviceLocation,facilityId}' IS NOT NULL AND
+            snapshot #>> '{serviceLocation,unitId}' IS NOT NULL AND
+            snapshot #>> '{serviceLocation,locationId}' IS NOT NULL AND
+            snapshot #>> '{serviceLocation,timeZone}' IS NOT NULL AND
+            snapshot #>> '{gipStay,ipuAdmissionId}' IS NOT NULL AND
+            snapshot #>> '{gipStay,bedAssignmentId}' IS NOT NULL AND
+            snapshot #>> '{gipStay,criteriaId}' IS NOT NULL AND
+            snapshot #>> '{quantity,basis}' = 'per_day' AND
+            snapshot #>> '{quantity,units}' ~ '^[1-9][0-9]*$' AND
+            snapshot ->> 'reimbursementEstimateCents' ~ '^[0-9]+$' AND
+            snapshot ->> 'billedChargeCents' ~ '^[1-9][0-9]*$'))) IS TRUE`,
     ),
   }),
 );

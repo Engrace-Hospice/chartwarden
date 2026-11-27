@@ -61,6 +61,7 @@ export interface PayerRatePolicyFact {
   readonly bucketFrom: number | null;
   /** Null with a non-null bucketFrom is an open-ended upper bucket. */
   readonly bucketTo: number | null;
+  readonly electionDayBasis?: "unqualified" | "current_signed_election_calendar_days_v1";
   readonly rateCents: number;
   /** Meaning is determined by chargeCeilingMethod; it is not inherently a usual charge. */
   readonly chargeCeilingCents: number | null;

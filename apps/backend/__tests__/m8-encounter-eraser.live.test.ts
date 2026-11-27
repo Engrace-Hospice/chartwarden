@@ -100,6 +100,7 @@ const OWNED_TABLES = {
   signedSections: "hearthnote_signed_section",
   amendments: "encounter_amendment",
   addendumCosignatureRequests: "addendum_cosignature_request",
+  inHomeRespiteEvidence: "encounter_in_home_respite_evidence",
 } as const satisfies Record<keyof Omit<EncounterEraseCounts, "tombstonedRoots">, string>;
 type OwnedKey = keyof typeof OWNED_TABLES;
 const OWNED_KEYS = Object.keys(OWNED_TABLES) as OwnedKey[];
@@ -138,6 +139,7 @@ const PER_ROOT: Record<OwnedKey, number> = {
   signedSections: 4,
   amendments: 2,
   addendumCosignatureRequests: 1,
+  inHomeRespiteEvidence: 0,
 };
 
 /**
@@ -152,6 +154,7 @@ const SIGNED_CONFIRMATIONS_PER_ROOT = 1;
 /** What one party (the target, the other patient, the other tenant) holds: its `seedSatellites` rows plus `signedRoots` signed roots' rows. */
 const countsWithSignedRoots = (signedRoots: number): Record<OwnedKey, number> => ({
   ...PER_ROOT,
+  inHomeRespiteEvidence: signedRoots > 0 ? 1 : 0,
   hearthnoteAssembledOutputs:
     PER_ROOT.hearthnoteAssembledOutputs + signedRoots * SIGNED_OUTPUTS_PER_ROOT,
   signedSections: PER_ROOT.signedSections + signedRoots * SIGNED_SECTIONS_PER_ROOT,
@@ -186,6 +189,7 @@ const OWNED_SCOPE: Record<OwnedKey, string> = {
   signedSections: `encounter_id IN (${ENCOUNTERS_OF})`,
   amendments: `encounter_id IN (${ENCOUNTERS_OF})`,
   addendumCosignatureRequests: `encounter_id IN (${ENCOUNTERS_OF})`,
+  inHomeRespiteEvidence: `patient_id = ANY($1::uuid[])`,
 };
 
 const countsOf = (rows: Record<OwnedKey, Row[]>): Record<OwnedKey, number> =>
@@ -481,6 +485,71 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     return encounterId;
   }
 
+  /** A minimal synthetic delivered respite record tied to a real signed encounter root. */
+  async function seedInHomeRespiteEvidence(
+    org: "A" | "B",
+    patientId: string,
+    encounterId: string,
+  ): Promise<void> {
+    const orgId = org === "A" ? ORG_A : ORG_B;
+    const member = org === "A" ? author : authorB;
+    const source = one(
+      (
+        await admin.query<{
+          provider_entity_id: string;
+          location_id: string;
+          admission_id: string;
+          service_date: string;
+          started_at: Date;
+          ended_at: Date;
+          time_source: string;
+          version: number;
+        }>(
+          `SELECT provider_entity_id, location_id, admission_id, service_date, started_at, ended_at,
+                  time_source, version
+             FROM encounter
+            WHERE id=$1 AND organization_id=$2 AND patient_id=$3 AND status='signed'`,
+          [encounterId, orgId, patientId],
+        )
+      ).rows,
+    );
+    await admin.query("SELECT set_config('app.org_id', $1, false)", [orgId]);
+    const actor = one(
+      (
+        await admin.query<{ user_id: string }>(
+          "SELECT user_id FROM membership WHERE id = $1 AND organization_id = $2",
+          [member, orgId],
+        )
+      ).rows,
+    ).user_id;
+    // The owner trigger binds the evidence actor to the authenticated user GUC, even for synthetic
+    // fixture setup. The fixture still uses a real active membership, not an arbitrary attribution.
+    await admin.query("SELECT set_config('app.user_id', $1, false)", [actor]);
+    await admin.query(
+      `INSERT INTO encounter_in_home_respite_evidence (
+         service_id, organization_id, provider_entity_id, location_id, patient_id, admission_id,
+         source_encounter_id, source_encounter_version, service_date, service_started_at,
+         service_ended_at, observed_duration_seconds, time_source, version, recorded_by_membership_id
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
+         extract(epoch FROM ($11::timestamptz - $10::timestamptz))::integer,$12,1,$13)`,
+      [
+        randomUUID(),
+        orgId,
+        source.provider_entity_id,
+        source.location_id,
+        patientId,
+        source.admission_id,
+        encounterId,
+        source.version,
+        source.service_date,
+        source.started_at,
+        source.ended_at,
+        source.time_source,
+        member,
+      ],
+    );
+  }
+
   /** The assembled outputs pinned under one encounter root, whole. */
   async function outputsUnder(encounterId: string): Promise<Row[]> {
     const result = await admin.query<{ j: Row }>(
@@ -730,6 +799,7 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     for (const status of SIGNED_STATUSES) {
       targets.set(status, await seedSignedRootWithOutputs("A", targetPatient, status));
     }
+    await seedInHomeRespiteEvidence("A", targetPatient, targets.get("signed") as string);
     // Already voided by a human, with free text that must be scrubbed too; the human's attribution stays.
     targets.set(
       "voided_by_human",
@@ -759,8 +829,10 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     });
     await seedSatellites("A", otherRoot);
     await seedSatellites("B", orgBRoot);
-    await seedSignedRootWithOutputs("A", otherPatient, "signed");
-    await seedSignedRootWithOutputs("B", orgBPatient, "signed");
+    const otherSignedRoot = await seedSignedRootWithOutputs("A", otherPatient, "signed");
+    const orgBSignedRoot = await seedSignedRootWithOutputs("B", orgBPatient, "signed");
+    await seedInHomeRespiteEvidence("A", otherPatient, otherSignedRoot);
+    await seedInHomeRespiteEvidence("B", orgBPatient, orgBSignedRoot);
 
     await admin.query(
       `ALTER ROLE chartwarden_destruction LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`,
@@ -865,7 +937,7 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       bypass: false,
       member: true,
     });
-    for (const key of [...VISIT_NOTE_KEYS, ...FINDING_KEYS]) {
+    for (const key of [...VISIT_NOTE_KEYS, ...FINDING_KEYS, "inHomeRespiteEvidence"] as const) {
       const table = OWNED_TABLES[key];
       const grants = await admin.query<{ sel: boolean; del: boolean; ins: boolean; upd: boolean }>(
         `SELECT has_table_privilege('chartwarden_destruction', $1::text, 'SELECT') AS sel,
@@ -895,13 +967,21 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       const policy = one(policies.rows);
       expect(policy.cmd, `${table} policy command`).toBe("ALL");
       expect(policy.qual, `${table} policy predicate`).toContain("app.org_id");
-      // No row trigger that could refuse a DELETE: the only DELETE trigger is the AFTER audit one (BEFORE bit 2, DELETE bit 8).
+      // Most owned tables have no BEFORE DELETE trigger. The new in-home-respite evidence table has its narrow role/scope
+      // guard here; its AFTER audit trigger records only the version and opaque row identity.
       const before = await admin.query<{ tgname: string }>(
         `SELECT tgname FROM pg_trigger
           WHERE tgrelid = $1::regclass AND NOT tgisinternal AND (tgtype & 2) <> 0 AND (tgtype & 8) <> 0`,
         [table],
       );
-      expect(before.rows, `${table} BEFORE DELETE triggers`).toEqual([]);
+      expect(
+        before.rows.map((row) => row.tgname),
+        `${table} BEFORE DELETE triggers`,
+      ).toEqual(
+        key === "inHomeRespiteEvidence"
+          ? ["trg_guard_encounter_in_home_respite_evidence_write"]
+          : [],
+      );
     }
     // The sealed sections are append-only for everyone but the shred: the destruction role may write `text_cipher` and no other column.
     const writable = await admin.query<{ column_name: string }>(

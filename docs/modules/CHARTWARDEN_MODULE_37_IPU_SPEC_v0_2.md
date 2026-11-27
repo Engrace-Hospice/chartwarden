@@ -250,6 +250,13 @@ The watchdog cron runs at per-org local midnight (immediately after `census-snap
 
 **Cap-window resumption rule.** If an IRC episode is closed (discharge or transfer-out) and the same patient is re-admitted to IRC within 30 days, the new episode's `consecutive_day_count` does NOT reset — the 30-day-window-look-back is the platform-floor protection against the "split IRC into two 3-day episodes" workaround. Resumption is detected by the `irc_episode.opening_handler` which queries the patient's M37 episode history.
 
+**As-built M24 local pricing reader (L8A.2C3, 2026-11-26):** M37 exposes a transaction-bound, scoped
+projection of the IRC episode, arranged inpatient stay, associated M6 LOC and M40 facility identity for
+M24's local draft pricing. It preserves the episode start and source versions so a claim starting mid-episode
+uses the actual consecutive-day sequence. Only the synthetic daily profile within the existing five-day
+ceiling is supported. This read seam does not change M37 episode lifecycle, qualify payer-specific coding or
+rates, nor make a Medicaid claim ready or transmissible.
+
 ### 2.6 IV-Continuous Safety Overlay (D7)
 
 When an M11 order with `kind='medication_iv_continuous'` is signed for a patient with an open `ipu_admission`, M37's `m11.order.signed` consumer creates an `ipu_iv_safety_overlay` row. The overlay carries:
@@ -2618,3 +2625,9 @@ Module 37 is "Locked" when every line below is checked.
 -----
 
 **End of Module 37 — Inpatient Unit (IPU) Management Specification v0.2 (Locked)**
+
+### As-built M24-1075 L8A.2C4 — scoped GIP pricing reader (2026-11-26)
+
+M37 now publishes `readGipPricingStayInTransaction` as a narrow, transaction-bound owner projection for M24. It verifies an active/closed own-unit GIP admission, patient/admission/provider scope, M6 LOC identity, GIP criteria and current reassessment evidence, actual stay bounds, confirmed historical bed-assignment coverage, unit-to-provider ownership, and the M40 facility identity returned under its locked canonical reader. It carries source identities and versions only; it does not expose clinical note content, calculate reimbursement, choose a billing code, or assert payer authorization.
+
+The initial supported case is a single continuous stay in an owned inpatient unit with complete confirmed bed coverage and the synthetic local daily Q5006 profile. Transfers, arranged facilities, uncertain historical bed coverage, incompatible M6 service-location identity, and unsupported admission states remain held. The M24 local pricing snapshot remains institutional-format unqualified and nonposting. This is not EOCCO certification or a statement of real Oregon billing policy.

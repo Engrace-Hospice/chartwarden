@@ -120,6 +120,20 @@ export interface AssemblyPreviewPricing {
     reimbursementEstimateCents: number | null;
     actualBilledChargeCents: number | null;
     reasonCodes: readonly string[];
+    /** Present only when the resolved local-draft line is segmented by the verified RHC day bucket. */
+    electionDayRange?: {
+      basis: "current_signed_election_calendar_days_v1";
+      dayFrom: number;
+      dayTo: number;
+      rateBucketFrom: number;
+      rateBucketTo: number | null;
+    };
+    /** Present only for a locally priced IRC line; no episode identifiers or patient facts are exposed. */
+    ircEpisodeDayRange?: {
+      episodeStartDate: string;
+      dayFrom: number;
+      dayTo: number;
+    };
   }[];
   reimbursementEstimateTotalCents: number | null;
   actualBilledChargeTotalCents: number | null;

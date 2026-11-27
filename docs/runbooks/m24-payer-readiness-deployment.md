@@ -1,6 +1,6 @@
 # M24 payer-readiness migration deployment
 
-The original M24 payer-readiness and M25 ERA-review batch adds nine migrations: `1535`, `1538` and `1539` are `-- compat: expand`; `1536`, `1537`, `1541`, `1542`, `1543` and `1544` are `-- compat: contract`. L6C2 later adds migrations `1547` and `1548`, L6D adds `1549`, L8A.1 adds `1550`, L8A.2R adds `1551`, L8A.2C adds `1552`, and L8A.2C1 adds `1553` and `1554`, and L8A.2C2 adds `1557`; all nine are contract, so fifteen contract migrations of this work are held in total (eighteen migrations with the three expand ones). Migrations `1540` and `1545` (M8), `1546` (the object-key column rename) and `1555` and `1556` (M34 support-session trigger fixes and the SECURITY DEFINER `search_path` hardening, both `-- compat: expand`) belong to other work and are not part of this batch, but the by-hand run applies them too, in name order. A merge to `main` therefore stops `deploy.sh` at exit 75 before any DDL, and the whole pending batch waits for an operator. This runbook is that operator procedure. Every statement below is read off the migration SQL or the deploy scripts; where a fact depends on production state it says so and tells you how to read it.
+The original M24 payer-readiness and M25 ERA-review batch adds nine migrations: `1535`, `1538` and `1539` are `-- compat: expand`; `1536`, `1537`, `1541`, `1542`, `1543` and `1544` are `-- compat: contract`. L6C2 later adds `1547` and `1548`, L6D adds `1549`, L8A.1 adds `1550`, L8A.2R adds `1551`, L8A.2C adds `1552`, L8A.2C1 adds `1553` and `1554`, and L8A.2C2 adds `1557`. The L8A.2C3 M6 election-history migration was originally qualified privately under ordinal `1558`; main now uses `1558` for M11, so the M24 SQL is preserved as `1562_m24_election_history_bucket_pricing.sql`. L8A.2C4 adds contract-held `1563` for the M24 GIP profile and additive `1564` for M8 delivered in-home respite evidence. Main also contributes `1558` (M11) and `1561` (M4 security-review audit reads). Migrations `1540` and `1545` (M8), `1546` (object-key column rename), and `1555`/`1556` (M34 trigger and search-path fixes) are other work but the by-hand run applies every pending file in ordinal order. A merge to `main` therefore stops `deploy.sh` at exit 75 before any DDL while any contract migration is pending; the entire pending batch waits for an operator. This runbook is that operator procedure. Every statement below is read off the migration SQL or deploy scripts; facts dependent on production state are identified with a read-only check.
 
 No deployment is authorized by this document.
 
@@ -26,6 +26,11 @@ No deployment is authorized by this document.
 | `1553_m40_facility_kind_locked_reader` | contract | Adds the bounded M40 SECURITY DEFINER `m40_facility_kind_for_ids_locked(jsonb)` projection, owned by `mdm_canonical_writer`, to resolve facility merge chains and hold facility rows with `FOR SHARE`; only `chartwarden_app` receives EXECUTE. | Adds a privileged M40 read function and grant; role ownership/search path and the exact returned projection must be reviewed before the operator applies it. |
 | `1554_m24_generalized_daily_rhc_pricing_snapshots` | contract | Preserves v1 home-RHC/Q5001 snapshots; permits v2 only for the explicit assisted-living RHC/Q5002 local-draft profile, validates the effective M5 residence and active M40 ALF identity on snapshot insert, and permits adjacent verified Q5002 billing evidence. No existing snapshot is rewritten. | Changes existing CHECK constraints and installs a new source-integrity trigger; historical rows remain unchanged and the migration remains under the operator hold. |
 | `1557_m24_chc_local_pricing_preparations` | contract | Adds append-only `medicaid_chc_pricing_preparation` for the supported synthetic home-CHC hourly local-only profile, extends verified CHC rate/billing evidence constraints, and records an explicit clinical-minute maximum. It does not create a claim line or submission eligibility. | Alters evidence constraints and creates an immutable RLS/FORCE RLS table with source-integrity guards and audit; the entire migration remains under the existing contract hold. Every table it alters or creates is created by this batch, so its constraint rewrites scan no production row. |
+| `1558_m11_critical_lab_result_resolution` | expand | Main's audited resolution workflow for quarantined M11 critical laboratory results. | Additive M11 objects. |
+| `1561_m4_security_review_platform_audit_read` | expand | Main's narrowly scoped platform security-review read of organization-less authentication audit events. | Additive M4 read capability. |
+| `1562_m24_election_history_bucket_pricing` | contract | Adds the M6-owned append-only election-history completeness evidence contract and bounded transaction reader; qualifies only the explicitly synthetic managed-care RHC election-day basis; adds local RHC snapshot v3 and IRC daily local snapshot v4 with an M37 episode reader. It does not infer prior history or qualify transmission. | Preserves the previously qualified SQL after resolving the ordinal collision with main's 1558 M11 migration; adds patient-linked evidence and replaces snapshot constraints/guard logic. It remains contract-held; no historical rows are promoted or rewritten. |
+| `1563_m24_gip_own_ipu_pricing` | contract | Adds the explicit local-only v5 own-IPU GIP daily snapshot profile and source-integrity guard against M37/M40 current evidence. It does not qualify institutional format. | Replaces profile constraints and adds source-integrity triggers; historical snapshots are unchanged. |
+| `1564_m8_in_home_respite_clinical_evidence` | expand | Adds M8-owned append-only delivered in-home respite evidence sourced from signed encounter intervals, with scoped reader/correction lineage, RLS, audit, and the existing patient eraser. It defines no rate, payer quantity or billing code. | New table and additive owner-side capture/read contract; no historical M8 record is reclassified. |
 
 1542 to 1544 are `contract` only because the compat heuristic reads `ADD CONSTRAINT` and `REVOKE` as contracting. Every table they change is created by this batch (`medicaid_enrollment_evidence` by 1535; `medicaid_era_review` and `medicaid_era_review_history` by 1543). Migrations 1547–1549 deliberately remain contract because they change trusted-writer/source-reader authority or assessment integrity. Migration 1551 is contract because it changes the existing claim-line persistence contract and adds append-only evidence integrity controls. The previous-release drain below is for 1536, 1537 and 1541; the new evaluator must remain disabled unless an operator separately completes the reviewed credential and deployment procedure. This holds only when 1535 and 1543 are in the same batch: if the ledger shows 1535 already applied by an earlier release, read what that release does with `medicaid_enrollment_evidence` before applying 1542.
 
@@ -35,9 +40,9 @@ PostgreSQL 15 or later is required by `NULLS NOT DISTINCT` (1537, and the identi
 
 ## What a merge to `main` does
 
-`deploy.yml` deploys every push to `main`, and `deploy.sh` runs its migrate step with `--hold-contract`. With any of 1536, 1537, 1541, 1542, 1543, 1544, 1547, 1548, 1549, 1550, 1551, 1552, 1553, 1554 or 1557 pending, that step refuses the whole pending batch and exits 75 **before any DDL**: the job fails with `DEPLOY HELD BEFORE ANY SCHEMA CHANGE`, the previous release keeps running and the database is unchanged. Every later deploy, a security fix included, stays held until an operator applies the batch by hand with the sections below. An empty ledger (a first deploy) is exempt.
+`deploy.yml` deploys every push to `main`, and `deploy.sh` runs its migrate step with `--hold-contract`. With any contract migration in this runbook pending, including 1536, 1537, 1541–1544, 1547–1549, 1550–1554, 1557, or 1562–1563, that step refuses the whole pending batch and exits 75 **before any DDL**: the job fails with `DEPLOY HELD BEFORE ANY SCHEMA CHANGE`, the previous release keeps running and the database is unchanged. The M11/M4/M8 expand migrations do not remove the contract hold. Every later deploy, a security fix included, stays held until an operator applies the batch by hand with the sections below. An empty ledger (a first deploy) is exempt.
 
-The by-hand run applies **every** pending migration, not only these fifteen. If another held migration is still pending in the production ledger (1508 for M25, 1512 and 1513 for M23, 1546 for the object-key column rename, or anything newer), its runbook applies too: `docs/runbooks/m25-835-deployment.md`, `docs/runbooks/m23-sia-revisions-deployment.md`, `docs/runbooks/object-key-column-rename-deployment.md`. Files apply in name order, so this batch's 1535 to 1544 run first, then 1546, 1547 to 1549, then 1550 to 1554, then 1555 and 1556 of the other work, then 1557. Read `_chartwarden_migration` first (below); do not infer production history from a branch.
+The by-hand run applies **every** pending migration. If another held migration is still pending in the production ledger (1508 for M25, 1512 and 1513 for M23, 1546 for the object-key rename, or anything newer), its runbook applies too: `docs/runbooks/m25-835-deployment.md`, `docs/runbooks/m23-sia-revisions-deployment.md`, `docs/runbooks/object-key-column-rename-deployment.md`. Files apply in ordinal order: the M24/M25 readiness batch, M8 1540/1545, M40/M24 1541–1544, object-key 1546, evaluator 1547–1549, pricing 1550–1554, M34 1555–1556, CHC 1557, main's M11 1558 and M4 1561, then M24 1562–1563 and M8 1564. Read `_chartwarden_migration` first (below); do not infer production history from a branch.
 
 ## Why the previous release must be drained
 
@@ -50,7 +55,7 @@ Do not restart an old application image against the migrated schema.
 
 ## Before the maintenance window
 
-1. Confirm the exact immutable image digest contains migrations 1535 to 1539, 1541 to 1544 and 1547 to 1557 and the matching M24/M25/M40 code. Confirm an operator with database and application access is present.
+1. Confirm the exact immutable image digest contains the intended pending migrations from the inventory above, including 1562–1564 when those changes are part of the release, and matching M24/M25/M40/M8 code. Confirm an operator with database and application access is present.
 2. Take the normal pre-migration backup (pgBackRest, per the operations runbook), verify it completed, and record the backup identifier and restore point.
 3. Read the ledger directly from an authorized operator host, as the database owner or a `BYPASSRLS` role (the same connection rule as the M25 preflight):
 
@@ -97,23 +102,24 @@ Do not restart an old application image against the migrated schema.
    `--hold-contract` is left off on purpose. Each file is applied in ordinal order in its own transaction together with its ledger row. If a file fails, that file rolls back and the run stops: files before it stay committed, files after it are not applied. A 1537 refusal (`1537 found duplicate nullable medicaid_state_rate_schedule identities`) therefore leaves 1535 and 1536 committed and 1537, 1538, 1539 and 1541 to 1544 pending; fix the rows, then run the same command again. Do not restart the previous image meanwhile.
 2. Turn the maintenance page OFF and confirm it (`sh /opt/chartwarden/maintenance.sh off`, then `sh /opt/chartwarden/maintenance.sh status` must report it off). The deploy's smoke tier 3 fetches the public SPA; with maintenance still on it sees the 503 page and fails `tier3/web`, and the failed smoke makes `restore_previous_release` recreate the OLD `api` and `worker` on the migrated schema, which is the state this runbook exists to avoid (`deploy/production/README.md`: "Turn maintenance off before re-running `deploy.sh`"). The previous writers are still stopped, so nothing writes while the page is off.
 3. Re-run the held deploy: its migrate step has nothing left to apply and its `up -d --force-recreate api worker web docling-worker` starts the new release. **A failed re-run can restart the OLD writers on the migrated schema** (it believes the schema is unchanged, so `restore_previous_release` recreates the previous image). If the re-run fails after its migrate step, stop them at once with `docker compose --env-file .env.production -f compose.yml stop api worker`, turn maintenance back on (`sh /opt/chartwarden/maintenance.sh on`), fix the cause, turn it off and re-run; do not recreate from `.env.production` as it stands.
-4. Confirm the ledger holds all eighteen rows with checksums, and that every replica runs the release digest:
+4. Confirm the ledger holds all 21 explicitly listed M24/M25/M40/M8 migration rows through 1564 with checksums (main's M11/M4 rows 1558 and 1561 are verified separately under their own control/runbook), and that every replica runs the release digest:
 
    ```sql
    SELECT filename, checksum FROM _chartwarden_migration
-    WHERE filename ~ '^(1535|1536|1537|1538|1539|1541|1542|1543|1544|1547|1548|1549|1550|1551|1552|1553|1554|1557)_' ORDER BY filename;  -- 18 rows
+    WHERE filename ~ '^(1535|1536|1537|1538|1539|1541|1542|1543|1544|1547|1548|1549|1550|1551|1552|1553|1554|1557|1562|1563|1564)_' ORDER BY filename;  -- 21 rows
    ```
 
 5. Read-only structure checks (run as the owner or a `BYPASSRLS` role; under any other role FORCEd RLS hides every row and a count prints a false zero):
 
    ```sql
-   -- RLS enabled and FORCEd on all ten new tables (the two before the last are created by 1551, the last by 1557): 10 rows, both flags true.
+   -- RLS enabled and FORCEd on all twelve scoped M24/M25/M40/M8 evidence and review tables: both flags true.
    SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class
     WHERE relname IN ('medicaid_program_assignment', 'medicaid_enrollment_evidence', 'medicaid_payer_authorization_event',
                       'medicaid_payer_rate_policy', 'mdm_medicaid_payer_program_classification',
                       'medicaid_era_review', 'medicaid_era_review_history',
                       'medicaid_hospice_billing_evidence', 'medicaid_claim_line_pricing_snapshot',
-                      'medicaid_chc_pricing_preparation') ORDER BY relname;
+                      'medicaid_chc_pricing_preparation', 'medicaid_election_history_evidence',
+                      'encounter_in_home_respite_evidence') ORDER BY relname;
 
    -- 1544 write lockdown: the application role reads the ERA review tables and cannot write them (true, false, false, false).
    SELECT has_table_privilege('chartwarden_app', 'medicaid_era_review', 'SELECT') AS review_select,
@@ -121,7 +127,7 @@ Do not restart an old application image against the migrated schema.
           has_table_privilege('chartwarden_app', 'medicaid_era_review', 'UPDATE') AS review_update,
           has_table_privilege('chartwarden_app', 'medicaid_era_review_history', 'INSERT') AS history_insert;
 
-   -- Guards installed and enabled (tgenabled = 'O'): 25 rows (from `trg_lock_medicaid_rate_policy_pricing_identity` onward, six are installed by 1551, one by 1554 and the last two by 1557).
+   -- Relevant guards are installed and enabled (tgenabled = 'O'), including election-history, CHC, IRC/GIP snapshots and M8 respite.
    -- tgparentid = 0 keeps the per-partition clones of the trigger on the partitioned medicaid_claim_line out of the count.
    SELECT tgrelid::regclass AS tbl, tgname, tgenabled FROM pg_trigger
     WHERE tgparentid = 0 AND tgname IN ('trg_medicaid_program_assignment_provider_entity', 'trg_medicaid_program_assignment_insert_status',
@@ -139,7 +145,13 @@ Do not restart an old application image against the migrated schema.
                      'trg_medicaid_claim_line_pricing_snapshot_insert', 'trg_medicaid_claim_line_pricing_snapshot_append_only',
                      'trg_medicaid_priced_claim_line_immutable',
                      'trg_medicaid_claim_line_pricing_snapshot_supported_profile',
-                     'trg_medicaid_chc_pricing_preparation_identity', 'trg_medicaid_chc_pricing_preparation_append_only') ORDER BY tgname;
+                     'trg_medicaid_chc_pricing_preparation_identity', 'trg_medicaid_chc_pricing_preparation_append_only',
+                     'trg_medicaid_election_history_evidence_identity',
+                     'trg_medicaid_election_history_evidence_immutable',
+                     'trg_medicaid_claim_line_pricing_snapshot_insert_irc',
+                     'trg_medicaid_claim_line_pricing_snapshot_supported_profile_gip',
+                     'trg_medicaid_claim_line_pricing_snapshot_insert_gip',
+                     'trg_guard_encounter_in_home_respite_evidence_write') ORDER BY tgname;
 
    -- 1553: the locked facility reader is owned by the canonical writer, SECURITY DEFINER, with a fixed search_path;
    -- the application role can execute it, PUBLIC cannot, and the application role cannot UPDATE facility
@@ -151,14 +163,15 @@ Do not restart an old application image against the migrated schema.
           has_table_privilege('chartwarden_app', 'facility', 'UPDATE') AS app_can_update_facility
      FROM pg_proc p WHERE p.proname = 'm40_facility_kind_for_ids_locked';
 
-   -- Audit triggers installed and enabled (tgenabled = 'O'): 10 rows. Without them the new tables change unrecorded.
+   -- Audit triggers installed and enabled (tgenabled = 'O') on the scoped evidence/review tables; no fixed count is assumed.
    SELECT tgrelid::regclass AS tbl, tgname, tgenabled FROM pg_trigger
     WHERE tgname IN ('trg_audit_medicaid_program_assignment', 'trg_audit_medicaid_enrollment_evidence',
                      'trg_audit_medicaid_payer_authorization_event', 'trg_audit_medicaid_payer_rate_policy',
                      'trg_audit_mdm_medicaid_payer_program_classification',
                      'trg_audit_medicaid_era_review', 'trg_audit_medicaid_era_review_history',
                      'trg_audit_medicaid_hospice_billing_evidence', 'trg_audit_medicaid_claim_line_pricing_snapshot',
-                     'trg_audit_medicaid_chc_pricing_preparation') ORDER BY tgname;
+                     'trg_audit_medicaid_chc_pricing_preparation', 'trg_audit_medicaid_election_history_evidence',
+                     'trg_audit_encounter_in_home_respite_evidence') ORDER BY tgname;
 
    -- 1544: the platform roles hold nothing on the two ERA review tables. 0 rows (a host without provisioned platform
    -- roles prints none either).

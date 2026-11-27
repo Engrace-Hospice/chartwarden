@@ -80,6 +80,7 @@ export interface FoundationSiteReader {
     readonly providerEntityId: string;
     readonly state: string;
     readonly timeZone: string;
+    readonly status: string;
   } | null>;
   /**
    * The distinct IANA timezones of a provider entity's locations (empty when it has none). M25 ends an
@@ -226,6 +227,7 @@ export function buildFoundationSiteReader(): FoundationSiteReader {
           providerEntityId: LOCATION.providerEntityId,
           state: LOCATION.state,
           timeZone: LOCATION.timezone,
+          status: LOCATION.status,
         })
         .from(LOCATION)
         .innerJoin(PROVIDER, eq(PROVIDER.id, LOCATION.providerEntityId))

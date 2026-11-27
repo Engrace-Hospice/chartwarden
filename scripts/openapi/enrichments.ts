@@ -2286,6 +2286,11 @@ import {
   RejectChartPromotionSchema as M8RejectChartPromotionSchema,
 } from "../../apps/backend/src/modules/08-encounters/routes/encounters-typebox";
 import {
+  InHomeRespiteCorrectionBodySchema as M8InHomeRespiteCorrectionBodySchema,
+  InHomeRespiteEvidenceListSchema as M8InHomeRespiteEvidenceListSchema,
+  InHomeRespiteEvidenceViewSchema as M8InHomeRespiteEvidenceViewSchema,
+} from "../../apps/backend/src/modules/08-encounters/routes/in-home-respite-routes";
+import {
   AcknowledgeChangeSchema as M9AcknowledgeChangeSchema,
   AssessmentDetailResponseSchema as M9AssessmentDetailResponseSchema,
   AssessmentListQuerySchema as M9AssessmentListQuerySchema,
@@ -17240,5 +17245,21 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Read the M25 source-backed revenue-cycle summary",
     query: M25RevenueCycleSummaryQuerySchema,
     response: M25RevenueCycleSummaryResponseSchema,
+  },
+  "GET /api/v1/encounters/:encounterId/in-home-respite": {
+    summary:
+      "Read delivered in-home respite evidence derived from a signed encounter; this is clinical evidence only and does not establish pricing or institutional billing qualification",
+    response: M8InHomeRespiteEvidenceListSchema,
+  },
+  "POST /api/v1/encounters/:encounterId/in-home-respite": {
+    summary:
+      "Record delivered in-home respite evidence from a signed encounter after an authorized clinician attests to the documented service; no reimbursement or billing code is inferred",
+    response: M8InHomeRespiteEvidenceViewSchema,
+  },
+  "POST /api/v1/encounters/:encounterId/in-home-respite/corrections": {
+    summary:
+      "Correct an in-home respite service observation from its signed source encounter using an expected evidence version; the prior observation remains auditable",
+    body: M8InHomeRespiteCorrectionBodySchema,
+    response: M8InHomeRespiteEvidenceViewSchema,
   },
 });

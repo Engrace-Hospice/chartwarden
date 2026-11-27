@@ -662,7 +662,7 @@ describe("assessHospicePricing", () => {
     const respiteRate = rate("synthetic-irc", 150, "2026-03-01", null, {
       serviceCategory: "IRC",
     });
-    const respiteDay = (consecutiveDayNumber: number | null) =>
+    const respiteDay = (consecutiveDayNumber: number | null, sourceVersion = 1) =>
       day("2026-03-01", {
         serviceCategory: "IRC",
         quantityEvidence: quantityEvidence("2026-03-01", "IRC"),
@@ -674,7 +674,7 @@ describe("assessHospicePricing", () => {
                 serviceDate: "2026-03-01",
                 episodeReference: "episode:synthetic-irc",
                 sourceReference: "evidence:synthetic-irc-sequence",
-                version: 1,
+                version: sourceVersion,
                 verifiedAt: "2026-02-20T00:00:00.000Z",
               },
       });
@@ -698,6 +698,25 @@ describe("assessHospicePricing", () => {
     expect(fifthDay).toMatchObject({
       status: "fully_resolved",
       reimbursementEstimateTotalCents: 150,
+    });
+
+    const initialM37Version = assessHospicePricing({
+      serviceFrom: "2026-03-01",
+      serviceTo: "2026-03-01",
+      assessedAt,
+      days: [respiteDay(3, 0)],
+      rates: [respiteRate],
+    });
+    expect(initialM37Version).toMatchObject({
+      status: "fully_resolved",
+      segments: [
+        {
+          rateEvidence: {
+            inpatientRespiteEvidenceVersion: 0,
+            inpatientRespiteConsecutiveDayNumber: 3,
+          },
+        },
+      ],
     });
 
     const sixthDay = assessHospicePricing({

@@ -302,3 +302,36 @@ L3 did not enable Medicaid submission, add a production submission route, or qua
 - The actual M24 service read M6 crisis LOC, signed M8 RN intervals, M1 service-location ownership/state/timezone, M40 payer classification and scoped M24 rate/charge evidence. The synthetic private database run persisted 540 observed/qualified minutes, a 45,000-cent reimbursement estimate and a separately sourced 63,000-cent billed charge. Manual/background revalidation and a tampered-but-correctly-fingerprinted negative case were exercised.
 - CHC eligibility and methodology are only a source-backed synthetic managed-care local profile; no Oregon FFS or EOCCO rule/rate was inferred. Institutional units and format remain unqualified. Fractional local persistence, IRC/GIP, in-home respite, payer certification and production evidence authoring remain out of scope. The exact scoped evidence is in the [L8A.2C2 report](./M24_1075_L8A2C2_CHC_HOURLY_PRICING_QUALIFICATION_20261125.md).
 - Migration 1557 remains under the contract migration hold. No real payer/vendor transaction, Medicaid submission, ERA retrieval, payment, ledger mutation, outbox event, production migration or deployment occurred. CW-DS-01 remains open; no retention or erasure policy was added.
+
+### L8A.2C3 election-history and IRC daily-pricing qualification — 2026-11-26
+
+Migration 1558 and the synthetic M24 qualification now support two additional local-draft profiles: home RHC
+with complete signed-election day-bucket evidence (snapshot v3), and inpatient respite with an actual M37
+episode/stay reader (snapshot v4). A seven-day RHC range at election days 58–64 persisted as two lines at
+the 60/61 bucket boundary. An IRC claim for November 1–3 preserved episode days 3–5 from the October 30
+episode start. Both use independent billed-charge evidence and source-grounded manual/background
+revalidation. Institutional format remains a non-overridable failure, so neither profile becomes
+submission-ready. The current private live assembly suite passed 28 tests with four explicit replacement/
+GIP skips. See the [L8A.2C3 qualification report](./M24_1075_L8A2C3_ELECTION_HISTORY_AND_IRC_QUALIFICATION_20261126.md).
+
+This does not close payer qualification findings. No real OHA or EOCCO price, transfer/reset rule, payer
+coding profile, or production evidence was introduced. Medicaid electronic submission, payment posting,
+secondary R&B and production activation remain disabled. The separate L7 group/release qualification debt
+and CW-DS-01 retention ownership remain open.
+
+### L8A.2C4 — own-IPU GIP local pricing and delivered in-home respite evidence (2026-11-26)
+
+The M24 election-history migration was moved from ordinal 1558 to 1562 after synchronized main introduced
+its own M11 migration at 1558. Its SQL was preserved; prior qualification used only a private disposable
+PostgreSQL database, and no shared or production application is known. Migration 1563 adds a strict local-only
+snapshot v5 for synthetic own-IPU GIP daily pricing, backed by an actual M37 stay/criteria/historical-bed
+reader and M40 facility identity. Migration 1564 adds a distinct M8 append-only delivered in-home respite
+record sourced from signed encounter intervals; M24 consumes it only to hold pricing and claim-line
+generation. The exact implementation and qualification evidence are in the
+[L8A.2C4 report](./M24_1075_L8A2C4_GIP_AND_IN_HOME_RESPITE_QUALIFICATION_20261126.md).
+
+The local GIP Q5006 profile is not payer-certified, and respite has no qualified pricing or institutional
+format. No real OHA/EOCCO rate, approval, production clinical fact or transmission was introduced. CW-DS-01
+remains open; the new M8 evidence is included in the existing patient-erasure path, but no retention period
+or policy exception was established. Findings F04/F06/F07/F11/F14 remain open or partial as described in
+the qualification report.

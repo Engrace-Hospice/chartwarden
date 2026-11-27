@@ -158053,6 +158053,398 @@
         }
       }
     },
+    "/api/v1/encounters/{encounterId}/in-home-respite": {
+      "get": {
+        "operationId": "getApiV1EncountersByEncounterIdInhomerespite",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Read delivered in-home respite evidence derived from a signed encounter; this is clinical evidence only and does not establish pricing or institutional billing qualification",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "serviceId",
+                      "version",
+                      "sourceEncounterId",
+                      "sourceEncounterVersion",
+                      "serviceDate",
+                      "serviceStartedAt",
+                      "serviceEndedAt",
+                      "observedDurationSeconds",
+                      "timeSource",
+                      "supersedesId",
+                      "recordedByMembershipId",
+                      "createdAt"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "serviceId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "version": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "sourceEncounterId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "sourceEncounterVersion": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "serviceDate": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "serviceStartedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "serviceEndedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "observedDurationSeconds": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "timeSource": {
+                        "anyOf": [
+                          {
+                            "const": "evv",
+                            "type": "string"
+                          },
+                          {
+                            "const": "clinician",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "supersedesId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "recordedByMembershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "createdAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdInhomerespite",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Record delivered in-home respite evidence from a signed encounter after an authorized clinician attests to the documented service; no reimbursement or billing code is inferred",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "serviceId",
+                    "version",
+                    "sourceEncounterId",
+                    "sourceEncounterVersion",
+                    "serviceDate",
+                    "serviceStartedAt",
+                    "serviceEndedAt",
+                    "observedDurationSeconds",
+                    "timeSource",
+                    "supersedesId",
+                    "recordedByMembershipId",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "serviceId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "version": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "sourceEncounterId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "sourceEncounterVersion": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "serviceDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "serviceStartedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "serviceEndedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "observedDurationSeconds": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "timeSource": {
+                      "anyOf": [
+                        {
+                          "const": "evv",
+                          "type": "string"
+                        },
+                        {
+                          "const": "clinician",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "supersedesId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recordedByMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/in-home-respite/corrections": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdInhomerespiteCorrections",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Correct an in-home respite service observation from its signed source encounter using an expected evidence version; the prior observation remains auditable",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "serviceId",
+                    "version",
+                    "sourceEncounterId",
+                    "sourceEncounterVersion",
+                    "serviceDate",
+                    "serviceStartedAt",
+                    "serviceEndedAt",
+                    "observedDurationSeconds",
+                    "timeSource",
+                    "supersedesId",
+                    "recordedByMembershipId",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "serviceId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "version": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "sourceEncounterId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "sourceEncounterVersion": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "serviceDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "serviceStartedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "serviceEndedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "observedDurationSeconds": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "timeSource": {
+                      "anyOf": [
+                        {
+                          "const": "evv",
+                          "type": "string"
+                        },
+                        {
+                          "const": "clinician",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "supersedesId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recordedByMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "serviceId",
+                  "expectedVersion"
+                ],
+                "properties": {
+                  "serviceId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/encounters/{encounterId}/late-entry-override": {
       "post": {
         "operationId": "postApiV1EncountersByEncounterIdLateentryoverride",
@@ -211681,6 +212073,67 @@
                                     "type": "null"
                                   }
                                 ]
+                              },
+                              "electionDayRange": {
+                                "type": "object",
+                                "required": [
+                                  "basis",
+                                  "dayFrom",
+                                  "dayTo",
+                                  "rateBucketFrom",
+                                  "rateBucketTo"
+                                ],
+                                "properties": {
+                                  "basis": {
+                                    "const": "current_signed_election_calendar_days_v1",
+                                    "type": "string"
+                                  },
+                                  "dayFrom": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "dayTo": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "rateBucketFrom": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "rateBucketTo": {
+                                    "anyOf": [
+                                      {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              "ircEpisodeDayRange": {
+                                "type": "object",
+                                "required": [
+                                  "episodeStartDate",
+                                  "dayFrom",
+                                  "dayTo"
+                                ],
+                                "properties": {
+                                  "episodeStartDate": {
+                                    "format": "date",
+                                    "type": "string"
+                                  },
+                                  "dayFrom": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "dayTo": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  }
+                                }
                               },
                               "reasonCodes": {
                                 "type": "array",

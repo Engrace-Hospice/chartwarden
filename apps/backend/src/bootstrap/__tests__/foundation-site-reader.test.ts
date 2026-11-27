@@ -43,7 +43,7 @@ describe("Claim.MD internal site ownership reads", () => {
     const calls: string[] = [];
     const tx = {
       select(fields: Record<string, unknown>) {
-        expect(Object.keys(fields)).toEqual(["providerEntityId", "state", "timeZone"]);
+        expect(Object.keys(fields)).toEqual(["providerEntityId", "state", "timeZone", "status"]);
         return {
           from() {
             calls.push("from-location");
@@ -70,6 +70,7 @@ describe("Claim.MD internal site ownership reads", () => {
                 providerEntityId: "synthetic-provider",
                 state: "OR",
                 timeZone: "America/Los_Angeles",
+                status: "active",
               },
             ];
           },
@@ -85,6 +86,7 @@ describe("Claim.MD internal site ownership reads", () => {
       providerEntityId: "synthetic-provider",
       state: "OR",
       timeZone: "America/Los_Angeles",
+      status: "active",
     });
     expect(calls).toEqual([
       "from-location",
