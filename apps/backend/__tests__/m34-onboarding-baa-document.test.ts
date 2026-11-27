@@ -101,11 +101,13 @@ function makeServer(
 ) {
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore([
-      grant(OPERATOR_USER, "platform_ops", [KEY]),
+      grant(OPERATOR_USER, "platform_baa_steward", [KEY]),
       // a tenant administrator holds no platform key
       { orgId: TARGET_ORG, userId: "tenant-admin", grants: [] },
-      // a platform role that is NOT platform_ops: holds the key, fails the predicate
+      // a platform role that is NOT the BAA steward: holds the key, fails the predicate
       grant("support-user", "platform_ops", [KEY]),
+      // CW-AC-22: platform_ops holding the key (a grant that outlived the split) is still refused: the predicate admits the steward alone
+      grant("ops-user", "platform_ops", [KEY]),
       // the broad keys an operator already holds: neither is this key, and `documents.upload` opens nothing here
       grant("broad-user", "platform_ops", [
         "tenant_onboarding_data.write_platform",
@@ -116,6 +118,9 @@ function makeServer(
   );
   const reg = createPredicateRegistry();
   reg.register("tenant_lifecycle_platform_ops", async (c) => c.roles.includes("platform_ops"));
+  reg.register("tenant_platform_baa_steward", async (c) =>
+    c.roles.includes("platform_baa_steward"),
+  );
   reg.register("step_up_recent", async (c) => c.attributes.stepUpRecent === true);
   registerAbacRegistry(reg);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
@@ -131,7 +136,7 @@ function makeServer(
 const OPS = {
   "x-test-user": OPERATOR_USER,
   "x-test-org": PLATFORM_ORG,
-  "x-test-roles": "platform_ops",
+  "x-test-roles": "platform_baa_steward",
 };
 let keySeq = 0;
 const key = (): string => `baa-k-${++keySeq}`;
@@ -204,7 +209,7 @@ describe("POST baa-document: the production limiter", () => {
 });
 
 describe("POST baa-document: the guard stack", () => {
-  it("refuses a tenant admin, an operator holding only the broad keys, a non-platform_ops role, a stale step-up, an AI actor and a missing key", async () => {
+  it("refuses a tenant admin, an operator holding only the broad keys, a non-steward role (platform_ops included), a stale step-up, an AI actor and a missing key", async () => {
     const calls: UploadCall[] = [];
     const app = makeServer(calls);
     const send = (headers: Record<string, string>) =>
@@ -220,6 +225,8 @@ describe("POST baa-document: the guard stack", () => {
     expect((await send(asUser("tenant-admin", TARGET_ORG, "org_admin"))).statusCode).toBe(403);
     // the broad onboarding keys and `documents.upload` do not open this door: it has its own key
     expect((await send(asUser("broad-user", PLATFORM_ORG, "platform_ops"))).statusCode).toBe(403);
+    // CW-AC-22: platform_ops no longer files a BAA, even holding the key
+    expect((await send(asUser("ops-user", PLATFORM_ORG, "platform_ops"))).statusCode).toBe(403);
     expect(
       (await send(asUser("support-user", PLATFORM_ORG, "platform_support_t2"))).statusCode,
     ).toBe(403);
@@ -416,7 +423,7 @@ const OPERATOR: OnboardingOperator = {
   userId: "a0000000-0000-4000-8000-000000000001",
   membershipId: MEMBERSHIP,
   organizationId: PLATFORM_ORG,
-  roles: ["platform_ops"],
+  roles: ["platform_baa_steward"],
   stepUpRecent: true,
   request: {
     correlationId: "corr-1",
@@ -477,7 +484,7 @@ describe("service: uploadBaaDocument", () => {
       outcome: "success",
       organizationId: TARGET_ORG,
       actorUserId: OPERATOR.userId,
-      actorRole: "platform_ops",
+      actorRole: "platform_baa_steward",
       context: expect.objectContaining({
         reason: REASON,
         targetOrganizationId: TARGET_ORG,

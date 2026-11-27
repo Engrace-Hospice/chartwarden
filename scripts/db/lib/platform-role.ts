@@ -19,6 +19,7 @@
 import {
   PLATFORM_GRANTABLE_ROLE_KEYS,
   PLATFORM_OPS_ROLE_GRANTS,
+  PLATFORM_ROLE_CONFLICTS,
   type PlatformGrantableRoleKey,
   ROLE_TEMPLATES,
   SUPERADMIN_ROLE_KEY,
@@ -118,6 +119,52 @@ export function assertPlatformGrantableKey(key: string): PlatformGrantableRoleKe
 }
 
 /**
+ * The platform roles already held that may not sit beside `key` on one account (CW-AC-22, {@link PLATFORM_ROLE_CONFLICTS}).
+ * Pure: the caller passes the keys the account holds. `superadmin` stands for every role by design and is outside the rule.
+ */
+export function conflictingPlatformRoles(
+  key: PlatformGrantableRoleKey,
+  held: readonly string[],
+): readonly string[] {
+  return PLATFORM_ROLE_CONFLICTS.flatMap(([a, b]) => {
+    if (key === a && held.includes(b)) return [b];
+    if (key === b && held.includes(a)) return [a];
+    return [];
+  });
+}
+
+/**
+ * Refuse a grant that would put two conflicting platform roles on one ACCOUNT. The check reads the platform-owned roles bound
+ * to ANY membership of the grantee's user (a platform operator holds one membership per org), live grants only.
+ * Two accounts held by one person are not detectable here.
+ */
+export async function assertNoPlatformRoleConflict(
+  db: Client,
+  membershipId: string,
+  key: PlatformGrantableRoleKey,
+): Promise<void> {
+  const rows = await db.query<{ key: string }>(
+    `SELECT DISTINCT r.key
+       FROM membership m0
+       JOIN membership m ON m.user_id = m0.user_id
+       JOIN membership_role mr ON mr.membership_id = m.id
+       JOIN role r ON r.id = mr.role_id
+      WHERE m0.id = $1 AND r.organization_id IS NULL
+        AND (mr.expires_at IS NULL OR mr.expires_at > now())`,
+    [membershipId],
+  );
+  const conflicts = conflictingPlatformRoles(
+    key,
+    rows.rows.map((r) => r.key),
+  );
+  if (conflicts.length > 0) {
+    throw new Error(
+      `refusing ${key}: this account already holds ${conflicts.join(", ")}, and one account may not hold both (separation of duties, CW-AC-22). Use a second account, or revoke ${conflicts.join(", ")} first.`,
+    );
+  }
+}
+
+/**
  * Drop a legacy tenant-owned row for `key` in the grant's org, upsert the platform-owned row (plus its
  * template permission grants), and bind it to the membership. Idempotent: a re-run creates nothing.
  */
@@ -127,6 +174,7 @@ export async function grantPlatformRole(
 ): Promise<PlatformRoleGrantResult> {
   const key = assertPlatformGrantableKey(grant.key);
   if (key === SUPERADMIN_ROLE_KEY) await assertSuperadminOrg(db, grant.organizationId);
+  await assertNoPlatformRoleConflict(db, grant.membershipId, key);
   const legacy = await db.query<{ id: string }>(
     `SELECT id FROM role WHERE organization_id = $1 AND key = $2`,
     [grant.organizationId, key],

@@ -33,16 +33,17 @@ export interface BaaRegisterRouteDeps {
 const baaIdOf = (request: FastifyRequest): string => parse(BaaParamsSchema, request.params).id;
 
 const READ = requirePermission("platform_tenant_baa.read_platform") as PreHandler;
-const ABAC_PLATFORM_OPS = requireAbac(
+// The list: any onboarding role (the operator reads the register beside the wizard; the BAA steward keeps it).
+const ABAC_ONBOARDING_STAFF = requireAbac(
   "platform_tenant_baa.read_platform",
-  "tenant_lifecycle_platform_ops",
+  "tenant_platform_onboarding_staff",
 ) as PreHandler;
 
-// create / update: the write key, the same platform_ops predicate, a fresh step-up, and no AI principal.
+// create / update: the write key, the BAA steward predicate (CW-AC-22: not platform_ops), a fresh step-up, and no AI principal.
 const WRITE_KEY = "platform_tenant_baa.write_platform";
 const WRITE_GUARDS: PreHandler[] = [
   requirePermission(WRITE_KEY) as PreHandler,
-  requireAbac(WRITE_KEY, "tenant_lifecycle_platform_ops") as PreHandler,
+  requireAbac(WRITE_KEY, "tenant_platform_baa_steward") as PreHandler,
   requireStepUp(WRITE_KEY) as PreHandler,
   rejectAiActor("AI principals cannot change the platform BAA register") as PreHandler,
 ];
@@ -53,7 +54,7 @@ export function registerBaaRegisterRoutes(app: FastifyInstance, deps: BaaRegiste
   // 1 — list the platform-tenant BAA register across tenants (cursor-paginated; tenant/status filters). §4.1.
   app.get(
     "/api/v1/platform/baa-register",
-    { preHandler: [READ, ABAC_PLATFORM_OPS] },
+    { preHandler: [READ, ABAC_ONBOARDING_STAFF] },
     async (request) => {
       actorOf(request);
       const q = parse(BaaRegisterListQuerySchema, request.query);

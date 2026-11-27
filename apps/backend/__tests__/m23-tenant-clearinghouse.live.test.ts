@@ -281,10 +281,11 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     const body = res.json();
     return (body.error as { code?: string } | undefined)?.code ?? body.code;
   };
+  // CW-AC-22: naming a billing mode on the switch is also a pricing write, which is the pricing operator's role: this account holds both.
   const OPS = {
     "x-test-user": OPERATOR,
     "x-test-org": PLATFORM_ORG,
-    "x-test-roles": "platform_ops",
+    "x-test-roles": "platform_ops,platform_pricing_operator",
   };
   const opsWrite = () => ({ ...OPS, "x-step-up": "fresh", "idempotency-key": `live-${++seq}` });
   const tenantRead = (org: string) => ({
@@ -680,6 +681,13 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     );
     const reg = createPredicateRegistry();
     reg.register("tenant_lifecycle_platform_ops", async (c) => c.roles.includes("platform_ops"));
+    reg.register("tenant_platform_pricing_operator", async (c) =>
+      c.roles.includes("platform_pricing_operator"),
+    );
+    // the clearinghouse READ admits every onboarding role (the go-live approver's panel shows the choice, CW-AC-22)
+    reg.register("tenant_platform_onboarding_staff", async (c) =>
+      c.roles.some((role) => role === "platform_ops" || role === "platform_go_live_approver"),
+    );
     reg.register("step_up_recent", async (c) => c.attributes.stepUpRecent === true);
     registerAbacRegistry(reg);
     server = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });

@@ -73,6 +73,12 @@ function headerAuth(request: FastifyRequest): void {
 }
 
 const OPS = { "x-test-user": "ops", "x-test-org": PLATFORM_ORG, "x-test-roles": "platform_ops" };
+// CW-AC-22: go-live approval is the approver role's alone; the account holds the approval key and the wizard read, nothing else.
+const APPROVER = {
+  "x-test-user": "approver",
+  "x-test-org": PLATFORM_ORG,
+  "x-test-roles": "platform_go_live_approver",
+};
 const ADMIN = {
   "x-test-user": "admin",
   "x-test-org": TENANT_ORG,
@@ -127,6 +133,7 @@ function makeServer() {
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore([
       grant(PLATFORM_ORG, "ops", PLATFORM_KEYS),
+      grant(PLATFORM_ORG, "approver", ["go_live.approve_platform", "onboarding.read_platform"]),
       grant(TENANT_ORG, "admin", TENANT_ADMIN_KEYS),
       grant(TENANT_ORG, "co", OFFICER_KEYS),
     ]).store,
@@ -488,7 +495,7 @@ describe("platform onboarding routes", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/platform/tenants/acme/go-live/approve",
-      headers: { ...OPS, ...FRESH },
+      headers: { ...APPROVER, ...FRESH },
       payload: { reason: "reviewed everything twice" },
     });
     expect(res.statusCode).toBe(409);
@@ -499,7 +506,7 @@ describe("platform onboarding routes", () => {
         await app.inject({
           method: "POST",
           url: "/api/v1/platform/tenants/acme/go-live/approve",
-          headers: OPS,
+          headers: APPROVER,
           payload: { reason: "reviewed everything twice" },
         })
       ).statusCode,
@@ -514,6 +521,39 @@ describe("platform onboarding routes", () => {
         })
       ).statusCode,
     ).toBe(403);
+    await app.close();
+  });
+
+  it("CW-AC-22: platform_ops, holding the approval key, is refused approve and revoke: the predicate admits the approver role alone", async () => {
+    const { app, state } = makeServer();
+    for (const action of ["approve", "revoke"]) {
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/platform/tenants/acme/go-live/${action}`,
+        headers: { ...OPS, ...FRESH },
+        payload: { reason: "reviewed everything twice" },
+      });
+      expect(res.statusCode, action).toBe(403);
+    }
+    expect(state.tenants[0]?.status).toBe("onboarding");
+    await app.close();
+  });
+
+  it("CW-AC-22: the approver reads the wizard it acts in but cannot write a step (no manage key, not platform_ops)", async () => {
+    const { app } = makeServer();
+    const read = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenants/acme/onboarding",
+      headers: APPROVER,
+    });
+    expect(read.statusCode).toBe(200);
+    const write = await app.inject({
+      method: "PUT",
+      url: "/api/v1/platform/tenants/acme/compliance-officer",
+      headers: { ...APPROVER, ...FRESH },
+      payload: { membershipId: OFFICER_MEMBERSHIP, reason: "customer named a new officer" },
+    });
+    expect(write.statusCode).toBe(403);
     await app.close();
   });
 });

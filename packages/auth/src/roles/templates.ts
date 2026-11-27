@@ -77,7 +77,13 @@ export interface RoleTemplate {
 // module binds to — and M35 re-derives its `PLATFORM_BILLING_ROLES` from `PLATFORM_OPS_ROLE_KEYS` so the ABAC
 // gate's role list and the catalog can never drift.
 
-/** The six §4.7 platform-ops role keys (the `platform_billing_scope` admit-set). */
+/**
+ * The six §4.7 platform-ops role keys: the admit-set of every platform-role predicate that decides on role-set membership
+ * (`platform_billing_scope`, M2's organization lifecycle and cross-tenant organization reads, M33 `platform_admin_scope`, M29's operator
+ * check, the Claim.MD ops routes). The three onboarding duty roles CW-AC-22 split off `platform_ops` are NOT here: a member of this list
+ * plus one permission key (`org.manage`, say) reaches cross-tenant routes, and a duty role must not be one more way to get there. The two
+ * of them that read pricing are admitted to `platform_billing_scope` alone ({@link PLATFORM_PRICING_READ_DUTY_ROLE_KEYS}).
+ */
 export const PLATFORM_OPS_ROLE_KEYS = [
   "platform_owner",
   "platform_admin",
@@ -89,6 +95,28 @@ export const PLATFORM_OPS_ROLE_KEYS = [
 
 /** Union of the platform-ops role keys. */
 export type PlatformOpsRoleKey = (typeof PLATFORM_OPS_ROLE_KEYS)[number];
+
+/** The three onboarding duty roles CW-AC-22 split off `platform_ops` (platform-owned role templates; see {@link PLATFORM_ROLE_CONFLICTS}). */
+export const PLATFORM_DUTY_ROLE_KEYS = [
+  "platform_baa_steward",
+  "platform_go_live_approver",
+  "platform_pricing_operator",
+] as const;
+
+export type PlatformDutyRoleKey = (typeof PLATFORM_DUTY_ROLE_KEYS)[number];
+
+/** Every platform role that has a default permission template (the six §4.7 roles and the three duty roles). */
+export type PlatformRoleTemplateKey = PlatformOpsRoleKey | PlatformDutyRoleKey;
+
+/**
+ * The duty roles `platform_billing_scope` admits besides the six: the two that hold `subscription.pricing_read_platform` (the pricing
+ * operator, and the go-live approver for its console panel). That one key, a cross-tenant read of plans, a tenant's contract and
+ * statements, is all a billing-scope route accepts from them; the BAA steward is not admitted at all.
+ */
+export const PLATFORM_PRICING_READ_DUTY_ROLE_KEYS = [
+  "platform_pricing_operator",
+  "platform_go_live_approver",
+] as const;
 
 // The eighteen M35 `billing_admin.*` permission keys (catalog `category: "billing_admin"`), split by the
 // §4.7 binding rule this wave applies (see ADMIN-T02; `dunning.admin.read` added in M35A-T03 as the
@@ -126,18 +154,18 @@ export const M35_BILLING_ADMIN_WRITE_KEYS = [
 export const M35_REFUND_APPROVE_KEY = "refund.approve" as const;
 
 /** The role sets each key band binds to (owner ⊇ admin ⊇ billing ⊇ support in read reach). */
-const PLATFORM_READ_ROLES: readonly PlatformOpsRoleKey[] = [
+const PLATFORM_READ_ROLES: readonly string[] = [
   "platform_support_t2",
   "platform_billing_admin",
   "platform_admin",
   "platform_owner",
 ];
-const PLATFORM_WRITE_ROLES: readonly PlatformOpsRoleKey[] = [
+const PLATFORM_WRITE_ROLES: readonly string[] = [
   "platform_billing_admin",
   "platform_admin",
   "platform_owner",
 ];
-const PLATFORM_APPROVE_ROLES: readonly PlatformOpsRoleKey[] = ["platform_admin", "platform_owner"];
+const PLATFORM_APPROVE_ROLES: readonly string[] = ["platform_admin", "platform_owner"];
 /**
  * GAP-001 follow-up — the platform user-lifecycle grant. `POST /api/v1/platform/users/:id/deactivate`
  * gates on `user.deactivate` AND the M2 `user_lifecycle_platform_ops` ABAC predicate, which admits exactly
@@ -145,26 +173,80 @@ const PLATFORM_APPROVE_ROLES: readonly PlatformOpsRoleKey[] = ["platform_admin",
  */
 export const PLATFORM_USER_LIFECYCLE_KEY = "user.deactivate" as const;
 export const PLATFORM_PASSWORD_RESET_KEY = "user.password.reset" as const;
-const PLATFORM_USER_LIFECYCLE_ROLES: readonly PlatformOpsRoleKey[] = [
+const PLATFORM_USER_LIFECYCLE_ROLES: readonly string[] = [
   "platform_ops",
   "platform_admin",
   "platform_owner",
 ];
 
 /**
- * Onboarding wizard v2 (M34, migration 1329): the platform operator's write keys. Only `platform_ops` carries them: the
- * `tenant_lifecycle_platform_ops` predicate that gates every one of these routes admits that role alone. The BAA register
- * write key lives here (it was a read key's write); go-live approval is the second party of the two-party go-live.
+ * Onboarding wizard v2 (M34, migration 1329): the platform operator's own wizard keys (CW-AC-22: the three powers that were bound to
+ * `platform_ops` beside these now have their own roles, below). `onboarding.manage_platform` attests, re-opens, sets the org profile
+ * and the compliance officer; every route behind these gates on `tenant_lifecycle_platform_ops`, the exact `platform_ops` role.
+ * Migration 1438 granted the wizard's own read and its skip: without the read key a template operator was refused the wizard itself.
  */
 export const M34_PLATFORM_OPS_ONBOARDING_KEYS = [
   "onboarding.manage_platform",
-  "go_live.approve_platform",
-  "platform_tenant_baa.write_platform",
-  // Migration 1438: the wizard's own read and its skip (both platform routes gate on tenant_lifecycle_platform_ops, so platform_ops
-  // alone can use them). Without the read key a template operator was refused the wizard itself; only the dev seed held both.
   "onboarding.read_platform",
   "onboarding.skip",
+  // The wizard's BAA panel reads the platform BAA register beside the step the operator attests (CW-AC-22: reading it is not the
+  // steward's write; `tenant_platform_onboarding_staff` admits both).
+  "platform_tenant_baa.read_platform",
 ] as const;
+
+/**
+ * CW-AC-22 (migration 1559): the three onboarding powers `platform_ops` used to hold together, each now its own least-privilege role so
+ * no one account both enters data and approves it. Each route gates on a predicate that admits exactly the one role
+ * (`tenant_platform_baa_steward`, `tenant_platform_go_live_approver`, `tenant_platform_pricing_operator`), so a key is bound to that role
+ * alone: a grant to a role the predicate always denies would be a control that exists on paper only.
+ *   - BAA steward: the signed-BAA upload and the platform BAA register (the uploader and the register writer are the two operators
+ *     go-live approval refuses as its approver, so the approver must not be able to be either).
+ *   - Go-live approver: the second party of the two-party go-live (approve and revoke) and nothing else.
+ *   - Pricing operator: signs a tenant onto a plan at onboarding step 2 and changes its billing service mode.
+ * Every duty role also reads the wizard it acts in (`onboarding.read_platform`, behind `tenant_platform_onboarding_staff`).
+ */
+export const PLATFORM_BAA_STEWARD_KEYS = [
+  "tenant_baa_document.upload_platform",
+  "platform_tenant_baa.write_platform",
+  "platform_tenant_baa.read_platform",
+] as const;
+/**
+ * The approval, plus the two reads the console's go-live panel loads before it enables the button (the tenant's clearinghouse choice, behind
+ * `tenant_platform_onboarding_staff`, and its plan contract, behind `platform_billing_scope`): without them the one role allowed to approve
+ * could approve only by calling the API directly.
+ */
+export const PLATFORM_GO_LIVE_APPROVER_KEYS = [
+  "go_live.approve_platform",
+  "tenant_clearinghouse.read_platform",
+  "subscription.pricing_read_platform",
+] as const;
+export const M35_PLATFORM_PRICING_OPERATOR_KEYS = ["subscription.onboard_platform"] as const;
+
+/** The wizard read every onboarding role needs to see the step it acts in. */
+export const PLATFORM_ONBOARDING_READ_KEY = "onboarding.read_platform" as const;
+
+/** The four roles that work the onboarding wizard: `platform_ops` plus the three duty roles (`tenant_platform_onboarding_staff` admits them). */
+export const PLATFORM_ONBOARDING_ROLE_KEYS: readonly string[] = [
+  "platform_ops",
+  "platform_baa_steward",
+  "platform_go_live_approver",
+  "platform_pricing_operator",
+];
+
+/**
+ * Platform roles one account may not hold together (CW-AC-22). The go-live approver is the second party of the two-party go-live, so it
+ * holds no onboarding write duty: `db:platform-role grant` refuses a pair listed here. The check is on the ACCOUNT (the platform-owned
+ * roles bound to any membership of one user), and `superadmin`, which stands for every role by design, is outside it; two accounts held
+ * by one person are not detectable here either, which is why the go-live guards keep comparing accounts as well.
+ */
+export const PLATFORM_ROLE_CONFLICTS: readonly (readonly [
+  PlatformRoleTemplateKey,
+  PlatformRoleTemplateKey,
+])[] = [
+  ["platform_go_live_approver", "platform_ops"],
+  ["platform_go_live_approver", "platform_baa_steward"],
+  ["platform_go_live_approver", "platform_pricing_operator"],
+];
 
 /**
  * Slice 7 (7S, migration 1484): the support-session keys the platform console's routes gate on. `support_session.list_platform` and
@@ -212,34 +294,31 @@ export const PLATFORM_ONBOARDING_DATA_KEYS = [
   "tenant_clearinghouse.release_credential_platform",
   // Owner decision 2026-11-06: an operator withdraws a tenant's mistaken "filed outside ChartWarden" NOE/NOTR record (migration 1422).
   "tenant_notice_filing.withdraw_platform",
-  // Owner decision 2026-11-06: an operator uploads the signed BAA for a tenant (migration 1424). Scoped to the one document kind
-  // `tenant_baa` and the tenant in the path; it is not `documents.upload` and reads no document.
-  "tenant_baa_document.upload_platform",
+  // The signed-BAA upload (migration 1424) is the BAA steward's since CW-AC-22 (PLATFORM_BAA_STEWARD_KEYS).
   // Tenant onboarding slice 4 (ADR-0111): the tenant's DoseSpot clinic registration is onboarding data entered on its behalf,
   // with the same predicate, step-up and reason (migration 1429).
   "tenant_dosespot.read_platform",
   "tenant_dosespot.write_platform",
 ] as const;
-const PLATFORM_ONBOARDING_DATA_ROLES: readonly PlatformOpsRoleKey[] = ["platform_ops"];
+const PLATFORM_ONBOARDING_DATA_ROLES: readonly string[] = ["platform_ops"];
 
 /**
  * Slice 2 (tenant pricing, migration 1413). `subscription.onboard_platform` (sign a tenant onto a plan at onboarding step 2, change its
- * billing service mode) binds to `platform_ops` ALONE: its route gates on `tenant_lifecycle_platform_ops`, which admits that exact role,
- * so a grant to admin/owner would be a control that exists on paper only. `subscription.pricing_read_platform` (offered plans, the price
- * preview, a tenant's contract and statements) is read-only behind `platform_billing_scope`, so the operator who prices a tenant and the
- * three billing roles hold it.
+ * billing service mode) is the pricing operator's since CW-AC-22 (M35_PLATFORM_PRICING_OPERATOR_KEYS above).
+ * `subscription.pricing_read_platform` (offered plans, the price preview, a tenant's contract and statements) is read-only behind
+ * `platform_billing_scope`, so the operator who prices a tenant, `platform_ops` and the three billing roles hold it.
  */
-export const M35_PLATFORM_OPS_ONBOARDING_KEYS = ["subscription.onboard_platform"] as const;
 export const M35_PRICING_READ_KEY = "subscription.pricing_read_platform" as const;
-const PRICING_READ_ROLES: readonly PlatformOpsRoleKey[] = [
+const PRICING_READ_ROLES: readonly string[] = [
   "platform_ops",
+  "platform_pricing_operator",
   "platform_billing_admin",
   "platform_admin",
   "platform_owner",
 ];
 
 /** Build a platform-ops role's default grant: `billing_admin.*` per the §4.7 binding rule, plus user lifecycle. */
-function platformOpsGrantsFor(role: PlatformOpsRoleKey): readonly string[] {
+function platformOpsGrantsFor(role: PlatformRoleTemplateKey): readonly string[] {
   const keys: string[] = [];
   if (PLATFORM_READ_ROLES.includes(role)) keys.push(...M35_BILLING_ADMIN_READ_KEYS);
   if (PLATFORM_WRITE_ROLES.includes(role)) keys.push(...M35_BILLING_ADMIN_WRITE_KEYS);
@@ -248,7 +327,12 @@ function platformOpsGrantsFor(role: PlatformOpsRoleKey): readonly string[] {
     keys.push(PLATFORM_USER_LIFECYCLE_KEY, PLATFORM_PASSWORD_RESET_KEY);
   if (role === "platform_ops") keys.push(...M34_PLATFORM_OPS_ONBOARDING_KEYS);
   if (role === "platform_ops") keys.push(...M34_PLATFORM_OPS_SUPPORT_SESSION_KEYS);
-  if (role === "platform_ops") keys.push(...M35_PLATFORM_OPS_ONBOARDING_KEYS);
+  if (role === "platform_baa_steward") keys.push(...PLATFORM_BAA_STEWARD_KEYS);
+  if (role === "platform_go_live_approver") keys.push(...PLATFORM_GO_LIVE_APPROVER_KEYS);
+  if (role === "platform_pricing_operator") keys.push(...M35_PLATFORM_PRICING_OPERATOR_KEYS);
+  // Every onboarding duty role reads the wizard it acts in (platform_ops already holds the key above).
+  if (PLATFORM_ONBOARDING_ROLE_KEYS.includes(role) && role !== "platform_ops")
+    keys.push(PLATFORM_ONBOARDING_READ_KEY);
   if (PRICING_READ_ROLES.includes(role)) keys.push(M35_PRICING_READ_KEY);
   if (PLATFORM_ONBOARDING_DATA_ROLES.includes(role)) keys.push(...PLATFORM_ONBOARDING_DATA_KEYS);
   return keys;
@@ -261,8 +345,11 @@ function platformOpsGrantsFor(role: PlatformOpsRoleKey): readonly string[] {
  * until a later wave binds their surface. `platform_billing_admin` deliberately lacks `refund.approve`.
  */
 export const PLATFORM_OPS_ROLE_GRANTS = Object.fromEntries(
-  PLATFORM_OPS_ROLE_KEYS.map((role) => [role, platformOpsGrantsFor(role)]),
-) as Record<PlatformOpsRoleKey, readonly string[]>;
+  [...PLATFORM_OPS_ROLE_KEYS, ...PLATFORM_DUTY_ROLE_KEYS].map((role) => [
+    role,
+    platformOpsGrantsFor(role),
+  ]),
+) as Record<PlatformRoleTemplateKey, readonly string[]>;
 
 /**
  * The `system_locked` permission floor (spec §3.4.1, M03-F06). Each CoP-required role
@@ -576,6 +663,44 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     floor: [],
     grants: PLATFORM_OPS_ROLE_GRANTS.platform_ops,
   },
+  // CW-AC-22: the three onboarding powers split off platform_ops. Each is a platform-owned role created by `db:platform-role grant`
+  // (migration 1559 removes the same keys from the platform_ops row); none carries a `billing_admin.*` key.
+  {
+    key: "platform_baa_steward",
+    name: "Platform BAA Steward",
+    category: "platform_staff",
+    scopeLevel: "organization",
+    systemDefault: true,
+    systemLocked: false,
+    description:
+      "Files a tenant's signed BAA and keeps the platform BAA register. Holds no data-entry, pricing or go-live approval key.",
+    floor: [],
+    grants: PLATFORM_OPS_ROLE_GRANTS.platform_baa_steward,
+  },
+  {
+    key: "platform_go_live_approver",
+    name: "Platform Go-Live Approver",
+    category: "platform_staff",
+    scopeLevel: "organization",
+    systemDefault: true,
+    systemLocked: false,
+    description:
+      "The second party of the two-party go-live: approves or revokes a tenant's go-live. Holds no onboarding write key, and one account may not also hold platform_ops, the BAA steward or the pricing operator.",
+    floor: [],
+    grants: PLATFORM_OPS_ROLE_GRANTS.platform_go_live_approver,
+  },
+  {
+    key: "platform_pricing_operator",
+    name: "Platform Pricing Operator",
+    category: "platform_staff",
+    scopeLevel: "organization",
+    systemDefault: true,
+    systemLocked: false,
+    description:
+      "Signs a tenant onto a plan at onboarding step 2 and changes its billing service mode. Reads the pricing surface; holds no other onboarding write key.",
+    floor: [],
+    grants: PLATFORM_OPS_ROLE_GRANTS.platform_pricing_operator,
+  },
 ] as const;
 
 /** True when `roleKey` names a CoP-required `system_locked` role. */
@@ -622,7 +747,7 @@ export function rolesForPermission(permissionKey: string): readonly string[] {
 
 /** A single seedable `role_permission` grant row: which platform-ops role holds which permission key. */
 export interface RolePermissionSeedRow {
-  roleKey: PlatformOpsRoleKey;
+  roleKey: PlatformRoleTemplateKey;
   permissionKey: string;
 }
 
@@ -632,7 +757,7 @@ export interface RolePermissionSeedRow {
  * platform analogue of the per-org grant the dev seed writes for tenant roles.
  */
 export function platformOpsRolePermissionSeedRows(): RolePermissionSeedRow[] {
-  return PLATFORM_OPS_ROLE_KEYS.flatMap((roleKey) =>
+  return [...PLATFORM_OPS_ROLE_KEYS, ...PLATFORM_DUTY_ROLE_KEYS].flatMap((roleKey) =>
     PLATFORM_OPS_ROLE_GRANTS[roleKey].map((permissionKey) => ({ roleKey, permissionKey })),
   );
 }

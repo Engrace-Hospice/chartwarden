@@ -6,11 +6,12 @@ import { spawnSync } from "node:child_process";
  *
  * The route is mounted over the REAL data service and M22's REAL upload pipeline (an in-memory object store stands in for MinIO) on the
  * NOBYPASSRLS `chartwarden_app` tenant pool, behind the REAL guards. The operator's permissions come from the REAL DB grant (migration
- * 1424 bound `tenant_baa_document.upload_platform` to `platform_ops`), not from an in-memory list. What a unit test cannot prove, and this does:
- *   - platform_ops files the BAA for an onboarding tenant: the document + version land in THAT org (visible to its RLS scope and to no other)
+ * 1424 added `tenant_baa_document.upload_platform`; since CW-AC-22 (migration 1559) it is the `platform_baa_steward` template's alone and
+ * `platform_ops` holds no BAA key), not from an in-memory list. What a unit test cannot prove, and this does:
+ *   - the BAA steward files the BAA for an onboarding tenant: the document + version land in THAT org (visible to its RLS scope and to no other)
  *     under the one kind `tenant_baa`, the object is in the tenant's bucket, the audit row names the operator, tenant, reason, document id
  *     and digest, and the document's own write-audit trigger attributes the insert to the operator;
- *   - it cannot file any other kind: a body that names one is a 422, the generic documents route refuses platform_ops (403) and refuses
+ *   - it cannot file any other kind: a body that names one is a 422, the generic documents route refuses the steward (403) and refuses
  *     the `tenant_baa` kind to a tenant user who does hold `documents.upload` (422), and the DB grant holds no `documents.*` key;
  *   - it cannot read other documents: the generic read routes refuse it (403) for the tenant's own and for the BAA document;
  *   - the signed BAA is immutable to the generic routes: a tenant user holding documents.upload and documents.edit_metadata gets 409
@@ -26,6 +27,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   type EffectivePermissionStore,
+  PLATFORM_OPS_ROLE_GRANTS,
   createDbEffectivePermissionStore,
   createInMemoryEffectivePermissionStore,
   createPredicateRegistry,
@@ -90,10 +92,12 @@ const PDF_BASE64 = PDF.toString("base64");
 const PDF_SHA256 = createHash("sha256").update(PDF).digest("hex");
 const BODY = { contentBase64: PDF_BASE64, mimeType: "application/pdf", reason: REASON };
 
+const OPS_USER = "c3000000-0000-4000-8000-0000000000c6"; // platform_ops in the DB: since CW-AC-22 it holds no BAA key
+const OPS_USER_MEMBERSHIP = "e5000000-0000-4000-8000-0000000000e8";
 const OPS_HEADERS = {
   "x-test-user": OPERATOR,
   "x-test-org": PLATFORM_ORG,
-  "x-test-roles": "platform_ops",
+  "x-test-roles": "platform_baa_steward",
 };
 
 function headerAuth(request: FastifyRequest): void {
@@ -208,6 +212,7 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
     for (const [id, email] of [
       [OPERATOR, "ops-baa@test.test"],
       [ADMIN_ONLY, "admin-baa@test.test"],
+      [OPS_USER, "platform-ops-baa@test.test"],
       [TENANT_USER, "tenant-baa@test.test"],
     ] as const) {
       await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [id, email]);
@@ -232,21 +237,23 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
         WHERE t.retired_at IS NULL AND ta.organization_id = $1`,
       [ORG_X],
     );
-    // A fresh database has no platform-owned role rows (`db:platform-role grant` creates them), so migration 1424 bound nothing.
-    // Create them and re-apply it, as a deploy does once they exist.
-    for (const key of ["platform_ops", "platform_admin"]) {
-      await admin.query(
+    // A fresh database has no platform-owned role rows (`db:platform-role grant` creates them): create them with their TEMPLATE permissions,
+    // as the grant CLI does. The BAA steward holds the upload key; platform_ops and platform_admin do not (CW-AC-22).
+    for (const key of ["platform_baa_steward", "platform_ops", "platform_admin"] as const) {
+      const created = await admin.query<{ id: string }>(
         `INSERT INTO role (organization_id, key, name, category, scope_level, enabled)
-         VALUES (NULL, $1, $1, 'platform_staff'::role_category, 'organization', true)`,
+         VALUES (NULL, $1, $1, 'platform_staff'::role_category, 'organization', true) RETURNING id`,
         [key],
       );
+      await admin.query(
+        `INSERT INTO role_permission (organization_id, role_id, permission_key)
+         SELECT NULL, $1, p.key FROM permission p WHERE p.key = ANY($2::text[])`,
+        [created.rows[0]?.id, PLATFORM_OPS_ROLE_GRANTS[key]],
+      );
     }
-    const grantMigration = migrations.find((f) =>
-      f.startsWith("1424_m34_tenant_baa_document_permission"),
-    ) as string;
-    await admin.query(readFileSync(join(MIGRATIONS_DIR, grantMigration), "utf8"));
     for (const [membership, user, role] of [
-      [OPERATOR_MEMBERSHIP, OPERATOR, "platform_ops"],
+      [OPERATOR_MEMBERSHIP, OPERATOR, "platform_baa_steward"],
+      [OPS_USER_MEMBERSHIP, OPS_USER, "platform_ops"],
       [ADMIN_ONLY_MEMBERSHIP, ADMIN_ONLY, "platform_admin"],
     ] as const) {
       await admin.query(
@@ -351,6 +358,9 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
     registerEffectivePermissionResolver(composite);
     const reg = createPredicateRegistry();
     reg.register("tenant_lifecycle_platform_ops", async (c) => c.roles.includes("platform_ops"));
+    reg.register("tenant_platform_baa_steward", async (c) =>
+      c.roles.includes("platform_baa_steward"),
+    );
     reg.register("step_up_recent", async (c) => c.attributes.stepUpRecent === true);
     registerAbacRegistry(reg);
     server = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
@@ -379,7 +389,7 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
     await admin?.end();
   });
 
-  describe("platform_ops files the BAA for an onboarding tenant", () => {
+  describe("the BAA steward files the BAA for an onboarding tenant", () => {
     it("answers 201 with the document id and what the server verified of the bytes", async () => {
       const res = await upload("baa-b");
       expect(res.statusCode, res.body).toBe(201);
@@ -452,7 +462,7 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({
         actor_user_id: OPERATOR,
-        actor_role: "platform_ops",
+        actor_role: "platform_baa_steward",
         outcome: "success",
         resource_id: uploadedDocumentId,
       });
@@ -661,20 +671,39 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
     it("holds the upload key and NO documents key in its DB grant", async () => {
       const keys = await q<{ permission_key: string }>(
         `SELECT rp.permission_key FROM role_permission rp JOIN role r ON r.id = rp.role_id
-          WHERE r.organization_id IS NULL AND r.key = 'platform_ops'
+          WHERE r.organization_id IS NULL AND r.key = 'platform_baa_steward'
             AND (rp.permission_key LIKE 'documents.%' OR rp.permission_key LIKE 'tenant_baa_document.%')
           ORDER BY rp.permission_key`,
       );
       expect(keys.map((k) => k.permission_key)).toEqual(["tenant_baa_document.upload_platform"]);
-      // and no other platform role carries it: the predicate admits platform_ops alone
+      // and no other platform role carries it (platform_ops does not since CW-AC-22): the predicate admits the steward alone
       const holders = await q<{ key: string }>(
         `SELECT DISTINCT r.key FROM role_permission rp JOIN role r ON r.id = rp.role_id
           WHERE rp.permission_key = 'tenant_baa_document.upload_platform'`,
       );
-      expect(holders.map((h) => h.key)).toEqual(["platform_ops"]);
+      expect(holders.map((h) => h.key)).toEqual(["platform_baa_steward"]);
     });
 
-    it("refuses platform_ops the generic documents upload (403): it has no documents.upload", async () => {
+    it("CW-AC-22: platform_ops, with its real DB grant, cannot upload a BAA (403): no key, and the predicate admits the steward alone", async () => {
+      const before = (await documentsOf(ORG_B)).length;
+      const res = await server.inject({
+        method: "POST",
+        url: "/api/v1/platform/tenants/baa-b/baa-document",
+        headers: {
+          ...OPS_HEADERS,
+          "x-test-user": OPS_USER,
+          "x-test-membership": OPS_USER_MEMBERSHIP,
+          "x-test-roles": "platform_ops",
+          "x-step-up": "fresh",
+          "idempotency-key": `baa-live-ops-${++seq}`,
+        },
+        payload: BODY,
+      });
+      expect(res.statusCode).toBe(403);
+      expect((await documentsOf(ORG_B)).length).toBe(before);
+    });
+
+    it("refuses the steward the generic documents upload (403): it has no documents.upload", async () => {
       const before = (await documentsOf(ORG_B)).length;
       const res = await server.inject({
         method: "POST",
@@ -720,7 +749,7 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
   });
 
   describe("it cannot read other documents", () => {
-    it("refuses platform_ops the generic reads (403): the tenant's own document, the BAA document and the list", async () => {
+    it("refuses the steward the generic reads (403): the tenant's own document, the BAA document and the list", async () => {
       for (const url of [
         `/api/v1/documents/${DOC_B}`,
         `/api/v1/documents/${uploadedDocumentId}`,

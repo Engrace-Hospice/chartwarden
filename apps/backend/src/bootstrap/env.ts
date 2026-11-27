@@ -8,8 +8,14 @@
 // present and meet its strength rule, or the server throws before serving a single request. Dev/test
 // keep their safe fallbacks (the check is a no-op outside production).
 import { Buffer } from "node:buffer";
+import {
+  PLATFORM_CONSOLE_ALLOWED_CIDRS_ENV,
+  isCidrTooWide,
+  parsePlatformConsolePolicy,
+} from "./platform-console-policy";
 import { rustBridgeEnvProblems } from "./rust-bridge/config";
 import { STRICT_KEY_LIST_PROBLEM, parseStrictKeyList } from "./strict-key-base64";
+import { inspectTrustedProxies } from "./trusted-proxies";
 
 /** Environment surface this validator reads — `process.env` in production, an injected map in tests. */
 export type EnvLike = Record<string, string | undefined>;
@@ -211,6 +217,29 @@ const REQUIREMENTS: readonly Requirement[] = [
       return env.PASSKEY_RP_ID?.trim().toLowerCase() === domain
         ? null
         : "PASSKEY_RP_ID must equal TENANT_BASE_DOMAIN";
+    },
+  },
+  {
+    // CW-AC-22 — optional: unset leaves the platform console reachable from any address. Set, every entry must be an IP or CIDR (never
+    // /0, a keyword or a hostname), because a list the guard cannot read refuses the whole console; and `request.ip` must be the
+    // real client, which only a valid TRUSTED_PROXY_CIDRS behind the reverse proxy gives (else it is the proxy's own address).
+    key: PLATFORM_CONSOLE_ALLOWED_CIDRS_ENV,
+    when: (env) => Boolean(env[PLATFORM_CONSOLE_ALLOWED_CIDRS_ENV]?.trim()),
+    rule: (value, env) => {
+      const policy = parsePlatformConsolePolicy(value);
+      if (policy.kind === "closed") {
+        return `must be a comma-separated list of IP addresses or CIDRs (no /0; outside private ranges nothing wider than a /24, or a /48 for IPv6); not usable: ${policy.invalid.join(", ")}`;
+      }
+      const trusted = inspectTrustedProxies(env.TRUSTED_PROXY_CIDRS);
+      if (!trusted.valid) {
+        return "needs a valid TRUSTED_PROXY_CIDRS: without it request.ip is the reverse proxy's own address, not the operator's";
+      }
+      // A trusted range wider than the proxy lets any client inside it write its own X-Forwarded-For, so the address the list is checked
+      // against is whatever that client says. (Private ranges such as the docker bridge's 172.16.0.0/12 pass: narrow them in the runbook.)
+      const wide = trusted.entries.filter(isCidrTooWide);
+      return wide.length === 0
+        ? null
+        : `TRUSTED_PROXY_CIDRS names ranges far wider than a proxy (${wide.join(", ")}): any client inside them could choose its own address`;
     },
   },
   {

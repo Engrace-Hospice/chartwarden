@@ -24,7 +24,7 @@ import { Client } from "pg";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
 import { SEED_CREDENTIALS_PATH, seedUsername, writeSeedCredentials } from "./lib/credentials";
 import { fullCatalogGrantRows } from "./lib/full-catalog-grants";
-import { grantPlatformRole } from "./lib/platform-role";
+import { grantPlatformRole, platformRoleLabel } from "./lib/platform-role";
 import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
@@ -171,6 +171,16 @@ async function main(): Promise<void> {
     name: "Platform Operations",
     description: "Platform-ops console access (dev seed)",
   });
+  // CW-AC-22: BAA filing and tenant pricing are roles of their own now (go-live approval too, which no one account may hold beside
+  // platform_ops: the dev superadmin seed approves). The local console account keeps the two that can sit beside platform_ops.
+  for (const key of ["platform_baa_steward", "platform_pricing_operator"] as const) {
+    await grantPlatformRole(db, {
+      organizationId: orgId,
+      membershipId,
+      key,
+      ...platformRoleLabel(key),
+    });
+  }
 
   await db.end();
 
@@ -201,7 +211,7 @@ async function main(): Promise<void> {
     "",
     "| Persona | Email | Password | Role key(s) | Username |",
     "|---|---|---|---|---|",
-    `| Organization Administrator | \`${USER.email}\` | \`${password}\` | ${USER.roleKey}, platform_ops | \`${seedUsername(USER.email)}\` |`,
+    `| Organization Administrator | \`${USER.email}\` | \`${password}\` | ${USER.roleKey}, platform_ops, platform_baa_steward, platform_pricing_operator | \`${seedUsername(USER.email)}\` |`,
     "",
     "> This account also carries `platform_ops` — the ABAC role the admin console (apps/admin,",
     "> `:5175`) requires. It's the only local account that can sign into it.",

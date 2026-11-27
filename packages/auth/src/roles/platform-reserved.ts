@@ -15,7 +15,7 @@
 // GAP-096 adds the platform authority whose key does NOT carry the prefix: M32's `ai_safety_owner`
 // (the cross-tenant AI kill switch / lifecycle authority, §4.7). It is reserved by exact key. ADR-0112 adds a second,
 // `superadmin` (one platform-owned role that stands for `administrator`, `org_admin` and every platform role).
-import { PLATFORM_OPS_ROLE_KEYS } from "./templates";
+import { PLATFORM_DUTY_ROLE_KEYS, PLATFORM_OPS_ROLE_KEYS } from "./templates";
 
 /** Key prefix reserved to platform-owned roles. */
 export const RESERVED_PLATFORM_ROLE_PREFIX = "platform_";
@@ -53,6 +53,7 @@ export const RESERVED_PLATFORM_ROLE_KEYS = ["ai_safety_owner", SUPERADMIN_ROLE_K
  */
 export const PLATFORM_GRANTABLE_ROLE_KEYS = [
   ...PLATFORM_OPS_ROLE_KEYS,
+  ...PLATFORM_DUTY_ROLE_KEYS,
   "platform_security_owner",
   ...RESERVED_PLATFORM_ROLE_KEYS,
 ] as const;

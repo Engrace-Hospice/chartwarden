@@ -14,11 +14,15 @@
 // Auditor, collaborator, funeral-home, portal and vendor sessions are NOT staff sessions: they carry their own
 // stage-gated enrolment (auditor, M2 §7.7) or are link-bound and pinned to one patient. {@link
 // sessionClassRequiresMfa} scopes the matrix to the staff class.
+import { PLATFORM_DUTY_ROLE_KEYS } from "../roles/templates";
 
 /** Role keys whose holders must have a passkey enrolled (Security Hardening §5.1.2). */
 export const PASSKEY_REQUIRED_ROLE_KEYS: ReadonlySet<string> = new Set([
   "org_admin",
   "platform_ops",
+  // CW-AC-22: go-live approval, the BAA filing and tenant pricing used to sit on platform_ops, which needs a passkey; the roles they moved
+  // to carry the same powers, so they need the same factor (a split must not lower it).
+  ...PLATFORM_DUTY_ROLE_KEYS,
   // SUPERADMIN_ROLE_KEY: it reads as both of the above (expandSuperadminRoles), so it is held to the same factor.
   "superadmin",
 ]);

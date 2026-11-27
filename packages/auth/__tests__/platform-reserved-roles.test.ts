@@ -7,6 +7,7 @@
  */
 import {
   PLATFORM_ALERT_AUDIENCE_ROLE_KEY,
+  PLATFORM_DUTY_ROLE_KEYS,
   PLATFORM_GRANTABLE_ROLE_KEYS,
   PLATFORM_OPS_ROLE_KEYS,
   ROLE_TEMPLATES,
@@ -110,6 +111,7 @@ describe("platform-role CLI allowlist", () => {
     expect([...PLATFORM_GRANTABLE_ROLE_KEYS].sort()).toEqual(
       [
         ...PLATFORM_OPS_ROLE_KEYS,
+        ...PLATFORM_DUTY_ROLE_KEYS, // CW-AC-22: the three onboarding duty roles
         "platform_security_owner",
         "ai_safety_owner",
         "superadmin",

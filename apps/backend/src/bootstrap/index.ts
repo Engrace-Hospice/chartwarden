@@ -16,6 +16,7 @@ import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { cursorSigningKeyFrom } from "./env";
 import { wireErasers } from "./erasers/providers";
 import { validateErasers } from "./erasers/registry";
+import type { PlatformConsoleGuard } from "./platform-console-allowlist";
 import { type CsrfOptions, applyCsrfProtection } from "./plugins/csrf";
 import { applyErrorHandler } from "./plugins/error-handler";
 import { applyIdempotency, createInMemoryIdempotencyStore } from "./plugins/idempotency";
@@ -54,6 +55,11 @@ export interface ServerDeps {
    * after `authenticate`, because the host-vs-session org check reads the org that hook stamps.
    */
   tenantHost?: TenantHostGuard | null;
+  /**
+   * CW-AC-22 — the platform console's address allowlist (`createPlatformConsoleGuard`); null/absent = no gate (the variable is unset).
+   * Registered after `authenticate` and the rate limiter: the audit row names the operator and a refused flood is throttled first.
+   */
+  platformConsole?: PlatformConsoleGuard | null;
   security?: SecurityOptions;
   /** Double-submit-cookie CSRF protection (WX-PR-017). Defaults to enabled. */
   csrf?: CsrfOptions;
@@ -328,6 +334,7 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
     });
   }
   applySecurityBaseline(app, deps.security); // CORS + rate-limit read the (now-auth'd) context
+  if (deps.platformConsole) app.addHook("onRequest", deps.platformConsole);
   // After the rate limiter: an unknown `<x>.<base>` host costs a database lookup, so it must be throttled first.
   if (deps.tenantHost) {
     app.addHook("onRequest", deps.tenantHost);
@@ -378,6 +385,7 @@ export * from "./routes/health";
 export * from "./routes/system";
 export * from "./plugins/authenticate";
 export * from "./tenant-host";
+export * from "./platform-console-allowlist";
 export * from "./tenant-host-resolver-db";
 export * from "./env";
 export type * from "./interfaces";

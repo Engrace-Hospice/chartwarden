@@ -145,6 +145,7 @@ import {
   FHIR_TOKEN_ENDPOINT_ENABLED_ENV,
   M23_LAUNCH_GATEWAY_ENABLED_ENV,
   M34_PROVISION_GATEWAY_ENABLED_ENV,
+  PLATFORM_CONSOLE_ALLOWED_CIDRS_ENV,
   assertNoInMemoryBindingsOnDbBoot,
   assertProductionEnv,
   buildServer,
@@ -152,14 +153,17 @@ import {
   createCachingTenantHostResolver,
   createDbTenantAppOrigin,
   createDbTenantHostResolver,
+  createPlatformConsoleGuard,
   createSessionAuthenticate,
   createTenantHostGuard,
   escalationRouterDenyStub,
   getSeam,
   integrationEnabled,
   noteInMemoryBinding,
+  parsePlatformConsolePolicy,
   parseTenantBaseDomain,
   platformClaimMdAccountReference,
+  platformConsoleRefusalAuditor,
   registerEraser,
   registerSeam,
   webAppBaseUrlFromEnv,
@@ -5928,6 +5932,28 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const tenantHost = tenantHostResolver
     ? createTenantHostGuard({ baseDomain: tenantBaseDomain, resolver: tenantHostResolver })
     : null;
+  // CW-AC-22 - the platform console's address allowlist: null when PLATFORM_CONSOLE_ALLOWED_CIDRS is unset (no gate). Set, a request
+  // from outside the list (or any request when the list is unusable) is refused 403 and audited; env.ts refuses a production boot with
+  // a bad list or without a valid TRUSTED_PROXY_CIDRS, so `request.ip` is the operator's address.
+  const platformConsolePolicy = parsePlatformConsolePolicy(
+    process.env[PLATFORM_CONSOLE_ALLOWED_CIDRS_ENV],
+  );
+  // A list that is set but unusable closes the console: say so once at boot (production already refused to boot, via env.ts).
+  if (platformConsolePolicy.kind === "closed") {
+    process.emitWarning(
+      `${PLATFORM_CONSOLE_ALLOWED_CIDRS_ENV} is set but unusable (${platformConsolePolicy.invalid.join(", ")}): every platform console request will be refused`,
+    );
+  }
+  // Unset is today's behaviour, but in production a dropped line in .env.production would leave the console open without a sound.
+  if (platformConsolePolicy.kind === "open" && process.env.NODE_ENV === "production") {
+    process.emitWarning(
+      `${PLATFORM_CONSOLE_ALLOWED_CIDRS_ENV} is unset: the platform console is reachable from any address that can reach it`,
+    );
+  }
+  const platformConsole = createPlatformConsoleGuard({
+    policy: platformConsolePolicy,
+    onRefused: platformConsoleRefusalAuditor(dbHandle?.db),
+  });
   const auth = dbHandle
     ? createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0], {
         emailTransport,
@@ -6346,6 +6372,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     db: dbHandle?.db,
     authenticate,
     tenantHost,
+    platformConsole,
     ...(featureFlagReader ? { featureFlagReader } : {}),
     ...(systemStatusReader ? { systemStatusReader } : {}),
     // WX-PR-017 — SD-055 rate-limit tiers enforced cluster-wide over the dedicated Valkey connection
