@@ -1894,14 +1894,18 @@ The administrative web surfaces conform to WCAG 2.1 AA per architecture §-A11y 
 
 ### 7.7 W-FHIR-07 — Forward-seam deny-stub behavior (M23 not yet enabled)
 
-**Setup:** Phase 1; M23 Billing Medicare is locked but the Phase-2 Claim/EOB projection routes are intentionally returning 404.
+**Setup:** Phase 1; M23 Billing Medicare is locked, but Claim, ClaimResponse and ExplanationOfBenefit projection routes remain disabled.
 
-**Steps:**
-1. HIE queries `GET /fhir/r4/Claim/{id}`.
-2. Route returns `404 Not Found` + `OperationOutcome.issue.severity='error'`, `.issue.code='not-supported'`, `.issue.details.text='Claim resource is not yet exposed; expected enablement in Phase 2'`, `.issue.diagnostics='https://docs.chartwarden.app/fhir/phase-2'`.
-3. The same posture applies to `ServiceRequest`, `QuestionnaireResponse`, `Location` per D1.
+**Contract boundary (issue #1074):** M23 publishes the full `ClaimReader`; its FHIR method is inherited from the shared leaf contract `FhirClaimProjectionReader.fhirProjection(orgId: string, claimId: string): Promise<FhirClaimProjectionDto | null>`. M23 owns claim source data and the supplied organization scope. M28 owns any future FHIR resource mapping. `FhirClaimProjectionDto.resourceBundle` remains `unknown`; it does not mean a qualified Claim, ClaimResponse or ExplanationOfBenefit resource exists. `null` means no owner-side claim matched the supplied tenant scope. The current M23 method throws `NotImplementedError`, distinguishing an unavailable projection from a scoped not-found result.
 
-**Done means:** Phase-2 routes are advertised as not-yet-supported in the CapabilityStatement and return the FHIR-spec correct error; the consumer can distinguish "this resource is permanently unsupported" from "I lack scope" from "the patient has no such resource."
+**Current behavior and steps:**
+1. `GET /fhir/r4/Claim/{id}` and the corresponding ClaimResponse/EOB instance paths retain their existing 404 `OperationOutcome` behavior and do not invoke the reader.
+2. Claim, ClaimResponse and ExplanationOfBenefit are absent from `SERVED_RESOURCES`: the CapabilityStatement does not advertise them, type-level search returns 404 `not-supported`, and Patient `$everything` cannot select them.
+3. Bulk export rejects `_type=Claim`, `_type=ClaimResponse` and `_type=ExplanationOfBenefit` with 400 `not-supported`; no export job is created.
+
+**Future activation prerequisites:** implement and qualify a real M23 owner-side tenant-scoped projection; validate claim and patient identity; add the applicable provider, consent and disclosure checks in M28; and pass a private PostgreSQL live test under `chartwarden_app` (`NOBYPASSRLS`) proving own-tenant access, cross-tenant/overlapping-id denial and unknown-id non-disclosure. The existing M23-to-M25 claim-match live suite is not qualification evidence for this unimplemented FHIR projection.
+
+**Done means:** M23 and M28 compile against one shared method and DTO contract, while the projection remains unavailable and all Claim billing access paths remain disabled and unadvertised. Contract alignment alone does not qualify or activate the projection.
 
 ### 7.8 W-FHIR-08 — Rate-limit ceiling: tier-2 hits the cap (D16)
 

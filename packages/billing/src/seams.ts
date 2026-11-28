@@ -3,12 +3,12 @@
 // schema/table. Registration into the M1 SeamRegistry is port-injected at the backend composition root
 // (see ./seam-registration) — NOT here (the M27/M30 `seams.ts` precedent). Every projection is aggregate
 // or id-keyed; NO PHI / NO MBI ever crosses a seam (D13 / §3.6 / §8.7).
+import type { FhirClaimProjectionReader } from "@chartwarden/types";
 import type {
   AcceptedSubmissionDto,
   AdmissionId,
   ArAgingDto,
   CapYear,
-  ClaimFhirProjectionDto,
   ClaimId,
   ClaimSummaryDto,
   DaysByLevelOfCareDto,
@@ -35,9 +35,8 @@ import type {
 // Seam 1: ClaimReader — single-claim accessors + the M28 FHIR projection + M30 HCI feature inputs +
 //   M37 GIP-day census + M24 Medicare-secondary context. Consumers: M28, M30, M37, M24.
 // -----------------------------------------------------------------------------
-export interface ClaimReader {
-  /** M28 FHIR Gateway projection (R4 Claim/ClaimResponse/EOB per US Core 6.0 hospice). */
-  fhirProjection(orgId: OrgId, claimId: ClaimId): Promise<ClaimFhirProjectionDto | null>;
+export interface ClaimReader extends FhirClaimProjectionReader {
+  /** M28 forward-seam projection contract is inherited from the shared leaf type; it remains deny-stubbed. */
 
   /** M30 HQRP — HCI feature inputs per patient per measurement period. */
   measureFeatureSetForPatient(

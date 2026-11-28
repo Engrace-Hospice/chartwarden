@@ -107,12 +107,19 @@ describe("POST /$export", () => {
     expect((await kickOff(app, undefined, OTHER_TOKEN)).statusCode).toBe(202);
   });
 
-  it("refuses a type the client's granted scopes do not cover, and a type this gateway does not serve", async () => {
-    const { app } = await build(seedStore());
+  it("refuses a type the client's granted scopes do not cover and does not export Claim billing resources", async () => {
+    const { app, enqueue } = await build(seedStore());
     const noScope = await kickOff(app, "/fhir/r4/$export?_type=MedicationRequest");
     expect(noScope.statusCode).toBe(403);
     const unserved = await kickOff(app, "/fhir/r4/$export?_type=Condition");
     expect(unserved.statusCode).toBe(400);
+    expect(unserved.json().issue[0].code).toBe("not-supported");
+    for (const resource of ["Claim", "ClaimResponse", "ExplanationOfBenefit"]) {
+      const unsupported = await kickOff(app, `/fhir/r4/$export?_type=${resource}`);
+      expect(unsupported.statusCode).toBe(400);
+      expect(unsupported.json().issue[0].code).toBe("not-supported");
+    }
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   it("answers 501 for Group export (no Group membership source) and creates no job", async () => {

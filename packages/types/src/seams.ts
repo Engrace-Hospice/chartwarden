@@ -57,6 +57,7 @@ import type {
   EvvVerificationProvider,
 } from "./evv";
 import type {
+  FhirClaimProjectionReader,
   FhirClientReader,
   FhirGatewayMetricsProvider,
   FhirInboundProposalReader,
@@ -1470,11 +1471,10 @@ export interface SeamContracts {
   FhirGatewayMetricsProvider: FhirGatewayMetricsProvider;
   FhirClientReader: FhirClientReader;
   FhirInboundProposalReader: FhirInboundProposalReader;
-  // M23's `ClaimReader` + M29's `LabObservationReader` are the two §4.4 forward-seams M28 CONSUMES. OPAQUE
-  // rich-seam pattern (interfaces in @chartwarden/billing / @chartwarden/external-interfaces, not importable by this
-  // leaf), so the registry holds each as `unknown` and M28 resolves via `getSeam` + a cast to its own view.
-  // Both stay on the fail-closed deny-stub the whole of Phase 1 (see the SeamName comments above).
-  ClaimReader: unknown;
+  // M23's ClaimReader is a narrow leaf-typed forward seam so M23 and M28 compile against the same projection
+  // method without creating a module dependency. Its M1 deny-stub remains fail-closed through Phase 1.
+  // M29's LabObservationReader remains an opaque rich seam until its owner publishes a leaf contract.
+  ClaimReader: FhirClaimProjectionReader;
   LabObservationReader: unknown;
   // M29's three OTHER §4.4 published read seams (M29-T08). OPAQUE rich-seams (interfaces in the M29 backend
   // module, not importable by this leaf), so the registry holds each as `unknown`; M29 registers the real
