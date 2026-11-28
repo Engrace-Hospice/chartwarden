@@ -13497,8 +13497,16 @@ Object.assign(ROUTE_ENRICHMENTS, {
   // §4.1.4 NPPES administration
   "POST /api/admin/external-interfaces/nppes/sync-runs": {
     summary:
-      "Trigger a manual NPPES sync — platform-only (`nppes_platform_job_caller`, W-XI-12; step-up). A tenant session is refused; the real sync runs under the platform scheduler (§4.1.4)",
+      "Trigger a manual NPPES sync — platform-only (`nppes_platform_job_caller`, W-XI-12; step-up) and requires an Idempotency-Key. An ambiguous enqueue returns IDEMPOTENCY_KEY_STUCK and keeps the claim pending; reconcile queue/worker state before using a new key because a missing run row does not prove enqueue failed (§4.1.4)",
+    headers: {
+      "Idempotency-Key": {
+        required: true,
+        description:
+          "Client-generated key (1-128 chars) that prevents a duplicate NPPES queue effect. If enqueue acknowledgement is lost, the response is 409 IDEMPOTENCY_KEY_STUCK and the key remains pending; do not retry with this key. Inspect sync-run history and reconcile queue/worker state. A missing run row does not prove the job was not accepted; use a new key only after confirming no job can run.",
+      },
+    },
     body: M29NppesSyncTriggerBody,
+    status: 202,
   },
   // §4.2 clinician lab surface
   "POST /api/clinical/labs/observations/:observationId/attach-patient": {

@@ -27,18 +27,22 @@ import {
 
 function memoryStore(seed?: IdempotencyRecord): IdempotencyStore {
   let rec: IdempotencyRecord | null = seed ?? null;
+  let claimId: string | null = seed?.state === "pending" ? "seed-generation" : null;
+  let generation = 0;
   return {
     load: async () => rec,
     putPending: async (_o, _k, requestHash) => {
-      if (rec) return false;
+      if (rec) return null;
+      claimId = `generation-${++generation}`;
       rec = { state: "pending", requestHash };
-      return true;
+      return claimId;
     },
-    complete: async (_o, _k, response) => {
-      rec = rec ? { state: "complete", requestHash: rec.requestHash, response } : rec;
+    complete: async (_o, _k, owner, response) => {
+      if (rec?.state === "pending" && owner === claimId)
+        rec = { state: "complete", requestHash: rec.requestHash, response };
     },
-    release: async (_o, _k, requestHash) => {
-      if (rec?.state === "pending" && rec.requestHash === requestHash) rec = null;
+    release: async (_o, _k, owner, requestHash) => {
+      if (rec?.state === "pending" && owner === claimId && rec.requestHash === requestHash) rec = null;
     },
   };
 }
@@ -207,7 +211,7 @@ describe("runIdempotent", () => {
     ];
     const store: IdempotencyStore = {
       load: async () => loads.shift() ?? null,
-      putPending: async () => false,
+      putPending: async () => null,
       complete: vi.fn(async () => undefined),
       release: async () => undefined,
     };
@@ -231,7 +235,7 @@ describe("runIdempotent", () => {
     const loads: Array<IdempotencyRecord | null> = [null, { state: "pending", requestHash: hash }];
     const store: IdempotencyStore = {
       load: async () => loads.shift() ?? null,
-      putPending: async () => false,
+      putPending: async () => null,
       complete: async () => undefined,
       release: async () => undefined,
     };
@@ -303,7 +307,7 @@ describe("a claim that stays pending past the bound is stuck, not in flight", ()
     ];
     const store: IdempotencyStore = {
       load: async () => loads.shift() ?? null,
-      putPending: async () => false,
+      putPending: async () => null,
       complete: async () => undefined,
       release: async () => undefined,
     };

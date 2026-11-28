@@ -459,7 +459,7 @@ export interface paths {
         /** List NPPES sync-run history (§4.1.4) */
         get: operations["getApiAdminExternalinterfacesNppesSyncruns"];
         put?: never;
-        /** Trigger a manual NPPES sync — platform-only (`nppes_platform_job_caller`, W-XI-12; step-up). A tenant session is refused; the real sync runs under the platform scheduler (§4.1.4) */
+        /** Trigger a manual NPPES sync — platform-only (`nppes_platform_job_caller`, W-XI-12; step-up) and requires an Idempotency-Key. An ambiguous enqueue returns IDEMPOTENCY_KEY_STUCK and keeps the claim pending; reconcile queue/worker state before using a new key because a missing run row does not prove enqueue failed (§4.1.4) */
         post: operations["postApiAdminExternalinterfacesNppesSyncruns"];
         delete?: never;
         options?: never;
@@ -33435,7 +33435,10 @@ export interface operations {
     postApiAdminExternalinterfacesNppesSyncruns: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars) that prevents a duplicate NPPES queue effect. If enqueue acknowledgement is lost, the response is 409 IDEMPOTENCY_KEY_STUCK and the key remains pending; do not retry with this key. Inspect sync-run history and reconcile queue/worker state. A missing run row does not prove the job was not accepted; use a new key only after confirming no job can run. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -33448,7 +33451,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

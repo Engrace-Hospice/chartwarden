@@ -84,10 +84,10 @@ describe.skipIf(!DB_URL)("F-073 bodiless idempotent responses — LIVE Postgres"
 
   it("completes a 204 — the write the CHECK constraint used to refuse", async () => {
     const key = "f073-204";
-    await store.putPending(ORG_A, key, "hash-204");
+    const claimId = (await store.putPending(ORG_A, key, "hash-204")) as string;
     // `body: undefined` is exactly what `applyIdempotency`'s onSend builds for a bodiless reply.
     await expect(
-      store.complete(ORG_A, key, { status: "204", body: undefined }),
+      store.complete(ORG_A, key, claimId, { status: "204", body: undefined }),
     ).resolves.toBeUndefined();
 
     const { rows } = await admin.query<{ state: string; status: string; body: unknown }>(
@@ -103,8 +103,8 @@ describe.skipIf(!DB_URL)("F-073 bodiless idempotent responses — LIVE Postgres"
 
   it("replays a 204 as bodiless, never as the JSON value null", async () => {
     const key = "f073-204-replay";
-    await store.putPending(ORG_A, key, "hash-replay");
-    await store.complete(ORG_A, key, { status: "204", body: undefined });
+    const claimId = (await store.putPending(ORG_A, key, "hash-replay")) as string;
+    await store.complete(ORG_A, key, claimId, { status: "204", body: undefined });
 
     const record = await store.load(ORG_A, key);
     expect(record?.state).toBe("complete");
@@ -140,8 +140,8 @@ describe.skipIf(!DB_URL)("F-073 bodiless idempotent responses — LIVE Postgres"
 
   it("a body-carrying response is unaffected — 201 still round-trips its JSON", async () => {
     const key = "f073-201";
-    await store.putPending(ORG_A, key, "hash-201");
-    await store.complete(ORG_A, key, { status: "201", body: { id: "abc", created: true } });
+    const claimId = (await store.putPending(ORG_A, key, "hash-201")) as string;
+    await store.complete(ORG_A, key, claimId, { status: "201", body: { id: "abc", created: true } });
     const record = await store.load(ORG_A, key);
     if (record?.state !== "complete") throw new Error("expected a complete record");
     expect(record.response.status).toBe("201");
@@ -150,8 +150,8 @@ describe.skipIf(!DB_URL)("F-073 bodiless idempotent responses — LIVE Postgres"
 
   it("RLS: a bodiless record is invisible to another tenant", async () => {
     const key = "f073-cross-tenant";
-    await store.putPending(ORG_A, key, "hash-x");
-    await store.complete(ORG_A, key, { status: "204", body: undefined });
+    const claimId = (await store.putPending(ORG_A, key, "hash-x")) as string;
+    await store.complete(ORG_A, key, claimId, { status: "204", body: undefined });
     expect(await store.load(ORG_B, key)).toBeNull();
   });
 });

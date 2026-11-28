@@ -4,7 +4,8 @@
  * `putPending` used to be `INSERT ... ON CONFLICT DO NOTHING` returning void, and the middleware never
  * checked whether it had won: two concurrent requests with one Idempotency-Key both ran the handler,
  * and because nothing ever removed an expired row, every retry of an expired key re-executed.
- * `putPending` now returns the claim (`ON CONFLICT DO UPDATE ... WHERE expires_at <= now() RETURNING id`).
+ * `putPending` now returns a generation id (`ON CONFLICT DO UPDATE ... WHERE state = 'complete'
+ * AND expires_at <= now() RETURNING id`); expired pending claims are never reclaimed automatically.
  *
  * LIVE by necessity: the claim is decided by the unique index and row locking, which the in-memory
  * store only imitates. Runs as the NOBYPASSRLS `chartwarden_app` role.
@@ -104,65 +105,108 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
     });
 
     it("a lost claim leaves the winner's row untouched", async () => {
-      expect(await store.putPending(ORG_A, "keep", "winner")).toBe(true);
-      await store.complete(ORG_A, "keep", { status: "201", body: { id: 1 } });
-      expect(await store.putPending(ORG_A, "keep", "loser")).toBe(false);
+      const claimId = (await store.putPending(ORG_A, "keep", "winner")) as string;
+      await store.complete(ORG_A, "keep", claimId, { status: "201", body: { id: 1 } });
+      expect(await store.putPending(ORG_A, "keep", "loser")).toBeNull();
       const [row] = await rowFor(ORG_A, "keep");
       expect(row).toMatchObject({ state: "complete", request_hash: "winner", status: "201" });
     });
 
     it("an expired key is reclaimed fresh: pending again, new hash, response cleared", async () => {
-      await store.putPending(ORG_A, "expired", "old");
-      await store.complete(ORG_A, "expired", { status: "201", body: { id: 1 } });
+      const oldClaim = (await store.putPending(ORG_A, "expired", "old")) as string;
+      await store.complete(ORG_A, "expired", oldClaim, { status: "201", body: { id: 1 } });
       await expire(ORG_A, "expired");
       expect(await store.load(ORG_A, "expired")).toBeNull();
 
-      expect(await store.putPending(ORG_A, "expired", "new")).toBe(true);
+      const newClaim = await store.putPending(ORG_A, "expired", "new");
+      expect(newClaim).toBeTruthy();
+      expect(newClaim).not.toBe(oldClaim);
       const rows = await rowFor(ORG_A, "expired");
       expect(rows).toEqual([{ state: "pending", request_hash: "new", status: null }]);
       // ...and the reclaimed key is live again: a second claimer loses.
-      expect(await store.putPending(ORG_A, "expired", "new")).toBe(false);
+      expect(await store.putPending(ORG_A, "expired", "new")).toBeNull();
     });
 
     it("racing claimers on an EXPIRED key: exactly one reclaims", async () => {
-      await store.putPending(ORG_A, "expired-race", "old");
+      const oldClaim = (await store.putPending(ORG_A, "expired-race", "old")) as string;
+      await store.complete(ORG_A, "expired-race", oldClaim, { status: "201", body: { old: true } });
       await expire(ORG_A, "expired-race");
       const results = await Promise.all(
         Array.from({ length: 12 }, (_, i) => store.putPending(ORG_A, "expired-race", `h-${i}`)),
       );
-      expect(results.filter(Boolean)).toHaveLength(1);
+      expect(results.filter((result): result is string => result !== null)).toHaveLength(1);
+    });
+
+    it("an expired PENDING claim stays visible and cannot be re-claimed", async () => {
+      const claimId = await store.putPending(ORG_A, "pending-expired", "same-hash");
+      expect(claimId).toBeTruthy();
+      await expire(ORG_A, "pending-expired");
+      expect(await store.load(ORG_A, "pending-expired")).toMatchObject({
+        state: "pending",
+        requestHash: "same-hash",
+      });
+      expect(await store.putPending(ORG_A, "pending-expired", "same-hash")).toBeNull();
     });
 
     it("RLS: another tenant's claim on the same key string is independent", async () => {
-      expect(await store.putPending(ORG_A, "tenant", "h")).toBe(true);
-      expect(await store.putPending(ORG_B, "tenant", "h")).toBe(true);
+      expect(await store.putPending(ORG_A, "tenant", "h")).toBeTruthy();
+      expect(await store.putPending(ORG_B, "tenant", "h")).toBeTruthy();
     });
   });
 
   describe("store.release frees only the claimant's own pending row", () => {
     it("deletes a pending row with the matching fingerprint, so the key can be claimed again", async () => {
-      await store.putPending(ORG_A, "rel-own", "mine");
-      await store.release(ORG_A, "rel-own", "mine");
+      const claimId = (await store.putPending(ORG_A, "rel-own", "mine")) as string;
+      await store.release(ORG_A, "rel-own", claimId, "mine");
       expect(await rowFor(ORG_A, "rel-own")).toEqual([]);
-      expect(await store.putPending(ORG_A, "rel-own", "mine")).toBe(true);
+      expect(await store.putPending(ORG_A, "rel-own", "mine")).toBeTruthy();
     });
 
     it("leaves a pending row another fingerprint owns, and never deletes a completed response", async () => {
-      await store.putPending(ORG_A, "rel-other", "owner");
-      await store.release(ORG_A, "rel-other", "intruder");
+      const claimId = (await store.putPending(ORG_A, "rel-other", "owner")) as string;
+      await store.release(ORG_A, "rel-other", claimId, "intruder");
       expect(await rowFor(ORG_A, "rel-other")).toHaveLength(1);
 
-      await store.complete(ORG_A, "rel-other", { status: "201", body: { id: 1 } });
-      await store.release(ORG_A, "rel-other", "owner");
+      await store.complete(ORG_A, "rel-other", claimId, { status: "201", body: { id: 1 } });
+      await store.release(ORG_A, "rel-other", claimId, "owner");
       expect(await rowFor(ORG_A, "rel-other")).toEqual([
         { state: "complete", request_hash: "owner", status: "201" },
       ]);
     });
 
     it("RLS: another tenant's release on the same key string deletes nothing", async () => {
-      await store.putPending(ORG_A, "rel-tenant", "h");
-      await store.release(ORG_B, "rel-tenant", "h");
+      const claimId = (await store.putPending(ORG_A, "rel-tenant", "h")) as string;
+      await store.release(ORG_B, "rel-tenant", claimId, "h");
       expect(await rowFor(ORG_A, "rel-tenant")).toHaveLength(1);
+    });
+
+    it("a stale generation cannot complete or release a newer claim with the same hash", async () => {
+      const oldClaim = (await store.putPending(ORG_A, "same-generation-hash", "same-hash")) as string;
+      await store.complete(ORG_A, "same-generation-hash", oldClaim, {
+        status: "201",
+        body: { generation: 1 },
+      });
+      await expire(ORG_A, "same-generation-hash");
+      const newClaim = await store.putPending(ORG_A, "same-generation-hash", "same-hash");
+      expect(newClaim).toBeTruthy();
+      expect(newClaim).not.toBe(oldClaim);
+
+      await store.complete(ORG_A, "same-generation-hash", oldClaim, {
+        status: "201",
+        body: { generation: "stale" },
+      });
+      await store.release(ORG_A, "same-generation-hash", oldClaim, "same-hash");
+      expect(await rowFor(ORG_A, "same-generation-hash")).toEqual([
+        { state: "pending", request_hash: "same-hash", status: null },
+      ]);
+
+      await store.complete(ORG_A, "same-generation-hash", newClaim as string, {
+        status: "201",
+        body: { generation: 2 },
+      });
+      expect(await rowFor(ORG_A, "same-generation-hash")).toEqual([
+        { state: "complete", request_hash: "same-hash", status: "201" },
+      ]);
     });
   });
 
@@ -237,10 +281,13 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
 
     it("a row written before the keyed hash (plain SHA-256) is a 409 on the Postgres store, never a replay: the handler never runs and the row is left alone", async () => {
       handlerRuns = 0;
-      expect(await store.putPending(ORG_A, "pre-deploy", mainsHash("pre-deploy", { a: 1 }))).toBe(
-        true,
+      const claimId = await store.putPending(
+        ORG_A,
+        "pre-deploy",
+        mainsHash("pre-deploy", { a: 1 }),
       );
-      await store.complete(ORG_A, "pre-deploy", {
+      expect(claimId).toBeTruthy();
+      await store.complete(ORG_A, "pre-deploy", claimId as string, {
         status: "201",
         body: { run: "before-the-deploy" },
       });
@@ -280,8 +327,12 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
       | "writer-fn-in-tx-then-500"
       | "open-write-then-500"
       | "refused-commit"
-      | "blocked" = "commit-then-500";
+      | "blocked"
+      | "expired-pending-race" = "commit-then-500";
     let releaseBlocked: () => void = () => undefined;
+    let firstExpiredPendingHandlerStarted: () => void = () => undefined;
+    let secondExpiredPendingHandlerStarted: () => void = () => undefined;
+    let releaseFirstExpiredPendingHandler: () => void = () => undefined;
     // M3: a sibling transaction that has written but not committed when the response is built.
     let openTransaction: Promise<unknown> = Promise.resolve();
     let commitOpenTransaction: () => void = () => undefined;
@@ -333,6 +384,14 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
             releaseBlocked = resolve;
           });
           return reply.code(201).send({ saved: true });
+        }
+        if (mode === "expired-pending-race" && runs === 1) {
+          firstExpiredPendingHandlerStarted();
+          await new Promise<void>((resolve) => {
+            releaseFirstExpiredPendingHandler = resolve;
+          });
+        } else if (mode === "expired-pending-race" && runs === 2) {
+          secondExpiredPendingHandlerStarted();
         }
         if (mode === "open-write-then-500") {
           const gate = new Promise<void>((resolve) => {
@@ -402,6 +461,53 @@ describe.skipIf(!DB_URL)("GAP-007 idempotency claim — LIVE Postgres", () => {
         headers: { "idempotency-key": key },
         payload: { a: 1 },
       });
+
+    it("an expired pending claim cannot be reclaimed while its original handler can still write", async () => {
+      mode = "expired-pending-race";
+      runs = 0;
+      let firstStarted!: () => void;
+      let secondStarted!: () => void;
+      const firstStartedSignal = new Promise<void>((resolve) => {
+        firstStarted = resolve;
+      });
+      const secondStartedSignal = new Promise<void>((resolve) => {
+        secondStarted = resolve;
+      });
+      firstExpiredPendingHandlerStarted = firstStarted;
+      secondExpiredPendingHandlerStarted = secondStarted;
+
+      const key = "live-expired-pending-race";
+      const before = await probeRows();
+      const first = post(key);
+      await firstStartedSignal;
+      await expire(ORG_A, key);
+
+      const second = post(key);
+      const secondOutcome = await Promise.race([
+        secondStartedSignal.then(() => ({ kind: "handler" as const })),
+        second.then((response) => ({ kind: "response" as const, response })),
+      ]);
+
+      // Always release the first request so a failing regression does not leak a blocked handler.
+      releaseFirstExpiredPendingHandler();
+      const [firstResponse, secondResponse] = await Promise.all([first, second]);
+
+      expect({
+        secondOutcome: secondOutcome.kind,
+        firstStatus: firstResponse.statusCode,
+        secondStatus: secondResponse.statusCode,
+        secondError: secondResponse.statusCode === 409 ? secondResponse.json().error.code : undefined,
+        handlerRuns: runs,
+        businessRowsWritten: (await probeRows()) - before,
+      }).toEqual({
+        secondOutcome: "response",
+        firstStatus: 500,
+        secondStatus: 409,
+        secondError: "IDEMPOTENCY_IN_FLIGHT",
+        handlerRuns: 1,
+        businessRowsWritten: 1,
+      });
+    });
 
     it("a COMMITTED write followed by a 500: cached and replayed, the row is written once", async () => {
       mode = "commit-then-500";

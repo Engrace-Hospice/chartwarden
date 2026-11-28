@@ -83,8 +83,8 @@ describe("the Idempotency-Key fingerprint is keyed", () => {
         claimed.push(requestHash);
         return inner.putPending(o, k, requestHash);
       },
-      complete: (o, k, r) => inner.complete(o, k, r),
-      release: (o, k, requestHash) => inner.release(o, k, requestHash),
+      complete: (o, k, claimId, r) => inner.complete(o, k, claimId, r),
+      release: (o, k, claimId, requestHash) => inner.release(o, k, claimId, requestHash),
     };
     return { store, inner, claimed };
   }
@@ -123,8 +123,9 @@ describe("the Idempotency-Key fingerprint is keyed", () => {
       const inner = createInMemoryIdempotencyStore();
       const plain = mainsMiddlewareHash(ORG, user, "k-1", SECRET_BODY);
       expect(plain).toMatch(/^[0-9a-f]{64}$/);
-      await inner.putPending(ORG, "k-1", plain);
-      await inner.complete(ORG, "k-1", { status: "201", body: { run: "before-the-deploy" } });
+      const claimId = await inner.putPending(ORG, "k-1", plain);
+      expect(claimId).toBeTruthy();
+      await inner.complete(ORG, "k-1", claimId!, { status: "201", body: { run: "before-the-deploy" } });
       await build(inner);
     }
 

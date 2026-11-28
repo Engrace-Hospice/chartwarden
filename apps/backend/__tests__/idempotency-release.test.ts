@@ -5,12 +5,13 @@
  * whole 24h TTL while the write never ran. These outcomes now RELEASE the claim, so the same key runs again, PROVIDED the
  * request committed nothing (these handlers fail before any write; the committed-then-failed half is
  * `idempotency-commit-tracker.test.ts`); every other outcome (a 201, a business-rule 409, a 4xx other than a 401/403 refusal) is still cached and replayed.
- * If the release itself fails (the store is down) the key stays pending: a retry is a 409 in flight until the TTL.
+ * If the release itself fails (the store is down) the key stays pending: a retry is a 409 in flight until reconciliation.
  *
  * Unit level over the in-memory store; the Postgres store's `release` is proved in
  * `gap-007-idempotency-claim.live.test.ts`.
  */
 import { HopeStateError } from "@chartwarden/hope";
+import { IDEMPOTENCY_PENDING_MAX_AGE_MS, IdempotencyKeyStuckError } from "@chartwarden/shared";
 import { ChartWardenError, ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
@@ -25,30 +26,30 @@ const ORG = "00000000-0000-4000-8000-000000000001";
 describe("in-memory IdempotencyStore.release", () => {
   it("drops the claimant's own pending record so the key can be claimed again", async () => {
     const store = createInMemoryIdempotencyStore();
-    await store.putPending(ORG, "k", "h");
-    await store.release(ORG, "k", "h");
+    const claimId = (await store.putPending(ORG, "k", "h")) as string;
+    await store.release(ORG, "k", claimId, "h");
     expect(await store.load(ORG, "k")).toBeNull();
-    expect(await store.putPending(ORG, "k", "h")).toBe(true);
+    expect(await store.putPending(ORG, "k", "h")).toBeTruthy();
   });
 
   it("leaves a pending record that another claimant's fingerprint owns", async () => {
     const store = createInMemoryIdempotencyStore();
-    await store.putPending(ORG, "k", "owner");
-    await store.release(ORG, "k", "someone-else");
+    const claimId = (await store.putPending(ORG, "k", "owner")) as string;
+    await store.release(ORG, "k", claimId, "someone-else");
     expect(await store.load(ORG, "k")).toMatchObject({ state: "pending", requestHash: "owner" });
   });
 
   it("never deletes a completed response", async () => {
     const store = createInMemoryIdempotencyStore();
-    await store.putPending(ORG, "k", "h");
-    await store.complete(ORG, "k", { status: "201", body: { id: 1 } });
-    await store.release(ORG, "k", "h");
+    const claimId = (await store.putPending(ORG, "k", "h")) as string;
+    await store.complete(ORG, "k", claimId, { status: "201", body: { id: 1 } });
+    await store.release(ORG, "k", claimId, "h");
     expect(await store.load(ORG, "k")).toMatchObject({ state: "complete", requestHash: "h" });
   });
 
   it("is a no-op for an absent key", async () => {
     const store = createInMemoryIdempotencyStore();
-    await expect(store.release(ORG, "missing", "h")).resolves.toBeUndefined();
+    await expect(store.release(ORG, "missing", "missing-generation", "h")).resolves.toBeUndefined();
   });
 });
 
@@ -203,6 +204,27 @@ describe("applyIdempotency — a retryable failure is not replayed", () => {
     expect(first.statusCode).toBe(409);
     expect(replay.statusCode).toBe(409);
     expect(runs).toBe(1);
+  });
+
+  it("keeps an unknown outcome pending past the completed-response TTL", async () => {
+    let now = 0;
+    const store = createInMemoryIdempotencyStore({ now: () => now });
+    await build(() => {
+      throw new IdempotencyKeyStuckError("key-1");
+    }, store);
+
+    const first = await post();
+    expect(first.statusCode).toBe(409);
+    expect(first.json().error.code).toBe("IDEMPOTENCY_KEY_STUCK");
+    expect(await store.load(ORG, "key-1")).toMatchObject({ state: "pending" });
+
+    // Simulate a retry after both the normal 24-hour completed-response TTL and the pending age threshold.
+    now += 24 * 60 * 60 * 1000 + IDEMPOTENCY_PENDING_MAX_AGE_MS + 1;
+    const retry = await post();
+    expect(retry.statusCode).toBe(409);
+    expect(retry.json().error.code).toBe("IDEMPOTENCY_KEY_STUCK");
+    expect(runs).toBe(1);
+    expect(await store.load(ORG, "key-1")).toMatchObject({ state: "pending" });
   });
 
   it("a 4xx and a 2xx are still cached and replayed", async () => {

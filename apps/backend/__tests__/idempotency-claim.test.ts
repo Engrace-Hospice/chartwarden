@@ -3,9 +3,9 @@
  *
  * Before: `putPending` returned void and the middleware never asked whether it had won, so two
  * concurrent requests with the same key both ran the handler; and an expired key was treated as
- * absent on every retry, so each retry re-executed. Now `putPending` returns the claim result
- * (`true` = this caller owns the key), a lost claim reloads and answers 409 / replays, and an
- * expired key is re-claimed fresh and then replays.
+ * absent on every retry, so each retry could re-execute. `putPending` now returns a generation
+ * token, pending claims never expire without reconciliation, and only an expired completed
+ * response can be re-claimed.
  *
  * Unit level over the in-memory store; the Postgres store is proved in
  * `gap-007-idempotency-claim.live.test.ts`.
@@ -23,46 +23,69 @@ const OTHER_ORG = "00000000-0000-4000-8000-000000000002";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 describe("in-memory IdempotencyStore claim semantics", () => {
-  it("putPending returns true for the first claimer and false for a concurrent duplicate", async () => {
+  it("putPending returns a generation token for the first claimer and null for a concurrent duplicate", async () => {
     const store = createInMemoryIdempotencyStore();
     const results = await Promise.all([
       store.putPending(ORG, "k", "h"),
       store.putPending(ORG, "k", "h"),
     ]);
-    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(results.filter((result): result is string => result !== null)).toHaveLength(1);
   });
 
   it("a lost claim does not clobber the winner's record", async () => {
     const store = createInMemoryIdempotencyStore();
-    await store.putPending(ORG, "k", "winner");
-    await store.complete(ORG, "k", { status: "201", body: { id: 1 } });
-    expect(await store.putPending(ORG, "k", "loser")).toBe(false);
+    const claimId = (await store.putPending(ORG, "k", "winner")) as string;
+    await store.complete(ORG, "k", claimId, { status: "201", body: { id: 1 } });
+    expect(await store.putPending(ORG, "k", "loser")).toBeNull();
     expect(await store.load(ORG, "k")).toMatchObject({ state: "complete", requestHash: "winner" });
   });
 
   it("scopes claims by organization", async () => {
     const store = createInMemoryIdempotencyStore();
-    expect(await store.putPending(ORG, "k", "h")).toBe(true);
-    expect(await store.putPending(OTHER_ORG, "k", "h")).toBe(true);
+    expect(await store.putPending(ORG, "k", "h")).toBeTruthy();
+    expect(await store.putPending(OTHER_ORG, "k", "h")).toBeTruthy();
   });
 
   it("treats an expired record as absent and lets a new caller claim it fresh", async () => {
     let now = 1_000_000;
     const store = createInMemoryIdempotencyStore({ now: () => now });
-    await store.putPending(ORG, "k", "old");
-    await store.complete(ORG, "k", { status: "201", body: { id: 1 } });
+    const oldClaim = (await store.putPending(ORG, "k", "old")) as string;
+    await store.complete(ORG, "k", oldClaim, { status: "201", body: { id: 1 } });
     now += DAY_MS + 1;
     expect(await store.load(ORG, "k")).toBeNull();
-    expect(await store.putPending(ORG, "k", "new")).toBe(true);
+    const newClaim = await store.putPending(ORG, "k", "new");
+    expect(newClaim).toBeTruthy();
+    expect(newClaim).not.toBe(oldClaim);
     expect(await store.load(ORG, "k")).toMatchObject({ state: "pending", requestHash: "new" });
   });
 
-  it("does not let an unexpired record be re-claimed", async () => {
+  it("an expired pending claim stays protected because its outcome is unknown", async () => {
     let now = 1_000_000;
     const store = createInMemoryIdempotencyStore({ now: () => now });
-    await store.putPending(ORG, "k", "h");
-    now += DAY_MS - 1;
-    expect(await store.putPending(ORG, "k", "h")).toBe(false);
+    expect(await store.putPending(ORG, "k", "same-request")).toBeTruthy();
+    now += DAY_MS + 1;
+    expect(await store.load(ORG, "k")).toMatchObject({ state: "pending", requestHash: "same-request" });
+    expect(await store.putPending(ORG, "k", "same-request")).toBeNull();
+    expect(await store.load(ORG, "k")).toMatchObject({ state: "pending", requestHash: "same-request" });
+  });
+
+  it("a stale generation cannot complete or release a newer claim with the same request fingerprint", async () => {
+    let now = 1_000_000;
+    const store = createInMemoryIdempotencyStore({ now: () => now });
+    const oldClaim = (await store.putPending(ORG, "k", "h")) as string;
+    await store.complete(ORG, "k", oldClaim, { status: "201", body: { generation: 1 } });
+    now += DAY_MS + 1;
+    const newClaim = (await store.putPending(ORG, "k", "h")) as string;
+    expect(newClaim).not.toBe(oldClaim);
+    await store.complete(ORG, "k", oldClaim, { status: "201", body: { generation: "stale" } });
+    await store.release(ORG, "k", oldClaim, "h");
+    expect(await store.load(ORG, "k")).toMatchObject({ state: "pending", requestHash: "h" });
+    await store.complete(ORG, "k", newClaim, { status: "201", body: { generation: 2 } });
+    expect(await store.load(ORG, "k")).toMatchObject({
+      state: "complete",
+      requestHash: "h",
+      response: { status: "201", body: { generation: 2 } },
+    });
   });
 });
 

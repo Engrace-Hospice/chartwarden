@@ -662,7 +662,7 @@ describe("M29-external-interfaces-inject — §4.1.4 NPPES administration (route
     const res = await app.inject({
       method: "POST",
       url: "/api/admin/external-interfaces/nppes/sync-runs",
-      headers: PLATFORM_OP,
+      headers: { ...PLATFORM_OP, "idempotency-key": "nppes-enqueue-manual" },
       payload: {},
     });
     // 202, not 200: an NPPES walk is thousands of rate-limited CMS requests — the route enqueues and
@@ -687,11 +687,64 @@ describe("M29-external-interfaces-inject — §4.1.4 NPPES administration (route
     const res = await app.inject({
       method: "POST",
       url: "/api/admin/external-interfaces/nppes/sync-runs",
-      headers: PLATFORM_OP,
+      headers: { ...PLATFORM_OP, "idempotency-key": "nppes-enqueue-weekly" },
       payload: { kind: "weekly_dissemination" },
     });
     expect(res.statusCode).toBe(202);
     expect(enqueued[0]?.kind).toBe("weekly_dissemination");
+    await app.close();
+  });
+
+  it("route 25 — requires an idempotency key before it can enqueue", async () => {
+    const acceptedJobs: unknown[] = [];
+    const { app } = makeServer({
+      nppesSyncTrigger: {
+        async enqueue(input) {
+          acceptedJobs.push(input);
+          return { syncRunId: "sync-run-no-key", jobId: "nppes-no-key" };
+        },
+      },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/external-interfaces/nppes/sync-runs",
+      headers: PLATFORM_OP,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe("IDEMPOTENCY_KEY_REQUIRED");
+    expect(acceptedJobs).toHaveLength(0);
+    await app.close();
+  });
+
+  it("route 25 — an enqueue with an unknown outcome stays pending and same-key retry cannot enqueue again", async () => {
+    const acceptedJobs: Array<{ kind: string; triggeredByMembershipId: string }> = [];
+    const { app } = makeServer({
+      nppesSyncTrigger: {
+        async enqueue(input) {
+          // The queue accepted the job, then its acknowledgement was lost to this process.
+          acceptedJobs.push(input);
+          throw new Error("synthetic lost queue acknowledgement");
+        },
+      },
+    });
+    const headers = { ...PLATFORM_OP, "idempotency-key": "nppes-ambiguous-queue-write" };
+    const request = () =>
+      app.inject({
+        method: "POST",
+        url: "/api/admin/external-interfaces/nppes/sync-runs",
+        headers,
+        payload: {},
+      });
+
+    const first = await request();
+    const retry = await request();
+    expect(first.statusCode).toBe(409);
+    expect(first.json().error.code).toBe("IDEMPOTENCY_KEY_STUCK");
+    expect(first.json().error.message).toMatch(/missing run row does not prove the job was not accepted/i);
+    expect(retry.statusCode).toBe(409);
+    expect(retry.json().error.code).toBe("IDEMPOTENCY_IN_FLIGHT");
+    expect(acceptedJobs).toHaveLength(1);
     await app.close();
   });
 
@@ -700,7 +753,7 @@ describe("M29-external-interfaces-inject — §4.1.4 NPPES administration (route
     const res = await app.inject({
       method: "POST",
       url: "/api/admin/external-interfaces/nppes/sync-runs",
-      headers: PLATFORM_OP,
+      headers: { ...PLATFORM_OP, "idempotency-key": "nppes-unbound-queue" },
       payload: {},
     });
     expect(res.statusCode).toBe(503);
