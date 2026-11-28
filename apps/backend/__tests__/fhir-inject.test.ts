@@ -385,11 +385,18 @@ describe("M28-fhir-inject — auth gating", () => {
 
 // ── R1/R2 — anonymous discovery ──────────────────────────────────────────────────────────────────────
 describe("M28-fhir-inject — R1/R2: anonymous discovery", () => {
-  it("GET /fhir/r4/metadata → 200 CapabilityStatement", async () => {
+  it("GET /fhir/r4/metadata → 200 CapabilityStatement without Claim billing resources", async () => {
     const { app } = makeServer();
     const res = await app.inject({ method: "GET", url: "/fhir/r4/metadata" });
     expect(res.statusCode).toBe(200);
     expect(res.json().resourceType).toBe("CapabilityStatement");
+    const statement: { rest: { resource: { type: string }[] }[] } = res.json();
+    const advertised = statement.rest.flatMap((rest) =>
+      rest.resource.map((resource) => resource.type),
+    );
+    for (const resource of ["Claim", "ClaimResponse", "ExplanationOfBenefit"]) {
+      expect(advertised).not.toContain(resource);
+    }
     await app.close();
   });
 
@@ -614,6 +621,21 @@ describe("M28-fhir-inject — R4/R5/R6: resource read, search, $everything", () 
     await app.close();
   });
 
+  it.each(["Claim", "ClaimResponse", "ExplanationOfBenefit"])(
+    "GET /fhir/r4/%s search → 404 not-supported",
+    async (resource) => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "GET",
+        url: `/fhir/r4/${resource}`,
+        headers: BEARER_FULL,
+      });
+      expect(res.statusCode).toBe(404);
+      expect(res.json().issue[0].code).toBe("not-supported");
+      await app.close();
+    },
+  );
+
   it("GET /fhir/r4/Patient → 200 empty searchset Bundle (a search naming no patient matches nothing)", async () => {
     const { app } = makeServer();
     const res = await app.inject({ method: "GET", url: "/fhir/r4/Patient", headers: BEARER_FULL });
@@ -646,9 +668,12 @@ describe("M28-fhir-inject — R4/R5/R6: resource read, search, $everything", () 
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().resourceType).toBe("Bundle");
-    const outcomes = (res.json().entry as { resource: { resourceType: string } }[]).filter(
-      (e) => e.resource.resourceType === "OperationOutcome",
-    );
+    const entries = res.json().entry as { resource: { resourceType: string } }[];
+    const returnedTypes = entries.map((entry) => entry.resource.resourceType);
+    for (const resource of ["Claim", "ClaimResponse", "ExplanationOfBenefit"]) {
+      expect(returnedTypes).not.toContain(resource);
+    }
+    const outcomes = entries.filter((e) => e.resource.resourceType === "OperationOutcome");
     expect(outcomes.length).toBeGreaterThan(0);
     await app.close();
   });

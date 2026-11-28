@@ -15,9 +15,9 @@
 //     precedent) rather than importing the producer. The T05 egress gate + AI-block validator declared
 //     their ports LOCAL in `@chartwarden/fhir` precisely so this task binds them here.
 //   · FORWARD-seams (M23 `ClaimReader`, M29 `LabObservationReader`) — required so a boot without the owner
-//     module fails CLOSED. Both stay on the M1 deny-stub the whole of Phase 1: the Claim/EOB routes
-//     short-circuit to 404 (§7.7, W-FHIR-07) before reaching `ClaimReader`, and the DiagnosticReport
-//     projection refuses at egress until M29 registers `LabObservationReader`.
+//     module fails CLOSED. M23's projection method is leaf-typed and shared with M1, but remains on its
+//     deny-stub through Phase 1; Claim/EOB routes short-circuit to 404 (§7.7, W-FHIR-07) before it. The
+//     DiagnosticReport projection refuses at egress until M29 registers `LabObservationReader`.
 import type {
   FhirAiPromptRegistryPort,
   FhirDisclosureConsentEvaluator,
@@ -27,6 +27,7 @@ import type {
   BillableEncounterReader,
   CarePlanReader,
   ElectionPeriodReader,
+  FhirClaimProjectionReader,
   MedicationAdministrationProvider,
   MedicationOrderProvider,
   OrderProvider,
@@ -207,19 +208,12 @@ export function getFhirAiPromptRegistry(): FhirAiPromptRegistryPort {
 
 // ── forward-seams (fail CLOSED the whole of Phase 1) ─────────────────────────────────────────────────
 
-/**
- * §4.4 / §7.7 — the M23 Claim/ClaimResponse/EOB FHIR projection (W-FHIR-07). `fhir.write` is OFF, so the
- * Claim/EOB routes return 404 (§7.7) BEFORE reaching this seam; the accessor exists so the day M23's D1
- * unlock lands, the route body binds a live reader with no registration change. M28's minimal view is a
- * single-resource read; the real M23 reader (`@chartwarden/billing`) is a superset.
- */
-export interface FhirClaimReaderView {
-  findClaim(organizationId: string, claimId: string): Promise<{ id: string } | null>;
-}
+/** The narrow M23 ClaimReader projection contract shared with the M1 registry; no local interface or cast. */
+export type FhirClaimReaderView = FhirClaimProjectionReader;
 
 /** Resolve the M23 Claim FHIR forward-seam as M28's view (deny-stub throws until M23's D1 unlock). */
 export function getFhirClaimReader(): FhirClaimReaderView {
-  return getSeam("ClaimReader") as FhirClaimReaderView;
+  return getSeam("ClaimReader");
 }
 
 /**

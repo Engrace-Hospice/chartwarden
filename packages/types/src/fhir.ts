@@ -237,6 +237,25 @@ export const FHIR_BULK_EXPORT_TTL_HOURS = 24;
  */
 export const FHIR_WRITE_FLAG = "fhir.write" as const;
 
+/**
+ * M23-owned claim facts projected into a future M28 FHIR response. `resourceBundle` intentionally remains
+ * opaque: no Claim/ClaimResponse/ExplanationOfBenefit mapping has been implemented or qualified yet.
+ */
+export interface FhirClaimProjectionDto {
+  readonly claimId: string;
+  readonly resourceBundle: unknown;
+}
+
+/**
+ * The leaf-typed forward contract for M23's ClaimReader projection. M23 keeps ownership of claim source
+ * data; M28 may map this result only after its projection and disclosure checks are implemented and qualified.
+ * `null` means the owner found no claim in the supplied organization scope; an unavailable implementation
+ * fails by throwing the M1 deny-stub's NotImplementedError.
+ */
+export interface FhirClaimProjectionReader {
+  fhirProjection(orgId: string, claimId: string): Promise<FhirClaimProjectionDto | null>;
+}
+
 // ── §2.2 lifecycle — the three FSM vocabularies + the consumer-facing posture ─────────────────────────
 
 /**

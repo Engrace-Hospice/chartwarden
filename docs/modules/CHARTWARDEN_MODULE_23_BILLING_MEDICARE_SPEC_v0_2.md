@@ -1735,10 +1735,10 @@ import type {
   OrgId, ProviderEntityId, PatientId, MembershipId, ClaimId,
   IsoDate, IsoDateTime, CapYear, FiscalYear,
 } from '@chartwarden/domain/ids'
+import type { FhirClaimProjectionReader } from '@chartwarden/types'
 
-export interface ClaimReader {
-  // M28 FHIR Gateway projection (R4 Claim/ClaimResponse/EOB per US Core 6.0 hospice)
-  fhirProjection(orgId: OrgId, claimId: ClaimId): Promise<ClaimFhirProjectionDto | null>
+export interface ClaimReader extends FhirClaimProjectionReader {
+  // M28's shared fhirProjection(orgId, claimId) method is inherited from the leaf contract.
 
   // M30 HQRP — HCI feature inputs per patient per measurement period
   measureFeatureSetForPatient(
@@ -1808,6 +1808,8 @@ export function setClaimSubmissionReader(p: ClaimSubmissionReader): void
 export function setClaimMetricsProvider(p: ClaimMetricsProvider): void
 export function setMacCredentialAdmin(p: MacCredentialAdmin): void
 ```
+
+**Issue #1074 contract alignment.** `FhirClaimProjectionReader` in `@chartwarden/types` is the shared narrow contract for this inherited method; `packages/billing` retains `ClaimFhirProjectionDto` as a compatibility alias of the shared `FhirClaimProjectionDto`. `resourceBundle` remains `unknown` and is not a qualified FHIR resource mapping. M23 owns and scopes claim source reads; M28 owns any future FHIR mapping. A scoped `null` means no matching claim, while the current M23 `NotImplementedError` deny-stub means the projection is unavailable. Neither outcome authorizes an empty successful FHIR resource. A future route unlock requires a real owner-side `withOrgContext`/RLS read, provider and patient identity checks, consent/disclosure gates, and a live NOBYPASSRLS cross-tenant test.
 
 **Boot validation.** `apps/backend/src/bootstrap/seams.ts` (M1) calls `validateSeams()` which refuses to start if any required seam is unregistered. M23's boot module registers all five.
 

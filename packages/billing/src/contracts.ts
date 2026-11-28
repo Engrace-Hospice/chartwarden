@@ -1,8 +1,9 @@
 // @chartwarden/billing — M23 canonical shared DOMAIN VALUE TYPES (§2.1 / §4.3). The id aliases, the
 // pgEnum-mirroring string unions, and the published-seam DTO shapes the seams + every subtree reference.
 // Kept local to the package (the M27 `contracts.ts` precedent) so M23 takes no `@chartwarden/domain` edge for
-// ids that the shared leaves do not yet declare. NO PHI / NO MBI on any of these surfaces (D13 / §3.6 /
-// §8.7) — every reader projection is aggregate or id-keyed; the MBI digit is NEVER a field on any DTO.
+// ids that the shared leaves do not yet declare. Implemented M23 projections are aggregate or id-keyed and
+// never include MBI digits (D13 / §3.6 / §8.7). The FHIR projection is only an opaque forward contract and
+// remains deny-stubbed; its DTO is not a current PHI export or a qualified FHIR resource mapping.
 //
 // P1 scope: contracts only. The CANONICAL pgEnums live in `packages/db/src/schema/billing` (the schema
 // agent owns them); the unions here MIRROR those frozen enums and are kept in lock-step. TODO(P2): the
@@ -111,12 +112,8 @@ export interface ClaimSummaryDto {
   readonly totalChargeCents: number;
 }
 
-/** §4.3 ClaimReader.fhirProjection — the M28 FHIR R4 Claim/ClaimResponse/EOB projection (US Core 6.0). */
-export interface ClaimFhirProjectionDto {
-  readonly claimId: ClaimId;
-  /** TODO(P2/M28-lock): the typed FHIR resource bundle. Opaque at P1. */
-  readonly resourceBundle: unknown;
-}
+/** Backward-compatible M23 name for the shared leaf DTO; the payload remains opaque until M28 projection lock. */
+export type { FhirClaimProjectionDto as ClaimFhirProjectionDto } from "@chartwarden/types";
 
 /** §4.3 ClaimReader.measureFeatureSetForPatient — M30 HQRP / HCI feature inputs (aggregate). */
 export interface HciFeatureSetDto {

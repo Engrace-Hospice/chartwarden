@@ -5,14 +5,21 @@
 // revoked + in-flight exports cancelled). The package-level §7 cases (W-FHIR-03/04/05/06/08/09/10/11) are
 // already covered by `packages/fhir/__tests__/*`; these exercise the T08 store + routes.
 import Fastify from "fastify";
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
+import type {
+  FhirClaimProjectionDto,
+  FhirClaimProjectionReader,
+  SeamContracts,
+} from "@chartwarden/types";
+import { __resetSeamsForTest, registerSeam } from "../../../bootstrap/index";
 import { registerFhirR4Routes } from "../routes/fhir-r4.routes";
 import {
   type FhirRevocationCascadePort,
   cascadeClientRevocation,
 } from "../routes/revocation-cascade";
 import { FhirStoreError, createInMemoryFhirGatewayStore } from "../routes/store";
+import type { FhirClaimReaderView, getFhirClaimReader } from "../seams/consumed";
 
 const ORG = "11111111-1111-1111-1111-111111111111";
 const ADMIN = "22222222-2222-2222-2222-222222222222";
@@ -146,6 +153,43 @@ describe("W-FHIR-07 — forward-seam Claim route 404 BEFORE any reader", () => {
     expect(body.resourceType).toBe("OperationOutcome");
     expect(body.issue[0].code).toBe("not-found");
     await app.close();
+  });
+
+  it("M23, M1 and M28 resolve the same narrow shared projection contract", () => {
+    expectTypeOf<FhirClaimReaderView>().toEqualTypeOf<FhirClaimProjectionReader>();
+    expectTypeOf<SeamContracts["ClaimReader"]>().toEqualTypeOf<FhirClaimProjectionReader>();
+    expectTypeOf<
+      ReturnType<typeof getFhirClaimReader>
+    >().toEqualTypeOf<FhirClaimProjectionReader>();
+    expectTypeOf<
+      Awaited<ReturnType<FhirClaimProjectionReader["fhirProjection"]>>
+    >().toEqualTypeOf<FhirClaimProjectionDto | null>();
+    expectTypeOf<Parameters<FhirClaimProjectionReader["fhirProjection"]>>().toEqualTypeOf<
+      [string, string]
+    >();
+  });
+
+  it("Claim, ClaimResponse and EOB instance reads do not invoke a registered projection reader", async () => {
+    __resetSeamsForTest();
+    let calls = 0;
+    registerSeam("ClaimReader", {
+      async fhirProjection() {
+        calls += 1;
+        throw new Error("the disabled FHIR projection must not be called");
+      },
+    });
+    const app = buildApp();
+    try {
+      for (const resource of ["Claim", "ClaimResponse", "ExplanationOfBenefit"]) {
+        const res = await app.inject({ method: "GET", url: `/fhir/r4/${resource}/x` });
+        expect(res.statusCode).toBe(404);
+        expect(res.json().resourceType).toBe("OperationOutcome");
+      }
+      expect(calls).toBe(0);
+    } finally {
+      await app.close();
+      __resetSeamsForTest();
+    }
   });
 
   it("the other forward-seam + Phase-2 resources also 404", async () => {
