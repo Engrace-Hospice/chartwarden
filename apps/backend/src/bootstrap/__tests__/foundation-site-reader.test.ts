@@ -39,6 +39,45 @@ describe("soleDefaultLocation", () => {
 });
 
 describe("Claim.MD internal site ownership reads", () => {
+  it("reads provider billing identity in-org and holds the row FOR SHARE while a financial write uses it", async () => {
+    const calls: string[] = [];
+    const tx = {
+      select(fields: Record<string, unknown>) {
+        expect(Object.keys(fields)).toEqual(["npi", "taxIdSealed"]);
+        return {
+          from() {
+            calls.push("from-provider");
+            return this;
+          },
+          where(predicate: unknown) {
+            calls.push("org-and-provider-scope");
+            const query = new PgDialect().sqlToQuery(predicate as SQL);
+            expect(query.params).toEqual(["synthetic-provider", "synthetic-org"]);
+            return this;
+          },
+          for(mode: string) {
+            expect(mode).toBe("share");
+            calls.push("lock-provider-identity");
+            return this;
+          },
+          async limit(count: number) {
+            expect(count).toBe(1);
+            return [{ npi: "1234567893", taxIdSealed: "synthetic-sealed-tin" }];
+          },
+        };
+      },
+    } as unknown as DbClient;
+
+    const identity = await buildFoundationSiteReader().providerEntityBillingIdentityForPosting(
+      tx,
+      "synthetic-org",
+      "synthetic-provider",
+    );
+
+    expect(identity).toEqual({ npi: "1234567893", taxIdSealed: "synthetic-sealed-tin" });
+    expect(calls).toEqual(["from-provider", "org-and-provider-scope", "lock-provider-identity"]);
+  });
+
   it("resolves locked location state and timezone only through the organization-owned provider", async () => {
     const calls: string[] = [];
     const tx = {

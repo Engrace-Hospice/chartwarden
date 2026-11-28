@@ -937,6 +937,8 @@ controls:
       - file: apps/backend/src/modules/25-remittance/ingest/clearinghouse-pull.ts
       - file: apps/backend/src/modules/25-remittance/ingest/pull-cursor-store.ts
       - file: apps/backend/src/modules/25-remittance/ingest/claimmd-era-review.ts
+      - file: apps/backend/src/bootstrap/foundation-site-reader.ts
+      - file: apps/backend/src/bootstrap/__tests__/foundation-site-reader.test.ts
       - file: apps/backend/src/modules/25-remittance/ingest/claimmd-era-config.ts
       - file: apps/backend/src/modules/25-remittance/jobs/cron-workers.ts
       - file: apps/backend/src/modules/25-remittance/ingest/__tests__/receive-bpr16.test.ts
@@ -952,7 +954,46 @@ controls:
       - file: docs/runbooks/m25-835-real-file-intake.md
       - file: docs/history/m25-835-payee-identity.md
     gap:
-      reason: Proved with synthetic 835s only (the documented variants, partial service lines, adjustments, AMT*I and PLB L6 interest and several ST/SE sets, are pinned on synthetic files and an unrecognised segment is refused whole, but how a real MAC formats any of them is unknown); no live proof against a real payer's 835, so a real file that carries a segment the parser does not model (TS3 or the like, which a Medicare Part A MAC may send on every file) is refused whole and, after the pull's refusal cap, quarantined (the quarantine code is the generic RECEIVE_REFUSED and the alert does not name the segment), never posted, until that segment is modelled against the guide; no real file has been seen, so whether that happens is unknown. AMT*I is not reconciled against PLB L6. The LX segment is now modelled (header number only), so an LX no longer blocks Claim.MD controlled posting as an unmodelled fact. The intake procedure (de-identification method, authority, handling and retention) is unreviewed by the privacy officer and has never been run, and posting of a real file has no harness (the live suites build their EDI in code). A payer that omits BPR16 on a non-zero payment is refused for the whole file with no accept path short of the payer reissuing it. Controlled Claim.MD posting stays disabled in production (the boot refusal), so its approval and execution are proved in non-production only; approval is recorded even while posting is disabled, and an approval does not expire. A quarantined file is released or dismissed only by admin SQL on the superuser connection (the runbook's single transaction, guarded by the file hash and the quarantined state; the dismiss, the guard and the carrier role's zero-row result are proved live). The row trigger records no actor there, so the audit row is attributed only by the correlation id the operator sets to the change ticket, and nothing in the database enforces that, a stated reason or the second reviewer the runbook asks for before a payment file is dismissed. An unresolved quarantine keeps the pull cron failing on each tick that completes a pull for the provider entity by design (an org with no live clearinghouse binding is not pulled, so its standing quarantine is not reported); there is no in-app list. The alert on that failure is the DLQ-promotion alert (a log line always, and a webhook only when OPS_ALERT_WEBHOOK_URL is set), fired when a job exhausts its attempts. It is not CW-MON-01, which is audit-event detection and a gap. A held file is reported once, on the tick that receives it (a retry that finds nothing new completes), so it relies on the held rows themselves (the staged ERA for CLAIMMD_ERA_STAGE_MATCH, the held advice row for LEGACY_IDENTITY_AMBIGUOUS) and not on the cron to stay visible. A file whose interchange mixes a non-HP functional group with an HP one is refused whole (X12_835_UNSUPPORTED_ROUTING), so a supported group sharing it is quarantined with it. The Claim.MD ownership-evidence gate rests on the resolver and the delivery-time revalidation (the delivery service writes the evidence codes), and executing a plan does not re-check the payee NPI/TIN the way receive does at post time.
+      reason: >-
+        Proved with synthetic 835s only (the documented variants, partial service lines, adjustments, AMT*I
+        and PLB L6 interest and several ST/SE sets, are pinned on synthetic files and an unrecognised segment
+        is refused whole, but how a real MAC formats any of them is unknown); no live proof against a real
+        payer's 835, so a real file that carries a segment the parser does not model (TS3 or the like, which a
+        Medicare Part A MAC may send on every file) is refused whole and, after the pull's refusal cap,
+        quarantined (the quarantine code is the generic RECEIVE_REFUSED and the alert does not name the
+        segment), never posted, until that segment is modelled against the guide; no real file has been seen,
+        so whether that happens is unknown. AMT*I is not reconciled against PLB L6. The LX segment is now
+        modelled (header number only), so an LX no longer blocks Claim.MD controlled posting as an unmodelled
+        fact. The intake procedure (de-identification method, authority, handling and retention) is unreviewed
+        by the privacy officer and has never been run, and posting of a real file has no harness (the live
+        suites build their EDI in code). A payer that omits BPR16 on a non-zero payment is refused for the
+        whole file with no accept path short of the payer reissuing it. Controlled Claim.MD posting stays
+        disabled in production (the boot refusal), so its approval and execution are proved in non-production
+        only; approval is recorded even while posting is disabled, and an approval does not expire. A
+        quarantined file is released or dismissed only by admin SQL on the superuser connection (the runbook's
+        single transaction, guarded by the file hash and the quarantined state; the dismiss, the guard and the
+        carrier role's zero-row result are proved live). The row trigger records no actor there, so the audit
+        row is attributed only by the correlation id the operator sets to the change ticket, and nothing in
+        the database enforces that, a stated reason or the second reviewer the runbook asks for before a
+        payment file is dismissed. An unresolved quarantine keeps the pull cron failing on each tick that
+        completes a pull for the provider entity by design (an org with no live clearinghouse binding is not
+        pulled, so its standing quarantine is not reported); there is no in-app list. The alert on that
+        failure is the DLQ-promotion alert (a log line always, and a webhook only when OPS_ALERT_WEBHOOK_URL
+        is set), fired when a job exhausts its attempts. It is not CW-MON-01, which is audit-event detection
+        and a gap. A held file is reported once, on the tick that receives it (a retry that finds nothing new
+        completes), so it relies on the held rows themselves (the staged ERA for CLAIMMD_ERA_STAGE_MATCH, the
+        held advice row for LEGACY_IDENTITY_AMBIGUOUS) and not on the cron to stay visible. A file whose
+        interchange mixes a non-HP functional group with an HP one is refused whole
+        (X12_835_UNSUPPORTED_ROUTING), so a supported group sharing it is quarantined with it. The Claim.MD
+        ownership-evidence gate rests on the resolver and delivery-time revalidation, and execution now
+        revalidates the staged payee against the provider's current NPI/TIN in the same locked tenant
+        transaction before any posting write. The correction is covered by synthetic private-PostgreSQL tests
+        under chartwarden_app: cross-tenant plan execution, unavailable current identity, and post-approval
+        NPI/TIN changes are refused without financial writes; the owner reader returns no result for a foreign
+        or missing provider. Matching identity posts once and replay is idempotent. CW-PI-03
+        remains partial pending privacy-officer-approved representative MAC files, real-format/parser and
+        controlled-posting reconciliation qualification, billing-owner acceptance, and the operational
+        limitations documented above.
       owner: engineering
       review_by: 2027-01-31
 
