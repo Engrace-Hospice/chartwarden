@@ -41,6 +41,12 @@ Refusals added with it (each fails closed, with a PHI-free reason):
 
 Unchanged and still not certified: AMT*I is validated and never added to a payment, and is not reconciled against PLB L6; BPR02 = 0 with BPR04 other than NON is accepted. Validating them needs real files: [`m25-835-real-file-intake.md`](../runbooks/m25-835-real-file-intake.md).
 
+## CW-PI-03: controlled-posting identity revalidation (#1148)
+
+The #1148 main-baseline defect was reproduced: `executePostingPlan` re-derived the approved stage plan under its stage-row lock but did not compare the sealed 835 payee against the provider's current NPI/TIN before creating the advice. It now resolves current identity through M1's `FoundationSiteReader` in the same tenant transaction, holds the provider identity row `FOR SHARE` until that transaction commits, and reuses M25's receive/post NPI/TIN comparison policy. The optional TIN is opened through M2 only after the NPI matches and only when the 835 carries `REF*TJ`. Missing or unreadable identity, malformed payee input, and ownership mismatch remain distinct PHI-safe refusals; validation occurs before any advice or financial posting write. The persisted evidence records scope, verification time, and whether a carried TIN was verified, never identifier values.
+
+The private `test:m25:835-ingestion:live` proof uses the real `chartwarden_app` role and synthetic fixtures. A matching payee posts once and a repeated execution is idempotent; post-approval NPI and TIN changes are refused with no advice, remittance line, claim-state transition, posted event, or financial outbox event. Unknown provider and cross-tenant identity reads return no result. This remains synthetic-only evidence and does not qualify any MAC's actual 835 format, the unresolved AMT*I/PLB L6 relationship, or real-file posting.
+
 ## Validation evidence
 
 All evidence below uses synthetic fixtures and an isolated private PostgreSQL database. The migration output was executed by the maintainer from `fix/m25-671-final-integration` after verifying that branch and the migration test's 1508 references.

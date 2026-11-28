@@ -25,7 +25,7 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m25-835-ingestion.live.test.ts
  * (SUPERUSER to a THROWAWAY db; for a local PG without pgvector set CHARTWARDEN_TEST_NO_PGVECTOR=1.)
  */
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -77,6 +77,7 @@ import type {
   TerminologyLookupPort,
 } from "../src/modules/25-remittance/ingest/service";
 import {
+  type CurrentPayeeIdentityForPostingLookup,
   PAYEE_UNCHECKED,
   buildDrizzleM25IngestService,
   getM25TransactionPostingPort,
@@ -105,6 +106,7 @@ const CLAIM_PR_NOPATIENT = "00000000-0000-0000-0000-00000000ca04";
 const CLAIM_UNMAPPED = "00000000-0000-0000-0000-00000000ca05";
 const CLAIM_RECOUP = "00000000-0000-0000-0000-00000000ca06";
 const PATIENT_1 = "00000000-0000-0000-0000-0000000e0001";
+const crypto = { randomUUID };
 
 // ── controllable fakes ────────────────────────────────────────────────────────────────────────────────
 function fakeClient(byKey: Map<string, ParsedRemittanceAdvice | "degraded">): X12835WorkerClient {
@@ -550,6 +552,10 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       ["with its identity columns", false],
       ["sealed before 1508 (NULL identity columns)", true],
     ])("executes a staged Claim.MD ERA end to end: %s", async (_label, legacy) => {
+      const PAYEE_NPI = "1234567802";
+      const CHANGED_PAYEE_NPI = "1234567000";
+      const PAYEE_TIN = "98-7654321";
+      const CHANGED_PAYEE_TIN = "12-3456789";
       const stageId = crypto.randomUUID();
       const sourceInboxId = crypto.randomUUID();
       const resolutionId = crypto.randomUUID();
@@ -568,7 +574,8 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         payee: {
           name: "Synthetic Hospice",
           idQualifier: "XX",
-          id: "1999999999",
+          id: PAYEE_NPI,
+          taxId: PAYEE_TIN,
         },
         interchangeControlNumber: transactionSetControlNumber.padStart(9, "0"),
         interchangeSenderCode: "SYNTHSENDER",
@@ -684,11 +691,22 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       // reviewer below must discover this claim through the production owner-reader composition,
       // not a test candidate that bypasses either module's persistence and scope checks.
       const commercialPayerId = payerId;
+      const taxIdKey = randomBytes(32);
+      const taxIdCipher = createTaxIdCipher({
+        dekForOrg: async () => ({ version: "live-test", key: taxIdKey }),
+        dekForOrgVersion: async () => ({ version: "live-test", key: taxIdKey }),
+      });
+      const sealedPayeeTin = await taxIdCipher.encrypt({
+        organizationId: ORG_A,
+        providerEntityId: PE_A,
+        plaintext: PAYEE_TIN,
+      });
       await admin.query(
         `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
-         VALUES ($1,$2,$3,'Synthetic Hospice','1999999999',decode('00','hex'),'12-31')
-         ON CONFLICT (id) DO NOTHING`,
-        [PE_A, ORG_A, `SYN${stageId.slice(0, 6)}`],
+         VALUES ($1,$2,$3,'Synthetic Hospice',$4,$5,'12-31')
+         ON CONFLICT (id) DO UPDATE SET organization_id=EXCLUDED.organization_id,
+           npi=EXCLUDED.npi,tax_id_encrypted=EXCLUDED.tax_id_encrypted`,
+        [PE_A, ORG_A, `SYN${stageId.slice(0, 6)}`, PAYEE_NPI, sealedPayeeTin],
       );
       await admin.query(
         `INSERT INTO payer (id,kind,name,status) VALUES ($1,'commercial',$2,'active')`,
@@ -742,7 +760,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           (id,organization_id,provider_entity_id,claim_id,billing_module,submission_id,attempt_key,vendor,
            account_reference,usage,billing_npi,billing_tin_ciphertext,payer_id,claim_type,pcn,isa13,gs06,st02,
            service_from,service_to,payload_sha256,payload_format,outbound_reference,reserved_at)
-         VALUES ($1,$2,$3,$4,'M41',$5,$6,'claimmd','synthetic-account','test','1999999999',repeat('x',48),
+         VALUES ($1,$2,$3,$4,'M41',$5,$6,'claimmd','synthetic-account','test',$11,repeat('x',48),
            $7,'institutional',$8,'000000941','941','0941','20260301','20260331',$9,'x12',$10,now())`,
         [
           historicalSubmissionEvidenceId,
@@ -755,6 +773,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           pcn,
           createHash("sha256").update(`synthetic-x12:${stageId}`).digest("hex"),
           `synthetic-outbound-${stageId}`,
+          PAYEE_NPI,
         ],
       );
       const historicalReader = async (
@@ -811,9 +830,31 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           return null;
         },
       };
+      const currentPayeeIdentityForPosting: CurrentPayeeIdentityForPostingLookup = async (
+        tx,
+        organizationId,
+        providerEntityId,
+      ) => {
+        const facts = await buildFoundationSiteReader().providerEntityBillingIdentityForPosting(
+          tx as never,
+          organizationId,
+          providerEntityId,
+        );
+        if (!facts) return null;
+        return {
+          npi: facts.npi,
+          readTin: () =>
+            taxIdCipher.decrypt({
+              organizationId,
+              providerEntityId,
+              sealed: facts.taxIdSealed,
+            }),
+        };
+      };
       const ingestService = buildDrizzleM25IngestService(handle.db, {
         client: fakeClient(new Map()),
         payeeNpi: PAYEE_UNCHECKED,
+        currentPayeeIdentityForPosting,
         claims: { commercial: m25Claims },
         outbox,
       });
@@ -1170,6 +1211,144 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         [stageId],
       );
       expect(postApprovalAdvice.rows[0].n).toBe(0);
+
+      const financialSnapshot = async () => {
+        const [adviceRows, lineRows, claimRows, postedEvents, outboxRows] = await Promise.all([
+          admin.query(
+            "SELECT count(*)::int AS n FROM remittance_advice WHERE parse_summary->>'stageId'=$1",
+            [stageId],
+          ),
+          admin.query(
+            `SELECT count(*)::int AS n FROM remittance_line line
+             JOIN remittance_advice advice ON advice.id=line.remittance_advice_id
+             WHERE advice.parse_summary->>'stageId'=$1`,
+            [stageId],
+          ),
+          admin.query(
+            "SELECT state,(SELECT count(*)::int FROM commercial_claim_state_history WHERE claim_id=$1) AS history_count FROM commercial_claim WHERE id=$1",
+            [claimId],
+          ),
+          admin.query(
+            "SELECT count(*)::int AS n FROM claimmd_era_posting_event WHERE stage_id=$1 AND event_type='posted'",
+            [stageId],
+          ),
+          admin.query(
+            `SELECT count(*)::int AS n FROM outbox_event WHERE organization_id=$1
+             AND event_type IN ('m25.remittance.claim_paid','m25.remittance.advice_posted')`,
+            [ORG_A],
+          ),
+        ]);
+        return {
+          advice: adviceRows.rows[0]!.n,
+          lines: lineRows.rows[0]!.n,
+          claimState: claimRows.rows[0]!.state,
+          claimHistory: claimRows.rows[0]!.history_count,
+          postedEvents: postedEvents.rows[0]!.n,
+          financialOutbox: outboxRows.rows[0]!.n,
+        };
+      };
+      const beforeIdentityRefusals = await financialSnapshot();
+      await expect(
+        review.executePostingPlan(foreignReviewActor, stageId, {
+          planId: plan.planId,
+          planDigest: plan.planDigest,
+          reason: "A different tenant cannot execute this staged payment",
+          idempotencyKey: `execute-cross-tenant-${stageId}`,
+        }),
+      ).rejects.toThrow();
+      expect(await financialSnapshot()).toEqual(beforeIdentityRefusals);
+      const otherTenantIdentity = await withOrgContext(
+        handle.db,
+        { organizationId: ORG_B, userId: "" },
+        (tx) => currentPayeeIdentityForPosting(tx as never, ORG_B, PE_A),
+      );
+      const missingProviderIdentity = await withOrgContext(
+        handle.db,
+        { organizationId: ORG_A, userId: "" },
+        (tx) =>
+          currentPayeeIdentityForPosting(
+            tx as never,
+            ORG_A,
+            "00000000-0000-4000-8000-0000000000ff",
+          ),
+      );
+      expect(otherTenantIdentity).toBeNull();
+      expect(missingProviderIdentity).toBeNull();
+      const unboundIdentityReview = buildDrizzleClaimMdEraReviewService(
+        handle.db,
+        cipher,
+        undefined,
+        [historicalReader],
+        {
+          ingestService: buildDrizzleM25IngestService(handle.db, {
+            client: fakeClient(new Map()),
+            payeeNpi: PAYEE_UNCHECKED,
+            claims: { commercial: m25Claims },
+            outbox,
+          }),
+          enabled: true,
+        },
+      );
+      await expect(
+        unboundIdentityReview.executePostingPlan(executorActor, stageId, {
+          planId: plan.planId,
+          planDigest: plan.planDigest,
+          reason: "Current provider identity reader is unavailable",
+          idempotencyKey: `execute-identity-unavailable-${stageId}`,
+        }),
+      ).rejects.toMatchObject({
+        code: "POSTING_PAYEE_IDENTITY_UNAVAILABLE",
+        message: "the current provider identity could not be verified",
+      });
+      expect(await financialSnapshot()).toEqual(beforeIdentityRefusals);
+
+      await admin.query("UPDATE provider_entity SET npi=$1 WHERE id=$2", [CHANGED_PAYEE_NPI, PE_A]);
+      try {
+        await expect(
+          review.executePostingPlan(executorActor, stageId, {
+            planId: plan.planId,
+            planDigest: plan.planDigest,
+            reason: "Current NPI differs from approved staged payee",
+            idempotencyKey: `execute-npi-changed-${stageId}`,
+          }),
+        ).rejects.toMatchObject({
+          code: "POSTING_PAYEE_IDENTITY_MISMATCH",
+          message: "the staged payee no longer matches the provider identity",
+        });
+        expect(await financialSnapshot()).toEqual(beforeIdentityRefusals);
+      } finally {
+        await admin.query("UPDATE provider_entity SET npi=$1 WHERE id=$2", [PAYEE_NPI, PE_A]);
+      }
+
+      const changedSealedTin = await taxIdCipher.encrypt({
+        organizationId: ORG_A,
+        providerEntityId: PE_A,
+        plaintext: CHANGED_PAYEE_TIN,
+      });
+      await admin.query("UPDATE provider_entity SET tax_id_encrypted=$1 WHERE id=$2", [
+        changedSealedTin,
+        PE_A,
+      ]);
+      try {
+        await expect(
+          review.executePostingPlan(executorActor, stageId, {
+            planId: plan.planId,
+            planDigest: plan.planDigest,
+            reason: "Current TIN differs from approved staged payee",
+            idempotencyKey: `execute-tin-changed-${stageId}`,
+          }),
+        ).rejects.toMatchObject({
+          code: "POSTING_PAYEE_IDENTITY_MISMATCH",
+          message: "the staged payee no longer matches the provider identity",
+        });
+        expect(await financialSnapshot()).toEqual(beforeIdentityRefusals);
+      } finally {
+        await admin.query("UPDATE provider_entity SET tax_id_encrypted=$1 WHERE id=$2", [
+          sealedPayeeTin,
+          PE_A,
+        ]);
+      }
+
       const disabledReview = buildDrizzleClaimMdEraReviewService(
         handle.db,
         cipher,
@@ -1325,10 +1504,12 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           source: "claimmd_stage",
           organizationId: ORG_A,
           providerEntityId: PE_A,
-          tinVerified: null,
+          tinVerified: true,
           evidenceCodes: ["EXACT_PAYEE_NPI", "SINGLE_PROVIDER_ARTIFACT"],
         },
       });
+      expect(JSON.stringify(advice.rows[0]!.payee_identity_evidence)).not.toContain(PAYEE_NPI);
+      expect(JSON.stringify(advice.rows[0]!.payee_identity_evidence)).not.toContain("987654321");
       const postingEvents = await review.postingHistory(reviewActor, stageId);
       expect(postingEvents.map((event) => event.eventType)).toEqual(
         expect.arrayContaining(["posted", "approved"]),

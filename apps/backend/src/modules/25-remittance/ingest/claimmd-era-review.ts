@@ -2462,6 +2462,31 @@ export function buildDrizzleClaimMdEraReviewService(
             "the staged source identity does not match its sealed transaction set",
             409,
           );
+        const payeeIdentity = await controlledPort.validateCurrentPayeeIdentityInTransaction(
+          tx as unknown as M25Tx,
+          actor.organizationId,
+          stage.providerEntityId,
+          parsed.payee,
+          parsed.payerProgram,
+        );
+        if (payeeIdentity.failure === "source_invalid")
+          throw new ChartWardenError(
+            "POSTING_SOURCE_INVALID",
+            "the staged ERA contains an invalid payee identity",
+            409,
+          );
+        if (payeeIdentity.failure === "identity_mismatch")
+          throw new ChartWardenError(
+            "POSTING_PAYEE_IDENTITY_MISMATCH",
+            "the staged payee no longer matches the provider identity",
+            409,
+          );
+        if (payeeIdentity.failure === "identity_unavailable" || !payeeIdentity.evidence)
+          throw new ChartWardenError(
+            "POSTING_PAYEE_IDENTITY_UNAVAILABLE",
+            "the current provider identity could not be verified",
+            409,
+          );
         const [advice] = await tx
           .insert(schema.remittanceAdvice)
           .values({
@@ -2479,7 +2504,8 @@ export function buildDrizzleClaimMdEraReviewService(
               organizationId: actor.organizationId,
               providerEntityId: stage.providerEntityId,
               sourceEvidence: stage.sourceEvidence,
-              verifiedAt: stage.createdAt,
+              verifiedAt: payeeIdentity.evidence.verifiedAt,
+              tinVerified: payeeIdentity.evidence.tinVerified,
             }),
             // A stage sealed before migration 1508 has only the legacy production day (see stagedPaymentDate): it is
             // recorded as the legacy `production_date` alone and never asserted to be a BPR16.

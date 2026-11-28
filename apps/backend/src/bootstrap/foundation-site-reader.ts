@@ -126,6 +126,16 @@ export interface FoundationSiteReader {
     readonly taxIdSealed: string;
     readonly addresses: unknown;
   } | null>;
+  /**
+   * M25 controlled posting's current payee identity. The row is held FOR SHARE until the caller's
+   * financial transaction commits, so a concurrent provider-identity update cannot race the check.
+   * The tax id remains sealed; only the M2 owner opens it when the ERA carries REF*TJ.
+   */
+  providerEntityBillingIdentityForPosting(
+    tx: DbClient,
+    organizationId: string,
+    providerEntityId: string,
+  ): Promise<{ readonly npi: string; readonly taxIdSealed: string } | null>;
 }
 
 /** The single candidate id, preferring `active` over `created`; null when there is no unambiguous one. */
@@ -279,6 +289,16 @@ export function buildFoundationSiteReader(): FoundationSiteReader {
         })
         .from(PROVIDER)
         .where(and(eq(PROVIDER.id, providerEntityId), eq(PROVIDER.organizationId, organizationId)))
+        .limit(1);
+      return provider ?? null;
+    },
+
+    async providerEntityBillingIdentityForPosting(tx, organizationId, providerEntityId) {
+      const [provider] = await tx
+        .select({ npi: PROVIDER.npi, taxIdSealed: PROVIDER.taxIdEncrypted })
+        .from(PROVIDER)
+        .where(and(eq(PROVIDER.id, providerEntityId), eq(PROVIDER.organizationId, organizationId)))
+        .for("share")
         .limit(1);
       return provider ?? null;
     },

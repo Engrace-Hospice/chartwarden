@@ -1508,6 +1508,7 @@ import {
 } from "./modules/25-remittance/ingest/claimmd-era-store";
 import { startClaimMdEraCaptureWorker } from "./modules/25-remittance/ingest/claimmd-era-worker";
 import { createM25FinancialOpsReader } from "./modules/25-remittance/ingest/financial-ops-reader";
+import type { CurrentPayeeIdentityForPostingLookup } from "./modules/25-remittance/ingest/service-drizzle";
 import { M25_ROUTE_CLASSES } from "./modules/25-remittance/routes/route-classes";
 import { createDrizzleCapConsumerStore } from "./modules/26-cap/consumers/drizzle-store";
 import { buildM26UpstreamConsumer } from "./modules/26-cap/consumers/outbox-binding";
@@ -5472,6 +5473,31 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           })
       : async (): Promise<string | null> => null,
   };
+  const m25CurrentPayeeIdentityForPosting: CurrentPayeeIdentityForPostingLookup = async (
+    tx,
+    organizationId,
+    providerEntityId,
+  ) => {
+    const facts = await buildFoundationSiteReader().providerEntityBillingIdentityForPosting(
+      tx as unknown as DbClient,
+      organizationId,
+      providerEntityId,
+    );
+    if (!facts) return null;
+    return {
+      npi: facts.npi,
+      readTin: () =>
+        createTaxIdCipher({
+          dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+          dekForOrgVersion: (orgId, version) =>
+            getTenantKeyProvider().dekForOrgVersion(orgId, version),
+        }).decrypt({
+          organizationId,
+          providerEntityId,
+          sealed: facts.taxIdSealed,
+        }),
+    };
+  };
   const m26OutboxPublisher = bindCallerModule(txOutboxPublisher, "m26");
   const m27OutboxPublisher = bindCallerModule(txOutboxPublisher, "m27");
   // WX-PR-013 — the real §4.8 BullMQ producer the M27 write-service's mutating routes call (refresh-inputs /
@@ -8785,6 +8811,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               ),
             payeeNpi: m25PayeeNpi,
             ...m25PayeeTinDeps,
+            currentPayeeIdentityForPosting: m25CurrentPayeeIdentityForPosting,
             outbox: m25OutboxPublisher,
             terminology: m25Terminology,
             claims: {

@@ -72,6 +72,14 @@ export interface M25ValidatedPostingInput {
 export interface M25TransactionPostingPort {
   /** M25-owned interpretation for the constrained Claim.MD controlled-posting contract. */
   assessClaimMdFinancialFacts(claim: ParsedClaim835): Promise<M25ClaimMdFinancialAssessment>;
+  /** Reuse the ordinary payee policy against current, owner-read identity in the caller's posting tx. */
+  validateCurrentPayeeIdentityInTransaction(
+    tx: M25Tx,
+    organizationId: string,
+    providerEntityId: string,
+    payee: ParsedRemittanceAdvice["payee"],
+    payerProgram: string,
+  ): Promise<PayeeIdentityCheck>;
   /**
    * Apply the single supported, already-validated claim association inside the caller's transaction.
    * No transaction is opened here; callers must own authorization and transaction lifecycle.
@@ -228,6 +236,7 @@ type PayeeIdentityEvidence = {
   readonly tinVerified: boolean | null;
   readonly verifiedAt: string;
 };
+type PayeeIdentityFailure = "source_invalid" | "identity_unavailable" | "identity_mismatch";
 type PayeeIdentityCheck = {
   readonly reason: string | null;
   /**
@@ -240,7 +249,106 @@ type PayeeIdentityCheck = {
    */
   readonly cause: "content" | "environment" | null;
   readonly evidence: PayeeIdentityEvidence | null;
+  readonly failure: PayeeIdentityFailure | null;
 };
+export interface CurrentPayeeIdentityForPosting {
+  readonly npi: string | null;
+  /** Called only after the staged payee NPI matches; decrypts the sealed TIN in memory. */
+  readonly readTin: () => Promise<string | null>;
+}
+export type CurrentPayeeIdentityForPostingLookup = (
+  tx: M25Tx,
+  organizationId: string,
+  providerEntityId: string,
+) => Promise<CurrentPayeeIdentityForPosting | null>;
+
+function payeeIdentityRefusal(
+  reason: string,
+  cause: "content" | "environment",
+  failure: PayeeIdentityFailure,
+): PayeeIdentityCheck {
+  return { reason, cause, evidence: null, failure };
+}
+
+function checkPayeeNpi(input: {
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  readonly payee: ParsedRemittanceAdvice["payee"];
+  readonly payerProgram: string;
+  readonly expectedNpi: string | null;
+}): PayeeIdentityCheck {
+  const expected = input.expectedNpi?.trim() ?? "";
+  if (!expected || !isValidNpi(expected))
+    return payeeIdentityRefusal(
+      "payee check: the provider entity has no valid NPI on file",
+      "environment",
+      "identity_unavailable",
+    );
+  if (input.payee?.idQualifier !== "XX" || !input.payee.id)
+    return payeeIdentityRefusal(
+      "payee check: the 835 payee carries no NPI (N103 XX)",
+      "content",
+      "source_invalid",
+    );
+  if (!isValidNpi(input.payee.id))
+    return payeeIdentityRefusal(
+      "payee check: the 835 payee NPI is invalid",
+      "content",
+      "source_invalid",
+    );
+  if (input.payee.id !== expected)
+    return payeeIdentityRefusal(
+      "payee check: the 835 payee NPI is not this provider entity's",
+      "environment",
+      "identity_mismatch",
+    );
+  return {
+    reason: null,
+    cause: null,
+    failure: null,
+    evidence: {
+      version: 1,
+      method: "npi",
+      organizationId: input.organizationId,
+      providerEntityId: input.providerEntityId,
+      payerProgram: input.payerProgram,
+      tinVerified: null,
+      verifiedAt: new Date().toISOString(),
+    },
+  };
+}
+
+function checkPayeeTin(
+  current: PayeeIdentityCheck,
+  payeeTin: string,
+  expectedTin: string | null,
+): PayeeIdentityCheck {
+  if (!current.evidence) return current;
+  const want = normaliseTin(expectedTin);
+  const got = normaliseTin(payeeTin);
+  if (!want)
+    return payeeIdentityRefusal(
+      "payee check: the provider entity has no usable tax id on file",
+      "environment",
+      "identity_unavailable",
+    );
+  if (!got)
+    return payeeIdentityRefusal(
+      "payee check: the 835 payee tax id is not a 9-digit TIN",
+      "content",
+      "source_invalid",
+    );
+  if (got !== want)
+    return payeeIdentityRefusal(
+      "payee check: the 835 payee tax id is not this provider entity's",
+      "environment",
+      "identity_mismatch",
+    );
+  return {
+    ...current,
+    evidence: { ...current.evidence, tinVerified: true, verifiedAt: new Date().toISOString() },
+  };
+}
 /** Explicit opt-out of the payee check, for tests that are not about it. */
 export const PAYEE_UNCHECKED = "unchecked" as const;
 
@@ -273,6 +381,12 @@ export interface M25IngestDrizzleDeps {
    * treated as identity without independently verified provider-payer enrollment.
    */
   readonly payeeTin?: PayeeTinLookup;
+  /**
+   * #1148 — current provider identity for controlled posting, resolved through the owner in the same tx.
+   * The resolver locks the provider row for share and returns only the NPI plus a lazy M2 TIN reader.
+   * Missing or throwing resolvers are refused; unlike the receive-only test opt-out, this has no bypass.
+   */
+  readonly currentPayeeIdentityForPosting?: CurrentPayeeIdentityForPostingLookup;
   /**
    * Ops-visibility hook: called when `postAdvice` fails on a RETRYABLE degraded parse (e.g. no staged-object
    * reader wired, X12_835_RAW_UNAVAILABLE) so a dead pipeline is not silent. PHI-free by contract: ids and
@@ -384,35 +498,6 @@ export function buildDrizzleM25IngestService(
     });
   }
 
-  /** #671 — null when the payee's tax id is the tenant's, else a PHI-free refusal and its cause. Never logs either TIN. */
-  async function tinMismatch(
-    organizationId: string,
-    providerEntityId: string,
-    payeeTin: string,
-  ): Promise<{ reason: string; cause: "content" | "environment" } | null> {
-    const environment = (reason: string) => ({ reason, cause: "environment" as const });
-    if (!deps.payeeTin) return environment("payee check: no tax id lookup is bound");
-    let expected: string | null;
-    try {
-      expected = await deps.payeeTin(organizationId, providerEntityId);
-    } catch {
-      return environment("payee check: the provider entity's tax id could not be read");
-    }
-    const want = normaliseTin(expected);
-    const got = normaliseTin(payeeTin);
-    if (!want) return environment("payee check: the provider entity has no usable tax id on file");
-    if (!got)
-      return {
-        reason: "payee check: the 835 payee tax id is not a 9-digit TIN",
-        cause: "content",
-      };
-    // The NPI already matched, so a different well-formed tax id is far more likely a stale or mis-keyed EIN on file than a
-    // mis-addressed file: environment, never quarantined.
-    return got === want
-      ? null
-      : environment("payee check: the 835 payee tax id is not this provider entity's");
-  }
-
   /** #659/#671 — null reason when the payee is this tenant's, else a PHI-free refusal and its cause (fail closed). */
   async function payeeMismatch(
     organizationId: string,
@@ -420,43 +505,93 @@ export function buildDrizzleM25IngestService(
     payee: ParsedRemittanceAdvice["payee"],
     payerKind: string,
   ): Promise<PayeeIdentityCheck> {
-    if (deps.payeeNpi === PAYEE_UNCHECKED) return { reason: null, cause: null, evidence: null };
-    const evidence = (tinVerified: boolean | null): PayeeIdentityEvidence => ({
-      version: 1,
-      method: "npi",
-      organizationId,
-      providerEntityId,
-      payerProgram: payerKind,
-      tinVerified,
-      verifiedAt: new Date().toISOString(),
-    });
-    const refuse = (reason: string, cause: "content" | "environment"): PayeeIdentityCheck => ({
-      reason,
-      cause,
-      evidence: null,
-    });
+    if (deps.payeeNpi === PAYEE_UNCHECKED)
+      return { reason: null, cause: null, evidence: null, failure: null };
     let expected: string | null;
     try {
       expected = (await deps.payeeNpi(organizationId, providerEntityId))?.trim() ?? null;
     } catch {
-      return refuse("payee check: the provider entity NPI could not be read", "environment");
+      return payeeIdentityRefusal(
+        "payee check: the provider entity NPI could not be read",
+        "environment",
+        "identity_unavailable",
+      );
     }
-    if (!expected || !isValidNpi(expected))
-      return refuse("payee check: the provider entity has no valid NPI on file", "environment");
-    if (payee?.idQualifier !== "XX" || !payee.id)
-      return refuse("payee check: the 835 payee carries no NPI (N103 XX)", "content");
-    if (!isValidNpi(payee.id))
-      return refuse("payee check: the 835 payee NPI is invalid", "content");
-    if (payee.id !== expected)
-      return refuse("payee check: the 835 payee NPI is not this provider entity's", "environment");
-    // NPI matched: a REF*TJ the payer sent must also be this tenant's. A well-formed mismatch is most likely a
-    // stale or mis-keyed EIN on file, so it is transient (environment); only a malformed TIN is the file's own content.
-    const taxMismatch = payee.taxId
-      ? await tinMismatch(organizationId, providerEntityId, payee.taxId)
-      : null;
-    return taxMismatch
-      ? refuse(taxMismatch.reason, taxMismatch.cause)
-      : { reason: null, cause: null, evidence: evidence(payee.taxId ? true : null) };
+    const npiCheck = checkPayeeNpi({
+      organizationId,
+      providerEntityId,
+      payee,
+      payerProgram: payerKind,
+      expectedNpi: expected,
+    });
+    if (npiCheck.reason || !payee?.taxId) return npiCheck;
+    if (!deps.payeeTin)
+      return payeeIdentityRefusal(
+        "payee check: no tax id lookup is bound",
+        "environment",
+        "identity_unavailable",
+      );
+    let expectedTin: string | null;
+    try {
+      expectedTin = await deps.payeeTin(organizationId, providerEntityId);
+    } catch {
+      return payeeIdentityRefusal(
+        "payee check: the provider entity's tax id could not be read",
+        "environment",
+        "identity_unavailable",
+      );
+    }
+    return checkPayeeTin(npiCheck, payee.taxId, expectedTin);
+  }
+
+  async function validateCurrentPayeeIdentityInTransaction(
+    tx: M25Tx,
+    organizationId: string,
+    providerEntityId: string,
+    payee: ParsedRemittanceAdvice["payee"],
+    payerProgram: string,
+  ): Promise<PayeeIdentityCheck> {
+    if (!deps.currentPayeeIdentityForPosting)
+      return payeeIdentityRefusal(
+        "payee check: current provider identity lookup is not bound",
+        "environment",
+        "identity_unavailable",
+      );
+    let current: CurrentPayeeIdentityForPosting | null;
+    try {
+      current = await deps.currentPayeeIdentityForPosting(tx, organizationId, providerEntityId);
+    } catch {
+      return payeeIdentityRefusal(
+        "payee check: the current provider identity could not be read",
+        "environment",
+        "identity_unavailable",
+      );
+    }
+    if (!current)
+      return payeeIdentityRefusal(
+        "payee check: the provider entity could not be resolved in this organization",
+        "environment",
+        "identity_unavailable",
+      );
+    const npiCheck = checkPayeeNpi({
+      organizationId,
+      providerEntityId,
+      payee,
+      payerProgram,
+      expectedNpi: current.npi,
+    });
+    if (npiCheck.reason || !payee?.taxId) return npiCheck;
+    let currentTin: string | null;
+    try {
+      currentTin = await current.readTin();
+    } catch {
+      return payeeIdentityRefusal(
+        "payee check: the provider entity's tax id could not be read",
+        "environment",
+        "identity_unavailable",
+      );
+    }
+    return checkPayeeTin(npiCheck, payee.taxId, currentTin);
   }
 
   async function resolveCategory(carcCode: string): Promise<DenialCategory | null> {
@@ -1484,6 +1619,7 @@ export function buildDrizzleM25IngestService(
     };
   const serviceWithInternalPort = {
     assessClaimMdFinancialFacts,
+    validateCurrentPayeeIdentityInTransaction,
     postValidatedClaimsInTransaction,
     async postValidatedClaimInTransaction(
       tx: M25Tx,
@@ -1864,9 +2000,14 @@ export function buildDrizzleM25IngestService(
       }
     },
   };
-  const { postValidatedClaimInTransaction, ...service } = serviceWithInternalPort;
+  const {
+    postValidatedClaimInTransaction,
+    validateCurrentPayeeIdentityInTransaction: validatePayeeIdentityInTransaction,
+    ...service
+  } = serviceWithInternalPort;
   internalPostingPorts.set(service, {
     assessClaimMdFinancialFacts: serviceWithInternalPort.assessClaimMdFinancialFacts,
+    validateCurrentPayeeIdentityInTransaction: validatePayeeIdentityInTransaction,
     postValidatedClaimInTransaction: serviceWithInternalPort.postValidatedClaimInTransaction,
     postValidatedClaimsInTransaction: serviceWithInternalPort.postValidatedClaimsInTransaction,
   });

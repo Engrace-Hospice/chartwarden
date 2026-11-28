@@ -67,16 +67,17 @@ export function stageEvidenceCodes(sourceEvidence: unknown): string[] {
 }
 
 /**
- * Non-sensitive `payee_identity_evidence` for an advice posted from a staged Claim.MD ERA. Claim.MD's payee
- * was verified centrally by the NPI (and the TIN when the 835 carried one) before the stage was written, so
- * the evidence records that method, the codes, and when the stage (the verification) was created. It never
- * holds an NPI or TIN value.
+ * Non-sensitive `payee_identity_evidence` for an advice posted from a staged Claim.MD ERA. The executor
+ * supplies the fresh verification time and TIN result after rechecking the current owner identity in the
+ * posting transaction. The evidence also carries the stage's non-sensitive ownership codes, never an NPI
+ * or TIN value.
  */
 export function claimMdStagePayeeIdentityEvidence(input: {
   readonly organizationId: string;
   readonly providerEntityId: string;
   readonly sourceEvidence: unknown;
   readonly verifiedAt: Date | string;
+  readonly tinVerified?: boolean | null;
 }) {
   const evidenceCodes = stageEvidenceCodes(input.sourceEvidence);
   return {
@@ -86,7 +87,12 @@ export function claimMdStagePayeeIdentityEvidence(input: {
     organizationId: input.organizationId,
     providerEntityId: input.providerEntityId,
     payerProgram: "commercial",
-    tinVerified: evidenceCodes.includes("PAYEE_TIN_CONFIRMED") ? true : null,
+    tinVerified:
+      input.tinVerified === undefined
+        ? evidenceCodes.includes("PAYEE_TIN_CONFIRMED")
+          ? true
+          : null
+        : input.tinVerified,
     evidenceCodes,
     verifiedAt: new Date(input.verifiedAt).toISOString(),
   };
